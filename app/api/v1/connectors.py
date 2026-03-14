@@ -7475,6 +7475,237 @@ async def _ingest_jira_issue_linked_artifacts(
         "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
     }
 
+
+def _patch_jira_attachment_document_metadata(
+    db: Session,
+    *,
+    att_doc: Any,
+    run: ConnectorRun,
+    issue_info: dict[str, str | None],
+    attachment_ref: dict[str, str],
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+) -> None:
+    attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
+    filename = str(attachment_ref.get("filename") or "").strip()
+    download_url = str(attachment_ref.get("download_url") or "").strip()
+    meta_att = dict(getattr(att_doc, "doc_metadata", None) or {})
+    updated = str(issue_info.get("updated") or "").strip()
+    issue_id = str(issue_info.get("issue_id") or "").strip() or None
+    issue_key = str(issue_info.get("issue_key") or "").strip() or None
+    issue_url = str(issue_info.get("issue_url") or "").strip()
+
+    if updated:
+        lm_iso = _normalize_datetime_utc_iso(updated) or updated
+        meta_att["source_last_modified_at"] = lm_iso
+        meta_att["source_last_modified_source"] = JIRA_UPDATED_SOURCE
+        meta_att["source_last_modified_raw"] = meta_att.get("source_last_modified_raw") or updated
+    if isinstance(acl_provenance, dict):
+        meta_att["acl_provenance"] = dict(acl_provenance)
+    meta_att["connector"] = _jira_attachment_connector_metadata(
+        base_url=str(settings_map.get("base_url") or ""),
+        project_key=str(settings_map.get("project_key") or ""),
+        issue_id=issue_id,
+        issue_key=issue_key,
+        issue_url=issue_url,
+        attachment_id=attachment_id,
+        filename=filename,
+        download_url=download_url,
+        run_id=str(run.id),
+        mode=str(settings_map.get("effective_mode") or ""),
+    )
+    att_doc.doc_metadata = meta_att
+    _apply_connector_identity_metadata(
+        doc=att_doc,
+        run=run,
+        connector_id="jira_project",
+        source_ref=(attachment_id or download_url),
+        source_id=(attachment_id or download_url),
+    )
+    db.commit()
+
+
+async def _ingest_single_jira_attachment(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    issue_info: dict[str, str | None],
+    attachment_ref: dict[str, str],
+    effective_access: dict[str, Any] | None,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+) -> UUID:
+    attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
+    filename = str(attachment_ref.get("filename") or "").strip()
+    download_url = str(attachment_ref.get("download_url") or "").strip()
+    att_body = UrlUploadRequest(
+        url=download_url,
+        dataset_id=run.dataset_id,
+        filename=filename,
+        fetch_headers=settings_map.get("auth_headers") or None,
+        user_agent=settings_map.get("user_agent"),
+        parser_backend=str(settings_map.get("parser_backend") or "auto"),
+        chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
+        pipeline=settings_map.get("pipeline"),  # type: ignore[arg-type]
+    )
+    att_doc = await _ingest_url_upload_request(
+        background_tasks=None,
+        body=att_body,
+        tenant_id=tenant_id,
+        account_id=requested_by,
+        db=db,
+    )
+    _apply_document_access_from_config(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        doc=att_doc,
+        access=effective_access,
+        connector_id="jira_project",
+    )
+
+    with contextlib.suppress(Exception):
+        _patch_jira_attachment_document_metadata(
+            db,
+            att_doc=att_doc,
+            run=run,
+            issue_info=issue_info,
+            attachment_ref=attachment_ref,
+            acl_provenance=acl_provenance,
+            settings_map=settings_map,
+        )
+
+    db.add(
+        ConnectorRunDocument(
+            tenant_id=tenant_id,
+            run_id=run.id,
+            document_id=att_doc.id,
+            source_ref=(attachment_id or download_url)[:1000] or None,
+            status="created",
+        )
+    )
+    return att_doc.id
+
+
+async def _ingest_jira_issue_attachments(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    issue: dict[str, Any],
+    issue_info: dict[str, str | None],
+    effective_access: dict[str, Any] | None,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+    progress: dict[str, Any],
+) -> dict[str, Any]:
+    issue_url = str(issue_info.get("issue_url") or "").strip()
+    if (
+        not settings_map.get("include_attachments")
+        or not issue_url
+        or int(progress.get("attachments_processed") or 0) >= int(settings_map.get("max_total_attachments") or 0)
+        or _jira_project_run_cancelled(db, run=run)
+    ):
+        return {
+            "attachments_processed": 0,
+            "attachments_created": 0,
+            "failed": 0,
+            "created_doc_ids": [],
+            "removed_attachment_documents_disabled": 0,
+        }
+
+    remaining_total = int(settings_map.get("max_total_attachments") or 0) - int(progress.get("attachments_processed") or 0)
+    per_issue_limit_eff = int(min(int(settings_map.get("max_attachments_per_issue") or 0), max(0, remaining_total)))
+    if per_issue_limit_eff <= 0:
+        return {
+            "attachments_processed": 0,
+            "attachments_created": 0,
+            "failed": 0,
+            "created_doc_ids": [],
+            "removed_attachment_documents_disabled": 0,
+        }
+
+    fields = issue.get("fields") if isinstance(issue, dict) and isinstance(issue.get("fields"), dict) else {}
+    raw_attachments = fields.get("attachment") if isinstance(fields.get("attachment"), list) else []
+    attachment_listing_complete = bool(per_issue_limit_eff >= len(raw_attachments))
+    attachment_refs = _jira_extract_attachments(issue if isinstance(issue, dict) else {}, limit=per_issue_limit_eff)
+
+    attachments_processed = 0
+    attachments_created = 0
+    failed = 0
+    created_doc_ids: list[UUID] = []
+    seen_attachment_urls: set[str] = set()
+
+    for attachment_ref in attachment_refs:
+        if (int(progress.get("attachments_processed") or 0) + attachments_processed) >= int(
+            settings_map.get("max_total_attachments") or 0
+        ):
+            attachment_listing_complete = False
+            break
+        if _jira_project_run_cancelled(db, run=run):
+            attachment_listing_complete = False
+            break
+
+        attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
+        filename = str(attachment_ref.get("filename") or "").strip()
+        download_url = str(attachment_ref.get("download_url") or "").strip()
+        attachments_processed += 1
+
+        if not attachment_id or not download_url:
+            continue
+        seen_attachment_urls.add(download_url)
+
+        ext = Path(filename).suffix.lower()
+        if ext and ext not in settings.allowed_extensions_list:
+            continue
+
+        try:
+            doc_id = await _ingest_single_jira_attachment(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                issue_info=issue_info,
+                attachment_ref=attachment_ref,
+                effective_access=effective_access,
+                acl_provenance=acl_provenance,
+                settings_map=settings_map,
+            )
+            created_doc_ids.append(doc_id)
+            attachments_created += 1
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            run.stats = _append_connector_error(
+                dict(run.stats or {}),
+                url=(download_url or attachment_id),
+                exc=exc,
+            )
+
+    removed_attachment_documents_disabled = 0
+    if attachment_listing_complete:
+        removed_attachment_documents_disabled = int(
+            _soft_disable_jira_attachment_documents_missing_from_issue(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                base_url=str(settings_map.get("base_url") or ""),
+                project_key=str(settings_map.get("project_key") or ""),
+                issue_url=issue_url,
+                seen_attachment_urls=seen_attachment_urls,
+            )
+        )
+
+    return {
+        "attachments_processed": attachments_processed,
+        "attachments_created": attachments_created,
+        "failed": failed,
+        "created_doc_ids": created_doc_ids,
+        "removed_attachment_documents_disabled": removed_attachment_documents_disabled,
+    }
+
 def _jira_api_base_url(base_url: str) -> str:
     """
     Normalize a Jira base URL to the Jira Cloud REST v3 API base.
@@ -8793,136 +9024,40 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                         linked_artifacts.get("removed_linked_artifact_documents_disabled") or 0
                     )
 
-                    if (
-                        include_attachments
-                        and issue_url
-                        and attachments_processed < max_total_attachments
-                        and str(run.status or "").lower() != "cancelled"
-                    ):
-                        remaining_total = int(max_total_attachments) - int(attachments_processed)
-                        per_issue_limit_eff = int(min(int(max_attachments_per_issue), max(0, remaining_total)))
-                        fields = issue.get("fields") if isinstance(issue, dict) and isinstance(issue.get("fields"), dict) else {}
-                        raw_attachments = fields.get("attachment") if isinstance(fields.get("attachment"), list) else []
-                        attachment_listing_complete = bool(per_issue_limit_eff >= len(raw_attachments))
-                        seen_attachment_urls: set[str] = set()
-
-                        if per_issue_limit_eff > 0:
-                            attachment_refs = _jira_extract_attachments(issue if isinstance(issue, dict) else {}, limit=per_issue_limit_eff)
-                            for aref in attachment_refs:
-                                if attachments_processed >= max_total_attachments:
-                                    attachment_listing_complete = False
-                                    break
-
-                                try:
-                                    db.refresh(run)
-                                except Exception:
-                                    pass
-                                if str(run.status or "").lower() == "cancelled":
-                                    attachment_listing_complete = False
-                                    break
-
-                                attachment_id = str(aref.get("attachment_id") or "").strip()
-                                filename_att = str(aref.get("filename") or "").strip()
-                                download_url = str(aref.get("download_url") or "").strip()
-                                attachments_processed += 1
-
-                                if not attachment_id or not download_url:
-                                    continue
-                                seen_attachment_urls.add(download_url)
-
-                                ext = Path(filename_att).suffix.lower()
-                                if ext and ext not in settings.allowed_extensions_list:
-                                    continue
-
-                                try:
-                                    att_body = UrlUploadRequest(
-                                        url=download_url,
-                                        dataset_id=run.dataset_id,
-                                        filename=filename_att,
-                                        fetch_headers=auth_headers or None,
-                                        user_agent=user_agent,
-                                        parser_backend=str(parser_backend),
-                                        chunk_strategy=str(chunk_strategy),
-                                        pipeline=pipeline,  # type: ignore[arg-type]
-                                    )
-                                    att_doc = await _ingest_url_upload_request(
-                                        background_tasks=None,
-                                        body=att_body,
-                                        tenant_id=tenant_id,
-                                        account_id=requested_by,
-                                        db=db,
-                                    )
-
-                                    _apply_document_access_from_config(
-                                        db,
-                                        tenant_id=tenant_id,
-                                        requested_by=requested_by,
-                                        doc=att_doc,
-                                        access=effective_access,
-                                        connector_id="jira_project",
-                                    )
-
-                                    try:
-                                        meta_att = dict(getattr(att_doc, "doc_metadata", None) or {})
-                                        if updated:
-                                            lm_iso = _normalize_datetime_utc_iso(updated) or updated
-                                            meta_att["source_last_modified_at"] = lm_iso
-                                            meta_att["source_last_modified_source"] = JIRA_UPDATED_SOURCE
-                                            meta_att["source_last_modified_raw"] = meta_att.get("source_last_modified_raw") or updated
-                                        if isinstance(acl_provenance, dict):
-                                            meta_att["acl_provenance"] = dict(acl_provenance)
-                                        meta_att["connector"] = _jira_attachment_connector_metadata(
-                                            base_url=base_url,
-                                            project_key=project_key,
-                                            issue_id=(issue_id or None),
-                                            issue_key=(issue_key or None),
-                                            issue_url=issue_url,
-                                            attachment_id=attachment_id,
-                                            filename=filename_att,
-                                            download_url=download_url,
-                                            run_id=str(run.id),
-                                            mode=effective_mode,
-                                        )
-                                        att_doc.doc_metadata = meta_att
-                                        _apply_connector_identity_metadata(
-                                            doc=att_doc,
-                                            run=run,
-                                            connector_id="jira_project",
-                                            source_ref=(attachment_id or download_url),
-                                            source_id=(attachment_id or download_url),
-                                        )
-                                        db.commit()
-                                    except Exception:
-                                        pass
-
-                                    db.add(
-                                        ConnectorRunDocument(
-                                            tenant_id=tenant_id,
-                                            run_id=run.id,
-                                            document_id=att_doc.id,
-                                            source_ref=(attachment_id or download_url)[:1000] or None,
-                                            status="created",
-                                        )
-                                    )
-                                    created += 1
-                                    created_doc_ids.append(att_doc.id)
-                                    attachments_created += 1
-                                except Exception as exc:  # noqa: BLE001
-                                    failed += 1
-                                    stats = dict(run.stats or {})
-                                    stats = _append_connector_error(stats, url=(download_url or attachment_id), exc=exc)
-                                    run.stats = _finalize_connector_stats(stats)
-
-                        if attachment_listing_complete:
-                            removed_attachment_documents_disabled += _soft_disable_jira_attachment_documents_missing_from_issue(
-                                db,
-                                tenant_id=tenant_id,
-                                dataset_id=run.dataset_id,
-                                base_url=base_url,
-                                project_key=project_key,
-                                issue_url=issue_url,
-                                seen_attachment_urls=seen_attachment_urls,
-                            )
+                    attachments = await _ingest_jira_issue_attachments(
+                        db,
+                        run=run,
+                        tenant_id=tenant_id,
+                        requested_by=requested_by,
+                        issue=issue if isinstance(issue, dict) else {},
+                        issue_info=issue_info,
+                        effective_access=effective_access,
+                        acl_provenance=acl_provenance,
+                        settings_map={
+                            "base_url": base_url,
+                            "project_key": project_key,
+                            "include_attachments": include_attachments,
+                            "max_total_attachments": max_total_attachments,
+                            "max_attachments_per_issue": max_attachments_per_issue,
+                            "auth_headers": auth_headers,
+                            "user_agent": user_agent,
+                            "parser_backend": parser_backend,
+                            "chunk_strategy": chunk_strategy,
+                            "pipeline": pipeline,
+                            "effective_mode": effective_mode,
+                        },
+                        progress={
+                            "attachments_processed": attachments_processed,
+                        },
+                    )
+                    attachments_processed += int(attachments.get("attachments_processed") or 0)
+                    attachments_created += int(attachments.get("attachments_created") or 0)
+                    created += int(attachments.get("attachments_created") or 0)
+                    failed += int(attachments.get("failed") or 0)
+                    created_doc_ids.extend(attachments.get("created_doc_ids") or [])
+                    removed_attachment_documents_disabled += int(
+                        attachments.get("removed_attachment_documents_disabled") or 0
+                    )
                 except Exception as exc:  # noqa: BLE001
                     failed += 1
                     stats = dict(run.stats or {})

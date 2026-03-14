@@ -1151,3 +1151,302 @@ def test_ingest_jira_issue_linked_artifacts_skips_reconcile_when_listing_is_trun
     assert out["failed"] == 0
     assert out["removed_linked_artifact_documents_disabled"] == 0
     assert seen["reconciled"] is False
+
+
+def test_ingest_single_jira_attachment_sets_metadata_and_filename(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    seen: dict[str, object] = {}
+
+    class _DummyDB:
+        def __init__(self) -> None:
+            self.added: list[object] = []
+            self.commits = 0
+
+        def add(self, obj: object) -> None:
+            self.added.append(obj)
+
+        def commit(self) -> None:
+            self.commits += 1
+
+    class _DummyUrlUploadRequest:
+        def __init__(self, **kwargs):  # noqa: ANN003
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    dummy_db = _DummyDB()
+
+    async def _fake_ingest_url_upload_request(*_a, **kwargs):  # noqa: ANN001
+        body = kwargs["body"]
+        seen["body_url"] = getattr(body, "url", None)
+        seen["body_fetch_headers"] = getattr(body, "fetch_headers", None)
+        seen["body_filename"] = getattr(body, "filename", None)
+        doc = types.SimpleNamespace(id=doc_id, doc_metadata={})
+        seen["doc"] = doc
+        return doc
+
+    def _fake_apply_document_access_from_config(*_a, **kwargs):  # noqa: ANN001
+        seen["effective_access"] = kwargs.get("access")
+
+    def _fake_apply_connector_identity_metadata(**kwargs):  # noqa: ANN001
+        seen["identity_source_ref"] = kwargs.get("source_ref")
+        seen["identity_source_id"] = kwargs.get("source_id")
+
+    monkeypatch.setattr(connectors, "UrlUploadRequest", _DummyUrlUploadRequest, raising=False)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=False)
+    monkeypatch.setattr(
+        connectors,
+        "_apply_document_access_from_config",
+        _fake_apply_document_access_from_config,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        connectors,
+        "_apply_connector_identity_metadata",
+        _fake_apply_connector_identity_metadata,
+        raising=False,
+    )
+
+    created_id = asyncio.run(
+        connectors._ingest_single_jira_attachment(
+            dummy_db,
+            run=types.SimpleNamespace(id=run_id, dataset_id=dataset_id),
+            tenant_id=uuid.uuid4(),
+            requested_by="tester",
+            issue_info={
+                "issue_id": "10000",
+                "issue_key": "PLAT-42",
+                "issue_url": "https://example.atlassian.net/browse/PLAT-42",
+                "updated": "2026-03-02T12:34:56.000+0000",
+            },
+            attachment_ref={
+                "attachment_id": "att-1",
+                "filename": "design.pdf",
+                "download_url": "https://example.atlassian.net/secure/attachment/10000/design.pdf",
+            },
+            effective_access={"mode": "partial_members"},
+            acl_provenance={"schema": "test-provenance"},
+            settings_map={
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "auth_headers": {"Authorization": "Basic token"},
+                "user_agent": "MimirQ-Jira/1.0",
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline": {"ocr": True},
+                "effective_mode": "incremental",
+            },
+        )
+    )
+
+    assert created_id == doc_id
+    assert seen["body_url"] == "https://example.atlassian.net/secure/attachment/10000/design.pdf"
+    assert seen["body_fetch_headers"] == {"Authorization": "Basic token"}
+    assert seen["body_filename"] == "design.pdf"
+    assert seen["effective_access"] == {"mode": "partial_members"}
+    assert seen["identity_source_ref"] == "att-1"
+    assert seen["identity_source_id"] == "att-1"
+    assert dummy_db.commits == 1
+    assert len(dummy_db.added) == 1
+
+    doc = seen["doc"]
+    assert doc.doc_metadata["acl_provenance"] == {"schema": "test-provenance"}
+    assert doc.doc_metadata["source_last_modified_source"] == connectors.JIRA_UPDATED_SOURCE
+    assert doc.doc_metadata["connector"]["doc_kind"] == "attachment"
+    assert doc.doc_metadata["connector"]["attachment_id"] == "att-1"
+    assert doc.doc_metadata["connector"]["filename"] == "design.pdf"
+
+
+def test_ingest_jira_issue_attachments_filters_extensions_and_reconciles(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    created_id = uuid.uuid4()
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        connectors,
+        "_jira_extract_attachments",
+        lambda *_a, **_k: [
+            {
+                "attachment_id": "att-1",
+                "filename": "design.pdf",
+                "download_url": "https://example.atlassian.net/secure/attachment/10000/design.pdf",
+            },
+            {
+                "attachment_id": "att-2",
+                "filename": "script.exe",
+                "download_url": "https://example.atlassian.net/secure/attachment/10001/script.exe",
+            },
+        ],
+        raising=True,
+    )
+    monkeypatch.setattr(connectors, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=False)
+    monkeypatch.setattr(connectors.settings, "ALLOWED_EXTENSIONS", ".pdf", raising=False)
+
+    async def _fake_ingest_single_jira_attachment(*_a, **kwargs):  # noqa: ANN001
+        seen.setdefault("attachment_ids", []).append(kwargs.get("attachment_ref", {}).get("attachment_id"))
+        return created_id
+
+    def _fake_soft_disable(*_a, **kwargs):  # noqa: ANN001
+        seen["seen_attachment_urls"] = set(kwargs.get("seen_attachment_urls") or set())
+        return 5
+
+    monkeypatch.setattr(
+        connectors,
+        "_ingest_single_jira_attachment",
+        _fake_ingest_single_jira_attachment,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_jira_attachment_documents_missing_from_issue",
+        _fake_soft_disable,
+        raising=True,
+    )
+
+    out = asyncio.run(
+        connectors._ingest_jira_issue_attachments(
+            object(),
+            run=types.SimpleNamespace(id=uuid.uuid4(), dataset_id=uuid.uuid4(), status="running", stats={}),
+            tenant_id=uuid.uuid4(),
+            requested_by="tester",
+            issue={
+                "fields": {
+                    "attachment": [
+                        {"id": "att-1"},
+                        {"id": "att-2"},
+                    ]
+                }
+            },
+            issue_info={
+                "issue_id": "10000",
+                "issue_key": "PLAT-42",
+                "issue_url": "https://example.atlassian.net/browse/PLAT-42",
+                "updated": "2026-03-02T12:34:56.000+0000",
+            },
+            effective_access={"mode": "inherit"},
+            acl_provenance={"schema": "test-provenance"},
+            settings_map={
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "include_attachments": True,
+                "max_total_attachments": 5,
+                "max_attachments_per_issue": 2,
+                "auth_headers": {"Authorization": "Basic token"},
+                "user_agent": "MimirQ-Jira/1.0",
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline": {"ocr": True},
+                "effective_mode": "full",
+            },
+            progress={"attachments_processed": 0},
+        )
+    )
+
+    assert out == {
+        "attachments_processed": 2,
+        "attachments_created": 1,
+        "failed": 0,
+        "created_doc_ids": [created_id],
+        "removed_attachment_documents_disabled": 5,
+    }
+    assert seen["attachment_ids"] == ["att-1"]
+    assert seen["seen_attachment_urls"] == {
+        "https://example.atlassian.net/secure/attachment/10000/design.pdf",
+        "https://example.atlassian.net/secure/attachment/10001/script.exe",
+    }
+
+
+def test_ingest_jira_issue_attachments_skips_reconcile_when_listing_is_truncated(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    seen: dict[str, object] = {"reconciled": False}
+
+    monkeypatch.setattr(
+        connectors,
+        "_jira_extract_attachments",
+        lambda *_a, **_k: [
+            {
+                "attachment_id": "att-1",
+                "filename": "design.pdf",
+                "download_url": "https://example.atlassian.net/secure/attachment/10000/design.pdf",
+            },
+            {
+                "attachment_id": "att-2",
+                "filename": "notes.txt",
+                "download_url": "https://example.atlassian.net/secure/attachment/10001/notes.txt",
+            },
+        ],
+        raising=True,
+    )
+    monkeypatch.setattr(connectors, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=False)
+    monkeypatch.setattr(connectors.settings, "ALLOWED_EXTENSIONS", ".pdf,.txt", raising=False)
+
+    async def _fake_ingest_single_jira_attachment(*_a, **_kwargs):  # noqa: ANN001
+        return uuid.uuid4()
+
+    def _fake_soft_disable(*_a, **_kwargs):  # noqa: ANN001
+        seen["reconciled"] = True
+        return 9
+
+    monkeypatch.setattr(
+        connectors,
+        "_ingest_single_jira_attachment",
+        _fake_ingest_single_jira_attachment,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_jira_attachment_documents_missing_from_issue",
+        _fake_soft_disable,
+        raising=True,
+    )
+
+    out = asyncio.run(
+        connectors._ingest_jira_issue_attachments(
+            object(),
+            run=types.SimpleNamespace(id=uuid.uuid4(), dataset_id=uuid.uuid4(), status="running", stats={}),
+            tenant_id=uuid.uuid4(),
+            requested_by="tester",
+            issue={
+                "fields": {
+                    "attachment": [
+                        {"id": "att-1"},
+                        {"id": "att-2"},
+                        {"id": "att-3"},
+                    ]
+                }
+            },
+            issue_info={
+                "issue_id": "10000",
+                "issue_key": "PLAT-42",
+                "issue_url": "https://example.atlassian.net/browse/PLAT-42",
+                "updated": "2026-03-02T12:34:56.000+0000",
+            },
+            effective_access={"mode": "inherit"},
+            acl_provenance={"schema": "test-provenance"},
+            settings_map={
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "include_attachments": True,
+                "max_total_attachments": 5,
+                "max_attachments_per_issue": 2,
+                "auth_headers": {"Authorization": "Basic token"},
+                "user_agent": "MimirQ-Jira/1.0",
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline": {"ocr": True},
+                "effective_mode": "full",
+            },
+            progress={"attachments_processed": 0},
+        )
+    )
+
+    assert out["attachments_processed"] == 2
+    assert out["attachments_created"] == 2
+    assert out["failed"] == 0
+    assert out["removed_attachment_documents_disabled"] == 0
+    assert seen["reconciled"] is False
