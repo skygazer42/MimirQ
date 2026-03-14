@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
 
 class _DummyQuery:
     def __init__(self, obj):  # noqa: ANN001
@@ -39,8 +37,7 @@ class _DummyDB:
         return None
 
 
-@pytest.mark.asyncio
-async def test_execute_db_catalog_run_persists_row_snapshot_manifest(monkeypatch):  # noqa: ANN001
+def test_execute_db_catalog_run_persists_row_snapshot_manifest(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors_module
     import app.connectors.db.catalog_runner as runner
 
@@ -100,7 +97,7 @@ async def test_execute_db_catalog_run_persists_row_snapshot_manifest(monkeypatch
         raising=True,
     )
 
-    await connectors_module._execute_db_catalog_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+    connectors_module._execute_db_catalog_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
 
     assert run.status == "completed"
     assert isinstance(run.stats, dict)

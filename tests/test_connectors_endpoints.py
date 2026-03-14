@@ -160,6 +160,26 @@ def test_connectors_list_exposes_resume_capabilities():  # noqa: ANN001
     assert items["jira_project"]["sync_cursor_kind"] == "timestamp"
 
 
+def test_parse_link_header_next_extracts_rel_next_url() -> None:
+    import app.api.v1.connectors as connectors_module
+
+    next_url = "https://api.github.com/repos/acme/project/teams?page=2"
+    header = (
+        f'<{next_url}>; rel="next", '
+        '<https://api.github.com/repos/acme/project/teams?page=9>; rel="last"'
+    )
+
+    assert connectors_module._parse_link_header_next(header) == next_url
+
+
+def test_connector_run_completion_status_only_fails_when_nothing_was_created() -> None:
+    import app.api.v1.connectors as connectors_module
+
+    assert connectors_module._connector_run_completion_status(created=2, failed=0) == "completed"
+    assert connectors_module._connector_run_completion_status(created=2, failed=1) == "completed"
+    assert connectors_module._connector_run_completion_status(created=0, failed=1) == "failed"
+
+
 def test_connectors_create_run_requires_url_ingest_enabled(monkeypatch):  # noqa: ANN001
     from app.api.v1.connectors import create_connector_run
     from app.core.config import settings
