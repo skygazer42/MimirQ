@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -79,7 +81,7 @@ def test_schedule_parse_repair_merges_and_sorts_candidates(tmp_path: Path) -> No
     assert payload.get("schema") == "mimirq.parse_repair_schedule.v1"
     actions = payload.get("actions") if isinstance(payload.get("actions"), list) else []
     assert [row.get("document_id") for row in actions] == ["doc-b", "doc-z", "doc-a", "doc-c"]
-    assert float(actions[0].get("risk_score") or 0.0) == 1.0
+    assert float(actions[0].get("risk_score") or 0.0) == pytest.approx(1.0)
     assert "parse_risk_tail_added" in list(actions[0].get("reasons") or [])
 
 

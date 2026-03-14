@@ -11,6 +11,24 @@ from pathlib import Path
 from typing import Any
 
 
+def _resolve_path_under_cwd(raw_path: str, *, must_exist: bool) -> Path:
+    raw = str(raw_path or "").strip()
+    if not raw:
+        raise SystemExit("path_required")
+
+    base = Path.cwd().resolve(strict=False)
+    candidate = Path(raw).expanduser()
+    resolved = candidate.resolve(strict=False) if candidate.is_absolute() else (base / candidate).resolve(strict=False)
+    try:
+        resolved.relative_to(base)
+    except Exception as exc:
+        raise SystemExit(f"path_outside_cwd_not_allowed: {raw}") from exc
+
+    if must_exist and not resolved.exists():
+        raise SystemExit(f"path_not_found: {resolved}")
+    return resolved
+
+
 def _load_records(path: Path) -> list[dict[str, Any]]:
     text = path.read_text(encoding="utf-8-sig")
     stripped = text.strip()
@@ -134,8 +152,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-items", type=int, default=20000)
     args = parser.parse_args(argv)
 
-    in_path = Path(args.input)
-    out_path = Path(args.out)
+    in_path = _resolve_path_under_cwd(str(args.input), must_exist=True)
+    out_path = _resolve_path_under_cwd(str(args.out), must_exist=False)
     records = _load_records(in_path)
     payload = export_training_rows(records=records, max_items=max(1, int(args.max_items or 1)))
 
@@ -147,4 +165,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

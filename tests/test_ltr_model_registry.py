@@ -102,5 +102,5 @@ def test_ltr_model_registry_canary_activation_records_ratio(tmp_path, monkeypatc
     assert active.get("current_model_id") == reg.model_id
     canary = active.get("canary") if isinstance(active.get("canary"), dict) else {}
     assert canary.get("enabled") is True
-    assert float(canary.get("ratio") or 0.0) == 0.2
+    assert float(canary.get("ratio") or 0.0) == pytest.approx(0.2)
     assert settings.LTR_MODEL_PATH

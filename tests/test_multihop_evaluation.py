@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.rag.evaluation.multihop import score_multihop_citation_chain
 from app.rag.evaluation.regression_sample_builder import build_regression_sample
 
@@ -21,8 +23,8 @@ def test_score_multihop_citation_chain_perfect_path_and_order() -> None:
     )
     assert out.get("schema") == "mimirq.multihop_chain_score.v1"
     assert out.get("enabled") is True
-    assert float(out.get("path_completeness") or 0.0) == 1.0
-    assert float(out.get("order_consistency") or 0.0) == 1.0
+    assert float(out.get("path_completeness") or 0.0) == pytest.approx(1.0)
+    assert float(out.get("order_consistency") or 0.0) == pytest.approx(1.0)
     assert out.get("chain_hit") is True
 
 
@@ -40,8 +42,8 @@ def test_score_multihop_citation_chain_partial_and_wrong_order() -> None:
         reasoning_hops=["hop1", "hop2", "hop3"],
         top_k=20,
     )
-    assert float(out.get("path_completeness") or 0.0) == 0.6667
-    assert float(out.get("order_consistency") or 0.0) == 0.0
+    assert float(out.get("path_completeness") or 0.0) == pytest.approx(0.6667, abs=1e-4)
+    assert float(out.get("order_consistency") or 0.0) == pytest.approx(0.0)
     assert out.get("chain_hit") is False
     assert "c3" in list(out.get("missing_chain_ids") or [])
 
@@ -69,4 +71,4 @@ def test_build_regression_sample_emits_multihop_meta_fields() -> None:
     assert meta.get("reasoning_hops_count") == 2
     assert meta.get("evidence_chain_steps") == 2
     assert meta.get("multihop_enabled") is True
-    assert float(meta.get("multihop_path_completeness") or 0.0) == 1.0
+    assert float(meta.get("multihop_path_completeness") or 0.0) == pytest.approx(1.0)

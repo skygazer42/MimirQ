@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -59,7 +61,15 @@ def test_main_writes_policy_file(tmp_path: Path) -> None:
     report_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     out_path = tmp_path / "adaptive_router_policy.v1.json"
 
-    rc = mod.main(["--benchmark-report", str(report_path), "--out", str(out_path)])  # type: ignore[attr-defined]
+    from os import getcwd
+    from os import chdir as os_chdir
+
+    cwd = getcwd()
+    try:
+        os_chdir(tmp_path)
+        rc = mod.main(["--benchmark-report", "bench.json", "--out", "adaptive_router_policy.v1.json"])  # type: ignore[attr-defined]
+    finally:
+        os_chdir(cwd)
     assert rc == 0
     assert out_path.exists()
     policy = json.loads(out_path.read_text(encoding="utf-8"))
@@ -67,3 +77,30 @@ def test_main_writes_policy_file(tmp_path: Path) -> None:
     rules = list(policy.get("rules") or [])
     assert any(str(r.get("rule_id") or "") == "log_api_keyword_fastlane" for r in rules)
     assert any(str(r.get("rule_id") or "") == "long_query_cost_guard" for r in rules)
+
+
+def test_main_rejects_output_outside_cwd(tmp_path: Path) -> None:
+    mod = _load_module()
+    report = {
+        "schema": "mimirq.sample_retrieval_benchmark.v1",
+        "summary": {
+            "hit_at_k": 0.95,
+            "mrr": 0.9,
+            "avg_latency_ms": 100.0,
+            "p95_latency_ms": 120.0,
+        },
+    }
+    report_path = tmp_path / "bench.json"
+    report_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+    outside_path = tmp_path.parent / "adaptive_router_policy_outside.json"
+
+    from os import getcwd
+    from os import chdir as os_chdir
+
+    cwd = getcwd()
+    try:
+        os_chdir(tmp_path)
+        with pytest.raises(SystemExit):
+            mod.main(["--benchmark-report", "bench.json", "--out", str(outside_path)])  # type: ignore[attr-defined]
+    finally:
+        os_chdir(cwd)

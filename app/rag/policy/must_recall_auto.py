@@ -96,7 +96,7 @@ def infer_expected_source_keys(
     return {
         "schema": "mimirq.must_recall_auto_source_keys.v1",
         "expected_source_keys": normalized,
-        "reason_codes": reasons[:8],
+        "reason_codes": list(reasons),
         "confidence": confidence,
     }
 
@@ -122,7 +122,7 @@ def infer_required_anchor_fields(
     return {
         "schema": "mimirq.must_recall_auto_anchor_fields.v1",
         "required_anchor_fields": out,
-        "reason_codes": reasons[:8],
+        "reason_codes": list(reasons),
         "applied": bool(reasons),
     }
 

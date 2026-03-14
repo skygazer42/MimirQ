@@ -57,7 +57,7 @@ def detect_evidence_gap(
         "schema": EVIDENCE_GAP_SCHEMA_V1,
         "has_gap": has_gap,
         "severity": severity,
-        "reason_codes": reason_codes[:8],
+        "reason_codes": list(reason_codes),
         "citations_total": citations_total,
         "min_citations": max(0, int(min_citations or 0)),
         "required_source_keys": req_source_keys,
@@ -72,4 +72,3 @@ __all__ = [
     "EVIDENCE_GAP_SCHEMA_V1",
     "detect_evidence_gap",
 ]
-
