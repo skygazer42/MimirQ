@@ -496,3 +496,108 @@ def test_build_minio_bucket_execution_plan_resets_manifest_on_scope_hash_change(
     assert plan["removed_paths"] == []
     assert plan["source_manifest_state"] == {}
     assert plan["objects_to_process"] == []
+
+
+def test_build_confluence_space_run_settings_normalizes_config() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    settings_map = connectors._build_confluence_space_run_settings(
+        {
+            "base_url": "https://example.atlassian.net/wiki/ ",
+            "space_key": " DOCS ",
+            "sync_mode": "auto",
+            "_state": {
+                "last_modified": "2026-03-01T00:00:00.000Z",
+                "last_modified_ids": ["123", "", None],
+            },
+            "max_pages": 999,
+            "page_size": 0,
+            "soft_delete": True,
+            "ingest_method": "WEBUI",
+            "user_agent": "ExampleAgent/1.0",
+            "source_acl": {"mode": "inherit", "fallback_mode": "all_team_members"},
+            "access": {"mode": "inherit"},
+            "include_attachments": True,
+            "max_attachments_per_page": 999,
+            "max_total_attachments": 9999,
+        }
+    )
+
+    assert settings_map["base_url"] == "https://example.atlassian.net/wiki"
+    assert settings_map["space_key"] == "DOCS"
+    assert settings_map["cursor_last_modified"] == "2026-03-01T00:00:00.000Z"
+    assert settings_map["cursor_last_modified_ids"] == {"123"}
+    assert settings_map["effective_mode"] == "incremental"
+    assert settings_map["max_pages"] == 500
+    assert settings_map["page_size"] == 25
+    assert settings_map["soft_delete"] is True
+    assert settings_map["ingest_method"] == "webui"
+    assert settings_map["api_base"] == "https://example.atlassian.net/wiki/rest/api"
+    assert settings_map["search_url"] == "https://example.atlassian.net/wiki/rest/api/content/search"
+    assert settings_map["headers"]["Accept"] == "application/json"
+    assert settings_map["headers"]["User-Agent"] == "ExampleAgent/1.0"
+    assert settings_map["enable_source_acl"] is True
+    assert settings_map["source_acl_fallback_mode"] == "all_team_members"
+    assert settings_map["include_attachments"] is True
+    assert settings_map["max_attachments_per_page"] == 50
+    assert settings_map["max_total_attachments"] == 2000
+
+
+def test_build_confluence_space_search_cql_adds_incremental_boundary() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    cql = connectors._build_confluence_space_search_cql(
+        space_key="DOCS",
+        effective_mode="incremental",
+        cursor_last_modified="2026-03-01T00:00:00.000Z",
+    )
+
+    assert cql == (
+        'space="DOCS" and type=page and status=current'
+        ' and lastmodified >= "2026-03-01T00:00:00.000Z"'
+        " ORDER BY lastmodified ASC"
+    )
+
+
+def test_initialize_confluence_space_run_stats_includes_cursor_and_attachment_limits() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run = types.SimpleNamespace(stats={"keep": "me"})
+    stats = connectors._initialize_confluence_space_run_stats(
+        run=run,
+        settings_map={
+            "effective_mode": "incremental",
+            "ingest_method": "api_view",
+            "space_key": "DOCS",
+            "base_url": "https://example.atlassian.net/wiki",
+            "max_pages": 25,
+            "page_size": 10,
+            "include_attachments": True,
+            "max_attachments_per_page": 5,
+            "max_total_attachments": 50,
+            "cursor_last_modified": "2026-03-01T00:00:00.000Z",
+        },
+    )
+
+    assert stats["keep"] == "me"
+    assert stats["mode"] == "incremental"
+    assert stats["ingest_method"] == "api_view"
+    assert stats["space_key"] == "DOCS"
+    assert stats["base_url"] == "https://example.atlassian.net/wiki"
+    assert stats["max_pages"] == 25
+    assert stats["page_size"] == 10
+    assert stats["include_attachments"] is True
+    assert stats["max_attachments_per_page"] == 5
+    assert stats["max_total_attachments"] == 50
+    assert stats["cursor_in"] == "2026-03-01T00:00:00.000Z"
+    assert stats["processed_pages"] == 0
+    assert stats["created"] == 0
+    assert stats["failed"] == 0
+    assert stats["processed_attachments"] == 0
+    assert stats["created_attachments"] == 0
+    assert stats["failed_attachments"] == 0
+    assert stats["skipped_attachments"] == 0
+    assert stats["skipped_boundary_duplicates"] == 0
+    assert stats["failed_urls"] == []
+    assert stats["errors"] == []
+    assert stats["error_groups"] == []
