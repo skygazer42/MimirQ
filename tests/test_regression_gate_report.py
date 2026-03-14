@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -65,7 +67,7 @@ def test_build_regression_gate_report_includes_channel_attribution() -> None:
     assert report["channel_attribution"]["totals"]["sparse"] == 1
     assert report["channel_attribution"]["totals"]["multi"] == 1
     assert report["multihop"]["cases_with_expectation"] == 1
-    assert report["multihop"]["path_completeness"] == 1.0
+    assert report["multihop"]["path_completeness"] == pytest.approx(1.0)
 
 
 def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:

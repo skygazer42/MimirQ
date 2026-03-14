@@ -97,10 +97,10 @@ def test_resolve_strict_thresholds_prefers_profile_values() -> None:
             },
         },
     )
-    assert thresholds["ok_rate"] == 0.9
-    assert thresholds["parse_score_mean"] == 0.8
-    assert thresholds["golden_similarity_mean"] == 0.7
-    assert thresholds["golden_coverage_ratio_mean"] == 0.6
+    assert thresholds["ok_rate"] == pytest.approx(0.9)
+    assert thresholds["parse_score_mean"] == pytest.approx(0.8)
+    assert thresholds["golden_similarity_mean"] == pytest.approx(0.7)
+    assert thresholds["golden_coverage_ratio_mean"] == pytest.approx(0.6)
 
 
 def test_load_strict_profile_requires_known_schema(tmp_path: Path) -> None:

@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -35,7 +37,7 @@ def test_extract_summary_supports_run_detail_shape() -> None:
             }
         }
     )
-    assert summary["faithfulness_det"] == 0.8
+    assert summary["faithfulness_det"] == pytest.approx(0.8)
 
 
 def test_evaluate_answer_quality_reports_threshold_failures() -> None:

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts.export_intent_router_training import export_training_rows
 
 
@@ -21,7 +23,9 @@ def test_export_training_rows_extracts_query_and_overrides() -> None:
     )
     assert payload["schema"] == "mimirq.intent_router_training.v1"
     assert int(payload["items_total"]) == 1
-    item = list(payload.get("items") or [])[0]
+    items = list(payload.get("items") or [])
+    assert items
+    item = items[0]
     assert item["query"] == "How to debug traceback?"
     assert (item.get("label_overrides") or {}).get("retrieval_mode") == "keyword"
 
@@ -52,7 +56,34 @@ def test_export_script_writes_output(tmp_path: Path) -> None:
 
     from scripts.export_intent_router_training import main
 
-    code = main(["--input", str(in_path), "--out", str(out_path)])
+    from os import getcwd
+    from os import chdir as os_chdir
+
+    cwd = getcwd()
+    try:
+        os_chdir(tmp_path)
+        code = main(["--input", "traces.jsonl", "--out", "training.json"])
+    finally:
+        os_chdir(cwd)
     assert code == 0
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert int(payload.get("items_total") or 0) == 2
+
+
+def test_export_script_rejects_output_outside_cwd(tmp_path: Path) -> None:
+    in_path = tmp_path / "traces.jsonl"
+    in_path.write_text(json.dumps({"query": "q1", "metrics": {"retrieval_mode": "keyword"}}) + "\n", encoding="utf-8")
+    outside_path = tmp_path.parent / "training_outside.json"
+
+    from scripts.export_intent_router_training import main
+
+    from os import getcwd
+    from os import chdir as os_chdir
+
+    cwd = getcwd()
+    try:
+        os_chdir(tmp_path)
+        with pytest.raises(SystemExit):
+            main(["--input", "traces.jsonl", "--out", str(outside_path)])
+    finally:
+        os_chdir(cwd)

@@ -10,6 +10,24 @@ from typing import Any
 _POLICY_SCHEMA = "mimirq.adaptive_router_policy.v1"
 
 
+def _resolve_path_under_cwd(raw_path: str, *, must_exist: bool) -> Path:
+    raw = str(raw_path or "").strip()
+    if not raw:
+        raise SystemExit("path_required")
+
+    base = Path.cwd().resolve(strict=False)
+    candidate = Path(raw).expanduser()
+    resolved = candidate.resolve(strict=False) if candidate.is_absolute() else (base / candidate).resolve(strict=False)
+    try:
+        resolved.relative_to(base)
+    except Exception as exc:
+        raise SystemExit(f"path_outside_cwd_not_allowed: {raw}") from exc
+
+    if must_exist and not resolved.exists():
+        raise SystemExit(f"path_not_found: {resolved}")
+    return resolved
+
+
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -109,8 +127,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", default="artifacts/adaptive_router_policy.v1.json", help="Output policy JSON path.")
     args = parser.parse_args(argv)
 
-    report_path = Path(str(args.benchmark_report)).expanduser().resolve()
-    out_path = Path(str(args.out)).expanduser().resolve()
+    report_path = _resolve_path_under_cwd(str(args.benchmark_report), must_exist=True)
+    out_path = _resolve_path_under_cwd(str(args.out), must_exist=False)
     if not report_path.exists():
         raise SystemExit(f"benchmark_report_not_found: {report_path}")
 

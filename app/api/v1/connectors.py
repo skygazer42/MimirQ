@@ -91,7 +91,6 @@ from app.tasks.queue import enqueue_connector_run, get_queue
 router = APIRouter()
 _DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
 URL_SHA256_PREFIX = "url_sha256:"
-HTTP_URL_PREFIXES = ("http://", "https://")
 CONNECTOR_CONFIG_NOT_FOUND_DETAIL = "Connector config not found"
 JIRA_UPDATED_SOURCE = "connector:jira:updated"
 UNSUPPORTED_CONNECTOR_ID_DETAIL = "Unsupported connector_id"
@@ -101,6 +100,30 @@ CONNECTOR_RUN_NOT_FOUND_DETAIL = "Connector run not found"
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _is_http_or_https_url(value: str) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    parsed = urlparse(raw)
+    scheme = str(parsed.scheme or "").strip().lower()
+    if scheme not in {"http", "https"}:
+        return False
+    return bool(str(parsed.netloc or "").strip())
+
+
+def _is_link_href_allowed(value: str) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return False
+    parsed = urlparse(raw)
+    scheme = str(parsed.scheme or "").strip().lower()
+    if scheme in {"http", "https"}:
+        return bool(str(parsed.netloc or "").strip())
+    if scheme == "mailto":
+        return bool(str(parsed.path or "").strip())
+    return False
 
 
 def _safe_error_str(exc: Exception) -> str:
@@ -4298,7 +4321,7 @@ def _confluence_join_webui(*, base: str, webui: str) -> str:
     w = str(webui or "").strip()
     if not b or not w:
         return ""
-    if w.startswith(HTTP_URL_PREFIXES):
+    if _is_http_or_https_url(w):
         return w
     if not w.startswith("/"):
         w = "/" + w
@@ -4690,7 +4713,7 @@ def _jira_extract_urls_from_adf(value: object, *, limit: int) -> list[str]:
         url = str(raw or "").strip()
         if not url:
             return
-        if not url.lower().startswith(HTTP_URL_PREFIXES):
+        if not _is_http_or_https_url(url):
             return
         if url in seen:
             return
@@ -5030,7 +5053,7 @@ def _jira_adf_text_node_html(value: dict) -> str:
         if mtype == "link":
             attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
             href = str(attrs.get("href") or "").strip()
-            if href.startswith((*HTTP_URL_PREFIXES, "mailto:")):
+            if _is_link_href_allowed(href):
                 text = f'<a href="{html.escape(href)}">{text}</a>'
             continue
         if mtype == "strong":
@@ -5143,7 +5166,7 @@ def _jira_adf_node_to_html(value: object, *, depth: int = 0) -> str:
     if node_type == "inlinecard":
         attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
         url = str(attrs.get("url") or "").strip()
-        if url.startswith(HTTP_URL_PREFIXES):
+        if _is_http_or_https_url(url):
             esc = html.escape(url)
             return f'<a href="{esc}">{esc}</a>'
         return html.escape(url) if url else ""
@@ -6687,7 +6710,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                                     continue
                                 if link_url == issue_url:
                                     continue
-                                if not link_url.lower().startswith(HTTP_URL_PREFIXES):
+                                if not _is_http_or_https_url(link_url):
                                     continue
                                 seen_link_urls.add(link_url)
                                 linked_artifacts_processed += 1

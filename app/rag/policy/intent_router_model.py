@@ -123,11 +123,19 @@ def load_intent_router_model(path: str | None) -> dict[str, Any] | None:
     path_s = str(path or "").strip()
     if not path_s:
         return None
-    p = Path(path_s)
+    p = Path(path_s).expanduser()
+    base = Path.cwd().resolve(strict=False)
     try:
-        if not p.exists():
+        resolved = p.resolve(strict=False) if p.is_absolute() else (base / p).resolve(strict=False)
+        resolved.relative_to(base)
+    except Exception:
+        return None
+    if str(resolved.suffix or "").lower() != ".json":
+        return None
+    try:
+        if not resolved.exists():
             return None
-        raw = json.loads(p.read_text(encoding="utf-8"))
+        raw = json.loads(resolved.read_text(encoding="utf-8"))
     except Exception:
         return None
     return normalize_intent_router_model(raw)
