@@ -90,7 +90,15 @@ from app.services.report_html import render_dataset_profile_html
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
     meta = getattr(ds, "dataset_metadata", None)
@@ -300,7 +308,7 @@ def _dataset_chunk_targets_v2_out(ds: Dataset) -> DatasetChunkTargetsV2 | None:
     return parsed
 
 
-@router.get("/{dataset_id}/ingestion/stats", response_model=DatasetIngestionStats)
+@router.get("/{dataset_id}/ingestion/stats", response_model=DatasetIngestionStats, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_ingestion_stats(
     dataset_id: UUID,
     *,
@@ -403,7 +411,7 @@ def _normalize_dataset_default_chunk_strategy(value: str) -> str:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/", response_model=DatasetOut, status_code=201)
+@router.post("/", response_model=DatasetOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def create_dataset(
     payload: DatasetCreate,
     *,
@@ -564,7 +572,7 @@ def create_dataset(
     )
 
 
-@router.get("/", response_model=DatasetListResponse)
+@router.get("/", response_model=DatasetListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_datasets(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
@@ -679,7 +687,7 @@ def list_datasets(
     return {"total": total, "items": results}
 
 
-@router.get("/{dataset_id}", response_model=DatasetOut)
+@router.get("/{dataset_id}", response_model=DatasetOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset(
     dataset_id: UUID,
     *,
@@ -725,7 +733,7 @@ def get_dataset(
     )
 
 
-@router.get("/{dataset_id}/categories", response_model=DatasetCategoryAssignmentResponse)
+@router.get("/{dataset_id}/categories", response_model=DatasetCategoryAssignmentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_categories(
     dataset_id: UUID,
     *,
@@ -737,7 +745,7 @@ def get_dataset_categories(
     return DatasetCategoryAssignmentResponse(dataset_id=dataset_id, category_ids=category_ids)
 
 
-@router.put("/{dataset_id}/categories", response_model=DatasetCategoryAssignmentResponse)
+@router.put("/{dataset_id}/categories", response_model=DatasetCategoryAssignmentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def set_dataset_categories(
     dataset_id: UUID,
     payload: DatasetCategoryAssignmentRequest,
@@ -756,7 +764,7 @@ def set_dataset_categories(
     return DatasetCategoryAssignmentResponse(dataset_id=dataset_id, category_ids=category_ids)
 
 
-@router.patch("/{dataset_id}", response_model=DatasetOut)
+@router.patch("/{dataset_id}", response_model=DatasetOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def update_dataset(
     dataset_id: UUID,
     payload: DatasetUpdate,
@@ -965,7 +973,7 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
     )
 
 
-@router.get("/{dataset_id}/config/export", response_model=DatasetConfigExport)
+@router.get("/{dataset_id}/config/export", response_model=DatasetConfigExport, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_config(
     dataset_id: UUID,
     *,
@@ -987,7 +995,7 @@ def export_dataset_config(
     )
 
 
-@router.post("/{dataset_id}/config/import", response_model=DatasetOut)
+@router.post("/{dataset_id}/config/import", response_model=DatasetOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def import_dataset_config(
     dataset_id: UUID,
     payload: DatasetConfigImportRequest,
@@ -1179,7 +1187,7 @@ def import_dataset_config(
     )
 
 
-@router.post("/{dataset_id}/clone", response_model=DatasetOut, status_code=201)
+@router.post("/{dataset_id}/clone", response_model=DatasetOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def clone_dataset(
     dataset_id: UUID,
     payload: DatasetCloneRequest,
@@ -1266,7 +1274,7 @@ def clone_dataset(
     )
 
 
-@router.delete("/{dataset_id}", status_code=204)
+@router.delete("/{dataset_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_dataset(
     dataset_id: UUID,
     *,
@@ -1366,7 +1374,7 @@ def delete_dataset(
     return None
 
 
-@router.post("/{dataset_id}/purge", response_model=DatasetPurgeResponse)
+@router.post("/{dataset_id}/purge", response_model=DatasetPurgeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def purge_dataset_documents(
     dataset_id: UUID,
     max_delete: int = Query(default=1000, ge=1, le=10_000, description="Max documents to delete in this call"),
@@ -1546,7 +1554,7 @@ def _append_ingestion_policy_version(
     return meta, version_id
 
 
-@router.get("/{dataset_id}/ingestion-policy", response_model=IngestionPolicyWithAudit)
+@router.get("/{dataset_id}/ingestion-policy", response_model=IngestionPolicyWithAudit, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_ingestion_policy(
     dataset_id: UUID,
     *,
@@ -1567,7 +1575,7 @@ def get_dataset_ingestion_policy(
     )
 
 
-@router.get("/{dataset_id}/ingestion-policy/versions", response_model=IngestionPolicyVersionListResponse)
+@router.get("/{dataset_id}/ingestion-policy/versions", response_model=IngestionPolicyVersionListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_dataset_ingestion_policy_versions(
     dataset_id: UUID,
     *,
@@ -1588,7 +1596,7 @@ def list_dataset_ingestion_policy_versions(
     return IngestionPolicyVersionListResponse(current_version_id=current_id, items=[it for it in items if isinstance(it, dict)])
 
 
-@router.post("/{dataset_id}/ingestion-policy/rollback", response_model=IngestionPolicy)
+@router.post("/{dataset_id}/ingestion-policy/rollback", response_model=IngestionPolicy, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def rollback_dataset_ingestion_policy(
     dataset_id: UUID,
     body: IngestionPolicyRollbackRequest,
@@ -1650,7 +1658,7 @@ def rollback_dataset_ingestion_policy(
     return normalized
 
 
-@router.put("/{dataset_id}/ingestion-policy", response_model=IngestionPolicy)
+@router.put("/{dataset_id}/ingestion-policy", response_model=IngestionPolicy, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def put_dataset_ingestion_policy(
     dataset_id: UUID,
     payload: IngestionPolicy,
@@ -1675,7 +1683,7 @@ def put_dataset_ingestion_policy(
     return normalized
 
 
-@router.post("/{dataset_id}/ingestion-policy/import", response_model=IngestionPolicyImportResponse)
+@router.post("/{dataset_id}/ingestion-policy/import", response_model=IngestionPolicyImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def import_dataset_ingestion_policy(
     dataset_id: UUID,
     file: UploadFile = File(...),
@@ -1718,7 +1726,7 @@ async def import_dataset_ingestion_policy(
     return IngestionPolicyImportResponse(replaced=True, rule_count=len(normalized.rules))
 
 
-@router.get("/{dataset_id}/ingestion-policy/export")
+@router.get("/{dataset_id}/ingestion-policy/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_ingestion_policy(
     dataset_id: UUID,
     *,
@@ -1808,7 +1816,7 @@ def _run_deep_scan_background(
         db.close()
 
 
-@router.get("/{dataset_id}/profile/summary", response_model=DatasetProfileSummary)
+@router.get("/{dataset_id}/profile/summary", response_model=DatasetProfileSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_profile_summary(
     dataset_id: UUID,
     *,
@@ -1825,7 +1833,7 @@ def get_dataset_profile_summary(
     return summary
 
 
-@router.get("/{dataset_id}/health", response_model=DatasetHealthResponse)
+@router.get("/{dataset_id}/health", response_model=DatasetHealthResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_health(
     dataset_id: UUID,
     *,
@@ -1866,7 +1874,7 @@ def get_dataset_health(
     )
 
 
-@router.get("/{dataset_id}/profile/findings/{finding_key}", response_model=DatasetProfileFindingListResponse)
+@router.get("/{dataset_id}/profile/findings/{finding_key}", response_model=DatasetProfileFindingListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_dataset_profile_finding_documents(
     dataset_id: UUID,
     finding_key: str,
@@ -1891,7 +1899,7 @@ def list_dataset_profile_finding_documents(
         raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
 
 
-@router.get("/{dataset_id}/profile/buckets/documents", response_model=DatasetProfileDocumentListResponse)
+@router.get("/{dataset_id}/profile/buckets/documents", response_model=DatasetProfileDocumentListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_dataset_profile_bucket_documents(
     dataset_id: UUID,
     dimension: str = Query(..., max_length=40),
@@ -1922,7 +1930,7 @@ def list_dataset_profile_bucket_documents(
         raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
 
 
-@router.post("/{dataset_id}/profile/scan-runs", response_model=DatasetProfileScanRunOut, status_code=201)
+@router.post("/{dataset_id}/profile/scan-runs", response_model=DatasetProfileScanRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_dataset_profile_scan_run(
     dataset_id: UUID,
     body: DatasetProfileScanRunCreateRequest,
@@ -1985,7 +1993,7 @@ async def create_dataset_profile_scan_run(
     return _scan_run_out_from_row(row)
 
 
-@router.get("/{dataset_id}/profile/scan-runs", response_model=DatasetProfileScanRunListResponse)
+@router.get("/{dataset_id}/profile/scan-runs", response_model=DatasetProfileScanRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_dataset_profile_scan_runs(
     dataset_id: UUID,
     skip: int = Query(default=0, ge=0),
@@ -2012,7 +2020,7 @@ def list_dataset_profile_scan_runs(
     return DatasetProfileScanRunListResponse(total=total, items=[_scan_run_out_from_row(r) for r in rows])
 
 
-@router.get("/{dataset_id}/profile/scan-runs/{scan_run_id}", response_model=DatasetProfileScanRunOut)
+@router.get("/{dataset_id}/profile/scan-runs/{scan_run_id}", response_model=DatasetProfileScanRunOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_profile_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -2038,7 +2046,7 @@ def get_dataset_profile_scan_run(
     return _scan_run_out_from_row(row)
 
 
-@router.get("/{dataset_id}/profile/export")
+@router.get("/{dataset_id}/profile/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_profile_summary(
     dataset_id: UUID,
     *,
@@ -2066,7 +2074,7 @@ def export_dataset_profile_summary(
     )
 
 
-@router.get("/{dataset_id}/profile/export-html")
+@router.get("/{dataset_id}/profile/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_profile_html_report(
     dataset_id: UUID,
     redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
@@ -2259,7 +2267,7 @@ def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[st
     return out
 
 
-@router.get("/{dataset_id}/documents/export")
+@router.get("/{dataset_id}/documents/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_documents_ndjson(
     dataset_id: UUID,
     limit: int = Query(default=1000, ge=1, le=10_000),
@@ -2393,7 +2401,7 @@ def export_dataset_documents_ndjson(
     return StreamingResponse(body_iter, media_type="application/x-ndjson", headers=headers)
 
 
-@router.get("/{dataset_id}/export")
+@router.get("/{dataset_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_bundle_zip(
     dataset_id: UUID,
     limit: int = Query(default=2000, ge=1, le=10_000, description="Max documents to include in the bundle"),

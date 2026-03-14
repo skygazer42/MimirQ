@@ -36,7 +36,15 @@ from app.services.db_catalog_profile_cache import (
 )
 from app.services.fls_policy import FlsUserContext, build_fls_column_mask_map, parse_fls_policy_from_metadata
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _DB_PROFILE_VERSION = 1
 _DB_PROFILE_CACHE_TTL_SEC = 30.0
@@ -80,6 +88,7 @@ def _audit_fls_redaction(
     "/{dataset_id}/db-catalog/tables",
     response_model=DbCatalogTablesListResponse,
     summary="List DB catalog tables/views for a dataset",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_db_catalog_tables(
     dataset_id: UUID,
@@ -131,6 +140,7 @@ def list_db_catalog_tables(
     "/{dataset_id}/db-catalog/tables/{table_id}",
     response_model=DbCatalogTableDetailOut,
     summary="Get DB catalog table/view detail (includes columns)",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_db_catalog_table(
     dataset_id: UUID,
@@ -205,6 +215,7 @@ def get_db_catalog_table(
     "/{dataset_id}/db-catalog/profiles",
     response_model=DbProfileSnapshotListResponse,
     summary="List safe profile snapshots for a catalog table",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_db_catalog_profiles(
     dataset_id: UUID,

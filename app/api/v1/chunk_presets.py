@@ -21,7 +21,15 @@ from app.models.chunk_preset import ChunkPreset
 from app.services.base_service import BaseService
 from app.services.dataset_service import DatasetService
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 class ChunkPresetCreateRequest(BaseModel):
@@ -167,7 +175,7 @@ def _dataset_uuid_from_payload(payload: dict[str, Any]) -> UUID | None:
         raise HTTPException(status_code=400, detail=f"invalid payload.dataset_id: {s[:64]}") from exc
 
 
-@router.get("", response_model=ChunkPresetListResponse)
+@router.get("", response_model=ChunkPresetListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_chunk_presets(
     q: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=100, ge=1, le=200),
@@ -197,7 +205,7 @@ def list_chunk_presets(
     return ChunkPresetListResponse(items=[_row_to_response(r) for r in rows])
 
 
-@router.post("", response_model=ChunkPresetResponse, status_code=201)
+@router.post("", response_model=ChunkPresetResponse, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def create_chunk_preset(
     req: ChunkPresetCreateRequest,
     *,
@@ -222,7 +230,7 @@ def create_chunk_preset(
     return _row_to_response(row)
 
 
-@router.put("/{preset_id}", response_model=ChunkPresetResponse)
+@router.put("/{preset_id}", response_model=ChunkPresetResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def update_chunk_preset(
     preset_id: str,
     req: ChunkPresetUpdateRequest,
@@ -254,7 +262,7 @@ def update_chunk_preset(
     return _row_to_response(row)
 
 
-@router.delete("/{preset_id}", status_code=204)
+@router.delete("/{preset_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_chunk_preset(
     preset_id: str,
     *,

@@ -35,7 +35,15 @@ from app.models.tenant_group import TenantGroupMember
 from app.services.audit_log_service import audit_log_event
 from app.services.tenant_group_service import TenantGroupService
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SCIM_MEDIA_TYPE = "application/scim+json"
 
@@ -259,7 +267,7 @@ def _get_user(db: Session, *, tenant_id: UUID, user_id: str) -> TenantMember | N
     )
 
 
-@router.get("/ServiceProviderConfig")
+@router.get("/ServiceProviderConfig", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_service_provider_config(_actor: Annotated[str, Depends(_require_scim_actor)]):
     # See RFC7644 §4 and RFC7643 (ServiceProviderConfig schema).
     patch_supported = bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)) or bool(
@@ -288,7 +296,7 @@ def get_service_provider_config(_actor: Annotated[str, Depends(_require_scim_act
     )
 
 
-@router.get("/Schemas")
+@router.get("/Schemas", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_schemas(*, _actor: Annotated[str, Depends(_require_scim_actor)]):
     # Minimal schema definitions (enough for discovery).
     user_schema = {
@@ -316,7 +324,7 @@ def list_schemas(*, _actor: Annotated[str, Depends(_require_scim_actor)]):
     return _scim_json(_list_response(resources=resources, total=len(resources), start_index=1, items_per_page=len(resources)))
 
 
-@router.get("/ResourceTypes")
+@router.get("/ResourceTypes", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_resource_types(_actor: Annotated[str, Depends(_require_scim_actor)]):
     resources = [
         {
@@ -339,7 +347,7 @@ def list_resource_types(_actor: Annotated[str, Depends(_require_scim_actor)]):
     return _scim_json(_list_response(resources=resources, total=len(resources), start_index=1, items_per_page=len(resources)))
 
 
-@router.get("/Groups")
+@router.get("/Groups", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_groups(
     start_index: int = Query(default=1, ge=1, alias="startIndex"),
     count: int = Query(default=200, ge=1),
@@ -354,7 +362,7 @@ def list_groups(
     return _scim_json(_list_response(resources=resources, total=total, start_index=start, items_per_page=len(resources)))
 
 
-@router.get("/Groups/{group_id}")
+@router.get("/Groups/{group_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_group(
     group_id: UUID,
     *,
@@ -371,7 +379,7 @@ def get_group(
     return _scim_json(_scim_group(group, include_members=True, members=members))
 
 
-@router.post("/Groups")
+@router.post("/Groups", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def create_group(
     payload: dict[str, Any],
     http_request: Request,
@@ -432,7 +440,7 @@ def create_group(
     return _scim_json(_scim_group(group, include_members=False), status_code=201)
 
 
-@router.put("/Groups/{group_id}")
+@router.put("/Groups/{group_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def put_group(
     group_id: UUID,
     payload: dict[str, Any],
@@ -496,7 +504,7 @@ def put_group(
     return _scim_json(_scim_group(group, include_members=False))
 
 
-@router.delete("/Groups/{group_id}")
+@router.delete("/Groups/{group_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_group(
     group_id: UUID,
     http_request: Request,
@@ -541,7 +549,7 @@ def delete_group(
     return Response(status_code=204)
 
 
-@router.get("/Users")
+@router.get("/Users", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_users(
     start_index: int = Query(default=1, ge=1, alias="startIndex"),
     count: int = Query(default=200, ge=1),
@@ -557,7 +565,7 @@ def list_users(
     return _scim_json(_list_response(resources=resources, total=total, start_index=start, items_per_page=len(resources)))
 
 
-@router.get("/Users/{user_id}")
+@router.get("/Users/{user_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_user(
     user_id: str,
     *,
@@ -644,7 +652,7 @@ def _revoke_group_memberships_for_user(db: Session, *, tenant_id: UUID, user_id:
     return int(deleted or 0)
 
 
-@router.post("/Users")
+@router.post("/Users", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def create_user(
     payload: dict[str, Any],
     http_request: Request,
@@ -732,7 +740,7 @@ def _extract_active_patch(ops: Any) -> bool | None:
     return desired
 
 
-@router.patch("/Users/{user_id}")
+@router.patch("/Users/{user_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def patch_user(
     user_id: str,
     payload: dict[str, Any],
@@ -826,7 +834,7 @@ def _extract_member_ids(raw: Any) -> list[str]:
     return out
 
 
-@router.patch("/Groups/{group_id}")
+@router.patch("/Groups/{group_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def patch_group_membership(
     group_id: UUID,
     payload: dict[str, Any],

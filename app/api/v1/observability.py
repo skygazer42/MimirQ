@@ -30,7 +30,15 @@ from app.services.rag_metrics_dashboard import (
 )
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
@@ -351,7 +359,7 @@ def _serialize_index_drift_item(item: Any) -> dict[str, Any]:
     }
 
 
-@router.get("/rag-metrics/summary", response_model=RagMetricsSummaryResponse)
+@router.get("/rag-metrics/summary", response_model=RagMetricsSummaryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_metrics_summary(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
@@ -366,7 +374,7 @@ def get_rag_metrics_summary(
     return summary.__dict__
 
 
-@router.get("/rag-metrics/query-analytics", response_model=RagQueryAnalyticsResponse)
+@router.get("/rag-metrics/query-analytics", response_model=RagQueryAnalyticsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_query_analytics(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
     slow_threshold_sec: float = Query(default=2.0, ge=0.0, le=120.0),
@@ -388,7 +396,7 @@ def get_rag_query_analytics(
     return summary.__dict__
 
 
-@router.get("/rag-metrics/tail")
+@router.get("/rag-metrics/tail", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_metrics_tail(
     window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
@@ -424,7 +432,7 @@ def get_rag_metrics_tail(
     )
 
 
-@router.get("/rag-metrics/cost-attribution", response_model=RagCostAttributionResponse)
+@router.get("/rag-metrics/cost-attribution", response_model=RagCostAttributionResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_cost_attribution(
     window_minutes: int = Query(default=60, ge=1, le=7 * 24 * 60),
     max_bytes: int = Query(default=5_000_000, ge=100_000, le=50_000_000),
@@ -438,7 +446,7 @@ def get_rag_cost_attribution(
     return summary.__dict__
 
 
-@router.get("/diagnostics/deps", response_model=DepsDiagnosticsResponse)
+@router.get("/diagnostics/deps", response_model=DepsDiagnosticsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_deps_diagnostics_snapshot(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -456,7 +464,7 @@ def get_deps_diagnostics_snapshot(
     return snap.__dict__
 
 
-@router.get("/rag-metrics/trace-bundle", response_model=RagTraceBundleResponse)
+@router.get("/rag-metrics/trace-bundle", response_model=RagTraceBundleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_trace_bundle(
     request_id: str = Query(..., min_length=1, max_length=200, description="X-Request-ID to export"),
     window_minutes: int = Query(default=24 * 60, ge=1, le=7 * 24 * 60),
@@ -478,7 +486,7 @@ def get_rag_trace_bundle(
     return bundle.__dict__
 
 
-@router.get("/rag-metrics/trace-bundle/diff", response_model=RagTraceBundleDiffResponse)
+@router.get("/rag-metrics/trace-bundle/diff", response_model=RagTraceBundleDiffResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_rag_trace_bundle_diff(
     request_id_a: str = Query(..., min_length=1, max_length=200, description="X-Request-ID A to compare"),
     request_id_b: str = Query(..., min_length=1, max_length=200, description="X-Request-ID B to compare"),
@@ -520,7 +528,7 @@ def get_rag_trace_bundle_diff(
     return diff.__dict__
 
 
-@router.get("/config/snapshot", response_model=OpsConfigSnapshotResponse)
+@router.get("/config/snapshot", response_model=OpsConfigSnapshotResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_ops_config_snapshot(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -532,7 +540,7 @@ def get_ops_config_snapshot(
     return snap.__dict__
 
 
-@router.post("/cache/datasets/{dataset_id}/invalidate", response_model=DatasetCacheInvalidationResponse)
+@router.post("/cache/datasets/{dataset_id}/invalidate", response_model=DatasetCacheInvalidationResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def invalidate_dataset_cache_namespace_endpoint(
     dataset_id: UUID,
     *,
@@ -551,7 +559,7 @@ def invalidate_dataset_cache_namespace_endpoint(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.get("/periodic-jobs/freshness", response_model=PeriodicJobFreshnessResponse)
+@router.get("/periodic-jobs/freshness", response_model=PeriodicJobFreshnessResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_periodic_job_freshness(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -568,7 +576,7 @@ def get_periodic_job_freshness(
     return build_periodic_job_freshness_snapshot(db=db, tenant_id=tenant_id)
 
 
-@router.get("/task-queue/snapshot", response_model=TaskQueueObservabilitySnapshotResponse)
+@router.get("/task-queue/snapshot", response_model=TaskQueueObservabilitySnapshotResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_task_queue_observability_snapshot(
     force_refresh: bool = Query(default=False, description="Force refresh from broker (best-effort)"),
     *,
@@ -593,7 +601,7 @@ async def get_task_queue_observability_snapshot(
     return snap.__dict__
 
 
-@router.get("/slo/snapshot", response_model=SloSnapshotResponse)
+@router.get("/slo/snapshot", response_model=SloSnapshotResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_slo_snapshot(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -606,7 +614,7 @@ async def get_slo_snapshot(
     return await build_slo_snapshot(tenant_id=str(tenant_id))
 
 
-@router.get("/ingestion/summary", response_model=IngestionDashboardSummaryResponse)
+@router.get("/ingestion/summary", response_model=IngestionDashboardSummaryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_ingestion_dashboard_summary(
     window_hours: int = Query(default=24, ge=1, le=30 * 24),
     bucket_minutes: int = Query(default=60, ge=1, le=30 * 24 * 60),
@@ -636,7 +644,7 @@ def get_ingestion_dashboard_summary(
     )
 
 
-@router.get("/index-audit", response_model=IndexAuditResponse)
+@router.get("/index-audit", response_model=IndexAuditResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_index_audit(
     dataset_id: UUID = Query(..., description="Dataset id to audit (required)"),
     max_check_ids: int = Query(default=5000, ge=0, le=50_000, description="Max DB vector_ids to existence-check"),
@@ -670,7 +678,7 @@ def get_index_audit(
     )
 
 
-@router.get("/index-drift", response_model=IndexDriftListResponse)
+@router.get("/index-drift", response_model=IndexDriftListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_index_drift(
     dataset_id: UUID | None = Query(default=None, description="Optional dataset UUID filter"),
     status: str = Query(default="open", description="open | resolved | all"),
@@ -697,7 +705,7 @@ def list_index_drift(
     }
 
 
-@router.post("/index-drift/{item_id}/resolve", response_model=IndexDriftItemResponse)
+@router.post("/index-drift/{item_id}/resolve", response_model=IndexDriftItemResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def resolve_index_drift(
     item_id: UUID,
     payload: IndexDriftResolveRequest,

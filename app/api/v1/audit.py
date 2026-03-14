@@ -32,7 +32,15 @@ from app.services.audit_log_retention import plan_audit_log_purge, purge_audit_l
 from app.services.audit_log_service import audit_log_event
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SENSITIVE_DETAIL_KEYS = {
     "sql",
@@ -158,7 +166,7 @@ def _dt_to_json(v: Any) -> str | None:
     return s
 
 
-@router.get("/logs", response_model=AuditLogListResponse)
+@router.get("/logs", response_model=AuditLogListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_audit_logs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -204,7 +212,7 @@ def list_audit_logs(
     return {"total": total, "items": payload}
 
 
-@router.get("/logs/export")
+@router.get("/logs/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_audit_logs(
     limit: int = Query(default=1000, ge=1, le=10_000),
     actor_id: Optional[str] = Query(default=None, max_length=255),
@@ -286,7 +294,7 @@ def export_audit_logs(
     )
 
 
-@router.post("/logs/purge", response_model=AuditLogPurgeResponse)
+@router.post("/logs/purge", response_model=AuditLogPurgeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def purge_audit_logs(
     retention_days: int = Query(default=90, ge=1, le=3650, description="Delete logs older than N days"),
     max_delete: int = Query(default=100_000, ge=1, le=1_000_000, description="Max rows to delete in this call"),
@@ -506,7 +514,7 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
     return base
 
 
-@router.get("/access-graph/export")
+@router.get("/access-graph/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_access_graph_ndjson(
     limit: int = Query(default=1000, ge=1, le=10_000),
     after_kind: str | None = Query(default=None, max_length=64, description="Cursor: last seen kind"),
@@ -681,7 +689,7 @@ def export_access_graph_ndjson(
     return StreamingResponse(body_iter, media_type="application/x-ndjson", headers=headers)
 
 
-@router.get("/access-graph/summary")
+@router.get("/access-graph/summary", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def access_graph_summary(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

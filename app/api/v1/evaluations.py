@@ -80,7 +80,15 @@ from app.services.regression_run_scope import (
     validate_case_ids_belong_to_dataset,
 )
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = logging.getLogger(__name__)
 
 
@@ -343,7 +351,7 @@ def _attach_reasoning_fields(case_row: Any) -> Any:
     return case_row
 
 
-@router.post("/ragas/runs", response_model=RagasRunSchema, status_code=201)
+@router.post("/ragas/runs", response_model=RagasRunSchema, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_ragas_run(
     request: RagasRunCreateRequest,
     background_tasks: BackgroundTasks,
@@ -393,7 +401,7 @@ async def create_ragas_run(
     return run
 
 
-@router.get("/ragas/runs", response_model=RagasRunList)
+@router.get("/ragas/runs", response_model=RagasRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_ragas_runs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -420,7 +428,7 @@ async def list_ragas_runs(
     return {"total": total, "items": runs}
 
 
-@router.get("/ragas/runs/{run_id}", response_model=RagasRunDetail)
+@router.get("/ragas/runs/{run_id}", response_model=RagasRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_ragas_run(
     run_id: UUID,
     include_items: bool = True,
@@ -458,7 +466,7 @@ async def get_ragas_run(
     return {"run": run, "items": items_out}
 
 
-@router.post("/ragas/regression/cases", response_model=RagasRegressionCaseOut, status_code=201)
+@router.post("/ragas/regression/cases", response_model=RagasRegressionCaseOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_ragas_regression_case(
     request: RagasRegressionCaseCreateRequest,
     *,
@@ -509,7 +517,7 @@ async def create_ragas_regression_case(
     return _attach_reasoning_fields(row)
 
 
-@router.patch("/ragas/regression/cases/{case_id}", response_model=RagasRegressionCaseOut)
+@router.patch("/ragas/regression/cases/{case_id}", response_model=RagasRegressionCaseOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def patch_ragas_regression_case(
     case_id: UUID,
     request: RagasRegressionCasePatchRequest,
@@ -580,7 +588,7 @@ async def patch_ragas_regression_case(
     return _attach_reasoning_fields(row)
 
 
-@router.get("/ragas/regression/cases", response_model=RagasRegressionCaseList)
+@router.get("/ragas/regression/cases", response_model=RagasRegressionCaseList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_ragas_regression_cases(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -608,7 +616,7 @@ async def list_ragas_regression_cases(
     return {"total": total, "items": items}
 
 
-@router.get("/ragas/regression/cases/export")
+@router.get("/ragas/regression/cases/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_ragas_regression_cases(
     dataset_id: UUID,
     *,
@@ -635,7 +643,7 @@ async def export_ragas_regression_cases(
     return export_case_bundle(items, dataset_id)
 
 
-@router.post("/ragas/regression/cases/import")
+@router.post("/ragas/regression/cases/import", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def import_ragas_regression_cases(
     payload: RagasRegressionCaseImportRequest,
     *,
@@ -741,7 +749,7 @@ async def import_ragas_regression_cases(
     return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
 
 
-@router.post("/ragas/regression/cases/synthetic-hardcases", response_model=SyntheticHardcaseGenerateResponse)
+@router.post("/ragas/regression/cases/synthetic-hardcases", response_model=SyntheticHardcaseGenerateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def generate_synthetic_hardcases(
     payload: SyntheticHardcaseGenerateRequest,
     *,
@@ -946,7 +954,7 @@ async def generate_synthetic_hardcases(
     )
 
 
-@router.delete("/ragas/regression/cases/{case_id}", status_code=204)
+@router.delete("/ragas/regression/cases/{case_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_ragas_regression_case(
     case_id: UUID,
     *,
@@ -977,7 +985,7 @@ async def delete_ragas_regression_case(
     return None
 
 
-@router.post("/ragas/regression/runs", response_model=RagasRegressionRunSchema, status_code=201)
+@router.post("/ragas/regression/runs", response_model=RagasRegressionRunSchema, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_ragas_regression_run(
     request: RagasRegressionRunCreateRequest,
     background_tasks: BackgroundTasks,
@@ -1106,7 +1114,7 @@ async def create_ragas_regression_run(
     return run
 
 
-@router.get("/ragas/regression/runs", response_model=RagasRegressionRunList)
+@router.get("/ragas/regression/runs", response_model=RagasRegressionRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_ragas_regression_runs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -1129,7 +1137,7 @@ async def list_ragas_regression_runs(
     return {"total": total, "items": runs}
 
 
-@router.get("/ragas/regression/runs/leaderboard", response_model=RagasRegressionRunLeaderboardResponse)
+@router.get("/ragas/regression/runs/leaderboard", response_model=RagasRegressionRunLeaderboardResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_ragas_regression_run_leaderboard(
     dataset_id: UUID = Query(..., description="Dataset to scope runs (required)"),
     metric_key: str = Query(default="retrieval_mrr", description="Metric key from run.summary"),
@@ -1163,7 +1171,7 @@ async def get_ragas_regression_run_leaderboard(
     return {"metric_key": metric_key, "items": items}
 
 
-@router.get("/ragas/regression/runs/{run_id}", response_model=RagasRegressionRunDetail)
+@router.get("/ragas/regression/runs/{run_id}", response_model=RagasRegressionRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_ragas_regression_run(
     run_id: UUID,
     include_items: bool = True,
@@ -1201,7 +1209,7 @@ async def get_ragas_regression_run(
     return {"run": run, "items": items_out}
 
 
-@router.get("/ragas/regression/runs/{run_id}/export-bundle")
+@router.get("/ragas/regression/runs/{run_id}/export-bundle", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_ragas_regression_run_bundle_api(
     run_id: UUID,
     include_text: bool = Query(
@@ -1269,7 +1277,7 @@ async def export_ragas_regression_run_bundle_api(
     return JSONResponse(content=bundle, headers=headers)
 
 
-@router.post("/ragas/regression/runs/purge")
+@router.post("/ragas/regression/runs/purge", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def purge_ragas_regression_runs(
     retention_days: int = Query(default=90, ge=1, le=3650, description="Delete runs older than N days"),
     max_delete: int = Query(default=200, ge=1, le=5000, description="Max runs to delete in this call"),
@@ -1358,7 +1366,7 @@ def purge_ragas_regression_runs(
     }
 
 
-@router.get("/ragas/regression/runs/{run_id}/diff", response_model=RagasRegressionRunDiffResponse)
+@router.get("/ragas/regression/runs/{run_id}/diff", response_model=RagasRegressionRunDiffResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def diff_ragas_regression_runs(
     run_id: UUID,
     base_run_id: UUID = Query(..., description="Base run id to compare against"),
@@ -1405,7 +1413,7 @@ async def diff_ragas_regression_runs(
     return RagasRegressionRunDiffResponse(**diff)
 
 
-@router.get("/ragas/regression/runs/{run_id}/diff/export-html")
+@router.get("/ragas/regression/runs/{run_id}/diff/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_ragas_regression_run_diff_html(
     run_id: UUID,
     base_run_id: UUID = Query(..., description="Base run id to compare against"),
@@ -1444,7 +1452,7 @@ async def export_ragas_regression_run_diff_html(
     )
 
 
-@router.post("/ragas/test-gen/from-documents", response_model=TestGenResponse)
+@router.post("/ragas/test-gen/from-documents", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def generate_test_cases_from_documents(
     request: TestGenFromDocsRequest,
     *,
@@ -1516,7 +1524,7 @@ async def generate_test_cases_from_documents(
         )
 
 
-@router.post("/kg/search/diagnostics", response_model=KGSearchDiagnosticsResponse)
+@router.post("/kg/search/diagnostics", response_model=KGSearchDiagnosticsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def run_kg_search_diagnostics(
     payload: KGSearchDiagnosticsRequest,
     *,
@@ -1650,7 +1658,7 @@ async def run_kg_search_diagnostics(
     return resp
 
 
-@router.get("/kg/search/diagnostics/runs", response_model=KGSearchDiagnosticsRunList)
+@router.get("/kg/search/diagnostics/runs", response_model=KGSearchDiagnosticsRunList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_kg_search_diagnostics_runs(
     dataset_id: UUID = Query(..., description="Dataset ID (required)"),
     limit: int = Query(20, ge=1, le=200, description="Max runs to return (default: 20)"),
@@ -1675,7 +1683,7 @@ async def list_kg_search_diagnostics_runs(
     return KGSearchDiagnosticsRunList(total=total, items=items)
 
 
-@router.get("/kg/search/diagnostics/runs/{run_id}", response_model=KGSearchDiagnosticsRunDetail)
+@router.get("/kg/search/diagnostics/runs/{run_id}", response_model=KGSearchDiagnosticsRunDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_kg_search_diagnostics_run(
     run_id: UUID,
     *,
@@ -1702,7 +1710,7 @@ async def get_kg_search_diagnostics_run(
     return KGSearchDiagnosticsRunDetail(run=run, items=items)
 
 
-@router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse)
+@router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def generate_test_cases_from_conversations(
     request: TestGenFromConversationsRequest,
     *,

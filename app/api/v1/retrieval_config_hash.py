@@ -19,7 +19,15 @@ from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SCHEMA = "mimirq.retrieval_config_hash.v1"
 
@@ -80,7 +88,7 @@ def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bo
     return cfg
 
 
-@router.post("/config-hash", response_model=RetrievalConfigHashResponse)
+@router.post("/config-hash", response_model=RetrievalConfigHashResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_retrieval_config_hash(
     body: RetrievalConfigHashRequest,
     *,

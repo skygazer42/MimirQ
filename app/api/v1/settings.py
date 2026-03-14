@@ -26,7 +26,15 @@ from app.core.database import get_db
 from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 # .env file path.
 ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
@@ -749,7 +757,7 @@ def mask_secret(value: str) -> str:
     return value[:4] + "***" + value[-4:]
 
 
-@router.get("", response_model=SystemSettings)
+@router.get("", response_model=SystemSettings, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_settings(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -888,7 +896,7 @@ async def get_settings(
     )
 
 
-@router.put("")
+@router.put("", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def update_settings(
     request: UpdateSettingsRequest,
     http_request: Request,
@@ -1262,7 +1270,7 @@ async def update_settings(
             lock_ctx.__exit__(None, None, None)
 
 
-@router.get("/status")
+@router.get("/status", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_system_status(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1457,7 +1465,7 @@ class TestLLMRequest(BaseModel):
     max_retries: int = 1
 
 
-@router.post("/llm/test")
+@router.post("/llm/test", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def test_llm_connection(
     request: TestLLMRequest,
     *,

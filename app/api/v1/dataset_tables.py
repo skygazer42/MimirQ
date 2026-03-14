@@ -55,7 +55,15 @@ from app.services.table_tag_service import (
     tag_enabled,
 )
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _member_role(member: object) -> str:
@@ -285,6 +293,7 @@ def _extract_table_assets(
     "/{dataset_id}/tables",
     response_model=DatasetTablesListResponse,
     summary="List tables ingested into the structured table store for a dataset",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_tables(
     dataset_id: UUID,
@@ -411,6 +420,7 @@ def list_dataset_tables(
     "/{dataset_id}/tables/{table_id}",
     response_model=TableAssetOut,
     summary="Get table metadata by table_id",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_table(
     dataset_id: UUID,
@@ -501,6 +511,7 @@ def get_dataset_table(
     "/{dataset_id}/tables/{table_id}/preview",
     response_model=TableQueryResponse,
     summary="Preview a table (SELECT * ... LIMIT N)",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def preview_dataset_table(
     dataset_id: UUID,
@@ -569,6 +580,7 @@ def preview_dataset_table(
     "/{dataset_id}/tables/{table_id}/query",
     response_model=TableQueryResponse,
     summary="Run a SELECT-only SQL query against a table",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def query_dataset_table(
     dataset_id: UUID,
@@ -650,6 +662,7 @@ def query_dataset_table(
     "/{dataset_id}/tables/{table_id}/ask",
     response_model=TableAskResponse,
     summary="TAG: Ask a question over a table (NL -> SQL -> execute -> answer)",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def ask_dataset_table(
     dataset_id: UUID,
@@ -845,6 +858,7 @@ def ask_dataset_table(
     "/{dataset_id}/tables/{table_id}/lotus/sem-filter",
     response_model=TableQueryResponse,
     summary="LOTUS (optional): semantic filter over a table (falls back to NL->SQL when LOTUS unavailable)",
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def lotus_sem_filter_dataset_table(
     dataset_id: UUID,

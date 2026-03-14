@@ -22,7 +22,15 @@ from app.rag.core.retrieval_profiles import (
     apply_retrieval_profile_overrides,
 )
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SCHEMA = "mimirq.retrieval_profiles.v1"
 
@@ -81,7 +89,7 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
     }
 
 
-@router.get("/profiles")
+@router.get("/profiles", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_retrieval_profiles() -> dict[str, Any]:
     baseline = _runtime_baseline()
     chat_default_profile = str(getattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower() or None

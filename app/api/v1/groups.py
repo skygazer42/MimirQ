@@ -28,10 +28,18 @@ from app.services.audit_log_service import audit_log_event
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.tenant_group_service import TenantGroupService
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.get("/", response_model=TenantGroupListResponse)
+@router.get("/", response_model=TenantGroupListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_groups(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=1000),
@@ -51,7 +59,7 @@ def list_groups(
     return TenantGroupListResponse(total=total, items=[TenantGroupOut.model_validate(g) for g in groups])
 
 
-@router.post("/", response_model=TenantGroupOut, status_code=201)
+@router.post("/", response_model=TenantGroupOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def create_group(
     payload: TenantGroupCreateRequest,
     *,
@@ -84,7 +92,7 @@ def create_group(
     return TenantGroupOut.model_validate(group)
 
 
-@router.get("/{group_id}", response_model=TenantGroupOut)
+@router.get("/{group_id}", response_model=TenantGroupOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_group(
     group_id: UUID,
     *,
@@ -103,7 +111,7 @@ def get_group(
     return TenantGroupOut.model_validate(group)
 
 
-@router.patch("/{group_id}", response_model=TenantGroupOut)
+@router.patch("/{group_id}", response_model=TenantGroupOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def patch_group(
     group_id: UUID,
     payload: TenantGroupUpdateRequest,
@@ -143,7 +151,7 @@ def patch_group(
     return TenantGroupOut.model_validate(group)
 
 
-@router.delete("/{group_id}", status_code=204)
+@router.delete("/{group_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_group(
     group_id: UUID,
     *,
@@ -173,7 +181,7 @@ def delete_group(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{group_id}/members", response_model=TenantGroupMemberListResponse)
+@router.get("/{group_id}/members", response_model=TenantGroupMemberListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_group_members(
     group_id: UUID,
     skip: int = Query(default=0, ge=0),
@@ -195,7 +203,7 @@ def list_group_members(
     return TenantGroupMemberListResponse(total=total, items=items)
 
 
-@router.post("/{group_id}/members", response_model=TenantGroupMembersUpdateResponse)
+@router.post("/{group_id}/members", response_model=TenantGroupMembersUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def add_group_members(
     group_id: UUID,
     payload: TenantGroupMembersUpdateRequest,
@@ -229,7 +237,7 @@ def add_group_members(
     return TenantGroupMembersUpdateResponse(updated=int(added))
 
 
-@router.post("/{group_id}/members/remove", response_model=TenantGroupMembersUpdateResponse)
+@router.post("/{group_id}/members/remove", response_model=TenantGroupMembersUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def remove_group_members(
     group_id: UUID,
     payload: TenantGroupMembersUpdateRequest,

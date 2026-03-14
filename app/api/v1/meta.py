@@ -13,7 +13,15 @@ from app.api.schemas.meta import MetaResponse
 from app.core.config import settings
 from app.core.utils import parse_csv
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _get_build_sha() -> str | None:
@@ -32,7 +40,7 @@ def _get_build_time() -> str | None:
     return value or None
 
 
-@router.get("/meta", response_model=MetaResponse)
+@router.get("/meta", response_model=MetaResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_meta() -> dict:
     """
     Small, safe-to-expose metadata endpoint for UI diagnostics.

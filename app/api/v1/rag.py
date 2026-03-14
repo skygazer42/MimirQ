@@ -28,7 +28,15 @@ from app.services.rag_config_template_defaults import merge_rag_config_template_
 from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 class RetrievePreviewRequest(BaseModel):
@@ -74,7 +82,7 @@ class ImageSearchResponse(BaseModel):
     metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
-@router.post("/retrieve-preview", response_model=RetrievePreviewResponse)
+@router.post("/retrieve-preview", response_model=RetrievePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def retrieve_preview(
     body: RetrievePreviewRequest,
     *,
@@ -304,7 +312,7 @@ async def retrieve_preview(
     )
 
 
-@router.post("/image-index", response_model=ImageIndexResponse)
+@router.post("/image-index", response_model=ImageIndexResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def index_image_embeddings(
     body: ImageIndexRequest,
     *,
@@ -340,7 +348,7 @@ async def index_image_embeddings(
     )
 
 
-@router.post("/image-search-preview", response_model=ImageSearchResponse)
+@router.post("/image-search-preview", response_model=ImageSearchResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def image_search_preview(
     body: ImageSearchRequest,
     *,
@@ -438,7 +446,7 @@ class EvidenceRetrieveResponse(BaseModel):
     query_debug: Optional[Dict[str, Any]] = None
 
 
-@router.post("/retrieve", response_model=EvidenceRetrieveResponse)
+@router.post("/retrieve", response_model=EvidenceRetrieveResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def retrieve_evidence(
     body: EvidenceRetrieveRequest,
     *,
@@ -891,7 +899,7 @@ class PromptPreviewResponse(BaseModel):
     prompt_ab_variant: Optional[str] = None
 
 
-@router.post("/prompt-preview", response_model=PromptPreviewResponse)
+@router.post("/prompt-preview", response_model=PromptPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def prompt_preview(
     body: PromptPreviewRequest,
     *,
