@@ -3604,6 +3604,675 @@ def _soft_disable_jira_linked_artifact_documents_missing_from_issue(
     return int(disabled)
 
 
+def _get_github_repo_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
+    run = (
+        db.query(ConnectorRun)
+        .options(selectinload(ConnectorRun.documents))
+        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+        .first()
+    )
+    if not run:
+        return None
+    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+        return None
+    return run
+
+
+def _mark_github_repo_run_running(db: Session, *, run: ConnectorRun) -> None:
+    run.status = "running"
+    run.started_at = _now()
+    run.error_message = None
+    run.stats = dict(run.stats or {})
+    db.commit()
+    db.refresh(run)
+
+
+def _normalize_github_include_set(values: object) -> set[str]:
+    include_exts = _normalize_connector_string_list(values)
+    normalized = [("." + ext if not ext.startswith(".") else ext).lower() for ext in include_exts]
+    return set(normalized) if normalized else {".md", ".txt"}
+
+
+def _build_github_repo_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    repo = str(cfg.get("repo") or "").strip()
+    if "/" not in repo:
+        raise ValueError("invalid repo")
+    owner, repo_name = repo.split("/", 1)
+    owner = owner.strip()
+    repo_name = repo_name.strip()
+    if not owner or not repo_name:
+        raise ValueError("invalid repo")
+
+    branch = str(cfg.get("branch") or "main").strip() or "main"
+    access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+    source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+    has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
+    source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
+    source_acl_fallback_mode = (
+        str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
+        if isinstance(source_acl, dict)
+        else "partial_members"
+    )
+
+    user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+    auth_headers = _build_auth_headers(cfg)
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": (user_agent or "MimirQ/1.0 (+github_repo)"),
+    }
+    headers.update(auth_headers)
+
+    return {
+        "repo": repo,
+        "owner": owner,
+        "repo_name": repo_name,
+        "branch": branch,
+        "max_files": int(cfg.get("max_files") or 50),
+        "include_set": _normalize_github_include_set(cfg.get("include_extensions")),
+        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
+        "chunk_strategy": (
+            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
+        ),
+        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
+        "access": access,
+        "source_acl": source_acl,
+        "access_mode": access_mode,
+        "has_manual_access_override": has_manual_access_override,
+        "user_agent": user_agent,
+        "auth_headers": auth_headers,
+        "headers": headers,
+        "api_url": f"https://api.github.com/repos/{owner}/{repo_name}/git/trees/{quote(branch, safe='')}?recursive=1",
+        "source_acl_mode": source_acl_mode,
+        "source_acl_fallback_mode": source_acl_fallback_mode,
+        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
+    }
+
+
+async def _fetch_github_repo_listing_and_acl_keys(settings_map: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    team_principal_keys: list[str] = []
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+        resp = await client.get(str(settings_map.get("api_url") or ""), headers=dict(settings_map.get("headers") or {}))
+        if resp.status_code >= 400:
+            raise RuntimeError(f"github api failed (status={resp.status_code})")
+        data = resp.json()
+
+        if settings_map.get("enable_source_acl"):
+            with contextlib.suppress(Exception):
+                team_principal_keys = await _github_fetch_repo_team_principal_keys(
+                    client=client,
+                    owner=str(settings_map.get("owner") or ""),
+                    repo=str(settings_map.get("repo_name") or ""),
+                    headers=dict(settings_map.get("headers") or {}),
+                )
+
+    return dict(data or {}), team_principal_keys
+
+
+def _build_github_repo_source_acl_context(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    requested_by: str,
+    run: ConnectorRun,
+    run_id: UUID,
+    settings_map: dict[str, Any],
+    team_principal_keys: list[str],
+) -> dict[str, Any]:
+    source_acl_access: dict[str, Any] | None = None
+    mapped_group_ids: set[UUID] = set()
+    source_acl_provenance: dict[str, Any] | None = None
+
+    if not settings_map.get("enable_source_acl"):
+        return {
+            "enable_source_acl": False,
+            "source_acl_access": None,
+            "team_principal_keys": [],
+            "mapped_group_ids": set(),
+            "source_acl_provenance": None,
+        }
+
+    with contextlib.suppress(Exception):
+        mapped_group_ids = _resolve_tenant_group_ids_by_external_id(
+            db,
+            tenant_id=tenant_id,
+            external_ids=team_principal_keys,
+        )
+
+    if mapped_group_ids:
+        ordered = sorted(mapped_group_ids, key=lambda value: str(value))
+        source_acl_access = {
+            "mode": "partial_members",
+            "partial_group_list": [str(group_id) for group_id in ordered],
+        }
+    else:
+        source_acl_access = {"mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members")}
+
+    with contextlib.suppress(Exception):
+        from app.services.audit_log_service import audit_log_event
+
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=requested_by,
+            action="github_repo.source_acl.applied",
+            resource_type="connector_run",
+            resource_id=str(run_id),
+            details={
+                "dataset_id": str(run.dataset_id),
+                "connector_id": "github_repo",
+                "repo": str(settings_map.get("repo") or ""),
+                "team_principal_count": int(len(team_principal_keys)),
+                "mapped_group_count": int(len(mapped_group_ids)),
+                "fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
+            },
+        )
+
+    with contextlib.suppress(Exception):
+        from app.services.document_acl_provenance_service import build_document_acl_provenance
+
+        source_acl_provenance = build_document_acl_provenance(
+            connector_id="github_repo",
+            connector_run_id=str(run_id),
+            effective_access=source_acl_access,
+            source_acl_mode=str(settings_map.get("source_acl_mode") or "disabled"),
+            source_acl_fallback_mode=str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
+            source_principal_external_ids=team_principal_keys,
+            mapped_group_ids=mapped_group_ids,
+            fallback_used=not bool(mapped_group_ids),
+        )
+
+    return {
+        "enable_source_acl": True,
+        "source_acl_access": source_acl_access,
+        "team_principal_keys": list(team_principal_keys),
+        "mapped_group_ids": set(mapped_group_ids),
+        "source_acl_provenance": source_acl_provenance,
+    }
+
+
+def _build_github_repo_execution_plan(
+    *,
+    run_stats: dict[str, Any],
+    state: dict[str, Any],
+    tree_items: list[dict[str, Any]],
+    include_set: set[str],
+    max_files: int,
+    enable_source_acl: bool,
+) -> dict[str, Any]:
+    existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+    tracked_paths = set(existing_manifest)
+    resume_cursor_raw = get_resume_cursor(state)
+    files: list[tuple[str, str]] = []
+    observed_tracked_paths: set[str] = set()
+    max_files_bound = max(1, min(max_files, 200))
+
+    for item in tree_items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("type") or "") != "blob":
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        blob_sha = str(item.get("sha") or "").strip()
+        if path in tracked_paths:
+            observed_tracked_paths.add(path)
+        ext = Path(path).suffix.lower()
+        if ext and ext not in include_set:
+            continue
+        if not ext and "" not in include_set:
+            continue
+        if len(files) < max_files_bound:
+            files.append((path, blob_sha))
+
+    is_resume_run = bool((run_stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
+    mode = "incremental" if existing_manifest else "full"
+    delta_files: list[tuple[str, str]] = []
+    skipped_unchanged = 0
+    for path, blob_sha in files:
+        if (not enable_source_acl) and mode == "incremental" and existing_manifest.get(path) == blob_sha:
+            skipped_unchanged += 1
+            continue
+        delta_files.append((path, blob_sha))
+
+    removed_paths = sorted(tracked_paths - observed_tracked_paths) if mode == "incremental" else []
+    resume_cursor = resume_cursor_raw if (is_resume_run and mode == "full") else 0
+    files_to_process, cursor_in = slice_items_from_cursor(delta_files, cursor=resume_cursor)
+    source_manifest_state = {path: sha for path, sha in existing_manifest.items() if path not in removed_paths}
+    processed_visible = skipped_unchanged + cursor_in
+
+    return {
+        "mode": mode,
+        "files": files,
+        "delta_files": delta_files,
+        "removed_paths": removed_paths,
+        "files_to_process": files_to_process,
+        "cursor_in": int(cursor_in),
+        "skipped_unchanged": int(skipped_unchanged),
+        "processed_visible": int(processed_visible),
+        "source_manifest_state": source_manifest_state,
+        "resumed_from_state": bool(is_resume_run and ((mode == "incremental") or cursor_in > 0)),
+    }
+
+
+def _initialize_github_repo_run_stats(*, run: ConnectorRun, plan: dict[str, Any]) -> dict[str, Any]:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "total_files": int(len(plan.get("files") or [])),
+            "delta_files": int(len(plan.get("delta_files") or [])),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "processed_files": int(plan.get("processed_visible") or 0),
+            "cursor": int(plan.get("cursor_in") or 0),
+            "created": 0,
+            "failed": 0,
+            "failed_paths": [],
+            "cursor_in": int(plan.get("cursor_in") or 0),
+            "resumed_from_state": bool(plan.get("resumed_from_state")),
+            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "removed_paths_reconciled": 0,
+            "removed_documents_disabled": 0,
+            "source_manifest": dict(plan.get("source_manifest_state") or {}),
+        }
+    )
+    return stats
+
+
+def _github_repo_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
+    with contextlib.suppress(Exception):
+        db.refresh(run)
+    return str(run.status or "").lower() == "cancelled"
+
+
+def _github_repo_effective_access(
+    *,
+    settings_map: dict[str, Any],
+    source_acl_context: dict[str, Any],
+) -> dict[str, Any] | None:
+    effective_access = settings_map.get("access")
+    source_acl_access = source_acl_context.get("source_acl_access")
+    if not settings_map.get("has_manual_access_override") and isinstance(source_acl_access, dict):
+        effective_access = source_acl_access
+    return effective_access if isinstance(effective_access, dict) else None
+
+
+def _apply_github_repo_source_acl_delta_sync(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    raw_url: str,
+    effective_access: dict[str, Any] | None,
+    source_acl_context: dict[str, Any],
+) -> int:
+    source_acl_access = source_acl_context.get("source_acl_access")
+    source_acl_provenance = source_acl_context.get("source_acl_provenance")
+    if effective_access is source_acl_access and isinstance(source_acl_access, dict):
+        return int(
+            _delta_sync_connector_documents_acl_by_source_url(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                connector_id="github_repo",
+                source_url=raw_url,
+                requested_by=requested_by,
+                access=effective_access,
+                acl_provenance=source_acl_provenance,
+            )
+        )
+    return 0
+
+
+async def _ingest_github_repo_file(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    path: str,
+    settings_map: dict[str, Any],
+    source_acl_context: dict[str, Any],
+) -> dict[str, Any]:
+    raw_url = _github_raw_url(
+        owner=str(settings_map.get("owner") or ""),
+        repo=str(settings_map.get("repo_name") or ""),
+        branch=str(settings_map.get("branch") or ""),
+        path=path,
+    )
+    effective_access = _github_repo_effective_access(
+        settings_map=settings_map,
+        source_acl_context=source_acl_context,
+    )
+    updated_existing = _apply_github_repo_source_acl_delta_sync(
+        db,
+        run=run,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        raw_url=raw_url,
+        effective_access=effective_access,
+        source_acl_context=source_acl_context,
+    )
+
+    body = UrlUploadRequest(
+        url=raw_url,
+        dataset_id=run.dataset_id,
+        filename=Path(path).name,
+        fetch_headers=settings_map.get("auth_headers") or None,
+        user_agent=settings_map.get("user_agent"),
+        parser_backend=str(settings_map.get("parser_backend") or "auto"),
+        chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
+        pipeline=settings_map.get("pipeline"),  # type: ignore[arg-type]
+    )
+    doc = await _ingest_url_upload_request(
+        background_tasks=None,
+        body=body,
+        tenant_id=tenant_id,
+        account_id=requested_by,
+        db=db,
+    )
+
+    _apply_document_access_from_config(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        doc=doc,
+        access=effective_access,
+        connector_id="github_repo",
+    )
+
+    if effective_access is source_acl_context.get("source_acl_access") and isinstance(
+        source_acl_context.get("source_acl_provenance"), dict
+    ):
+        with contextlib.suppress(Exception):
+            from app.services.document_acl_provenance_service import apply_document_acl_provenance
+
+            apply_document_acl_provenance(doc, provenance=source_acl_context.get("source_acl_provenance"))
+
+    _apply_connector_identity_metadata(
+        doc=doc,
+        run=run,
+        connector_id="github_repo",
+        source_ref=path,
+        source_id=path,
+    )
+
+    db.add(
+        ConnectorRunDocument(
+            tenant_id=tenant_id,
+            run_id=run.id,
+            document_id=doc.id,
+            source_ref=path,
+            status="created",
+        )
+    )
+
+    return {
+        "doc_id": doc.id,
+        "updated_existing": int(updated_existing),
+    }
+
+
+def _persist_github_repo_progress(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    plan: dict[str, Any],
+    processed: int,
+    created: int,
+    failed: int,
+    created_doc_ids: list[UUID],
+    delta_acl_docs_updated: int,
+    delta_acl_sources_updated: int,
+    removed_paths_reconciled: int,
+    removed_documents_disabled: int,
+    source_manifest_state: dict[str, str],
+) -> None:
+    processed_visible = int(plan.get("skipped_unchanged") or 0) + processed
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "total_files": int(len(plan.get("files") or [])),
+            "delta_files": int(len(plan.get("delta_files") or [])),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "processed_files": int(processed_visible),
+            "cursor": int(processed),
+            "created": int(created),
+            "failed": int(failed),
+            "document_ids": [str(doc_id) for doc_id in created_doc_ids],
+            "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
+            "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
+            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "removed_paths_reconciled": int(removed_paths_reconciled),
+            "removed_documents_disabled": int(removed_documents_disabled),
+            "source_manifest": dict(source_manifest_state),
+        }
+    )
+    run.stats = _finalize_connector_stats(stats)
+    db.commit()
+
+
+async def _process_github_repo_files(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+    plan: dict[str, Any],
+    source_acl_context: dict[str, Any],
+) -> dict[str, Any]:
+    created = 0
+    failed = 0
+    created_doc_ids: list[UUID] = []
+    delta_acl_docs_updated = 0
+    delta_acl_sources_updated = 0
+    removed_paths_reconciled = 0
+    removed_documents_disabled = 0
+    source_manifest_state = dict(plan.get("source_manifest_state") or {})
+    cursor_in = int(plan.get("cursor_in") or 0)
+
+    for idx, item in enumerate(plan.get("files_to_process") or []):
+        path, blob_sha = item if isinstance(item, tuple) else (str(item or ""), "")
+        if _github_repo_run_cancelled(db, run=run):
+            break
+
+        try:
+            result = await _ingest_github_repo_file(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                path=path,
+                settings_map=settings_map,
+                source_acl_context=source_acl_context,
+            )
+            created += 1
+            created_doc_ids.append(result["doc_id"])
+            delta_acl_docs_updated += int(result.get("updated_existing") or 0)
+            if int(result.get("updated_existing") or 0):
+                delta_acl_sources_updated += 1
+            if path and blob_sha:
+                source_manifest_state[path] = blob_sha
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            run.stats = _append_connector_error(dict(run.stats or {}), url=path, exc=exc)
+        finally:
+            _persist_github_repo_progress(
+                db,
+                run=run,
+                plan=plan,
+                processed=cursor_in + idx + 1,
+                created=created,
+                failed=failed,
+                created_doc_ids=created_doc_ids,
+                delta_acl_docs_updated=delta_acl_docs_updated,
+                delta_acl_sources_updated=delta_acl_sources_updated,
+                removed_paths_reconciled=removed_paths_reconciled,
+                removed_documents_disabled=removed_documents_disabled,
+                source_manifest_state=source_manifest_state,
+            )
+
+    return {
+        "created": created,
+        "failed": failed,
+        "created_doc_ids": created_doc_ids,
+        "delta_acl_docs_updated": delta_acl_docs_updated,
+        "delta_acl_sources_updated": delta_acl_sources_updated,
+        "removed_paths_reconciled": removed_paths_reconciled,
+        "removed_documents_disabled": removed_documents_disabled,
+        "source_manifest_state": source_manifest_state,
+    }
+
+
+def _finalize_cancelled_github_repo_run(db: Session, *, run: ConnectorRun) -> None:
+    if run.finished_at is None:
+        run.finished_at = _now()
+    run.stats = _finalize_connector_stats(dict(run.stats or {}))
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def _reconcile_removed_github_repo_paths(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    settings_map: dict[str, Any],
+    removed_paths: list[str],
+) -> tuple[int, int]:
+    removed_paths_reconciled = 0
+    removed_documents_disabled = 0
+    for path in removed_paths:
+        raw_url = _github_raw_url(
+            owner=str(settings_map.get("owner") or ""),
+            repo=str(settings_map.get("repo_name") or ""),
+            branch=str(settings_map.get("branch") or ""),
+            path=path,
+        )
+        try:
+            disabled = _soft_disable_connector_documents_by_source_url(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                connector_id="github_repo",
+                source_url=raw_url,
+            )
+        except Exception as exc:  # noqa: BLE001
+            stats = _append_connector_error(dict(run.stats or {}), url=path, exc=exc)
+            run.stats = _finalize_connector_stats(stats)
+            db.commit()
+            continue
+        removed_documents_disabled += int(disabled)
+        if disabled:
+            removed_paths_reconciled += 1
+    return removed_paths_reconciled, removed_documents_disabled
+
+
+def _emit_github_repo_source_acl_delta_sync_audit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    requested_by: str,
+    run: ConnectorRun,
+    run_id: UUID,
+    settings_map: dict[str, Any],
+    source_acl_context: dict[str, Any],
+    delta_acl_docs_updated: int,
+    delta_acl_sources_updated: int,
+) -> None:
+    if not source_acl_context.get("enable_source_acl"):
+        return
+    with contextlib.suppress(Exception):
+        from app.services.audit_log_service import audit_log_event
+
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=requested_by,
+            action="github_repo.source_acl.delta_sync",
+            resource_type="connector_run",
+            resource_id=str(run_id),
+            details={
+                "dataset_id": str(run.dataset_id),
+                "connector_id": "github_repo",
+                "repo": str(settings_map.get("repo") or ""),
+                "branch": str(settings_map.get("branch") or ""),
+                "updated_documents": int(delta_acl_docs_updated),
+                "updated_sources": int(delta_acl_sources_updated),
+            },
+        )
+
+
+def _finalize_github_repo_run_success(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    run_id: UUID,
+    settings_map: dict[str, Any],
+    plan: dict[str, Any],
+    source_acl_context: dict[str, Any],
+    progress: dict[str, Any],
+) -> None:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "delta_files": int(len(plan.get("delta_files") or [])),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
+            "acl_delta_sync_updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
+            "acl_delta_sync_updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
+            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "removed_paths_reconciled": int(progress.get("removed_paths_reconciled") or 0),
+            "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
+            "source_manifest": dict(progress.get("source_manifest_state") or {}),
+        }
+    )
+    run.stats = _finalize_connector_stats(stats)
+    run.finished_at = _now()
+    run.status = _connector_run_completion_status(
+        created=int(progress.get("created") or 0),
+        failed=int(progress.get("failed") or 0),
+    )
+    _emit_github_repo_source_acl_delta_sync_audit(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        run=run,
+        run_id=run_id,
+        settings_map=settings_map,
+        source_acl_context=source_acl_context,
+        delta_acl_docs_updated=int(progress.get("delta_acl_docs_updated") or 0),
+        delta_acl_sources_updated=int(progress.get("delta_acl_sources_updated") or 0),
+    )
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def _mark_github_repo_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
+    with contextlib.suppress(Exception):
+        run = (
+            db.query(ConnectorRun)
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if run is not None:
+            run.status = "failed"
+            run.finished_at = _now()
+            run.error_message = str(exc)[:200]
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
+
+
 async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for github_repo connector.
@@ -3613,418 +4282,78 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
     - Ingest selected files via raw.githubusercontent.com URLs
     """
     db = SessionLocal()
+    run: ConnectorRun | None = None
     try:
-        run = (
-            db.query(ConnectorRun)
-            .options(selectinload(ConnectorRun.documents))
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
+        run = _get_github_repo_run(db, run_id=run_id, tenant_id=tenant_id)
+        if run is None:
+            return
+
+        _mark_github_repo_run_running(db, run=run)
+        cfg = decrypt_connector_config_secrets(dict(run.config or {}))
+        settings_map = _build_github_repo_run_settings(cfg)
+        data, team_principal_keys = await _fetch_github_repo_listing_and_acl_keys(settings_map)
+        source_acl_context = _build_github_repo_source_acl_context(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            run=run,
+            run_id=run_id,
+            settings_map=settings_map,
+            team_principal_keys=team_principal_keys,
         )
-        if not run:
-            return
-        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
-            return
-
-        run.status = "running"
-        run.started_at = _now()
-        run.error_message = None
-        run.stats = dict(run.stats or {})
-        db.commit()
-        db.refresh(run)
-
-        cfg_raw = dict(run.config or {})
-        cfg = decrypt_connector_config_secrets(cfg_raw)
-
-        repo = str(cfg.get("repo") or "").strip()
-        if "/" not in repo:
-            raise ValueError("invalid repo")
-        owner, repo_name = repo.split("/", 1)
-        owner = owner.strip()
-        repo_name = repo_name.strip()
-        if not owner or not repo_name:
-            raise ValueError("invalid repo")
-
-        branch = str(cfg.get("branch") or "main").strip() or "main"
-        max_files = int(cfg.get("max_files") or 50)
-        include_exts = cfg.get("include_extensions") if isinstance(cfg.get("include_extensions"), list) else []
-        include_exts = [str(e or "").strip().lower() for e in include_exts if str(e or "").strip()]
-        include_exts = [("." + e if not e.startswith(".") else e) for e in include_exts]
-        include_set = set(include_exts) if include_exts else {".md", ".txt"}
-
-        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
-        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
-        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
-        source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
-
-        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-        has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
-
-        user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
-        auth_headers = _build_auth_headers(cfg)
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "User-Agent": (user_agent or "MimirQ/1.0 (+github_repo)"),
-        }
-        headers.update(auth_headers)
-
-        api_url = f"https://api.github.com/repos/{owner}/{repo_name}/git/trees/{quote(branch, safe='')}?recursive=1"
-        created = 0
-        failed = 0
-        created_doc_ids: list[UUID] = []
-        delta_acl_docs_updated = 0
-        delta_acl_sources_updated = 0
-        removed_documents_disabled = 0
-        removed_paths_reconciled = 0
-
-        # Optional: source ACL inheritance (org teams -> tenant groups by external_id).
-        source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
-        source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
-        enable_source_acl = bool(source_acl_mode == "inherit" and not has_manual_access_override)
-        source_acl_access: dict | None = None
-        team_principal_keys: list[str] = []
-        mapped_group_ids: set[UUID] = set()
-        source_acl_provenance: dict | None = None
-
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
-            resp = await client.get(api_url, headers=headers)
-            if resp.status_code >= 400:
-                raise RuntimeError(f"github api failed (status={resp.status_code})")
-            data = resp.json()
-
-            if enable_source_acl:
-                # Best-effort: this can fail due to missing org permissions; we still ingest but fail-closed.
-                with contextlib.suppress(Exception):
-                    team_principal_keys = await _github_fetch_repo_team_principal_keys(
-                        client=client,
-                        owner=owner,
-                        repo=repo_name,
-                        headers=headers,
-                    )
-
-        if enable_source_acl:
-            with contextlib.suppress(Exception):
-                mapped_group_ids = _resolve_tenant_group_ids_by_external_id(
-                    db,
-                    tenant_id=tenant_id,
-                    external_ids=team_principal_keys,
-                )
-            if mapped_group_ids:
-                ordered = sorted(mapped_group_ids, key=lambda v: str(v))
-                source_acl_access = {
-                    "mode": "partial_members",
-                    "partial_group_list": [str(gid) for gid in ordered],
-                }
-            else:
-                source_acl_access = {"mode": source_acl_fallback_mode}
-
-            # Best-effort audit log (do not block connector execution).
-            with contextlib.suppress(Exception):
-                from app.services.audit_log_service import audit_log_event
-
-                audit_log_event(
-                    db,
-                    tenant_id=tenant_id,
-                    actor_id=requested_by,
-                    action="github_repo.source_acl.applied",
-                    resource_type="connector_run",
-                    resource_id=str(run_id),
-                    details={
-                        "dataset_id": str(run.dataset_id),
-                        "connector_id": "github_repo",
-                        "repo": repo,
-                        "team_principal_count": int(len(team_principal_keys)),
-                        "mapped_group_count": int(len(mapped_group_ids)),
-                        "fallback_mode": source_acl_fallback_mode,
-                    },
-                )
-
-            with contextlib.suppress(Exception):
-                from app.services.document_acl_provenance_service import build_document_acl_provenance
-
-                source_acl_provenance = build_document_acl_provenance(
-                    connector_id="github_repo",
-                    connector_run_id=str(run_id),
-                    effective_access=source_acl_access,
-                    source_acl_mode=source_acl_mode,
-                    source_acl_fallback_mode=source_acl_fallback_mode,
-                    source_principal_external_ids=team_principal_keys,
-                    mapped_group_ids=mapped_group_ids,
-                    fallback_used=not bool(mapped_group_ids),
-                )
 
         state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
-        tracked_paths = set(existing_manifest)
-        resume_cursor_raw = get_resume_cursor(state)
-
         tree = data.get("tree")
-        items = tree if isinstance(tree, list) else []
-        files: list[tuple[str, str]] = []
-        observed_tracked_paths: set[str] = set()
-        max_files_bound = max(1, min(max_files, 200))
-        for it in items:
-            if not isinstance(it, dict):
-                continue
-            if str(it.get("type") or "") != "blob":
-                continue
-            p = str(it.get("path") or "").strip()
-            if not p:
-                continue
-            sha = str(it.get("sha") or "").strip()
-            if p in tracked_paths:
-                observed_tracked_paths.add(p)
-            ext = Path(p).suffix.lower()
-            if ext and ext not in include_set:
-                continue
-            if not ext and "" not in include_set:
-                continue
-            if len(files) < max_files_bound:
-                files.append((p, sha))
-
-        is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
-        effective_mode = "incremental" if existing_manifest else "full"
-        delta_files: list[tuple[str, str]] = []
-        skipped_unchanged = 0
-        for path, blob_sha in files:
-            if (not enable_source_acl) and effective_mode == "incremental" and existing_manifest.get(path) == blob_sha:
-                skipped_unchanged += 1
-                continue
-            delta_files.append((path, blob_sha))
-
-        removed_paths = sorted(tracked_paths - observed_tracked_paths) if effective_mode == "incremental" else []
-        resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
-        files_to_process, cursor_in = slice_items_from_cursor(delta_files, cursor=resume_cursor)
-        source_manifest_state = {path: sha for path, sha in existing_manifest.items() if path not in removed_paths}
-        processed_visible = skipped_unchanged + cursor_in
-        stats0 = dict(run.stats or {})
-        stats0.update(
-            {
-                "mode": effective_mode,
-                "total_files": int(len(files)),
-                "delta_files": int(len(delta_files)),
-                "skipped_unchanged": int(skipped_unchanged),
-                "processed_files": int(processed_visible),
-                "cursor": int(cursor_in),
-                "created": 0,
-                "failed": 0,
-                "failed_paths": [],
-                "cursor_in": int(cursor_in),
-                "resumed_from_state": bool(is_resume_run and ((effective_mode == "incremental") or cursor_in > 0)),
-                "removed_paths": int(len(removed_paths)),
-                "removed_paths_reconciled": int(removed_paths_reconciled),
-                "removed_documents_disabled": int(removed_documents_disabled),
-                "source_manifest": dict(source_manifest_state),
-            }
+        plan = _build_github_repo_execution_plan(
+            run_stats=dict(run.stats or {}),
+            state=state,
+            tree_items=(tree if isinstance(tree, list) else []),
+            include_set=set(settings_map.get("include_set") or set()),
+            max_files=int(settings_map.get("max_files") or 50),
+            enable_source_acl=bool(source_acl_context.get("enable_source_acl")),
         )
-        run.stats = stats0
+        run.stats = _initialize_github_repo_run_stats(run=run, plan=plan)
         db.commit()
 
-        for idx, item in enumerate(files_to_process):
-            path, blob_sha = item if isinstance(item, tuple) else (str(item or ""), "")
-            try:
-                db.refresh(run)
-            except Exception:
-                pass
-            if str(run.status or "").lower() == "cancelled":
-                break
+        progress = await _process_github_repo_files(
+            db,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map=settings_map,
+            plan=plan,
+            source_acl_context=source_acl_context,
+        )
 
-            try:
-                raw_url = _github_raw_url(owner=owner, repo=repo_name, branch=branch, path=path)
-                effective_access = access
-                if not has_manual_access_override and isinstance(source_acl_access, dict):
-                    effective_access = source_acl_access
-
-                # Delta sync: update existing connector-managed docs for this URL so ACL changes
-                # in the source system can revoke access (idempotent; fail-closed).
-                if effective_access is source_acl_access and isinstance(source_acl_access, dict):
-                    updated_existing = _delta_sync_connector_documents_acl_by_source_url(
-                        db,
-                        tenant_id=tenant_id,
-                        dataset_id=run.dataset_id,
-                        connector_id="github_repo",
-                        source_url=raw_url,
-                        requested_by=requested_by,
-                        access=effective_access,
-                        acl_provenance=source_acl_provenance,
-                    )
-                    delta_acl_docs_updated += int(updated_existing)
-                    if updated_existing:
-                        delta_acl_sources_updated += 1
-
-                body = UrlUploadRequest(
-                    url=raw_url,
-                    dataset_id=run.dataset_id,
-                    filename=Path(path).name,
-                    fetch_headers=auth_headers or None,
-                    user_agent=user_agent,
-                    parser_backend=str(parser_backend),
-                    chunk_strategy=str(chunk_strategy),
-                    pipeline=pipeline,  # type: ignore[arg-type]
-                )
-                doc = await _ingest_url_upload_request(
-                    background_tasks=None,
-                    body=body,
-                    tenant_id=tenant_id,
-                    account_id=requested_by,
-                    db=db,
-                )
-
-                _apply_document_access_from_config(
-                    db,
-                    tenant_id=tenant_id,
-                    requested_by=requested_by,
-                    doc=doc,
-                    access=effective_access,
-                    connector_id="github_repo",
-                )
-
-                if effective_access is source_acl_access and isinstance(source_acl_provenance, dict):
-                    with contextlib.suppress(Exception):
-                        from app.services.document_acl_provenance_service import apply_document_acl_provenance
-
-                        apply_document_acl_provenance(doc, provenance=source_acl_provenance)
-                _apply_connector_identity_metadata(
-                    doc=doc,
-                    run=run,
-                    connector_id="github_repo",
-                    source_ref=path,
-                    source_id=path,
-                )
-
-                db.add(
-                    ConnectorRunDocument(
-                        tenant_id=tenant_id,
-                        run_id=run.id,
-                        document_id=doc.id,
-                        source_ref=path,
-                        status="created",
-                    )
-                )
-                created += 1
-                created_doc_ids.append(doc.id)
-                if path and blob_sha:
-                    source_manifest_state[path] = blob_sha
-            except Exception as exc:  # noqa: BLE001
-                failed += 1
-                stats = dict(run.stats or {})
-                stats = _append_connector_error(stats, url=path, exc=exc)
-                run.stats = stats
-            finally:
-                processed = cursor_in + idx + 1
-                processed_visible = skipped_unchanged + processed
-                stats = dict(run.stats or {})
-                stats.update(
-                    {
-                        "mode": effective_mode,
-                        "total_files": int(len(files)),
-                        "delta_files": int(len(delta_files)),
-                        "skipped_unchanged": int(skipped_unchanged),
-                        "processed_files": int(processed_visible),
-                        "cursor": int(processed),
-                        "created": int(created),
-                        "failed": int(failed),
-                        "document_ids": [str(d) for d in created_doc_ids],
-                        "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
-                        "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
-                        "removed_paths": int(len(removed_paths)),
-                        "removed_paths_reconciled": int(removed_paths_reconciled),
-                        "removed_documents_disabled": int(removed_documents_disabled),
-                        "source_manifest": dict(source_manifest_state),
-                    }
-                )
-                run.stats = _finalize_connector_stats(stats)
-                db.commit()
-
-        try:
-            db.refresh(run)
-        except Exception:
-            pass
-        if str(run.status or "").lower() == "cancelled":
-            if run.finished_at is None:
-                run.finished_at = _now()
-            run.stats = _finalize_connector_stats(dict(run.stats or {}))
-            db.commit()
-            with contextlib.suppress(Exception):
-                _sync_connector_config_from_run(db, run=run)
+        if _github_repo_run_cancelled(db, run=run):
+            _finalize_cancelled_github_repo_run(db, run=run)
             return
 
-        if effective_mode == "incremental" and removed_paths:
-            for path in removed_paths:
-                raw_url = _github_raw_url(owner=owner, repo=repo_name, branch=branch, path=path)
-                try:
-                    disabled = _soft_disable_connector_documents_by_source_url(
-                        db,
-                        tenant_id=tenant_id,
-                        dataset_id=run.dataset_id,
-                        connector_id="github_repo",
-                        source_url=raw_url,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    stats = dict(run.stats or {})
-                    stats = _append_connector_error(stats, url=path, exc=exc)
-                    run.stats = _finalize_connector_stats(stats)
-                    db.commit()
-                    continue
-                removed_documents_disabled += int(disabled)
-                if disabled:
-                    removed_paths_reconciled += 1
-
-        stats = dict(run.stats or {})
-        stats.update(
-            {
-                "mode": effective_mode,
-                "delta_files": int(len(delta_files)),
-                "skipped_unchanged": int(skipped_unchanged),
-                "document_ids": [str(d) for d in created_doc_ids],
-                "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
-                "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
-                "removed_paths": int(len(removed_paths)),
-                "removed_paths_reconciled": int(removed_paths_reconciled),
-                "removed_documents_disabled": int(removed_documents_disabled),
-                "source_manifest": dict(source_manifest_state),
-            }
-        )
-        run.stats = _finalize_connector_stats(stats)
-        run.finished_at = _now()
-        run.status = _connector_run_completion_status(created=created, failed=failed)
-        if enable_source_acl:
-            with contextlib.suppress(Exception):
-                from app.services.audit_log_service import audit_log_event
-
-                audit_log_event(
-                    db,
-                    tenant_id=tenant_id,
-                    actor_id=requested_by,
-                    action="github_repo.source_acl.delta_sync",
-                    resource_type="connector_run",
-                    resource_id=str(run_id),
-                    details={
-                        "dataset_id": str(run.dataset_id),
-                        "connector_id": "github_repo",
-                        "repo": repo,
-                        "branch": branch,
-                        "updated_documents": int(delta_acl_docs_updated),
-                        "updated_sources": int(delta_acl_sources_updated),
-                    },
-                )
-        db.commit()
-        with contextlib.suppress(Exception):
-            _sync_connector_config_from_run(db, run=run)
-    except Exception as exc:  # noqa: BLE001
-        with contextlib.suppress(Exception):
-            run = (
-                db.query(ConnectorRun)
-                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-                .first()
+        removed_paths = list(plan.get("removed_paths") or [])
+        if plan.get("mode") == "incremental" and removed_paths:
+            removed_paths_reconciled, removed_documents_disabled = _reconcile_removed_github_repo_paths(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                settings_map=settings_map,
+                removed_paths=removed_paths,
             )
-            if run is not None:
-                run.status = "failed"
-                run.finished_at = _now()
-                run.error_message = str(exc)[:200]
-                db.commit()
-                with contextlib.suppress(Exception):
-                    _sync_connector_config_from_run(db, run=run)
+            progress["removed_paths_reconciled"] = int(removed_paths_reconciled)
+            progress["removed_documents_disabled"] = int(removed_documents_disabled)
+
+        _finalize_github_repo_run_success(
+            db,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            run_id=run_id,
+            settings_map=settings_map,
+            plan=plan,
+            source_acl_context=source_acl_context,
+            progress=progress,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _mark_github_repo_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
 

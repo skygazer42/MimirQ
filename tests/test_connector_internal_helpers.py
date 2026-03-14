@@ -290,3 +290,66 @@ def test_build_url_batch_run_state_clamps_cursor_and_preserves_existing_document
     assert state["created_doc_ids"] == ["doc-9", "doc-10"]
     assert state["created"] == 2
     assert state["failed"] == 2
+
+
+def test_build_github_repo_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    plan = connectors._build_github_repo_execution_plan(
+        run_stats={},
+        state={"cursor": 1},
+        tree_items=[
+            {"type": "blob", "path": "a.md", "sha": "sha-a"},
+            {"type": "blob", "path": "b.md", "sha": "sha-b"},
+            {"type": "blob", "path": "c.txt", "sha": "sha-c"},
+        ],
+        include_set={".md", ".txt"},
+        max_files=4,
+        enable_source_acl=False,
+    )
+
+    assert plan["mode"] == "full"
+    assert plan["files"] == [
+        ("a.md", "sha-a"),
+        ("b.md", "sha-b"),
+        ("c.txt", "sha-c"),
+    ]
+    assert plan["delta_files"] == [
+        ("a.md", "sha-a"),
+        ("b.md", "sha-b"),
+        ("c.txt", "sha-c"),
+    ]
+    assert plan["files_to_process"] == [
+        ("b.md", "sha-b"),
+        ("c.txt", "sha-c"),
+    ]
+    assert plan["cursor_in"] == 1
+    assert plan["processed_visible"] == 1
+    assert plan["resumed_from_state"] is True
+    assert plan["removed_paths"] == []
+
+
+def test_build_github_repo_execution_plan_preserves_tracked_paths_seen_outside_processing_window() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    plan = connectors._build_github_repo_execution_plan(
+        run_stats={},
+        state={"source_manifest": {"legacy.txt": "sha-legacy", "z.md": "sha-z"}},
+        tree_items=[
+            {"type": "blob", "path": "legacy.txt", "sha": "sha-legacy"},
+            {"type": "blob", "path": "a.md", "sha": "sha-a"},
+            {"type": "blob", "path": "z.md", "sha": "sha-z"},
+        ],
+        include_set={".md"},
+        max_files=1,
+        enable_source_acl=False,
+    )
+
+    assert plan["mode"] == "incremental"
+    assert plan["files"] == [("a.md", "sha-a")]
+    assert plan["delta_files"] == [("a.md", "sha-a")]
+    assert plan["removed_paths"] == []
+    assert plan["source_manifest_state"] == {
+        "legacy.txt": "sha-legacy",
+        "z.md": "sha-z",
+    }
