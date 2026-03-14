@@ -228,13 +228,13 @@ async def kg_search(
             "requested": str(requested_mode),
             "resolved": str(resolved_mode),
             "confidence": str(mode_diag.get("confidence") or ""),
-            "reason_codes": [str(x) for x in list(mode_diag.get("reason_codes") or []) if str(x).strip()][:8],
+            "reason_codes": [str(x) for x in (mode_diag.get("reason_codes") or []) if str(x).strip()][:8],
         }
         stats = result.get("stats")
         if isinstance(stats, dict):
             stats["query_mode"] = str(resolved_mode)
             stats["query_mode_confidence"] = str(mode_diag.get("confidence") or "")
-            stats["query_mode_reason_codes"] = [str(x) for x in list(mode_diag.get("reason_codes") or []) if str(x).strip()][:8]
+            stats["query_mode_reason_codes"] = [str(x) for x in (mode_diag.get("reason_codes") or []) if str(x).strip()][:8]
             result["stats"] = stats
     if cache_key is not None and isinstance(result, dict):
         kg_search_cache.set(cache_key, dict(result), ttl_sec=ttl_sec, max_entries=max_entries)

@@ -1022,7 +1022,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         )
         must_recall_auto_expected_source_keys = normalize_source_keys(list(inferred.get("expected_source_keys") or []))
         must_recall_auto_expected_source_keys_reason_codes = [
-            str(v) for v in list(inferred.get("reason_codes") or []) if str(v).strip()
+            str(v) for v in (inferred.get("reason_codes") or []) if str(v).strip()
         ][:8]
         must_recall_auto_expected_source_keys_confidence = str(inferred.get("confidence") or "none")
         if must_recall_auto_expected_source_keys:
@@ -1057,7 +1057,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             list(inferred_anchor.get("required_anchor_fields") or [])
         )
         must_recall_auto_required_anchor_fields_reason_codes = [
-            str(v) for v in list(inferred_anchor.get("reason_codes") or []) if str(v).strip()
+            str(v) for v in (inferred_anchor.get("reason_codes") or []) if str(v).strip()
         ][:8]
         if must_recall_auto_required_anchor_fields and (
             bool(inferred_anchor.get("applied")) or not must_recall_required_anchor_fields or not explicit_required_anchor_fields
@@ -2758,7 +2758,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 iterative_pass_reason_codes.append("planner_spec_invalid")
                 break
 
-            hop_reason_codes = [str(v) for v in list(spec.get("reason_codes") or []) if str(v).strip()][:8]
+            hop_reason_codes = [str(v) for v in (spec.get("reason_codes") or []) if str(v).strip()][:8]
             hop_diag["reason_codes"] = hop_reason_codes
             for rc in hop_reason_codes:
                 if rc not in contextual_followup_reason_codes:
@@ -2766,7 +2766,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 if rc not in iterative_pass_reason_codes:
                     iterative_pass_reason_codes.append(rc)
 
-            for term in [str(v) for v in list(spec.get("selected_terms") or []) if str(v).strip()]:
+            for term in [str(v) for v in (spec.get("selected_terms") or []) if str(v).strip()]:
                 if term not in contextual_followup_selected_terms:
                     contextual_followup_selected_terms.append(term)
                     if len(contextual_followup_selected_terms) >= 10:

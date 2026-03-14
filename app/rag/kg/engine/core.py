@@ -80,7 +80,7 @@ class KGEngine:
             dataset_id=dataset_id,
             account_id=account_id,
             query_mode=(str(query_mode or "auto")),
-            query_mode_reason_codes=[str(x) for x in list(query_mode_reason_codes or []) if str(x).strip()][:8],
+            query_mode_reason_codes=[str(x) for x in (query_mode_reason_codes or []) if str(x).strip()][:8],
             query_mode_confidence=(str(query_mode_confidence or "").strip() or None),
         )
         return await self.searcher.search(config)

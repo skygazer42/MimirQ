@@ -23,7 +23,7 @@ def detect_evidence_gap(
     req_anchor_fields = normalize_anchor_fields(
         list(required_anchor_fields or list(DEFAULT_EVIDENCE_ANCHOR_FIELDS))
     )
-    citations_norm = [c for c in list(citations or []) if isinstance(c, dict)]
+    citations_norm = [c for c in (citations or []) if isinstance(c, dict)]
 
     reason_codes: list[str] = []
     citations_total = int(len(citations_norm))
@@ -34,7 +34,7 @@ def detect_evidence_gap(
         citations=citations_norm,
         required_source_keys=req_source_keys,
     )
-    missing_source_keys = [str(v) for v in list(source_eval.get("missing_source_keys") or []) if str(v).strip()]
+    missing_source_keys = [str(v) for v in (source_eval.get("missing_source_keys") or []) if str(v).strip()]
     if missing_source_keys:
         reason_codes.append("missing_required_source_keys")
 

@@ -296,7 +296,7 @@ def validate_evidence_capsule(
                 return False, "citation_hash_mismatch"
             actual_hashes.append(actual)
 
-        declared_hashes = [str(v).strip() for v in list(capsule.get("citation_hashes") or []) if str(v).strip()]
+        declared_hashes = [str(v).strip() for v in (capsule.get("citation_hashes") or []) if str(v).strip()]
         if declared_hashes and declared_hashes != actual_hashes:
             return False, "citation_hashes_mismatch"
 

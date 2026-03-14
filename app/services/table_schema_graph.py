@@ -105,7 +105,7 @@ def _sample_column_selectivity(*, rows: list[dict[str, Any]] | None, column_name
     col = str(column_name or "").strip()
     if not col:
         return None
-    sample = [r for r in list(rows or []) if isinstance(r, dict)][:50]
+    sample = [r for r in (rows or []) if isinstance(r, dict)][:50]
     if not sample:
         return None
 
@@ -443,7 +443,7 @@ def score_join_plan_candidates(
     ambiguity_score_gap: float,
 ) -> dict[str, Any]:
     graph = build_table_schema_graph(tables=tables)
-    edges = [e for e in list(graph.get("edges") or []) if isinstance(e, dict)]
+    edges = [e for e in (graph.get("edges") or []) if isinstance(e, dict)]
     candidates: list[dict[str, Any]] = []
     n = max(1, int(top_n or 1))
     for e in edges[: max(n, 12)]:
@@ -520,7 +520,7 @@ def score_multi_join_plan_candidates(
     Returns candidate join paths for 2+ tables. This is deterministic and bounded.
     """
     graph = build_table_schema_graph(tables=tables)
-    edges = [e for e in list(graph.get("edges") or []) if isinstance(e, dict)]
+    edges = [e for e in (graph.get("edges") or []) if isinstance(e, dict)]
     if not edges:
         return {
             "graph": graph,
@@ -538,7 +538,7 @@ def score_multi_join_plan_candidates(
         top_n=max(12, len(edges)),
         ambiguity_score_gap=ambiguity_score_gap,
     )
-    edge_candidates = [c for c in list(base.get("candidates") or []) if isinstance(c, dict)]
+    edge_candidates = [c for c in (base.get("candidates") or []) if isinstance(c, dict)]
     if not edge_candidates:
         return {
             "graph": graph,
@@ -551,7 +551,7 @@ def score_multi_join_plan_candidates(
         }
 
     beam_limit = max(4, int(max_states or 4))
-    table_names = [str(t.get("table_name") or "").strip() for t in list(tables or []) if isinstance(t, dict)]
+    table_names = [str(t.get("table_name") or "").strip() for t in (tables or []) if isinstance(t, dict)]
     target_tables = len([t for t in table_names if t])
 
     # Seed states with each pairwise candidate.
@@ -582,7 +582,7 @@ def score_multi_join_plan_candidates(
         return round(avg_score + coverage_bonus, 6)
 
     def _state_sort_key(state: dict[str, Any]) -> tuple[Any, ...]:
-        join_ids = [str(v) for v in list(state.get("join_ids") or []) if str(v).strip()]
+        join_ids = [str(v) for v in (state.get("join_ids") or []) if str(v).strip()]
         return (
             -_state_score(state),
             -int(len(set(state.get("tables") or set()))),
@@ -598,7 +598,7 @@ def score_multi_join_plan_candidates(
         expanded: list[dict[str, Any]] = []
         for state in states:
             current_tables = set(state.get("tables") or set())
-            current_join_ids = set(str(v) for v in list(state.get("join_ids") or []) if str(v).strip())
+            current_join_ids = set(str(v) for v in (state.get("join_ids") or []) if str(v).strip())
             for c in edge_candidates:
                 cid = str(c.get("candidate_id") or "").strip()
                 if not cid or cid in current_join_ids:
@@ -633,10 +633,10 @@ def score_multi_join_plan_candidates(
 
     candidates: list[dict[str, Any]] = []
     for st in states:
-        joins = [j for j in list(st.get("joins") or []) if isinstance(j, dict)]
+        joins = [j for j in (st.get("joins") or []) if isinstance(j, dict)]
         if not joins:
             continue
-        join_ids = [str(v) for v in list(st.get("join_ids") or []) if str(v).strip()]
+        join_ids = [str(v) for v in (st.get("join_ids") or []) if str(v).strip()]
         if not join_ids:
             continue
         joins_n = max(1, len(joins))

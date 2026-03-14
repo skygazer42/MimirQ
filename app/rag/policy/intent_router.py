@@ -547,19 +547,19 @@ def _adaptive_rule_matches(
     when = rule.get("when")
     when = when if isinstance(when, dict) else {}
 
-    intent_in = [str(v) for v in list(when.get("intent_in") or []) if str(v).strip()]
+    intent_in = [str(v) for v in (when.get("intent_in") or []) if str(v).strip()]
     if intent_in and str(intent or "").strip().lower() not in {v.lower() for v in intent_in}:
         return False
 
-    mode_in = [str(v) for v in list(when.get("retrieval_mode_in") or []) if str(v).strip()]
+    mode_in = [str(v) for v in (when.get("retrieval_mode_in") or []) if str(v).strip()]
     if mode_in and str(retrieval_mode or "").strip().lower() not in {v.lower() for v in mode_in}:
         return False
 
-    bucket_in = [str(v) for v in list(when.get("query_len_bucket_in") or []) if str(v).strip()]
+    bucket_in = [str(v) for v in (when.get("query_len_bucket_in") or []) if str(v).strip()]
     if bucket_in and str(len_bucket or "").strip().lower() not in {v.lower() for v in bucket_in}:
         return False
 
-    contains_any = [str(v) for v in list(when.get("contains_any") or []) if str(v).strip()]
+    contains_any = [str(v) for v in (when.get("contains_any") or []) if str(v).strip()]
     if contains_any:
         q_fold = str(query or "").casefold()
         if not any(str(token).casefold() in q_fold for token in contains_any):
@@ -605,7 +605,7 @@ def route_adaptive_retrieval_overrides(
 
     matched_rule_ids: list[str] = []
     overrides: dict[str, Any] = {}
-    for rule in list(policy.get("rules") or []):
+    for rule in (policy.get("rules") or []):
         if not isinstance(rule, dict):
             continue
         if not _adaptive_rule_matches(
