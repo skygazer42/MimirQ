@@ -128,3 +128,46 @@ def test_connector_run_has_abortable_task_requires_queue_and_string_task_id() ->
     assert connectors._connector_run_has_abortable_task(task_queue_enabled=True, task_id=None) is False
     assert connectors._connector_run_has_abortable_task(task_queue_enabled=True, task_id=123) is False
     assert connectors._connector_run_has_abortable_task(task_queue_enabled=True, task_id="job-1") is True
+
+
+def test_db_catalog_row_sync_settings_uses_connector_flags_and_defaults() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    connectors.settings.DB_CATALOG_ROW_SYNC_ENABLED = True
+    connectors.settings.DB_CATALOG_ROW_SYNC_MAX_TABLES = 20
+    connectors.settings.DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE = 50
+    connectors.settings.DB_CATALOG_ROW_SYNC_MAX_COLS = 40
+
+    enabled, max_tables, max_rows, max_cols = connectors._db_catalog_row_sync_settings(
+        {
+            "row_sync_enabled": True,
+            "row_sync_max_tables": 8,
+        }
+    )
+
+    assert enabled is True
+    assert max_tables == 8
+    assert max_rows == 50
+    assert max_cols == 40
+
+
+def test_db_catalog_schema_diff_counts_extracts_nested_counts() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    diff_counts = connectors._db_catalog_schema_diff_counts(
+        {
+            "tables_added": {"count": 2},
+            "tables_removed": {"count": 1},
+            "columns_added": {"count": 4},
+            "columns_removed": {"count": 3},
+            "columns_changed": {"count": 5},
+        }
+    )
+
+    assert diff_counts == {
+        "tables_added": 2,
+        "tables_removed": 1,
+        "columns_added": 4,
+        "columns_removed": 3,
+        "columns_changed": 5,
+    }
