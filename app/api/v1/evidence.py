@@ -333,7 +333,7 @@ async def repair_evidence_suite_reference_sources(
     suite_id: UUID,
     payload: EvidenceReferenceRepairRequest,
     response: Response,
-    async_mode: bool = Query(default=False, description="Enqueue repair via task queue (arq)"),
+    async_mode: Annotated[bool, Query(description='Enqueue repair via task queue (arq)')] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -493,8 +493,8 @@ async def create_evidence_suite(
 
 @router.get("/suites", response_model=EvidenceSuiteList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_evidence_suites(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     dataset_id: UUID | None = None,
     include_archived: bool = False,
     *,
@@ -580,8 +580,8 @@ async def get_evidence_suite(
 async def get_evidence_suite_dashboard(
     suite_id: UUID,
     include_archived_items: bool = False,
-    top_n: int = Query(default=12, ge=1, le=50),
-    heatmap_top_n: int = Query(default=8, ge=2, le=20),
+    top_n: Annotated[int, Query(ge=1, le=50)] = 12,
+    heatmap_top_n: Annotated[int, Query(ge=2, le=20)] = 8,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -661,11 +661,11 @@ async def get_evidence_suite_dashboard(
 @router.get("/suites/{suite_id}/hardcase-candidates", response_model=EvidenceHardcaseDiscoveryOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_evidence_suite_hardcase_candidates(
     suite_id: UUID,
-    window_minutes: int = Query(default=7 * 24 * 60, ge=1, le=60 * 24 * 30),
-    max_bytes: int = Query(default=10_000_000, ge=100_000, le=50_000_000),
-    max_feedback_rows: int = Query(default=500, ge=1, le=5000),
-    max_candidates: int = Query(default=50, ge=0, le=200),
-    max_rating: int = Query(default=2, ge=1, le=5),
+    window_minutes: Annotated[int, Query(ge=1, le=60 * 24 * 30)] = 7 * 24 * 60,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 10_000_000,
+    max_feedback_rows: Annotated[int, Query(ge=1, le=5000)] = 500,
+    max_candidates: Annotated[int, Query(ge=0, le=200)] = 50,
+    max_rating: Annotated[int, Query(ge=1, le=5)] = 2,
     include_existing: bool = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -869,8 +869,8 @@ async def audit_evidence_suite_reference_sources_drift(
     suite_id: UUID,
     include_archived_items: bool = False,
     include_details: bool = True,
-    details_limit: int = Query(default=200, ge=0, le=2000),
-    slice_top_n: int = Query(default=20, ge=1, le=200),
+    details_limit: Annotated[int, Query(ge=0, le=2000)] = 200,
+    slice_top_n: Annotated[int, Query(ge=1, le=200)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -912,8 +912,8 @@ async def audit_dataset_reference_sources_drift(
     dataset_id: UUID,
     include_archived_items: bool = False,
     include_details: bool = True,
-    details_limit: int = Query(default=200, ge=0, le=2000),
-    slice_top_n: int = Query(default=20, ge=1, le=200),
+    details_limit: Annotated[int, Query(ge=0, le=2000)] = 200,
+    slice_top_n: Annotated[int, Query(ge=1, le=200)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1031,8 +1031,8 @@ async def create_evidence_item(
 @router.post("/suites/{suite_id}/items/import", response_model=EvidenceItemImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def import_evidence_items(
     suite_id: UUID,
-    file: UploadFile = File(...),
-    max_items: int = Query(default=2000, ge=1, le=10_000),
+    file: Annotated[UploadFile, File(...)],
+    max_items: Annotated[int, Query(ge=1, le=10000)] = 2000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1126,8 +1126,8 @@ async def import_evidence_items(
 @router.get("/suites/{suite_id}/items", response_model=EvidenceItemList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_evidence_items(
     suite_id: UUID,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     status: Optional[str] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -1558,12 +1558,12 @@ async def export_evidence_suite(
 
 @router.get("/training-export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_training_dataset(
-    dataset_id: UUID = Query(..., description="Dataset id to export"),
-    format: str = Query(default="jsonl", description="jsonl or csv"),
-    include_feedback: bool = Query(default=True),
-    include_evidence: bool = Query(default=True),
-    include_archived_evidence: bool = Query(default=False),
-    max_rows_per_source: int = Query(default=2000, ge=1, le=10_000),
+    dataset_id: Annotated[UUID, Query(..., description="Dataset id to export")],
+    format: Annotated[str, Query(description='jsonl or csv')] = "jsonl",
+    include_feedback: Annotated[bool, Query()] = True,
+    include_evidence: Annotated[bool, Query()] = True,
+    include_archived_evidence: Annotated[bool, Query()] = False,
+    max_rows_per_source: Annotated[int, Query(ge=1, le=10000)] = 2000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1640,7 +1640,7 @@ async def export_training_dataset(
 async def export_evidence_suite_ltr_training_bundle(
     suite_id: UUID,
     include_archived_items: bool = False,
-    max_items: int = Query(default=2000, ge=1, le=10_000, description="Max items to include in export"),
+    max_items: Annotated[int, Query(ge=1, le=10000, description='Max items to include in export')] = 2000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
