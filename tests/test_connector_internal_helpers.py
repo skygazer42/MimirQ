@@ -171,3 +171,69 @@ def test_db_catalog_schema_diff_counts_extracts_nested_counts() -> None:
         "columns_removed": 3,
         "columns_changed": 5,
     }
+
+
+def test_build_web_crawl_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    plan = connectors._build_web_crawl_execution_plan(
+        run_stats={},
+        state={"cursor": 2},
+        crawl_urls=[
+            "https://example.com/docs/a",
+            "https://example.com/docs/b",
+            "https://example.com/docs/c",
+            "https://example.com/docs/d",
+        ],
+        crawl_sync_tokens={},
+    )
+
+    assert plan["mode"] == "full"
+    assert plan["crawl_urls"] == [
+        "https://example.com/docs/c",
+        "https://example.com/docs/d",
+    ]
+    assert plan["cursor_in"] == 2
+    assert plan["processed_visible"] == 2
+    assert plan["resumed_from_state"] is True
+    assert plan["delta_urls"] == [
+        "https://example.com/docs/a",
+        "https://example.com/docs/b",
+        "https://example.com/docs/c",
+        "https://example.com/docs/d",
+    ]
+    assert plan["removed_urls"] == []
+    assert plan["source_manifest_state"] == {}
+
+
+def test_build_web_crawl_execution_plan_tracks_changed_and_removed_urls() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    plan = connectors._build_web_crawl_execution_plan(
+        run_stats={},
+        state={
+            "source_manifest": {
+                "https://example.com/docs/a": "content_type:text/html|body_sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "https://example.com/docs/obsolete": "content_type:text/html|body_sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            }
+        },
+        crawl_urls=[
+            "https://example.com/docs/a",
+            "https://example.com/docs/c",
+        ],
+        crawl_sync_tokens={
+            "https://example.com/docs/a": "content_type:text/html|body_sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "https://example.com/docs/c": "content_type:text/html|body_sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        },
+    )
+
+    assert plan["mode"] == "incremental"
+    assert plan["delta_urls"] == [
+        "https://example.com/docs/a",
+        "https://example.com/docs/c",
+    ]
+    assert plan["skipped_unchanged"] == 0
+    assert plan["removed_urls"] == ["https://example.com/docs/obsolete"]
+    assert plan["source_manifest_state"] == {
+        "https://example.com/docs/a": "content_type:text/html|body_sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    }
