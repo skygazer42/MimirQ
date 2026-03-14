@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import types
 import uuid
@@ -879,3 +880,274 @@ def test_persist_jira_project_progress_updates_stats_and_last_modified_ids() -> 
     assert run.stats["removed_linked_artifact_documents_disabled"] == 2
     assert run.stats["last_modified"] == "2026-03-02T12:34:56.000+0000"
     assert run.stats["last_modified_ids"] == ["10000", "10001"]
+
+
+def test_ingest_single_jira_linked_artifact_sets_metadata_and_auth_headers(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    seen: dict[str, object] = {}
+
+    class _DummyDB:
+        def __init__(self) -> None:
+            self.added: list[object] = []
+            self.commits = 0
+
+        def add(self, obj: object) -> None:
+            self.added.append(obj)
+
+        def commit(self) -> None:
+            self.commits += 1
+
+    dummy_db = _DummyDB()
+
+    async def _fake_ingest_url_upload_request(*_a, **kwargs):  # noqa: ANN001
+        body = kwargs["body"]
+        seen["body_url"] = getattr(body, "url", None)
+        seen["body_fetch_headers"] = getattr(body, "fetch_headers", None)
+        seen["body_filename"] = getattr(body, "filename", None)
+        doc = types.SimpleNamespace(id=doc_id, doc_metadata={})
+        seen["doc"] = doc
+        return doc
+
+    def _fake_apply_document_access_from_config(*_a, **kwargs):  # noqa: ANN001
+        seen["effective_access"] = kwargs.get("access")
+
+    def _fake_apply_connector_identity_metadata(**kwargs):  # noqa: ANN001
+        seen["identity_source_ref"] = kwargs.get("source_ref")
+        seen["identity_source_id"] = kwargs.get("source_id")
+
+    class _DummyUrlUploadRequest:
+        def __init__(self, **kwargs):  # noqa: ANN003
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+
+    monkeypatch.setattr(connectors, "UrlUploadRequest", _DummyUrlUploadRequest, raising=False)
+    monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fake_ingest_url_upload_request, raising=False)
+    monkeypatch.setattr(
+        connectors,
+        "_apply_document_access_from_config",
+        _fake_apply_document_access_from_config,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        connectors,
+        "_apply_connector_identity_metadata",
+        _fake_apply_connector_identity_metadata,
+        raising=False,
+    )
+
+    created_id = asyncio.run(
+        connectors._ingest_single_jira_linked_artifact(
+            dummy_db,
+            run=types.SimpleNamespace(id=run_id, dataset_id=dataset_id),
+            tenant_id=uuid.uuid4(),
+            requested_by="tester",
+            issue_info={
+                "issue_id": "10000",
+                "issue_key": "PLAT-42",
+                "issue_url": "https://example.atlassian.net/browse/PLAT-42",
+                "updated": "2026-03-02T12:34:56.000+0000",
+            },
+            link_url="https://example.atlassian.net/wiki/spaces/PLAT/pages/42",
+            effective_access={"mode": "partial_members"},
+            acl_provenance={"schema": "test-provenance"},
+            settings_map={
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "auth_headers": {"Authorization": "Basic token"},
+                "user_agent": "MimirQ-Jira/1.0",
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline": {"ocr": True},
+                "effective_mode": "incremental",
+            },
+        )
+    )
+
+    assert created_id == doc_id
+    assert seen["body_url"] == "https://example.atlassian.net/wiki/spaces/PLAT/pages/42"
+    assert seen["body_fetch_headers"] == {"Authorization": "Basic token"}
+    assert seen["body_filename"] is None
+    assert seen["effective_access"] == {"mode": "partial_members"}
+    assert seen["identity_source_ref"] == "https://example.atlassian.net/wiki/spaces/PLAT/pages/42"
+    assert seen["identity_source_id"] == "https://example.atlassian.net/wiki/spaces/PLAT/pages/42"
+    assert dummy_db.commits == 1
+    assert len(dummy_db.added) == 1
+
+    doc = seen["doc"]
+    assert doc.doc_metadata["acl_provenance"] == {"schema": "test-provenance"}
+    assert doc.doc_metadata["source_last_modified_source"] == connectors.JIRA_UPDATED_SOURCE
+    assert doc.doc_metadata["connector"]["doc_kind"] == "linked_artifact"
+    assert doc.doc_metadata["connector"]["issue_key"] == "PLAT-42"
+    assert doc.doc_metadata["connector"]["link_url"] == "https://example.atlassian.net/wiki/spaces/PLAT/pages/42"
+
+
+def test_ingest_jira_issue_linked_artifacts_tracks_created_docs_and_reconciles(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    created_ids = [uuid.uuid4(), uuid.uuid4()]
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        connectors,
+        "_jira_extract_linked_artifact_urls",
+        lambda *_a, **_k: [
+            "https://example.atlassian.net/wiki/spaces/PLAT/pages/42",
+            "https://docs.example.com/design-spec",
+        ],
+        raising=True,
+    )
+    monkeypatch.setattr(connectors, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=False)
+
+    async def _fake_ingest_single_jira_linked_artifact(*_a, **kwargs):  # noqa: ANN001
+        link_url = str(kwargs.get("link_url") or "")
+        seen.setdefault("link_urls", []).append(link_url)
+        return created_ids[len(seen["link_urls"]) - 1]
+
+    def _fake_soft_disable(*_a, **kwargs):  # noqa: ANN001
+        seen["seen_link_urls"] = set(kwargs.get("seen_link_urls") or set())
+        return 4
+
+    monkeypatch.setattr(
+        connectors,
+        "_ingest_single_jira_linked_artifact",
+        _fake_ingest_single_jira_linked_artifact,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_jira_linked_artifact_documents_missing_from_issue",
+        _fake_soft_disable,
+        raising=True,
+    )
+
+    out = asyncio.run(
+        connectors._ingest_jira_issue_linked_artifacts(
+            object(),
+            run=types.SimpleNamespace(id=uuid.uuid4(), dataset_id=uuid.uuid4(), status="running", stats={}),
+            tenant_id=uuid.uuid4(),
+            requested_by="tester",
+            issue={"fields": {"description": "irrelevant"}},
+            issue_info={
+                "issue_id": "10000",
+                "issue_key": "PLAT-42",
+                "issue_url": "https://example.atlassian.net/browse/PLAT-42",
+                "updated": "2026-03-02T12:34:56.000+0000",
+            },
+            effective_access={"mode": "inherit"},
+            acl_provenance={"schema": "test-provenance"},
+            settings_map={
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "include_linked_artifacts": True,
+                "max_total_linked_artifacts": 5,
+                "max_linked_artifacts_per_issue": 2,
+                "include_comments": True,
+                "max_comments_per_issue": 5,
+                "auth_headers": {"Authorization": "Basic token"},
+                "user_agent": "MimirQ-Jira/1.0",
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline": {"ocr": True},
+                "effective_mode": "full",
+            },
+            progress={"linked_artifacts_processed": 0},
+        )
+    )
+
+    assert out == {
+        "linked_artifacts_processed": 2,
+        "linked_artifacts_created": 2,
+        "failed": 0,
+        "created_doc_ids": created_ids,
+        "removed_linked_artifact_documents_disabled": 4,
+    }
+    assert seen["link_urls"] == [
+        "https://example.atlassian.net/wiki/spaces/PLAT/pages/42",
+        "https://docs.example.com/design-spec",
+    ]
+    assert seen["seen_link_urls"] == {
+        "https://example.atlassian.net/wiki/spaces/PLAT/pages/42",
+        "https://docs.example.com/design-spec",
+    }
+
+
+def test_ingest_jira_issue_linked_artifacts_skips_reconcile_when_listing_is_truncated(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    seen: dict[str, object] = {"reconciled": False}
+
+    monkeypatch.setattr(
+        connectors,
+        "_jira_extract_linked_artifact_urls",
+        lambda *_a, **_k: [
+            "https://example.atlassian.net/wiki/spaces/PLAT/pages/42",
+            "https://docs.example.com/design-spec",
+            "https://docs.example.com/extra",
+        ],
+        raising=True,
+    )
+    monkeypatch.setattr(connectors, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=False)
+
+    async def _fake_ingest_single_jira_linked_artifact(*_a, **_kwargs):  # noqa: ANN001
+        return uuid.uuid4()
+
+    def _fake_soft_disable(*_a, **_kwargs):  # noqa: ANN001
+        seen["reconciled"] = True
+        return 9
+
+    monkeypatch.setattr(
+        connectors,
+        "_ingest_single_jira_linked_artifact",
+        _fake_ingest_single_jira_linked_artifact,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_jira_linked_artifact_documents_missing_from_issue",
+        _fake_soft_disable,
+        raising=True,
+    )
+
+    out = asyncio.run(
+        connectors._ingest_jira_issue_linked_artifacts(
+            object(),
+            run=types.SimpleNamespace(id=uuid.uuid4(), dataset_id=uuid.uuid4(), status="running", stats={}),
+            tenant_id=uuid.uuid4(),
+            requested_by="tester",
+            issue={"fields": {"description": "irrelevant"}},
+            issue_info={
+                "issue_id": "10000",
+                "issue_key": "PLAT-42",
+                "issue_url": "https://example.atlassian.net/browse/PLAT-42",
+                "updated": "2026-03-02T12:34:56.000+0000",
+            },
+            effective_access={"mode": "inherit"},
+            acl_provenance={"schema": "test-provenance"},
+            settings_map={
+                "base_url": "https://example.atlassian.net",
+                "project_key": "PLAT",
+                "include_linked_artifacts": True,
+                "max_total_linked_artifacts": 5,
+                "max_linked_artifacts_per_issue": 2,
+                "include_comments": True,
+                "max_comments_per_issue": 5,
+                "auth_headers": {"Authorization": "Basic token"},
+                "user_agent": "MimirQ-Jira/1.0",
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline": {"ocr": True},
+                "effective_mode": "full",
+            },
+            progress={"linked_artifacts_processed": 0},
+        )
+    )
+
+    assert out["linked_artifacts_processed"] == 2
+    assert out["linked_artifacts_created"] == 2
+    assert out["failed"] == 0
+    assert out["removed_linked_artifact_documents_disabled"] == 0
+    assert seen["reconciled"] is False
