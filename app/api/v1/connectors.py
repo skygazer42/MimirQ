@@ -2707,6 +2707,34 @@ def _drive_group_principal_key(email: str) -> str:
     return f"drive:group:{e}"[:255]
 
 
+def _drive_permission_external_ids_and_anyone(perms: object) -> tuple[list[str], bool]:
+    ext_ids: list[str] = []
+    has_anyone = False
+    seen_ext: set[str] = set()
+
+    for permission in perms or []:
+        if not isinstance(permission, dict):
+            continue
+        if bool(permission.get("deleted", False)):
+            continue
+
+        permission_type = str(permission.get("type") or "").strip().lower()
+        if permission_type == "anyone":
+            has_anyone = True
+            continue
+        if permission_type != "group":
+            continue
+
+        key = _drive_group_principal_key(str(permission.get("emailAddress") or ""))
+        if key and key not in seen_ext:
+            seen_ext.add(key)
+            ext_ids.append(key)
+            if len(ext_ids) >= 200:
+                break
+
+    return ext_ids, has_anyone
+
+
 async def _drive_fetch_file_permissions(
     *,
     client: httpx.AsyncClient,
@@ -3809,6 +3837,13 @@ def _build_github_repo_source_acl_context(
     }
 
 
+def _github_repo_path_is_included(path: str, include_set: set[str]) -> bool:
+    ext = Path(path).suffix.lower()
+    if ext:
+        return ext in include_set
+    return "" in include_set
+
+
 def _build_github_repo_execution_plan(
     *,
     run_stats: dict[str, Any],
@@ -3836,10 +3871,7 @@ def _build_github_repo_execution_plan(
         blob_sha = str(item.get("sha") or "").strip()
         if path in tracked_paths:
             observed_tracked_paths.add(path)
-        ext = Path(path).suffix.lower()
-        if ext and ext not in include_set:
-            continue
-        if not ext and "" not in include_set:
+        if not _github_repo_path_is_included(path, include_set):
             continue
         if len(files) < max_files_bound:
             files.append((path, blob_sha))
@@ -4551,29 +4583,13 @@ async def _resolve_drive_source_acl(
     has_anyone = False
     fallback_used = False
     try:
-        perms = await _drive_fetch_file_permissions(
-            client=client,
-            file_id=file_id,
-            headers=dict(settings_map.get("auth_headers") or {}),
+        ext_ids, has_anyone = _drive_permission_external_ids_and_anyone(
+            await _drive_fetch_file_permissions(
+                client=client,
+                file_id=file_id,
+                headers=dict(settings_map.get("auth_headers") or {}),
+            )
         )
-
-        seen_ext: set[str] = set()
-        for permission in perms or []:
-            if not isinstance(permission, dict):
-                continue
-            if bool(permission.get("deleted", False)):
-                continue
-            permission_type = str(permission.get("type") or "").strip().lower()
-            if permission_type == "anyone":
-                has_anyone = True
-                continue
-            if permission_type == "group":
-                key = _drive_group_principal_key(str(permission.get("emailAddress") or ""))
-                if key and key not in seen_ext:
-                    seen_ext.add(key)
-                    ext_ids.append(key)
-                    if len(ext_ids) >= 200:
-                        break
 
         if has_anyone and bool(settings_map.get("allow_anyone")):
             effective_access = {"mode": "all_team_members"}
@@ -4625,7 +4641,6 @@ async def _ingest_drive_file_source(
     run_id: UUID,
     tenant_id: UUID,
     requested_by: str,
-    source_url: str,
     source_ref: str,
     file_id: str,
     settings_map: dict[str, Any],
@@ -4787,7 +4802,6 @@ async def _process_drive_files_sources(
                 run_id=run_id,
                 tenant_id=tenant_id,
                 requested_by=requested_by,
-                source_url=source_url,
                 source_ref=source_ref,
                 file_id=file_id,
                 settings_map=settings_map,
@@ -5159,6 +5173,13 @@ def _list_minio_bucket_objects(client: Any, *, bucket_name: str, prefix: str | N
     return listed_objects
 
 
+def _minio_object_name_is_included(name: str, include_set: set[str]) -> bool:
+    ext = Path(name).suffix.lower()
+    if ext:
+        return ext in include_set
+    return "" in include_set
+
+
 def _build_minio_bucket_execution_plan(
     *,
     run_stats: dict[str, Any],
@@ -5194,13 +5215,8 @@ def _build_minio_bucket_execution_plan(
         if name in tracked_keys:
             observed_tracked_keys.add(name)
 
-        ext = Path(name).suffix.lower()
-        if ext:
-            if ext not in include_set:
-                continue
-        else:
-            if "" not in include_set:
-                continue
+        if not _minio_object_name_is_included(name, include_set):
+            continue
 
         total_objects += 1
         token = str(raw.get("token") or "unknown")

@@ -406,6 +406,15 @@ def test_build_github_repo_execution_plan_preserves_tracked_paths_seen_outside_p
     }
 
 
+def test_github_repo_path_is_included_supports_extension_and_extensionless_paths() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert connectors._github_repo_path_is_included("docs/readme.md", {".md"}) is True
+    assert connectors._github_repo_path_is_included("docs/readme.txt", {".md"}) is False
+    assert connectors._github_repo_path_is_included("LICENSE", {""}) is True
+    assert connectors._github_repo_path_is_included("LICENSE", {".md"}) is False
+
+
 def test_build_drive_files_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
     connectors = _import_connectors_with_lightweight_stubs()
 
@@ -477,6 +486,110 @@ def test_build_drive_files_execution_plan_keeps_unchanged_sources_when_acl_inher
     assert plan["skipped_unchanged"] == 0
 
 
+def test_drive_permission_external_ids_and_anyone_skips_deleted_and_deduplicates_groups() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    ext_ids, has_anyone = connectors._drive_permission_external_ids_and_anyone(
+        [
+            {"type": "group", "emailAddress": "eng@example.com"},
+            {"type": "group", "emailAddress": "eng@example.com"},
+            {"type": "anyone"},
+            {"type": "group", "emailAddress": "deleted@example.com", "deleted": True},
+            {"type": "user", "emailAddress": "ada@example.com"},
+            "not-a-dict",
+        ]
+    )
+
+    assert ext_ids == ["drive:group:eng@example.com"]
+    assert has_anyone is True
+
+
+def test_process_drive_files_sources_only_passes_required_ingest_args(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    created_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(connectors, "_drive_files_run_cancelled", lambda *_a, **_k: False, raising=True)
+    monkeypatch.setattr(connectors, "_append_connector_error", lambda stats, **_k: stats, raising=True)
+
+    async def _fake_ingest_drive_file_source(  # noqa: ANN202
+        _client,
+        _db,
+        *,
+        run,
+        run_id,
+        tenant_id,
+        requested_by,
+        source_ref,
+        file_id,
+        settings_map,
+    ):  # noqa: ANN001
+        seen["ingest_run"] = run
+        seen["ingest_run_id"] = run_id
+        seen["ingest_tenant_id"] = tenant_id
+        seen["ingest_requested_by"] = requested_by
+        seen["ingest_source_ref"] = source_ref
+        seen["ingest_file_id"] = file_id
+        seen["ingest_settings_map"] = settings_map
+        return {"doc_id": created_id, "updated_existing": 0}
+
+    def _fake_persist_drive_files_progress(_db, **kwargs):  # noqa: ANN001
+        seen["persist_kwargs"] = dict(kwargs)
+
+    monkeypatch.setattr(
+        connectors,
+        "_ingest_drive_file_source",
+        _fake_ingest_drive_file_source,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        connectors,
+        "_persist_drive_files_progress",
+        _fake_persist_drive_files_progress,
+        raising=True,
+    )
+
+    out = asyncio.run(
+        connectors._process_drive_files_sources(
+            object(),
+            object(),
+            run=types.SimpleNamespace(id=run_id, dataset_id=uuid.uuid4(), stats={}),
+            run_id=run_id,
+            tenant_id=tenant_id,
+            requested_by="tester",
+            settings_map={"enable_source_acl": False},
+            discovered_sources=[("drive://file-1", "file-1", "file-1", "token-1")],
+            plan={
+                "sources_to_process": [("drive://file-1", "file-1", "file-1", "token-1")],
+                "source_manifest_state": {},
+                "cursor_in": 0,
+            },
+        )
+    )
+
+    assert out == {
+        "created": 1,
+        "failed": 0,
+        "created_doc_ids": [created_id],
+        "delta_acl_docs_updated": 0,
+        "delta_acl_sources_updated": 0,
+        "removed_paths_reconciled": 0,
+        "removed_documents_disabled": 0,
+        "source_manifest_state": {"file-1": "token-1"},
+    }
+    assert seen["ingest_run_id"] == run_id
+    assert seen["ingest_tenant_id"] == tenant_id
+    assert seen["ingest_requested_by"] == "tester"
+    assert seen["ingest_source_ref"] == "file-1"
+    assert seen["ingest_file_id"] == "file-1"
+    assert seen["ingest_settings_map"] == {"enable_source_acl": False}
+    assert seen["persist_kwargs"]["processed"] == 1
+    assert seen["persist_kwargs"]["source_manifest_state"] == {"file-1": "token-1"}
+
+
 def test_minio_object_token_includes_etag_timestamp_and_size() -> None:
     connectors = _import_connectors_with_lightweight_stubs()
 
@@ -489,6 +602,15 @@ def test_minio_object_token_includes_etag_timestamp_and_size() -> None:
     )
 
     assert token == "etag:etag-1|last_modified:2026-03-10T12:34:56Z|size:123"
+
+
+def test_minio_object_name_is_included_supports_extension_and_extensionless_names() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert connectors._minio_object_name_is_included("notes.md", {".md"}) is True
+    assert connectors._minio_object_name_is_included("notes.txt", {".md"}) is False
+    assert connectors._minio_object_name_is_included("README", {""}) is True
+    assert connectors._minio_object_name_is_included("README", {".md"}) is False
 
 
 def test_build_minio_bucket_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
