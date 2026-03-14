@@ -12,7 +12,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, Iterator, List, Optional, Union
+from typing import Any, BinaryIO, Iterator
 from urllib.parse import urlparse
 
 from app.core.config import settings
@@ -54,7 +54,7 @@ class MinIOService:
     """MinIO object storage service."""
 
     def __init__(self):
-        self._client: Optional[Any] = None
+        self._client: Any | None = None
         self._bucket_name = settings.MINIO_BUCKET_NAME
         self._bucket_ready = False
         self._metrics_path = Path(settings.MINIO_METRICS_LOG_PATH)
@@ -81,7 +81,7 @@ class MinIOService:
             self._ensure_bucket()
         return self._client
 
-    def health_check(self) -> Dict[str, Any]:
+    def health_check(self) -> dict[str, Any]:
         """
         Best-effort connectivity check for readiness probes.
 
@@ -141,7 +141,7 @@ class MinIOService:
 
     def upload_image(
         self,
-        image_data: Union[bytes, BinaryIO],
+        image_data: bytes | BinaryIO,
         tenant_id: str,
         dataset_id: str,
         document_id: str,
@@ -203,7 +203,7 @@ class MinIOService:
 
     async def upload_image_async(
         self,
-        image_data: Union[bytes, BinaryIO],
+        image_data: bytes | BinaryIO,
         tenant_id: str,
         dataset_id: str,
         document_id: str,
@@ -236,9 +236,9 @@ class MinIOService:
 
     async def upload_images_batch(
         self,
-        images: List[Dict[str, Any]],
+        images: list[dict[str, Any]],
         max_concurrent: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Upload images to MinIO concurrently in batches.
 
@@ -265,7 +265,7 @@ class MinIOService:
         t0 = time.perf_counter()
         semaphore = asyncio.Semaphore(max_concurrent)
         
-        async def upload_single(img_info: Dict[str, Any]) -> Dict[str, Any]:
+        async def upload_single(img_info: dict[str, Any]) -> dict[str, Any]:
             async with semaphore:
                 try:
                     img_id = await self.upload_image_async(
@@ -402,7 +402,7 @@ class MinIOService:
         dataset_id: str,
         document_id: str,
         extension: str,
-        content_type: Optional[str] = None,
+        content_type: str | None = None,
     ) -> str:
         """
         Upload a document source file to MinIO and return a `minio://` URI.
@@ -441,7 +441,7 @@ class MinIOService:
         *,
         object_name: str,
         offset: int = 0,
-        length: Optional[int] = None,
+        length: int | None = None,
     ) -> Any:
         client = self._get_client()
         kwargs: dict[str, Any] = {}
@@ -491,7 +491,7 @@ class MinIOService:
         *,
         object_name: str,
         offset: int = 0,
-        length: Optional[int] = None,
+        length: int | None = None,
         chunk_size: int = 1024 * 1024,
     ) -> Iterator[bytes]:
         """
@@ -544,7 +544,7 @@ class MinIOService:
             logger.warning("MinIO delete dataset images failed: %s", e)
             self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
 
-    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: Optional[str] = None):
+    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: str | None = None):
         """Simple JSONL metrics log for external collection/monitoring."""
         try:
             self._metrics_path.parent.mkdir(parents=True, exist_ok=True)

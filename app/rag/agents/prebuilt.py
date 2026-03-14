@@ -4,7 +4,7 @@ Prebuilt Agent Integration for LangGraph.
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Sequence
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
@@ -24,13 +24,13 @@ AGENT_RECURSION_LIMIT = getattr(settings, "AGENT_RECURSION_LIMIT", 25)
 
 
 def create_rag_agent(
-    model: Union[str, BaseChatModel],
-    tools: Sequence[Union[BaseTool, Callable]],
+    model: str | BaseChatModel,
+    tools: Sequence[BaseTool | Callable],
     *,
-    system_prompt: Optional[str] = None,
-    checkpointer: Optional[Any] = None,
-    store: Optional[Any] = None,
-    max_iterations: Optional[int] = None,
+    system_prompt: str | None = None,
+    checkpointer: Any | None = None,
+    store: Any | None = None,
+    max_iterations: int | None = None,
     **kwargs,
 ) -> CompiledStateGraph:
     """
@@ -116,7 +116,7 @@ Guidelines:
 
 
 def create_rag_tool_node(
-    tools: Sequence[Union[BaseTool, Callable]],
+    tools: Sequence[BaseTool | Callable],
     *,
     handle_tool_errors: bool = True,
     messages_key: str = "messages",
@@ -140,7 +140,7 @@ def create_rag_tool_node(
 
 
 def create_retriever_tool(
-    retriever_func: Callable[[str], List[Dict[str, Any]]],
+    retriever_func: Callable[[str], list[dict[str, Any]]],
     name: str = "retrieve",
     description: str = "Retrieve relevant documents for a query",
 ) -> BaseTool:
@@ -202,7 +202,7 @@ def create_retriever_tool(
 
 
 def create_search_tool(
-    search_func: Callable[[str], List[Dict[str, Any]]],
+    search_func: Callable[[str], list[dict[str, Any]]],
     name: str = "search",
     description: str = "Search for information in the knowledge base",
 ) -> BaseTool:
@@ -223,8 +223,8 @@ class RAGAgentConfig:
 
     def __init__(
         self,
-        model: Union[str, BaseChatModel] = "openai:gpt-4o",
-        system_prompt: Optional[str] = None,
+        model: str | BaseChatModel = "openai:gpt-4o",
+        system_prompt: str | None = None,
         max_iterations: int = AGENT_MAX_ITERATIONS,
         enable_checkpointing: bool = True,
         enable_memory: bool = False,
@@ -252,12 +252,12 @@ class RAGAgent:
         result = await agent.query("What is RAG?")
     """
 
-    def __init__(self, config: Optional[RAGAgentConfig] = None):
+    def __init__(self, config: RAGAgentConfig | None = None):
         self.config = config or RAGAgentConfig()
-        self._tools: List[Union[BaseTool, Callable]] = []
-        self._graph: Optional[CompiledStateGraph] = None
+        self._tools: list[BaseTool | Callable] = []
+        self._graph: CompiledStateGraph | None = None
 
-    def add_tool(self, tool: Union[BaseTool, Callable]) -> "RAGAgent":
+    def add_tool(self, tool: BaseTool | Callable) -> "RAGAgent":
         """Add a tool to the agent."""
         self._tools.append(tool)
         self._graph = None  # Reset compiled graph
@@ -265,7 +265,7 @@ class RAGAgent:
 
     def add_retriever(
         self,
-        retriever_func: Callable[[str], List[Dict[str, Any]]],
+        retriever_func: Callable[[str], list[dict[str, Any]]],
         name: str = "retrieve",
         description: str = "Retrieve relevant documents",
     ) -> "RAGAgent":
@@ -301,8 +301,8 @@ class RAGAgent:
     async def aquery(
         self,
         query: str,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        thread_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Async query the agent.
 
@@ -327,8 +327,8 @@ class RAGAgent:
     def query(
         self,
         query: str,
-        thread_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        thread_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Sync query the agent.
 
@@ -353,7 +353,7 @@ class RAGAgent:
     def stream(
         self,
         query: str,
-        thread_id: Optional[str] = None,
+        thread_id: str | None = None,
         stream_mode: str = "updates",
     ):
         """

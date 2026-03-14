@@ -6,6 +6,8 @@ from typing import Any
 from app.core.config import settings
 
 _ALLOWED_MODES = {"auto", "local", "global", "drift"}
+_QUOTE_CHARS = "\"“”'‘’`"
+_QUOTE_CLASS = re.escape(_QUOTE_CHARS)
 
 _DRIFT_RE = re.compile(
     r"(?i)\b(drift|delta|change|changed|trend|versus|vs\.?|compared to|year over year|month over month)\b"
@@ -19,7 +21,7 @@ _LOCAL_RE = re.compile(
     r"(?i)\b(this row|that row|which row|exact|id\s*=|primary key|pk\b)\b"
     r"|哪一行|具体|主键|这一条|这条记录"
 )
-_QUOTED_RE = re.compile(r"[\"“”'‘’`]{1}[^\"“”'‘’`]{2,160}[\"“”'‘’`]{1}")
+_QUOTED_RE = re.compile(rf"[{_QUOTE_CLASS}][^{_QUOTE_CLASS}]{{2,160}}[{_QUOTE_CLASS}]")
 
 
 def normalize_kg_query_mode(mode: Any, *, default: str = "auto") -> str:
