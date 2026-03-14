@@ -1450,3 +1450,136 @@ def test_ingest_jira_issue_attachments_skips_reconcile_when_listing_is_truncated
     assert out["failed"] == 0
     assert out["removed_attachment_documents_disabled"] == 0
     assert seen["reconciled"] is False
+
+
+def test_finalize_cancelled_jira_project_run_sets_finished_at_and_syncs(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    seen: dict[str, object] = {}
+
+    class _DummyDB:
+        def __init__(self) -> None:
+            self.commits = 0
+
+        def commit(self) -> None:
+            self.commits += 1
+
+    def _fake_sync(*_a, **kwargs):  # noqa: ANN001
+        seen["synced_run"] = kwargs.get("run")
+
+    dummy_db = _DummyDB()
+    run = types.SimpleNamespace(finished_at=None, stats={"keep": "me"})
+
+    monkeypatch.setattr(connectors, "_sync_connector_config_from_run", _fake_sync, raising=False)
+
+    connectors._finalize_cancelled_jira_project_run(dummy_db, run=run)
+
+    assert run.finished_at is not None
+    assert run.stats["keep"] == "me"
+    assert dummy_db.commits == 1
+    assert seen["synced_run"] is run
+
+
+def test_finalize_jira_project_run_updates_stats_and_audit(monkeypatch) -> None:  # noqa: ANN001
+    connectors = _import_connectors_with_lightweight_stubs()
+    import app.services.audit_log_service as audit_log_service
+
+    created_doc_ids = [uuid.uuid4(), uuid.uuid4()]
+    run_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    seen: dict[str, object] = {}
+
+    class _DummyDB:
+        def __init__(self) -> None:
+            self.commits = 0
+
+        def commit(self) -> None:
+            self.commits += 1
+
+    def _fake_reconcile(*_a, **kwargs):  # noqa: ANN001
+        seen["reconcile_kwargs"] = dict(kwargs)
+        return 3, 4
+
+    def _fake_audit_log_event(*_a, **kwargs):  # noqa: ANN001
+        seen["audit_action"] = kwargs.get("action")
+        seen["audit_details"] = dict(kwargs.get("details") or {})
+
+    def _fake_sync(*_a, **kwargs):  # noqa: ANN001
+        seen["synced_run"] = kwargs.get("run")
+
+    dummy_db = _DummyDB()
+    run = types.SimpleNamespace(
+        id=run_id,
+        dataset_id=dataset_id,
+        status="running",
+        stats={"keep": "me"},
+        finished_at=None,
+    )
+
+    monkeypatch.setattr(
+        connectors,
+        "_soft_disable_jira_documents_missing_from_full_sync",
+        _fake_reconcile,
+        raising=True,
+    )
+    monkeypatch.setattr(audit_log_service, "audit_log_event", _fake_audit_log_event, raising=True)
+    monkeypatch.setattr(connectors, "_sync_connector_config_from_run", _fake_sync, raising=False)
+
+    connectors._finalize_jira_project_run(
+        dummy_db,
+        run=run,
+        run_id=run_id,
+        tenant_id=uuid.uuid4(),
+        requested_by="tester",
+        settings_map={
+            "effective_mode": "full",
+            "base_url": "https://example.atlassian.net",
+            "project_key": "PLAT",
+            "enable_source_acl": True,
+            "source_acl_fallback_mode": "partial_members",
+        },
+        progress={
+            "created": 7,
+            "failed": 1,
+            "created_doc_ids": created_doc_ids,
+            "delta_acl_docs_updated": 2,
+            "delta_acl_sources_updated": 1,
+            "removed_issues_reconciled": 0,
+            "removed_documents_disabled": 0,
+            "attachments_processed": 3,
+            "attachments_created": 2,
+            "removed_attachment_documents_disabled": 1,
+            "linked_artifacts_processed": 4,
+            "linked_artifacts_created": 3,
+            "removed_linked_artifact_documents_disabled": 2,
+            "skipped_boundary_duplicates": 1,
+            "last_modified_seen": "2026-03-02T12:34:56.000+0000",
+            "last_modified_ids_seen": {"10000", "10001"},
+        },
+        observed_issue_urls={"https://example.atlassian.net/browse/PLAT-42"},
+        listing_complete=True,
+    )
+
+    assert (seen.get("reconcile_kwargs") or {}).get("project_key") == "PLAT"
+    assert run.stats["keep"] == "me"
+    assert run.stats["document_ids"] == [str(doc_id) for doc_id in created_doc_ids]
+    assert run.stats["acl_delta_sync_updated_documents"] == 2
+    assert run.stats["acl_delta_sync_updated_sources"] == 1
+    assert run.stats["removed_issues_reconciled"] == 3
+    assert run.stats["removed_documents_disabled"] == 4
+    assert run.stats["processed_attachments"] == 3
+    assert run.stats["created_attachments"] == 2
+    assert run.stats["removed_attachment_documents_disabled"] == 1
+    assert run.stats["processed_linked_artifacts"] == 4
+    assert run.stats["created_linked_artifacts"] == 3
+    assert run.stats["removed_linked_artifact_documents_disabled"] == 2
+    assert run.stats["skipped_boundary_duplicates"] == 1
+    assert run.stats["last_modified"] == "2026-03-02T12:34:56.000+0000"
+    assert run.stats["last_modified_ids"] == ["10000", "10001"]
+    assert run.finished_at is not None
+    assert run.status == connectors._connector_run_completion_status(created=7, failed=1)
+    assert seen["audit_action"] == "jira_project.source_acl.delta_sync"
+    assert (seen.get("audit_details") or {}).get("updated_documents") == 2
+    assert (seen.get("audit_details") or {}).get("updated_sources") == 1
+    assert dummy_db.commits == 1
+    assert seen["synced_run"] is run
