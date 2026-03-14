@@ -1978,15 +1978,21 @@ def _attach_db_catalog_row_sync(
         stats["row_sync_error"] = _safe_error_str(exc)
 
 
+def _nested_diff_count(diff: dict[str, Any], key: str) -> int:
+    value = diff.get(key)
+    bucket = value if isinstance(value, dict) else {}
+    return int(bucket.get("count") or 0)
+
+
 def _db_catalog_schema_diff_counts(diff: object) -> dict[str, int] | None:
     if not isinstance(diff, dict):
         return None
     return {
-        "tables_added": int(((diff.get("tables_added") or {}) if isinstance(diff.get("tables_added"), dict) else {}).get("count") or 0),
-        "tables_removed": int(((diff.get("tables_removed") or {}) if isinstance(diff.get("tables_removed"), dict) else {}).get("count") or 0),
-        "columns_added": int(((diff.get("columns_added") or {}) if isinstance(diff.get("columns_added"), dict) else {}).get("count") or 0),
-        "columns_removed": int(((diff.get("columns_removed") or {}) if isinstance(diff.get("columns_removed"), dict) else {}).get("count") or 0),
-        "columns_changed": int(((diff.get("columns_changed") or {}) if isinstance(diff.get("columns_changed"), dict) else {}).get("count") or 0),
+        "tables_added": _nested_diff_count(diff, "tables_added"),
+        "tables_removed": _nested_diff_count(diff, "tables_removed"),
+        "columns_added": _nested_diff_count(diff, "columns_added"),
+        "columns_removed": _nested_diff_count(diff, "columns_removed"),
+        "columns_changed": _nested_diff_count(diff, "columns_changed"),
     }
 
 
@@ -2147,12 +2153,31 @@ def _build_url_batch_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_url_batch_run_state(*, run: ConnectorRun, urls: list[str]) -> dict[str, Any]:
+def _url_batch_processed_refs(documents: list[Any]) -> set[str]:
     processed_refs: set[str] = set()
-    for doc in (getattr(run, "documents", None) or []):
+    for doc in documents:
         ref = str(getattr(doc, "source_ref", "") or "").strip()
         if ref:
             processed_refs.add(ref)
+    return processed_refs
+
+
+def _url_batch_document_ids(*, stats: dict[str, Any], documents: list[Any]) -> list[str]:
+    raw_doc_ids = stats.get("document_ids")
+    if isinstance(raw_doc_ids, list):
+        doc_ids = [str(value).strip() for value in raw_doc_ids if str(value).strip()]
+        if doc_ids:
+            return doc_ids
+    return [
+        str(getattr(doc, "document_id", "") or "")
+        for doc in documents
+        if str(getattr(doc, "document_id", "") or "").strip()
+    ]
+
+
+def _build_url_batch_run_state(*, run: ConnectorRun, urls: list[str]) -> dict[str, Any]:
+    documents = list(getattr(run, "documents", None) or [])
+    processed_refs = _url_batch_processed_refs(documents)
 
     stats = dict(run.stats or {})
     cursor_raw = stats.get("cursor", stats.get("processed_urls", 0))
@@ -2168,16 +2193,7 @@ def _build_url_batch_run_state(*, run: ConnectorRun, urls: list[str]) -> dict[st
     stats.setdefault("errors", [])
     stats.setdefault("error_groups", [])
 
-    raw_doc_ids = stats.get("document_ids")
-    created_doc_ids: list[str] = []
-    if isinstance(raw_doc_ids, list):
-        created_doc_ids = [str(value).strip() for value in raw_doc_ids if str(value).strip()]
-    if not created_doc_ids:
-        created_doc_ids = [
-            str(getattr(doc, "document_id", "") or "")
-            for doc in (getattr(run, "documents", None) or [])
-            if str(getattr(doc, "document_id", "") or "").strip()
-        ]
+    created_doc_ids = _url_batch_document_ids(stats=stats, documents=documents)
     stats["document_ids"] = created_doc_ids
 
     def _safe_int(value: object, default: int = 0) -> int:
