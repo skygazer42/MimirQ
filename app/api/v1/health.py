@@ -16,7 +16,15 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.health_checks import check_database, check_minio, check_redis, check_vector
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _READY_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "READY_CACHE_TTL_SEC", 2.0) or 2.0))
 _ready_cache: dict[str, object] = {"ts": 0.0, "payload": None, "status": 200, "key": None}
 _redis_client = None
@@ -83,7 +91,7 @@ def _get_redis_client():
     return _redis_client
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def health() -> dict:
     """
     Lightweight health check for web/dev tooling.
@@ -97,7 +105,7 @@ def health() -> dict:
     }
 
 
-@router.get("/health/ready", response_model=ReadyResponse)
+@router.get("/health/ready", response_model=ReadyResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def ready(response: Response) -> dict:
     """
     Readiness probe for orchestration (k8s, compose, etc).

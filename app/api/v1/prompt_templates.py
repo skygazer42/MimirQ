@@ -25,7 +25,15 @@ from app.core.database import get_db
 from app.models.prompt_template import PromptTemplate
 from app.services.dataset_service import DatasetService
 
-router = APIRouter(tags=["prompt-templates"])
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(tags=["prompt-templates"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _derive_template_key(name: str) -> str:
@@ -45,7 +53,7 @@ def _derive_template_key(name: str) -> str:
     return key or "template"
 
 
-@router.post("", response_model=PromptTemplateOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PromptTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_prompt_template(
     request: PromptTemplateCreate,
     *,
@@ -107,7 +115,7 @@ async def create_prompt_template(
     return template
 
 
-@router.get("", response_model=PromptTemplateList)
+@router.get("", response_model=PromptTemplateList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_prompt_templates(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -166,7 +174,7 @@ async def list_prompt_templates(
     return PromptTemplateList(total=total, items=templates)
 
 
-@router.get("/{template_id}", response_model=PromptTemplateOut)
+@router.get("/{template_id}", response_model=PromptTemplateOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_prompt_template(
     template_id: UUID,
     *,
@@ -214,6 +222,7 @@ async def get_prompt_template(
     "/{template_id}/versions",
     response_model=PromptTemplateOut,
     status_code=status.HTTP_201_CREATED,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 async def create_prompt_template_version(
     template_id: UUID,
@@ -275,7 +284,7 @@ async def create_prompt_template_version(
     return new_template
 
 
-@router.put("/{template_id}", response_model=PromptTemplateOut)
+@router.put("/{template_id}", response_model=PromptTemplateOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def update_prompt_template(
     template_id: UUID,
     request: PromptTemplateUpdate,
@@ -337,7 +346,7 @@ async def update_prompt_template(
     return template
 
 
-@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_prompt_template(
     template_id: UUID,
     *,
@@ -395,6 +404,7 @@ async def delete_prompt_template(
     "/{template_id}/duplicate",
     response_model=PromptTemplateOut,
     status_code=status.HTTP_201_CREATED,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 async def duplicate_prompt_template(
     template_id: UUID,

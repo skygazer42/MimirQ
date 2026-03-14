@@ -22,10 +22,18 @@ from app.core.jwt_utils import create_access_token
 from app.services.saml_service import build_saml_sp_metadata_xml, exchange_saml_response
 from app.services.user_service import UserService
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.post("/register", response_model=AuthResponse, status_code=201)
+@router.post("/register", response_model=AuthResponse, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
     user = UserService.create_user(
         db,
@@ -44,7 +52,7 @@ def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_d
     )
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def login_user(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
     user = UserService.authenticate(db, payload.identifier, payload.password)
     UserService.mark_login(db, user)
@@ -59,7 +67,7 @@ def login_user(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -
     )
 
 
-@router.get("/me", response_model=UserPublic)
+@router.get("/me", response_model=UserPublic, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_me(
     *,
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -71,7 +79,7 @@ def get_me(
     return user
 
 
-@router.post("/saml/exchange", response_model=SamlExchangeResponse)
+@router.post("/saml/exchange", response_model=SamlExchangeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def saml_exchange(payload: SamlExchangeRequest, db: Annotated[Session, Depends(get_db)]) -> SamlExchangeResponse:
     return exchange_saml_response(
         db=db,
@@ -82,7 +90,7 @@ def saml_exchange(payload: SamlExchangeRequest, db: Annotated[Session, Depends(g
     )
 
 
-@router.get("/saml/metadata")
+@router.get("/saml/metadata", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def saml_metadata(provider_id: str | None = None) -> Response:
     xml = build_saml_sp_metadata_xml(provider_id=provider_id)
     resp = Response(content=xml, media_type="application/samlmetadata+xml; charset=utf-8")

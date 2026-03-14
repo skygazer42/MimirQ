@@ -28,7 +28,15 @@ from app.services.tenant_quota_service import (
     get_tenant_qps_quota_config,
 )
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
@@ -136,7 +144,7 @@ class TenantQuotaSummary(BaseModel):
     qps: TenantQpsQuotaConfig
 
 
-@router.get("/chat/tokens/quota", response_model=ChatTokenQuotaStatus)
+@router.get("/chat/tokens/quota", response_model=ChatTokenQuotaStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_chat_token_quota_status(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -173,7 +181,7 @@ def get_chat_token_quota_status(
     )
 
 
-@router.get("/tenant/quotas", response_model=TenantQuotaSummary)
+@router.get("/tenant/quotas", response_model=TenantQuotaSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_tenant_quota_summary(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -253,7 +261,7 @@ def get_tenant_quota_summary(
     )
 
 
-@router.get("/chat/tokens/summary", response_model=ChatTokenUsageSummary)
+@router.get("/chat/tokens/summary", response_model=ChatTokenUsageSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_chat_token_usage_summary(
     window_days: int = Query(default=1, ge=1, le=30),
     since: Optional[datetime] = Query(default=None),
@@ -321,7 +329,7 @@ def get_chat_token_usage_summary(
     )
 
 
-@router.get("/chat/cost/summary", response_model=ChatCostUsageSummary)
+@router.get("/chat/cost/summary", response_model=ChatCostUsageSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_chat_cost_usage_summary(
     window_days: int = Query(default=1, ge=1, le=30),
     since: Optional[datetime] = Query(default=None),

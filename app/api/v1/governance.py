@@ -22,14 +22,22 @@ from app.models.document import Document as DBDocument
 from app.rag.preprocessing.rule_packs import list_governance_rule_packs
 from app.services.dataset_service import DatasetService
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 class GovernanceRulePackListResponse(BaseModel):
     items: list[str] = Field(default_factory=list)
 
 
-@router.get("/rule-packs", response_model=GovernanceRulePackListResponse)
+@router.get("/rule-packs", response_model=GovernanceRulePackListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_rule_packs(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -73,7 +81,7 @@ class StaleDocumentsByDatasetResponse(BaseModel):
     items: list[StaleDocumentItem] = Field(default_factory=list)
 
 
-@router.get("/datasets/{dataset_id}/stale-documents", response_model=StaleDocumentsByDatasetResponse)
+@router.get("/datasets/{dataset_id}/stale-documents", response_model=StaleDocumentsByDatasetResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_stale_documents_by_dataset(
     dataset_id: UUID,
     mode: Literal["overdue", "due_soon", "all"] = Query(default="all"),

@@ -22,10 +22,18 @@ from app.core.database import get_db
 from app.services.report_html import _scrub_report_for_redaction, render_dataset_report_html, render_rag_audit_html
 from app.services.report_service import ReportService
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.get("/datasets/{dataset_id}", response_model=DatasetReportOut)
+@router.get("/datasets/{dataset_id}", response_model=DatasetReportOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_report(
     dataset_id: UUID,
     pipeline_hash: str | None = Query(default=None, max_length=64, description="Optional: filter by pipeline_hash (active)"),
@@ -45,7 +53,7 @@ def get_dataset_report(
     )
 
 
-@router.get("/datasets/{dataset_id}/export")
+@router.get("/datasets/{dataset_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_report_json(
     dataset_id: UUID,
     pipeline_hash: str | None = Query(default=None, max_length=64),
@@ -74,7 +82,7 @@ def export_dataset_report_json(
     )
 
 
-@router.get("/datasets/{dataset_id}/export-html")
+@router.get("/datasets/{dataset_id}/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_report_html(
     dataset_id: UUID,
     pipeline_hash: str | None = Query(default=None, max_length=64),
@@ -113,7 +121,7 @@ def export_dataset_report_html(
     )
 
 
-@router.get("/datasets/{dataset_id}/rag-audit/export-html")
+@router.get("/datasets/{dataset_id}/rag-audit/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_rag_audit_html(
     dataset_id: UUID,
     pipeline_hash: str | None = Query(default=None, max_length=64),
@@ -152,7 +160,7 @@ def export_dataset_rag_audit_html(
     )
 
 
-@router.get("/datasets/{dataset_id}/export-bundle")
+@router.get("/datasets/{dataset_id}/export-bundle", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_report_bundle_zip(
     dataset_id: UUID,
     pipeline_hash: str | None = Query(default=None, max_length=64),

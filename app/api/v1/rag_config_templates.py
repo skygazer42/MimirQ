@@ -31,7 +31,15 @@ from app.models.rag_config_template import RagConfigTemplate
 from app.services.dataset_service import DatasetService
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
-router = APIRouter(tags=["RAG Config Templates"])
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(tags=["RAG Config Templates"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _ensure_read(db: Session, tenant_id: UUID, account_id: str) -> None:
@@ -67,7 +75,7 @@ def _derive_template_key(name: str) -> str:
     return key or "rag_config"
 
 
-@router.post("", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_rag_config_template(
     request: RagConfigTemplateCreate,
     *,
@@ -106,7 +114,7 @@ async def create_rag_config_template(
     return template
 
 
-@router.get("", response_model=RagConfigTemplateList)
+@router.get("", response_model=RagConfigTemplateList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_rag_config_templates(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -144,7 +152,7 @@ async def list_rag_config_templates(
     return RagConfigTemplateList(total=total, items=items)
 
 
-@router.get("/{template_id}", response_model=RagConfigTemplateOut)
+@router.get("/{template_id}", response_model=RagConfigTemplateOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_rag_config_template(
     template_id: UUID,
     *,
@@ -165,7 +173,7 @@ async def get_rag_config_template(
     return template
 
 
-@router.patch("/{template_id}", response_model=RagConfigTemplateOut)
+@router.patch("/{template_id}", response_model=RagConfigTemplateOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def update_rag_config_template(
     template_id: UUID,
     request: RagConfigTemplateUpdate,
@@ -211,7 +219,7 @@ async def update_rag_config_template(
     return template
 
 
-@router.post("/{template_id}/versions", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED)
+@router.post("/{template_id}/versions", response_model=RagConfigTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_rag_config_template_version(
     template_id: UUID,
     request: RagConfigTemplateNewVersion,
@@ -270,4 +278,3 @@ async def create_rag_config_template_version(
 
 
 __all__ = ["router"]
-

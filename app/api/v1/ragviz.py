@@ -19,7 +19,15 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.services.ragviz_similarity import calculate_similarity_matrix, list_similarity_collections
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 class SimilarityCollectionOut(BaseModel):
@@ -36,7 +44,7 @@ class SimilarityCollectionsResponse(BaseModel):
     count: int = 0
 
 
-@router.get("/similarity/collections", response_model=SimilarityCollectionsResponse)
+@router.get("/similarity/collections", response_model=SimilarityCollectionsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_similarity_collections(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -75,7 +83,7 @@ class SimilarityCalculateResponse(BaseModel):
     y_collection: Optional[str] = None
 
 
-@router.post("/similarity/calculate", response_model=SimilarityCalculateResponse)
+@router.post("/similarity/calculate", response_model=SimilarityCalculateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def similarity_calculate(
     request: SimilarityRequest,
     *,
@@ -118,4 +126,3 @@ def similarity_calculate(
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail={"success": False, "error": str(exc)}) from exc
-

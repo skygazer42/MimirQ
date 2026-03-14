@@ -29,7 +29,15 @@ from app.services.ltr_model_registry import (
 )
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 class LTRModelInfo(BaseModel):
@@ -61,7 +69,7 @@ class LTRModelActivateResponse(BaseModel):
     active: dict[str, Any]
 
 
-@router.get("/models", response_model=LTRModelListResponse)
+@router.get("/models", response_model=LTRModelListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_ltr_models(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -100,7 +108,7 @@ async def list_ltr_models(
     return LTRModelListResponse(items=items_out)
 
 
-@router.post("/models/register", response_model=LTRModelRegisterResponse)
+@router.post("/models/register", response_model=LTRModelRegisterResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def register_ltr_model(
     model_file: UploadFile = File(..., description="XGBoost model bytes (JSON)"),
     manifest_file: UploadFile = File(..., description="LTR manifest JSON (validated)"),
@@ -170,7 +178,7 @@ async def register_ltr_model(
     )
 
 
-@router.post("/models/activate", response_model=LTRModelActivateResponse)
+@router.post("/models/activate", response_model=LTRModelActivateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def activate_ltr_model(
     body: LTRModelActivateRequest,
     *,
@@ -215,7 +223,7 @@ async def activate_ltr_model(
     return LTRModelActivateResponse(active=dict(active or {}))
 
 
-@router.post("/models/rollback", response_model=LTRModelActivateResponse)
+@router.post("/models/rollback", response_model=LTRModelActivateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def rollback_ltr_model(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -257,4 +265,3 @@ async def rollback_ltr_model(
             pass
 
     return LTRModelActivateResponse(active=dict(active or {}))
-

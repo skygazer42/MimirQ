@@ -54,7 +54,15 @@ from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_ur
 
 logger = get_logger("api.parsing")
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 # Filename validation:
 # - Workspace uploads are persisted by UUID (local/MinIO), so we don't need a strict allowlist.
@@ -320,7 +328,7 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
     return doc
 
 
-@router.get("/documents", response_model=DocumentList)
+@router.get("/documents", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_parsing_documents(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=200),
@@ -352,7 +360,7 @@ async def list_parsing_documents(
     return {"total": total, "items": items}
 
 
-@router.post("/documents", response_model=DocumentDetail, status_code=201)
+@router.post("/documents", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_parsing_document(
     file: UploadFile = File(...),
     parser_backend: str = Form(default="auto"),
@@ -434,7 +442,7 @@ async def upload_parsing_document(
     return doc
 
 
-@router.post("/documents/{document_id}/parse", response_model=ParsingContentResponse)
+@router.post("/documents/{document_id}/parse", response_model=ParsingContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def parse_workspace_document(
     document_id: uuid.UUID,
     request: Request,
@@ -862,7 +870,7 @@ async def parse_workspace_document(
                 temp_path.unlink(missing_ok=True)
 
 
-@router.get("/documents/{document_id}/content", response_model=ParsingContentResponse)
+@router.get("/documents/{document_id}/content", response_model=ParsingContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_parsing_content(
     document_id: uuid.UUID,
     *,
@@ -909,7 +917,7 @@ async def get_parsing_content(
     )
 
 
-@router.patch("/documents/{document_id}/content", response_model=ParsingContentResponse)
+@router.patch("/documents/{document_id}/content", response_model=ParsingContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def update_parsing_content(
     document_id: uuid.UUID,
     payload: ParsingContentUpdateRequest,
@@ -987,7 +995,7 @@ async def update_parsing_content(
     )
 
 
-@router.delete("/documents/{document_id}", status_code=204)
+@router.delete("/documents/{document_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_parsing_document(
     document_id: uuid.UUID,
     *,

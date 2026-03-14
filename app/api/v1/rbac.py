@@ -24,10 +24,18 @@ from app.core.database import get_db
 from app.models.tenant import TenantMember
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.get("/members", response_model=TenantMemberListResponse)
+@router.get("/members", response_model=TenantMemberListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_tenant_members(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=1000),
@@ -59,7 +67,7 @@ async def list_tenant_members(
     return TenantMemberListResponse(total=total, items=[TenantMemberOut.model_validate(it) for it in items])
 
 
-@router.patch("/members/{user_id}", response_model=TenantMemberOut)
+@router.patch("/members/{user_id}", response_model=TenantMemberOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def patch_tenant_member_role(
     user_id: str,
     payload: TenantMemberUpdateRequest,
@@ -92,4 +100,3 @@ async def patch_tenant_member_role(
     db.commit()
     db.refresh(member)
     return TenantMemberOut.model_validate(member)
-

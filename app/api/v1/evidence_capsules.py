@@ -17,7 +17,15 @@ from app.core.database import get_db
 from app.rag.core.evidence_capsule_builder import validate_evidence_capsule
 from app.services.dataset_service import DatasetService
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{5,127}$")
 
@@ -64,7 +72,7 @@ def _capsule_path(capsule_id: str) -> Path:
     return _store_dir() / f"{cid}.json"
 
 
-@router.post("/capsules", response_model=EvidenceCapsulePersistResponse)
+@router.post("/capsules", response_model=EvidenceCapsulePersistResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def persist_evidence_capsule(
     body: EvidenceCapsulePersistRequest,
     *,
@@ -110,7 +118,7 @@ def persist_evidence_capsule(
     )
 
 
-@router.get("/capsules/{capsule_id}", response_model=EvidenceCapsuleGetResponse)
+@router.get("/capsules/{capsule_id}", response_model=EvidenceCapsuleGetResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_evidence_capsule(
     capsule_id: str,
     *,
@@ -135,7 +143,7 @@ def get_evidence_capsule(
     )
 
 
-@router.post("/capsules/verify", response_model=EvidenceCapsuleVerifyResponse)
+@router.post("/capsules/verify", response_model=EvidenceCapsuleVerifyResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def verify_evidence_capsule_payload(
     body: EvidenceCapsulePersistRequest,
     *,

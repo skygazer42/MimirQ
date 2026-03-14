@@ -33,7 +33,15 @@ from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.rag_trace_service import list_rag_traces
 
-router = APIRouter(tags=["Feedback"])
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(tags=["Feedback"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 class FeedbackToRegressionCaseRequest(BaseModel):
@@ -171,7 +179,7 @@ def _augment_feedback_extra_with_snapshots(
     return payload
 
 
-@router.post("/messages", response_model=MessageFeedbackOut, status_code=status.HTTP_201_CREATED)
+@router.post("/messages", response_model=MessageFeedbackOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upsert_message_feedback(
     request: MessageFeedbackCreateRequest,
     *,
@@ -258,7 +266,7 @@ async def upsert_message_feedback(
     return row
 
 
-@router.get("/messages", response_model=MessageFeedbackList)
+@router.get("/messages", response_model=MessageFeedbackList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_message_feedback(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -294,7 +302,7 @@ async def list_message_feedback(
     return {"total": total, "items": rows}
 
 
-@router.get("/messages/enriched", response_model=MessageFeedbackEnrichedList)
+@router.get("/messages/enriched", response_model=MessageFeedbackEnrichedList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_message_feedback_enriched(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -355,7 +363,7 @@ async def list_message_feedback_enriched(
     return {"total": total, "items": items}
 
 
-@router.post("/messages/{feedback_id}/to-regression-case", response_model=RagasRegressionCaseOut, status_code=201)
+@router.post("/messages/{feedback_id}/to-regression-case", response_model=RagasRegressionCaseOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_regression_case_from_feedback(
     feedback_id: UUID,
     body: FeedbackToRegressionCaseRequest,
@@ -505,7 +513,7 @@ async def create_regression_case_from_feedback(
     return row
 
 
-@router.post("/messages/{feedback_id}/to-evidence-item", response_model=EvidenceItemOut, status_code=201)
+@router.post("/messages/{feedback_id}/to-evidence-item", response_model=EvidenceItemOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_evidence_item_from_feedback(
     feedback_id: UUID,
     body: FeedbackToEvidenceItemRequest,

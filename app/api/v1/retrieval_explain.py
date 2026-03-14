@@ -24,7 +24,15 @@ from app.rag.retrieval.orchestrator import run_retrieval
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SCHEMA = "mimirq.retrieval_explain.v1"
 
@@ -86,7 +94,7 @@ def _as_history_dicts(history: list[HistoryMessage]) -> list[dict[str, str]]:
     return out
 
 
-@router.post("/explain", response_model=RetrievalExplainResponse)
+@router.post("/explain", response_model=RetrievalExplainResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def explain_retrieval(
     body: RetrievalExplainRequest,
     *,

@@ -53,7 +53,15 @@ from app.services.ingestion_policy import parse_ingestion_policy_from_metadata
 from app.services.report_html import render_precheck_html
 from app.tasks.queue import enqueue_dataset_precheck_scan
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _run_precheck_scan_background(
@@ -91,7 +99,7 @@ def _run_precheck_scan_background(
         db.close()
 
 
-@router.post("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunOut, status_code=201)
+@router.post("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_dataset_precheck_scan_run(
     dataset_id: UUID,
     body: DatasetPrecheckScanRunCreateRequest,
@@ -152,7 +160,7 @@ async def create_dataset_precheck_scan_run(
     return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
 
-@router.get("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunListResponse)
+@router.get("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_dataset_precheck_scan_runs(
     dataset_id: UUID,
     skip: int = Query(default=0, ge=0),
@@ -178,7 +186,7 @@ def list_dataset_precheck_scan_runs(
     return DatasetPrecheckScanRunListResponse(total=total, items=[DatasetPrecheckScanRunOut(**_scan_run_out_from_row(r)) for r in rows])
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}", response_model=DatasetPrecheckScanRunOut)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}", response_model=DatasetPrecheckScanRunOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_precheck_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -203,7 +211,7 @@ def get_dataset_precheck_scan_run(
     return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary", response_model=DatasetPrecheckSummary)
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary", response_model=DatasetPrecheckSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_precheck_summary(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -230,6 +238,7 @@ def get_dataset_precheck_summary(
 @router.get(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/findings/{finding_key}",
     response_model=DatasetPrecheckFindingListResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_precheck_finding_files(
     dataset_id: UUID,
@@ -257,6 +266,7 @@ def list_dataset_precheck_finding_files(
 @router.get(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/files",
     response_model=DatasetPrecheckFindingListResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def list_dataset_precheck_files(
     dataset_id: UUID,
@@ -281,7 +291,7 @@ def list_dataset_precheck_files(
     )
 
 
-@router.post("/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel", response_model=DatasetPrecheckScanRunOut)
+@router.post("/{dataset_id}/precheck/scan-runs/{scan_run_id}/cancel", response_model=DatasetPrecheckScanRunOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def cancel_dataset_precheck_scan_run(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -315,7 +325,7 @@ def cancel_dataset_precheck_scan_run(
     return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/events")
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/events", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def stream_dataset_precheck_scan_events(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -387,6 +397,7 @@ async def stream_dataset_precheck_scan_events(
 @router.get(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples",
     response_model=DatasetPrecheckSamplesResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_precheck_samples(
     dataset_id: UUID,
@@ -421,6 +432,7 @@ def get_dataset_precheck_samples(
 @router.get(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/near-dups",
     response_model=DatasetPrecheckNearDupResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_precheck_near_dups(
     dataset_id: UUID,
@@ -453,6 +465,7 @@ def get_dataset_precheck_near_dups(
 @router.get(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/diff",
     response_model=DatasetPrecheckDiffResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def diff_dataset_precheck_scan_runs(
     dataset_id: UUID,
@@ -507,6 +520,7 @@ def diff_dataset_precheck_scan_runs(
 @router.get(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/suggest-ingestion-policy",
     response_model=DatasetPrecheckIngestionSuggestionResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def get_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
@@ -542,6 +556,7 @@ def get_dataset_precheck_ingestion_policy_suggestion(
 @router.post(
     "/{dataset_id}/precheck/scan-runs/{scan_run_id}/apply-ingestion-policy",
     response_model=IngestionPolicyImportResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def apply_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
@@ -576,7 +591,7 @@ def apply_dataset_precheck_ingestion_policy_suggestion(
     return IngestionPolicyImportResponse(**res)
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export")
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_precheck_summary_json(
     dataset_id: UUID,
     scan_run_id: UUID,
@@ -609,7 +624,7 @@ def export_dataset_precheck_summary_json(
     )
 
 
-@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export-html")
+@router.get("/{dataset_id}/precheck/scan-runs/{scan_run_id}/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_precheck_html_report(
     dataset_id: UUID,
     scan_run_id: UUID,

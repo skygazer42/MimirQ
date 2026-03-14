@@ -63,7 +63,15 @@ from app.services.hardcase_discovery_service import (
 )
 from app.services.ltr_rollout_workflow import materialize_feedback_case, normalize_reference_sources
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _now_utc() -> datetime:
@@ -320,7 +328,7 @@ def _audit_reference_sources_drift(
     )
 
 
-@router.post("/suites/{suite_id}/repair-reference-sources", response_model=EvidenceReferenceRepairResponse)
+@router.post("/suites/{suite_id}/repair-reference-sources", response_model=EvidenceReferenceRepairResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def repair_evidence_suite_reference_sources(
     suite_id: UUID,
     payload: EvidenceReferenceRepairRequest,
@@ -452,7 +460,7 @@ async def repair_evidence_suite_reference_sources(
     return EvidenceReferenceRepairResponse(**result)
 
 
-@router.post("/suites", response_model=EvidenceSuiteOut, status_code=201)
+@router.post("/suites", response_model=EvidenceSuiteOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_evidence_suite(
     payload: EvidenceSuiteCreateRequest,
     *,
@@ -483,7 +491,7 @@ async def create_evidence_suite(
     return out
 
 
-@router.get("/suites", response_model=EvidenceSuiteList)
+@router.get("/suites", response_model=EvidenceSuiteList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_evidence_suites(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
@@ -541,7 +549,7 @@ async def list_evidence_suites(
     return {"total": total, "items": items_out}
 
 
-@router.get("/suites/{suite_id}", response_model=EvidenceSuiteOut)
+@router.get("/suites/{suite_id}", response_model=EvidenceSuiteOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_evidence_suite(
     suite_id: UUID,
     *,
@@ -568,7 +576,7 @@ async def get_evidence_suite(
     return out
 
 
-@router.get("/suites/{suite_id}/dashboard", response_model=EvidenceSuiteDashboardOut)
+@router.get("/suites/{suite_id}/dashboard", response_model=EvidenceSuiteDashboardOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_evidence_suite_dashboard(
     suite_id: UUID,
     include_archived_items: bool = False,
@@ -650,7 +658,7 @@ async def get_evidence_suite_dashboard(
     )
 
 
-@router.get("/suites/{suite_id}/hardcase-candidates", response_model=EvidenceHardcaseDiscoveryOut)
+@router.get("/suites/{suite_id}/hardcase-candidates", response_model=EvidenceHardcaseDiscoveryOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_evidence_suite_hardcase_candidates(
     suite_id: UUID,
     window_minutes: int = Query(default=7 * 24 * 60, ge=1, le=60 * 24 * 30),
@@ -812,7 +820,7 @@ async def list_evidence_suite_hardcase_candidates(
     )
 
 
-@router.patch("/suites/{suite_id}", response_model=EvidenceSuiteOut)
+@router.patch("/suites/{suite_id}", response_model=EvidenceSuiteOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def patch_evidence_suite(
     suite_id: UUID,
     payload: EvidenceSuitePatchRequest,
@@ -856,7 +864,7 @@ async def patch_evidence_suite(
     return out
 
 
-@router.get("/suites/{suite_id}/drift-audit", response_model=EvidenceReferenceDriftAuditOut)
+@router.get("/suites/{suite_id}/drift-audit", response_model=EvidenceReferenceDriftAuditOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def audit_evidence_suite_reference_sources_drift(
     suite_id: UUID,
     include_archived_items: bool = False,
@@ -899,7 +907,7 @@ async def audit_evidence_suite_reference_sources_drift(
     )
 
 
-@router.get("/datasets/{dataset_id}/drift-audit", response_model=EvidenceReferenceDriftAuditOut)
+@router.get("/datasets/{dataset_id}/drift-audit", response_model=EvidenceReferenceDriftAuditOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def audit_dataset_reference_sources_drift(
     dataset_id: UUID,
     include_archived_items: bool = False,
@@ -959,7 +967,7 @@ async def audit_dataset_reference_sources_drift(
     )
 
 
-@router.post("/suites/{suite_id}/items", response_model=EvidenceItemOut, status_code=201)
+@router.post("/suites/{suite_id}/items", response_model=EvidenceItemOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_evidence_item(
     suite_id: UUID,
     payload: EvidenceItemCreateRequest,
@@ -1020,7 +1028,7 @@ async def create_evidence_item(
     return row
 
 
-@router.post("/suites/{suite_id}/items/import", response_model=EvidenceItemImportResponse)
+@router.post("/suites/{suite_id}/items/import", response_model=EvidenceItemImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def import_evidence_items(
     suite_id: UUID,
     file: UploadFile = File(...),
@@ -1115,7 +1123,7 @@ async def import_evidence_items(
     )
 
 
-@router.get("/suites/{suite_id}/items", response_model=EvidenceItemList)
+@router.get("/suites/{suite_id}/items", response_model=EvidenceItemList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_evidence_items(
     suite_id: UUID,
     skip: int = Query(default=0, ge=0),
@@ -1151,7 +1159,7 @@ async def list_evidence_items(
     return {"total": total, "items": items}
 
 
-@router.patch("/items/{item_id}", response_model=EvidenceItemOut)
+@router.patch("/items/{item_id}", response_model=EvidenceItemOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def patch_evidence_item(
     item_id: UUID,
     payload: EvidenceItemPatchRequest,
@@ -1216,7 +1224,7 @@ async def patch_evidence_item(
     return row
 
 
-@router.post("/items/{item_id}/review", response_model=EvidenceItemOut)
+@router.post("/items/{item_id}/review", response_model=EvidenceItemOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def review_evidence_item(
     item_id: UUID,
     *,
@@ -1259,7 +1267,7 @@ async def review_evidence_item(
     return row
 
 
-@router.post("/items/{item_id}/approve", response_model=EvidenceItemOut)
+@router.post("/items/{item_id}/approve", response_model=EvidenceItemOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def approve_evidence_item(
     item_id: UUID,
     *,
@@ -1302,7 +1310,7 @@ async def approve_evidence_item(
     return row
 
 
-@router.post("/items/{item_id}/archive", response_model=EvidenceItemOut)
+@router.post("/items/{item_id}/archive", response_model=EvidenceItemOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def archive_evidence_item(
     item_id: UUID,
     *,
@@ -1345,7 +1353,7 @@ async def archive_evidence_item(
     return row
 
 
-@router.post("/suites/{suite_id}/sync-regression", response_model=EvidenceSuiteSyncRegressionResponse)
+@router.post("/suites/{suite_id}/sync-regression", response_model=EvidenceSuiteSyncRegressionResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def sync_suite_to_regression_cases(
     suite_id: UUID,
     *,
@@ -1472,7 +1480,7 @@ async def sync_suite_to_regression_cases(
     )
 
 
-@router.get("/suites/{suite_id}/export", response_model=EvidenceSuiteExportV1)
+@router.get("/suites/{suite_id}/export", response_model=EvidenceSuiteExportV1, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_evidence_suite(
     suite_id: UUID,
     include_archived_items: bool = False,
@@ -1548,7 +1556,7 @@ async def export_evidence_suite(
     )
 
 
-@router.get("/training-export")
+@router.get("/training-export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_training_dataset(
     dataset_id: UUID = Query(..., description="Dataset id to export"),
     format: str = Query(default="jsonl", description="jsonl or csv"),
@@ -1628,7 +1636,7 @@ async def export_training_dataset(
     )
 
 
-@router.get("/suites/{suite_id}/export-ltr-training")
+@router.get("/suites/{suite_id}/export-ltr-training", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_evidence_suite_ltr_training_bundle(
     suite_id: UUID,
     include_archived_items: bool = False,

@@ -28,7 +28,15 @@ from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.ingestion_run_service import IngestionRunService
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _run_out(run: DBIngestionRun) -> IngestionRunOut:
@@ -62,7 +70,7 @@ def _run_out(run: DBIngestionRun) -> IngestionRunOut:
     )
 
 
-@router.get("/runs", response_model=IngestionRunListResponse)
+@router.get("/runs", response_model=IngestionRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_ingestion_runs(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
@@ -118,7 +126,7 @@ def list_ingestion_runs(
     return IngestionRunListResponse(total=total, items=[_run_out(r) for r in runs])
 
 
-@router.get("/runs/{run_id}", response_model=IngestionRunOut)
+@router.get("/runs/{run_id}", response_model=IngestionRunOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_ingestion_run(
     run_id: UUID,
     *,
@@ -145,7 +153,7 @@ def get_ingestion_run(
     return _run_out(run)
 
 
-@router.get("/runs/{run_id}/export")
+@router.get("/runs/{run_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_ingestion_run_json(
     run_id: UUID,
     *,
@@ -187,7 +195,7 @@ def export_ingestion_run_json(
     )
 
 
-@router.get("/runs/{run_id}/export-html")
+@router.get("/runs/{run_id}/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_ingestion_run_html(
     run_id: UUID,
     *,
@@ -241,7 +249,7 @@ def export_ingestion_run_html(
     )
 
 
-@router.get("/runs/{run_id}/compare/{other_run_id}", response_model=IngestionRunCompareResponse)
+@router.get("/runs/{run_id}/compare/{other_run_id}", response_model=IngestionRunCompareResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def compare_ingestion_runs(
     run_id: UUID,
     other_run_id: UUID,
@@ -283,7 +291,7 @@ def compare_ingestion_runs(
     return IngestionRunCompareResponse(run_a=a, run_b=b, diff=diff)
 
 
-@router.post("/runs/{run_id}/replay", response_model=IngestionRunOut, status_code=201)
+@router.post("/runs/{run_id}/replay", response_model=IngestionRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def replay_ingestion_run(
     run_id: UUID,
     background_tasks: BackgroundTasks,
