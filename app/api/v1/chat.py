@@ -383,7 +383,7 @@ def _retrieve_long_term_messages(
     return enriched_history
 
 
-@router.post("", response_model=ChatResponse)
+@router.post("", response_model=ChatResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def chat(
     http_request: Request,
     request: ChatRequest,
@@ -1128,7 +1128,7 @@ async def chat(
     }
 
 
-@router.post("/stream")
+@router.post("/stream", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def stream_chat(
     http_request: Request,
     request: ChatRequest,
@@ -2347,7 +2347,7 @@ async def stream_chat(
     )
 
 
-@router.post("/conversations", response_model=ConversationSchema, status_code=201)
+@router.post("/conversations", response_model=ConversationSchema, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_conversation(
     request: ConversationCreate,
     *,
@@ -2410,7 +2410,7 @@ async def create_conversation(
     return conversation
 
 
-@router.patch("/conversations/{conversation_id}", response_model=ConversationSchema)
+@router.patch("/conversations/{conversation_id}", response_model=ConversationSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def update_conversation(
     conversation_id: UUID,
     payload: ConversationUpdate,
@@ -2454,7 +2454,7 @@ async def update_conversation(
     return conversation
 
 
-@router.get("/conversations/{conversation_id}/export")
+@router.get("/conversations/{conversation_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def export_conversation(
     conversation_id: UUID,
     fmt: str = Query(default="markdown", pattern="^(markdown|json)$"),
@@ -2569,7 +2569,7 @@ async def export_conversation(
     return Response(content=body, media_type=media_type, headers=headers)
 
 
-@router.get("/conversations", response_model=ConversationList)
+@router.get("/conversations", response_model=ConversationList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_conversations(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
@@ -2685,7 +2685,7 @@ async def list_conversations(
     }
 
 
-@router.get("/conversations/{conversation_id}/messages", response_model=ConversationDetail)
+@router.get("/conversations/{conversation_id}/messages", response_model=ConversationDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_conversation_messages(
     conversation_id: UUID,
     limit: Optional[int] = Query(default=None, ge=1, le=500),
@@ -2765,7 +2765,7 @@ async def get_conversation_messages(
     }
 
 
-@router.get("/conversations/{conversation_id}/rag-traces", response_model=RagTraceListResponse)
+@router.get("/conversations/{conversation_id}/rag-traces", response_model=RagTraceListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_conversation_rag_traces(
     conversation_id: UUID,
     limit: int = Query(default=20, ge=1, le=200),
@@ -2810,7 +2810,7 @@ class ConversationSummaryUpdateResponse(BaseModel):
     summary: str
 
 
-@router.get("/conversations/{conversation_id}/summary", response_model=ConversationSummaryResponse)
+@router.get("/conversations/{conversation_id}/summary", response_model=ConversationSummaryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_conversation_summary_endpoint(
     conversation_id: UUID,
     *,
@@ -2837,7 +2837,7 @@ async def get_conversation_summary_endpoint(
     return {"available": bool(summary), "summary": summary}
 
 
-@router.post("/conversations/{conversation_id}/summary/update", response_model=ConversationSummaryUpdateResponse)
+@router.post("/conversations/{conversation_id}/summary/update", response_model=ConversationSummaryUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def update_conversation_summary_endpoint(
     conversation_id: UUID,
     *,
@@ -2862,7 +2862,7 @@ async def update_conversation_summary_endpoint(
     return {"summary": summary}
 
 
-@router.delete("/conversations/{conversation_id}/summary", status_code=204)
+@router.delete("/conversations/{conversation_id}/summary", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_conversation_summary_endpoint(
     conversation_id: UUID,
     *,
@@ -2890,7 +2890,7 @@ def _checkpoint_values_to_json(values: dict | None) -> dict:
     return jsonable_encoder(data)
 
 
-@router.get("/conversations/{conversation_id}/checkpoints", response_model=CheckpointListResponse)
+@router.get("/conversations/{conversation_id}/checkpoints", response_model=CheckpointListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_conversation_checkpoints(
     conversation_id: UUID,
     limit: int = Query(default=20, ge=1, le=200),
@@ -2938,7 +2938,7 @@ async def list_conversation_checkpoints(
     return {"thread_id": thread_id, "items": items}
 
 
-@router.get("/conversations/{conversation_id}/checkpoints/{checkpoint_id}", response_model=CheckpointDetailResponse)
+@router.get("/conversations/{conversation_id}/checkpoints/{checkpoint_id}", response_model=CheckpointDetailResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_conversation_checkpoint(
     conversation_id: UUID,
     checkpoint_id: str,
@@ -2981,7 +2981,7 @@ async def get_conversation_checkpoint(
     return jsonable_encoder(payload)
 
 
-@router.delete("/conversations/{conversation_id}/checkpoints", status_code=204)
+@router.delete("/conversations/{conversation_id}/checkpoints", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_conversation_checkpoints(
     conversation_id: UUID,
     *,
@@ -3006,7 +3006,7 @@ async def delete_conversation_checkpoints(
     return None
 
 
-@router.delete("/conversations/{conversation_id}", status_code=204)
+@router.delete("/conversations/{conversation_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_conversation(
     conversation_id: UUID,
     *,

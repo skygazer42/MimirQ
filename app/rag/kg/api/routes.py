@@ -319,7 +319,7 @@ def _resolve_allowed_documents(
     return list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=eff_limit)
 
 
-@router.get("/graph", response_model=KGGraphResponse)
+@router.get("/graph", response_model=KGGraphResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_kg_graph(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     pipeline_hash: Annotated[str | None, Query(
@@ -655,7 +655,7 @@ def get_kg_graph(
     return out
 
 
-@router.get("/graph/expand", response_model=KGGraphResponse)
+@router.get("/graph/expand", response_model=KGGraphResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def expand_kg_graph(
     node_id: Annotated[UUID, Query(description="Center node id (KgSourceEvent.id or KgEntity.id)")],
     document_ids: Annotated[list[UUID] | None, Query()] = None,
@@ -1082,7 +1082,7 @@ def expand_kg_graph(
     return out
 
 
-@router.get("/graph/search", response_model=list[KGGraphNode])
+@router.get("/graph/search", response_model=list[KGGraphNode], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def search_kg_graph_nodes(
     q: Annotated[str, Query(min_length=1, max_length=200, description="Search query")],
     kind: Annotated[str, Query(description="entity | event | all")] = "all",
@@ -1201,7 +1201,7 @@ def search_kg_graph_nodes(
     return nodes[: int(limit)]
 
 
-@router.get("/stats", response_model=KGStatsResponse)
+@router.get("/stats", response_model=KGStatsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_kg_stats(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     pipeline_hash: Annotated[str | None, Query(
@@ -1323,7 +1323,7 @@ class KGSnapshotDiffRequest(BaseModel):
     snapshot_b: dict[str, Any]
 
 
-@router.get("/snapshots/export")
+@router.get("/snapshots/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_kg_snapshot(
     pipeline_hash: Annotated[str, Query(min_length=1, max_length=200)],
     document_ids: Annotated[list[UUID] | None, Query()] = None,
@@ -1445,14 +1445,14 @@ def export_kg_snapshot(
     }
 
 
-@router.post("/snapshots/diff")
+@router.post("/snapshots/diff", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def diff_kg_snapshots_api(body: KGSnapshotDiffRequest):
     from app.rag.kg.snapshot import diff_kg_snapshots  # noqa: WPS433
 
     return diff_kg_snapshots(body.snapshot_a, body.snapshot_b)
 
 
-@router.get("/snapshots/compare")
+@router.get("/snapshots/compare", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def compare_kg_snapshots(
     pipeline_hash_a: Annotated[str, Query(min_length=1, max_length=200)],
     pipeline_hash_b: Annotated[str, Query(min_length=1, max_length=200)],
@@ -1481,7 +1481,7 @@ def compare_kg_snapshots(
     return diff_kg_snapshots(snap_a, snap_b)
 
 
-@router.get("/graph/export")
+@router.get("/graph/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_kg_graph(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     pipeline_hash: Annotated[str | None, Query(
@@ -1613,7 +1613,7 @@ def export_kg_graph(
     return Response(content=content, media_type=media_type, headers=headers)
 
 
-@router.get("/events/{event_id}", response_model=KGEventDetailResponse)
+@router.get("/events/{event_id}", response_model=KGEventDetailResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_kg_event_detail(
     event_id: UUID,
     document_ids: Annotated[list[UUID] | None, Query()] = None,
@@ -1691,7 +1691,7 @@ def get_kg_event_detail(
     return KGEventDetailResponse(event=KGEventItem.model_validate(ev), entities=entities)
 
 
-@router.get("/entities/{entity_id}", response_model=KGEntityDetailResponse)
+@router.get("/entities/{entity_id}", response_model=KGEntityDetailResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_kg_entity_detail(
     entity_id: UUID,
     document_ids: Annotated[list[UUID] | None, Query()] = None,
@@ -1790,7 +1790,7 @@ def get_kg_entity_detail(
     )
 
 
-@router.get("/entities/{entity_id}/aliases", response_model=KGEntityAliasesResponse)
+@router.get("/entities/{entity_id}/aliases", response_model=KGEntityAliasesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_kg_entity_aliases(
     entity_id: UUID,
     *,
@@ -1836,7 +1836,7 @@ def list_kg_entity_aliases(
     )
 
 
-@router.post("/entities/{entity_id}/aliases", response_model=KGEntityAliasItem)
+@router.post("/entities/{entity_id}/aliases", response_model=KGEntityAliasItem, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def create_kg_entity_alias(
     entity_id: UUID,
     payload: KGEntityAliasCreateRequest,
@@ -1921,7 +1921,7 @@ def create_kg_entity_alias(
     return KGEntityAliasItem.model_validate(alias_row)
 
 
-@router.delete("/entities/{entity_id}/aliases/{alias_id}", response_model=KGEntityAliasesResponse)
+@router.delete("/entities/{entity_id}/aliases/{alias_id}", response_model=KGEntityAliasesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_kg_entity_alias(
     entity_id: UUID,
     alias_id: UUID,
@@ -1971,7 +1971,7 @@ def delete_kg_entity_alias(
     return list_kg_entity_aliases(entity_id=entity_id, tenant_id=tenant_id, account_id=account_id, db=db)
 
 
-@router.get("/entities/{entity_id}/alias_suggestions", response_model=KGEntityAliasSuggestionsResponse)
+@router.get("/entities/{entity_id}/alias_suggestions", response_model=KGEntityAliasSuggestionsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def suggest_kg_entity_aliases(
     entity_id: UUID,
     mode: Annotated[str, Query(min_length=1, max_length=16, description="offline|vector")] = "offline",
@@ -2085,7 +2085,7 @@ def suggest_kg_entity_aliases(
         )
 
 
-@router.post("/entities/merge/preview", response_model=KGEntityMergePreviewResponse)
+@router.post("/entities/merge/preview", response_model=KGEntityMergePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def preview_kg_entity_merge(
     payload: KGEntityMergeRequest,
     *,
@@ -2154,7 +2154,7 @@ def preview_kg_entity_merge(
     )
 
 
-@router.get("/ontology/predicates", response_model=KGPredicateOntologyListResponse)
+@router.get("/ontology/predicates", response_model=KGPredicateOntologyListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_kg_predicate_ontology(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2175,7 +2175,7 @@ def list_kg_predicate_ontology(
     return KGPredicateOntologyListResponse(predicates=[KGPredicateOntologyItem.model_validate(r) for r in rows])
 
 
-@router.post("/ontology/predicates", response_model=KGPredicateOntologyItem)
+@router.post("/ontology/predicates", response_model=KGPredicateOntologyItem, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def create_kg_predicate_ontology(
     payload: KGPredicateOntologyCreateRequest,
     *,
@@ -2245,7 +2245,7 @@ def create_kg_predicate_ontology(
     return KGPredicateOntologyItem.model_validate(row)
 
 
-@router.patch("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyItem)
+@router.patch("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyItem, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def update_kg_predicate_ontology(
     predicate_id: UUID,
     payload: KGPredicateOntologyUpdateRequest,
@@ -2302,7 +2302,7 @@ def update_kg_predicate_ontology(
     return KGPredicateOntologyItem.model_validate(row)
 
 
-@router.delete("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyListResponse)
+@router.delete("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_kg_predicate_ontology(
     predicate_id: UUID,
     *,
@@ -2351,7 +2351,7 @@ def delete_kg_predicate_ontology(
     return list_kg_predicate_ontology(tenant_id=tenant_id, account_id=account_id, db=db)
 
 
-@router.post("/entities/merge", response_model=KGEntityMergeResponse)
+@router.post("/entities/merge", response_model=KGEntityMergeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def merge_kg_entities(
     payload: KGEntityMergeRequest,
     *,
@@ -2603,7 +2603,7 @@ def merge_kg_entities(
     )
 
 
-@router.post("/entities/split", response_model=KGEntitySplitResponse)
+@router.post("/entities/split", response_model=KGEntitySplitResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def split_kg_entity(
     payload: KGEntitySplitRequest,
     *,
@@ -2752,7 +2752,7 @@ def split_kg_entity(
     )
 
 
-@router.post("/entities/resolution/actions/{action_id}/undo", response_model=KGEntityResolutionUndoResponse)
+@router.post("/entities/resolution/actions/{action_id}/undo", response_model=KGEntityResolutionUndoResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def undo_kg_entity_resolution_action(
     action_id: UUID,
     *,
@@ -3004,7 +3004,7 @@ def undo_kg_entity_resolution_action(
     )
 
 
-@router.delete("/documents/{document_id}", response_model=KGDeleteResponse)
+@router.delete("/documents/{document_id}", response_model=KGDeleteResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_kg_for_document(
     document_id: UUID,
     prune_orphan_entities: Annotated[bool | None, Query()] = None,
@@ -3078,7 +3078,7 @@ def delete_kg_for_document(
     return KGDeleteResponse(document_id=document_id, **(stats or {}))
 
 
-@router.post("/documents/{document_id}/extract", response_model=KGExtractResponse)
+@router.post("/documents/{document_id}/extract", response_model=KGExtractResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def run_kg_extraction_for_document(
     document_id: UUID,
     response: Response,
@@ -3288,7 +3288,7 @@ async def run_kg_extraction_for_document(
     )
 
 
-@router.post("/search", response_model=KGSearchResponse)
+@router.post("/search", response_model=KGSearchResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def run_kg_search(
     payload: KGSearchRequest,
     *,

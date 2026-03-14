@@ -2486,7 +2486,7 @@ async def _ingest_url_upload_request(
     return db_document
 
 
-@router.post("/upload", response_model=DocumentDetail, status_code=201)
+@router.post("/upload", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
@@ -3235,7 +3235,7 @@ async def _ingest_local_html_request(
     return db_document
 
 
-@router.post("/upload-url", response_model=DocumentDetail, status_code=201)
+@router.post("/upload-url", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_document_from_url(
     background_tasks: BackgroundTasks,
     body: UrlUploadRequest,
@@ -3261,7 +3261,7 @@ async def upload_document_from_url(
     )
 
 
-@router.post("/upload-batch", response_model=DocumentBatchUploadResponse, status_code=201)
+@router.post("/upload-batch", response_model=DocumentBatchUploadResponse, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_documents_batch(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
@@ -4387,7 +4387,7 @@ async def upload_documents_batch(
     }
 
 
-@router.get("/", response_model=DocumentList)
+@router.get("/", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_documents(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=200),
@@ -4569,7 +4569,7 @@ def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
     return DBDocument.doc_metadata["source_path"].astext.startswith(val)  # type: ignore[attr-defined]
 
 
-@router.get("/folders", response_model=DocumentFolderTreeResponse)
+@router.get("/folders", response_model=DocumentFolderTreeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_document_folders(
     dataset_id: UUID = Query(...),
     lifecycle: Literal["active", "archived", "disabled", "all"] = Query(default="active"),
@@ -4639,7 +4639,7 @@ async def list_document_folders(
     )
 
 
-@router.get("/stats", response_model=DocumentStats)
+@router.get("/stats", response_model=DocumentStats, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_stats(
     dataset_id: Optional[UUID] = None,
     lifecycle: Literal["active", "archived", "disabled", "all"] = Query(default="active"),
@@ -4767,7 +4767,7 @@ async def get_document_stats(
     }
 
 
-@router.get("/duplicates", response_model=DocumentDuplicateList)
+@router.get("/duplicates", response_model=DocumentDuplicateList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_document_duplicates(
     dataset_id: UUID = Query(..., description="Dataset scope for duplicate detection"),
     min_count: int = Query(default=2, ge=2, le=50),
@@ -5044,7 +5044,7 @@ async def list_document_duplicates(
     return {"total": total_groups, "items": items}
 
 
-@router.get("/{document_id}", response_model=DocumentDetail)
+@router.get("/{document_id}", response_model=DocumentDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document(
     document_id: uuid.UUID,
     include_chunks: bool = False,
@@ -5111,7 +5111,7 @@ async def get_document(
     return document
 
 
-@router.get("/{document_id}/timeline", response_model=DocumentTimelineResponse)
+@router.get("/{document_id}/timeline", response_model=DocumentTimelineResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_timeline(
     document_id: uuid.UUID,
     limit: int = Query(default=200, ge=1, le=200),
@@ -5218,7 +5218,7 @@ async def get_document_timeline(
     return DocumentTimelineResponse(total=len(items), items=items)
 
 
-@router.get("/{document_id}/access", response_model=DocumentAccessInfo)
+@router.get("/{document_id}/access", response_model=DocumentAccessInfo, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_access(
     document_id: uuid.UUID,
     *,
@@ -5258,7 +5258,7 @@ async def get_document_access(
     )
 
 
-@router.put("/{document_id}/access", response_model=DocumentAccessInfo)
+@router.put("/{document_id}/access", response_model=DocumentAccessInfo, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def put_document_access(
     document_id: uuid.UUID,
     payload: DocumentAccessUpdateRequest,
@@ -5347,7 +5347,7 @@ async def put_document_access(
     )
 
 
-@router.get("/{document_id}/parsed-content", response_model=DocumentParsedContentResponse)
+@router.get("/{document_id}/parsed-content", response_model=DocumentParsedContentResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_parsed_content(
     document_id: uuid.UUID,
     max_chars: int = Query(default=200_000, ge=0, le=2_000_000),
@@ -5416,7 +5416,7 @@ async def get_document_parsed_content(
     )
 
 
-@router.get("/{document_id}/versions", response_model=DocumentVersionList)
+@router.get("/{document_id}/versions", response_model=DocumentVersionList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_document_versions(
     document_id: uuid.UUID,
     *,
@@ -5529,7 +5529,7 @@ async def list_document_versions(
     }
 
 
-@router.get("/{document_id}/versions/diff", response_model=DocumentVersionDiff)
+@router.get("/{document_id}/versions/diff", response_model=DocumentVersionDiff, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def diff_document_versions(
     document_id: uuid.UUID,
     from_pipeline_hash: str = Query(
@@ -5680,7 +5680,7 @@ async def diff_document_versions(
     }
 
 
-@router.post("/{document_id}/versions/{pipeline_hash}/activate", response_model=DocumentDetail)
+@router.post("/{document_id}/versions/{pipeline_hash}/activate", response_model=DocumentDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def activate_document_version(
     document_id: uuid.UUID,
     pipeline_hash: str,
@@ -5792,7 +5792,7 @@ async def activate_document_version(
     return document
 
 
-@router.delete("/{document_id}/versions/{pipeline_hash}", status_code=204)
+@router.delete("/{document_id}/versions/{pipeline_hash}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_document_version(
     document_id: uuid.UUID,
     pipeline_hash: str,
@@ -5956,7 +5956,7 @@ async def delete_document_version(
     return Response(status_code=204)
 
 
-@router.get("/{document_id}/chunks", response_model=DocumentChunkList)
+@router.get("/{document_id}/chunks", response_model=DocumentChunkList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_document_chunks(
     document_id: uuid.UUID,
     skip: int = Query(default=0, ge=0),
@@ -6019,7 +6019,7 @@ async def list_document_chunks(
     return {"total": total, "items": items}
 
 
-@router.get("/{document_id}/chunks/matches", response_model=DocumentChunkMatchList)
+@router.get("/{document_id}/chunks/matches", response_model=DocumentChunkMatchList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_document_chunk_matches(
     document_id: uuid.UUID,
     q: str = Query(..., max_length=200, description="Case-insensitive substring match against chunk content"),
@@ -6103,7 +6103,7 @@ async def list_document_chunk_matches(
     }
 
 
-@router.get("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema)
+@router.get("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
@@ -6372,7 +6372,7 @@ async def _record_chunk_index_drift(
     return operation_result, drift_markers, reconcile_task_id
 
 
-@router.post("/{document_id}/chunks", response_model=DocumentChunkSchema, status_code=201)
+@router.post("/{document_id}/chunks", response_model=DocumentChunkSchema, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_document_chunk(
     document_id: uuid.UUID,
     payload: DocumentChunkCreateRequest,
@@ -6507,7 +6507,7 @@ async def create_document_chunk(
     return chunk
 
 
-@router.patch("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema)
+@router.patch("/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def patch_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
@@ -6704,7 +6704,7 @@ async def patch_document_chunk(
     return chunk
 
 
-@router.delete("/{document_id}/chunks/{chunk_id}", status_code=204)
+@router.delete("/{document_id}/chunks/{chunk_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
@@ -6861,7 +6861,7 @@ async def delete_document_chunk(
     return Response(status_code=204)
 
 
-@router.post("/{document_id}/chunks/{chunk_id}/disable", response_model=DocumentChunkSchema)
+@router.post("/{document_id}/chunks/{chunk_id}/disable", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def disable_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
@@ -6970,7 +6970,7 @@ async def disable_document_chunk(
     return chunk
 
 
-@router.post("/{document_id}/chunks/{chunk_id}/enable", response_model=DocumentChunkSchema)
+@router.post("/{document_id}/chunks/{chunk_id}/enable", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def enable_document_chunk(
     document_id: uuid.UUID,
     chunk_id: uuid.UUID,
@@ -7020,7 +7020,7 @@ async def enable_document_chunk(
     return chunk
 
 
-@router.post("/{document_id}/chunks/reembed", response_model=DocumentChunkReembedResponse)
+@router.post("/{document_id}/chunks/reembed", response_model=DocumentChunkReembedResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def reembed_document_chunks(
     document_id: uuid.UUID,
     payload: DocumentChunkReembedRequest,
@@ -7126,7 +7126,7 @@ async def reembed_document_chunks(
     }
 
 
-@router.post("/{document_id}/qa/generate", response_model=DocumentQAGenerateResponse)
+@router.post("/{document_id}/qa/generate", response_model=DocumentQAGenerateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def generate_document_qa(
     document_id: uuid.UUID,
     payload: DocumentQAGenerateRequest,
@@ -7193,7 +7193,7 @@ async def generate_document_qa(
     )
 
 
-@router.patch("/{document_id}/pipeline", response_model=DocumentDetail)
+@router.patch("/{document_id}/pipeline", response_model=DocumentDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def patch_document_pipeline(
     document_id: uuid.UUID,
     payload: DocumentPipelinePatchRequest,
@@ -7257,7 +7257,7 @@ async def patch_document_pipeline(
     return document
 
 
-@router.patch("/{document_id}/metadata", response_model=DocumentDetail)
+@router.patch("/{document_id}/metadata", response_model=DocumentDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def patch_document_user_metadata(
     document_id: uuid.UUID,
     payload: DocumentUserMetadataPatchRequest,
@@ -7318,7 +7318,7 @@ async def patch_document_user_metadata(
     return document
 
 
-@router.get("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata)
+@router.get("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_lifecycle_metadata(
     document_id: uuid.UUID,
     *,
@@ -7354,7 +7354,7 @@ async def get_document_lifecycle_metadata(
     )
 
 
-@router.patch("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata)
+@router.patch("/{document_id}/lifecycle-metadata", response_model=DocumentLifecycleMetadata, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def patch_document_lifecycle_metadata(
     document_id: uuid.UUID,
     payload: DocumentLifecycleMetadataUpdateRequest,
@@ -7486,7 +7486,7 @@ async def patch_document_lifecycle_metadata(
     )
 
 
-@router.post("/batch/metadata", response_model=DocumentBatchUserMetadataPatchResponse)
+@router.post("/batch/metadata", response_model=DocumentBatchUserMetadataPatchResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_patch_document_user_metadata(
     payload: DocumentBatchUserMetadataPatchRequest,
     *,
@@ -7552,7 +7552,7 @@ async def batch_patch_document_user_metadata(
     return {"updated": updated, "not_found": not_found, "denied": denied}
 
 
-@router.get("/{document_id}/download")
+@router.get("/{document_id}/download", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def download_document(
     document_id: uuid.UUID,
     request: Request,
@@ -7759,7 +7759,7 @@ async def download_document(
     )
 
 
-@router.get("/{document_id}/status", response_model=DocumentStatus)
+@router.get("/{document_id}/status", response_model=DocumentStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_status(
     document_id: uuid.UUID,
     *,
@@ -7794,7 +7794,7 @@ async def get_document_status(
     }
 
 
-@router.post("/{document_id}/cancel", response_model=DocumentStatus)
+@router.post("/{document_id}/cancel", response_model=DocumentStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def cancel_document_processing(
     document_id: uuid.UUID,
     *,
@@ -7883,7 +7883,7 @@ async def cancel_document_processing(
     }
 
 
-@router.post("/{document_id}/retry", response_model=DocumentStatus)
+@router.post("/{document_id}/retry", response_model=DocumentStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def retry_document_processing(
     document_id: uuid.UUID,
     background_tasks: BackgroundTasks,
@@ -8450,7 +8450,7 @@ async def _delete_document_lifecycle(
     return None
 
 
-@router.delete("/{document_id}", status_code=204)
+@router.delete("/{document_id}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def delete_document(
     document_id: uuid.UUID,
     *,
@@ -8471,7 +8471,7 @@ async def delete_document(
     return None
 
 
-@router.post("/batch/disable", response_model=DocumentBatchLifecycleResponse)
+@router.post("/batch/disable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_disable_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
@@ -8520,7 +8520,7 @@ async def batch_disable_documents(
     return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
-@router.post("/batch/enable", response_model=DocumentBatchLifecycleResponse)
+@router.post("/batch/enable", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_enable_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
@@ -8567,7 +8567,7 @@ async def batch_enable_documents(
     return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
-@router.post("/batch/archive", response_model=DocumentBatchLifecycleResponse)
+@router.post("/batch/archive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_archive_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
@@ -8616,7 +8616,7 @@ async def batch_archive_documents(
     return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
-@router.post("/batch/unarchive", response_model=DocumentBatchLifecycleResponse)
+@router.post("/batch/unarchive", response_model=DocumentBatchLifecycleResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_unarchive_documents(
     payload: DocumentBatchLifecycleRequest,
     *,
@@ -8663,7 +8663,7 @@ async def batch_unarchive_documents(
     return {"updated": updated, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
-@router.post("/batch-delete", response_model=DocumentBatchDeleteResponse)
+@router.post("/batch-delete", response_model=DocumentBatchDeleteResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_delete_documents(
     payload: DocumentBatchDeleteRequest,
     *,
@@ -8701,7 +8701,7 @@ async def batch_delete_documents(
     return {"deleted": deleted, "not_found": not_found, "denied": denied}
 
 
-@router.post("/batch/retry", response_model=DocumentBatchRetryResponse)
+@router.post("/batch/retry", response_model=DocumentBatchRetryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_retry_documents(
     payload: DocumentBatchRetryRequest,
     background_tasks: BackgroundTasks,
@@ -8756,7 +8756,7 @@ async def batch_retry_documents(
     }
 
 
-@router.post("/batch/reingest", response_model=DocumentBatchRetryResponse)
+@router.post("/batch/reingest", response_model=DocumentBatchRetryResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_reingest_documents(
     payload: DocumentBatchReingestRequest,
     background_tasks: BackgroundTasks,
@@ -8843,7 +8843,7 @@ async def batch_reingest_documents(
     }
 
 
-@router.post("/batch/access", response_model=DocumentBatchAccessUpdateResponse)
+@router.post("/batch/access", response_model=DocumentBatchAccessUpdateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_update_document_access(
     payload: DocumentBatchAccessUpdateRequest,
     *,
@@ -8880,7 +8880,7 @@ async def batch_update_document_access(
     return {"updated": updated, "not_found": not_found, "denied": denied}
 
 
-@router.post("/batch/move", response_model=DocumentBatchMoveResponse)
+@router.post("/batch/move", response_model=DocumentBatchMoveResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def batch_move_documents(
     payload: DocumentBatchMoveRequest,
     *,
@@ -8959,7 +8959,7 @@ async def batch_move_documents(
     return {"moved": moved, "not_found": not_found, "denied": denied, "conflicts": conflicts}
 
 
-@router.get("/image/{image_id}")
+@router.get("/image/{image_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_image(
     image_id: str,
     request: Request,
@@ -9044,7 +9044,7 @@ async def get_image(
     raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
 
 
-@router.get("/image-url/{img_id}")
+@router.get("/image-url/{img_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_image_url(
     img_id: str,
     request: Request,
@@ -9251,7 +9251,7 @@ async def get_image_url(
     )
 
 
-@router.post("/preview", response_model=DocumentParsePreview)
+@router.post("/preview", response_model=DocumentParsePreview, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def preview_document(
     request: Request,
     file: UploadFile = File(...),
@@ -9504,7 +9504,7 @@ async def preview_document(
                     shutil.rmtree(path, ignore_errors=True)
 
 
-@router.post("/manual", response_model=DocumentDetail, status_code=201)
+@router.post("/manual", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_document_with_manual_chunks(
     request: ManualDocumentCreate,
     *,
@@ -9731,7 +9731,7 @@ async def create_document_with_manual_chunks(
         raise HTTPException(status_code=500, detail=f"Failed to create document with manual chunks: {str(e)}") from e
 
 
-@router.post("/chunk-preview", response_model=ChunkPreviewResponse)
+@router.post("/chunk-preview", response_model=ChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def preview_chunking(
     request: Request,
     response: Response,
@@ -10613,7 +10613,7 @@ async def preview_chunking(
 
 # ==================== Chunk preview reuse API (no upload) ====================
 
-@router.post("/chunk-preview/by-sha", response_model=ChunkPreviewResponse)
+@router.post("/chunk-preview/by-sha", response_model=ChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def preview_chunking_by_sha(
     request: Request,
     response: Response,
@@ -11267,7 +11267,7 @@ async def preview_chunking_by_sha(
 
 # ==================== MinerU batch upload API ====================
 
-@router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse)
+@router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def apply_batch_upload_urls(
     request: BatchUploadRequest,
     *,
@@ -11337,7 +11337,7 @@ async def apply_batch_upload_urls(
         raise HTTPException(status_code=500, detail=f"Failed to apply upload URLs: {str(e)}") from e
 
 
-@router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus)
+@router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_batch_task_status(
     batch_id: str,
     *,
