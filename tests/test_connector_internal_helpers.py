@@ -20,6 +20,25 @@ def test_schedule_interval_seconds_supports_supported_formats() -> None:
     assert connectors._schedule_interval_seconds("bad-cron") is None
 
 
+def test_schedule_interval_from_parts_supports_minute_hour_and_day_steps() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert connectors._schedule_interval_from_parts("*/15", "*", "*", "*", "*") == 15 * 60
+    assert connectors._schedule_interval_from_parts("0", "*/6", "*", "*", "*") == 6 * 60 * 60
+    assert connectors._schedule_interval_from_parts("0", "0", "*/2", "*", "*") == 2 * 24 * 60 * 60
+    assert connectors._schedule_interval_from_parts("5", "*", "*", "*", "*") is None
+
+
+def test_jira_mapping_text_prefers_display_fields_in_priority_order() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert connectors._jira_mapping_text({"displayName": "Ada", "name": "Ignored"}) == "Ada"
+    assert connectors._jira_mapping_text({"name": "Priority", "value": "Ignored"}) == "Priority"
+    assert connectors._jira_mapping_text({"value": 42}) == "42"
+    assert connectors._jira_mapping_text({"summary": "Ticket summary"}) == "Ticket summary"
+    assert connectors._jira_mapping_text({"displayName": ""}) == ""
+
+
 def test_connector_error_code_from_message_prefers_keywords_and_status() -> None:
     connectors = _import_connectors_with_lightweight_stubs()
 
