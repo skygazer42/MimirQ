@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import types
+from datetime import datetime, timezone
 
 from tests.test_confluence_connector_unit import _import_connectors_with_lightweight_stubs
 
@@ -424,3 +425,74 @@ def test_build_drive_files_execution_plan_keeps_unchanged_sources_when_acl_inher
         ("drive://file-a", "file-a", "file-a", "token-a"),
     ]
     assert plan["skipped_unchanged"] == 0
+
+
+def test_minio_object_token_includes_etag_timestamp_and_size() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    token = connectors._minio_object_token(
+        types.SimpleNamespace(
+            etag="etag-1",
+            last_modified=datetime(2026, 3, 10, 12, 34, 56, tzinfo=timezone.utc),
+            size=123,
+        )
+    )
+
+    assert token == "etag:etag-1|last_modified:2026-03-10T12:34:56Z|size:123"
+
+
+def test_build_minio_bucket_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    scope_hash = connectors._minio_source_scope_hash(bucket_name="docs", prefix="", include_set={".md"})
+    plan = connectors._build_minio_bucket_execution_plan(
+        run_stats={},
+        state={"cursor": 1},
+        listed_objects=[
+            {"name": "a.md", "token": "token-a"},
+            {"name": "b.md", "token": "token-b"},
+            {"name": "c.md", "token": "token-c"},
+        ],
+        include_set={".md"},
+        max_objects=10,
+        scope_hash=scope_hash,
+    )
+
+    assert plan["mode"] == "full"
+    assert plan["delta_objects_total"] == 3
+    assert plan["objects_to_process"] == [
+        ("b.md", "token-b"),
+        ("c.md", "token-c"),
+    ]
+    assert plan["cursor_in"] == 1
+    assert plan["processed_visible"] == 1
+    assert plan["resumed_from_state"] is True
+    assert plan["removed_paths"] == []
+
+
+def test_build_minio_bucket_execution_plan_resets_manifest_on_scope_hash_change() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    old_scope_hash = "old-scope"
+    new_scope_hash = connectors._minio_source_scope_hash(bucket_name="docs", prefix="fresh", include_set={".md"})
+    plan = connectors._build_minio_bucket_execution_plan(
+        run_stats={},
+        state={
+            "cursor": 2,
+            "source_manifest": {"a.md": "token-a", "obsolete.md": "token-obsolete"},
+            "source_scope_hash": old_scope_hash,
+        },
+        listed_objects=[
+            {"name": "a.md", "token": "token-a"},
+            {"name": "b.md", "token": "token-b"},
+        ],
+        include_set={".md"},
+        max_objects=10,
+        scope_hash=new_scope_hash,
+    )
+
+    assert plan["mode"] == "full"
+    assert plan["existing_manifest"] == {}
+    assert plan["removed_paths"] == []
+    assert plan["source_manifest_state"] == {}
+    assert plan["objects_to_process"] == []
