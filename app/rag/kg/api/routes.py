@@ -321,20 +321,19 @@ def _resolve_allowed_documents(
 
 @router.get("/graph", response_model=KGGraphResponse)
 def get_kg_graph(
-    document_ids: list[UUID] | None = Query(default=None),
-    pipeline_hash: str | None = Query(
-        default=None,
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
+    pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
         description=PIPELINE_VERSION_FILTER_DESC,
-    ),
-    max_events: int = Query(default=200, ge=1, le=2000),
-    max_entities: int = Query(default=400, ge=1, le=5000),
-    max_links: int = Query(default=2000, ge=1, le=20000),
-    include_entity_links: bool = Query(default=False, description=INCLUDE_ENTITY_LINKS_DESC),
-    include_relation_links: bool = Query(default=False, description=INCLUDE_RELATION_LINKS_DESC),
-    min_shared_events: int = Query(default=2, ge=1, le=100),
-    max_entity_links: int = Query(default=1000, ge=0, le=20000),
+    )] = None,
+    max_events: Annotated[int, Query(ge=1, le=2000)] = 200,
+    max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
+    max_links: Annotated[int, Query(ge=1, le=20000)] = 2000,
+    include_entity_links: Annotated[bool, Query(description=INCLUDE_ENTITY_LINKS_DESC)] = False,
+    include_relation_links: Annotated[bool, Query(description=INCLUDE_RELATION_LINKS_DESC)] = False,
+    min_shared_events: Annotated[int, Query(ge=1, le=100)] = 2,
+    max_entity_links: Annotated[int, Query(ge=0, le=20000)] = 1000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -658,21 +657,20 @@ def get_kg_graph(
 
 @router.get("/graph/expand", response_model=KGGraphResponse)
 def expand_kg_graph(
-    node_id: UUID = Query(..., description="Center node id (KgSourceEvent.id or KgEntity.id)"),
-    document_ids: list[UUID] | None = Query(default=None),
-    pipeline_hash: str | None = Query(
-        default=None,
+    node_id: Annotated[UUID, Query(description="Center node id (KgSourceEvent.id or KgEntity.id)")],
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
+    pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
         description=PIPELINE_VERSION_FILTER_DESC,
-    ),
-    max_events: int = Query(default=50, ge=1, le=500),
-    max_entities: int = Query(default=400, ge=1, le=5000),
-    max_links: int = Query(default=5000, ge=1, le=20000),
-    include_entity_links: bool = Query(default=False, description=INCLUDE_ENTITY_LINKS_DESC),
-    include_relation_links: bool = Query(default=False, description=INCLUDE_RELATION_LINKS_DESC),
-    min_shared_events: int = Query(default=2, ge=1, le=100),
-    max_entity_links: int = Query(default=2000, ge=0, le=20000),
+    )] = None,
+    max_events: Annotated[int, Query(ge=1, le=500)] = 50,
+    max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
+    max_links: Annotated[int, Query(ge=1, le=20000)] = 5000,
+    include_entity_links: Annotated[bool, Query(description=INCLUDE_ENTITY_LINKS_DESC)] = False,
+    include_relation_links: Annotated[bool, Query(description=INCLUDE_RELATION_LINKS_DESC)] = False,
+    min_shared_events: Annotated[int, Query(ge=1, le=100)] = 2,
+    max_entity_links: Annotated[int, Query(ge=0, le=20000)] = 2000,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1086,16 +1084,15 @@ def expand_kg_graph(
 
 @router.get("/graph/search", response_model=list[KGGraphNode])
 def search_kg_graph_nodes(
-    q: str = Query(..., min_length=1, max_length=200, description="Search query"),
-    kind: str = Query(default="all", description="entity | event | all"),
-    limit: int = Query(default=20, ge=1, le=100),
-    document_ids: list[UUID] | None = Query(default=None),
-    pipeline_hash: str | None = Query(
-        default=None,
+    q: Annotated[str, Query(min_length=1, max_length=200, description="Search query")],
+    kind: Annotated[str, Query(description="entity | event | all")] = "all",
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
+    pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
         description=PIPELINE_VERSION_FILTER_DESC,
-    ),
+    )] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1206,13 +1203,12 @@ def search_kg_graph_nodes(
 
 @router.get("/stats", response_model=KGStatsResponse)
 def get_kg_stats(
-    document_ids: list[UUID] | None = Query(default=None),
-    pipeline_hash: str | None = Query(
-        default=None,
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
+    pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
         description=PIPELINE_VERSION_FILTER_DESC,
-    ),
+    )] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1329,8 +1325,8 @@ class KGSnapshotDiffRequest(BaseModel):
 
 @router.get("/snapshots/export")
 def export_kg_snapshot(
-    pipeline_hash: str = Query(..., min_length=1, max_length=200),
-    document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash: Annotated[str, Query(min_length=1, max_length=200)],
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1458,9 +1454,9 @@ def diff_kg_snapshots_api(body: KGSnapshotDiffRequest):
 
 @router.get("/snapshots/compare")
 def compare_kg_snapshots(
-    pipeline_hash_a: str = Query(..., min_length=1, max_length=200),
-    pipeline_hash_b: str = Query(..., min_length=1, max_length=200),
-    document_ids: list[UUID] | None = Query(default=None),
+    pipeline_hash_a: Annotated[str, Query(min_length=1, max_length=200)],
+    pipeline_hash_b: Annotated[str, Query(min_length=1, max_length=200)],
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1487,22 +1483,21 @@ def compare_kg_snapshots(
 
 @router.get("/graph/export")
 def export_kg_graph(
-    document_ids: list[UUID] | None = Query(default=None),
-    pipeline_hash: str | None = Query(
-        default=None,
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
+    pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
         description=PIPELINE_VERSION_FILTER_DESC,
-    ),
-    max_events: int = Query(default=200, ge=1, le=2000),
-    max_entities: int = Query(default=400, ge=1, le=5000),
-    max_links: int = Query(default=2000, ge=1, le=20000),
-    include_entity_links: bool = Query(default=False, description=INCLUDE_ENTITY_LINKS_DESC),
-    include_relation_links: bool = Query(default=False, description=INCLUDE_RELATION_LINKS_DESC),
-    min_shared_events: int = Query(default=2, ge=1, le=100),
-    max_entity_links: int = Query(default=1000, ge=0, le=20000),
-    download: bool = Query(default=True),
-    gzip_output: bool = Query(default=False, alias="gzip", description="Return gzipped GraphML"),
+    )] = None,
+    max_events: Annotated[int, Query(ge=1, le=2000)] = 200,
+    max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
+    max_links: Annotated[int, Query(ge=1, le=20000)] = 2000,
+    include_entity_links: Annotated[bool, Query(description=INCLUDE_ENTITY_LINKS_DESC)] = False,
+    include_relation_links: Annotated[bool, Query(description=INCLUDE_RELATION_LINKS_DESC)] = False,
+    min_shared_events: Annotated[int, Query(ge=1, le=100)] = 2,
+    max_entity_links: Annotated[int, Query(ge=0, le=20000)] = 1000,
+    download: Annotated[bool, Query()] = True,
+    gzip_output: Annotated[bool, Query(alias="gzip", description="Return gzipped GraphML")] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1621,13 +1616,12 @@ def export_kg_graph(
 @router.get("/events/{event_id}", response_model=KGEventDetailResponse)
 def get_kg_event_detail(
     event_id: UUID,
-    document_ids: list[UUID] | None = Query(default=None),
-    pipeline_hash: str | None = Query(
-        default=None,
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
+    pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
         description=PIPELINE_VERSION_FILTER_DESC,
-    ),
+    )] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1700,15 +1694,14 @@ def get_kg_event_detail(
 @router.get("/entities/{entity_id}", response_model=KGEntityDetailResponse)
 def get_kg_entity_detail(
     entity_id: UUID,
-    document_ids: list[UUID] | None = Query(default=None),
-    pipeline_hash: str | None = Query(
-        default=None,
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
+    pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
         description=PIPELINE_VERSION_FILTER_DESC,
-    ),
-    max_events: int = Query(default=30, ge=1, le=200),
-    max_neighbors: int = Query(default=20, ge=0, le=200),
+    )] = None,
+    max_events: Annotated[int, Query(ge=1, le=200)] = 30,
+    max_neighbors: Annotated[int, Query(ge=0, le=200)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1802,11 +1795,10 @@ def list_kg_entity_aliases(
     entity_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
+    _account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """List aliases for an entity (includes aliases attached to redirected source ids)."""
-    _ = account_id
     _ensure_enabled()
 
     from sqlalchemy import or_  # noqa: WPS433
@@ -1982,16 +1974,15 @@ def delete_kg_entity_alias(
 @router.get("/entities/{entity_id}/alias_suggestions", response_model=KGEntityAliasSuggestionsResponse)
 def suggest_kg_entity_aliases(
     entity_id: UUID,
-    mode: str = Query(default="offline", min_length=1, max_length=16, description="offline|vector"),
-    k: int = Query(default=10, ge=1, le=50),
-    min_similarity: float = Query(default=0.6, ge=0.0, le=1.0),
+    mode: Annotated[str, Query(min_length=1, max_length=16, description="offline|vector")] = "offline",
+    k: Annotated[int, Query(ge=1, le=50)] = 10,
+    min_similarity: Annotated[float, Query(ge=0.0, le=1.0)] = 0.6,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
+    _account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Suggest potential aliases/merge candidates for an entity."""
-    _ = account_id
     _ensure_enabled()
 
     from difflib import SequenceMatcher
@@ -2099,11 +2090,10 @@ def preview_kg_entity_merge(
     payload: KGEntityMergeRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
+    _account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Preview the impact of merging one entity into another (no side effects)."""
-    _ = account_id
     _ensure_enabled()
 
     from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation
@@ -2168,11 +2158,10 @@ def preview_kg_entity_merge(
 def list_kg_predicate_ontology(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
+    _account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
     """List predicate ontology entries (tenant-scoped)."""
-    _ = account_id
     _ensure_enabled()
 
     from app.rag.kg.models import KgPredicateOntology
@@ -3018,7 +3007,7 @@ def undo_kg_entity_resolution_action(
 @router.delete("/documents/{document_id}", response_model=KGDeleteResponse)
 def delete_kg_for_document(
     document_id: UUID,
-    prune_orphan_entities: bool | None = Query(default=None),
+    prune_orphan_entities: Annotated[bool | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -3093,20 +3082,19 @@ def delete_kg_for_document(
 async def run_kg_extraction_for_document(
     document_id: UUID,
     response: Response,
-    async_mode: bool = Query(default=False, alias="async"),
-    pipeline_hash: str | None = Query(
-        default=None,
+    async_mode: Annotated[bool, Query(alias="async")] = False,
+    pipeline_hash: Annotated[str | None, Query(
         min_length=1,
         max_length=200,
         description="Optional pipeline hash override (defaults to active pipeline)",
-    ),
-    replace_existing: bool | None = Query(default=None, description="Replace previously extracted events for this document"),
-    prune_orphan_entities: bool | None = Query(default=None, description="Prune entities with no remaining event links"),
-    extract_relations: bool | None = Query(default=None, description="Extract entity relations (triples) (override settings)"),
-    extract_skills: bool | None = Query(default=None, description="Extract Skill/SOP entities (override settings)"),
-    prompt_template_id: UUID | None = Query(default=None),
-    prompt_template_key: str | None = Query(default=None),
-    prompt_ab_experiment_key: str | None = Query(default=None),
+    )] = None,
+    replace_existing: Annotated[bool | None, Query(description="Replace previously extracted events for this document")] = None,
+    prune_orphan_entities: Annotated[bool | None, Query(description="Prune entities with no remaining event links")] = None,
+    extract_relations: Annotated[bool | None, Query(description="Extract entity relations (triples) (override settings)")] = None,
+    extract_skills: Annotated[bool | None, Query(description="Extract Skill/SOP entities (override settings)")] = None,
+    prompt_template_id: Annotated[UUID | None, Query()] = None,
+    prompt_template_key: Annotated[str | None, Query()] = None,
+    prompt_ab_experiment_key: Annotated[str | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
