@@ -7237,6 +7237,244 @@ def _jira_should_send_auth_headers(*, base_url: str, url: str) -> bool:
         return False
     return str(b.netloc).lower() == str(u.netloc).lower()
 
+
+def _patch_jira_linked_artifact_document_metadata(
+    db: Session,
+    *,
+    link_doc: Any,
+    run: ConnectorRun,
+    issue_info: dict[str, str | None],
+    link_url: str,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+) -> None:
+    meta_link = dict(getattr(link_doc, "doc_metadata", None) or {})
+    updated = str(issue_info.get("updated") or "").strip()
+    issue_id = str(issue_info.get("issue_id") or "").strip() or None
+    issue_key = str(issue_info.get("issue_key") or "").strip() or None
+    issue_url = str(issue_info.get("issue_url") or "").strip()
+
+    if updated:
+        lm_iso = _normalize_datetime_utc_iso(updated) or updated
+        meta_link["source_last_modified_at"] = lm_iso
+        meta_link["source_last_modified_source"] = JIRA_UPDATED_SOURCE
+        meta_link["source_last_modified_raw"] = meta_link.get("source_last_modified_raw") or updated
+    if isinstance(acl_provenance, dict):
+        meta_link["acl_provenance"] = dict(acl_provenance)
+    meta_link["connector"] = _jira_linked_artifact_connector_metadata(
+        base_url=str(settings_map.get("base_url") or ""),
+        project_key=str(settings_map.get("project_key") or ""),
+        issue_id=issue_id,
+        issue_key=issue_key,
+        issue_url=issue_url,
+        link_url=link_url,
+        run_id=str(run.id),
+        mode=str(settings_map.get("effective_mode") or ""),
+    )
+    link_doc.doc_metadata = meta_link
+    _apply_connector_identity_metadata(
+        doc=link_doc,
+        run=run,
+        connector_id="jira_project",
+        source_ref=link_url,
+        source_id=link_url,
+    )
+    db.commit()
+
+
+async def _ingest_single_jira_linked_artifact(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    issue_info: dict[str, str | None],
+    link_url: str,
+    effective_access: dict[str, Any] | None,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+) -> UUID:
+    fetch_headers = (
+        settings_map.get("auth_headers") or None
+        if _jira_should_send_auth_headers(
+            base_url=str(settings_map.get("base_url") or ""),
+            url=link_url,
+        )
+        else None
+    )
+    link_body = UrlUploadRequest(
+        url=link_url,
+        dataset_id=run.dataset_id,
+        filename=None,
+        fetch_headers=fetch_headers,
+        user_agent=settings_map.get("user_agent"),
+        parser_backend=str(settings_map.get("parser_backend") or "auto"),
+        chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
+        pipeline=settings_map.get("pipeline"),  # type: ignore[arg-type]
+    )
+    link_doc = await _ingest_url_upload_request(
+        background_tasks=None,
+        body=link_body,
+        tenant_id=tenant_id,
+        account_id=requested_by,
+        db=db,
+    )
+    _apply_document_access_from_config(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        doc=link_doc,
+        access=effective_access,
+        connector_id="jira_project",
+    )
+
+    with contextlib.suppress(Exception):
+        _patch_jira_linked_artifact_document_metadata(
+            db,
+            link_doc=link_doc,
+            run=run,
+            issue_info=issue_info,
+            link_url=link_url,
+            acl_provenance=acl_provenance,
+            settings_map=settings_map,
+        )
+
+    db.add(
+        ConnectorRunDocument(
+            tenant_id=tenant_id,
+            run_id=run.id,
+            document_id=link_doc.id,
+            source_ref=link_url[:1000] or None,
+            status="created",
+        )
+    )
+    return link_doc.id
+
+
+def _jira_project_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
+    with contextlib.suppress(Exception):
+        db.refresh(run)
+    return str(run.status or "").lower() == "cancelled"
+
+
+async def _ingest_jira_issue_linked_artifacts(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    issue: dict[str, Any],
+    issue_info: dict[str, str | None],
+    effective_access: dict[str, Any] | None,
+    acl_provenance: dict[str, Any] | None,
+    settings_map: dict[str, Any],
+    progress: dict[str, Any],
+) -> dict[str, Any]:
+    issue_url = str(issue_info.get("issue_url") or "").strip()
+    if (
+        not settings_map.get("include_linked_artifacts")
+        or not issue_url
+        or int(progress.get("linked_artifacts_processed") or 0) >= int(settings_map.get("max_total_linked_artifacts") or 0)
+        or _jira_project_run_cancelled(db, run=run)
+    ):
+        return {
+            "linked_artifacts_processed": 0,
+            "linked_artifacts_created": 0,
+            "failed": 0,
+            "created_doc_ids": [],
+            "removed_linked_artifact_documents_disabled": 0,
+        }
+
+    remaining_total = int(settings_map.get("max_total_linked_artifacts") or 0) - int(
+        progress.get("linked_artifacts_processed") or 0
+    )
+    per_issue_limit_eff = int(min(int(settings_map.get("max_linked_artifacts_per_issue") or 0), max(0, remaining_total)))
+    if per_issue_limit_eff <= 0:
+        return {
+            "linked_artifacts_processed": 0,
+            "linked_artifacts_created": 0,
+            "failed": 0,
+            "created_doc_ids": [],
+            "removed_linked_artifact_documents_disabled": 0,
+        }
+
+    extract_limit = per_issue_limit_eff + 1
+    urls = _jira_extract_linked_artifact_urls(
+        issue if isinstance(issue, dict) else {},
+        include_comments=bool(settings_map.get("include_comments")),
+        max_comments=int(settings_map.get("max_comments_per_issue") or 0),
+        limit=extract_limit,
+    )
+    linked_listing_complete = bool(len(urls) <= per_issue_limit_eff)
+    urls = urls[:per_issue_limit_eff]
+
+    created_doc_ids: list[UUID] = []
+    linked_artifacts_processed = 0
+    linked_artifacts_created = 0
+    failed = 0
+    seen_link_urls: set[str] = set()
+
+    for link_url in urls:
+        if (int(progress.get("linked_artifacts_processed") or 0) + linked_artifacts_processed) >= int(
+            settings_map.get("max_total_linked_artifacts") or 0
+        ):
+            linked_listing_complete = False
+            break
+        if _jira_project_run_cancelled(db, run=run):
+            linked_listing_complete = False
+            break
+
+        link_url = str(link_url or "").strip()
+        if not link_url or link_url == issue_url or not _is_http_or_https_url(link_url):
+            continue
+
+        seen_link_urls.add(link_url)
+        linked_artifacts_processed += 1
+
+        try:
+            doc_id = await _ingest_single_jira_linked_artifact(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                issue_info=issue_info,
+                link_url=link_url,
+                effective_access=effective_access,
+                acl_provenance=acl_provenance,
+                settings_map=settings_map,
+            )
+            created_doc_ids.append(doc_id)
+            linked_artifacts_created += 1
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            run.stats = _append_connector_error(
+                dict(run.stats or {}),
+                url=(link_url or "jira_linked_artifact"),
+                exc=exc,
+            )
+
+    removed_linked_artifact_documents_disabled = 0
+    if linked_listing_complete:
+        removed_linked_artifact_documents_disabled = int(
+            _soft_disable_jira_linked_artifact_documents_missing_from_issue(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                base_url=str(settings_map.get("base_url") or ""),
+                project_key=str(settings_map.get("project_key") or ""),
+                issue_url=issue_url,
+                seen_link_urls=seen_link_urls,
+            )
+        )
+
+    return {
+        "linked_artifacts_processed": linked_artifacts_processed,
+        "linked_artifacts_created": linked_artifacts_created,
+        "failed": failed,
+        "created_doc_ids": created_doc_ids,
+        "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
+    }
+
 def _jira_api_base_url(base_url: str) -> str:
     """
     Normalize a Jira base URL to the Jira Cloud REST v3 API base.
@@ -8518,142 +8756,42 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                     created += 1
                     created_doc_ids.append(doc.id)
 
-                    if (
-                        include_linked_artifacts
-                        and issue_url
-                        and linked_artifacts_processed < max_total_linked_artifacts
-                        and str(run.status or "").lower() != "cancelled"
-                    ):
-                        remaining_total = int(max_total_linked_artifacts) - int(linked_artifacts_processed)
-                        per_issue_limit_eff = int(min(int(max_linked_artifacts_per_issue), max(0, remaining_total)))
-                        linked_listing_complete = False
-                        seen_link_urls: set[str] = set()
-
-                        if per_issue_limit_eff > 0:
-                            # Extract one extra URL to detect truncation (listing completeness).
-                            extract_limit = per_issue_limit_eff + 1
-                            urls = _jira_extract_linked_artifact_urls(
-                                issue if isinstance(issue, dict) else {},
-                                include_comments=include_comments,
-                                max_comments=max_comments_per_issue,
-                                limit=extract_limit,
-                            )
-                            linked_listing_complete = bool(len(urls) <= per_issue_limit_eff)
-                            urls = urls[:per_issue_limit_eff]
-
-                            for link_url in urls:
-                                if linked_artifacts_processed >= max_total_linked_artifacts:
-                                    linked_listing_complete = False
-                                    break
-
-                                try:
-                                    db.refresh(run)
-                                except Exception:
-                                    pass
-                                if str(run.status or "").lower() == "cancelled":
-                                    linked_listing_complete = False
-                                    break
-
-                                link_url = str(link_url or "").strip()
-                                if not link_url:
-                                    continue
-                                if link_url == issue_url:
-                                    continue
-                                if not _is_http_or_https_url(link_url):
-                                    continue
-                                seen_link_urls.add(link_url)
-                                linked_artifacts_processed += 1
-
-                                # Avoid leaking Jira credentials to third-party domains.
-                                fetch_headers = auth_headers if (_jira_should_send_auth_headers(base_url=base_url, url=link_url) and auth_headers) else None
-
-                                try:
-                                    link_body = UrlUploadRequest(
-                                        url=link_url,
-                                        dataset_id=run.dataset_id,
-                                        filename=None,
-                                        fetch_headers=fetch_headers,
-                                        user_agent=user_agent,
-                                        parser_backend=str(parser_backend),
-                                        chunk_strategy=str(chunk_strategy),
-                                        pipeline=pipeline,  # type: ignore[arg-type]
-                                    )
-                                    link_doc = await _ingest_url_upload_request(
-                                        background_tasks=None,
-                                        body=link_body,
-                                        tenant_id=tenant_id,
-                                        account_id=requested_by,
-                                        db=db,
-                                    )
-
-                                    _apply_document_access_from_config(
-                                        db,
-                                        tenant_id=tenant_id,
-                                        requested_by=requested_by,
-                                        doc=link_doc,
-                                        access=effective_access,
-                                        connector_id="jira_project",
-                                    )
-
-                                    try:
-                                        meta_link = dict(getattr(link_doc, "doc_metadata", None) or {})
-                                        if updated:
-                                            lm_iso = _normalize_datetime_utc_iso(updated) or updated
-                                            meta_link["source_last_modified_at"] = lm_iso
-                                            meta_link["source_last_modified_source"] = JIRA_UPDATED_SOURCE
-                                            meta_link["source_last_modified_raw"] = meta_link.get("source_last_modified_raw") or updated
-                                        if isinstance(acl_provenance, dict):
-                                            meta_link["acl_provenance"] = dict(acl_provenance)
-                                        meta_link["connector"] = _jira_linked_artifact_connector_metadata(
-                                            base_url=base_url,
-                                            project_key=project_key,
-                                            issue_id=(issue_id or None),
-                                            issue_key=(issue_key or None),
-                                            issue_url=issue_url,
-                                            link_url=link_url,
-                                            run_id=str(run.id),
-                                            mode=effective_mode,
-                                        )
-                                        link_doc.doc_metadata = meta_link
-                                        _apply_connector_identity_metadata(
-                                            doc=link_doc,
-                                            run=run,
-                                            connector_id="jira_project",
-                                            source_ref=link_url,
-                                            source_id=link_url,
-                                        )
-                                        db.commit()
-                                    except Exception:
-                                        pass
-
-                                    db.add(
-                                        ConnectorRunDocument(
-                                            tenant_id=tenant_id,
-                                            run_id=run.id,
-                                            document_id=link_doc.id,
-                                            source_ref=link_url[:1000] or None,
-                                            status="created",
-                                        )
-                                    )
-                                    created += 1
-                                    created_doc_ids.append(link_doc.id)
-                                    linked_artifacts_created += 1
-                                except Exception as exc:  # noqa: BLE001
-                                    failed += 1
-                                    stats = dict(run.stats or {})
-                                    stats = _append_connector_error(stats, url=(link_url or "jira_linked_artifact"), exc=exc)
-                                    run.stats = _finalize_connector_stats(stats)
-
-                        if linked_listing_complete:
-                            removed_linked_artifact_documents_disabled += _soft_disable_jira_linked_artifact_documents_missing_from_issue(
-                                db,
-                                tenant_id=tenant_id,
-                                dataset_id=run.dataset_id,
-                                base_url=base_url,
-                                project_key=project_key,
-                                issue_url=issue_url,
-                                seen_link_urls=seen_link_urls,
-                            )
+                    linked_artifacts = await _ingest_jira_issue_linked_artifacts(
+                        db,
+                        run=run,
+                        tenant_id=tenant_id,
+                        requested_by=requested_by,
+                        issue=issue if isinstance(issue, dict) else {},
+                        issue_info=issue_info,
+                        effective_access=effective_access,
+                        acl_provenance=acl_provenance,
+                        settings_map={
+                            "base_url": base_url,
+                            "project_key": project_key,
+                            "include_linked_artifacts": include_linked_artifacts,
+                            "max_total_linked_artifacts": max_total_linked_artifacts,
+                            "max_linked_artifacts_per_issue": max_linked_artifacts_per_issue,
+                            "include_comments": include_comments,
+                            "max_comments_per_issue": max_comments_per_issue,
+                            "auth_headers": auth_headers,
+                            "user_agent": user_agent,
+                            "parser_backend": parser_backend,
+                            "chunk_strategy": chunk_strategy,
+                            "pipeline": pipeline,
+                            "effective_mode": effective_mode,
+                        },
+                        progress={
+                            "linked_artifacts_processed": linked_artifacts_processed,
+                        },
+                    )
+                    linked_artifacts_processed += int(linked_artifacts.get("linked_artifacts_processed") or 0)
+                    linked_artifacts_created += int(linked_artifacts.get("linked_artifacts_created") or 0)
+                    created += int(linked_artifacts.get("linked_artifacts_created") or 0)
+                    failed += int(linked_artifacts.get("failed") or 0)
+                    created_doc_ids.extend(linked_artifacts.get("created_doc_ids") or [])
+                    removed_linked_artifact_documents_disabled += int(
+                        linked_artifacts.get("removed_linked_artifact_documents_disabled") or 0
+                    )
 
                     if (
                         include_attachments
