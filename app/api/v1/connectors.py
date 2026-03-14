@@ -88,7 +88,15 @@ from app.services.security_redaction import redact_connection_info
 from app.services.web_crawler import crawl_site
 from app.tasks.queue import enqueue_connector_run, get_queue
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
 URL_SHA256_PREFIX = "url_sha256:"
 CONNECTOR_CONFIG_NOT_FOUND_DETAIL = "Connector config not found"

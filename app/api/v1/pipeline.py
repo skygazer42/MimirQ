@@ -110,7 +110,15 @@ from app.services.pipeline_config import resolve_pipeline_effective
 from app.services.prompt_resolver import resolve_prompt_template
 from app.types.pipeline import PipelineOptions
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _BUILTIN_GOVERNANCE_PROFILES = get_builtin_governance_profiles()
 _BUILTIN_GOVERNANCE_BY_KEY = {p.key: p for p in _BUILTIN_GOVERNANCE_PROFILES}

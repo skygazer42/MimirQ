@@ -53,7 +53,15 @@ from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.metrics_logger import log_metrics
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    409: {"description": "Conflict"},
+    416: {"description": "Range Not Satisfiable"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 KG_ENTITY_NOT_FOUND_DETAIL = "KG entity not found"
 PIPELINE_VERSION_FILTER_DESC = "Optional pipeline version filter (defaults to active pipeline per document)"
