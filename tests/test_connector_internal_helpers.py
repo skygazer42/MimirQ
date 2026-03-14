@@ -601,3 +601,133 @@ def test_initialize_confluence_space_run_stats_includes_cursor_and_attachment_li
     assert stats["failed_urls"] == []
     assert stats["errors"] == []
     assert stats["error_groups"] == []
+
+
+def test_build_jira_project_run_settings_normalizes_config() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    settings_map = connectors._build_jira_project_run_settings(
+        {
+            "base_url": "https://example.atlassian.net/ ",
+            "project_key": " plat ",
+            "sync_mode": "auto",
+            "_state": {
+                "last_modified": "2026-03-01T12:34:56.000+0000",
+                "last_modified_ids": ["10000", "", None],
+            },
+            "max_issues": 999,
+            "page_size": 0,
+            "include_comments": False,
+            "max_comments_per_issue": 999,
+            "custom_fields": ["customfield_10016", "customfield_10016", "bad_field", "customfield_10017"],
+            "include_attachments": True,
+            "max_attachments_per_issue": 999,
+            "max_total_attachments": 9999,
+            "include_linked_artifacts": True,
+            "max_linked_artifacts_per_issue": 999,
+            "max_total_linked_artifacts": 9999,
+            "chunk_strategy": "jira_ticket",
+            "user_agent": "ExampleJiraAgent/1.0",
+            "source_acl": {"mode": "inherit", "fallback_mode": "all_team_members"},
+            "access": {"mode": "inherit"},
+            "jql": "labels = platform",
+        }
+    )
+
+    assert settings_map["base_url"] == "https://example.atlassian.net"
+    assert settings_map["project_key"] == "PLAT"
+    assert settings_map["cursor_last_modified"] == "2026-03-01T12:34:56.000+0000"
+    assert settings_map["cursor_last_modified_ids"] == {"10000"}
+    assert settings_map["effective_mode"] == "incremental"
+    assert settings_map["max_issues"] == 500
+    assert settings_map["page_size"] == 25
+    assert settings_map["include_comments"] is False
+    assert settings_map["max_comments_per_issue"] == 200
+    assert settings_map["custom_fields"] == ["customfield_10016", "customfield_10017"]
+    assert settings_map["include_attachments"] is True
+    assert settings_map["max_attachments_per_issue"] == 50
+    assert settings_map["max_total_attachments"] == 2000
+    assert settings_map["include_linked_artifacts"] is True
+    assert settings_map["max_linked_artifacts_per_issue"] == 50
+    assert settings_map["max_total_linked_artifacts"] == 2000
+    assert settings_map["search_url"] == "https://example.atlassian.net/rest/api/3/search"
+    assert settings_map["headers"]["Accept"] == "application/json"
+    assert settings_map["headers"]["User-Agent"] == "ExampleJiraAgent/1.0"
+    assert settings_map["enable_source_acl"] is True
+    assert settings_map["source_acl_fallback_mode"] == "all_team_members"
+    assert settings_map["extra_jql"] == "labels = platform"
+
+
+def test_build_jira_project_search_jql_adds_extra_jql_and_incremental_boundary() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+    connectors._jira_jql_updated_after = lambda _raw: "2026-03-01 12:34"  # type: ignore[method-assign]
+
+    jql = connectors._build_jira_project_search_jql(
+        project_key="PLAT",
+        extra_jql="labels = platform",
+        effective_mode="incremental",
+        cursor_last_modified="2026-03-01T12:34:56.000+0000",
+    )
+
+    assert jql == (
+        'project = "PLAT"'
+        " AND (labels = platform)"
+        ' AND updated >= "2026-03-01 12:34"'
+        " ORDER BY updated ASC"
+    )
+
+
+def test_initialize_jira_project_run_stats_includes_cursor_and_related_limits() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    run = types.SimpleNamespace(stats={"keep": "me"})
+    stats = connectors._initialize_jira_project_run_stats(
+        run=run,
+        settings_map={
+            "effective_mode": "incremental",
+            "project_key": "PLAT",
+            "base_url": "https://example.atlassian.net",
+            "max_issues": 25,
+            "page_size": 10,
+            "include_comments": True,
+            "max_comments_per_issue": 5,
+            "include_attachments": True,
+            "max_attachments_per_issue": 3,
+            "max_total_attachments": 30,
+            "include_linked_artifacts": True,
+            "max_linked_artifacts_per_issue": 2,
+            "max_total_linked_artifacts": 20,
+            "cursor_last_modified": "2026-03-01T12:34:56.000+0000",
+        },
+    )
+
+    assert stats["keep"] == "me"
+    assert stats["mode"] == "incremental"
+    assert stats["project_key"] == "PLAT"
+    assert stats["base_url"] == "https://example.atlassian.net"
+    assert stats["max_issues"] == 25
+    assert stats["page_size"] == 10
+    assert stats["include_comments"] is True
+    assert stats["max_comments_per_issue"] == 5
+    assert stats["include_attachments"] is True
+    assert stats["max_attachments_per_issue"] == 3
+    assert stats["max_total_attachments"] == 30
+    assert stats["include_linked_artifacts"] is True
+    assert stats["max_linked_artifacts_per_issue"] == 2
+    assert stats["max_total_linked_artifacts"] == 20
+    assert stats["cursor_in"] == "2026-03-01T12:34:56.000+0000"
+    assert stats["processed_issues"] == 0
+    assert stats["processed_attachments"] == 0
+    assert stats["processed_linked_artifacts"] == 0
+    assert stats["created"] == 0
+    assert stats["created_attachments"] == 0
+    assert stats["created_linked_artifacts"] == 0
+    assert stats["failed"] == 0
+    assert stats["skipped_boundary_duplicates"] == 0
+    assert stats["removed_issues_reconciled"] == 0
+    assert stats["removed_documents_disabled"] == 0
+    assert stats["removed_attachment_documents_disabled"] == 0
+    assert stats["removed_linked_artifact_documents_disabled"] == 0
+    assert stats["failed_urls"] == []
+    assert stats["errors"] == []
+    assert stats["error_groups"] == []

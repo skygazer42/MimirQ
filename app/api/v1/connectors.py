@@ -7948,6 +7948,156 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         _mark_confluence_space_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
+
+
+def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
+    project_key = str(cfg.get("project_key") or "").strip().upper()
+    if not base_url or not project_key:
+        raise ValueError("base_url and project_key are required")
+
+    sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
+    if sync_mode not in {"auto", "full", "incremental"}:
+        sync_mode = "auto"
+
+    state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+    cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
+    cursor_last_modified_ids = (
+        set(normalize_boundary_ids(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
+    )
+
+    effective_mode = sync_mode
+    if effective_mode == "auto":
+        effective_mode = "incremental" if cursor_last_modified else "full"
+    if effective_mode == "incremental" and not cursor_last_modified:
+        effective_mode = "full"
+
+    custom_fields_raw = cfg.get("custom_fields")
+    custom_fields_in = custom_fields_raw if isinstance(custom_fields_raw, list) else []
+    custom_fields: list[str] = []
+    custom_fields_seen: set[str] = set()
+    for raw in custom_fields_in:
+        key = str(raw or "").strip().lower()
+        if not key or len(key) > 80 or not re.fullmatch(r"customfield_\d+", key) or key in custom_fields_seen:
+            continue
+        custom_fields_seen.add(key)
+        custom_fields.append(key)
+        if len(custom_fields) >= 30:
+            break
+
+    include_attachments, max_attachments_per_issue, max_total_attachments = _jira_attachment_limits(cfg)
+    include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _jira_linked_artifact_limits(cfg)
+    access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+    source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+    has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
+    source_acl_mode = (
+        str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
+    )
+    source_acl_fallback_mode = (
+        str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
+        if isinstance(source_acl, dict)
+        else "partial_members"
+    )
+    user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+    auth_headers = _build_auth_headers(cfg)
+    headers: dict[str, str] = {
+        "Accept": "application/json",
+        "User-Agent": (user_agent or "MimirQ/1.0 (+jira_project)"),
+    }
+    headers.update(auth_headers)
+
+    return {
+        "base_url": base_url,
+        "project_key": project_key,
+        "effective_mode": effective_mode,
+        "cursor_last_modified": cursor_last_modified,
+        "cursor_last_modified_ids": cursor_last_modified_ids,
+        "max_issues": max(1, min(int(cfg.get("max_issues") or 50), 500)),
+        "page_size": max(1, min(int(cfg.get("page_size") or 25), 100)),
+        "include_comments": bool(cfg.get("include_comments", True)),
+        "max_comments_per_issue": max(0, min(int(cfg.get("max_comments_per_issue") or 20), 200)),
+        "custom_fields": custom_fields,
+        "include_attachments": bool(include_attachments),
+        "max_attachments_per_issue": int(max_attachments_per_issue),
+        "max_total_attachments": int(max_total_attachments),
+        "include_linked_artifacts": bool(include_linked_artifacts),
+        "max_linked_artifacts_per_issue": int(max_linked_artifacts_per_issue),
+        "max_total_linked_artifacts": int(max_total_linked_artifacts),
+        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
+        "chunk_strategy": cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "jira_ticket",
+        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
+        "access": access,
+        "source_acl_mode": source_acl_mode,
+        "source_acl_fallback_mode": source_acl_fallback_mode,
+        "has_manual_access_override": has_manual_access_override,
+        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
+        "extra_jql": str(cfg.get("jql") or "").strip(),
+        "user_agent": user_agent,
+        "auth_headers": auth_headers,
+        "api_base": _jira_api_base_url(base_url),
+        "search_url": f"{_jira_api_base_url(base_url)}/search",
+        "headers": headers,
+    }
+
+
+def _build_jira_project_search_jql(
+    *,
+    project_key: str,
+    extra_jql: str,
+    effective_mode: str,
+    cursor_last_modified: str,
+) -> str:
+    jql_parts = [f'project = "{project_key}"']
+    if extra_jql:
+        jql_parts.append(f"({extra_jql})")
+    if effective_mode == "incremental" and cursor_last_modified:
+        after = _jira_jql_updated_after(cursor_last_modified)
+        if after:
+            jql_parts.append(f'updated >= "{after}"')
+    return " AND ".join(jql_parts) + " ORDER BY updated ASC"
+
+
+def _initialize_jira_project_run_stats(*, run: ConnectorRun, settings_map: dict[str, Any]) -> dict[str, Any]:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": settings_map.get("effective_mode"),
+            "project_key": settings_map.get("project_key"),
+            "base_url": settings_map.get("base_url"),
+            "max_issues": int(settings_map.get("max_issues") or 0),
+            "page_size": int(settings_map.get("page_size") or 0),
+            "include_comments": bool(settings_map.get("include_comments")),
+            "max_comments_per_issue": int(settings_map.get("max_comments_per_issue") or 0),
+            "include_attachments": bool(settings_map.get("include_attachments")),
+            "max_attachments_per_issue": int(settings_map.get("max_attachments_per_issue") or 0),
+            "max_total_attachments": int(settings_map.get("max_total_attachments") or 0),
+            "include_linked_artifacts": bool(settings_map.get("include_linked_artifacts")),
+            "max_linked_artifacts_per_issue": int(settings_map.get("max_linked_artifacts_per_issue") or 0),
+            "max_total_linked_artifacts": int(settings_map.get("max_total_linked_artifacts") or 0),
+            "processed_issues": 0,
+            "processed_attachments": 0,
+            "cursor": 0,
+            "created": 0,
+            "created_attachments": 0,
+            "processed_linked_artifacts": 0,
+            "created_linked_artifacts": 0,
+            "removed_linked_artifact_documents_disabled": 0,
+            "failed": 0,
+            "skipped_boundary_duplicates": 0,
+            "failed_urls": [],
+            "errors": [],
+            "error_groups": [],
+            "removed_issues_reconciled": 0,
+            "removed_documents_disabled": 0,
+            "removed_attachment_documents_disabled": 0,
+        }
+    )
+    if settings_map.get("cursor_last_modified"):
+        stats["cursor_in"] = settings_map.get("cursor_last_modified")
+    return stats
+
+
 async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for jira_project connector.
@@ -7977,83 +8127,39 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         db.commit()
         db.refresh(run)
 
-        cfg_raw = dict(run.config or {})
-        cfg = decrypt_connector_config_secrets(cfg_raw)
+        settings_map = _build_jira_project_run_settings(decrypt_connector_config_secrets(dict(run.config or {})))
+        settings_map["jql"] = _build_jira_project_search_jql(
+            project_key=str(settings_map.get("project_key") or ""),
+            extra_jql=str(settings_map.get("extra_jql") or ""),
+            effective_mode=str(settings_map.get("effective_mode") or ""),
+            cursor_last_modified=str(settings_map.get("cursor_last_modified") or ""),
+        )
 
-        base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
-        project_key = str(cfg.get("project_key") or "").strip().upper()
-        if not base_url or not project_key:
-            raise ValueError("base_url and project_key are required")
-
-        sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
-        if sync_mode not in {"auto", "full", "incremental"}:
-            sync_mode = "auto"
-
-        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-        cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
-        cursor_last_modified_ids = set(normalize_boundary_ids(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
-
-        effective_mode = sync_mode
-        if effective_mode == "auto":
-            effective_mode = "incremental" if cursor_last_modified else "full"
-        if effective_mode == "incremental" and not cursor_last_modified:
-            effective_mode = "full"
-
-        max_issues = int(cfg.get("max_issues") or 50)
-        max_issues = max(1, min(max_issues, 500))
-        page_size = int(cfg.get("page_size") or 25)
-        page_size = max(1, min(page_size, 100))
-        include_comments = bool(cfg.get("include_comments", True))
-        max_comments_per_issue = int(cfg.get("max_comments_per_issue") or 20)
-        max_comments_per_issue = max(0, min(max_comments_per_issue, 200))
-        custom_fields_raw = cfg.get("custom_fields")
-        custom_fields_in = custom_fields_raw if isinstance(custom_fields_raw, list) else []
-        custom_fields: list[str] = []
-        custom_fields_seen: set[str] = set()
-        for raw in custom_fields_in:
-            key = str(raw or "").strip().lower()
-            if not key:
-                continue
-            if len(key) > 80:
-                continue
-            if not re.fullmatch(r"customfield_\d+", key):
-                continue
-            if key in custom_fields_seen:
-                continue
-            custom_fields_seen.add(key)
-            custom_fields.append(key)
-            if len(custom_fields) >= 30:
-                break
-        include_attachments, max_attachments_per_issue, max_total_attachments = _jira_attachment_limits(cfg)
-        include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _jira_linked_artifact_limits(cfg)
-
-        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
-        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "jira_ticket"
-        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
-        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
-        source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
-        extra_jql = str(cfg.get("jql") or "").strip()
-
-        user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
-        auth_headers = _build_auth_headers(cfg)
-
-        api_base = _jira_api_base_url(base_url)
-        search_url = f"{api_base}/search"
-
-        headers: dict[str, str] = {
-            "Accept": "application/json",
-            "User-Agent": (user_agent or "MimirQ/1.0 (+jira_project)"),
-        }
-        headers.update(auth_headers)
-
-        jql_parts = [f'project = "{project_key}"']
-        if extra_jql:
-            jql_parts.append(f"({extra_jql})")
-        if effective_mode == "incremental" and cursor_last_modified:
-            after = _jira_jql_updated_after(cursor_last_modified)
-            if after:
-                jql_parts.append(f'updated >= "{after}"')
-        jql = " AND ".join(jql_parts) + " ORDER BY updated ASC"
+        base_url = str(settings_map.get("base_url") or "")
+        project_key = str(settings_map.get("project_key") or "")
+        cursor_last_modified = str(settings_map.get("cursor_last_modified") or "")
+        cursor_last_modified_ids = set(settings_map.get("cursor_last_modified_ids") or set())
+        effective_mode = str(settings_map.get("effective_mode") or "")
+        max_issues = int(settings_map.get("max_issues") or 0)
+        page_size = int(settings_map.get("page_size") or 0)
+        include_comments = bool(settings_map.get("include_comments"))
+        max_comments_per_issue = int(settings_map.get("max_comments_per_issue") or 0)
+        custom_fields = list(settings_map.get("custom_fields") or [])
+        include_attachments = bool(settings_map.get("include_attachments"))
+        max_attachments_per_issue = int(settings_map.get("max_attachments_per_issue") or 0)
+        max_total_attachments = int(settings_map.get("max_total_attachments") or 0)
+        include_linked_artifacts = bool(settings_map.get("include_linked_artifacts"))
+        max_linked_artifacts_per_issue = int(settings_map.get("max_linked_artifacts_per_issue") or 0)
+        max_total_linked_artifacts = int(settings_map.get("max_total_linked_artifacts") or 0)
+        parser_backend = str(settings_map.get("parser_backend") or "auto")
+        chunk_strategy = str(settings_map.get("chunk_strategy") or "jira_ticket")
+        pipeline = settings_map.get("pipeline")
+        access = settings_map.get("access")
+        user_agent = settings_map.get("user_agent")
+        auth_headers = dict(settings_map.get("auth_headers") or {})
+        search_url = str(settings_map.get("search_url") or "")
+        headers = dict(settings_map.get("headers") or {})
+        jql = str(settings_map.get("jql") or "")
 
         created = 0
         failed = 0
@@ -8076,50 +8182,12 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         listing_complete = False
         total_issues_available: int | None = None
 
-        stats0 = dict(run.stats or {})
-        stats0.update(
-            {
-                "mode": effective_mode,
-                "project_key": project_key,
-                "base_url": base_url,
-                "max_issues": int(max_issues),
-                "page_size": int(page_size),
-                "include_comments": bool(include_comments),
-                "max_comments_per_issue": int(max_comments_per_issue),
-                "include_attachments": bool(include_attachments),
-                "max_attachments_per_issue": int(max_attachments_per_issue),
-                "max_total_attachments": int(max_total_attachments),
-                "include_linked_artifacts": bool(include_linked_artifacts),
-                "max_linked_artifacts_per_issue": int(max_linked_artifacts_per_issue),
-                "max_total_linked_artifacts": int(max_total_linked_artifacts),
-                "processed_issues": 0,
-                "processed_attachments": 0,
-                "cursor": 0,
-                "created": 0,
-                "created_attachments": 0,
-                "processed_linked_artifacts": 0,
-                "created_linked_artifacts": 0,
-                "removed_linked_artifact_documents_disabled": 0,
-                "failed": 0,
-                "skipped_boundary_duplicates": 0,
-                "failed_urls": [],
-                "errors": [],
-                "error_groups": [],
-                "removed_issues_reconciled": 0,
-                "removed_documents_disabled": 0,
-                "removed_attachment_documents_disabled": 0,
-            }
-        )
-        if cursor_last_modified:
-            stats0["cursor_in"] = cursor_last_modified
-        run.stats = _finalize_connector_stats(stats0)
+        run.stats = _finalize_connector_stats(_initialize_jira_project_run_stats(run=run, settings_map=settings_map))
         db.commit()
 
-        source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
-        source_acl_fallback_mode = str(source_acl.get("fallback_mode") or "partial_members").strip().lower() if isinstance(source_acl, dict) else "partial_members"
-        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-        has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
-        enable_source_acl = bool(source_acl_mode == "inherit" and not has_manual_access_override)
+        source_acl_mode = str(settings_map.get("source_acl_mode") or "disabled")
+        source_acl_fallback_mode = str(settings_map.get("source_acl_fallback_mode") or "partial_members")
+        enable_source_acl = bool(settings_map.get("enable_source_acl"))
 
         pool = get_http_client_pool()
         start_at = 0
