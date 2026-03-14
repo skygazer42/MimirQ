@@ -402,6 +402,425 @@ def _web_crawl_source_manifest(urls: list[str], *, sync_tokens: dict[str, str] |
     return out
 
 
+def _get_web_crawl_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
+    run = (
+        db.query(ConnectorRun)
+        .options(selectinload(ConnectorRun.documents))
+        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+        .first()
+    )
+    if not run:
+        return None
+    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+        return None
+    return run
+
+
+def _mark_web_crawl_run_running(db: Session, *, run: ConnectorRun) -> None:
+    run.status = "running"
+    run.started_at = _now()
+    run.error_message = None
+    run.stats = dict(run.stats or {})
+    db.commit()
+    db.refresh(run)
+
+
+def _normalize_web_crawl_string_list(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [str(value or "").strip() for value in values if str(value or "").strip()]
+
+
+def _normalize_web_crawl_principal_list(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [str(value).strip() for value in values if isinstance(value, (str, int, float)) and str(value).strip()]
+
+
+def _build_web_crawl_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+    return {
+        "state": cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {},
+        "start_urls": _normalize_web_crawl_string_list(cfg.get("start_urls")),
+        "max_pages": int(cfg.get("max_pages") or 50),
+        "max_depth": int(cfg.get("max_depth") or 3),
+        "same_host_only": bool(cfg.get("same_host_only", True)),
+        "include_patterns": _normalize_web_crawl_string_list(cfg.get("include_patterns")),
+        "exclude_patterns": _normalize_web_crawl_string_list(cfg.get("exclude_patterns")),
+        "use_sitemaps": bool(cfg.get("use_sitemaps", False)),
+        "sitemap_urls": _normalize_web_crawl_string_list(cfg.get("sitemap_urls")),
+        "respect_robots": bool(cfg.get("respect_robots", False)),
+        "dedup_canonical": bool(cfg.get("dedup_canonical", True)),
+        "user_agent": cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None,
+        "filename": cfg.get("filename") if isinstance(cfg.get("filename"), str) else None,
+        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
+        "chunk_strategy": (
+            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
+        ),
+        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
+        "access_mode": access_mode,
+        "access_members": _normalize_web_crawl_principal_list(
+            access.get("partial_member_list") if isinstance(access, dict) else None
+        ),
+        "access_groups": _normalize_web_crawl_principal_list(
+            access.get("partial_group_list") if isinstance(access, dict) else None
+        ),
+        "auth_headers": _build_auth_headers(cfg),
+    }
+
+
+def _build_web_crawl_execution_plan(
+    *,
+    run_stats: dict[str, Any],
+    state: dict[str, Any],
+    crawl_urls: list[str],
+    crawl_sync_tokens: dict[str, str],
+) -> dict[str, Any]:
+    existing_manifest = normalize_source_manifest(state.get("source_manifest"))
+    discovered_manifest = _web_crawl_source_manifest(
+        [str(url or "").strip() for url in crawl_urls or [] if str(url or "").strip()],
+        sync_tokens={str(key): str(value) for key, value in crawl_sync_tokens.items()},
+    )
+    discovered_urls = list(discovered_manifest.keys())
+    resume_cursor_raw = get_resume_cursor(state)
+    is_resume_run = bool((run_stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
+    mode = "incremental" if existing_manifest else "full"
+    delta_urls = [
+        url
+        for url in discovered_urls
+        if (
+            url not in existing_manifest
+            or _web_crawl_manifest_token_changed(
+                existing_token=existing_manifest.get(url),
+                discovered_token=discovered_manifest.get(url),
+            )
+        )
+    ]
+    removed_urls = sorted(set(existing_manifest) - set(discovered_manifest)) if mode == "incremental" else []
+    resume_cursor = resume_cursor_raw if (is_resume_run and mode == "full") else 0
+    urls_to_process, cursor_in = slice_items_from_cursor(delta_urls, cursor=resume_cursor)
+    source_manifest_state = {
+        url: str(discovered_manifest.get(url) or token)
+        for url, token in existing_manifest.items()
+        if url in discovered_manifest
+    }
+    skipped_unchanged = max(0, int(len(discovered_urls) - len(delta_urls)))
+    processed_visible = skipped_unchanged + cursor_in
+    return {
+        "mode": mode,
+        "discovered_manifest": discovered_manifest,
+        "discovered_urls": discovered_urls,
+        "delta_urls": delta_urls,
+        "removed_urls": removed_urls,
+        "crawl_urls": urls_to_process,
+        "cursor_in": int(cursor_in),
+        "skipped_unchanged": int(skipped_unchanged),
+        "processed_visible": int(processed_visible),
+        "source_manifest_state": source_manifest_state,
+        "resumed_from_state": bool(is_resume_run and ((mode == "incremental") or cursor_in > 0)),
+    }
+
+
+def _initialize_web_crawl_run_stats(*, run: ConnectorRun, crawl: Any, plan: dict[str, Any]) -> dict[str, Any]:
+    discovered_urls = list(plan.get("discovered_urls") or [])
+    delta_urls = list(plan.get("delta_urls") or [])
+    removed_urls = list(plan.get("removed_urls") or [])
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "visited": int(getattr(crawl, "visited", 0) or 0),
+            "queued": int(getattr(crawl, "queued", 0) or 0),
+            "discovered": int(len(discovered_urls)),
+            "total_urls": int(len(discovered_urls)),
+            "delta_urls": int(len(delta_urls)),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "processed_urls": int(plan.get("processed_visible") or 0),
+            "cursor": int(plan.get("cursor_in") or 0),
+            "created": 0,
+            "failed": 0,
+            "failed_urls": [],
+            "errors": [],
+            "error_groups": [],
+            "cursor_in": int(plan.get("cursor_in") or 0),
+            "resumed_from_state": bool(plan.get("resumed_from_state")),
+            "removed_paths": int(len(removed_urls)),
+            "removed_paths_reconciled": 0,
+            "removed_documents_disabled": 0,
+            "source_manifest": dict(plan.get("source_manifest_state") or {}),
+        }
+    )
+    crawl_errors = getattr(crawl, "errors", None)
+    if crawl_errors:
+        stats["crawl_errors"] = list(crawl_errors)[:20]
+    return stats
+
+
+def _web_crawl_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
+    with contextlib.suppress(Exception):
+        db.refresh(run)
+    return str(run.status or "").lower() == "cancelled"
+
+
+async def _ingest_web_crawl_url(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    url: str,
+    settings_map: dict[str, Any],
+) -> Any:
+    body = UrlUploadRequest(
+        url=url,
+        dataset_id=run.dataset_id,
+        filename=settings_map.get("filename"),
+        fetch_headers=settings_map.get("auth_headers") or None,
+        user_agent=settings_map.get("user_agent"),
+        parser_backend=settings_map.get("parser_backend"),
+        chunk_strategy=settings_map.get("chunk_strategy"),
+        pipeline=settings_map.get("pipeline"),  # type: ignore[arg-type]
+    )
+    doc = await _ingest_url_upload_request(
+        background_tasks=None,
+        body=body,
+        tenant_id=tenant_id,
+        account_id=requested_by,
+        db=db,
+    )
+
+    _apply_document_access_from_config(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        doc=doc,
+        access={
+            "mode": settings_map.get("access_mode"),
+            "partial_member_list": list(settings_map.get("access_members") or []),
+            "partial_group_list": list(settings_map.get("access_groups") or []),
+        },
+        connector_id="web_crawl",
+    )
+    _apply_connector_identity_metadata(
+        doc=doc,
+        run=run,
+        connector_id="web_crawl",
+        source_ref=url,
+        source_id=url,
+    )
+
+    db.add(
+        ConnectorRunDocument(
+            tenant_id=tenant_id,
+            run_id=run.id,
+            document_id=doc.id,
+            source_ref=url,
+            status="created",
+        )
+    )
+    return doc
+
+
+def _persist_web_crawl_progress(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    plan: dict[str, Any],
+    idx: int,
+    url: str,
+    created: int,
+    failed: int,
+    created_doc_ids: list[UUID],
+    source_manifest_state: dict[str, str],
+    removed_urls_reconciled: int,
+    removed_documents_disabled: int,
+    succeeded: bool,
+    ingested_doc: Any,
+) -> None:
+    discovered_manifest = dict(plan.get("discovered_manifest") or {})
+    if succeeded and url and url in discovered_manifest:
+        token = str(discovered_manifest.get(url) or "").strip()
+        if ingested_doc is not None:
+            with contextlib.suppress(Exception):
+                token = _web_crawl_build_doc_sync_token(
+                    source_url=url,
+                    doc=ingested_doc,
+                    crawl_token=token,
+                )
+        source_manifest_state[url] = token or discovered_manifest[url]
+
+    processed = int(plan.get("cursor_in") or 0) + idx + 1
+    processed_visible = int(plan.get("skipped_unchanged") or 0) + processed
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "total_urls": int(len(plan.get("discovered_urls") or [])),
+            "delta_urls": int(len(plan.get("delta_urls") or [])),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "processed_urls": int(processed_visible),
+            "cursor": int(processed),
+            "created": int(created),
+            "failed": int(failed),
+            "removed_paths": int(len(plan.get("removed_urls") or [])),
+            "removed_paths_reconciled": int(removed_urls_reconciled),
+            "removed_documents_disabled": int(removed_documents_disabled),
+            "source_manifest": dict(source_manifest_state),
+            "document_ids": [str(doc_id) for doc_id in created_doc_ids],
+        }
+    )
+    run.stats = _finalize_connector_stats(stats)
+    db.commit()
+
+
+async def _process_web_crawl_urls(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    created = 0
+    failed = 0
+    created_doc_ids: list[UUID] = []
+    source_manifest_state = dict(plan.get("source_manifest_state") or {})
+
+    for idx, url in enumerate(plan.get("crawl_urls") or []):
+        if _web_crawl_run_cancelled(db, run=run):
+            break
+
+        succeeded = False
+        ingested_doc = None
+        try:
+            ingested_doc = await _ingest_web_crawl_url(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                url=str(url or ""),
+                settings_map=settings_map,
+            )
+            created += 1
+            created_doc_ids.append(ingested_doc.id)
+            succeeded = True
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            run.stats = _append_connector_error(dict(run.stats or {}), url=str(url or ""), exc=exc)
+
+        _persist_web_crawl_progress(
+            db,
+            run=run,
+            plan=plan,
+            idx=idx,
+            url=str(url or ""),
+            created=created,
+            failed=failed,
+            created_doc_ids=created_doc_ids,
+            source_manifest_state=source_manifest_state,
+            removed_urls_reconciled=0,
+            removed_documents_disabled=0,
+            succeeded=succeeded,
+            ingested_doc=ingested_doc,
+        )
+
+    return {
+        "created": created,
+        "failed": failed,
+        "created_doc_ids": created_doc_ids,
+        "source_manifest_state": source_manifest_state,
+    }
+
+
+def _finalize_cancelled_web_crawl_run(db: Session, *, run: ConnectorRun) -> None:
+    if run.finished_at is None:
+        run.finished_at = _now()
+    run.stats = _finalize_connector_stats(dict(run.stats or {}))
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def _reconcile_removed_web_crawl_urls(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    removed_urls: list[str],
+) -> tuple[int, int]:
+    removed_urls_reconciled = 0
+    removed_documents_disabled = 0
+    for source_url in removed_urls:
+        try:
+            disabled = _soft_disable_connector_documents_by_source_url(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                connector_id="web_crawl",
+                source_url=source_url,
+            )
+        except Exception as exc:  # noqa: BLE001
+            stats = _append_connector_error(dict(run.stats or {}), url=source_url, exc=exc)
+            run.stats = _finalize_connector_stats(stats)
+            db.commit()
+            continue
+        removed_documents_disabled += int(disabled)
+        if disabled:
+            removed_urls_reconciled += 1
+    return removed_urls_reconciled, removed_documents_disabled
+
+
+def _finalize_web_crawl_run_success(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    plan: dict[str, Any],
+    created: int,
+    failed: int,
+    created_doc_ids: list[UUID],
+    source_manifest_state: dict[str, str],
+    removed_urls_reconciled: int,
+    removed_documents_disabled: int,
+) -> None:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "mode": plan.get("mode"),
+            "delta_urls": int(len(plan.get("delta_urls") or [])),
+            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
+            "removed_paths": int(len(plan.get("removed_urls") or [])),
+            "removed_paths_reconciled": int(removed_urls_reconciled),
+            "removed_documents_disabled": int(removed_documents_disabled),
+            "source_manifest": dict(source_manifest_state),
+            "document_ids": [str(doc_id) for doc_id in created_doc_ids],
+        }
+    )
+    run.stats = _finalize_connector_stats(stats)
+    run.finished_at = _now()
+    run.status = _connector_run_completion_status(created=created, failed=failed)
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def _mark_web_crawl_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
+    with contextlib.suppress(Exception):
+        run = (
+            db.query(ConnectorRun)
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if run is not None:
+            run.status = "failed"
+            run.finished_at = _now()
+            run.error_message = str(exc)[:200]
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
+
+
 def _db_row_sidecar_file_path(*, dataset_id: UUID, connector_id: str) -> str:
     return f"virtual://db_catalog/rows/{str(dataset_id)}/{str(connector_id or '').strip()}"
 
@@ -2345,315 +2764,80 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
     - Ingest each discovered URL using the existing /documents/upload-url path
     """
     db = SessionLocal()
+    run: ConnectorRun | None = None
     try:
-        run = (
-            db.query(ConnectorRun)
-            .options(selectinload(ConnectorRun.documents))
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
-        if not run:
-            return
-        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+        run = _get_web_crawl_run(db, run_id=run_id, tenant_id=tenant_id)
+        if run is None:
             return
 
-        run.status = "running"
-        run.started_at = _now()
-        run.error_message = None
-        run.stats = dict(run.stats or {})
-        db.commit()
-        db.refresh(run)
-
-        cfg_raw = dict(run.config or {})
-        cfg = decrypt_connector_config_secrets(cfg_raw)
-
-        start_urls = cfg.get("start_urls") if isinstance(cfg.get("start_urls"), list) else []
-        start_urls = [str(u or "").strip() for u in start_urls if str(u or "").strip()]
-        max_pages = int(cfg.get("max_pages") or 50)
-        max_depth = int(cfg.get("max_depth") or 3)
-        same_host_only = bool(cfg.get("same_host_only", True))
-        include_patterns = cfg.get("include_patterns") if isinstance(cfg.get("include_patterns"), list) else []
-        exclude_patterns = cfg.get("exclude_patterns") if isinstance(cfg.get("exclude_patterns"), list) else []
-        use_sitemaps = bool(cfg.get("use_sitemaps", False))
-        sitemap_urls = cfg.get("sitemap_urls") if isinstance(cfg.get("sitemap_urls"), list) else []
-        respect_robots = bool(cfg.get("respect_robots", False))
-        dedup_canonical = bool(cfg.get("dedup_canonical", True))
-        user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
-
-        filename = cfg.get("filename") if isinstance(cfg.get("filename"), str) else None
-        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
-        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
-        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
-
-        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-        access_members = access.get("partial_member_list") if isinstance(access, dict) else None
-        if not isinstance(access_members, list):
-            access_members = []
-        access_members = [str(v).strip() for v in access_members if isinstance(v, (str, int, float)) and str(v).strip()]
-        access_groups = access.get("partial_group_list") if isinstance(access, dict) else None
-        if not isinstance(access_groups, list):
-            access_groups = []
-        access_groups = [str(v).strip() for v in access_groups if isinstance(v, (str, int, float)) and str(v).strip()]
-
-        auth_headers = _build_auth_headers(cfg)
+        _mark_web_crawl_run_running(db, run=run)
+        cfg = decrypt_connector_config_secrets(dict(run.config or {}))
+        settings_map = _build_web_crawl_run_settings(cfg)
 
         crawl = await crawl_site(
-            start_urls=start_urls,
-            max_pages=max_pages,
-            max_depth=max_depth,
-            same_host_only=same_host_only,
-            include_patterns=[str(p or "") for p in include_patterns if str(p or "").strip()],
-            exclude_patterns=[str(p or "") for p in exclude_patterns if str(p or "").strip()],
-            use_sitemaps=use_sitemaps,
-            sitemap_urls=[str(u or "") for u in sitemap_urls if str(u or "").strip()],
-            respect_robots=respect_robots,
-            dedup_canonical=dedup_canonical,
-            headers=auth_headers,
-            user_agent=user_agent,
+            start_urls=list(settings_map.get("start_urls") or []),
+            max_pages=int(settings_map.get("max_pages") or 50),
+            max_depth=int(settings_map.get("max_depth") or 3),
+            same_host_only=bool(settings_map.get("same_host_only", True)),
+            include_patterns=list(settings_map.get("include_patterns") or []),
+            exclude_patterns=list(settings_map.get("exclude_patterns") or []),
+            use_sitemaps=bool(settings_map.get("use_sitemaps", False)),
+            sitemap_urls=list(settings_map.get("sitemap_urls") or []),
+            respect_robots=bool(settings_map.get("respect_robots", False)),
+            dedup_canonical=bool(settings_map.get("dedup_canonical", True)),
+            headers=settings_map.get("auth_headers"),
+            user_agent=settings_map.get("user_agent"),
             timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
             max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
             follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
         )
 
-        created = 0
-        failed = 0
-        created_doc_ids: list[UUID] = []
-        state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-        existing_manifest = normalize_source_manifest(state.get("source_manifest"))
         crawl_sync_tokens = getattr(crawl, "sync_tokens", None)
-        crawl_sync_tokens = crawl_sync_tokens if isinstance(crawl_sync_tokens, dict) else {}
-        discovered_manifest = _web_crawl_source_manifest(
-            [str(url or "").strip() for url in (crawl.urls or []) if str(url or "").strip()],
-            sync_tokens={str(k): str(v) for k, v in crawl_sync_tokens.items()},
+        plan = _build_web_crawl_execution_plan(
+            run_stats=dict(run.stats or {}),
+            state=dict(settings_map.get("state") or {}),
+            crawl_urls=list(getattr(crawl, "urls", None) or []),
+            crawl_sync_tokens=(crawl_sync_tokens if isinstance(crawl_sync_tokens, dict) else {}),
         )
-        discovered_urls = list(discovered_manifest.keys())
-        resume_cursor_raw = get_resume_cursor(state)
-        is_resume_run = bool((run.stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
-        effective_mode = "incremental" if existing_manifest else "full"
-        delta_urls = [
-            url
-            for url in discovered_urls
-            if (
-                url not in existing_manifest
-                or _web_crawl_manifest_token_changed(
-                    existing_token=existing_manifest.get(url),
-                    discovered_token=discovered_manifest.get(url),
-                )
-            )
-        ]
-        removed_urls = sorted(set(existing_manifest) - set(discovered_manifest)) if effective_mode == "incremental" else []
-        resume_cursor = resume_cursor_raw if (is_resume_run and effective_mode == "full") else 0
-        crawl_urls, cursor_in = slice_items_from_cursor(delta_urls, cursor=resume_cursor)
-        source_manifest_state = {
-            url: str(discovered_manifest.get(url) or token)
-            for url, token in existing_manifest.items()
-            if url in discovered_manifest
-        }
-        skipped_unchanged = max(0, int(len(discovered_urls) - len(delta_urls)))
-        processed_visible = skipped_unchanged + cursor_in
-        removed_urls_reconciled = 0
-        removed_documents_disabled = 0
-
-        stats = dict(run.stats or {})
-        stats.update(
-            {
-                "mode": effective_mode,
-                "visited": int(crawl.visited),
-                "queued": int(crawl.queued),
-                "discovered": int(len(discovered_urls)),
-                "total_urls": int(len(discovered_urls)),
-                "delta_urls": int(len(delta_urls)),
-                "skipped_unchanged": int(skipped_unchanged),
-                "processed_urls": int(processed_visible),
-                "cursor": int(cursor_in),
-                "created": 0,
-                "failed": 0,
-                "failed_urls": [],
-                "errors": [],
-                "error_groups": [],
-                "cursor_in": int(cursor_in),
-                "resumed_from_state": bool(is_resume_run and ((effective_mode == "incremental") or cursor_in > 0)),
-                "removed_paths": int(len(removed_urls)),
-                "removed_paths_reconciled": 0,
-                "removed_documents_disabled": 0,
-                "source_manifest": dict(source_manifest_state),
-            }
-        )
-        if crawl.errors:
-            stats["crawl_errors"] = list(crawl.errors)[:20]
-        run.stats = _finalize_connector_stats(stats)
+        run.stats = _finalize_connector_stats(_initialize_web_crawl_run_stats(run=run, crawl=crawl, plan=plan))
         db.commit()
 
-        for idx, url in enumerate(crawl_urls):
-            # Observe cancellation from another DB session (best-effort).
-            try:
-                db.refresh(run)
-            except Exception:
-                pass
-            if str(run.status or "").lower() == "cancelled":
-                break
-
-            succeeded = False
-            ingested_doc = None
-            try:
-                body = UrlUploadRequest(
-                    url=url,
-                    dataset_id=run.dataset_id,
-                    filename=filename,
-                    fetch_headers=auth_headers or None,
-                    user_agent=user_agent,
-                    parser_backend=parser_backend,
-                    chunk_strategy=chunk_strategy,
-                    pipeline=pipeline,  # type: ignore[arg-type]
-                )
-                doc = await _ingest_url_upload_request(
-                    background_tasks=None,
-                    body=body,
-                    tenant_id=tenant_id,
-                    account_id=requested_by,
-                    db=db,
-                )
-                ingested_doc = doc
-
-                _apply_document_access_from_config(
-                    db,
-                    tenant_id=tenant_id,
-                    requested_by=requested_by,
-                    doc=doc,
-                    access={
-                        "mode": access_mode,
-                        "partial_member_list": list(access_members),
-                        "partial_group_list": list(access_groups),
-                    },
-                    connector_id="web_crawl",
-                )
-                _apply_connector_identity_metadata(
-                    doc=doc,
-                    run=run,
-                    connector_id="web_crawl",
-                    source_ref=url,
-                    source_id=url,
-                )
-
-                db.add(
-                    ConnectorRunDocument(
-                        tenant_id=tenant_id,
-                        run_id=run.id,
-                        document_id=doc.id,
-                        source_ref=url,
-                        status="created",
-                    )
-                )
-                created += 1
-                created_doc_ids.append(doc.id)
-                succeeded = True
-            except Exception as exc:  # noqa: BLE001
-                failed += 1
-                stats = dict(run.stats or {})
-                stats = _append_connector_error(stats, url=url, exc=exc)
-                run.stats = stats
-            finally:
-                processed = cursor_in + idx + 1
-                processed_visible = skipped_unchanged + processed
-                if succeeded and url and url in discovered_manifest:
-                    token = str(discovered_manifest.get(url) or "").strip()
-                    if ingested_doc is not None:
-                        with contextlib.suppress(Exception):
-                            token = _web_crawl_build_doc_sync_token(
-                                source_url=url,
-                                doc=ingested_doc,
-                                crawl_token=token,
-                            )
-                    source_manifest_state[url] = token or discovered_manifest[url]
-                stats = dict(run.stats or {})
-                stats.update(
-                    {
-                        "mode": effective_mode,
-                        "total_urls": int(len(discovered_urls)),
-                        "delta_urls": int(len(delta_urls)),
-                        "skipped_unchanged": int(skipped_unchanged),
-                        "processed_urls": int(processed_visible),
-                        "cursor": int(processed),
-                        "created": int(created),
-                        "failed": int(failed),
-                        "removed_paths": int(len(removed_urls)),
-                        "removed_paths_reconciled": int(removed_urls_reconciled),
-                        "removed_documents_disabled": int(removed_documents_disabled),
-                        "source_manifest": dict(source_manifest_state),
-                        "document_ids": [str(d) for d in created_doc_ids],
-                    }
-                )
-                run.stats = _finalize_connector_stats(stats)
-                db.commit()
-
-        # Finalize status (don't override cancellation).
-        try:
-            db.refresh(run)
-        except Exception:
-            pass
-        if str(run.status or "").lower() == "cancelled":
-            if run.finished_at is None:
-                run.finished_at = _now()
-            run.stats = _finalize_connector_stats(dict(run.stats or {}))
-            db.commit()
-            with contextlib.suppress(Exception):
-                _sync_connector_config_from_run(db, run=run)
+        progress = await _process_web_crawl_urls(
+            db,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map=settings_map,
+            plan=plan,
+        )
+        if _web_crawl_run_cancelled(db, run=run):
+            _finalize_cancelled_web_crawl_run(db, run=run)
             return
 
-        if effective_mode == "incremental" and removed_urls:
-            for source_url in removed_urls:
-                try:
-                    disabled = _soft_disable_connector_documents_by_source_url(
-                        db,
-                        tenant_id=tenant_id,
-                        dataset_id=run.dataset_id,
-                        connector_id="web_crawl",
-                        source_url=source_url,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    stats = dict(run.stats or {})
-                    stats = _append_connector_error(stats, url=source_url, exc=exc)
-                    run.stats = _finalize_connector_stats(stats)
-                    db.commit()
-                    continue
-                removed_documents_disabled += int(disabled)
-                if disabled:
-                    removed_urls_reconciled += 1
-
-        stats = dict(run.stats or {})
-        stats.update(
-            {
-                "mode": effective_mode,
-                "delta_urls": int(len(delta_urls)),
-                "skipped_unchanged": int(skipped_unchanged),
-                "removed_paths": int(len(removed_urls)),
-                "removed_paths_reconciled": int(removed_urls_reconciled),
-                "removed_documents_disabled": int(removed_documents_disabled),
-                "source_manifest": dict(source_manifest_state),
-                "document_ids": [str(d) for d in created_doc_ids],
-            }
-        )
-        run.stats = _finalize_connector_stats(stats)
-        run.finished_at = _now()
-        run.status = _connector_run_completion_status(created=created, failed=failed)
-        db.commit()
-        with contextlib.suppress(Exception):
-            _sync_connector_config_from_run(db, run=run)
-    except Exception as exc:  # noqa: BLE001
-        with contextlib.suppress(Exception):
-            run = (
-                db.query(ConnectorRun)
-                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-                .first()
+        removed_urls = list(plan.get("removed_urls") or [])
+        removed_urls_reconciled = 0
+        removed_documents_disabled = 0
+        if plan.get("mode") == "incremental" and removed_urls:
+            removed_urls_reconciled, removed_documents_disabled = _reconcile_removed_web_crawl_urls(
+                db,
+                run=run,
+                tenant_id=tenant_id,
+                removed_urls=removed_urls,
             )
-            if run is not None:
-                run.status = "failed"
-                run.finished_at = _now()
-                run.error_message = str(exc)[:200]
-                db.commit()
-                with contextlib.suppress(Exception):
-                    _sync_connector_config_from_run(db, run=run)
+
+        _finalize_web_crawl_run_success(
+            db,
+            run=run,
+            plan=plan,
+            created=int(progress.get("created") or 0),
+            failed=int(progress.get("failed") or 0),
+            created_doc_ids=list(progress.get("created_doc_ids") or []),
+            source_manifest_state=dict(progress.get("source_manifest_state") or {}),
+            removed_urls_reconciled=removed_urls_reconciled,
+            removed_documents_disabled=removed_documents_disabled,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _mark_web_crawl_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
 
