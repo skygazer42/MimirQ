@@ -1237,6 +1237,27 @@ def _schedule_elapsed_seconds(*, now: datetime, last_run_at: datetime | None) ->
         return 10**18
 
 
+def _schedule_positive_int(raw: str) -> int | None:
+    try:
+        return max(1, int(raw))
+    except Exception:
+        return None
+
+
+def _schedule_interval_from_parts(minute: str, hour: str, day: str, month: str, dow: str) -> int | None:
+    step_patterns = (
+        (minute.startswith("*/") and hour == "*" and day == "*" and month == "*" and dow == "*", minute[2:], 60),
+        (minute == "0" and hour.startswith("*/") and day == "*" and month == "*" and dow == "*", hour[2:], 60 * 60),
+        (minute == "0" and hour == "0" and day.startswith("*/") and month == "*" and dow == "*", day[2:], 60 * 60 * 24),
+    )
+    for matched, raw_value, multiplier in step_patterns:
+        if not matched:
+            continue
+        value = _schedule_positive_int(raw_value)
+        return None if value is None else multiplier * value
+    return None
+
+
 def _schedule_interval_seconds(schedule: str) -> int | None:
     s = str(schedule or "").strip().lower()
     if not s:
@@ -1256,26 +1277,7 @@ def _schedule_interval_seconds(schedule: str) -> int | None:
         return None
 
     minute, hour, day, month, dow = parts
-
-    def _parse_positive_int(raw: str) -> int | None:
-        try:
-            return max(1, int(raw))
-        except Exception:
-            return None
-
-    if minute.startswith("*/") and hour == "*" and day == "*" and month == "*" and dow == "*":
-        n = _parse_positive_int(minute[2:])
-        return None if n is None else 60 * n
-
-    if minute == "0" and hour.startswith("*/") and day == "*" and month == "*" and dow == "*":
-        n = _parse_positive_int(hour[2:])
-        return None if n is None else 60 * 60 * n
-
-    if minute == "0" and hour == "0" and day.startswith("*/") and month == "*" and dow == "*":
-        n = _parse_positive_int(day[2:])
-        return None if n is None else 60 * 60 * 24 * n
-
-    return None
+    return _schedule_interval_from_parts(minute, hour, day, month, dow)
 
 
 def _schedule_due(*, schedule: str, now: datetime, last_run_at: datetime | None) -> bool:
@@ -8008,6 +8010,18 @@ def _jira_adf_to_html(value: object) -> str:
     return _jira_adf_node_to_html(value)
 
 
+def _jira_mapping_text(value: dict[str, Any]) -> str:
+    for key in ("displayName", "name", "value", "key", "title", "summary"):
+        raw = value.get(key)
+        if raw is None:
+            continue
+        if isinstance(raw, (str, int, float, bool)):
+            text = str(raw).strip()
+            if text:
+                return text
+    return ""
+
+
 def _jira_value_to_text(value: object) -> str:
     if value is None:
         return ""
@@ -8022,15 +8036,7 @@ def _jira_value_to_text(value: object) -> str:
         parts = [p for p in parts if p]
         return ", ".join(parts)
     if isinstance(value, dict):
-        for k in ("displayName", "name", "value", "key", "title", "summary"):
-            raw = value.get(k)
-            if raw is None:
-                continue
-            if isinstance(raw, (str, int, float, bool)):
-                text = str(raw).strip()
-                if text:
-                    return text
-        return ""
+        return _jira_mapping_text(value)
     return str(value).strip()
 
 
