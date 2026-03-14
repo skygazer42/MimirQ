@@ -5926,30 +5926,23 @@ def _confluence_attachment_connector_metadata(
     }
 
 
-def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
-    base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
-    space_key = str(cfg.get("space_key") or "").strip()
-    if not base_url or not space_key:
-        raise ValueError("base_url and space_key are required")
-
-    sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
+def _normalize_connector_sync_mode(value: object) -> str:
+    sync_mode = str(value or "auto").strip().lower()
     if sync_mode not in {"auto", "full", "incremental"}:
-        sync_mode = "auto"
+        return "auto"
+    return sync_mode
 
-    state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-    cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
-    cursor_last_modified_ids = (
-        set(normalize_boundary_ids(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
-    )
 
-    effective_mode = sync_mode
+def _resolve_connector_effective_mode(*, sync_mode: str, cursor_last_modified: str) -> str:
+    effective_mode = str(sync_mode or "auto").strip().lower() or "auto"
     if effective_mode == "auto":
         effective_mode = "incremental" if cursor_last_modified else "full"
     if effective_mode == "incremental" and not cursor_last_modified:
         effective_mode = "full"
+    return effective_mode
 
-    include_attachments, max_attachments_per_page, max_total_attachments = _confluence_attachment_limits(cfg)
-    ingest_method = _confluence_ingest_method(cfg)
+
+def _confluence_source_acl_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
     source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
     access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
@@ -5962,6 +5955,37 @@ def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         if isinstance(source_acl, dict)
         else "partial_members"
     )
+    return {
+        "access": access,
+        "source_acl_mode": source_acl_mode,
+        "source_acl_fallback_mode": source_acl_fallback_mode,
+        "has_manual_access_override": has_manual_access_override,
+        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
+    }
+
+
+def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
+    space_key = str(cfg.get("space_key") or "").strip()
+    if not base_url or not space_key:
+        raise ValueError("base_url and space_key are required")
+
+    sync_mode = _normalize_connector_sync_mode(cfg.get("sync_mode"))
+
+    state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
+    cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
+    cursor_last_modified_ids = (
+        set(normalize_boundary_ids(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
+    )
+
+    effective_mode = _resolve_connector_effective_mode(
+        sync_mode=sync_mode,
+        cursor_last_modified=cursor_last_modified,
+    )
+
+    include_attachments, max_attachments_per_page, max_total_attachments = _confluence_attachment_limits(cfg)
+    ingest_method = _confluence_ingest_method(cfg)
+    acl_settings = _confluence_source_acl_settings(cfg)
     user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
     auth_headers = _build_auth_headers(cfg)
     headers: dict[str, str] = {
@@ -5988,11 +6012,11 @@ def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
             cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
         ),
         "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
-        "access": access,
-        "source_acl_mode": source_acl_mode,
-        "source_acl_fallback_mode": source_acl_fallback_mode,
-        "has_manual_access_override": has_manual_access_override,
-        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
+        "access": acl_settings.get("access"),
+        "source_acl_mode": acl_settings.get("source_acl_mode"),
+        "source_acl_fallback_mode": acl_settings.get("source_acl_fallback_mode"),
+        "has_manual_access_override": bool(acl_settings.get("has_manual_access_override")),
+        "enable_source_acl": bool(acl_settings.get("enable_source_acl")),
         "user_agent": user_agent,
         "auth_headers": auth_headers,
         "api_base": _confluence_api_base_url(base_url),
