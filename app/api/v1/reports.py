@@ -36,8 +36,8 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 @router.get("/datasets/{dataset_id}", response_model=DatasetReportOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_report(
     dataset_id: UUID,
-    pipeline_hash: str | None = Query(default=None, max_length=64, description="Optional: filter by pipeline_hash (active)"),
-    connector_runs_limit: int = Query(default=20, ge=0, le=100),
+    pipeline_hash: Annotated[str | None, Query(max_length=64, description='Optional: filter by pipeline_hash (active)')] = None,
+    connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -56,8 +56,8 @@ def get_dataset_report(
 @router.get("/datasets/{dataset_id}/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_report_json(
     dataset_id: UUID,
-    pipeline_hash: str | None = Query(default=None, max_length=64),
-    connector_runs_limit: int = Query(default=20, ge=0, le=100),
+    pipeline_hash: Annotated[str | None, Query(max_length=64)] = None,
+    connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -85,9 +85,9 @@ def export_dataset_report_json(
 @router.get("/datasets/{dataset_id}/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_report_html(
     dataset_id: UUID,
-    pipeline_hash: str | None = Query(default=None, max_length=64),
-    connector_runs_limit: int = Query(default=20, ge=0, le=100),
-    redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
+    pipeline_hash: Annotated[str | None, Query(max_length=64)] = None,
+    connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
+    redact: Annotated[bool, Query(description='Whether to redact dataset name/id for sharing')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -124,9 +124,9 @@ def export_dataset_report_html(
 @router.get("/datasets/{dataset_id}/rag-audit/export-html", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_rag_audit_html(
     dataset_id: UUID,
-    pipeline_hash: str | None = Query(default=None, max_length=64),
-    connector_runs_limit: int = Query(default=20, ge=0, le=100),
-    redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
+    pipeline_hash: Annotated[str | None, Query(max_length=64)] = None,
+    connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
+    redact: Annotated[bool, Query(description='Whether to redact dataset name/id for sharing')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -163,9 +163,9 @@ def export_dataset_rag_audit_html(
 @router.get("/datasets/{dataset_id}/export-bundle", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_dataset_report_bundle_zip(
     dataset_id: UUID,
-    pipeline_hash: str | None = Query(default=None, max_length=64),
-    connector_runs_limit: int = Query(default=20, ge=0, le=100),
-    redact: bool = Query(default=True, description="Whether to redact dataset name/id for sharing"),
+    pipeline_hash: Annotated[str | None, Query(max_length=64)] = None,
+    connector_runs_limit: Annotated[int, Query(ge=0, le=100)] = 20,
+    redact: Annotated[bool, Query(description='Whether to redact dataset name/id for sharing')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

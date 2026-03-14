@@ -142,7 +142,7 @@ def _parse_ip_allowlist(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6
     return nets
 
 
-def _require_scim_actor(request: Request, authorization: str | None = Header(default=None)) -> str:
+def _require_scim_actor(request: Request, authorization: Annotated[str | None, Header()] = None) -> str:
     if not bool(getattr(settings, "SCIM_ENABLED", False)):
         raise HTTPException(status_code=404, detail="SCIM not enabled")
 
@@ -349,8 +349,8 @@ def list_resource_types(_actor: Annotated[str, Depends(_require_scim_actor)]):
 
 @router.get("/Groups", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_groups(
-    start_index: int = Query(default=1, ge=1, alias="startIndex"),
-    count: int = Query(default=200, ge=1),
+    start_index: Annotated[int, Query(ge=1, alias='startIndex')] = 1,
+    count: Annotated[int, Query(ge=1)] = 200,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
@@ -551,8 +551,8 @@ def delete_group(
 
 @router.get("/Users", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_users(
-    start_index: int = Query(default=1, ge=1, alias="startIndex"),
-    count: int = Query(default=200, ge=1),
+    start_index: Annotated[int, Query(ge=1, alias='startIndex')] = 1,
+    count: Annotated[int, Query(ge=1)] = 200,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],

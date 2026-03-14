@@ -116,8 +116,8 @@ async def create_rag_config_template(
 
 @router.get("", response_model=RagConfigTemplateList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_rag_config_templates(
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     template_key: Optional[str] = None,
     ab_experiment_key: Optional[str] = None,
     is_active: Optional[bool] = None,

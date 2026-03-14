@@ -92,10 +92,10 @@ def _audit_fls_redaction(
 )
 def list_db_catalog_tables(
     dataset_id: UUID,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, ge=1, le=500),
-    engine: Optional[str] = Query(default=None, description="Filter by engine: mysql|sqlserver"),
-    q: Optional[str] = Query(default=None, description="Fuzzy search across db/schema/table names"),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    engine: Annotated[Optional[str], Query(description='Filter by engine: mysql|sqlserver')] = None,
+    q: Annotated[Optional[str], Query(description='Fuzzy search across db/schema/table names')] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -219,10 +219,10 @@ def get_db_catalog_table(
 )
 def list_db_catalog_profiles(
     dataset_id: UUID,
-    table_id: UUID = Query(..., description="Catalog table id"),
-    entitlement_hash: Optional[str] = Query(default=None, description="Filter by entitlement hash (stable permission context)"),
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=100, ge=1, le=500),
+    table_id: Annotated[UUID, Query(..., description='Catalog table id')],
+    entitlement_hash: Annotated[Optional[str], Query(description='Filter by entitlement hash (stable permission context)')] = None,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

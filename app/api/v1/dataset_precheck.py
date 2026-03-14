@@ -163,8 +163,8 @@ async def create_dataset_precheck_scan_run(
 @router.get("/{dataset_id}/precheck/scan-runs", response_model=DatasetPrecheckScanRunListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_dataset_precheck_scan_runs(
     dataset_id: UUID,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -244,8 +244,8 @@ def list_dataset_precheck_finding_files(
     dataset_id: UUID,
     scan_run_id: UUID,
     finding_key: str,
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -271,9 +271,9 @@ def list_dataset_precheck_finding_files(
 def list_dataset_precheck_files(
     dataset_id: UUID,
     scan_run_id: UUID,
-    dir_prefix: str | None = Query(default=None, max_length=1024, description="Optional: directory prefix under scan root"),
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=50, ge=1, le=200),
+    dir_prefix: Annotated[str | None, Query(max_length=1024, description='Optional: directory prefix under scan root')] = None,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -402,8 +402,8 @@ async def stream_dataset_precheck_scan_events(
 def get_dataset_precheck_samples(
     dataset_id: UUID,
     scan_run_id: UUID,
-    size: int = Query(default=60, ge=0, le=2000),
-    prefer_artifact: bool = Query(default=True),
+    size: Annotated[int, Query(ge=0, le=2000)] = 60,
+    prefer_artifact: Annotated[bool, Query()] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -470,7 +470,7 @@ def get_dataset_precheck_near_dups(
 def diff_dataset_precheck_scan_runs(
     dataset_id: UUID,
     scan_run_id: UUID,
-    base_scan_run_id: UUID = Query(..., description="Base scan run id to compare against"),
+    base_scan_run_id: Annotated[UUID, Query(..., description='Base scan run id to compare against')],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -525,7 +525,7 @@ def diff_dataset_precheck_scan_runs(
 def get_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
     scan_run_id: UUID,
-    max_names_per_bucket: int = Query(default=50, ge=0, le=2000),
+    max_names_per_bucket: Annotated[int, Query(ge=0, le=2000)] = 50,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -561,7 +561,7 @@ def get_dataset_precheck_ingestion_policy_suggestion(
 def apply_dataset_precheck_ingestion_policy_suggestion(
     dataset_id: UUID,
     scan_run_id: UUID,
-    replace: bool = Query(default=False, description="Whether to overwrite existing dataset ingestion_policy"),
+    replace: Annotated[bool, Query(description='Whether to overwrite existing dataset ingestion_policy')] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -628,7 +628,7 @@ def export_dataset_precheck_summary_json(
 def export_dataset_precheck_html_report(
     dataset_id: UUID,
     scan_run_id: UUID,
-    redact: bool = Query(default=True, description="Whether to redact dataset/path for sharing"),
+    redact: Annotated[bool, Query(description='Whether to redact dataset/path for sharing')] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
