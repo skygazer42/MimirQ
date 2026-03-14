@@ -353,3 +353,74 @@ def test_build_github_repo_execution_plan_preserves_tracked_paths_seen_outside_p
         "legacy.txt": "sha-legacy",
         "z.md": "sha-z",
     }
+
+
+def test_build_drive_files_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    plan = connectors._build_drive_files_execution_plan(
+        run_stats={},
+        state={"cursor": 1},
+        discovered_sources=[
+            ("drive://file-1", "file-1", "file-1", "token-1"),
+            ("drive://file-2", "file-2", "file-2", "token-2"),
+            ("drive://file-3", "file-3", "file-3", "token-3"),
+        ],
+        enable_source_acl=False,
+    )
+
+    assert plan["mode"] == "full"
+    assert plan["delta_sources"] == [
+        ("drive://file-1", "file-1", "file-1", "token-1"),
+        ("drive://file-2", "file-2", "file-2", "token-2"),
+        ("drive://file-3", "file-3", "file-3", "token-3"),
+    ]
+    assert plan["sources_to_process"] == [
+        ("drive://file-2", "file-2", "file-2", "token-2"),
+        ("drive://file-3", "file-3", "file-3", "token-3"),
+    ]
+    assert plan["cursor_in"] == 1
+    assert plan["processed_visible"] == 1
+    assert plan["resumed_from_state"] is True
+    assert plan["removed_source_refs"] == []
+
+
+def test_build_drive_files_execution_plan_tracks_removed_sources_and_manifest_state() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    plan = connectors._build_drive_files_execution_plan(
+        run_stats={},
+        state={"source_manifest": {"file-a": "token-a", "file-obsolete": "token-obsolete"}},
+        discovered_sources=[
+            ("drive://file-a", "file-a", "file-a", "token-a"),
+            ("drive://file-b", "file-b", "file-b", "token-b"),
+        ],
+        enable_source_acl=False,
+    )
+
+    assert plan["mode"] == "incremental"
+    assert plan["delta_sources"] == [
+        ("drive://file-b", "file-b", "file-b", "token-b"),
+    ]
+    assert plan["skipped_unchanged"] == 1
+    assert plan["removed_source_refs"] == ["file-obsolete"]
+    assert plan["source_manifest_state"] == {"file-a": "token-a"}
+
+
+def test_build_drive_files_execution_plan_keeps_unchanged_sources_when_acl_inheritance_enabled() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    plan = connectors._build_drive_files_execution_plan(
+        run_stats={},
+        state={"source_manifest": {"file-a": "token-a"}},
+        discovered_sources=[
+            ("drive://file-a", "file-a", "file-a", "token-a"),
+        ],
+        enable_source_acl=True,
+    )
+
+    assert plan["mode"] == "incremental"
+    assert plan["delta_sources"] == [
+        ("drive://file-a", "file-a", "file-a", "token-a"),
+    ]
+    assert plan["skipped_unchanged"] == 0
