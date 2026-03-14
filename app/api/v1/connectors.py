@@ -425,13 +425,13 @@ def _mark_web_crawl_run_running(db: Session, *, run: ConnectorRun) -> None:
     db.refresh(run)
 
 
-def _normalize_web_crawl_string_list(values: object) -> list[str]:
+def _normalize_connector_string_list(values: object) -> list[str]:
     if not isinstance(values, list):
         return []
     return [str(value or "").strip() for value in values if str(value or "").strip()]
 
 
-def _normalize_web_crawl_principal_list(values: object) -> list[str]:
+def _normalize_connector_principal_list(values: object) -> list[str]:
     if not isinstance(values, list):
         return []
     return [str(value).strip() for value in values if isinstance(value, (str, int, float)) and str(value).strip()]
@@ -442,14 +442,14 @@ def _build_web_crawl_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
     return {
         "state": cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {},
-        "start_urls": _normalize_web_crawl_string_list(cfg.get("start_urls")),
+        "start_urls": _normalize_connector_string_list(cfg.get("start_urls")),
         "max_pages": int(cfg.get("max_pages") or 50),
         "max_depth": int(cfg.get("max_depth") or 3),
         "same_host_only": bool(cfg.get("same_host_only", True)),
-        "include_patterns": _normalize_web_crawl_string_list(cfg.get("include_patterns")),
-        "exclude_patterns": _normalize_web_crawl_string_list(cfg.get("exclude_patterns")),
+        "include_patterns": _normalize_connector_string_list(cfg.get("include_patterns")),
+        "exclude_patterns": _normalize_connector_string_list(cfg.get("exclude_patterns")),
         "use_sitemaps": bool(cfg.get("use_sitemaps", False)),
-        "sitemap_urls": _normalize_web_crawl_string_list(cfg.get("sitemap_urls")),
+        "sitemap_urls": _normalize_connector_string_list(cfg.get("sitemap_urls")),
         "respect_robots": bool(cfg.get("respect_robots", False)),
         "dedup_canonical": bool(cfg.get("dedup_canonical", True)),
         "user_agent": cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None,
@@ -460,10 +460,10 @@ def _build_web_crawl_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         ),
         "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
         "access_mode": access_mode,
-        "access_members": _normalize_web_crawl_principal_list(
+        "access_members": _normalize_connector_principal_list(
             access.get("partial_member_list") if isinstance(access, dict) else None
         ),
-        "access_groups": _normalize_web_crawl_principal_list(
+        "access_groups": _normalize_connector_principal_list(
             access.get("partial_group_list") if isinstance(access, dict) else None
         ),
         "auth_headers": _build_auth_headers(cfg),
@@ -2098,6 +2098,300 @@ def _mark_db_catalog_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, e
         db.rollback()
 
 
+def _get_url_batch_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
+    run = (
+        db.query(ConnectorRun)
+        .options(selectinload(ConnectorRun.documents))
+        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+        .first()
+    )
+    if not run:
+        return None
+    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+        return None
+    return run
+
+
+def _mark_url_batch_run_running(db: Session, *, run: ConnectorRun) -> None:
+    run.status = "running"
+    if run.started_at is None:
+        run.started_at = _now()
+    run.error_message = None
+    run.stats = dict(run.stats or {})
+    db.commit()
+    db.refresh(run)
+
+
+def _build_url_batch_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
+    return {
+        "urls": _normalize_connector_string_list(cfg.get("urls")),
+        "filename": cfg.get("filename") if isinstance(cfg.get("filename"), str) else None,
+        "user_agent": cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None,
+        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
+        "chunk_strategy": (
+            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
+        ),
+        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
+        "access_mode": access_mode,
+        "access_members": _normalize_connector_principal_list(
+            access.get("partial_member_list") if isinstance(access, dict) else None
+        ),
+        "access_groups": _normalize_connector_principal_list(
+            access.get("partial_group_list") if isinstance(access, dict) else None
+        ),
+        "auth_headers": _build_auth_headers(cfg),
+    }
+
+
+def _build_url_batch_run_state(*, run: ConnectorRun, urls: list[str]) -> dict[str, Any]:
+    processed_refs: set[str] = set()
+    for doc in (getattr(run, "documents", None) or []):
+        ref = str(getattr(doc, "source_ref", "") or "").strip()
+        if ref:
+            processed_refs.add(ref)
+
+    stats = dict(run.stats or {})
+    cursor_raw = stats.get("cursor", stats.get("processed_urls", 0))
+    try:
+        cursor = max(0, int(cursor_raw or 0))
+    except Exception:
+        cursor = 0
+
+    stats.setdefault("total_urls", int(len(urls)))
+    stats.setdefault("processed_urls", int(cursor))
+    stats.setdefault("cursor", int(cursor))
+    stats.setdefault("failed_urls", [])
+    stats.setdefault("errors", [])
+    stats.setdefault("error_groups", [])
+
+    raw_doc_ids = stats.get("document_ids")
+    created_doc_ids: list[str] = []
+    if isinstance(raw_doc_ids, list):
+        created_doc_ids = [str(value).strip() for value in raw_doc_ids if str(value).strip()]
+    if not created_doc_ids:
+        created_doc_ids = [
+            str(getattr(doc, "document_id", "") or "")
+            for doc in (getattr(run, "documents", None) or [])
+            if str(getattr(doc, "document_id", "") or "").strip()
+        ]
+    stats["document_ids"] = created_doc_ids
+
+    def _safe_int(value: object, default: int = 0) -> int:
+        try:
+            return int(value or 0)
+        except Exception:
+            return int(default)
+
+    created = _safe_int(stats.get("created"), default=len(created_doc_ids))
+    failed = _safe_int(stats.get("failed"), default=0)
+    stats.setdefault("created", int(created))
+    stats.setdefault("failed", int(failed))
+
+    return {
+        "processed_refs": processed_refs,
+        "cursor": int(cursor),
+        "start_idx": int(max(0, min(cursor, len(urls)))),
+        "stats": stats,
+        "created_doc_ids": created_doc_ids,
+        "created": int(created),
+        "failed": int(failed),
+    }
+
+
+def _url_batch_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
+    with contextlib.suppress(Exception):
+        db.refresh(run)
+    return str(run.status or "").lower() == "cancelled"
+
+
+async def _ingest_url_batch_url(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    url: str,
+    settings_map: dict[str, Any],
+) -> str:
+    body = UrlUploadRequest(
+        url=url,
+        dataset_id=run.dataset_id,
+        filename=settings_map.get("filename"),
+        fetch_headers=settings_map.get("auth_headers") or None,
+        user_agent=settings_map.get("user_agent"),
+        parser_backend=settings_map.get("parser_backend"),
+        chunk_strategy=settings_map.get("chunk_strategy"),
+        pipeline=settings_map.get("pipeline"),  # type: ignore[arg-type]
+    )
+    doc = await _ingest_url_upload_request(
+        background_tasks=None,
+        body=body,
+        tenant_id=tenant_id,
+        account_id=requested_by,
+        db=db,
+    )
+
+    _apply_document_access_from_config(
+        db,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        doc=doc,
+        access={
+            "mode": settings_map.get("access_mode"),
+            "partial_member_list": list(settings_map.get("access_members") or []),
+            "partial_group_list": list(settings_map.get("access_groups") or []),
+        },
+        connector_id="url_batch",
+    )
+    _apply_connector_identity_metadata(
+        doc=doc,
+        run=run,
+        connector_id="url_batch",
+        source_ref=url,
+        source_id=url,
+    )
+
+    db.add(
+        ConnectorRunDocument(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            document_id=doc.id,
+            source_ref=url,
+            status="created",
+        )
+    )
+    return str(doc.id)
+
+
+def _persist_url_batch_progress(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    urls: list[str],
+    processed: int,
+    created: int,
+    failed: int,
+    created_doc_ids: list[str],
+) -> None:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "total_urls": int(len(urls)),
+            "processed_urls": int(processed),
+            "cursor": int(processed),
+            "created": int(created),
+            "failed": int(failed),
+            "document_ids": list(created_doc_ids),
+        }
+    )
+    run.stats = _finalize_connector_stats(stats)
+    db.commit()
+
+
+async def _process_url_batch_urls(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    urls: list[str],
+    settings_map: dict[str, Any],
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    processed_refs = set(state.get("processed_refs") or set())
+    created_doc_ids = list(state.get("created_doc_ids") or [])
+    created = int(state.get("created") or 0)
+    failed = int(state.get("failed") or 0)
+    start_idx = int(state.get("start_idx") or 0)
+
+    for idx in range(start_idx, len(urls)):
+        url = urls[idx]
+        if _url_batch_run_cancelled(db, run=run):
+            break
+
+        try:
+            if url in processed_refs:
+                continue
+            doc_id = await _ingest_url_batch_url(
+                db,
+                run=run,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                url=url,
+                settings_map=settings_map,
+            )
+            created += 1
+            created_doc_ids.append(doc_id)
+            processed_refs.add(url)
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            run.stats = _append_connector_error(dict(run.stats or {}), url=url, exc=exc)
+        finally:
+            _persist_url_batch_progress(
+                db,
+                run=run,
+                urls=urls,
+                processed=idx + 1,
+                created=created,
+                failed=failed,
+                created_doc_ids=created_doc_ids,
+            )
+
+    return {
+        "created": created,
+        "failed": failed,
+        "created_doc_ids": created_doc_ids,
+    }
+
+
+def _finalize_cancelled_url_batch_run(db: Session, *, run: ConnectorRun) -> None:
+    if run.finished_at is None:
+        run.finished_at = _now()
+    run.stats = _finalize_connector_stats(dict(run.stats or {}))
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def _finalize_url_batch_run_success(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    created: int,
+    failed: int,
+    created_doc_ids: list[str],
+) -> None:
+    stats = dict(run.stats or {})
+    stats["document_ids"] = [str(doc_id) for doc_id in created_doc_ids]
+    run.stats = _finalize_connector_stats(stats)
+    run.finished_at = _now()
+    run.status = _connector_run_completion_status(created=created, failed=failed)
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def _mark_url_batch_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
+    with contextlib.suppress(Exception):
+        run = (
+            db.query(ConnectorRun)
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if run is not None:
+            run.status = "failed"
+            run.finished_at = _now()
+            run.error_message = str(exc)[:200]
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)
+
+
 def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for DB catalog connectors (MySQL / SQLServer).
@@ -2194,215 +2488,43 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
       otherwise documents are processed inline (async) within this background task.
     """
     db = SessionLocal()
+    run: ConnectorRun | None = None
     try:
-        run = (
-            db.query(ConnectorRun)
-            .options(selectinload(ConnectorRun.documents))
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
+        run = _get_url_batch_run(db, run_id=run_id, tenant_id=tenant_id)
+        if run is None:
+            return
+
+        _mark_url_batch_run_running(db, run=run)
+        cfg = decrypt_connector_config_secrets(dict(run.config or {}))
+        settings_map = _build_url_batch_run_settings(cfg)
+        urls = list(settings_map.get("urls") or [])
+        state = _build_url_batch_run_state(run=run, urls=urls)
+        run.stats = dict(state.get("stats") or {})
+        db.commit()
+
+        progress = await _process_url_batch_urls(
+            db,
+            run=run,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            urls=urls,
+            settings_map=settings_map,
+            state=state,
         )
-        if not run:
-            return
-        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
-            return
-
-        run.status = "running"
-        if run.started_at is None:
-            run.started_at = _now()
-        run.error_message = None
-        run.stats = dict(run.stats or {})
-        db.commit()
-        db.refresh(run)
-
-        cfg_raw = dict(run.config or {})
-        cfg = decrypt_connector_config_secrets(cfg_raw)
-        urls = cfg.get("urls") if isinstance(cfg.get("urls"), list) else []
-        urls = [str(u or "").strip() for u in urls if str(u or "").strip()]
-        filename = cfg.get("filename") if isinstance(cfg.get("filename"), str) else None
-        user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
-        parser_backend = cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto"
-        chunk_strategy = cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        pipeline = cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None
-        access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
-
-        access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-        access_members = access.get("partial_member_list") if isinstance(access, dict) else None
-        if not isinstance(access_members, list):
-            access_members = []
-        access_members = [str(v).strip() for v in access_members if isinstance(v, (str, int, float)) and str(v).strip()]
-        access_groups = access.get("partial_group_list") if isinstance(access, dict) else None
-        if not isinstance(access_groups, list):
-            access_groups = []
-        access_groups = [str(v).strip() for v in access_groups if isinstance(v, (str, int, float)) and str(v).strip()]
-
-        auth_headers = _build_auth_headers(cfg)
-
-        processed_refs: set[str] = set()
-        for d in (getattr(run, "documents", None) or []):
-            ref = str(getattr(d, "source_ref", "") or "").strip()
-            if ref:
-                processed_refs.add(ref)
-
-        stats0 = dict(run.stats or {})
-        cursor_raw = stats0.get("cursor", stats0.get("processed_urls", 0))
-        try:
-            cursor0 = max(0, int(cursor_raw or 0))
-        except Exception:
-            cursor0 = 0
-
-        # Resume-friendly defaults: don't reset progress if the run already has stats.
-        stats0.setdefault("total_urls", int(len(urls)))
-        stats0.setdefault("processed_urls", int(cursor0))
-        stats0.setdefault("cursor", int(cursor0))
-        stats0.setdefault("failed_urls", [])
-        stats0.setdefault("errors", [])
-        stats0.setdefault("error_groups", [])
-
-        raw_doc_ids = stats0.get("document_ids")
-        created_doc_ids: list[str] = []
-        if isinstance(raw_doc_ids, list):
-            created_doc_ids = [str(v).strip() for v in raw_doc_ids if str(v).strip()]
-        if not created_doc_ids:
-            created_doc_ids = [str(getattr(d, "document_id", "") or "") for d in (getattr(run, "documents", None) or [])]
-            created_doc_ids = [v for v in created_doc_ids if v]
-        stats0["document_ids"] = created_doc_ids
-
-        def _safe_int(value: object, default: int = 0) -> int:
-            try:
-                return int(value or 0)
-            except Exception:
-                return int(default)
-
-        created = _safe_int(stats0.get("created"), default=len(created_doc_ids))
-        failed = _safe_int(stats0.get("failed"), default=0)
-        stats0.setdefault("created", int(created))
-        stats0.setdefault("failed", int(failed))
-
-        run.stats = stats0
-        db.commit()
-
-        # Iterate from cursor0 but still skip URLs that already have a mapping row.
-        start_idx = max(0, min(int(cursor0), len(urls)))
-        for idx in range(start_idx, len(urls)):
-            url = urls[idx]
-            # Observe cancellation from another DB session (best-effort).
-            try:
-                db.refresh(run)
-            except Exception:
-                pass
-            if str(run.status or "").lower() == "cancelled":
-                break
-
-            try:
-                if url in processed_refs:
-                    continue
-                body = UrlUploadRequest(
-                    url=url,
-                    dataset_id=run.dataset_id,
-                    filename=filename,
-                    fetch_headers=auth_headers or None,
-                    user_agent=user_agent,
-                    parser_backend=parser_backend,
-                    chunk_strategy=chunk_strategy,
-                    pipeline=pipeline,  # type: ignore[arg-type]
-                )
-                doc = await _ingest_url_upload_request(
-                    background_tasks=None,
-                    body=body,
-                    tenant_id=tenant_id,
-                    account_id=requested_by,
-                    db=db,
-                )
-
-                _apply_document_access_from_config(
-                    db,
-                    tenant_id=tenant_id,
-                    requested_by=requested_by,
-                    doc=doc,
-                    access={
-                        "mode": access_mode,
-                        "partial_member_list": list(access_members),
-                        "partial_group_list": list(access_groups),
-                    },
-                    connector_id="url_batch",
-                )
-                _apply_connector_identity_metadata(
-                    doc=doc,
-                    run=run,
-                    connector_id="url_batch",
-                    source_ref=url,
-                    source_id=url,
-                )
-
-                db.add(
-                    ConnectorRunDocument(
-                        tenant_id=tenant_id,
-                        run_id=run_id,
-                        document_id=doc.id,
-                        source_ref=url,
-                        status="created",
-                    )
-                )
-                created += 1
-                created_doc_ids.append(str(doc.id))
-                processed_refs.add(url)
-            except Exception as exc:  # noqa: BLE001
-                failed += 1
-                stats = dict(run.stats or {})
-                stats = _append_connector_error(stats, url=url, exc=exc)
-                run.stats = stats
-            finally:
-                processed = idx + 1
-                stats = dict(run.stats or {})
-                stats.update(
-                    {
-                        "total_urls": int(len(urls)),
-                        "processed_urls": int(processed),
-                        "cursor": int(processed),
-                        "created": int(created),
-                        "failed": int(failed),
-                        "document_ids": list(created_doc_ids),
-                    }
-                )
-                run.stats = _finalize_connector_stats(stats)
-                db.commit()
-
-        # Finalize status (don't override cancellation).
-        try:
-            db.refresh(run)
-        except Exception:
-            pass
-        if str(run.status or "").lower() == "cancelled":
-            if run.finished_at is None:
-                run.finished_at = _now()
-            run.stats = _finalize_connector_stats(dict(run.stats or {}))
-            db.commit()
-            with contextlib.suppress(Exception):
-                _sync_connector_config_from_run(db, run=run)
+        if _url_batch_run_cancelled(db, run=run):
+            _finalize_cancelled_url_batch_run(db, run=run)
             return
 
-        stats = dict(run.stats or {})
-        stats.update({"document_ids": [str(d) for d in created_doc_ids]})
-        run.stats = _finalize_connector_stats(stats)
-        run.finished_at = _now()
-        run.status = _connector_run_completion_status(created=created, failed=failed)
-        db.commit()
-        with contextlib.suppress(Exception):
-            _sync_connector_config_from_run(db, run=run)
+        _finalize_url_batch_run_success(
+            db,
+            run=run,
+            created=int(progress.get("created") or 0),
+            failed=int(progress.get("failed") or 0),
+            created_doc_ids=list(progress.get("created_doc_ids") or []),
+        )
     except Exception as exc:  # noqa: BLE001
-        with contextlib.suppress(Exception):
-            run = (
-                db.query(ConnectorRun)
-                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-                .first()
-            )
-            if run is not None:
-                run.status = "failed"
-                run.finished_at = _now()
-                run.error_message = str(exc)[:200]
-                db.commit()
-                with contextlib.suppress(Exception):
-                    _sync_connector_config_from_run(db, run=run)
+        _mark_url_batch_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
 
