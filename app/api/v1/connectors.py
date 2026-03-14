@@ -8695,6 +8695,106 @@ def _persist_jira_project_progress(
     db.commit()
 
 
+def _finalize_cancelled_jira_project_run(
+    db: Session,
+    *,
+    run: ConnectorRun,
+) -> None:
+    if run.finished_at is None:
+        run.finished_at = _now()
+    run.stats = _finalize_connector_stats(dict(run.stats or {}))
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def _finalize_jira_project_run(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+    progress: dict[str, Any],
+    observed_issue_urls: set[str],
+    listing_complete: bool,
+) -> None:
+    if str(settings_map.get("effective_mode") or "") == "full" and run.dataset_id and listing_complete:
+        try:
+            removed_issues_reconciled, removed_documents_disabled = _soft_disable_jira_documents_missing_from_full_sync(
+                db,
+                tenant_id=tenant_id,
+                dataset_id=run.dataset_id,
+                base_url=str(settings_map.get("base_url") or ""),
+                project_key=str(settings_map.get("project_key") or ""),
+                seen_issue_urls=observed_issue_urls,
+            )
+            progress["removed_issues_reconciled"] = int(removed_issues_reconciled)
+            progress["removed_documents_disabled"] = int(removed_documents_disabled)
+        except Exception as exc:  # noqa: BLE001
+            run.stats = _finalize_connector_stats(
+                _append_connector_error(
+                    dict(run.stats or {}),
+                    url=f"jira://{str(settings_map.get('project_key') or '')}",
+                    exc=exc,
+                )
+            )
+            db.commit()
+
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
+            "acl_delta_sync_updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
+            "acl_delta_sync_updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
+            "removed_issues_reconciled": int(progress.get("removed_issues_reconciled") or 0),
+            "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
+            "processed_attachments": int(progress.get("attachments_processed") or 0),
+            "created_attachments": int(progress.get("attachments_created") or 0),
+            "removed_attachment_documents_disabled": int(progress.get("removed_attachment_documents_disabled") or 0),
+            "processed_linked_artifacts": int(progress.get("linked_artifacts_processed") or 0),
+            "created_linked_artifacts": int(progress.get("linked_artifacts_created") or 0),
+            "removed_linked_artifact_documents_disabled": int(progress.get("removed_linked_artifact_documents_disabled") or 0),
+            "skipped_boundary_duplicates": int(progress.get("skipped_boundary_duplicates") or 0),
+        }
+    )
+    if progress.get("last_modified_seen"):
+        stats["last_modified"] = progress.get("last_modified_seen")
+        stats["last_modified_ids"] = sorted(progress.get("last_modified_ids_seen") or set())
+    run.stats = _finalize_connector_stats(stats)
+    run.finished_at = _now()
+    run.status = _connector_run_completion_status(
+        created=int(progress.get("created") or 0),
+        failed=int(progress.get("failed") or 0),
+    )
+    if settings_map.get("enable_source_acl"):
+        with contextlib.suppress(Exception):
+            from app.services.audit_log_service import audit_log_event as audit_log_event_fn
+
+            audit_log_event_fn(
+                db,
+                tenant_id=tenant_id,
+                actor_id=requested_by,
+                action="jira_project.source_acl.delta_sync",
+                resource_type="connector_run",
+                resource_id=str(run_id),
+                details={
+                    "dataset_id": str(run.dataset_id),
+                    "connector_id": "jira_project",
+                    "base_url": str(settings_map.get("base_url") or ""),
+                    "project_key": str(settings_map.get("project_key") or ""),
+                    "mode": str(settings_map.get("effective_mode") or ""),
+                    "updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
+                    "updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
+                    "fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
+                },
+            )
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
 async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for jira_project connector.
@@ -9096,83 +9196,47 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 listing_complete = True
                 break
 
-        try:
-            db.refresh(run)
-        except Exception:
-            pass
-        if str(run.status or "").lower() == "cancelled":
-            if run.finished_at is None:
-                run.finished_at = _now()
-            run.stats = _finalize_connector_stats(dict(run.stats or {}))
-            db.commit()
-            with contextlib.suppress(Exception):
-                _sync_connector_config_from_run(db, run=run)
+        if _jira_project_run_cancelled(db, run=run):
+            _finalize_cancelled_jira_project_run(
+                db,
+                run=run,
+            )
             return
 
-        if effective_mode == "full" and run.dataset_id and listing_complete:
-            try:
-                removed_issues_reconciled, removed_documents_disabled = _soft_disable_jira_documents_missing_from_full_sync(
-                    db,
-                    tenant_id=tenant_id,
-                    dataset_id=run.dataset_id,
-                    base_url=base_url,
-                    project_key=project_key,
-                    seen_issue_urls=observed_issue_urls,
-                )
-            except Exception as exc:  # noqa: BLE001
-                stats = dict(run.stats or {})
-                stats = _append_connector_error(stats, url=f"jira://{project_key}", exc=exc)
-                run.stats = _finalize_connector_stats(stats)
-                db.commit()
-
-        stats = dict(run.stats or {})
-        stats.update(
-	            {
-	                "document_ids": [str(d) for d in created_doc_ids],
-	                "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
-	                "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
-	                "removed_issues_reconciled": int(removed_issues_reconciled),
-	                "removed_documents_disabled": int(removed_documents_disabled),
-	                "processed_attachments": int(attachments_processed),
-	                "created_attachments": int(attachments_created),
-	                "removed_attachment_documents_disabled": int(removed_attachment_documents_disabled),
-	                "processed_linked_artifacts": int(linked_artifacts_processed),
-	                "created_linked_artifacts": int(linked_artifacts_created),
-	                "removed_linked_artifact_documents_disabled": int(removed_linked_artifact_documents_disabled),
-	                "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
-	            }
-	        )
-        if last_modified_seen:
-            stats["last_modified"] = last_modified_seen
-            stats["last_modified_ids"] = sorted(last_modified_ids_seen)
-        run.stats = _finalize_connector_stats(stats)
-        run.finished_at = _now()
-        run.status = _connector_run_completion_status(created=created, failed=failed)
-        if enable_source_acl:
-            with contextlib.suppress(Exception):
-                from app.services.audit_log_service import audit_log_event
-
-                audit_log_event(
-                    db,
-                    tenant_id=tenant_id,
-                    actor_id=requested_by,
-                    action="jira_project.source_acl.delta_sync",
-                    resource_type="connector_run",
-                    resource_id=str(run_id),
-                    details={
-                        "dataset_id": str(run.dataset_id),
-                        "connector_id": "jira_project",
-                        "base_url": base_url,
-                        "project_key": project_key,
-                        "mode": effective_mode,
-                        "updated_documents": int(delta_acl_docs_updated),
-                        "updated_sources": int(delta_acl_sources_updated),
-                        "fallback_mode": source_acl_fallback_mode,
-                    },
-                )
-        db.commit()
-        with contextlib.suppress(Exception):
-            _sync_connector_config_from_run(db, run=run)
+        _finalize_jira_project_run(
+            db,
+            run=run,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map={
+                "effective_mode": effective_mode,
+                "base_url": base_url,
+                "project_key": project_key,
+                "enable_source_acl": enable_source_acl,
+                "source_acl_fallback_mode": source_acl_fallback_mode,
+            },
+            progress={
+                "created": created,
+                "failed": failed,
+                "created_doc_ids": created_doc_ids,
+                "delta_acl_docs_updated": delta_acl_docs_updated,
+                "delta_acl_sources_updated": delta_acl_sources_updated,
+                "removed_issues_reconciled": removed_issues_reconciled,
+                "removed_documents_disabled": removed_documents_disabled,
+                "attachments_processed": attachments_processed,
+                "attachments_created": attachments_created,
+                "removed_attachment_documents_disabled": removed_attachment_documents_disabled,
+                "linked_artifacts_processed": linked_artifacts_processed,
+                "linked_artifacts_created": linked_artifacts_created,
+                "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
+                "skipped_boundary_duplicates": skipped_boundary_duplicates,
+                "last_modified_seen": last_modified_seen,
+                "last_modified_ids_seen": last_modified_ids_seen,
+            },
+            observed_issue_urls=observed_issue_urls,
+            listing_complete=listing_complete,
+        )
     except Exception as exc:  # noqa: BLE001
         with contextlib.suppress(Exception):
             run = (
