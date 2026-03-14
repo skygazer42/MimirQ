@@ -8098,6 +8098,134 @@ def _initialize_jira_project_run_stats(*, run: ConnectorRun, settings_map: dict[
     return stats
 
 
+def _build_jira_issue_info(*, base_url: str, issue: dict[str, Any]) -> dict[str, str | None]:
+    issue_key = str(issue.get("key") or "").strip() if isinstance(issue, dict) else ""
+    issue_id = str(issue.get("id") or "").strip() if isinstance(issue, dict) else ""
+    issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
+    updated = _jira_extract_issue_updated(issue if isinstance(issue, dict) else {}) or None
+    return {
+        "issue_id": issue_id,
+        "issue_key": issue_key,
+        "issue_url": issue_url,
+        "updated": updated,
+    }
+
+
+def _resolve_jira_issue_acl(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    run_id: UUID,
+    requested_by: str,
+    run: ConnectorRun,
+    issue: dict[str, Any],
+    issue_info: dict[str, str | None],
+    settings_map: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int]:
+    effective_access = settings_map.get("access")
+    acl_provenance: dict[str, Any] | None = None
+    issue_url = str(issue_info.get("issue_url") or "").strip()
+
+    if not settings_map.get("enable_source_acl") or not issue_url:
+        return (effective_access if isinstance(effective_access, dict) else None), None, 0
+
+    restricted, ext_ids = _jira_issue_acl_principal_keys(
+        issue if isinstance(issue, dict) else {},
+        include_comments=bool(settings_map.get("include_comments")),
+        max_comments=int(settings_map.get("max_comments_per_issue") or 0),
+    )
+    if not restricted:
+        return (effective_access if isinstance(effective_access, dict) else None), None, 0
+
+    mapped_groups: set[UUID] = set()
+    fallback_used = False
+    try:
+        mapped_groups = set(
+            _resolve_tenant_group_ids_by_external_id(
+                db,
+                tenant_id=tenant_id,
+                external_ids=ext_ids,
+            )
+            or set()
+        )
+        if mapped_groups:
+            ordered = sorted(mapped_groups, key=lambda value: str(value))
+            effective_access = {
+                "mode": "partial_members",
+                "partial_group_list": [str(group_id) for group_id in ordered],
+            }
+        else:
+            effective_access = {"mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members")}
+            fallback_used = True
+    except Exception:
+        effective_access = {"mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members")}
+        fallback_used = True
+
+    with contextlib.suppress(Exception):
+        from app.services.document_acl_provenance_service import build_document_acl_provenance
+
+        acl_provenance = build_document_acl_provenance(
+            connector_id="jira_project",
+            connector_run_id=str(run_id),
+            effective_access=effective_access,
+            source_acl_mode=str(settings_map.get("source_acl_mode") or "disabled"),
+            source_acl_fallback_mode=str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
+            source_principal_external_ids=ext_ids,
+            mapped_group_ids=mapped_groups,
+            fallback_used=fallback_used,
+            restricted=restricted,
+        )
+
+    updated_existing = int(
+        _delta_sync_jira_documents_acl_by_issue_url(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=run.dataset_id,
+            base_url=str(settings_map.get("base_url") or ""),
+            project_key=str(settings_map.get("project_key") or ""),
+            issue_url=issue_url,
+            requested_by=requested_by,
+            access=effective_access,
+            acl_provenance=acl_provenance,
+        )
+    )
+    return (effective_access if isinstance(effective_access, dict) else None), acl_provenance, updated_existing
+
+
+def _persist_jira_project_progress(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    progress: dict[str, Any],
+) -> None:
+    stats = dict(run.stats or {})
+    stats.update(
+        {
+            "processed_issues": int(progress.get("processed") or 0),
+            "processed_attachments": int(progress.get("attachments_processed") or 0),
+            "processed_linked_artifacts": int(progress.get("linked_artifacts_processed") or 0),
+            "cursor": int(progress.get("processed") or 0),
+            "created": int(progress.get("created") or 0),
+            "created_attachments": int(progress.get("attachments_created") or 0),
+            "created_linked_artifacts": int(progress.get("linked_artifacts_created") or 0),
+            "failed": int(progress.get("failed") or 0),
+            "skipped_boundary_duplicates": int(progress.get("skipped_boundary_duplicates") or 0),
+            "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
+            "acl_delta_sync_updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
+            "acl_delta_sync_updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
+            "removed_issues_reconciled": int(progress.get("removed_issues_reconciled") or 0),
+            "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
+            "removed_attachment_documents_disabled": int(progress.get("removed_attachment_documents_disabled") or 0),
+            "removed_linked_artifact_documents_disabled": int(progress.get("removed_linked_artifact_documents_disabled") or 0),
+        }
+    )
+    if progress.get("last_modified_seen"):
+        stats["last_modified"] = progress.get("last_modified_seen")
+        stats["last_modified_ids"] = sorted(progress.get("last_modified_ids_seen") or set())
+    run.stats = _finalize_connector_stats(stats)
+    db.commit()
+
+
 async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for jira_project connector.
@@ -8244,10 +8372,14 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 if str(run.status or "").lower() == "cancelled":
                     break
 
-                issue_key = str((issue or {}).get("key") or "").strip() if isinstance(issue, dict) else ""
-                issue_id = str((issue or {}).get("id") or "").strip() if isinstance(issue, dict) else ""
-                issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
-                updated = _jira_extract_issue_updated(issue if isinstance(issue, dict) else {})
+                issue_info = _build_jira_issue_info(
+                    base_url=base_url,
+                    issue=issue if isinstance(issue, dict) else {},
+                )
+                issue_key = str(issue_info.get("issue_key") or "")
+                issue_id = str(issue_info.get("issue_id") or "")
+                issue_url = str(issue_info.get("issue_url") or "")
+                updated = str(issue_info.get("updated") or "")
 
                 if effective_mode == "incremental" and _should_skip_timestamp_boundary_item(
                     item_id=issue_id,
@@ -8282,68 +8414,28 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                 observed_issue_urls.add(issue_url)
 
                 try:
-                    effective_access = access
-                    acl_provenance: dict | None = None
-
-                    if enable_source_acl:
-                        ext_ids: list[str] = []
-                        gids: set[UUID] = set()
-                        restricted, ext_ids = _jira_issue_acl_principal_keys(
-                            issue if isinstance(issue, dict) else {},
-                            include_comments=include_comments,
-                            max_comments=max_comments_per_issue,
-                        )
-                        fallback_used = False
-
-                        if restricted:
-                            try:
-                                gids = _resolve_tenant_group_ids_by_external_id(
-                                    db,
-                                    tenant_id=tenant_id,
-                                    external_ids=ext_ids,
-                                )
-                                if gids:
-                                    ordered = sorted(gids, key=lambda v: str(v))
-                                    effective_access = {
-                                        "mode": "partial_members",
-                                        "partial_group_list": [str(gid) for gid in ordered],
-                                    }
-                                else:
-                                    effective_access = {"mode": source_acl_fallback_mode}
-                                    fallback_used = True
-                            except Exception:
-                                effective_access = {"mode": source_acl_fallback_mode}
-                                fallback_used = True
-
-                            with contextlib.suppress(Exception):
-                                from app.services.document_acl_provenance_service import build_document_acl_provenance
-
-                                acl_provenance = build_document_acl_provenance(
-                                    connector_id="jira_project",
-                                    connector_run_id=str(run_id),
-                                    effective_access=effective_access,
-                                    source_acl_mode=source_acl_mode,
-                                    source_acl_fallback_mode=source_acl_fallback_mode,
-                                    source_principal_external_ids=ext_ids,
-                                    mapped_group_ids=gids,
-                                    fallback_used=fallback_used,
-                                    restricted=restricted,
-                                )
-
-                            updated_existing = _delta_sync_jira_documents_acl_by_issue_url(
-                                db,
-                                tenant_id=tenant_id,
-                                dataset_id=run.dataset_id,
-                                base_url=base_url,
-                                project_key=project_key,
-                                issue_url=issue_url,
-                                requested_by=requested_by,
-                                access=effective_access,
-                                acl_provenance=acl_provenance,
-                            )
-                            delta_acl_docs_updated += int(updated_existing)
-                            if updated_existing:
-                                delta_acl_sources_updated += 1
+                    effective_access, acl_provenance, updated_existing = _resolve_jira_issue_acl(
+                        db,
+                        tenant_id=tenant_id,
+                        run_id=run_id,
+                        requested_by=requested_by,
+                        run=run,
+                        issue=issue if isinstance(issue, dict) else {},
+                        issue_info=issue_info,
+                        settings_map={
+                            "access": access,
+                            "enable_source_acl": enable_source_acl,
+                            "include_comments": include_comments,
+                            "max_comments_per_issue": max_comments_per_issue,
+                            "source_acl_mode": source_acl_mode,
+                            "source_acl_fallback_mode": source_acl_fallback_mode,
+                            "base_url": base_url,
+                            "project_key": project_key,
+                        },
+                    )
+                    delta_acl_docs_updated += int(updated_existing)
+                    if updated_existing:
+                        delta_acl_sources_updated += 1
 
                     filename = f"{issue_key}.html" if issue_key else "jira-issue.html"
                     issue_html = _jira_render_issue_html(
@@ -8700,32 +8792,29 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
                     run.stats = _finalize_connector_stats(stats)
                 finally:
                     processed += 1
-                    stats = dict(run.stats or {})
-                    stats.update(
-                        {
-                            "processed_issues": int(processed),
-                            "processed_attachments": int(attachments_processed),
-                            "processed_linked_artifacts": int(linked_artifacts_processed),
-                            "cursor": int(processed),
-                            "created": int(created),
-                            "created_attachments": int(attachments_created),
-                            "created_linked_artifacts": int(linked_artifacts_created),
-                            "failed": int(failed),
-                            "skipped_boundary_duplicates": int(skipped_boundary_duplicates),
-                            "document_ids": [str(d) for d in created_doc_ids],
-                            "acl_delta_sync_updated_documents": int(delta_acl_docs_updated),
-                            "acl_delta_sync_updated_sources": int(delta_acl_sources_updated),
-                            "removed_issues_reconciled": int(removed_issues_reconciled),
-                            "removed_documents_disabled": int(removed_documents_disabled),
-                            "removed_attachment_documents_disabled": int(removed_attachment_documents_disabled),
-                            "removed_linked_artifact_documents_disabled": int(removed_linked_artifact_documents_disabled),
-                        }
+                    _persist_jira_project_progress(
+                        db,
+                        run=run,
+                        progress={
+                            "processed": processed,
+                            "attachments_processed": attachments_processed,
+                            "linked_artifacts_processed": linked_artifacts_processed,
+                            "created": created,
+                            "attachments_created": attachments_created,
+                            "linked_artifacts_created": linked_artifacts_created,
+                            "failed": failed,
+                            "skipped_boundary_duplicates": skipped_boundary_duplicates,
+                            "created_doc_ids": created_doc_ids,
+                            "delta_acl_docs_updated": delta_acl_docs_updated,
+                            "delta_acl_sources_updated": delta_acl_sources_updated,
+                            "removed_issues_reconciled": removed_issues_reconciled,
+                            "removed_documents_disabled": removed_documents_disabled,
+                            "removed_attachment_documents_disabled": removed_attachment_documents_disabled,
+                            "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
+                            "last_modified_seen": last_modified_seen,
+                            "last_modified_ids_seen": last_modified_ids_seen,
+                        },
                     )
-                    if last_modified_seen:
-                        stats["last_modified"] = last_modified_seen
-                        stats["last_modified_ids"] = sorted(last_modified_ids_seen)
-                    run.stats = _finalize_connector_stats(stats)
-                    db.commit()
 
             start_at += int(len(issues))
             if total_issues_available is not None and start_at >= total_issues_available:
