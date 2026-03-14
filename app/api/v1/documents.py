@@ -194,6 +194,14 @@ IMAGE_FILE_EXT_WEBP = '.webp'
 CHUNK_PATCH_OPERATION = 'chunk.patch'
 
 
+def _asset_cache_control(*, token_in_url: bool, max_age: int) -> str:
+    if token_in_url:
+        return "no-store"
+    if max_age > 0:
+        return f"private, max-age={max_age}"
+    return "no-cache"
+
+
 def _coerce_bool_preview(value: Any) -> Optional[bool]:
     if value is None:
         return None
@@ -6194,7 +6202,7 @@ def _build_chunk_index_operation_result(
         "vector": dict(vector or {}),
         "bm25": dict(bm25 or {}),
         "kg": (dict(kg or {}) if isinstance(kg, dict) else None),
-        "drift_markers": [dict(m) for m in list(drift_markers or []) if isinstance(m, dict)][:20],
+        "drift_markers": [dict(m) for m in (drift_markers or []) if isinstance(m, dict)][:20],
     }
 
 
@@ -7219,7 +7227,7 @@ async def patch_document_pipeline(
     db.refresh(document)
     # Best-effort audit log (do not include patch values; keys only).
     try:
-        fields = sorted(list(getattr(patch, "model_fields_set", set())))
+        fields = sorted(getattr(patch, "model_fields_set", set()))
         audit_log_event(
             db,
             tenant_id=tenant_id,
@@ -7425,7 +7433,7 @@ async def patch_document_lifecycle_metadata(
                 changed_fields.append(k)
 
         details: dict[str, Any] = {
-            "fields": sorted(list(fields_set))[:50],
+            "fields": sorted(fields_set)[:50],
             "changed_fields": changed_fields[:50],
         }
         if "lifecycle_owner" in fields_set:
@@ -7608,7 +7616,7 @@ async def download_document(
             (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
         )
         max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-        cache_control = "no-store" if token_in_url else (f"private, max-age={max_age}" if max_age > 0 else "no-cache")
+        cache_control = _asset_cache_control(token_in_url=token_in_url, max_age=max_age)
 
         etag_raw = str(getattr(stat, "etag", "") or "").strip()
         etag = f"\"{etag_raw}\"" if etag_raw and not etag_raw.startswith("\"") else (etag_raw or None)
@@ -7716,7 +7724,7 @@ async def download_document(
 
     token_in_url = bool((request.query_params.get("token") or request.query_params.get("access_token") or "").strip())
     max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-    cache_control = "no-store" if token_in_url else (f"private, max-age={max_age}" if max_age > 0 else "no-cache")
+    cache_control = _asset_cache_control(token_in_url=token_in_url, max_age=max_age)
 
     # Avoid caching token-bearing URLs; allow private caching for header-auth downloads.
     headers = {
@@ -9144,7 +9152,7 @@ async def get_image_url(
         raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
 
     max_age = max(0, int(getattr(settings, "ASSET_CACHE_MAX_AGE_SEC", 0) or 0))
-    cache_control = "no-store" if token_in_url else (f"private, max-age={max_age}" if max_age > 0 else "no-cache")
+    cache_control = _asset_cache_control(token_in_url=token_in_url, max_age=max_age)
 
     etag_raw = str(getattr(stat, "etag", "") or "").strip()
     etag = f"\"{etag_raw}\"" if etag_raw and not etag_raw.startswith("\"") else (etag_raw or None)

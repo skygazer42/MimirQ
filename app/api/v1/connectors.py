@@ -233,6 +233,12 @@ def _finalize_connector_stats(stats: dict) -> dict:
     return stats
 
 
+def _connector_run_completion_status(*, created: int, failed: int) -> str:
+    if failed and created == 0:
+        return "failed"
+    return "completed"
+
+
 def _connector_config_id_from_run(run: ConnectorRun) -> str | None:
     stats = dict(getattr(run, "stats", {}) or {})
     text = str(stats.get("config_id") or "").strip()
@@ -929,7 +935,7 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
     db.commit()
 
 
-@router.get("", response_model=list[ConnectorInfo], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_connectors() -> list[ConnectorInfo]:
     """List available connectors from the shared registry."""
     return [
@@ -1331,7 +1337,7 @@ async def validate_connector_config(
     )
 
 
-async def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+def _execute_db_catalog_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for DB catalog connectors (MySQL / SQLServer).
 
@@ -1784,7 +1790,7 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         stats.update({"document_ids": [str(d) for d in created_doc_ids]})
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
-        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        run.status = _connector_run_completion_status(created=created, failed=failed)
         db.commit()
         with contextlib.suppress(Exception):
             _sync_connector_config_from_run(db, run=run)
@@ -2030,7 +2036,7 @@ def _github_team_principal_key(*, org: str, team_slug: str) -> str:
     return key[:255]
 
 
-def _parse_link_header_next(url: str, link_header: str | None) -> str | None:
+def _parse_link_header_next(link_header: str | None) -> str | None:
     """
     Best-effort parse GitHub-style RFC5988 Link header for rel="next".
     """
@@ -2105,7 +2111,7 @@ async def _github_fetch_repo_team_principal_keys(
         link = None
         with contextlib.suppress(Exception):
             link = resp.headers.get("Link")
-        next_url = _parse_link_header_next(url, link)
+        next_url = _parse_link_header_next(link)
         if not next_url:
             break
         url = next_url
@@ -2449,7 +2455,7 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
-        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        run.status = _connector_run_completion_status(created=created, failed=failed)
         db.commit()
         with contextlib.suppress(Exception):
             _sync_connector_config_from_run(db, run=run)
@@ -3494,7 +3500,7 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
-        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        run.status = _connector_run_completion_status(created=created, failed=failed)
         if enable_source_acl:
             with contextlib.suppress(Exception):
                 from app.services.audit_log_service import audit_log_event
@@ -3906,7 +3912,7 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
         )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
-        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        run.status = _connector_run_completion_status(created=created, failed=failed)
         if enable_source_acl:
             with contextlib.suppress(Exception):
                 from app.services.audit_log_service import audit_log_event
@@ -4271,7 +4277,7 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
         )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
-        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        run.status = _connector_run_completion_status(created=created, failed=failed)
         db.commit()
         with contextlib.suppress(Exception):
             _sync_connector_config_from_run(db, run=run)
@@ -5075,7 +5081,6 @@ def _jira_adf_text_node_html(value: dict) -> str:
             continue
         if mtype in {"strike", "strikethrough"}:
             text = f"<s>{text}</s>"
-            continue
 
     return text
 
@@ -6223,7 +6228,7 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         )
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
-        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        run.status = _connector_run_completion_status(created=created, failed=failed)
         if enable_source_acl:
             with contextlib.suppress(Exception):
                 from app.services.audit_log_service import audit_log_event
@@ -7036,7 +7041,7 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
             stats["last_modified_ids"] = sorted(last_modified_ids_seen)
         run.stats = _finalize_connector_stats(stats)
         run.finished_at = _now()
-        run.status = "completed" if failed == 0 else ("failed" if created == 0 else "completed")
+        run.status = _connector_run_completion_status(created=created, failed=failed)
         if enable_source_acl:
             with contextlib.suppress(Exception):
                 from app.services.audit_log_service import audit_log_event
@@ -7141,7 +7146,7 @@ async def create_connector_run(
     access = getattr(cfg, "access", None)
     group_ids_to_check.extend(list(getattr(access, "partial_group_list", None) or []))
     source_acl = getattr(cfg, "source_acl", None)
-    for rule in list(getattr(source_acl, "group_mappings", None) or []):
+    for rule in getattr(source_acl, "group_mappings", None) or []:
         gid = getattr(rule, "group_id", None)
         if gid:
             group_ids_to_check.append(gid)

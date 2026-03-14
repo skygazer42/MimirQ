@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-
 
 class _DummyQuery:
     def __init__(self, obj):  # noqa: ANN001
@@ -40,8 +38,7 @@ class _DummyDB:
         return None
 
 
-@pytest.mark.asyncio
-async def test_execute_db_catalog_run_attempts_virtual_schema_doc(monkeypatch):  # noqa: ANN001
+def test_execute_db_catalog_run_attempts_virtual_schema_doc(monkeypatch):  # noqa: ANN001
     import app.api.v1.connectors as connectors_module
     import app.connectors.db.catalog_runner as runner
     import app.services.db_catalog_observability as obs
@@ -91,11 +88,10 @@ async def test_execute_db_catalog_run_attempts_virtual_schema_doc(monkeypatch): 
 
     monkeypatch.setattr(obs, "emit_db_catalog_schema_doc_completed", _fake_emit_db_catalog_schema_doc_completed, raising=True)
 
-    await connectors_module._execute_db_catalog_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
+    connectors_module._execute_db_catalog_run(run_id=run_id, tenant_id=tenant_id, requested_by="tester")
 
     assert called["schema_doc"] == 1
     assert called["metrics_doc"] == 1
     assert run.status == "completed"
     assert isinstance(run.stats, dict)
     assert "schema_doc" in run.stats
-
