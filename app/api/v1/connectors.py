@@ -7323,6 +7323,135 @@ def _extract_failed_urls(stats: dict) -> list[str]:
     return out
 
 
+def _get_connector_run_or_404(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun:
+    run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail=CONNECTOR_RUN_NOT_FOUND_DETAIL)
+    return run
+
+
+def _assert_connector_run_dataset_writable(db: Session, *, run: ConnectorRun, tenant_id: UUID, account_id: str) -> None:
+    if not run.dataset_id:
+        return
+    ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
+    DatasetService.assert_dataset_writable(db, ds, account_id)
+
+
+def _build_retry_failed_run_config(
+    *,
+    connector_id: str,
+    base_cfg: dict[str, Any],
+    failed_urls: list[str],
+) -> tuple[str, dict[str, Any]]:
+    if connector_id == "url_batch":
+        new_cfg = dict(base_cfg)
+        new_cfg["urls"] = failed_urls
+        return "url_batch", new_cfg
+
+    if connector_id == "web_crawl":
+        new_cfg: dict[str, Any] = {"urls": failed_urls}
+        for key in ("filename", "user_agent", "auth", "parser_backend", "chunk_strategy", "pipeline", "access"):
+            if key in base_cfg:
+                new_cfg[key] = base_cfg.get(key)
+        return "url_batch", new_cfg
+
+    raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
+
+
+async def _enqueue_connector_run_if_enabled(
+    *,
+    tenant_id: UUID,
+    run_id: UUID,
+    requested_by: str,
+) -> str | None:
+    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        return None
+
+    job_id = f"connector:{tenant_id}:{run_id}"
+    try:
+        return await enqueue_connector_run(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            requested_by=requested_by,
+            job_id=job_id,
+        )
+    except Exception:
+        return None
+
+
+def _persist_connector_run_task_id(db: Session, *, run: ConnectorRun, task_id: str) -> None:
+    run.task_id = task_id
+    db.commit()
+    db.refresh(run)
+
+
+def _schedule_connector_run_dispatch(
+    *,
+    background_tasks: BackgroundTasks,
+    connector_id: str,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+) -> None:
+    if connector_id == "url_batch":
+        background_tasks.add_task(_execute_url_batch_run, run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
+        return
+    if connector_id == "web_crawl":
+        background_tasks.add_task(_execute_web_crawl_run, run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
+        return
+    if connector_id == "github_repo":
+        background_tasks.add_task(_execute_github_repo_run, run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
+        return
+    if connector_id == "drive_files":
+        background_tasks.add_task(_execute_drive_files_run, run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
+        return
+    if connector_id == "minio_bucket":
+        background_tasks.add_task(_execute_minio_bucket_run, run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
+        return
+    raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
+
+
+def _connector_run_has_abortable_task(*, task_queue_enabled: bool, task_id: object) -> bool:
+    return bool(task_queue_enabled and isinstance(task_id, str) and task_id)
+
+
+def _load_arq_job_class():
+    try:
+        from arq.jobs import Job as job_cls
+    except ImportError:
+        return None
+    return job_cls
+
+
+async def _get_queue_or_none():
+    try:
+        return await get_queue()
+    except Exception:
+        return None
+
+
+async def _abort_connector_run_task_if_possible(run: ConnectorRun) -> None:
+    task_id = getattr(run, "task_id", None)
+    if not _connector_run_has_abortable_task(
+        task_queue_enabled=bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
+        task_id=task_id,
+    ):
+        return
+
+    job_cls = _load_arq_job_class()
+    if job_cls is None:
+        return
+
+    q = await _get_queue_or_none()
+    if q is None:
+        return
+
+    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    job = job_cls(str(task_id), q, _queue_name=queue_name)
+    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+        await job.abort(timeout=0.2)
+
+
 @router.post("/runs/{run_id}/retry-failed", response_model=ConnectorRunOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def retry_failed_connector_run(
     run_id: UUID,
@@ -7338,17 +7467,13 @@ async def retry_failed_connector_run(
 
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail=CONNECTOR_RUN_NOT_FOUND_DETAIL)
+    run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
 
     status = str(run.status or "").lower()
     if status in {"pending", "running"}:
         raise HTTPException(status_code=400, detail="Connector run is still active")
 
-    if run.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+    _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
 
     stats = dict(run.stats or {})
     failed_urls = _extract_failed_urls(stats)
@@ -7359,18 +7484,11 @@ async def retry_failed_connector_run(
 
     base_cfg = dict(run.config or {})
     connector_id = str(run.connector_id or "").strip()
-    new_connector_id = "url_batch"
-    new_cfg: dict[str, Any] = {"urls": failed_urls}
-
-    if connector_id == "url_batch":
-        new_cfg = dict(base_cfg)
-        new_cfg["urls"] = failed_urls
-    elif connector_id == "web_crawl":
-        for k in ("filename", "user_agent", "auth", "parser_backend", "chunk_strategy", "pipeline", "access"):
-            if k in base_cfg:
-                new_cfg[k] = base_cfg.get(k)
-    else:
-        raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
+    new_connector_id, new_cfg = _build_retry_failed_run_config(
+        connector_id=connector_id,
+        base_cfg=base_cfg,
+        failed_urls=failed_urls,
+    )
 
     new_run = ConnectorRun(
         tenant_id=tenant_id,
@@ -7385,20 +7503,22 @@ async def retry_failed_connector_run(
     db.commit()
     db.refresh(new_run)
 
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
-        job_id = f"connector:{tenant_id}:{new_run.id}"
-        task_id = None
-        try:
-            task_id = await enqueue_connector_run(tenant_id=tenant_id, run_id=new_run.id, requested_by=account_id, job_id=job_id)
-        except Exception:
-            task_id = None
-        if task_id:
-            new_run.task_id = task_id
-            db.commit()
-            db.refresh(new_run)
-            return _run_out(new_run)
+    task_id = await _enqueue_connector_run_if_enabled(
+        tenant_id=tenant_id,
+        run_id=new_run.id,
+        requested_by=account_id,
+    )
+    if task_id:
+        _persist_connector_run_task_id(db, run=new_run, task_id=task_id)
+        return _run_out(new_run)
 
-    background_tasks.add_task(_execute_url_batch_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
+    _schedule_connector_run_dispatch(
+        background_tasks=background_tasks,
+        connector_id=new_connector_id,
+        run_id=new_run.id,
+        tenant_id=tenant_id,
+        requested_by=account_id,
+    )
     return _run_out(new_run)
 
 
@@ -7417,17 +7537,13 @@ async def resume_connector_run(
 
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail=CONNECTOR_RUN_NOT_FOUND_DETAIL)
+    run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
 
     status = str(run.status or "").lower()
     if status not in {"cancelled", "failed"}:
         raise HTTPException(status_code=400, detail="Connector run is not resumable")
 
-    if run.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+    _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
 
     connector_id = str(run.connector_id or "").strip()
     connector_definition = get_connector_definition(connector_id)
@@ -7489,31 +7605,22 @@ async def resume_connector_run(
     db.commit()
     db.refresh(new_run)
 
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
-        job_id = f"connector:{tenant_id}:{new_run.id}"
-        task_id = None
-        try:
-            task_id = await enqueue_connector_run(tenant_id=tenant_id, run_id=new_run.id, requested_by=account_id, job_id=job_id)
-        except Exception:
-            task_id = None
-        if task_id:
-            new_run.task_id = task_id
-            db.commit()
-            db.refresh(new_run)
-            return _run_out(new_run)
+    task_id = await _enqueue_connector_run_if_enabled(
+        tenant_id=tenant_id,
+        run_id=new_run.id,
+        requested_by=account_id,
+    )
+    if task_id:
+        _persist_connector_run_task_id(db, run=new_run, task_id=task_id)
+        return _run_out(new_run)
 
-    if connector_id == "url_batch":
-        background_tasks.add_task(_execute_url_batch_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "web_crawl":
-        background_tasks.add_task(_execute_web_crawl_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "github_repo":
-        background_tasks.add_task(_execute_github_repo_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "drive_files":
-        background_tasks.add_task(_execute_drive_files_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "minio_bucket":
-        background_tasks.add_task(_execute_minio_bucket_run, run_id=new_run.id, tenant_id=tenant_id, requested_by=account_id)
-    else:
-        raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
+    _schedule_connector_run_dispatch(
+        background_tasks=background_tasks,
+        connector_id=connector_id,
+        run_id=new_run.id,
+        tenant_id=tenant_id,
+        requested_by=account_id,
+    )
     return _run_out(new_run)
 
 
@@ -7528,13 +7635,8 @@ async def cancel_connector_run(
     """Cancel a running connector run (best-effort)."""
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
-    if not run:
-        raise HTTPException(status_code=404, detail=CONNECTOR_RUN_NOT_FOUND_DETAIL)
-
-    if run.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+    run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
+    _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
 
     status = str(run.status or "").lower()
     if status in {"completed", "failed"}:
@@ -7545,21 +7647,7 @@ async def cancel_connector_run(
     db.commit()
     db.refresh(run)
 
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and isinstance(getattr(run, "task_id", None), str) and run.task_id:
-        try:
-            from arq.jobs import Job as job_cls
-        except ImportError:
-            job_cls = None  # type: ignore[assignment]
-        if job_cls is not None:
-            try:
-                q = await get_queue()
-            except Exception:
-                q = None
-            if q is not None:
-                queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
-                job = job_cls(str(run.task_id), q, _queue_name=queue_name)
-                with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
-                    await job.abort(timeout=0.2)
+    await _abort_connector_run_task_if_possible(run)
     return _run_out(run)
 
 
