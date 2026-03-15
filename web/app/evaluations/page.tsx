@@ -20,7 +20,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
-import { evaluationApi, chatApi } from '@/lib/api-client'
+import { evaluationApi, chatApi, type RagasRun, type RagasRunDetail } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import type { Conversation } from '@/types'
 import {
@@ -38,10 +38,10 @@ import { RegressionTestTab } from '@/components/evaluation/regression-tab'
 type TabType = 'conversation' | 'regression'
 
 const METRIC_OPTIONS = [
-  { key: 'faithfulness', label: 'Faithfulness（忠实度）' },
-  { key: 'response_relevancy', label: 'Response Relevancy（相关性）' },
-  { key: 'context_precision', label: 'Context Precision（无参考）' },
-] as const
+    { key: 'faithfulness', label: 'Faithfulness（忠实度）' },
+    { key: 'response_relevancy', label: 'Response Relevancy（相关性）' },
+    { key: 'context_precision', label: 'Context Precision（无参考）' },
+]
 
 export default function EvaluationsPage() {
   return (
@@ -66,9 +66,9 @@ function EvaluationsPageContent() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string>('')
 
-  const [runs, setRuns] = useState<any[]>([])
+  const [runs, setRuns] = useState<RagasRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string>('')
-  const [runDetail, setRunDetail] = useState<any | null>(null)
+  const [runDetail, setRunDetail] = useState<RagasRunDetail | null>(null)
 
   const [metricKeys, setMetricKeys] = useState<string[]>([
     'faithfulness',
@@ -125,7 +125,6 @@ function EvaluationsPageContent() {
   useEffect(() => {
     setIsLoading(true)
     Promise.all([loadConversations(), loadRuns()]).finally(() => setIsLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // When switching conversation, focus run list on that conversation
@@ -134,7 +133,6 @@ function EvaluationsPageContent() {
     setSelectedRunId('')
     setRunDetail(null)
     loadRuns(selectedConversationId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConversationId])
 
   // Poll run detail
@@ -145,7 +143,7 @@ function EvaluationsPageContent() {
     }
 
     let cancelled = false
-    let timer: any = null
+    let timer: ReturnType<typeof setTimeout> | null = null
 
     const fetchDetail = async () => {
       try {
@@ -203,8 +201,32 @@ function EvaluationsPageContent() {
   const runStatus = runDetail?.run?.status
   const statusBadge = useMemo(() => {
     if (!runStatus) return null
-    const status = runStatus === 'completed' ? 'completed' : runStatus === 'failed' ? 'failed' : 'processing'
-    const label = runStatus === 'completed' ? '已完成' : runStatus === 'failed' ? '失败' : '运行中'
+    const status = (() => {
+    if (runStatus === 'completed') {
+        return 'completed';
+    }
+    else {
+        if (runStatus === 'failed') {
+            return 'failed';
+        }
+        else {
+            return 'processing';
+        }
+    }
+})()
+    const label = (() => {
+    if (runStatus === 'completed') {
+        return '已完成';
+    }
+    else {
+        if (runStatus === 'failed') {
+            return '失败';
+        }
+        else {
+            return '运行中';
+        }
+    }
+})()
     return <StatusBadge status={status} label={label} dense />
   }, [runStatus])
 
@@ -346,13 +368,13 @@ function EvaluationsPageContent() {
                       className="rounded-xl"
                     />
                   </div>
-                  <label className="flex items-center gap-2 text-sm mt-7">
+                  <div className="flex items-center gap-2 text-sm mt-7">
                     <Checkbox
                       checked={skipEmptyContexts}
                       onCheckedChange={(v) => setSkipEmptyContexts(v === true)}
                     />
                     <span className="text-foreground">跳过无引用轮次</span>
-                  </label>
+                  </div>
                 </div>
               </Panel>
             </div>
@@ -373,10 +395,34 @@ function EvaluationsPageContent() {
                   {runs.length === 0 ? (
                     <div className="p-6 text-sm text-muted-foreground">暂无评测记录</div>
                   ) : (
-                    runs.map((r: any) => {
+                    runs.map((r) => {
                       const runStatus = r?.status
-                      const badgeStatus = runStatus === 'completed' ? 'completed' : runStatus === 'failed' ? 'failed' : 'processing'
-                      const badgeLabel = runStatus === 'completed' ? '已完成' : runStatus === 'failed' ? '失败' : '运行中'
+                      const badgeStatus = (() => {
+    if (runStatus === 'completed') {
+        return 'completed';
+    }
+    else {
+        if (runStatus === 'failed') {
+            return 'failed';
+        }
+        else {
+            return 'processing';
+        }
+    }
+})()
+                      const badgeLabel = (() => {
+    if (runStatus === 'completed') {
+        return '已完成';
+    }
+    else {
+        if (runStatus === 'failed') {
+            return '失败';
+        }
+        else {
+            return '运行中';
+        }
+    }
+})()
                       return (
                         <button
                           key={r.id}
@@ -473,7 +519,7 @@ function EvaluationsPageContent() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60">
-                      {(runDetail?.items || []).map((it: any) => (
+                      {(runDetail?.items || []).map((it) => (
                         <tr key={it.id} className="hover:bg-muted/20">
                           <td className="px-4 py-3 text-muted-foreground">{it.turn_index}</td>
                           <td className="px-4 py-3 align-top">

@@ -5,19 +5,7 @@
 
 import { useState, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import {
-  FileText,
-  Upload,
-  Loader2,
-  Trash2,
-  CheckCircle2,
-  AlertCircle,
-  X,
-  Clock,
-  MoreVertical,
-  File,
-  Search,
-} from 'lucide-react'
+import { FileText, Upload, Loader2, Trash2, CheckCircle2, AlertCircle, X, Clock, Search } from 'lucide-react'
 import { useDocuments } from '@/hooks/use-documents'
 import { useLocalSearch } from '@/hooks/use-local-search'
 import { formatFileSize, formatDate } from '@/lib/utils'
@@ -26,7 +14,6 @@ import type { Document } from '@/types'
 import { ManualUploadDialog } from '@/components/manual-upload-dialog'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { getParserLabel } from '@/lib/parser-options'
-import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { LottieAnimation, LOTTIE_URLS } from '@/components/ui/lottie-animation'
 import { PipelineVisualizer } from '@/components/ui/pipeline-visualizer'
 import { Magnetic } from '@/components/ui/magnetic'
@@ -47,8 +34,9 @@ import {
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 
 type SidebarVariant = 'app' | 'workbench'
+type SidebarProps = Readonly<{ variant?: SidebarVariant }>
 
-export function Sidebar({ variant = 'app' }: { variant?: SidebarVariant } = {}) {
+export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
   const { documents, isLoading, uploadDocuments, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const parentRef = useRef<HTMLDivElement>(null)
@@ -59,7 +47,6 @@ export function Sidebar({ variant = 'app' }: { variant?: SidebarVariant } = {}) 
     storeFields: ['id']
   })
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: results.length,
     getScrollElement: () => parentRef.current,
@@ -191,61 +178,46 @@ export function Sidebar({ variant = 'app' }: { variant?: SidebarVariant } = {}) 
         data-page-scroll-container="true"
         className="flex-1 overflow-y-auto p-4 no-scrollbar"
       >
-        {isLoading && documents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-3">
-            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-primary/30" />
+        {(() => {
+    if (isLoading && documents.length === 0) {
+        return (<div className="flex flex-col items-center justify-center h-40 gap-3">
+            <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-primary/30"/>
             <p className="text-sm text-muted-foreground animate-pulse motion-reduce:animate-none">加载中...</p>
-          </div>
-        ) : results.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground/50 gap-4">
-            <LottieAnimation
-              url={LOTTIE_URLS.EMPTY_DOCUMENTS}
-              className="w-40 h-40 opacity-80"
-            />
+          </div>);
+    }
+    else {
+        if (results.length === 0) {
+            return (<div className="flex flex-col items-center justify-center h-64 text-muted-foreground/50 gap-4">
+            <LottieAnimation url={LOTTIE_URLS.EMPTY_DOCUMENTS} className="w-40 h-40 opacity-80"/>
             <p className="text-sm font-medium">
               {documents.length > 0 ? "未找到匹配文档" : "暂无文档，请上传知识"}
             </p>
-          </div>
-        ) : (
-          <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: '100%',
-              position: 'relative'
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const doc = results[virtualRow.index]
-              if (!doc) return null
-
-              return (
-                <div
-                  key={virtualRow.key}
-                  data-index={virtualRow.index}
-                  ref={rowVirtualizer.measureElement}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
+          </div>);
+        }
+        else {
+            return (<div style={{
+                    height: `${rowVirtualizer.getTotalSize()}px`,
                     width: '100%',
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                  className="pb-3"
-                >
-                  <DocumentCard
-                    document={doc}
-                    index={virtualRow.index}
-                    isSelected={selectedDocIds.includes(doc.id)}
-                    onSelect={() => toggleDocumentSelection(doc.id)}
-                    onCancel={() => cancelDocument(doc.id)}
-                    onDelete={() => deleteDocument(doc.id)}
-                    getStatusIcon={getStatusIcon}
-                  />
-                </div>
-              )
-            })}
-          </div>
-        )}
+                    position: 'relative'
+                }}>
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const doc = results[virtualRow.index];
+                    if (!doc)
+                        return null;
+                    return (<div key={virtualRow.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement} style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            transform: `translateY(${virtualRow.start}px)`,
+                        }} className="pb-3">
+                  <DocumentCard document={doc} index={virtualRow.index} isSelected={selectedDocIds.includes(doc.id)} onSelect={() => toggleDocumentSelection(doc.id)} onCancel={() => cancelDocument(doc.id)} onDelete={() => deleteDocument(doc.id)} getStatusIcon={getStatusIcon}/>
+                </div>);
+                })}
+          </div>);
+        }
+    }
+})()}
       </div>
     </aside>
   )
@@ -263,7 +235,7 @@ function DocumentCard({
   onCancel,
   onDelete,
   getStatusIcon,
-}: {
+}: Readonly<{
   document: Document
   index: number
   isSelected: boolean
@@ -271,24 +243,13 @@ function DocumentCard({
   onCancel: () => void
   onDelete: () => void
   getStatusIcon: (status: string) => React.ReactNode
-}) {
+}>) {
   const [isHovered, setIsHovered] = useState(false)
   const [isFocusWithin, setIsFocusWithin] = useState(false)
   const isActive = isHovered || isFocusWithin
   const parserBackend = (document.metadata?.parser_backend as string) || ''
   const parserLabel = parserBackend ? getParserLabel(parserBackend) : null
-  const chunkStrategyValue = (document.metadata?.chunk_strategy as string) || ''
-  const chunkStrategyLabel = chunkStrategyValue ? getChunkStrategyLabel(chunkStrategyValue) : null
-  
 		    return (
-          <div
-            className="h-full"
-            onFocus={() => setIsFocusWithin(true)}
-            onBlur={(e) => {
-              const next = e.relatedTarget as Node | null
-              if (!next || !e.currentTarget.contains(next)) setIsFocusWithin(false)
-            }}
-          >
 		      <TiltCard
 		      className={cn(
 		        'group relative p-3 rounded-xl border cursor-pointer h-full transition-colors duration-200',
@@ -299,6 +260,11 @@ function DocumentCard({
 	      onClick={onSelect}
 	      onMouseEnter={() => setIsHovered(true)}
 	      onMouseLeave={() => setIsHovered(false)}
+        onFocus={() => setIsFocusWithin(true)}
+        onBlur={(e) => {
+          const next = e.relatedTarget as Node | null
+          if (!next || !e.currentTarget.contains(next)) setIsFocusWithin(false)
+        }}
 	    >
       <div className="flex items-start gap-3">
         {/* 文件图标容器 */}
@@ -455,6 +421,5 @@ function DocumentCard({
         )}
 	      </div>
 	    </TiltCard>
-      </div>
 	  )
 }

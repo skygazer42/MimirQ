@@ -13,13 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { datasetApi, usageApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import type { ChatCostUsageSummary, ChatTokenQuotaStatus, ChatTokenUsageSummary } from '@/types'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 
 const WINDOW_PRESETS = [
-  { label: '24 小时', value: 1 },
-  { label: '7 天', value: 7 },
-  { label: '30 天', value: 30 },
-] as const
+    { label: '24 小时', value: 1 },
+    { label: '7 天', value: 7 },
+    { label: '30 天', value: 30 },
+]
 
 function shortId(id: string) {
   const v = (id || '').trim()
@@ -71,8 +71,7 @@ export default function UsagePage() {
   }
 
   useEffect(() => {
-    void load(windowDays)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(load(windowDays))
   }, [])
 
   const rows = useMemo(() => {
@@ -119,7 +118,7 @@ export default function UsagePage() {
                   onValueChange={(v) => {
                     const next = Number.parseInt(v, 10)
                     setWindowDays(next)
-                    void load(next)
+                    detachPromise(load(next))
                   }}
                 >
                   <SelectTrigger className="h-9 rounded-xl">
@@ -138,7 +137,7 @@ export default function UsagePage() {
                 size="sm"
                 variant="outline"
                 className="gap-2 rounded-xl"
-                onClick={() => void load(windowDays)}
+                onClick={() => detachPromise(load(windowDays))}
                 disabled={loading}
               >
                 <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
@@ -147,13 +146,7 @@ export default function UsagePage() {
             </div>
           }
         >
-          {!summary ? (
-            <Panel padding="lg" className="mt-4">
-              <div className="text-sm text-muted-foreground">
-                无法加载用量数据。请确认你是 owner/admin，并且后端已更新到包含 /api/v1/usage 的版本。
-              </div>
-            </Panel>
-          ) : (
+          {summary ? (
             <div className="space-y-6">
               <StatsGrid className="mt-2">
                 <StatCard
@@ -224,11 +217,11 @@ export default function UsagePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.slice(0, 50).map((r, idx) => {
+                      {rows.slice(0, 50).map((r) => {
                         const id = r.dataset_id || ''
                         const name = id ? datasetNameById[id] || shortId(id) : '(unknown)'
                         return (
-                          <tr key={`${id}-${idx}`} className="border-b border-border/40 last:border-0">
+                          <tr key={JSON.stringify(r)} className="border-b border-border/40 last:border-0">
                             <td className="py-2 pr-3">
                               <div className="font-medium text-foreground">{name}</div>
                               {id ? <div className="text-[11px] text-muted-foreground font-mono">{id}</div> : null}
@@ -264,13 +257,13 @@ export default function UsagePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {costRows.slice(0, 50).map((r, idx) => {
+                        {costRows.slice(0, 50).map((r) => {
                           const id = r.dataset_id || ''
                           const name = id ? datasetNameById[id] || shortId(id) : '(unknown)'
                           const denom = Math.max(1, r.assistant_messages || 0)
                           const avgR = (r.retrieval_elapsed_sec_sum || 0) / denom
                           return (
-                            <tr key={`${id}-${idx}`} className="border-b border-border/40 last:border-0">
+                            <tr key={JSON.stringify(r)} className="border-b border-border/40 last:border-0">
                               <td className="py-2 pr-3">
                                 <div className="font-medium text-foreground">{name}</div>
                                 {id ? <div className="text-[11px] text-muted-foreground font-mono">{id}</div> : null}
@@ -288,6 +281,12 @@ export default function UsagePage() {
                 </Panel>
               ) : null}
             </div>
+          ) : (
+            <Panel padding="lg" className="mt-4">
+              <div className="text-sm text-muted-foreground">
+                无法加载用量数据。请确认你是 owner/admin，并且后端已更新到包含 /api/v1/usage 的版本。
+              </div>
+            </Panel>
           )}
         </PageScaffold>
       </div>

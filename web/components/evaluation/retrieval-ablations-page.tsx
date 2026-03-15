@@ -16,7 +16,24 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi, evaluationApi } from '@/lib/api-client'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import type { Dataset, RegressionRun, RegressionRunCreate, RagasRegressionRunDiffResponse } from '@/types'
+import { detachPromise } from '@/lib/utils'
+
+type RegressionLeaderboardRow = {
+  run_id: string
+  status: string
+  created_at?: string | null
+  finished_at?: string | null
+  metric_key: string
+  metric_value?: number | null
+  retrieval_config_hash?: string | null
+}
+
+type RegressionRunLeaderboard = {
+  items?: RegressionLeaderboardRow[]
+}
+
 
 function prettyJson(value: unknown): string {
   try {
@@ -29,7 +46,7 @@ function prettyJson(value: unknown): string {
 function sanitizeFilename(name: string): string {
   const trimmed = String(name || '').trim()
   const base = trimmed || 'retrieval-ablations'
-  return base.replace(/[\\/:*?"<>|]+/g, '_')
+  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function downloadJson(value: unknown, filename: string): void {
@@ -40,7 +57,7 @@ function downloadJson(value: unknown, filename: string): void {
   a.href = url
   a.download = filename
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -49,7 +66,7 @@ function downloadBlob(blob: Blob, filename: string): void {
   a.href = url
   a.download = filename
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function toNumber(value: any): number | null {
@@ -59,30 +76,29 @@ function toNumber(value: any): number | null {
 }
 
 const RAGAS_METRIC_OPTIONS = [
-  { key: 'faithfulness', label: 'Faithfulness' },
-  { key: 'response_relevancy', label: 'Response Relevancy' },
-  { key: 'context_precision', label: 'Context Precision' },
-] as const
+    { key: 'faithfulness', label: 'Faithfulness' },
+    { key: 'response_relevancy', label: 'Response Relevancy' },
+    { key: 'context_precision', label: 'Context Precision' },
+]
 
 const RETRIEVAL_MODE_OPTIONS = [
-  { key: 'hybrid', label: 'hybrid' },
-  { key: 'vector', label: 'vector' },
-  { key: 'keyword', label: 'keyword' },
-  { key: 'mmr', label: 'mmr' },
-] as const
+    { key: 'hybrid', label: 'hybrid' },
+    { key: 'vector', label: 'vector' },
+    { key: 'keyword', label: 'keyword' },
+    { key: 'mmr', label: 'mmr' },
+]
 
 const LEADERBOARD_METRIC_OPTIONS = [
-  { key: 'retrieval_mrr', label: 'retrieval_mrr' },
-  { key: 'retrieval_recall', label: 'retrieval_recall' },
-  { key: 'retrieval_ndcg_at_10', label: 'retrieval_ndcg_at_10' },
-  { key: 'retrieval_ndcg_at_20', label: 'retrieval_ndcg_at_20' },
-  { key: 'faithfulness_det', label: 'faithfulness_det' },
-  { key: 'refusal_correctness', label: 'refusal_correctness' },
-] as const
+    { key: 'retrieval_mrr', label: 'retrieval_mrr' },
+    { key: 'retrieval_recall', label: 'retrieval_recall' },
+    { key: 'retrieval_ndcg_at_10', label: 'retrieval_ndcg_at_10' },
+    { key: 'retrieval_ndcg_at_20', label: 'retrieval_ndcg_at_20' },
+    { key: 'faithfulness_det', label: 'faithfulness_det' },
+    { key: 'refusal_correctness', label: 'refusal_correctness' },
+]
 
 function _stableId(val: unknown): string {
-  const s = String(val || '').trim()
-  return s
+  return toTrimmedPrimitiveString(val)
 }
 
 export function RetrievalAblationsPage() {
@@ -97,7 +113,7 @@ export function RetrievalAblationsPage() {
 
   const [leaderboardMetricKey, setLeaderboardMetricKey] = useState<string>('retrieval_mrr')
   const [leaderboardLoading, setLeaderboardLoading] = useState(false)
-  const [leaderboard, setLeaderboard] = useState<any | null>(null)
+  const [leaderboard, setLeaderboard] = useState<RegressionRunLeaderboard | null>(null)
 
   const [diffLoading, setDiffLoading] = useState(false)
   const [diff, setDiff] = useState<RagasRegressionRunDiffResponse | null>(null)
@@ -149,7 +165,6 @@ export function RetrievalAblationsPage() {
     const hasTarget = items.some((r) => _stableId(r.id) === _stableId(selectedTargetRunId))
     if (!hasBase) setSelectedBaseRunId(items?.[0]?.id || '')
     if (!hasTarget) setSelectedTargetRunId(items?.[0]?.id || '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId, runsByDataset])
 
   async function loadDatasets(): Promise<void> {
@@ -170,7 +185,7 @@ export function RetrievalAblationsPage() {
     setRunsLoading(true)
     try {
       const res = await evaluationApi.listRegressionRuns({ limit: 80 })
-      const items = Array.isArray(res.items) ? (res.items as RegressionRun[]) : []
+      const items = Array.isArray(res.items) ? (res.items) : []
       setRuns(items)
       if (!selectedBaseRunId && items?.[0]?.id) setSelectedBaseRunId(items[0].id)
       if (!selectedTargetRunId && items?.[0]?.id) setSelectedTargetRunId(items[0].id)
@@ -195,7 +210,7 @@ export function RetrievalAblationsPage() {
         limit: 50,
         include_incomplete: false,
       })
-      setLeaderboard(res as any)
+      setLeaderboard(res)
     } catch (err) {
       toast.error(formatApiError(err, '拉取 leaderboard 失败'))
     } finally {
@@ -302,21 +317,12 @@ export function RetrievalAblationsPage() {
   }
 
   useEffect(() => {
-    void loadDatasets()
-    void refreshRuns()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(loadDatasets())
+    detachPromise(refreshRuns())
   }, [])
 
-  const leaderboardItems = (leaderboard as any)?.items
-  const leaderboardRows: Array<{
-    run_id: string
-    status: string
-    created_at?: string | null
-    finished_at?: string | null
-    metric_key: string
-    metric_value?: number | null
-    retrieval_config_hash?: string | null
-  }> = Array.isArray(leaderboardItems) ? leaderboardItems : []
+  const leaderboardItems = leaderboard?.items
+  const leaderboardRows: RegressionLeaderboardRow[] = Array.isArray(leaderboardItems) ? leaderboardItems : []
 
   return (
     <AppFrame>
@@ -334,8 +340,8 @@ export function RetrievalAblationsPage() {
               className="gap-2 rounded-xl"
               disabled={datasetsLoading || runsLoading}
               onClick={() => {
-                void loadDatasets()
-                void refreshRuns()
+                detachPromise(loadDatasets())
+                detachPromise(refreshRuns())
               }}
             >
               <RefreshCcw className="w-4 h-4" />
@@ -496,14 +502,14 @@ export function RetrievalAblationsPage() {
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 text-sm">
+                  <div className="flex items-center gap-2 text-sm">
                     <Checkbox checked={skipEmptyContexts} onCheckedChange={(v) => setSkipEmptyContexts(Boolean(v))} />
                     skip_empty_contexts
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
                     <Checkbox checked={enableWeightRerank} onCheckedChange={(v) => setEnableWeightRerank(Boolean(v))} />
                     enable_weight_rerank
-                  </label>
+                  </div>
                 </div>
 
                 <div className="rounded-xl border border-border p-3 space-y-2">
@@ -529,7 +535,7 @@ export function RetrievalAblationsPage() {
                   </div>
                 </div>
 
-                <Button className="w-full gap-2 rounded-xl" onClick={() => void runAblation()}>
+                <Button className="w-full gap-2 rounded-xl" onClick={() => detachPromise(runAblation())}>
                   <PlayCircle className="w-4 h-4" />
                   Run
                 </Button>
@@ -566,7 +572,7 @@ export function RetrievalAblationsPage() {
                     variant="outline"
                     className="gap-2 rounded-xl"
                     disabled={leaderboardLoading}
-                    onClick={() => void refreshLeaderboard()}
+                    onClick={() => detachPromise(refreshLeaderboard())}
                   >
                     <RefreshCcw className="w-4 h-4" />
                     刷新
@@ -667,7 +673,7 @@ export function RetrievalAblationsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button className="gap-2 rounded-xl" disabled={diffLoading} onClick={() => void computeDiff()}>
+                <Button className="gap-2 rounded-xl" disabled={diffLoading} onClick={() => detachPromise(computeDiff())}>
                   <GitCompare className="w-4 h-4" />
                   生成 diff
                 </Button>
@@ -675,7 +681,7 @@ export function RetrievalAblationsPage() {
                   variant="outline"
                   className="gap-2 rounded-xl"
                   disabled={!selectedBaseRunId}
-                  onClick={() => void exportRunBundle(selectedBaseRunId, 'base')}
+                  onClick={() => detachPromise(exportRunBundle(selectedBaseRunId, 'base'))}
                   title="导出 base regression run bundle（默认 PII-safe）"
                 >
                   <Download className="w-4 h-4" />
@@ -685,7 +691,7 @@ export function RetrievalAblationsPage() {
                   variant="outline"
                   className="gap-2 rounded-xl"
                   disabled={!selectedTargetRunId}
-                  onClick={() => void exportRunBundle(selectedTargetRunId, 'target')}
+                  onClick={() => detachPromise(exportRunBundle(selectedTargetRunId, 'target'))}
                   title="导出 target regression run bundle（默认 PII-safe）"
                 >
                   <Download className="w-4 h-4" />
@@ -703,7 +709,7 @@ export function RetrievalAblationsPage() {
                 <Button
                   variant="outline"
                   className="gap-2 rounded-xl"
-                  onClick={() => void exportDiffHtml()}
+                  onClick={() => detachPromise(exportDiffHtml())}
                 >
                   <Download className="w-4 h-4" />
                   导出 HTML

@@ -16,6 +16,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
 import { evaluationApi, type KGHardcaseMode, type KGSearchDiagnosticsRunDetail } from '@/lib/api-client'
 
+type KgDiagnosticsRunResponse = {
+  summary?: Record<string, unknown> | null
+  items?: unknown[]
+  [key: string]: unknown
+}
+
 function prettyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2)
@@ -27,7 +33,7 @@ function prettyJson(value: unknown): string {
 function sanitizeFilename(name: string): string {
   const trimmed = String(name || '').trim()
   const base = trimmed || 'kg-diagnostics'
-  return base.replace(/[\\/:*?"<>|]+/g, '_')
+  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function downloadJson(value: unknown, filename: string): void {
@@ -38,13 +44,21 @@ function downloadJson(value: unknown, filename: string): void {
   a.href = url
   a.download = filename
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function toNumber(value: any): number | null {
   if (value === null || value === undefined) return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
+}
+
+function formatMetricValue(value: unknown): string {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') {
+    return String(value)
+  }
+  return prettyJson(value)
 }
 
 function extractBaselineMetrics(item: any): { hit_at_k: boolean; mrr: number; recall: number } | null {
@@ -78,7 +92,7 @@ export function KGDiagnosticsPage() {
   const [persistRun, setPersistRun] = useState(true)
 
   const [running, setRunning] = useState(false)
-  const [runResp, setRunResp] = useState<any | null>(null)
+  const [runResp, setRunResp] = useState<KgDiagnosticsRunResponse | null>(null)
   const runRespJson = useMemo(() => prettyJson(runResp ?? { hint: '运行一次 KG diagnostics 以生成 summary/items' }), [runResp])
 
   const [runsLoading, setRunsLoading] = useState(false)
@@ -93,8 +107,8 @@ export function KGDiagnosticsPage() {
     const a = detailA
     const b = detailB
 
-    const aSummary = (a.run?.summary && typeof a.run.summary === 'object' ? a.run.summary : {}) as Record<string, any>
-    const bSummary = (b.run?.summary && typeof b.run.summary === 'object' ? b.run.summary : {}) as Record<string, any>
+    const aSummary = (a.run?.summary && typeof a.run.summary === 'object' ? a.run.summary : {})
+    const bSummary = (b.run?.summary && typeof b.run.summary === 'object' ? b.run.summary : {})
 
     const keys = ['baseline_hit_rate', 'baseline_mrr', 'baseline_recall', 'hardcase_hit_rate', 'hardcase_mrr', 'hardcase_recall']
     const summaryDelta: Record<string, any> = {}
@@ -234,7 +248,7 @@ export function KGDiagnosticsPage() {
         llm_temperature: Math.max(0, Math.min(llmTemperature, 2)),
         persist_run: Boolean(persistRun),
       })
-      setRunResp(resp as any)
+      setRunResp(resp || null)
       toast.success('已运行 KG diagnostics')
       if (persistRun) {
         // Refresh runs so user can diff right away.
@@ -247,7 +261,7 @@ export function KGDiagnosticsPage() {
     }
   }
 
-  const summary = (runResp && typeof runResp === 'object' ? (runResp as any).summary : null) as any | null
+  const summary = runResp?.summary && typeof runResp.summary === 'object' ? runResp.summary : null
 
   return (
     <AppFrame>
@@ -409,19 +423,19 @@ export function KGDiagnosticsPage() {
                 <div className="grid gap-2 md:grid-cols-2">
                   <div className="rounded-md border bg-muted/20 p-3">
                     <div className="text-xs text-muted-foreground">baseline_hit_rate</div>
-                    <div className="text-lg font-semibold tabular-nums">{String(summary.baseline_hit_rate ?? '-') }</div>
+                    <div className="text-lg font-semibold tabular-nums">{formatMetricValue(summary.baseline_hit_rate)}</div>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
                     <div className="text-xs text-muted-foreground">baseline_mrr</div>
-                    <div className="text-lg font-semibold tabular-nums">{String(summary.baseline_mrr ?? '-') }</div>
+                    <div className="text-lg font-semibold tabular-nums">{formatMetricValue(summary.baseline_mrr)}</div>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
                     <div className="text-xs text-muted-foreground">baseline_recall</div>
-                    <div className="text-lg font-semibold tabular-nums">{String(summary.baseline_recall ?? '-') }</div>
+                    <div className="text-lg font-semibold tabular-nums">{formatMetricValue(summary.baseline_recall)}</div>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
                     <div className="text-xs text-muted-foreground">hardcases_generated</div>
-                    <div className="text-lg font-semibold tabular-nums">{String(summary.hardcases_generated ?? '-') }</div>
+                    <div className="text-lg font-semibold tabular-nums">{formatMetricValue(summary.hardcases_generated)}</div>
                   </div>
                 </div>
               ) : (

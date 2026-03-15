@@ -41,6 +41,8 @@ import { computeCoverageSignals, computeRoleIndices, fnv1a32, roughEstimateToken
 import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
 import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
 import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
+import { detachPromise } from '@/lib/utils'
+
 
 const QUERY_DEBOUNCE_MS = 150
 type SortMode = 'index' | 'length_desc' | 'length_asc'
@@ -126,8 +128,8 @@ export function ChunkList() {
   const isSectionView = groupMode === 'section' && !isHierarchyView
 
   useEffect(() => {
-    const t = window.setTimeout(() => setQuery(queryInput), QUERY_DEBOUNCE_MS)
-    return () => window.clearTimeout(t)
+    const t = globalThis.window.setTimeout(() => setQuery(queryInput), QUERY_DEBOUNCE_MS)
+    return () => globalThis.window.clearTimeout(t)
   }, [queryInput])
 
   useEffect(() => {
@@ -196,7 +198,7 @@ export function ChunkList() {
       const override = chunkOverrides?.[idx]
       if (!override) return chunk
       const content = String(override.content ?? chunk.content ?? '')
-      const metadata = (override.metadata ?? chunk.metadata ?? {}) as Record<string, any>
+      const metadata = (override.metadata ?? chunk.metadata ?? {})
       return {
         ...chunk,
         content,
@@ -250,11 +252,11 @@ export function ChunkList() {
       if (!trimmed) continue
       const key = fnv1a32(trimmed)
       const prev = seen.get(key)
-      if (prev != null) {
+      if (prev == null) {
+        seen.set(key, Number(c.index))
+      } else {
         dups.add(prev)
         dups.add(Number(c.index))
-      } else {
-        seen.set(key, Number(c.index))
       }
     }
     return dups
@@ -286,7 +288,7 @@ export function ChunkList() {
     if (!selectedChunk) return null
     const tok = typeof selectedChunk.tokens_est === 'number' ? selectedChunk.tokens_est : null
     if (unit === 'tokens') return `${tok ?? '-'} tok · ${selectedChunk.length} chars`
-    return tok != null ? `${selectedChunk.length} chars · ${tok} tok` : `${selectedChunk.length} chars`
+    return tok == null ? `${selectedChunk.length} chars` : `${selectedChunk.length} chars · ${tok} tok`
   }, [selectedChunk, unit])
 
   const inspectorChunk = useMemo(() => {
@@ -454,7 +456,7 @@ export function ChunkList() {
 
     for (let idx = 0; idx < effectiveChunks.length; idx += 1) {
       const chunk = effectiveChunks[idx]
-      const meta = (chunk.metadata || {}) as Record<string, any>
+      const meta = (chunk.metadata || {})
       const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : undefined
       const parentIdRaw = meta.parent_id ?? meta.parent_node_id
       const parentId = typeof parentIdRaw === 'string' && parentIdRaw.trim() ? parentIdRaw.trim() : null
@@ -545,7 +547,6 @@ export function ChunkList() {
     collapsedGroups,
   ])
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: displayRows.length,
     getScrollElement: () => scrollRef.current,
@@ -787,8 +788,7 @@ export function ChunkList() {
               onChange={(e) => {
                 const raw = e.target.value.trim()
                 const n = raw ? Number(raw) : 0
-                if (!raw) setMinLen(0)
-                else if (Number.isFinite(n)) setMinLen(Math.max(0, Math.trunc(n)))
+                if (raw) { if (Number.isFinite(n)) setMinLen(Math.max(0, Math.trunc(n))) } else { setMinLen(0) }
               }}
               placeholder="Min"
               className="h-7 w-[72px] text-[11px] font-mono bg-background"
@@ -801,8 +801,7 @@ export function ChunkList() {
               onChange={(e) => {
                 const raw = e.target.value.trim()
                 const n = raw ? Number(raw) : 0
-                if (!raw) setMaxLen(0)
-                else if (Number.isFinite(n)) setMaxLen(Math.max(0, Math.trunc(n)))
+                if (raw) { if (Number.isFinite(n)) setMaxLen(Math.max(0, Math.trunc(n))) } else { setMaxLen(0) }
               }}
               placeholder="Max"
               className="h-7 w-[72px] text-[11px] font-mono bg-background"
@@ -988,7 +987,7 @@ export function ChunkList() {
               SKIP {disabledIndices.size}
             </Button>
           </div>
-          {selectedChunkIndex != null ? (
+          {selectedChunkIndex == null ? null : (
             <Button
               type="button"
               variant="ghost"
@@ -998,7 +997,7 @@ export function ChunkList() {
             >
               清除锁定
             </Button>
-          ) : null}
+          )}
           <Button
             type="button"
             variant={retrieveOpen ? 'secondary' : 'ghost'}
@@ -1095,9 +1094,9 @@ export function ChunkList() {
                           SKIP
                         </span>
                       ) : null}
-                      {r.page_number != null ? (
+                      {r.page_number == null ? null : (
                         <span className="text-[10px] text-muted-foreground">P.{r.page_number}</span>
-                      ) : null}
+                      )}
                       {r.section ? (
                         <span className="min-w-0 flex-1 text-[10px] text-muted-foreground truncate">{r.section}</span>
                       ) : (
@@ -1135,11 +1134,11 @@ export function ChunkList() {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                  #{selectedChunkIndex != null ? selectedChunkIndex + 1 : '-'}
+                  #{selectedChunkIndex == null ? '-' : selectedChunkIndex + 1}
                 </span>
-                {selectedChunk.page_number != null ? (
+                {selectedChunk.page_number == null ? null : (
                   <span className="text-xs text-muted-foreground">P.{selectedChunk.page_number}</span>
-                ) : null}
+                )}
                 <span className="text-[10px] text-muted-foreground font-mono">
                   {selectedChunk.start_index}-{selectedChunk.end_index} · {selectedChunkLenLabel}
                 </span>
@@ -1170,7 +1169,7 @@ export function ChunkList() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => void copyText(selectedChunk.content || '', '已复制切片内容')}
+                onClick={() => detachPromise(copyText(selectedChunk.content || '', '已复制切片内容'))}
                 aria-label="复制切片内容"
                 title="复制切片内容"
               >
@@ -1181,7 +1180,7 @@ export function ChunkList() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => void copyText(JSON.stringify(selectedChunk, null, 2), '已复制切片 JSON')}
+                onClick={() => detachPromise(copyText(JSON.stringify(selectedChunk, null, 2), '已复制切片 JSON'))}
                 aria-label="复制切片 JSON"
                 title="复制切片 JSON"
               >
@@ -1194,7 +1193,7 @@ export function ChunkList() {
                 className="h-8 w-8"
                 onClick={() => {
                   const name = (previewData?.filename || '').trim() || 'document'
-                  const pageLabel = selectedChunk.page_number != null ? ` · P.${selectedChunk.page_number}` : ''
+                  const pageLabel = selectedChunk.page_number == null ? '' : ` · P.${selectedChunk.page_number}`
                   const tok = typeof selectedChunk.tokens_est === 'number' ? ` · ${selectedChunk.tokens_est} tok` : ''
                   const fence = '````'
                   const raw = String(selectedChunk.content || '').trim()
@@ -1205,7 +1204,7 @@ export function ChunkList() {
                     excerpt,
                     fence,
                   ].join('\n')
-                  void copyText(text, '已复制引用')
+                  detachPromise(copyText(text, '已复制引用'))
                 }}
                 aria-label="复制引用"
                 title="复制引用"
@@ -1218,10 +1217,10 @@ export function ChunkList() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={() =>
-                  void copyText(
+                  detachPromise(copyText(
                     '```text\n' + (selectedChunk.content || '') + '\n```\n',
                     '已复制 Markdown 代码块'
-                  )
+                  ))
                 }
                 aria-label="复制为 Markdown 代码块"
                 title="复制为 Markdown 代码块"
@@ -1245,6 +1244,8 @@ export function ChunkList() {
       <div
         ref={scrollRef}
         data-page-scroll-container="true"
+        role="listbox"
+        aria-label="Chunk list"
         tabIndex={0}
         onKeyDown={(e) => {
           if (!previewData?.chunks?.length) return
@@ -1302,189 +1303,137 @@ export function ChunkList() {
             position: showVirtualized ? 'relative' : undefined,
           }}
         >
-          {previewData?.chunks ? (
-            displayRows.length > 0 ? (
-              rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                const item = displayRows[virtualRow.index]
-                if (!item) return null
-
-                if (item.kind === 'section') {
-                  const groupKey = item.key
-                  const isCollapsed = Boolean(collapsedGroups[groupKey])
-                  return (
-                    <div
-                      key={virtualRow.key}
-                      data-index={virtualRow.index}
-                      ref={rowVirtualizer.measureElement}
-                      style={{
+          {(() => {
+    if (previewData?.chunks) {
+        return (displayRows.length > 0 ? (rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const item = displayRows[virtualRow.index];
+            if (!item)
+                return null;
+            if (item.kind === 'section') {
+                const groupKey = item.key;
+                const isCollapsed = Boolean(collapsedGroups[groupKey]);
+                return (<div key={virtualRow.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement} style={{
                         position: 'absolute',
                         top: 0,
                         left: 0,
                         width: '100%',
                         transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                      className="pb-2"
-                    >
+                    }} className="pb-2">
                       <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl border border-border/60 bg-muted/40">
-                        <button
-                          type="button"
-                          className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring"
-                          onClick={() => setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !Boolean(prev[groupKey]) }))}
-                          aria-label={isCollapsed ? 'Expand section' : 'Collapse section'}
-                          title={isCollapsed ? 'Expand section' : 'Collapse section'}
-                        >
-                          {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        <button type="button" className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring" onClick={() => setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !Boolean(prev[groupKey]) }))} aria-label={isCollapsed ? 'Expand section' : 'Collapse section'} title={isCollapsed ? 'Expand section' : 'Collapse section'}>
+                          {isCollapsed ? <ChevronRight className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
                         </button>
                         <span className="min-w-0 flex-1 text-[11px] font-semibold truncate" title={item.label}>
                           {item.label}
                         </span>
                         <span className="text-[10px] text-muted-foreground font-mono">{item.count}</span>
                       </div>
-                    </div>
-                  )
-                }
-
-                const { chunk, index, indent } = item
-                const isHovered = hoveredChunkIndex === index
-                const isSelected = selectedChunkIndex === index
-                const isShort = shortIndices.has(index)
-                const isDuplicate = duplicateIndices.has(index)
-                const isEdited = editedIndices.has(index)
-                const gapBefore = coverageSignals.gapBeforeByIndex.get(index)
-                const overlapPrev = coverageSignals.overlapPrevByIndex.get(index)
-                const isGap = coverageSignals.gapIndices.has(index)
-                const isOverlap = coverageSignals.overlapIndices.has(index)
-
-                const dimContext = Boolean(item.isContext) && !isHovered && !isSelected
-                const canCollapse =
-                  isHierarchyView &&
-                  indent === 0 &&
-                  Boolean(item.groupKey) &&
-                  (item.childCountTotal || 0) > 0
-                const groupKey = item.groupKey || ''
-                const isCollapsed = canCollapse ? Boolean(collapsedGroups[groupKey]) : false
-
-                return (
-                  <div
-                    key={virtualRow.key}
-                    data-index={virtualRow.index}
-                    ref={rowVirtualizer.measureElement}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                    className={isHierarchyView ? 'pb-3 flex gap-2 items-start' : 'pb-3'}
-                  >
-                    {isHierarchyView ? (
-                      <div className="w-6 shrink-0 pt-3 flex justify-center">
-                        {canCollapse ? (
-                          <button
-                            type="button"
-                            className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              const nextCollapsed = !Boolean(collapsedGroups[groupKey])
-                              setCollapsedGroups((prev) => ({ ...prev, [groupKey]: nextCollapsed }))
-
-                              // Keep selection visible when collapsing a group.
-                              if (nextCollapsed && selectedChunkIndex != null) {
-                                const selMeta = (effectiveChunks[selectedChunkIndex]?.metadata || {}) as Record<string, any>
-                                const selParentRaw = selMeta.parent_id ?? selMeta.parent_node_id
-                                const selParent =
-                                  typeof selParentRaw === 'string' && selParentRaw.trim() ? selParentRaw.trim() : null
-                                if (selParent && selParent === groupKey && selectedChunkIndex !== index) {
-                                  setSelectedChunkIndex(index)
-                                }
-                              }
-                            }}
-                            aria-label={isCollapsed ? 'Expand group' : 'Collapse group'}
-                            title={
-                              isCollapsed
-                                ? `Expand (${item.childCountVisible ?? 0}/${item.childCountTotal ?? 0} children)`
-                                : `Collapse (${item.childCountVisible ?? 0}/${item.childCountTotal ?? 0} children)`
+                    </div>);
+            }
+            const { chunk, index, indent } = item;
+            const isHovered = hoveredChunkIndex === index;
+            const isSelected = selectedChunkIndex === index;
+            const isShort = shortIndices.has(index);
+            const isDuplicate = duplicateIndices.has(index);
+            const isEdited = editedIndices.has(index);
+            const gapBefore = coverageSignals.gapBeforeByIndex.get(index);
+            const overlapPrev = coverageSignals.overlapPrevByIndex.get(index);
+            const isGap = coverageSignals.gapIndices.has(index);
+            const isOverlap = coverageSignals.overlapIndices.has(index);
+            const dimContext = Boolean(item.isContext) && !isHovered && !isSelected;
+            const canCollapse = isHierarchyView &&
+                indent === 0 &&
+                Boolean(item.groupKey) &&
+                (item.childCountTotal || 0) > 0;
+            const groupKey = item.groupKey || '';
+            const isCollapsed = canCollapse ? Boolean(collapsedGroups[groupKey]) : false;
+            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={rowVirtualizer.measureElement} style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                }} className={isHierarchyView ? 'pb-3 flex gap-2 items-start' : 'pb-3'}>
+                    {isHierarchyView ? (<div className="w-6 shrink-0 pt-3 flex justify-center">
+                        {(() => {
+                        if (canCollapse) {
+                            return (<button type="button" className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring" onClick={(e) => {
+                                    e.stopPropagation();
+                                    const nextCollapsed = !Boolean(collapsedGroups[groupKey]);
+                                    setCollapsedGroups((prev) => ({ ...prev, [groupKey]: nextCollapsed }));
+                                    // Keep selection visible when collapsing a group.
+                                    if (nextCollapsed && selectedChunkIndex != null) {
+                                        const selMeta = (effectiveChunks[selectedChunkIndex]?.metadata || {});
+                                        const selParentRaw = selMeta.parent_id ?? selMeta.parent_node_id;
+                                        const selParent = typeof selParentRaw === 'string' && selParentRaw.trim() ? selParentRaw.trim() : null;
+                                        if (selParent && selParent === groupKey && selectedChunkIndex !== index) {
+                                            setSelectedChunkIndex(index);
+                                        }
+                                    }
+                                }} aria-label={isCollapsed ? 'Expand group' : 'Collapse group'} title={isCollapsed
+                                    ? `Expand (${item.childCountVisible ?? 0}/${item.childCountTotal ?? 0} children)`
+                                    : `Collapse (${item.childCountVisible ?? 0}/${item.childCountTotal ?? 0} children)`}>
+                            {isCollapsed ? (<ChevronRight className="h-4 w-4"/>) : (<ChevronDown className="h-4 w-4"/>)}
+                          </button>);
+                        }
+                        else {
+                            if (indent === 1) {
+                                return (<div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/40"/>);
                             }
-                          >
-                            {isCollapsed ? (
-                              <ChevronRight className="h-4 w-4" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4" />
-                            )}
-                          </button>
-                        ) : indent === 1 ? (
-                          <div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/40" />
-                        ) : null}
-                      </div>
-                    ) : null}
-                    <div
-                      className={[
-                        'min-w-0 flex-1',
-                        (isHierarchyView || isSectionView) && indent === 1 ? 'pl-3 border-l border-border/50' : '',
-                        dimContext ? 'opacity-75' : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                    >
-                      <ChunkCard
-                        chunk={chunk}
-                        index={index}
-                        unit={unit}
-                        sourceFilename={previewData?.filename}
-                        isHovered={isHovered}
-                        isSelected={isSelected}
-                         isShort={isShort}
-                         isDuplicate={isDuplicate}
-                         isGap={isGap}
-                         gapBefore={gapBefore}
-                         isOverlap={isOverlap}
-                         overlapPrev={overlapPrev}
-                         isEdited={isEdited}
-                         isDisabled={disabledIndices.has(index)}
-                         onToggleDisabled={() => toggleChunkDisabled(index)}
-                         query={query}
-                        onMouseEnter={() => setHoveredChunkIndex(index)}
-                        onMouseLeave={() => setHoveredChunkIndex(null)}
-                        onEdit={() => {
-                          setInspectorIndex(index)
-                          setInspectorOpen(true)
-                        }}
-                        onToggleSelect={() => {
-                          setSelectedChunkIndex(selectedChunkIndex === index ? null : index)
-                          scrollRef.current?.focus()
-                        }}
-                      />
+                            else {
+                                return null;
+                            }
+                        }
+                    })()}
+                      </div>) : null}
+                    <div className={[
+                    'min-w-0 flex-1',
+                    (isHierarchyView || isSectionView) && indent === 1 ? 'pl-3 border-l border-border/50' : '',
+                    dimContext ? 'opacity-75' : '',
+                ]
+                    .filter(Boolean)
+                    .join(' ')}>
+                      <ChunkCard chunk={chunk} index={index} unit={unit} sourceFilename={previewData?.filename} isHovered={isHovered} isSelected={isSelected} isShort={isShort} isDuplicate={isDuplicate} isGap={isGap} gapBefore={gapBefore} isOverlap={isOverlap} overlapPrev={overlapPrev} isEdited={isEdited} isDisabled={disabledIndices.has(index)} onToggleDisabled={() => toggleChunkDisabled(index)} query={query} onMouseEnter={() => setHoveredChunkIndex(index)} onMouseLeave={() => setHoveredChunkIndex(null)} onEdit={() => {
+                    setInspectorIndex(index);
+                    setInspectorOpen(true);
+                }} onToggleSelect={() => {
+                    setSelectedChunkIndex(selectedChunkIndex === index ? null : index);
+                    scrollRef.current?.focus();
+                }}/>
                     </div>
-                  </div>
-                )
-              })
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-                <Search className="w-10 h-10 opacity-20" />
+                  </div>);
+        })) : (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
+                <Search className="w-10 h-10 opacity-20"/>
                 <p className="text-xs text-muted-foreground">未找到匹配切片</p>
-              </div>
-            )
-          ) : isLoading ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20" />
+              </div>));
+    }
+    else {
+        if (isLoading) {
+            return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
+              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20"/>
               <p className="text-xs">生成中...</p>
-            </div>
-          ) : error ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-              <AlertCircle className="w-10 h-10 opacity-20" />
+            </div>);
+        }
+        else {
+            if (error) {
+                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
+              <AlertCircle className="w-10 h-10 opacity-20"/>
               <p className="text-xs text-muted-foreground">生成预览失败</p>
               <p className="text-[10px] text-muted-foreground max-w-xs text-center">{error}</p>
               <Button variant="outline" size="sm" className="mt-2 h-8 px-3 text-[11px]" onClick={() => runPreview()}>
                 重试
               </Button>
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-              <Layers className="w-12 h-12 opacity-10" />
+            </div>);
+            }
+            else {
+                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
+              <Layers className="w-12 h-12 opacity-10"/>
               <p className="text-xs">等待生成预览</p>
-            </div>
-          )}
+            </div>);
+            }
+        }
+    }
+})()}
         </div>
       </div>
 

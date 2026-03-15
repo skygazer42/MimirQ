@@ -19,6 +19,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { ragApi } from '@/lib/api-client'
 import { API_BASE_URL, API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { formatFileSize } from '@/lib/utils'
+import type { PromptPreviewResponse } from '@/types'
 
 function prettyJson(value: unknown): string {
   try {
@@ -160,7 +161,7 @@ export default function DiagnosticsPage() {
   const [probeDatasetId, setProbeDatasetId] = useState('')
   const [probeDocumentIdsRaw, setProbeDocumentIdsRaw] = useState('')
   const [probeQuery, setProbeQuery] = useState('Summarize what you know about this dataset.')
-  const [probeResult, setProbeResult] = useState<any | null>(null)
+  const [probeResult, setProbeResult] = useState<PromptPreviewResponse | null>(null)
   const [probeLatencyMs, setProbeLatencyMs] = useState<number | null>(null)
   const [probeRunning, setProbeRunning] = useState(false)
 
@@ -195,10 +196,10 @@ export default function DiagnosticsPage() {
       .filter(Boolean)
   }, [probeDocumentIdsRaw])
 
-  const probeMetrics = (probeResult && typeof probeResult === 'object' ? probeResult.metrics : null) as Record<
-    string,
-    any
-  > | null
+  const probeMetrics =
+    probeResult?.metrics && typeof probeResult.metrics === 'object'
+      ? (probeResult.metrics as Record<string, unknown>)
+      : null
   const probeMetricsJson = prettyJson(probeMetrics || { error: 'no probe yet' })
 
   async function runPromptPreviewProbe(): Promise<void> {
@@ -224,7 +225,7 @@ export default function DiagnosticsPage() {
         structured_output: false,
       })
       setProbeLatencyMs(Math.max(0, Date.now() - start))
-      setProbeResult(result as any)
+      setProbeResult(result)
     } catch (err) {
       toast.error(formatApiError(err, 'RAG prompt-preview failed'))
     } finally {
@@ -336,9 +337,38 @@ export default function DiagnosticsPage() {
           <CardContent>
             <div className="flex items-center justify-between gap-3 pb-2">
               <StatusBadge
-                status={health.isPending ? 'processing' : health.data?.payload?.ok ? 'completed' : 'failed'}
+                status={(() => {
+    if (health.isPending) {
+        return 'processing';
+    }
+    else {
+        if (health.data?.payload?.ok) {
+            return 'completed';
+        }
+        else {
+            return 'failed';
+        }
+    }
+})()}
                 label={
-                  health.isPending ? '检查中' : health.data?.payload?.ok ? 'OK' : health.error ? '网络/服务异常' : '异常'
+                  (() => {
+    if (health.isPending) {
+        return '检查中';
+    }
+    else {
+        if (health.data?.payload?.ok) {
+            return 'OK';
+        }
+        else {
+            if (health.error) {
+                return '网络/服务异常';
+            }
+            else {
+                return '异常';
+            }
+        }
+    }
+})()
                 }
                 dense
               />

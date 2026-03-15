@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { chunkPresetApi } from '@/lib/api-client'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -30,13 +30,13 @@ function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
   if (!value) return ''
   try {
-    return JSON.parse(`"${value.replace(/"/g, '\\"')}"`)
+    return JSON.parse(`"${value.replaceAll(/"/g, '\\"')}"`)
   } catch {
     return value
   }
 }
 
-export function ChunkPresetPanel({ className }: { className?: string }) {
+export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>) {
   const pipelineCtx = usePipelineOptions()
   const importRef = useRef<HTMLInputElement>(null)
 
@@ -161,7 +161,7 @@ export function ChunkPresetPanel({ className }: { className?: string }) {
         limit: 200,
         ...(ds ? { dataset_id: ds, include_global: true } : {}),
       })
-      const next = (res?.items || []) as ChunkPreset[]
+      const next = (res?.items || [])
       setItems(next)
       if (selectedId && !next.some((p) => p.id === selectedId)) {
         setSelectedId('')
@@ -174,8 +174,7 @@ export function ChunkPresetPanel({ className }: { className?: string }) {
   }
 
   useEffect(() => {
-    void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(refresh())
   }, [])
 
   const onSave = async () => {
@@ -238,7 +237,7 @@ export function ChunkPresetPanel({ className }: { className?: string }) {
           size="sm"
           variant="ghost"
           className="h-7 px-2 text-[11px]"
-          onClick={() => void refresh()}
+          onClick={() => detachPromise(refresh())}
           disabled={loading || saving}
           aria-label="刷新 presets"
         >
@@ -254,7 +253,7 @@ export function ChunkPresetPanel({ className }: { className?: string }) {
             setSelectedId(nextId)
             const preset = items.find((p) => p.id === nextId)
             if (preset?.payload) {
-              void applyPayload(preset.payload)
+              detachPromise(applyPayload(preset.payload))
               toast.success(`已应用 preset：${preset.name}`)
             }
           }}
@@ -277,7 +276,7 @@ export function ChunkPresetPanel({ className }: { className?: string }) {
             type="button"
             size="sm"
             className="h-8 px-3 text-[11px]"
-            onClick={() => void onSave()}
+            onClick={() => detachPromise(onSave())}
             disabled={saving}
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin motion-reduce:animate-none" /> : <Save className="w-3.5 h-3.5 mr-2" />}
@@ -373,7 +372,7 @@ export function ChunkPresetPanel({ className }: { className?: string }) {
             <Button type="button" variant="outline" onClick={() => setSaveAsOpen(false)} disabled={saving}>
               取消
             </Button>
-            <Button type="button" onClick={() => void onSaveAs()} disabled={saving}>
+            <Button type="button" onClick={() => detachPromise(onSaveAs())} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" /> : null}
               保存
             </Button>

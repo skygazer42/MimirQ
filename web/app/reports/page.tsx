@@ -22,7 +22,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { datasetApi, datasetCategoryApi, reportApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { flattenFolderTree } from '@/lib/report-transforms'
-import { formatDate, formatFileSize } from '@/lib/utils'
+import { formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 
 import type { FlatFolderRow } from '@/lib/report-transforms'
 import type { Dataset, DatasetCategoryNode, DatasetReport } from '@/types'
@@ -32,7 +32,7 @@ const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b
 
 function sanitizeFilename(name: string) {
   const base = (name || '').trim() || 'dataset'
-  return base.replace(/[\\/:*?"<>|]+/g, '_')
+  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -41,7 +41,7 @@ function downloadBlob(blob: Blob, filename: string) {
   a.href = url
   a.download = filename
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export default function ReportsCenterPage() {
@@ -119,16 +119,15 @@ export default function ReportsCenterPage() {
   }, [])
 
   useEffect(() => {
-    void loadDatasets()
+    detachPromise(loadDatasets())
   }, [loadDatasets])
 
   useEffect(() => {
-    void loadCategories()
+    detachPromise(loadCategories())
   }, [loadCategories])
 
   useEffect(() => {
-    void loadReport()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(loadReport())
   }, [datasetId])
 
   useEffect(() => {
@@ -237,7 +236,7 @@ export default function ReportsCenterPage() {
     }
 
     let cancelled = false
-    void (async () => {
+    detachPromise((async () => {
       try {
         if (!transformsWorkerRef.current || !transformsApiRef.current) {
           transformsWorkerRef.current = new Worker(new URL('../../workers/report-transforms.worker.ts', import.meta.url), { type: 'module' })
@@ -254,7 +253,7 @@ export default function ReportsCenterPage() {
         transformsDisabledRef.current = true
         computeSync()
       }
-    })()
+    })())
 
     return () => {
       cancelled = true
@@ -429,11 +428,11 @@ export default function ReportsCenterPage() {
                 <div className="text-xs text-muted-foreground">选择数据集与可选 pipeline_hash，点击“刷新预览”或直接导出。</div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="secondary" onClick={() => void loadDatasets()} disabled={isLoadingDatasets} aria-label="刷新数据集列表">
+                <Button variant="secondary" onClick={() => detachPromise(loadDatasets())} disabled={isLoadingDatasets} aria-label="刷新数据集列表">
                   {isLoadingDatasets ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
                   <span className="ml-2">刷新数据集</span>
                 </Button>
-                <Button onClick={() => void loadReport()} disabled={!datasetId || isLoadingReport} aria-label="刷新报告预览">
+                <Button onClick={() => detachPromise(loadReport())} disabled={!datasetId || isLoadingReport} aria-label="刷新报告预览">
                   {isLoadingReport ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
                   <span className="ml-2">刷新预览</span>
                 </Button>
@@ -497,7 +496,7 @@ export default function ReportsCenterPage() {
               <div className="flex items-center gap-2">
                 <Button
                   variant="secondary"
-                  onClick={() => void handleExportJson()}
+                  onClick={() => detachPromise(handleExportJson())}
                   disabled={!datasetId || isExportingJson}
                   aria-label="导出 JSON 报告"
                 >
@@ -514,7 +513,7 @@ export default function ReportsCenterPage() {
                   <span className="ml-2">导出 Charts</span>
                 </Button>
                 <Button
-                  onClick={() => void handleExportRagAuditHtml()}
+                  onClick={() => detachPromise(handleExportRagAuditHtml())}
                   disabled={!datasetId || isExportingRagAuditHtml}
                   aria-label="导出 RAG Audit 报告"
                 >
@@ -527,7 +526,7 @@ export default function ReportsCenterPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => void handleExportHtml()}
+                  onClick={() => detachPromise(handleExportHtml())}
                   disabled={!datasetId || isExportingHtml}
                   aria-label="导出 HTML 报告"
                 >
@@ -538,15 +537,10 @@ export default function ReportsCenterPage() {
             </div>
           </Panel>
 
-          {!datasetId ? (
-            <EmptyState title="请选择数据集" description="选择一个数据集后即可生成报告预览并导出。" />
-          ) : !report ? (
-            <EmptyState
-              title={isLoadingReport ? '报告加载中...' : '暂无预览'}
-              description={isLoadingReport ? '正在拉取报告数据...' : '点击“刷新预览”生成报告。'}
-            />
-          ) : (
-            <Panel padding="lg" className="space-y-4">
+          {(() => {
+    if (datasetId) {
+        if (report) {
+            return (<Panel padding="lg" className="space-y-4">
               <div className="space-y-1">
                 <div className="text-sm font-semibold text-foreground">预览</div>
                 <div className="text-xs text-muted-foreground">
@@ -554,16 +548,15 @@ export default function ReportsCenterPage() {
                 </div>
               </div>
               <StatsGrid className="mb-4">
-                <StatCard icon={FileSearch} label="文档总数" value={String(totalDocs)} color="cyan" />
-                <StatCard icon={BarChart3} label="总大小" value={formatFileSize(Number(totalBytes || 0))} color="teal" />
-                <StatCard icon={ShieldAlert} label="隔离（Quarantine）" value={String(quarantined)} color="amber" />
-                <StatCard icon={AlertTriangle} label="失败（Failed）" value={String(failed)} color="rose" />
-                <StatCard icon={Layers} label="Pipeline Versions" value={String(pipelineVersions.length)} color="blue" />
-                <StatCard icon={RefreshCw} label="Connector Runs" value={String(connectorRuns.length)} color="gray" />
+                <StatCard icon={FileSearch} label="文档总数" value={String(totalDocs)} color="cyan"/>
+                <StatCard icon={BarChart3} label="总大小" value={formatFileSize(Number(totalBytes || 0))} color="teal"/>
+                <StatCard icon={ShieldAlert} label="隔离（Quarantine）" value={String(quarantined)} color="amber"/>
+                <StatCard icon={AlertTriangle} label="失败（Failed）" value={String(failed)} color="rose"/>
+                <StatCard icon={Layers} label="Pipeline Versions" value={String(pipelineVersions.length)} color="blue"/>
+                <StatCard icon={RefreshCw} label="Connector Runs" value={String(connectorRuns.length)} color="gray"/>
               </StatsGrid>
 
-              {governance ? (
-                <div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4">
+              {governance ? (<div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="space-y-1">
                       <div className="text-sm font-semibold text-foreground">治理指标</div>
@@ -578,65 +571,49 @@ export default function ReportsCenterPage() {
                   </div>
 
                   <StatsGrid className="md:grid-cols-4">
-                    <StatCard icon={BarChart3} label="规则命中（总）" value={String(governance.rules_applied_total || 0)} color="blue" />
-                    <StatCard icon={RefreshCw} label="变更文档（总）" value={String(governance.changed_documents_total || 0)} color="teal" />
-                    <StatCard icon={ShieldAlert} label="过滤/隔离（总）" value={String(governance.dropped_documents_total || 0)} color="amber" />
-                    <StatCard icon={Layers} label="Rule Packs（doc count）" value={String(Object.keys(governance.rule_packs_docs || {}).length)} color="gray" />
+                    <StatCard icon={BarChart3} label="规则命中（总）" value={String(governance.rules_applied_total || 0)} color="blue"/>
+                    <StatCard icon={RefreshCw} label="变更文档（总）" value={String(governance.changed_documents_total || 0)} color="teal"/>
+                    <StatCard icon={ShieldAlert} label="过滤/隔离（总）" value={String(governance.dropped_documents_total || 0)} color="amber"/>
+                    <StatCard icon={Layers} label="Rule Packs（doc count）" value={String(Object.keys(governance.rule_packs_docs || {}).length)} color="gray"/>
                   </StatsGrid>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
                       <div className="text-sm font-semibold text-foreground mb-2">Drop Reasons（Top）</div>
-                      {dropReasonsData.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">暂无数据</div>
-                      ) : (
-                        <div className="h-[260px]">
+                      {dropReasonsData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[260px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie data={dropReasonsData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={90}>
-                                {dropReasonsData.map((_, idx) => (
-                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                                ))}
+                                {dropReasonsData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'drop')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Pie>
                               <Tooltip />
                             </PieChart>
                           </ResponsiveContainer>
-                        </div>
-                      )}
+                        </div>)}
                     </div>
 
                     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
                       <div className="text-sm font-semibold text-foreground mb-2">Rule Packs（Top）</div>
-                      {rulePacksData.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">暂无数据</div>
-                      ) : (
-                        <div className="h-[260px]">
+                      {rulePacksData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[260px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={rulePacksData} layout="vertical" margin={{ left: 90, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                              <XAxis type="number" />
-                              <YAxis type="category" dataKey="name" width={80} />
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25}/>
+                              <XAxis type="number"/>
+                              <YAxis type="category" dataKey="name" width={80}/>
                               <Tooltip />
                               <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                                {rulePacksData.map((_, idx) => (
-                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                                ))}
+                                {rulePacksData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'rule-pack')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
-                        </div>
-                      )}
+                        </div>)}
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-border/60 bg-card/40 p-4">
+                </div>) : (<div className="rounded-xl border border-border/60 bg-card/40 p-4">
                   <div className="text-sm text-muted-foreground">暂无治理指标（后端未返回 governance_metrics）</div>
-                </div>
-              )}
+                </div>)}
 
-              {governanceAudit ? (
-                <div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4">
+              {governanceAudit ? (<div className="rounded-xl border border-border/60 bg-card/40 p-4 space-y-4">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="space-y-1">
                       <div className="text-sm font-semibold text-foreground">治理效果（Audit）</div>
@@ -654,203 +631,161 @@ export default function ReportsCenterPage() {
                   </div>
 
                   <StatsGrid className="md:grid-cols-4">
-                    <StatCard
-                      icon={FileText}
-                      label="原始字符（总）"
-                      value={String(governanceAudit.original_chars_total || 0)}
-                      color="blue"
-                    />
-                    <StatCard
-                      icon={FileText}
-                      label="清洗后字符（总）"
-                      value={String(governanceAudit.cleaned_chars_total || 0)}
-                      color="cyan"
-                    />
-                    <StatCard icon={BarChart3} label="字符缩减" value={`${govAuditReductionPct}%`} color="teal" />
-                    <StatCard icon={Layers} label="char stats（docs）" value={String(governanceAudit.docs_with_char_stats || 0)} color="gray" />
-                    <StatCard icon={FileSearch} label="parsed markdown persisted（docs）" value={String(governanceAudit.docs_with_parsed_content_persisted || 0)} color="gray" />
-                    <StatCard icon={RefreshCw} label="变更文档（docs）" value={String(governanceAudit.docs_changed || 0)} color="teal" />
-                    <StatCard icon={ShieldAlert} label="过滤/隔离（docs）" value={String(governanceAudit.docs_dropped || 0)} color="amber" />
+                    <StatCard icon={FileText} label="原始字符（总）" value={String(governanceAudit.original_chars_total || 0)} color="blue"/>
+                    <StatCard icon={FileText} label="清洗后字符（总）" value={String(governanceAudit.cleaned_chars_total || 0)} color="cyan"/>
+                    <StatCard icon={BarChart3} label="字符缩减" value={`${govAuditReductionPct}%`} color="teal"/>
+                    <StatCard icon={Layers} label="char stats（docs）" value={String(governanceAudit.docs_with_char_stats || 0)} color="gray"/>
+                    <StatCard icon={FileSearch} label="parsed markdown persisted（docs）" value={String(governanceAudit.docs_with_parsed_content_persisted || 0)} color="gray"/>
+                    <StatCard icon={RefreshCw} label="变更文档（docs）" value={String(governanceAudit.docs_changed || 0)} color="teal"/>
+                    <StatCard icon={ShieldAlert} label="过滤/隔离（docs）" value={String(governanceAudit.docs_dropped || 0)} color="amber"/>
                   </StatsGrid>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
                       <div className="text-sm font-semibold text-foreground mb-2">Char Reduction Distribution（%）</div>
-                      {govAuditReductionHistData.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">暂无数据</div>
-                      ) : (
-                        <div className="h-[260px]">
+                      {govAuditReductionHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[260px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={govAuditReductionHistData} margin={{ left: 16, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                              <XAxis dataKey="name" />
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25}/>
+                              <XAxis dataKey="name"/>
                               <YAxis />
                               <Tooltip />
                               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditReductionHistData.map((_, idx) => (
-                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                                ))}
+                                {govAuditReductionHistData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'reduction')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
-                        </div>
-                      )}
+                        </div>)}
                     </div>
 
                     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
                       <div className="text-sm font-semibold text-foreground mb-2">Effects（Top）</div>
-                      {govAuditEffectsData.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">暂无数据</div>
-                      ) : (
-                        <div className="h-[260px]">
+                      {govAuditEffectsData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[260px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={govAuditEffectsData} layout="vertical" margin={{ left: 130, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                              <XAxis type="number" />
-                              <YAxis type="category" dataKey="name" width={120} />
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25}/>
+                              <XAxis type="number"/>
+                              <YAxis type="category" dataKey="name" width={120}/>
                               <Tooltip />
                               <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                                {govAuditEffectsData.map((_, idx) => (
-                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                                ))}
+                                {govAuditEffectsData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'effect')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
-                        </div>
-                      )}
+                        </div>)}
                     </div>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
                       <div className="text-sm font-semibold text-foreground mb-2">Alnum/CJK Density Distribution（%）</div>
-                      {govAuditDensityHistData.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">暂无数据</div>
-                      ) : (
-                        <div className="h-[260px]">
+                      {govAuditDensityHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[260px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={govAuditDensityHistData} margin={{ left: 16, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                              <XAxis dataKey="name" />
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25}/>
+                              <XAxis dataKey="name"/>
                               <YAxis />
                               <Tooltip />
                               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditDensityHistData.map((_, idx) => (
-                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                                ))}
+                                {govAuditDensityHistData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'density')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
-                        </div>
-                      )}
+                        </div>)}
                     </div>
 
                     <div className="rounded-xl border border-border/60 bg-background/40 p-3">
                       <div className="text-sm font-semibold text-foreground mb-2">Outline Ratio Distribution（%）</div>
-                      {govAuditHeadingRatioHistData.length === 0 ? (
-                        <div className="text-sm text-muted-foreground">暂无数据</div>
-                      ) : (
-                        <div className="h-[260px]">
+                      {govAuditHeadingRatioHistData.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="h-[260px]">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={govAuditHeadingRatioHistData} margin={{ left: 16, right: 16 }}>
-                              <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                              <XAxis dataKey="name" />
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.25}/>
+                              <XAxis dataKey="name"/>
                               <YAxis />
                               <Tooltip />
                               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditHeadingRatioHistData.map((_, idx) => (
-                                  <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                                ))}
+                                {govAuditHeadingRatioHistData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'heading')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
-                        </div>
-                      )}
+                        </div>)}
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-border/60 bg-card/40 p-4">
+                </div>) : (<div className="rounded-xl border border-border/60 bg-card/40 p-4">
                   <div className="text-sm text-muted-foreground">暂无治理效果（后端未返回 governance_audit）</div>
-                </div>
-              )}
+                </div>)}
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
 	                  <div className="flex items-start justify-between gap-3 flex-wrap">
 	                    <div>
 	                      <div className="text-sm font-semibold text-foreground">目录分布（Top）</div>
-	                      {folderTree ? (
-	                        <div className="text-xs text-muted-foreground">
+	                      {folderTree ? (<div className="text-xs text-muted-foreground">
 	                          with source_path: {folderTree.total_with_source_path}/{folderTree.total_documents}
-	                        </div>
-	                      ) : null}
+	                        </div>) : null}
 	                    </div>
-	                    <SearchInput
-	                      value={folderQuery}
-	                      onValueChange={setFolderQuery}
-	                      placeholder="搜索目录…"
-	                      containerClassName="w-56"
-	                      inputClassName="h-8 text-xs"
-	                      disabled={!folderTree}
-	                    />
+	                    <SearchInput value={folderQuery} onValueChange={setFolderQuery} placeholder="搜索目录…" containerClassName="w-56" inputClassName="h-8 text-xs" disabled={!folderTree}/>
 	                  </div>
 
-                  {!folderTree ? (
-                    <div className="mt-3 text-sm text-muted-foreground">后端未提供目录统计</div>
-                  ) : flatFolders === null ? (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  {(() => {
+                    if (folderTree) {
+                        if (flatFolders === null) {
+                            return (<div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
                       <span>目录统计计算中...</span>
-                    </div>
-                  ) : flatFolders.length === 0 ? (
-                    <div className="mt-3 text-sm text-muted-foreground">暂无目录（未上传带路径的文件）</div>
-                  ) : folderBarData.length === 0 ? (
-                    <div className="mt-3 text-sm text-muted-foreground">无匹配结果</div>
-                  ) : (
-                    <div className="mt-3 space-y-3">
+                    </div>);
+                        }
+                        else {
+                            if (flatFolders.length === 0) {
+                                return (<div className="mt-3 text-sm text-muted-foreground">暂无目录（未上传带路径的文件）</div>);
+                            }
+                            else {
+                                if (folderBarData.length === 0) {
+                                    return (<div className="mt-3 text-sm text-muted-foreground">无匹配结果</div>);
+                                }
+                                else {
+                                    return (<div className="mt-3 space-y-3">
                       <div className="h-[260px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={folderBarData} layout="vertical" margin={{ left: 80, right: 16 }}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                            <XAxis type="number" />
-                            <YAxis type="category" dataKey="name" width={80} />
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.25}/>
+                            <XAxis type="number"/>
+                            <YAxis type="category" dataKey="name" width={80}/>
                             <Tooltip />
-                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={PIE_COLORS[0]} />
+                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={PIE_COLORS[0]}/>
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
 
                       <div className="space-y-2">
-                        {folderBarData.slice(0, 10).map((f) => (
-                          <div key={f.name} className="flex items-center justify-between gap-3">
+                        {folderBarData.slice(0, 10).map((f) => (<div key={f.name} className="flex items-center justify-between gap-3">
                             <span className="font-mono text-xs text-foreground truncate" title={f.name}>
                               {f.name}
                             </span>
                             <span className="font-mono text-xs text-muted-foreground">{f.value}</span>
-                          </div>
-                        ))}
+                          </div>))}
                       </div>
-                    </div>
-                  )}
+                    </div>);
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        return (<div className="mt-3 text-sm text-muted-foreground">后端未提供目录统计</div>);
+                    }
+                })()}
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
                   <div className="text-sm font-semibold text-foreground mb-3">Pipeline 版本分布（Top）</div>
-                  {pipelineVersions.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">暂无数据</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {pipelineVersions.slice(0, 10).map((v) => (
-                        <div key={v.pipeline_hash} className="flex items-center justify-between gap-3">
+                  {pipelineVersions.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="space-y-2">
+                      {pipelineVersions.slice(0, 10).map((v) => (<div key={v.pipeline_hash} className="flex items-center justify-between gap-3">
                           <span className="font-mono text-xs text-foreground truncate" title={v.pipeline_hash}>
                             {v.pipeline_hash}
                           </span>
                           <span className="font-mono text-xs text-muted-foreground">{v.documents}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        </div>))}
+                    </div>)}
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
@@ -860,71 +795,53 @@ export default function ReportsCenterPage() {
 	                      <div className="text-xs text-muted-foreground">按分类统计「数据集数量」</div>
 	                    </div>
 	                    <div className="flex items-center gap-2">
-	                      <SearchInput
-	                        value={categoryQuery}
-	                        onValueChange={setCategoryQuery}
-	                        placeholder="搜索分类…"
-	                        containerClassName="w-44"
-	                        inputClassName="h-8 text-xs"
-	                        disabled={isLoadingCategories}
-	                      />
-	                      <Button
-	                        variant="ghost"
-	                        size="sm"
-	                        className="h-8 px-2 text-muted-foreground"
-	                        onClick={() => void loadCategories()}
-                        disabled={isLoadingCategories}
-                        aria-label="刷新分类"
-                      >
-                        {isLoadingCategories ? (
-                          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4" />
-                        )}
+	                      <SearchInput value={categoryQuery} onValueChange={setCategoryQuery} placeholder="搜索分类…" containerClassName="w-44" inputClassName="h-8 text-xs" disabled={isLoadingCategories}/>
+	                      <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground" onClick={() => detachPromise(loadCategories())} disabled={isLoadingCategories} aria-label="刷新分类">
+                        {isLoadingCategories ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : (<RefreshCw className="h-4 w-4"/>)}
                       </Button>
                     </div>
                   </div>
 
-                  {isLoadingCategories ? (
-                    <div className="mt-3 text-sm text-muted-foreground">加载中…</div>
-                  ) : categoryBarData.length === 0 ? (
-                    <div className="mt-3 text-sm text-muted-foreground">暂无数据</div>
-                  ) : (
-                    <div className="mt-3 space-y-3">
+                  {(() => {
+                    if (isLoadingCategories) {
+                        return (<div className="mt-3 text-sm text-muted-foreground">加载中…</div>);
+                    }
+                    else {
+                        if (categoryBarData.length === 0) {
+                            return (<div className="mt-3 text-sm text-muted-foreground">暂无数据</div>);
+                        }
+                        else {
+                            return (<div className="mt-3 space-y-3">
                       <div className="h-[260px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={categoryBarData} layout="vertical" margin={{ left: 80, right: 16 }}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                            <XAxis type="number" />
-                            <YAxis type="category" dataKey="name" width={80} />
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.25}/>
+                            <XAxis type="number"/>
+                            <YAxis type="category" dataKey="name" width={80}/>
                             <Tooltip />
-                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={PIE_COLORS[1]} />
+                            <Bar dataKey="value" radius={[0, 6, 6, 0]} fill={PIE_COLORS[1]}/>
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
 
                       <div className="space-y-2">
-                        {categoryBarData.slice(0, 10).map((c) => (
-                          <div key={String(c.name)} className="flex items-center justify-between gap-3">
+                        {categoryBarData.slice(0, 10).map((c) => (<div key={String(c.name)} className="flex items-center justify-between gap-3">
                             <span className="font-mono text-xs text-foreground truncate" title={String(c.name)}>
                               {String(c.name)}
                             </span>
                             <span className="font-mono text-xs text-muted-foreground">{String(c.value)}</span>
-                          </div>
-                        ))}
+                          </div>))}
                       </div>
-                    </div>
-                  )}
+                    </div>);
+                        }
+                    }
+                })()}
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-card/40 p-4">
                   <div className="text-sm font-semibold text-foreground mb-3">最近 Connector Runs</div>
-                  {connectorRuns.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">暂无数据</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {connectorRuns.slice(0, 8).map((r) => (
-                        <div key={r.id} className="flex items-start justify-between gap-3">
+                  {connectorRuns.length === 0 ? (<div className="text-sm text-muted-foreground">暂无数据</div>) : (<div className="space-y-2">
+                      {connectorRuns.slice(0, 8).map((r) => (<div key={r.id} className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="font-mono text-xs text-foreground truncate" title={r.connector_id}>
                               {r.connector_id}
@@ -932,14 +849,20 @@ export default function ReportsCenterPage() {
                             <div className="text-xs text-muted-foreground">{formatDate(r.created_at)}</div>
                           </div>
                           <div className="font-mono text-xs text-muted-foreground">{r.status}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        </div>))}
+                    </div>)}
                 </div>
               </div>
-            </Panel>
-          )}
+            </Panel>);
+        }
+        else {
+            return (<EmptyState title={isLoadingReport ? '报告加载中...' : '暂无预览'} description={isLoadingReport ? '正在拉取报告数据...' : '点击“刷新预览”生成报告。'}/>);
+        }
+    }
+    else {
+        return (<EmptyState title="请选择数据集" description="选择一个数据集后即可生成报告预览并导出。"/>);
+    }
+})()}
         </div>
       </PageScaffold>
     </AppFrame>

@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw } fro
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 
@@ -32,7 +32,7 @@ export function DatasetFolderTreeView({
   onSelect,
   className,
   expandAll = false,
-}: DatasetFolderTreeViewProps) {
+}: Readonly<DatasetFolderTreeViewProps>) {
   const initialExpanded = useMemo(() => {
     const next = new Set<string>([''])
     if (expandAll) {
@@ -126,7 +126,7 @@ export function DatasetFolderTreeView({
         onClick={() => onSelect(null)}
         className={cn(
           'w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors focus-ring',
-          !selectedPath ? 'bg-primary/10 text-primary' : 'hover:bg-muted/40'
+          selectedPath ? 'hover:bg-muted/40' : 'bg-primary/10 text-primary'
         )}
       >
         <span className="flex items-center gap-2 min-w-0">
@@ -156,7 +156,7 @@ export function DatasetFolderTree({
   selectedPath,
   onSelect,
   className,
-}: DatasetFolderTreeProps) {
+}: Readonly<DatasetFolderTreeProps>) {
   const [tree, setTree] = useState<DocumentFolderTreeResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -179,8 +179,7 @@ export function DatasetFolderTree({
   }
 
   useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(load())
   }, [datasetId, lifecycle, maxDepth])
 
   return (
@@ -191,7 +190,7 @@ export function DatasetFolderTree({
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-muted-foreground"
-          onClick={() => void load()}
+          onClick={() => detachPromise(load())}
           disabled={loading}
           aria-label="刷新目录树"
         >
@@ -199,22 +198,27 @@ export function DatasetFolderTree({
         </Button>
       </div>
 
-      {loading && !tree ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+      {(() => {
+    if (loading && !tree) {
+        return (<div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
           加载中…
-        </div>
-      ) : error ? (
-        <div className="text-xs text-destructive">{error}</div>
-      ) : tree ? (
-        tree.total_with_source_path > 0 ? (
-          <DatasetFolderTreeView root={tree.root} selectedPath={selectedPath} onSelect={onSelect} />
-        ) : (
-          <div className="text-xs text-muted-foreground">暂无可用目录（未上传带路径的文件）。</div>
-        )
-      ) : (
-        <div className="text-xs text-muted-foreground">暂无数据</div>
-      )}
+        </div>);
+    }
+    else {
+        if (error) {
+            return (<div className="text-xs text-destructive">{error}</div>);
+        }
+        else {
+            if (tree) {
+                return (tree.total_with_source_path > 0 ? (<DatasetFolderTreeView root={tree.root} selectedPath={selectedPath} onSelect={onSelect}/>) : (<div className="text-xs text-muted-foreground">暂无可用目录（未上传带路径的文件）。</div>));
+            }
+            else {
+                return (<div className="text-xs text-muted-foreground">暂无数据</div>);
+            }
+        }
+    }
+})()}
     </div>
   )
 }

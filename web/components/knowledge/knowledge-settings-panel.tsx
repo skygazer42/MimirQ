@@ -36,7 +36,14 @@ import {
 } from '@/components/ui/alert-dialog'
 import { connectorApi, datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, detachPromise } from '@/lib/utils'
+
+type DatasetPurgePreview = {
+  eligible?: number | string | null
+  deleted?: number | string | null
+  dataset_id?: string | null
+  [key: string]: unknown
+}
 
 type KnowledgeSettingsPanelProps = {
   selectedDatasetId?: string
@@ -162,13 +169,13 @@ export function KnowledgeSettingsPanel({
   onCancelConnectorRun,
   onResumeConnectorRun,
   onRetryFailedConnectorRun,
-}: KnowledgeSettingsPanelProps) {
+}: Readonly<KnowledgeSettingsPanelProps>) {
   const [runStatusFilter, setRunStatusFilter] = useState<ConnectorRunStatusFilter>('all')
   const [autoRefreshRuns, setAutoRefreshRuns] = useState(false)
   const autoRefreshIntervalMs = 10_000
   const [purgeWorking, setPurgeWorking] = useState(false)
   const [purgeMaxDelete, setPurgeMaxDelete] = useState(1000)
-  const [purgePreview, setPurgePreview] = useState<any | null>(null)
+  const [purgePreview, setPurgePreview] = useState<DatasetPurgePreview | null>(null)
   const [purgeError, setPurgeError] = useState<string | null>(null)
   const [connectorInfoById, setConnectorInfoById] = useState<Record<string, ConnectorInfo>>({})
 
@@ -179,7 +186,7 @@ export function KnowledgeSettingsPanel({
   useEffect(() => {
     let cancelled = false
 
-    void (async () => {
+    detachPromise((async () => {
       try {
         const items = await connectorApi.listConnectors()
         if (cancelled) return
@@ -190,7 +197,7 @@ export function KnowledgeSettingsPanel({
       } catch (err) {
         console.warn('Load connector capabilities failed:', err)
       }
-    })()
+    })())
 
     return () => {
       cancelled = true
@@ -251,13 +258,13 @@ export function KnowledgeSettingsPanel({
     if (!autoRefreshRuns) return
     if (!hasActiveRuns) return
 
-    const id = window.setInterval(() => {
+    const id = globalThis.window.setInterval(() => {
       if (document.hidden) return
       if (connectorRunsLoading) return
-      void onLoadConnectorRuns({ datasetId: selectedDatasetId })
+      detachPromise(onLoadConnectorRuns({ datasetId: selectedDatasetId }))
     }, autoRefreshIntervalMs)
 
-    return () => window.clearInterval(id)
+    return () => globalThis.window.clearInterval(id)
   }, [autoRefreshIntervalMs, autoRefreshRuns, connectorRunsLoading, hasActiveRuns, onLoadConnectorRuns, selectedDatasetId])
 
   useEffect(() => {
@@ -267,7 +274,7 @@ export function KnowledgeSettingsPanel({
     const el = document.getElementById(`connector-run-${expandedConnectorRunId}`)
     if (!el) return
 
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
+    const reduceMotion = globalThis.window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false
     el.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
   }, [connectorRuns, expandedConnectorRunId])
 
@@ -310,7 +317,7 @@ export function KnowledgeSettingsPanel({
 
         <div className="p-8 space-y-8">
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-foreground">Embedding 模型</label>
+            <div className="text-sm font-semibold text-foreground">Embedding 模型</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {['text-embedding-v3', 'text-embedding-3-small', 'bge-large-zh'].map((model) => (
                 <div key={model} className="relative">
@@ -330,7 +337,7 @@ export function KnowledgeSettingsPanel({
           <div className="h-px bg-border/60" />
 
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-foreground">检索模式</label>
+            <div className="text-sm font-semibold text-foreground">检索模式</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
                 { value: 'vector', label: '向量检索', desc: '基于语义相似度，适合模糊匹配', icon: Zap },
@@ -365,7 +372,7 @@ export function KnowledgeSettingsPanel({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-3">
               <div className="flex justify-between">
-                <label className="text-sm font-semibold text-foreground">召回数量 (Top K)</label>
+                <div className="text-sm font-semibold text-foreground">召回数量 (Top K)</div>
                 <span className="text-sm font-mono text-primary">5</span>
               </div>
               <input
@@ -380,7 +387,7 @@ export function KnowledgeSettingsPanel({
 
             <div className="space-y-3">
               <div className="flex justify-between">
-                <label className="text-sm font-semibold text-foreground">相似度阈值</label>
+                <div className="text-sm font-semibold text-foreground">相似度阈值</div>
                 <span className="text-sm font-mono text-primary">0.7</span>
               </div>
               <input
@@ -400,7 +407,7 @@ export function KnowledgeSettingsPanel({
           <div className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <label className="text-sm font-semibold text-foreground">Connectors 导入任务</label>
+                <div className="text-sm font-semibold text-foreground">Connectors 导入任务</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   用于批量 URL 导入/同步；仅展示你有写权限的数据集的运行记录。
                 </p>
@@ -422,7 +429,7 @@ export function KnowledgeSettingsPanel({
                 <Button
                   variant="outline"
                   className="gap-2"
-                  onClick={() => void onLoadConnectorRuns({ datasetId: selectedDatasetId })}
+                  onClick={() => detachPromise(onLoadConnectorRuns({ datasetId: selectedDatasetId }))}
                   disabled={connectorRunsLoading}
                 >
                   <RefreshCw className={cn('w-4 h-4', connectorRunsLoading && 'animate-spin motion-reduce:animate-none')} />
@@ -454,193 +461,156 @@ export function KnowledgeSettingsPanel({
               <span className="text-muted-foreground/40"> · </span>
               自动刷新:{' '}
               <span className="font-mono tabular-nums">
-                {autoRefreshRuns
-                  ? hasActiveRuns
-                    ? `开（${Math.round(autoRefreshIntervalMs / 1000)}s）`
-                    : '开（等待任务）'
-                  : '关'}
+                {(() => {
+    if (autoRefreshRuns) {
+        if (hasActiveRuns) {
+            return `开（${Math.round(autoRefreshIntervalMs / 1000)}s）`;
+        }
+        else {
+            return '开（等待任务）';
+        }
+    }
+    else {
+        return '关';
+    }
+})()}
               </span>
             </div>
 
-            {connectorRunsLoading ? (
-              <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+            {(() => {
+    if (connectorRunsLoading) {
+        return (<div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
                 正在加载导入任务...
-              </div>
-            ) : connectorRuns.length === 0 ? (
-              <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+              </div>);
+    }
+    else {
+        if (connectorRuns.length === 0) {
+            return (<div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
                 暂无导入任务。可通过顶部“导入/新增”创建批量导入/同步任务。
-              </div>
-            ) : visibleConnectorRuns.length === 0 ? (
-              <div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground flex items-center justify-between gap-3">
+              </div>);
+        }
+        else {
+            if (visibleConnectorRuns.length === 0) {
+                return (<div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground flex items-center justify-between gap-3">
                 <div>当前筛选条件下暂无任务。</div>
                 <Button type="button" variant="outline" size="sm" onClick={() => setRunStatusFilter('all')}>
                   清除筛选
                 </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {expandedConnectorRunId && !expandedRunIsVisible ? (
-                  <div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm">
-                    {expandedRun ? (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              </div>);
+            }
+            else {
+                return (<div className="space-y-3">
+                {expandedConnectorRunId && !expandedRunIsVisible ? (<div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm">
+                    {expandedRun ? (<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-muted-foreground">
                           当前任务被筛选条件隐藏。run_id: <span className="font-mono tabular-nums">{expandedConnectorRunId}</span>
                         </div>
                         <Button type="button" variant="outline" size="sm" onClick={() => setRunStatusFilter('all')}>
                           清除筛选
                         </Button>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      </div>) : (<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-muted-foreground">
                           未在当前列表中找到该任务。可能任务较旧，或当前范围不包含该数据集。run_id:{' '}
                           <span className="font-mono tabular-nums">{expandedConnectorRunId}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void onLoadConnectorRuns({ datasetId: selectedDatasetId })}
-                          >
+                          <Button type="button" variant="outline" size="sm" onClick={() => detachPromise(onLoadConnectorRuns({ datasetId: selectedDatasetId }))}>
                             刷新
                           </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onToggleExpandedConnectorRun(expandedConnectorRunId)}
-                          >
+                          <Button type="button" variant="outline" size="sm" onClick={() => onToggleExpandedConnectorRun(expandedConnectorRunId)}>
                             清除定位
                           </Button>
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
+                      </div>)}
+                  </div>) : null}
                 {visibleConnectorRuns.map((run) => {
-                  const badge = getConnectorRunBadge(run.status)
-                  const status = String(run.status || '').toLowerCase()
-                  const stats = (run.stats || {}) as any
-                  const created = Number(stats.created || 0)
-                  const failed = Number(stats.failed || 0)
-                  const progress = getConnectorRunProgress(stats)
-                  const totalItems = progress.total
-                  const processedItems = progress.processed
-                  const durationStartAt = run.started_at ?? run.created_at
-                  const durationEndAt = run.finished_at ? run.finished_at : new Date().toISOString()
-                  const durationStartMs = Number.isFinite(Date.parse(durationStartAt)) ? Date.parse(durationStartAt) : null
-                  const durationEndMs = Number.isFinite(Date.parse(durationEndAt)) ? Date.parse(durationEndAt) : null
-                  const durationLabel =
-                    durationStartMs !== null && durationEndMs !== null && durationEndMs >= durationStartMs
-                      ? formatDurationMs(durationEndMs - durationStartMs)
-                      : null
-                  const progressPct =
-                    totalItems > 0 ? Math.max(0, Math.min(100, Math.round((processedItems / totalItems) * 100))) : 0
-                  const errors: any[] = Array.isArray(stats.errors) ? stats.errors : []
-                  const errorGroups: any[] = Array.isArray(stats.error_groups) ? stats.error_groups : []
-                  const isActive = status === 'pending' || status === 'running'
-                  const canRetryFailed = !isActive && failed > 0
-                  const connectorInfo = connectorInfoById[String(run.connector_id || '').toLowerCase()]
-                  const syncCapabilities = formatConnectorSyncCapabilities(connectorInfo)
-                  const supportsResume = Boolean(connectorInfo?.supports_resume)
-                  const hasRemainingResumeWork =
-                    totalItems > 0 ? totalItems > processedItems : processedItems > 0
-                  const canResume =
-                    !isActive &&
-                    supportsResume &&
-                    (status === 'cancelled' || status === 'failed') &&
-                    hasRemainingResumeWork
-
-                  const hasDocs = Array.isArray(run.documents) && run.documents.length > 0
-                  const acl = run.acl_summary
-                  const aclDocsTotal = Number(acl?.documents_total || 0)
-                  const aclModeRaw = String(acl?.mode || '').trim()
-                  const aclMode = aclModeRaw ? aclModeRaw.toLowerCase() : ''
-                  const aclModeLabel = aclMode ? formatAclModeLabel(aclMode) : null
-                  const aclMemberRange = formatAclCountRange(acl?.partial_member_count_min, acl?.partial_member_count_max)
-                  const aclGroupRange = formatAclCountRange(acl?.partial_group_count_min, acl?.partial_group_count_max)
-                  const aclBreakdown = aclMode === 'mixed' ? formatAclModeBreakdown(acl?.access_mode_counts) : null
-                  const aclHasAllowlist =
-                    Number(acl?.partial_members_doc_count || 0) > 0 || aclMemberRange !== null || aclGroupRange !== null
-
-                  return (
-                    <div
-                      key={run.id}
-                      id={`connector-run-${run.id}`}
-                      className={cn(
-                        'rounded-xl border border-border/60 bg-background/60 p-4 scroll-mt-6',
-                        expandedConnectorRunId === run.id && 'ring-1 ring-primary/30'
-                      )}
-                    >
+                        const badge = getConnectorRunBadge(run.status);
+                        const status = String(run.status || '').toLowerCase();
+                        const stats = (run.stats || {}) as any;
+                        const created = Number(stats.created || 0);
+                        const failed = Number(stats.failed || 0);
+                        const progress = getConnectorRunProgress(stats);
+                        const totalItems = progress.total;
+                        const processedItems = progress.processed;
+                        const durationStartAt = run.started_at ?? run.created_at;
+                        const durationEndAt = run.finished_at ? run.finished_at : new Date().toISOString();
+                        const durationStartMs = Number.isFinite(Date.parse(durationStartAt)) ? Date.parse(durationStartAt) : null;
+                        const durationEndMs = Number.isFinite(Date.parse(durationEndAt)) ? Date.parse(durationEndAt) : null;
+                        const durationLabel = durationStartMs !== null && durationEndMs !== null && durationEndMs >= durationStartMs
+                            ? formatDurationMs(durationEndMs - durationStartMs)
+                            : null;
+                        const progressPct = totalItems > 0 ? Math.max(0, Math.min(100, Math.round((processedItems / totalItems) * 100))) : 0;
+                        const errors: any[] = Array.isArray(stats.errors) ? stats.errors : [];
+                        const errorGroups: any[] = Array.isArray(stats.error_groups) ? stats.error_groups : [];
+                        const isActive = status === 'pending' || status === 'running';
+                        const canRetryFailed = !isActive && failed > 0;
+                        const connectorInfo = connectorInfoById[String(run.connector_id || '').toLowerCase()];
+                        const syncCapabilities = formatConnectorSyncCapabilities(connectorInfo);
+                        const supportsResume = Boolean(connectorInfo?.supports_resume);
+                        const hasRemainingResumeWork = totalItems > 0 ? totalItems > processedItems : processedItems > 0;
+                        const canResume = !isActive &&
+                            supportsResume &&
+                            (status === 'cancelled' || status === 'failed') &&
+                            hasRemainingResumeWork;
+                        const hasDocs = Array.isArray(run.documents) && run.documents.length > 0;
+                        const acl = run.acl_summary;
+                        const aclDocsTotal = Number(acl?.documents_total || 0);
+                        const aclModeRaw = String(acl?.mode || '').trim();
+                        const aclMode = aclModeRaw ? aclModeRaw.toLowerCase() : '';
+                        const aclModeLabel = aclMode ? formatAclModeLabel(aclMode) : null;
+                        const aclMemberRange = formatAclCountRange(acl?.partial_member_count_min, acl?.partial_member_count_max);
+                        const aclGroupRange = formatAclCountRange(acl?.partial_group_count_min, acl?.partial_group_count_max);
+                        const aclBreakdown = aclMode === 'mixed' ? formatAclModeBreakdown(acl?.access_mode_counts) : null;
+                        const aclHasAllowlist = Number(acl?.partial_members_doc_count || 0) > 0 || aclMemberRange !== null || aclGroupRange !== null;
+                        return (<div key={run.id} id={`connector-run-${run.id}`} className={cn('rounded-xl border border-border/60 bg-background/60 p-4 scroll-mt-6', expandedConnectorRunId === run.id && 'ring-1 ring-primary/30')}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <StatusBadge status={badge.status} label={badge.label} dense />
-                            <button
-                              type="button"
-                              className="text-xs font-mono text-muted-foreground truncate hover:text-foreground underline underline-offset-4"
-                              onClick={() => void copyText(run.id, '已复制 run_id')}
-                              title="点击复制 run_id"
-                            >
+                            <StatusBadge status={badge.status} label={badge.label} dense/>
+                            <button type="button" className="text-xs font-mono text-muted-foreground truncate hover:text-foreground underline underline-offset-4" onClick={() => detachPromise(copyText(run.id, '已复制 run_id'))} title="点击复制 run_id">
                               {run.id}
                             </button>
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             {formatDate(run.created_at)} · {run.connector_id} · dataset {run.dataset_id || '-'}
-                            {durationLabel ? (
-                              <>
+                            {durationLabel ? (<>
                                 <span className="text-muted-foreground/40"> · </span>
                                 耗时 <span className="font-mono tabular-nums">{durationLabel}</span>
-                              </>
-                            ) : null}
+                              </>) : null}
                           </div>
                           <div className="mt-2 text-xs text-foreground/80">
                             created <span className="font-mono">{created}</span> · failed{' '}
                             <span className={cn('font-mono', failed > 0 && 'text-destructive')}>{failed}</span>
                           </div>
 
-                          {syncCapabilities ? (
-                            <div className="mt-1 text-xs text-muted-foreground">
+                          {syncCapabilities ? (<div className="mt-1 text-xs text-muted-foreground">
                               sync <span className="font-mono">{syncCapabilities}</span>
-                            </div>
-                          ) : null}
+                            </div>) : null}
 
-                          {aclModeLabel && aclDocsTotal > 0 ? (
-                            <div className="mt-1 text-xs text-muted-foreground">
+                          {aclModeLabel && aclDocsTotal > 0 ? (<div className="mt-1 text-xs text-muted-foreground">
                               ACL <span className="font-mono">{aclModeLabel}</span>
                               {aclBreakdown ? <span className="text-muted-foreground/60">（{aclBreakdown}）</span> : null}
                               <span className="text-muted-foreground/40"> · </span>
                               文档 <span className="font-mono tabular-nums">{aclDocsTotal}</span>
-                              {aclHasAllowlist ? (
-                                <>
+                              {aclHasAllowlist ? (<>
                                   <span className="text-muted-foreground/40"> · </span>
                                   成员 <span className="font-mono tabular-nums">{aclMemberRange ?? '—'}</span>
                                   <span className="text-muted-foreground/40"> · </span>
                                   组 <span className="font-mono tabular-nums">{aclGroupRange ?? '—'}</span>
-                                </>
-                              ) : null}
-                            </div>
-                          ) : null}
+                                </>) : null}
+                            </div>) : null}
 
                           <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-7 px-2 gap-1.5"
-                              onClick={() => {
-                                const url = new URL(`/knowledge?tab=settings&run=${run.id}`, window.location.origin).toString()
-                                void copyText(url, '已复制任务链接')
-                              }}
-                            >
-                              <Link2 className="h-3.5 w-3.5" />
+                            <Button type="button" variant="outline" size="sm" className="h-7 px-2 gap-1.5" onClick={() => {
+                                const url = new URL(`/knowledge?tab=settings&run=${run.id}`, globalThis.window.location.origin).toString();
+                                detachPromise(copyText(url, '已复制任务链接'));
+                            }}>
+                              <Link2 className="h-3.5 w-3.5"/>
                               复制链接
                             </Button>
                           </div>
 
-                          {totalItems > 0 ? (
-                            <div className="mt-2">
+                          {totalItems > 0 ? (<div className="mt-2">
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
                                 <span>progress</span>
                                 <span className="font-mono">
@@ -648,123 +618,78 @@ export function KnowledgeSettingsPanel({
                                 </span>
                               </div>
                               <div className="mt-1 h-2 w-full rounded-full bg-muted/60 overflow-hidden">
-                                <div
-                                  className={cn(
-                                    'h-2 w-full rounded-full origin-left transition-transform duration-200 ease-out motion-reduce:transition-none',
-                                    failed > 0 ? 'bg-destructive/70' : 'bg-primary/70'
-                                  )}
-                                  style={{ transform: `scaleX(${progressPct / 100})` }}
-                                />
+                                <div className={cn('h-2 w-full rounded-full origin-left transition-transform duration-200 ease-out motion-reduce:transition-none', failed > 0 ? 'bg-destructive/70' : 'bg-primary/70')} style={{ transform: `scaleX(${progressPct / 100})` }}/>
                               </div>
-                            </div>
-                          ) : null}
+                            </div>) : null}
 
-                          {run.error_message ? (
-                            <div className="mt-2 text-xs text-destructive">{run.error_message}</div>
-                          ) : null}
+                          {run.error_message ? (<div className="mt-2 text-xs text-destructive">{run.error_message}</div>) : null}
 
-                          {errorGroups.length > 0 ? (
-                            <div className="mt-2 text-xs text-muted-foreground">
+                          {errorGroups.length > 0 ? (<div className="mt-2 text-xs text-muted-foreground">
                               <div className="font-medium text-foreground/80">错误聚类：</div>
                               <div className="mt-1 space-y-1">
-                                {errorGroups.slice(0, 3).map((g, idx) => (
-                                  <div key={idx} className="font-mono truncate">
+                                {errorGroups.slice(0, 3).map((g) => (<div key={`${String(g?.code || 'error')}-${String(g?.error || '')}`} className="font-mono truncate">
                                     [{String(g?.code || 'error')}] x{Number(g?.count || 0)} —{' '}
                                     {String(g?.error || '').slice(0, 140)}
-                                  </div>
-                                ))}
+                                  </div>))}
                               </div>
-                            </div>
-                          ) : null}
+                            </div>) : null}
 
-                          {errors.length > 0 ? (
-                            <div className="mt-2 text-xs text-muted-foreground">
+                          {errors.length > 0 ? (<div className="mt-2 text-xs text-muted-foreground">
                               <div className="font-medium text-foreground/80">错误示例：</div>
                               <div className="mt-1 space-y-1">
-                                {errors.slice(0, 3).map((e, idx) => (
-                                  <div key={idx} className="font-mono truncate">
+                                {errors.slice(0, 3).map((e) => (<div key={`${String(e?.url || '')}-${String(e?.code || '')}-${String(e?.error || '')}`} className="font-mono truncate">
                                     {String(e?.url || '').slice(0, 80)} — {e?.code ? `[${String(e.code)}] ` : ''}
                                     {String(e?.error || '').slice(0, 120)}
-                                  </div>
-                                ))}
+                                  </div>))}
                               </div>
-                            </div>
-                          ) : null}
+                            </div>) : null}
 
-                          {hasDocs ? (
-                            <div className="mt-3">
-                              <button
-                                type="button"
-                                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground/80"
-                                onClick={() => onToggleExpandedConnectorRun(run.id)}
-                              >
-                                {expandedConnectorRunId === run.id ? (
-                                  <ChevronDown className="h-4 w-4" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4" />
-                                )}
+                          {hasDocs ? (<div className="mt-3">
+                              <button type="button" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground/80" onClick={() => onToggleExpandedConnectorRun(run.id)}>
+                                {expandedConnectorRunId === run.id ? (<ChevronDown className="h-4 w-4"/>) : (<ChevronRight className="h-4 w-4"/>)}
                                 产物列表（{(run as any).documents.length}）
                               </button>
 
-                              {expandedConnectorRunId === run.id ? (
-                                <div className="mt-2 rounded-lg border border-border/60 bg-background/40 p-3">
+                              {expandedConnectorRunId === run.id ? (<div className="mt-2 rounded-lg border border-border/60 bg-background/40 p-3">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="text-xs font-medium text-foreground/80">Documents</div>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7 px-2 gap-1.5"
-                                      onClick={() => {
+                                    <Button type="button" variant="outline" size="sm" className="h-7 px-2 gap-1.5" onClick={() => {
                                         const ids = (run as any).documents
-                                          .map((d: any) => String(d?.document_id || '').trim())
-                                          .filter(Boolean)
-                                        void copyText(ids.join('\n'), '已复制文档 ID 列表')
-                                      }}
-                                    >
-                                      <Copy className="h-3.5 w-3.5" />
+                                            .map((d: any) => String(d?.document_id || '').trim())
+                                            .filter(Boolean);
+                                        detachPromise(copyText(ids.join('\n'), '已复制文档 ID 列表'));
+                                    }}>
+                                      <Copy className="h-3.5 w-3.5"/>
                                       复制 IDs
                                     </Button>
                                   </div>
                                   <div className="mt-2 space-y-1">
-                                    {(run as any).documents.slice(0, 15).map((d: any) => (
-                                      <div
-                                        key={String(d?.document_id)}
-                                        className="flex items-start justify-between gap-3"
-                                      >
+                                    {(run as any).documents.slice(0, 15).map((d: any) => (<div key={String(d?.document_id)} className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                           <div className="text-[11px] font-mono text-foreground/90 truncate">
                                             {String(d?.document_id || '')}
                                           </div>
-                                          {d?.source_ref ? (
-                                            <div className="mt-0.5 text-[10px] text-muted-foreground font-mono truncate">
+                                          {d?.source_ref ? (<div className="mt-0.5 text-[10px] text-muted-foreground font-mono truncate">
                                               {String(d.source_ref)}
-                                            </div>
-                                          ) : null}
+                                            </div>) : null}
                                         </div>
                                         <div className="shrink-0 text-[10px] font-mono rounded-full border border-border/60 bg-background px-2 py-0.5">
                                           {String(d?.status || 'created')}
                                         </div>
-                                      </div>
-                                    ))}
-                                    {(run as any).documents.length > 15 ? (
-                                      <div className="text-[10px] text-muted-foreground">
+                                      </div>))}
+                                    {(run as any).documents.length > 15 ? (<div className="text-[10px] text-muted-foreground">
                                         …(+{(run as any).documents.length - 15})
-                                      </div>
-                                    ) : null}
+                                      </div>) : null}
                                   </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
+                                </div>) : null}
+                            </div>) : null}
                         </div>
 
                         <div className="flex flex-col gap-2">
-                          {isActive ? (
-                            <AlertDialog>
+                          {isActive ? (<AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" className="gap-2">
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-4 h-4"/>
                                   取消
                                 </Button>
                               </AlertDialogTrigger>
@@ -778,19 +703,17 @@ export function KnowledgeSettingsPanel({
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>返回</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => void onCancelConnectorRun(run.id)}>
+                                  <AlertDialogAction onClick={() => detachPromise(onCancelConnectorRun(run.id))}>
                                     取消任务
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
-                            </AlertDialog>
-                          ) : null}
+                            </AlertDialog>) : null}
 
-                          {canResume ? (
-                            <AlertDialog>
+                          {canResume ? (<AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" className="gap-2">
-                                  <Play className="w-4 h-4" />
+                                  <Play className="w-4 h-4"/>
                                   续跑
                                 </Button>
                               </AlertDialogTrigger>
@@ -804,17 +727,15 @@ export function KnowledgeSettingsPanel({
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>返回</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => void onResumeConnectorRun(run.id)}>续跑</AlertDialogAction>
+                                  <AlertDialogAction onClick={() => detachPromise(onResumeConnectorRun(run.id))}>续跑</AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
-                            </AlertDialog>
-                          ) : null}
+                            </AlertDialog>) : null}
 
-                          {canRetryFailed ? (
-                            <AlertDialog>
+                          {canRetryFailed ? (<AlertDialog>
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" className="gap-2">
-                                  <RotateCcw className="w-4 h-4" />
+                                  <RotateCcw className="w-4 h-4"/>
                                   只重试失败
                                 </Button>
                               </AlertDialogTrigger>
@@ -828,27 +749,28 @@ export function KnowledgeSettingsPanel({
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                   <AlertDialogCancel>返回</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => void onRetryFailedConnectorRun(run.id)}>
+                                  <AlertDialogAction onClick={() => detachPromise(onRetryFailedConnectorRun(run.id))}>
                                     创建重试任务
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
-                            </AlertDialog>
-                          ) : null}
+                            </AlertDialog>) : null}
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                    </div>);
+                    })}
+              </div>);
+            }
+        }
+    }
+})()}
           </div>
 
           <div className="h-px bg-border/60" />
 
           <div className="space-y-3">
             <div>
-              <label className="text-sm font-semibold text-foreground">危险操作</label>
+              <div className="text-sm font-semibold text-foreground">危险操作</div>
               <p className="text-xs text-muted-foreground mt-1">
                 仅用于管理员生命周期治理：批量删除数据集内的文档（不删除数据集本身）。默认 <span className="font-mono">dry_run</span> 预览。
               </p>
@@ -869,7 +791,7 @@ export function KnowledgeSettingsPanel({
                   variant="outline"
                   className="gap-2"
                   disabled={!selectedDatasetId || purgeWorking}
-                  title={!selectedDatasetId ? '请先选择一个数据集' : undefined}
+                  title={selectedDatasetId ? undefined : '请先选择一个数据集'}
                 >
                   <Trash2 className="w-4 h-4" />
                   清空数据集文档
@@ -901,7 +823,7 @@ export function KnowledgeSettingsPanel({
                       variant="secondary"
                       className="h-9"
                       disabled={purgeWorking}
-                      onClick={() => void runDatasetPurge({ dry_run: true })}
+                      onClick={() => detachPromise(runDatasetPurge({ dry_run: true }))}
                     >
                       预览（dry-run）
                     </Button>
@@ -936,7 +858,7 @@ export function KnowledgeSettingsPanel({
                   <AlertDialogCancel disabled={purgeWorking}>返回</AlertDialogCancel>
                   <AlertDialogAction
                     disabled={purgeWorking}
-                    onClick={() => void runDatasetPurge({ dry_run: false })}
+                    onClick={() => detachPromise(runDatasetPurge({ dry_run: false }))}
                   >
                     确认清空
                   </AlertDialogAction>

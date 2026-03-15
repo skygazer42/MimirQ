@@ -31,7 +31,8 @@ import {
   Star,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
@@ -41,11 +42,26 @@ interface TestCaseManagerProps {
   onCaseSelected?: (caseId: string | null) => void
 }
 
+type EvidencePackDraft = {
+  dataset_id?: string
+  query?: string
+  query_for_retrieval?: string
+  metrics?: Record<string, unknown> | null
+  citations?: Citation[]
+  exported_at?: string
+  source?: 'retrieve_preview' | 'evidence_pack'
+  has_evidence?: boolean | null
+  abstain_triggered?: boolean | null
+  abstain_reason?: string | null
+  selected_chunk_ids?: unknown[]
+  [key: string]: unknown
+}
+
 export function TestCaseManager({
   datasetId,
   onRunTests,
   onCaseSelected,
-}: TestCaseManagerProps) {
+}: Readonly<TestCaseManagerProps>) {
   const GOLDEN_TAG = 'golden'
 
   const [cases, setCases] = useState<RegressionCase[]>([])
@@ -63,7 +79,7 @@ export function TestCaseManager({
   // Evidence Pack import → regression case authoring.
   const evidenceFileInputRef = useRef<HTMLInputElement>(null)
   const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false)
-  const [evidencePack, setEvidencePack] = useState<any | null>(null)
+  const [evidencePack, setEvidencePack] = useState<EvidencePackDraft | null>(null)
   const [evidenceLoading, setEvidenceLoading] = useState(false)
   const [evidenceQuestion, setEvidenceQuestion] = useState('')
   const [evidenceExpectedAnswer, setEvidenceExpectedAnswer] = useState('')
@@ -72,11 +88,11 @@ export function TestCaseManager({
 
   const evidenceCitations = useMemo(() => {
     const items = evidencePack?.citations
-    return Array.isArray(items) ? (items as Citation[]) : []
+    return Array.isArray(items) ? items : []
   }, [evidencePack])
 
   const evidenceDatasetId = useMemo(() => {
-    const fromPack = typeof evidencePack?.dataset_id === 'string' ? String(evidencePack.dataset_id).trim() : ''
+    const fromPack = typeof evidencePack?.dataset_id === 'string' ? evidencePack.dataset_id.trim() : ''
     return fromPack || (datasetId || '')
   }, [datasetId, evidencePack])
 
@@ -105,8 +121,7 @@ export function TestCaseManager({
     setSelectedCaseIds(new Set())
     setSelectedCase(null)
     onCaseSelected?.(null)
-    void loadCases()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(loadCases())
   }, [datasetId])
 
   const goldenCount = useMemo(() => {
@@ -214,8 +229,8 @@ export function TestCaseManager({
       setEvidenceExpectedAnswer(newExpectedAnswer || '')
 
       // Default: select the top-1 citation as a starting point (operators can adjust).
-      const firstChunkId = citations?.[0]?.chunk_id
-      setEvidenceSelectedChunkIds(firstChunkId ? new Set([String(firstChunkId)]) : new Set())
+      const firstChunkId = toTrimmedPrimitiveString(citations?.[0]?.chunk_id)
+      setEvidenceSelectedChunkIds(firstChunkId ? new Set([firstChunkId]) : new Set())
 
       setEvidenceDialogOpen(true)
     } catch (error) {
@@ -262,12 +277,24 @@ export function TestCaseManager({
       setEvidenceExpectedAnswer('')
 
       const selectedChunkIds = Array.isArray(parsed?.selected_chunk_ids) ? parsed.selected_chunk_ids : []
-      const normalizedSelected = selectedChunkIds.map((x: any) => String(x || '').trim()).filter(Boolean)
+      const normalizedSelected = selectedChunkIds.map((x: any) => toTrimmedPrimitiveString(x)).filter(Boolean)
 
       // Default: keep the exported selection (if present), else select top-1 as a starting point.
-      const firstChunkId = citations?.[0]?.chunk_id
+      const firstChunkId = toTrimmedPrimitiveString(citations?.[0]?.chunk_id)
       setEvidenceSelectedChunkIds(
-        normalizedSelected.length ? new Set(normalizedSelected) : firstChunkId ? new Set([String(firstChunkId)]) : new Set()
+        (() => {
+    if (normalizedSelected.length) {
+        return new Set(normalizedSelected);
+    }
+    else {
+        if (firstChunkId) {
+            return new Set([firstChunkId]);
+        }
+        else {
+            return new Set();
+        }
+    }
+})()
       )
       setEvidenceDialogOpen(true)
     } catch (err: any) {
@@ -410,7 +437,7 @@ export function TestCaseManager({
                   confirmLabel="删除"
                   cancelLabel="返回"
                   confirmVariant="destructive"
-                  onConfirm={() => void handleBatchDelete()}
+                  onConfirm={() => detachPromise(handleBatchDelete())}
                 >
                   <Button
                     size="sm"
@@ -428,7 +455,7 @@ export function TestCaseManager({
               type="file"
               accept="application/json,.json"
               className="hidden"
-              onChange={(e) => void handleEvidencePackFile(e.target.files?.[0] || null)}
+              onChange={(e) => detachPromise(handleEvidencePackFile(e.target.files?.[0] || null))}
             />
             <Button
               size="sm"
@@ -436,7 +463,7 @@ export function TestCaseManager({
               className="gap-2"
               onClick={handleChooseEvidencePack}
               disabled={!datasetId}
-              title={!datasetId ? '请先选择数据集' : '导入 Evidence Pack JSON'}
+              title={datasetId ? '导入 Evidence Pack JSON' : '请先选择数据集'}
             >
               <Upload className="w-3.5 h-3.5" />
               导入 Evidence Pack
@@ -474,7 +501,7 @@ export function TestCaseManager({
               setSelectedCaseIds(new Set())
             }}
             disabled={!datasetId}
-            title={!datasetId ? '请先选择数据集' : '只显示标记为 golden 的用例'}
+            title={datasetId ? '只显示标记为 golden 的用例' : '请先选择数据集'}
           >
             <Star className="w-3.5 h-3.5" fill={goldenOnly ? 'currentColor' : 'none'} />
             Golden
@@ -490,9 +517,9 @@ export function TestCaseManager({
         <div className="p-4 border-b border-border bg-muted/30">
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <div className="block text-xs font-medium text-muted-foreground mb-1">
                 问题 *
-              </label>
+              </div>
               <Textarea
                 value={newQuestion}
                 onChange={(e) => setNewQuestion(e.target.value)}
@@ -501,9 +528,9 @@ export function TestCaseManager({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
+              <div className="block text-xs font-medium text-muted-foreground mb-1">
                 期望答案（可选）
-              </label>
+              </div>
               <Textarea
                 value={newExpectedAnswer}
                 onChange={(e) => setNewExpectedAnswer(e.target.value)}
@@ -514,7 +541,7 @@ export function TestCaseManager({
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                onClick={() => void handleCreate()}
+                onClick={() => detachPromise(handleCreate())}
                 disabled={evidenceLoading || !datasetId || !newQuestion.trim()}
               >
                 {evidenceLoading ? (
@@ -604,7 +631,7 @@ export function TestCaseManager({
                   const label = String(c?.document_name || c?.document_id || 'Unknown')
                   const snippet = String(c?.chunk_content || '').slice(0, 180)
                   return (
-                    <label
+                    <div
                       key={`${chunkId || idx}`}
                       className={cn(
                         'flex items-start gap-3 px-3 py-2 border-b border-border/60 cursor-pointer hover:bg-muted/30',
@@ -635,7 +662,7 @@ export function TestCaseManager({
                           {chunkId ? <span className="font-mono">chunk:{chunkId.slice(0, 8)}</span> : null}
                         </div>
                       </div>
-                    </label>
+                    </div>
                   )
                 })}
               </div>
@@ -645,7 +672,7 @@ export function TestCaseManager({
               <Button variant="outline" onClick={() => setEvidenceDialogOpen(false)} disabled={evidenceCreating}>
                 取消
               </Button>
-              <Button onClick={() => void handleCreateCaseFromEvidencePack()} disabled={evidenceCreating}>
+              <Button onClick={() => detachPromise(handleCreateCaseFromEvidencePack())} disabled={evidenceCreating}>
                 {evidenceCreating ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" />
@@ -662,62 +689,58 @@ export function TestCaseManager({
 
       {/* 用例列表 */}
       <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
-	        {isLoading ? (
-	          <div className="flex items-center justify-center py-8">
-	            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
-	          </div>
-	        ) : filteredCases.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            {!datasetId ? '请先选择数据集' : searchQuery ? '没有找到匹配的用例' : '暂无测试用例'}
-          </div>
-        ) : (
-          <>
+	        {(() => {
+    if (isLoading) {
+        return (<div className="flex items-center justify-center py-8">
+	            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
+	          </div>);
+    }
+    else {
+        if (filteredCases.length === 0) {
+            return (<div className="text-center py-8 text-muted-foreground">
+            {(() => {
+                if (datasetId) {
+                    if (searchQuery) {
+                        return '没有找到匹配的用例';
+                    }
+                    else {
+                        return '暂无测试用例';
+                    }
+                }
+                else {
+                    return '请先选择数据集';
+                }
+            })()}
+          </div>);
+        }
+        else {
+            return (<>
             {/* 全选框 */}
-            {filteredCases.length > 0 && (
-              <div className="px-4 py-2 border-b border-border flex items-center gap-2">
-                <button
-                  onClick={toggleSelectAll}
-                  className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none"
-                >
-                  {selectedCaseIds.size === filteredCases.length ? (
-                    <CheckSquare className="w-4 h-4" />
-                  ) : (
-                    <Square className="w-4 h-4" />
-                  )}
+            {filteredCases.length > 0 && (<div className="px-4 py-2 border-b border-border flex items-center gap-2">
+                <button onClick={toggleSelectAll} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none">
+                  {selectedCaseIds.size === filteredCases.length ? (<CheckSquare className="w-4 h-4"/>) : (<Square className="w-4 h-4"/>)}
                   全选
                 </button>
-              </div>
-            )}
+              </div>)}
 
             {/* 用例卡片 */}
             <div className="divide-y divide-border">
-              {filteredCases.map((caseItem) => (
-                (() => {
-                  const isGolden = Array.isArray(caseItem.tags) && caseItem.tags.includes(GOLDEN_TAG)
-                  return (
-                <div
-                  key={caseItem.id}
-                  className={cn(
-                    'p-4 hover:bg-muted/50 transition-colors motion-reduce:transition-none cursor-pointer',
-                    selectedCase?.id === caseItem.id &&
-                      'bg-primary/10'
-                  )}
-                  onClick={() => handleSelectCase(caseItem)}
-                >
+              {filteredCases.map((caseItem) => ((() => {
+                    const isGolden = Array.isArray(caseItem.tags) && caseItem.tags.includes(GOLDEN_TAG);
+                    return (<div key={caseItem.id} className={cn('p-4 hover:bg-muted/50 transition-colors motion-reduce:transition-none cursor-pointer', selectedCase?.id === caseItem.id &&
+                            'bg-primary/10')} onClick={() => handleSelectCase(caseItem)} role="button" tabIndex={0} onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSelectCase(caseItem);
+                            }
+                        }}>
                   <div className="flex items-start gap-3">
                     {/* 选择框 */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        toggleSelect(caseItem.id)
-                      }}
-                      className="mt-0.5"
-                    >
-                      {selectedCaseIds.has(caseItem.id) ? (
-                        <CheckSquare className="w-4 h-4 text-primary" />
-                      ) : (
-                        <Square className="w-4 h-4 text-muted-foreground" />
-                      )}
+                    <button onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSelect(caseItem.id);
+                        }} className="mt-0.5">
+                      {selectedCaseIds.has(caseItem.id) ? (<CheckSquare className="w-4 h-4 text-primary"/>) : (<Square className="w-4 h-4 text-muted-foreground"/>)}
                     </button>
 
                     {/* 内容 */}
@@ -726,89 +749,56 @@ export function TestCaseManager({
                         {caseItem.question}
                       </div>
 
-                      {caseItem.expected_answer && (
-                        <div className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                      {caseItem.expected_answer && (<div className="text-xs text-muted-foreground mb-2 line-clamp-2">
                           期望: {caseItem.expected_answer}
-                        </div>
-                      )}
+                        </div>)}
 
                       {/* 标签 */}
-                      {caseItem.tags && caseItem.tags.length > 0 && (
-                        <div className="flex items-center gap-1 flex-wrap mb-2">
-                          {caseItem.tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-[10px] text-muted-foreground border border-border/60"
-                            >
-                              <Tag className="w-2.5 h-2.5" />
+                      {caseItem.tags && caseItem.tags.length > 0 && (<div className="flex items-center gap-1 flex-wrap mb-2">
+                          {caseItem.tags.map((tag) => (<span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-[10px] text-muted-foreground border border-border/60">
+                              <Tag className="w-2.5 h-2.5"/>
                               {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                            </span>))}
+                        </div>)}
 
                       {/* 元信息 */}
                       <div className="flex items-center gap-3 text-[10px] text-muted-foreground/80">
                         <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
+                          <Calendar className="w-3 h-3"/>
                           {new Date(caseItem.created_at).toLocaleDateString()}
                         </span>
-                        {caseItem.document_ids?.length > 0 && (
-                          <span className="flex items-center gap-1">
-                            <FileText className="w-3 h-3" />
+                        {caseItem.document_ids?.length > 0 && (<span className="flex items-center gap-1">
+                            <FileText className="w-3 h-3"/>
                             {caseItem.document_ids.length} 文档
-                          </span>
-                        )}
+                          </span>)}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          void handleToggleGolden(caseItem)
-                        }}
-                        className={cn(
-                          'text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
-                          isGolden && 'text-amber-600 hover:text-amber-700'
-                        )}
-                        aria-label={isGolden ? '取消 Golden 标记' : '标记为 Golden'}
-                        title={isGolden ? '取消 Golden' : '标记为 Golden'}
-                      >
-                        <Star className="w-4 h-4" fill={isGolden ? 'currentColor' : 'none'} />
+                      <button type="button" onClick={(e) => {
+                            e.stopPropagation();
+                            detachPromise(handleToggleGolden(caseItem));
+                        }} className={cn('text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none', isGolden && 'text-amber-600 hover:text-amber-700')} aria-label={isGolden ? '取消 Golden 标记' : '标记为 Golden'} title={isGolden ? '取消 Golden' : '标记为 Golden'}>
+                        <Star className="w-4 h-4" fill={isGolden ? 'currentColor' : 'none'}/>
                       </button>
 
                       {/* 删除按钮 */}
-                      <ConfirmDialog
-                        title="删除该测试用例？"
-                        description="此操作不可恢复。"
-                        confirmLabel="删除"
-                        cancelLabel="返回"
-                        confirmVariant="destructive"
-                        onConfirm={() => void handleDelete(caseItem.id)}
-                      >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                          }}
-                          className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none"
-                          aria-label="删除测试用例"
-                          title="删除"
-                        >
-                          <Trash2 className="w-4 h-4" />
+                      <ConfirmDialog title="删除该测试用例？" description="此操作不可恢复。" confirmLabel="删除" cancelLabel="返回" confirmVariant="destructive" onConfirm={() => detachPromise(handleDelete(caseItem.id))}>
+                        <button type="button" onClick={(e) => {
+                            e.stopPropagation();
+                        }} className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none" aria-label="删除测试用例" title="删除">
+                          <Trash2 className="w-4 h-4"/>
                         </button>
                       </ConfirmDialog>
                     </div>
                   </div>
-                </div>
-                  )
-                })()
-              ))}
+                </div>);
+                })()))}
             </div>
-          </>
-        )}
+          </>);
+        }
+    }
+})()}
       </div>
 
       {/* 底部统计 */}

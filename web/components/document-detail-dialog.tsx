@@ -27,7 +27,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'
 import { getParserLabel } from '@/lib/parser-options'
-import { cn, formatDate, formatFileSize } from '@/lib/utils'
+import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
   Document,
   DocumentAccessInfo,
@@ -97,7 +97,7 @@ function highlightText(text: string, query: string) {
   return nodes
 }
 
-function TraceRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function TraceRow({ label, value, mono }: Readonly<{ label: string; value: string; mono?: boolean }>) {
   const display = value?.trim?.() ? value : '-'
   return (
     <div className="flex items-center justify-between gap-3 text-xs">
@@ -121,7 +121,7 @@ function toDatetimeLocalValue(value: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-export function DocumentDetailDialog({ document: initialDocument, trigger }: DocumentDetailDialogProps) {
+export function DocumentDetailDialog({ document: initialDocument, trigger }: Readonly<DocumentDetailDialogProps>) {
   const [open, setOpen] = useState(false)
   const [activeView, setActiveView] = useState<'chunks' | 'timeline'>('chunks')
   const [detail, setDetail] = useState<Document | null>(null)
@@ -289,10 +289,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
         }),
         documentApi
           .getLifecycleMetadata(initialDocument.id)
-          .then(() => ({ writable: true as const, error: null }))
+          .then(() => ({ writable: true, error: null }))
           .catch((err) => {
             const status = err?.response?.status
-            if (status === 403) return { writable: false as const, error: null }
+            if (status === 403) return { writable: false, error: null }
             return { writable: null, error: formatApiError(err, '无法确认 lifecycle 编辑权限') }
           }),
       ])
@@ -528,23 +528,23 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   useEffect(() => {
     if (!open) return
     setActiveView('chunks')
-    void loadDetail()
-    void loadVersions()
+    detachPromise(loadDetail())
+    detachPromise(loadVersions())
   }, [open, loadDetail, loadVersions])
 
   useEffect(() => {
     if (!open) return
     if (activeView !== 'chunks') return
-    const handle = window.setTimeout(() => {
-      void reloadChunks()
+    const handle = globalThis.window.setTimeout(() => {
+      detachPromise(reloadChunks())
     }, chunkQuery.trim() ? 250 : 0)
-    return () => window.clearTimeout(handle)
+    return () => globalThis.window.clearTimeout(handle)
   }, [open, activeView, chunkQuery, viewPipelineHash, reloadChunks])
 
   useEffect(() => {
     if (!open) return
     if (activeView !== 'timeline') return
-    void loadTimeline()
+    detachPromise(loadTimeline())
   }, [open, activeView, loadTimeline])
 
   const parserBackend =
@@ -563,13 +563,21 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
 
   const docMeta = (displayDoc.metadata || {}) as any
   const pipeline = (displayDoc as any)?.pipeline || null
-  const pipelineEffective = (pipeline?.pipeline_effective || docMeta.pipeline_effective || {}) as any
-  const analyticsRaw = (pipeline?.analytics_raw || docMeta.document_analytics_raw || {}) as any
-  const governanceRulePacks: string[] = Array.isArray(pipeline?.governance_rule_packs)
-    ? pipeline.governance_rule_packs
-    : Array.isArray(docMeta.governance_rule_packs)
-      ? docMeta.governance_rule_packs
-      : []
+  const pipelineEffective = (pipeline?.pipeline_effective || docMeta.pipeline_effective || {})
+  const analyticsRaw = (pipeline?.analytics_raw || docMeta.document_analytics_raw || {})
+  const governanceRulePacks: string[] = (() => {
+    if (Array.isArray(pipeline?.governance_rule_packs)) {
+        return pipeline.governance_rule_packs;
+    }
+    else {
+        if (Array.isArray(docMeta.governance_rule_packs)) {
+            return docMeta.governance_rule_packs;
+        }
+        else {
+            return [];
+        }
+    }
+})()
 
   const activePipelineHash =
     String(
@@ -602,7 +610,142 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
   const loadError = docError || chunkError
   const timelineItems: DocumentTimelineItem[] = timeline?.items || []
   const timelineTotal = Number(timeline?.total || timelineItems.length)
+  /*
+  const headerAction = (() => {
+    if (activeView === 'chunks') {
+      if (!chunkQuery) return null
 
+      return (
+        <IconButton
+          label="娓呴櫎鎼滅储"
+          variant="ghost"
+          className="h-10 w-10 text-muted-foreground hover:text-foreground"
+          onClick={() => setChunkQuery('')}
+        >
+          <X className="h-4 w-4" />
+        </IconButton>
+      )
+    }
+
+    return (
+      <IconButton
+        label="鍒锋柊鏃堕棿绾?"
+        variant="ghost"
+        className="h-10 w-10 text-muted-foreground hover:text-foreground"
+        onClick={() => detachPromise(loadTimeline())}
+        disabled={isLoadingTimeline}
+      >
+        {isLoadingTimeline ? (
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+        ) : (
+          <RefreshCw className="h-4 w-4" />
+        )}
+      </IconButton>
+    )
+  })()
+  let versionsListContent: ReactNode = null
+  if (!isLoadingVersions && !versionsError) {
+    if (versions?.items?.length) {
+      versionsListContent = (
+        <div className="space-y-2">
+          {versions.items.map((v) => (
+            <div
+              key={v.pipeline_hash}
+              className={cn(
+                'flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card p-3',
+                v.active ? 'border-primary/30 bg-primary/5' : 'bg-card'
+              )}
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs text-foreground">{v.pipeline_hash}</span>
+                  {v.active ? (
+                    <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                      ACTIVE
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {v.chunk_count} chunks
+                  {v.last_chunk_at ? ` 路 鏇存柊 ${formatDate(v.last_chunk_at)}` : ''}
+                </div>
+              </div>
+
+              <div className="flex flex-shrink-0 items-center gap-2">
+                <IconButton
+                  label="澶嶅埗鐗堟湰 hash"
+                  variant="ghost"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                  onClick={() => detachPromise(copyToClipboard(v.pipeline_hash))}
+                >
+                  <Copy className="h-4 w-4" />
+                </IconButton>
+
+                {v.active ? (
+                  <Button size="sm" variant="secondary" disabled>
+                    宸叉縺娲?
+                  </Button>
+                ) : (
+                  <>
+                    <ConfirmDialog
+                      title="鍒囨崲婵€娲荤増鏈紵"
+                      description={
+                        <>
+                          灏嗘妸婵€娲荤増鏈垏鎹负 <span className="font-mono">{v.pipeline_hash.slice(0, 12)}鈥?/span>銆傝繖涓嶄細閲嶆柊瑙ｆ瀽/閲嶆柊鍚戦噺鍖栵紝鍙細褰卞搷妫€绱笌寮曠敤銆?
+                        </>
+                      }
+                      confirmLabel="鍒囨崲"
+                      cancelLabel="杩斿洖"
+                      confirmVariant="default"
+                      confirmDisabled={isVersionWorking}
+                      onConfirm={() => detachPromise(handleActivateVersion(v.pipeline_hash))}
+                    >
+                      <Button size="sm" variant="outline" disabled={isVersionWorking}>
+                        婵€娲?
+                      </Button>
+                    </ConfirmDialog>
+                    <ConfirmDialog
+                      title="鍒犻櫎璇ョ増鏈紵"
+                      description={
+                        <>
+                          灏嗗垹闄ょ増鏈?<span className="font-mono">{v.pipeline_hash.slice(0, 12)}鈥?/span>銆傛敞鎰忥細褰撳墠婵€娲荤増鏈棤娉曞垹闄ゃ€?
+                        </>
+                      }
+                      confirmLabel="鍒犻櫎"
+                      cancelLabel="杩斿洖"
+                      confirmVariant="destructive"
+                      confirmDisabled={isVersionWorking}
+                      onConfirm={() => detachPromise(handleDeleteVersion(v.pipeline_hash))}
+                    >
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isVersionWorking}
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        鍒犻櫎
+                      </Button>
+                    </ConfirmDialog>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    } else {
+      versionsListContent = (
+        <EmptyState
+          icon={Hash}
+          title="鏆傛棤鐗堟湰淇℃伅"
+          description="褰撳墠鏂囨。杩樻病鏈夊彲鐢ㄧ殑 pipeline 鐗堟湰璁板綍锛堟垨灏氭湭鐢熸垚鍒囩墖锛夈€?
+          className="min-h-[240px]"
+        />
+      )
+    }
+  }
+
+  */
   const chunkRowVirtualizer = useVirtualizer({
     count: activeView === 'chunks' ? chunks.length : 0,
     getScrollElement: () => scrollParentRef.current,
@@ -625,17 +768,17 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(content)
       } else {
-        const textarea = window.document.createElement('textarea')
+        const textarea = globalThis.window.document.createElement('textarea')
         textarea.value = content
         textarea.style.position = 'fixed'
         textarea.style.left = '0'
         textarea.style.top = '0'
         textarea.style.opacity = '0'
-        window.document.body.appendChild(textarea)
+        globalThis.window.document.body.appendChild(textarea)
         textarea.focus()
         textarea.select()
-        const ok = window.document.execCommand('copy')
-        window.document.body.removeChild(textarea)
+        const ok = globalThis.window.document.execCommand('copy')
+        globalThis.window.document.body.removeChild(textarea)
         if (!ok) throw new Error('copy failed')
       }
       toast.success('已复制到剪贴板')
@@ -912,7 +1055,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     label="Copy pipeline_hash"
                     variant="ghost"
                     className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                    onClick={() => void copyToClipboard(String(viewingPipelineHash || ''))}
+                    onClick={() => detachPromise(copyToClipboard(String(viewingPipelineHash || '')))}
                   >
                     <Copy className="h-4 w-4" />
                   </IconButton>
@@ -948,7 +1091,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     <Button variant="outline" size="sm" onClick={cancelEditTags} disabled={isSavingTags}>
                       取消
                     </Button>
-                    <Button size="sm" onClick={() => void saveTags()} disabled={!canSaveTags}>
+                    <Button size="sm" onClick={() => detachPromise(saveTags())} disabled={!canSaveTags}>
                       {isSavingTags ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
                       ) : null}
@@ -965,13 +1108,19 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
             </div>
 
             <div className="mt-4 space-y-3">
-              {tagsEditing ? (
-                <TagInput value={tagsDraft} onValueChange={setTagsDraft} disabled={isSavingTags} />
-              ) : currentTags.length ? (
-                <DocumentTags tags={currentTags} max={10} />
-              ) : (
-                <div className="text-xs text-muted-foreground">暂无标签（可用于知识库分组、检索过滤与运维标记）</div>
-              )}
+              {(() => {
+    if (tagsEditing) {
+        return (<TagInput value={tagsDraft} onValueChange={setTagsDraft} disabled={isSavingTags}/>);
+    }
+    else {
+        if (currentTags.length) {
+            return (<DocumentTags tags={currentTags} max={10}/>);
+        }
+        else {
+            return (<div className="text-xs text-muted-foreground">暂无标签（可用于知识库分组、检索过滤与运维标记）</div>);
+        }
+    }
+})()}
 
               {tagsError ? (
                 <Alert variant="destructive">
@@ -1002,7 +1151,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     <Button variant="outline" size="sm" onClick={cancelEditLifecycle} disabled={isSavingLifecycle}>
                       取消
                     </Button>
-                    <Button size="sm" onClick={() => void saveLifecycle()} disabled={!canSaveLifecycle}>
+                    <Button size="sm" onClick={() => detachPromise(saveLifecycle())} disabled={!canSaveLifecycle}>
                       {isSavingLifecycle ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
                       ) : null}
@@ -1017,11 +1166,19 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     onClick={beginEditLifecycle}
                     disabled={lifecycleWritable === false || lifecycleWritable == null}
                     title={
-                      lifecycleWritable === false
-                        ? "只读：需要数据集编辑权限"
-                        : lifecycleWritable == null
-                          ? "权限确认中"
-                          : undefined
+                      (() => {
+    if (lifecycleWritable === false) {
+        return "只读：需要数据集编辑权限";
+    }
+    else {
+        if (lifecycleWritable == null) {
+            return "权限确认中";
+        }
+        else {
+            return undefined;
+        }
+    }
+})()
                     }
                   >
                     <Pencil className="h-4 w-4" aria-hidden="true" />
@@ -1175,6 +1332,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 </button>
               </div>
 
+              {null}
               {activeView === "chunks" ? (
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1211,6 +1369,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                   : `${timelineItems.length}/${timelineTotal}`}
               </span>
 
+              {/* eslint-disable-next-line no-nested-ternary */}
               {activeView === "chunks" ? (
                 chunkQuery ? (
                   <IconButton
@@ -1227,7 +1386,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                   label="刷新时间线"
                   variant="ghost"
                   className="h-10 w-10 text-muted-foreground hover:text-foreground"
-                  onClick={() => void loadTimeline()}
+                  onClick={() => detachPromise(loadTimeline())}
                   disabled={isLoadingTimeline}
                 >
                   {isLoadingTimeline ? (
@@ -1240,287 +1399,187 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
             </div>
 
             <div ref={scrollParentRef} className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4">
-              {activeView === "chunks" ? (
-                (isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0) ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+              {(() => {
+    if (activeView === "chunks") {
+        return ((() => {
+            if ((isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0)) {
+                return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
                     <p className="text-sm">正在加载切片数据...</p>
-                  </div>
-                ) : loadError && chunks.length === 0 ? (
-                  <div className="mx-auto max-w-2xl py-10">
+                  </div>);
+            }
+            else {
+                if (loadError && chunks.length === 0) {
+                    return (<div className="mx-auto max-w-2xl py-10">
                     <Alert variant="destructive">
                       <AlertTitle>加载失败</AlertTitle>
                       <AlertDescription>{loadError}</AlertDescription>
                     </Alert>
                     <div className="mt-4 flex items-center justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          void loadDetail()
-                          void loadVersions()
-                          void reloadChunks()
-                        }}
-                      >
+                      <Button variant="outline" onClick={() => {
+                            detachPromise(loadDetail());
+                            detachPromise(loadVersions());
+                            detachPromise(reloadChunks());
+                        }}>
                         重试
                       </Button>
                       <Button variant="secondary" onClick={() => setOpen(false)}>
                         关闭
                       </Button>
                     </div>
-                  </div>
-                ) : chunksTotal === 0 && !isSearching ? (
-                  <EmptyState
-                    icon={FileText}
-                    title="暂无切片数据"
-                    description="该文档暂未生成可用切片，或后端未返回切片内容。"
-                    className="min-h-[320px]"
-                  />
-                ) : chunksTotal === 0 && isSearching ? (
-                  <EmptyState
-                    icon={Search}
-                    title="未找到匹配切片"
-                    description={<span>尝试更换关键词，或清空筛选条件。</span>}
-                    className="min-h-[320px]"
-	                  >
+                  </div>);
+                }
+                else {
+                    if (chunksTotal === 0 && !isSearching) {
+                        return (<EmptyState icon={FileText} title="暂无切片数据" description="该文档暂未生成可用切片，或后端未返回切片内容。" className="min-h-[320px]"/>);
+                    }
+                    else {
+                        if (chunksTotal === 0 && isSearching) {
+                            return (<EmptyState icon={Search} title="未找到匹配切片" description={<span>尝试更换关键词，或清空筛选条件。</span>} className="min-h-[320px]">
 	                    <Button variant="outline" onClick={() => setChunkQuery("")}>
 	                      清空筛选
 	                    </Button>
-	                  </EmptyState>
-	                ) : (
-	                  <div className="pb-6 space-y-3">
-	                    {chunkError && chunks.length > 0 ? (
-	                      <Alert variant="destructive">
+	                  </EmptyState>);
+                        }
+                        else {
+                            return (<div className="pb-6 space-y-3">
+	                    {chunkError && chunks.length > 0 ? (<Alert variant="destructive">
 	                        <AlertTitle>加载切片失败</AlertTitle>
 	                        <AlertDescription>{chunkError}</AlertDescription>
-	                      </Alert>
-	                    ) : null}
+	                      </Alert>) : null}
 	
-	                    <div
-	                      role="list"
-	                      aria-label="文档切片列表"
-	                      style={{
-	                        height: `${chunkRowVirtualizer.getTotalSize()}px`,
-	                        width: '100%',
-	                        position: 'relative',
-	                      }}
-	                    >
+	                    <div role="list" aria-label="文档切片列表" style={{
+                                    height: `${chunkRowVirtualizer.getTotalSize()}px`,
+                                    width: '100%',
+                                    position: 'relative',
+                                }}>
 	                      {chunkRowVirtualizer.getVirtualItems().map((virtualRow) => {
-	                        const chunk = chunks[virtualRow.index]
-	                        if (!chunk) return null
-	
-	                        return (
-	                          <div
-	                            key={virtualRow.key}
-	                            data-index={virtualRow.index}
-	                            ref={chunkRowVirtualizer.measureElement}
-	                            role="listitem"
-	                            style={{
-	                              position: 'absolute',
-	                              top: 0,
-	                              left: 0,
-	                              width: '100%',
-	                              transform: `translateY(${virtualRow.start}px)`,
-	                            }}
-	                            className="pb-3"
-	                          >
-	                            <div
-	                              className={cn(
-	                                "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
-	                                "hover:border-primary/25 hover:shadow-soft/30",
-	                                chunk.disabled_at ? "opacity-70" : null
-	                              )}
-	                            >
+                                    const chunk = chunks[virtualRow.index];
+                                    if (!chunk)
+                                        return null;
+                                    return (<div key={virtualRow.key} data-index={virtualRow.index} ref={chunkRowVirtualizer.measureElement} role="listitem" style={{
+                                            position: 'absolute',
+                                            top: 0,
+                                            left: 0,
+                                            width: '100%',
+                                            transform: `translateY(${virtualRow.start}px)`,
+                                        }} className="pb-3">
+	                            <div className={cn("group rounded-xl border border-border/60 bg-card p-4 transition-colors", "hover:border-primary/25 hover:shadow-soft/30", chunk.disabled_at ? "opacity-70" : null)}>
 	                              <div className="flex items-start justify-between gap-3">
 	                                <div className="flex flex-wrap items-center gap-2 text-xs">
 	                                  <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono font-medium text-muted-foreground">
 	                                    #{chunk.chunk_index}
 	                                  </span>
-	                                  {typeof chunk.page_number === "number" ? (
-	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
+	                                  {typeof chunk.page_number === "number" ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
 	                                      P.{chunk.page_number}
-	                                    </span>
-	                                  ) : null}
+	                                    </span>) : null}
 	                                  <span className="text-muted-foreground">{(chunk.content || "").length} chars</span>
-	                                  {chunk.disabled_at ? (
-	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
+	                                  {chunk.disabled_at ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
 	                                      disabled
-	                                    </span>
-	                                  ) : null}
+	                                    </span>) : null}
 	                                </div>
 	                                <div className="flex items-center gap-1">
-	                                  <IconButton
-	                                    label={canMutateChunks ? "编辑切片" : "仅当前激活版本可编辑"}
-	                                    variant="ghost"
-	                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
-	                                    onClick={() => beginEditChunk(chunk)}
-	                                    disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
-	                                  >
-	                                    <Pencil className="h-4 w-4" />
+	                                  <IconButton label={canMutateChunks ? "编辑切片" : "仅当前激活版本可编辑"} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => beginEditChunk(chunk)} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}>
+	                                    <Pencil className="h-4 w-4"/>
 	                                  </IconButton>
-	                                  <IconButton
-	                                    label={chunk.disabled_at ? "启用切片" : "禁用切片"}
-	                                    variant="ghost"
-	                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
-	                                    onClick={() => void toggleChunkDisabled(chunk)}
-	                                    disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
-	                                  >
-	                                    {chunk.disabled_at ? <CheckCircle2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+	                                  <IconButton label={chunk.disabled_at ? "启用切片" : "禁用切片"} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(toggleChunkDisabled(chunk))} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}>
+	                                    {chunk.disabled_at ? <CheckCircle2 className="h-4 w-4"/> : <Ban className="h-4 w-4"/>}
 	                                  </IconButton>
-	                                  <IconButton
-	                                    label={chunk.disabled_at ? "禁用切片不能 re-embed" : "重新嵌入切片"}
-	                                    variant="ghost"
-	                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
-	                                    onClick={() => void reembedChunk(chunk)}
-	                                    disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}
-	                                  >
-	                                    <RefreshCw className="h-4 w-4" />
+	                                  <IconButton label={chunk.disabled_at ? "禁用切片不能 re-embed" : "重新嵌入切片"} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(reembedChunk(chunk))} disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}>
+	                                    <RefreshCw className="h-4 w-4"/>
 	                                  </IconButton>
-	                                  <IconButton
-	                                    label="复制切片内容"
-	                                    variant="ghost"
-	                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
-	                                    onClick={() => void copyToClipboard(chunk.content)}
-	                                    disabled={chunkOpWorkingId === chunk.id}
-	                                  >
-	                                    <Copy className="h-4 w-4" />
+	                                  <IconButton label="复制切片内容" variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(copyToClipboard(chunk.content))} disabled={chunkOpWorkingId === chunk.id}>
+	                                    <Copy className="h-4 w-4"/>
 	                                  </IconButton>
 	                                </div>
 	                              </div>
 	
-	                              {editingChunkId === chunk.id ? (
-	                                <div className="mt-3 space-y-2">
-	                                  <Textarea
-	                                    value={editingChunkContent}
-	                                    onChange={(e) => setEditingChunkContent(e.target.value)}
-	                                    className="min-h-[140px] font-mono text-xs"
-	                                    disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
-	                                  />
+	                              {editingChunkId === chunk.id ? (<div className="mt-3 space-y-2">
+	                                  <Textarea value={editingChunkContent} onChange={(e) => setEditingChunkContent(e.target.value)} className="min-h-[140px] font-mono text-xs" disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}/>
 	                                  <div className="flex items-center justify-end gap-2">
-	                                    <Button
-	                                      type="button"
-	                                      variant="outline"
-	                                      size="sm"
-	                                      onClick={cancelEditChunk}
-	                                      disabled={chunkOpWorkingId === chunk.id}
-	                                    >
+	                                    <Button type="button" variant="outline" size="sm" onClick={cancelEditChunk} disabled={chunkOpWorkingId === chunk.id}>
 	                                      取消
 	                                    </Button>
-	                                    <Button
-	                                      type="button"
-	                                      size="sm"
-	                                      onClick={() => void saveEditChunk()}
-	                                      disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}
-	                                      className="gap-2"
-	                                    >
-	                                      {chunkOpWorkingId === chunk.id ? (
-	                                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-	                                      ) : (
-	                                        <Save className="h-4 w-4" />
-	                                      )}
+	                                    <Button type="button" size="sm" onClick={() => detachPromise(saveEditChunk())} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id} className="gap-2">
+	                                      {chunkOpWorkingId === chunk.id ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : (<Save className="h-4 w-4"/>)}
 	                                      保存
 	                                    </Button>
 	                                  </div>
-	                                </div>
-	                              ) : (
-	                                <div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
+	                                </div>) : (<div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
 	                                  {highlightText(chunk.content || "", chunkQuery)}
-	                                </div>
-	                              )}
+	                                </div>)}
 	                            </div>
-	                          </div>
-	                        )
-	                      })}
+	                          </div>);
+                                })}
 	                    </div>
 	
-	                    {canLoadMoreChunks ? (
-	                      <div className="flex justify-center pt-2">
-	                        <Button
-	                          variant="outline"
-	                          onClick={() => void loadMoreChunks()}
-	                          disabled={isLoadingChunks}
-	                          className="gap-2"
-	                        >
-	                          {isLoadingChunks ? (
-	                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-	                          ) : null}
+	                    {canLoadMoreChunks ? (<div className="flex justify-center pt-2">
+	                        <Button variant="outline" onClick={() => detachPromise(loadMoreChunks())} disabled={isLoadingChunks} className="gap-2">
+	                          {isLoadingChunks ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : null}
 	                          加载更多
 	                        </Button>
-	                      </div>
-	                    ) : null}
-	                  </div>
-	                )
-	              ) : isLoadingTimeline && timelineItems.length === 0 ? (
-	                <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-	                  <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
+	                      </div>) : null}
+	                  </div>);
+                        }
+                    }
+                }
+            }
+        })());
+    }
+    else {
+        if (isLoadingTimeline && timelineItems.length === 0) {
+            return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+	                  <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
                   <p className="text-sm">正在加载时间线...</p>
-                </div>
-              ) : (timelineError || docError) && timelineItems.length === 0 ? (
-                <div className="mx-auto max-w-2xl py-10">
+                </div>);
+        }
+        else {
+            if ((timelineError || docError) && timelineItems.length === 0) {
+                return (<div className="mx-auto max-w-2xl py-10">
                   <Alert variant="destructive">
                     <AlertTitle>加载失败</AlertTitle>
                     <AlertDescription>{timelineError || docError}</AlertDescription>
                   </Alert>
                   <div className="mt-4 flex items-center justify-end gap-2">
-                    <Button variant="outline" onClick={() => void loadTimeline()}>
+                    <Button variant="outline" onClick={() => detachPromise(loadTimeline())}>
                       重试
                     </Button>
                     <Button variant="secondary" onClick={() => setOpen(false)}>
                       关闭
                     </Button>
                   </div>
-                </div>
-              ) : timelineItems.length === 0 ? (
-                <EmptyState
-                  icon={Calendar}
-                  title="暂无时间线事件"
-	                  description="该文档暂未产生可回溯的事件记录（或审计未启用）。"
-	                  className="min-h-[320px]"
-	                />
-	              ) : (
-	                <div className="pb-6 space-y-3">
-	                  {timelineError ? (
-	                    <Alert variant="destructive">
+                </div>);
+            }
+            else {
+                if (timelineItems.length === 0) {
+                    return (<EmptyState icon={Calendar} title="暂无时间线事件" description="该文档暂未产生可回溯的事件记录（或审计未启用）。" className="min-h-[320px]"/>);
+                }
+                else {
+                    return (<div className="pb-6 space-y-3">
+	                  {timelineError ? (<Alert variant="destructive">
 	                      <AlertTitle>加载时间线失败</AlertTitle>
 	                      <AlertDescription>{timelineError}</AlertDescription>
-	                    </Alert>
-	                  ) : null}
+	                    </Alert>) : null}
 	
-	                  <div
-	                    role="list"
-	                    aria-label="文档时间线"
-	                    style={{
-	                      height: `${timelineRowVirtualizer.getTotalSize()}px`,
-	                      width: '100%',
-	                      position: 'relative',
-	                    }}
-	                  >
+	                  <div role="list" aria-label="文档时间线" style={{
+                            height: `${timelineRowVirtualizer.getTotalSize()}px`,
+                            width: '100%',
+                            position: 'relative',
+                        }}>
 	                    {timelineRowVirtualizer.getVirtualItems().map((virtualRow) => {
-	                      const ev = timelineItems[virtualRow.index]
-	                      if (!ev) return null
-	                      const detailPairs = Object.entries(ev.details || {}).slice(0, 12)
-	                      const hasDetails = detailPairs.length > 0
-	
-	                      return (
-	                        <div
-	                          key={virtualRow.key}
-	                          data-index={virtualRow.index}
-	                          ref={timelineRowVirtualizer.measureElement}
-	                          role="listitem"
-	                          style={{
-	                            position: 'absolute',
-	                            top: 0,
-	                            left: 0,
-	                            width: '100%',
-	                            transform: `translateY(${virtualRow.start}px)`,
-	                          }}
-	                          className="pb-3"
-	                        >
-	                          <div
-	                            className={cn(
-	                              "group rounded-xl border border-border/60 bg-card p-4 transition-colors",
-	                              "hover:border-primary/25 hover:shadow-soft/30"
-	                            )}
-	                          >
+                            const ev = timelineItems[virtualRow.index];
+                            if (!ev)
+                                return null;
+                            const detailPairs = Object.entries(ev.details || {}).slice(0, 12);
+                            const hasDetails = detailPairs.length > 0;
+                            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={timelineRowVirtualizer.measureElement} role="listitem" style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    transform: `translateY(${virtualRow.start}px)`,
+                                }} className="pb-3">
+	                          <div className={cn("group rounded-xl border border-border/60 bg-card p-4 transition-colors", "hover:border-primary/25 hover:shadow-soft/30")}>
 	                            <div className="flex items-start justify-between gap-3">
 	                              <div className="min-w-0">
 	                                <div className="flex flex-wrap items-center gap-2">
@@ -1528,78 +1587,54 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
 	                                    {formatDate(ev.created_at)}
 	                                  </span>
 	                                  <span className="truncate font-mono text-xs text-foreground/90">{ev.action}</span>
-	                                  {ev.source === "synthetic" ? (
-	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+	                                  {ev.source === "synthetic" ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
 	                                      synthetic
-	                                    </span>
-	                                  ) : null}
+	                                    </span>) : null}
 	                                </div>
 	
 	                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
 	                                  {ev.stage ? <span>stage: {ev.stage}</span> : null}
 	                                  {ev.status ? <span>status: {ev.status}</span> : null}
 	                                  {typeof ev.progress === "number" ? <span>progress: {ev.progress}%</span> : null}
-	                                  {ev.request_id ? (
-	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
+	                                  {ev.request_id ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
 	                                      req: {ev.request_id}
-	                                    </span>
-	                                  ) : null}
-	                                  {ev.actor_id ? (
-	                                    <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
+	                                    </span>) : null}
+	                                  {ev.actor_id ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
 	                                      by: {ev.actor_id}
-	                                    </span>
-	                                  ) : null}
+	                                    </span>) : null}
 	                                </div>
 	                              </div>
 	
-	                              <IconButton
-	                                label="复制事件信息"
-	                                variant="ghost"
-	                                className="h-9 w-9 text-muted-foreground hover:text-foreground"
-	                                onClick={() =>
-	                                  void copyToClipboard(
-	                                    JSON.stringify(
-	                                      {
-	                                        id: ev.id,
-	                                        action: ev.action,
-	                                        created_at: ev.created_at,
-	                                        stage: ev.stage,
-	                                        status: ev.status,
-	                                        progress: ev.progress,
-	                                        request_id: ev.request_id,
-	                                        actor_id: ev.actor_id,
-	                                        details: ev.details,
-	                                      },
-	                                      null,
-	                                      2
-	                                    )
-	                                  )
-	                                }
-	                              >
-	                                <Copy className="h-4 w-4" />
+	                              <IconButton label="复制事件信息" variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(copyToClipboard(JSON.stringify({
+                                    id: ev.id,
+                                    action: ev.action,
+                                    created_at: ev.created_at,
+                                    stage: ev.stage,
+                                    status: ev.status,
+                                    progress: ev.progress,
+                                    request_id: ev.request_id,
+                                    actor_id: ev.actor_id,
+                                    details: ev.details,
+                                }, null, 2)))}>
+	                                <Copy className="h-4 w-4"/>
 	                              </IconButton>
 	                            </div>
 	
-	                            {hasDetails ? (
-	                              <div className="mt-3 flex flex-wrap gap-2">
-	                                {detailPairs.map(([k, v]) => (
-	                                  <span
-	                                    key={`${ev.id}:${k}`}
-	                                    className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground"
-	                                    title={`${k}: ${String(v)}`}
-	                                  >
+	                            {hasDetails ? (<div className="mt-3 flex flex-wrap gap-2">
+	                                {detailPairs.map(([k, v]) => (<span key={`${ev.id}:${k}`} className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground" title={`${k}: ${String(v)}`}>
 	                                    {k}: {String(v)}
-	                                  </span>
-	                                ))}
-	                              </div>
-	                            ) : null}
+	                                  </span>))}
+	                              </div>) : null}
 	                          </div>
-	                        </div>
-	                      )
-	                    })}
+	                        </div>);
+                        })}
 	                  </div>
-	                </div>
-	              )}
+	                </div>);
+                }
+            }
+        }
+    }
+})()}
             </div>
           </Panel>
         </main>
@@ -1613,7 +1648,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 onOpenChange={(next) => {
                   setVersionsDialogOpen(next)
                   if (next) {
-                    void loadVersions()
+                    detachPromise(loadVersions())
                   }
                 }}
               >
@@ -1630,22 +1665,30 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                   </DialogDescription>
 
                   <div className="mt-4 space-y-3">
-                    {isLoadingVersions ? (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    {(() => {
+    if (isLoadingVersions) {
+        return (<div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
                         正在加载版本信息...
-                      </div>
-                    ) : versionsError ? (
-                      <Alert variant="destructive">
+                      </div>);
+    }
+    else {
+        if (versionsError) {
+            return (<Alert variant="destructive">
                         <AlertTitle>加载版本失败</AlertTitle>
                         <AlertDescription className="flex items-center justify-between gap-3">
                           <span className="min-w-0 flex-1">{versionsError}</span>
-                          <Button variant="outline" size="sm" onClick={() => void loadVersions()}>
+                          <Button variant="outline" size="sm" onClick={() => detachPromise(loadVersions())}>
                             重试
                           </Button>
                         </AlertDescription>
-                      </Alert>
-                    ) : null}
+                      </Alert>);
+        }
+        else {
+            return null;
+        }
+    }
+})()}
 
                     <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
                       <div className="text-xs text-muted-foreground">当前激活 pipeline_hash</div>
@@ -1658,13 +1701,15 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                           variant="ghost"
                           className="h-9 w-9 text-muted-foreground hover:text-foreground"
                           disabled={!versions?.active_pipeline_hash}
-                          onClick={() => void copyToClipboard(String(versions?.active_pipeline_hash || ''))}
+                          onClick={() => detachPromise(copyToClipboard(String(versions?.active_pipeline_hash || '')))}
                         >
                           <Copy className="h-4 w-4" />
                         </IconButton>
                       </div>
                     </div>
 
+                    {null}
+                    {/* eslint-disable-next-line no-nested-ternary */}
                     {!isLoadingVersions && !versionsError ? (
                       versions?.items?.length ? (
                         <div className="space-y-2">
@@ -1696,7 +1741,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                                   label="复制版本 hash"
                                   variant="ghost"
                                   className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                  onClick={() => void copyToClipboard(v.pipeline_hash)}
+                                  onClick={() => detachPromise(copyToClipboard(v.pipeline_hash))}
                                 >
                                   <Copy className="h-4 w-4" />
                                 </IconButton>
@@ -1718,7 +1763,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                                       cancelLabel="返回"
                                       confirmVariant="default"
                                       confirmDisabled={isVersionWorking}
-                                      onConfirm={() => void handleActivateVersion(v.pipeline_hash)}
+                                      onConfirm={() => detachPromise(handleActivateVersion(v.pipeline_hash))}
                                     >
                                       <Button size="sm" variant="outline" disabled={isVersionWorking}>
                                         激活
@@ -1735,7 +1780,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                                       cancelLabel="返回"
                                       confirmVariant="destructive"
                                       confirmDisabled={isVersionWorking}
-                                      onConfirm={() => void handleDeleteVersion(v.pipeline_hash)}
+                                      onConfirm={() => detachPromise(handleDeleteVersion(v.pipeline_hash))}
                                     >
                                       <Button
                                         size="sm"
@@ -1840,7 +1885,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                     <Button variant="outline" onClick={() => setAccessDialogOpen(false)} disabled={isSavingAccess}>
                       取消
                     </Button>
-                    <Button onClick={() => void handleSaveAccess()} disabled={isSavingAccess}>
+                    <Button onClick={() => detachPromise(handleSaveAccess())} disabled={isSavingAccess}>
                       {isSavingAccess ? (
                         <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
                       ) : null}
@@ -1863,7 +1908,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Doc
                 cancelLabel="返回"
                 confirmVariant="destructive"
                 confirmDisabled={isKgWorking}
-                onConfirm={() => void handleDeleteKG()}
+                onConfirm={() => detachPromise(handleDeleteKG())}
               >
                 <Button
                   variant="outline"

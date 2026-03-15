@@ -1,10 +1,11 @@
 import type { ChunkPreviewResponse } from '@/types'
+import { toPrimitiveString, toSingleLinePrimitiveString } from '@/lib/primitive-text'
 import { computeCoverageSignals, computeDuplicateIndices, computeShortIndices, fnv1a32, roughEstimateTokens } from './review-signals'
 
 export function sanitizeFilename(name: string) {
   const trimmed = (name || '').trim()
   const base = trimmed || 'chunks'
-  return base.replace(/[\\/:*?"<>|]+/g, '_')
+  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 export function downloadTextFile(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
@@ -14,7 +15,7 @@ export function downloadTextFile(filename: string, content: string, mime = 'text
   a.href = url
   a.download = filename
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export function toChunkPreviewExport(preview: ChunkPreviewResponse) {
@@ -47,7 +48,7 @@ export function applyChunkOverridesToPreview(
     }
 
     const content = String(override.content ?? chunk.content ?? '')
-    const metadata = (override.metadata ?? chunk.metadata ?? {}) as Record<string, any>
+    const metadata = (override.metadata ?? chunk.metadata ?? {})
     const exportMetadata = isDisabled && includeDisabled ? { ...metadata, __mimirq_skip: true } : metadata
     acc.push({
       ...chunk,
@@ -67,9 +68,21 @@ export function applyChunkOverridesToPreview(
 }
 
 function csvEscape(value: unknown) {
-  const raw = String(value ?? '')
+  let raw = ''
+  if (value == null) {
+    raw = ''
+  } else if (
+    typeof value === 'string'
+    || typeof value === 'number'
+    || typeof value === 'boolean'
+    || typeof value === 'bigint'
+  ) {
+    raw = toPrimitiveString(value)
+  } else {
+    raw = JSON.stringify(value)
+  }
   const needsQuote = /[",\n\r]/.test(raw)
-  const escaped = raw.replace(/"/g, '""')
+  const escaped = raw.replaceAll(/"/g, '""')
   return needsQuote ? `"${escaped}"` : escaped
 }
 
@@ -91,14 +104,7 @@ export function chunkPreviewToMarkdown(preview: ChunkPreviewResponse) {
   const unit = preview.params?.unit || 'chars'
   const safeName = sanitizeFilename(preview.filename || 'document')
 
-  lines.push(`# ${safeName}`)
-  lines.push('')
-  lines.push(`- parser_backend: ${preview.parser_backend}`)
-  lines.push(`- chunk_strategy: ${preview.chunk_strategy}`)
-  lines.push(`- chunk_size: ${preview.params?.chunk_size} (${unit})`)
-  lines.push(`- chunk_overlap: ${preview.params?.chunk_overlap} (${unit})`)
-  lines.push(`- total_chunks: ${preview.total_chunks}`)
-  lines.push('')
+    lines.push(`# ${safeName}`, '', `- parser_backend: ${preview.parser_backend}`, `- chunk_strategy: ${preview.chunk_strategy}`, `- chunk_size: ${preview.params?.chunk_size} (${unit})`, `- chunk_overlap: ${preview.params?.chunk_overlap} (${unit})`, `- total_chunks: ${preview.total_chunks}`, '')
 
   // Use 4 backticks to reduce accidental fence collisions with chunk contents.
   const fence = '````'
@@ -106,17 +112,9 @@ export function chunkPreviewToMarkdown(preview: ChunkPreviewResponse) {
   for (const c of preview.chunks || []) {
     const pageLabel = typeof c.page_number === 'number' ? ` (P.${c.page_number})` : ''
     const tok = typeof c.tokens_est === 'number' ? c.tokens_est : undefined
-    const lenLine = tok != null ? `${c.length} chars · ${tok} tok` : `${c.length} chars`
+    const lenLine = tok == null ? `${c.length} chars` : `${c.length} chars · ${tok} tok`
 
-    lines.push(`## Chunk ${Number(c.index) + 1}${pageLabel}`)
-    lines.push('')
-    lines.push(`- range: ${c.start_index}-${c.end_index}`)
-    lines.push(`- length: ${lenLine}`)
-    lines.push('')
-    lines.push(`${fence}text`)
-    lines.push(String(c.content ?? ''))
-    lines.push(fence)
-    lines.push('')
+        lines.push(`## Chunk ${Number(c.index) + 1}${pageLabel}`, '', `- range: ${c.start_index}-${c.end_index}`, `- length: ${lenLine}`, '', `${fence}text`, String(c.content ?? ''), fence, '')
   }
 
   return lines.join('\n')
@@ -195,7 +193,19 @@ export function chunkPreviewToReviewReport(
       length: Number(c.length) || 0,
       tokens_est: typeof c.tokens_est === 'number' ? c.tokens_est : null,
       role: typeof meta.chunk_role === 'string' ? meta.chunk_role : null,
-      parent_id: typeof meta.parent_id === 'string' ? meta.parent_id : typeof meta.parent_node_id === 'string' ? meta.parent_node_id : null,
+      parent_id: (() => {
+    if (typeof meta.parent_id === 'string') {
+        return meta.parent_id;
+    }
+    else {
+        if (typeof meta.parent_node_id === 'string') {
+            return meta.parent_node_id;
+        }
+        else {
+            return null;
+        }
+    }
+})(),
       disabled: isDisabled,
       edited: isEdited,
       flags: {
@@ -253,9 +263,7 @@ export function chunkPreviewToReviewReport(
 }
 
 function oneLine(value: unknown) {
-  return String(value ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return toSingleLinePrimitiveString(value)
 }
 
 function fmtPctRatio(value: unknown): string | null {
@@ -283,23 +291,15 @@ export function chunkPreviewToReviewMarkdown(
   const lines: string[] = []
 
   const filename = String(report?.file?.filename || preview.filename || 'document')
-  lines.push(`# ${filename} — Chunk Review`)
-  lines.push('')
-  lines.push(`- schema: ${String(report?.schema || 'mimirq.chunk_review.v1')}`)
+    lines.push(`# ${filename} — Chunk Review`, '', `- schema: ${String(report?.schema || 'mimirq.chunk_review.v1')}`)
   if (report?.generated_at) lines.push(`- generated_at: ${String(report.generated_at)}`)
   lines.push('')
 
-  const cfg = (report?.config || {}) as any
-  lines.push('## Config')
-  lines.push(`- parser_backend: ${String(cfg.parser_backend || '')}`)
-  lines.push(`- chunk_strategy: ${String(cfg.chunk_strategy || '')}`)
-  lines.push(`- chunk_size: ${String(cfg.chunk_size ?? '')} (${String(cfg.unit || 'chars')})`)
-  lines.push(`- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${String(cfg.unit || 'chars')})`)
-  lines.push('')
+  const cfg = (report?.config || {})
+    lines.push('## Config', `- parser_backend: ${String(cfg.parser_backend || '')}`, `- chunk_strategy: ${String(cfg.chunk_strategy || '')}`, `- chunk_size: ${String(cfg.chunk_size ?? '')} (${String(cfg.unit || 'chars')})`, `- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${String(cfg.unit || 'chars')})`, '')
 
-  const stats = (report?.stats || {}) as any
-  lines.push('## Stats')
-  lines.push(`- count: ${String(stats.count ?? '')}`)
+  const stats = (report?.stats || {})
+    lines.push('## Stats', `- count: ${String(stats.count ?? '')}`)
   if (stats.coverage_ratio != null) lines.push(`- coverage_ratio: ${fmtPctRatio(stats.coverage_ratio) ?? String(stats.coverage_ratio)}`)
   if (stats.overlap_waste_ratio != null) {
     lines.push(`- overlap_waste_ratio: ${fmtPctRatio(stats.overlap_waste_ratio) ?? String(stats.overlap_waste_ratio)}`)
@@ -308,25 +308,12 @@ export function chunkPreviewToReviewMarkdown(
   if (stats.largest_gap != null) lines.push(`- largest_gap: ${String(stats.largest_gap)}`)
   lines.push('')
 
-  const summary = (report?.summary || {}) as any
-  const issueCounts = (summary.issue_counts || {}) as any
-  lines.push('## Summary')
-  lines.push(`- total_chunks: ${String(summary.total_chunks ?? '')}`)
-  lines.push(`- total_chunks_in_report: ${String(summary.total_chunks_in_report ?? '')}`)
-  lines.push(`- include_disabled: ${String(summary.include_disabled ?? false)}`)
-  lines.push(`- disabled_count: ${String(summary.disabled_count ?? 0)} · edited_count: ${String(summary.edited_count ?? 0)}`)
-  lines.push(
-    `- issue_counts: short=${String(issueCounts.short ?? 0)} duplicate=${String(issueCounts.duplicate ?? 0)} gap=${String(issueCounts.gap ?? 0)} overlap=${String(issueCounts.overlap ?? 0)}`
-  )
-  lines.push('')
+  const summary = (report?.summary || {})
+  const issueCounts = (summary.issue_counts || {})
+    lines.push('## Summary', `- total_chunks: ${String(summary.total_chunks ?? '')}`, `- total_chunks_in_report: ${String(summary.total_chunks_in_report ?? '')}`, `- include_disabled: ${String(summary.include_disabled ?? false)}`, `- disabled_count: ${String(summary.disabled_count ?? 0)} · edited_count: ${String(summary.edited_count ?? 0)}`, `- issue_counts: short=${String(issueCounts.short ?? 0)} duplicate=${String(issueCounts.duplicate ?? 0)} gap=${String(issueCounts.gap ?? 0)} overlap=${String(issueCounts.overlap ?? 0)}`, '')
 
-  const signals = (report?.review_signals || {}) as any
-  lines.push('## Issue Indices')
-  lines.push(`- short_indices: ${listChunkNumbers(signals.short_indices)}`)
-  lines.push(`- duplicate_indices: ${listChunkNumbers(signals.duplicate_indices)}`)
-  lines.push(`- gap_indices: ${listChunkNumbers(signals.gap_indices)}`)
-  lines.push(`- overlap_indices: ${listChunkNumbers(signals.overlap_indices)}`)
-  lines.push('')
+  const signals = (report?.review_signals || {})
+    lines.push('## Issue Indices', `- short_indices: ${listChunkNumbers(signals.short_indices)}`, `- duplicate_indices: ${listChunkNumbers(signals.duplicate_indices)}`, `- gap_indices: ${listChunkNumbers(signals.gap_indices)}`, `- overlap_indices: ${listChunkNumbers(signals.overlap_indices)}`, '')
 
   const recs = Array.isArray(report?.recommendations) ? report.recommendations : []
   if (recs.length) {
