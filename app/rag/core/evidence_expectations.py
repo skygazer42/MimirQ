@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 DEFAULT_EVIDENCE_ANCHOR_FIELDS: tuple[str, ...] = ("chunk_id", "document_id")
 
@@ -52,7 +53,7 @@ def evaluate_evidence_anchor_expectations(
             "passed": True,
         }
 
-    missing_counts: dict[str, int] = {f: 0 for f in req}
+    missing_counts: dict[str, int] = dict.fromkeys(req, 0)
     missing_examples: list[dict[str, Any]] = []
     missing_any = 0
     considered = 0

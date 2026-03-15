@@ -5,9 +5,10 @@ import json
 import os
 import time
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
 
 
 def _percent(v: float) -> str:
@@ -17,7 +18,7 @@ def _percent(v: float) -> str:
         return "n/a"
 
 
-def _coerce_float(v: Any) -> Optional[float]:
+def _coerce_float(v: Any) -> float | None:
     try:
         if v is None:
             return None
@@ -26,7 +27,7 @@ def _coerce_float(v: Any) -> Optional[float]:
         return None
 
 
-def _quantile(values: List[float], q: float) -> Optional[float]:
+def _quantile(values: list[float], q: float) -> float | None:
     if not values:
         return None
     xs = sorted(values)
@@ -39,7 +40,7 @@ def _quantile(values: List[float], q: float) -> Optional[float]:
     return xs[i]
 
 
-def _read_jsonl(path: Path, *, tail: int = 0) -> Iterable[Dict[str, Any]]:
+def _read_jsonl(path: Path, *, tail: int = 0) -> Iterable[dict[str, Any]]:
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError:
@@ -49,7 +50,7 @@ def _read_jsonl(path: Path, *, tail: int = 0) -> Iterable[Dict[str, Any]]:
     if tail and tail > 0:
         lines = lines[-int(tail) :]
 
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for ln in lines:
         try:
             rec = json.loads(ln)
@@ -67,15 +68,15 @@ class OpSummary:
     success: int
     failed: int
     failure_rate: float
-    p50_ms: Optional[float]
-    p90_ms: Optional[float]
-    p99_ms: Optional[float]
+    p50_ms: float | None
+    p90_ms: float | None
+    p99_ms: float | None
 
 
-def _summarize_ops(records: Iterable[Dict[str, Any]]) -> Tuple[List[OpSummary], List[str]]:
-    counts: Dict[str, Dict[str, int]] = defaultdict(lambda: {"total": 0, "success": 0, "failed": 0})
-    latencies: Dict[str, List[float]] = defaultdict(list)
-    errors: List[str] = []
+def _summarize_ops(records: Iterable[dict[str, Any]]) -> tuple[list[OpSummary], list[str]]:
+    counts: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "success": 0, "failed": 0})
+    latencies: dict[str, list[float]] = defaultdict(list)
+    errors: list[str] = []
 
     for r in records:
         op = str(r.get("op") or "").strip() or "unknown"
@@ -91,7 +92,7 @@ def _summarize_ops(records: Iterable[Dict[str, Any]]) -> Tuple[List[OpSummary], 
         if not ok and isinstance(err, str) and err.strip():
             errors.append(f"{op}: {err.strip()[:200]}")
 
-    out: List[OpSummary] = []
+    out: list[OpSummary] = []
     for op, c in sorted(counts.items(), key=lambda kv: (-kv[1]["total"], kv[0])):
         total = int(c["total"])
         failed = int(c["failed"])
@@ -114,8 +115,8 @@ def _summarize_ops(records: Iterable[Dict[str, Any]]) -> Tuple[List[OpSummary], 
     return out, errors
 
 
-def _filter_since(records: Iterable[Dict[str, Any]], *, since_ts: float) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+def _filter_since(records: Iterable[dict[str, Any]], *, since_ts: float) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     for r in records:
         ts = _coerce_float(r.get("ts"))
         if ts is None:
@@ -125,14 +126,14 @@ def _filter_since(records: Iterable[Dict[str, Any]], *, since_ts: float) -> List
     return out
 
 
-def _print_table(summaries: List[OpSummary]) -> None:
+def _print_table(summaries: list[OpSummary]) -> None:
     if not summaries:
         print("[minio-metrics] (no records)")
         return
 
     cols = ["op", "total", "failed", "failure_rate", "p50_ms", "p90_ms", "p99_ms"]
     widths = {c: len(c) for c in cols}
-    rows: List[Dict[str, str]] = []
+    rows: list[dict[str, str]] = []
     for s in summaries:
         row = {
             "op": s.op,

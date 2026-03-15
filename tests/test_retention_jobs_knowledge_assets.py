@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _FakeDB:
@@ -22,19 +22,19 @@ def test_run_knowledge_asset_retention_dry_run(monkeypatch):  # noqa: ANN001
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 7, 0, 0, 0, tzinfo=UTC)
 
     planned_rows = [
         {
             "document_id": uuid.uuid4(),
             "dataset_id": uuid.uuid4(),
-            "lifecycle_ts": datetime(2025, 11, 1, tzinfo=timezone.utc),
+            "lifecycle_ts": datetime(2025, 11, 1, tzinfo=UTC),
             "lifecycle_state": "archived",
         },
         {
             "document_id": uuid.uuid4(),
             "dataset_id": uuid.uuid4(),
-            "lifecycle_ts": datetime(2025, 11, 2, tzinfo=timezone.utc),
+            "lifecycle_ts": datetime(2025, 11, 2, tzinfo=UTC),
             "lifecycle_state": "disabled",
         },
     ]
@@ -42,6 +42,7 @@ def test_run_knowledge_asset_retention_dry_run(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(retention_jobs, "plan_knowledge_asset_purge", lambda *_a, **_k: planned_rows, raising=True)
 
     async def _fail_delete(**_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         raise AssertionError("dry-run must not invoke document delete lifecycle")
 
     monkeypatch.setattr(retention_jobs, "_delete_document_lifecycle", _fail_delete, raising=False)
@@ -80,7 +81,7 @@ def test_run_knowledge_asset_retention_execute(monkeypatch):  # noqa: ANN001
     db = _FakeDB()
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    now = datetime(2026, 3, 7, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 7, 0, 0, 0, tzinfo=UTC)
 
     doc1 = uuid.uuid4()
     doc2 = uuid.uuid4()
@@ -88,13 +89,13 @@ def test_run_knowledge_asset_retention_execute(monkeypatch):  # noqa: ANN001
         {
             "document_id": doc1,
             "dataset_id": dataset_id,
-            "lifecycle_ts": datetime(2025, 11, 1, tzinfo=timezone.utc),
+            "lifecycle_ts": datetime(2025, 11, 1, tzinfo=UTC),
             "lifecycle_state": "archived",
         },
         {
             "document_id": doc2,
             "dataset_id": dataset_id,
-            "lifecycle_ts": datetime(2025, 11, 2, tzinfo=timezone.utc),
+            "lifecycle_ts": datetime(2025, 11, 2, tzinfo=UTC),
             "lifecycle_state": "archived",
         },
     ]
@@ -104,6 +105,7 @@ def test_run_knowledge_asset_retention_execute(monkeypatch):  # noqa: ANN001
     deleted_ids: list[uuid.UUID] = []
 
     async def _delete_document_lifecycle(*, document_id, tenant_id, account_id, db, enforce_permissions):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         assert tenant_id
         assert account_id == "system:test"
         assert enforce_permissions is False

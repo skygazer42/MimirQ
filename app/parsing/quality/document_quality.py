@@ -12,7 +12,8 @@ It combines existing signals that are already persisted in doc metadata:
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 
 def _coerce_float(value: Any) -> float | None:

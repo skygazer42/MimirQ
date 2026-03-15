@@ -29,7 +29,7 @@ function toBase64Url(bytes: Uint8Array): string {
 
   let out = ''
   for (const byte of bytes) out += String.fromCharCode(byte)
-  return btoa(out).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+  return btoa(out).replaceAll(/\+/g, '-').replaceAll(/\//g, '_').replaceAll(/=+$/g, '')
 }
 
 function fromBase64Url(value: string): Uint8Array | null {
@@ -41,7 +41,7 @@ function fromBase64Url(value: string): Uint8Array | null {
       return new Uint8Array(Buffer.from(normalized, 'base64url'))
     }
 
-    const padded = normalized.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    const padded = normalized.replaceAll(/-/g, '+').replaceAll(/_/g, '/').padEnd(Math.ceil(normalized.length / 4) * 4, '=')
     const binary = atob(padded)
     return Uint8Array.from(binary, (char) => char.charCodeAt(0))
   } catch {
@@ -91,11 +91,11 @@ export function consumeSamlBridgeState(): SamlBridgeState | null {
       parsed.kind === 'success' &&
       parsed.session &&
       typeof parsed.returnTo === 'string' &&
-      typeof (parsed.session as AuthResponse).token?.access_token === 'string'
+      typeof (parsed.session).token?.access_token === 'string'
     ) {
       return {
         kind: 'success',
-        session: parsed.session as AuthResponse,
+        session: parsed.session,
         returnTo: parsed.returnTo,
       }
     }

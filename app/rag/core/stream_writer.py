@@ -20,9 +20,10 @@ import asyncio
 import json
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any
 
 from app.core.config import settings
 
@@ -47,11 +48,11 @@ class StreamChunk:
     """
     type: str
     content: Any
-    node: Optional[str] = None
+    node: str | None = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "type": self.type,
@@ -85,7 +86,7 @@ class BaseStreamWriter(ABC):
         pass
 
     @abstractmethod
-    async def write_metadata(self, metadata: Dict[str, Any], **kwargs) -> None:
+    async def write_metadata(self, metadata: dict[str, Any], **kwargs) -> None:
         """Write metadata to the stream."""
         pass
 
@@ -110,7 +111,7 @@ class StreamWriter(BaseStreamWriter):
     def __init__(
         self,
         buffer_size: int = STREAM_BUFFER_SIZE,
-        node: Optional[str] = None,
+        node: str | None = None,
     ):
         """
         Initialize the stream writer.
@@ -119,10 +120,10 @@ class StreamWriter(BaseStreamWriter):
             buffer_size: Maximum buffer size
             node: Default node name for chunks
         """
-        self._queue: asyncio.Queue[Optional[StreamChunk]] = asyncio.Queue(maxsize=buffer_size)
+        self._queue: asyncio.Queue[StreamChunk | None] = asyncio.Queue(maxsize=buffer_size)
         self._closed = False
         self._node = node
-        self._listeners: List[Callable[[StreamChunk], None]] = []
+        self._listeners: list[Callable[[StreamChunk], None]] = []
         self._chunks_written = 0
 
     @property
@@ -187,7 +188,7 @@ class StreamWriter(BaseStreamWriter):
         )
         await self._put_chunk(chunk)
 
-    async def write_metadata(self, metadata: Dict[str, Any], **kwargs) -> None:
+    async def write_metadata(self, metadata: dict[str, Any], **kwargs) -> None:
         """Write metadata to the stream."""
         chunk = StreamChunk(
             type="metadata",
@@ -288,14 +289,14 @@ class StreamWriter(BaseStreamWriter):
                 break
             yield chunk
 
-    async def read_all(self) -> List[StreamChunk]:
+    async def read_all(self) -> list[StreamChunk]:
         """Read all chunks (waits for stream to close)."""
         chunks = []
         async for chunk in self:
             chunks.append(chunk)
         return chunks
 
-    async def drain(self) -> List[StreamChunk]:
+    async def drain(self) -> list[StreamChunk]:
         """Drain all currently available chunks without waiting."""
         chunks = []
         while not self._queue.empty():
@@ -315,7 +316,7 @@ class CallbackStreamWriter(BaseStreamWriter):
     def __init__(
         self,
         callback: Callable[[StreamChunk], None],
-        node: Optional[str] = None,
+        node: str | None = None,
     ):
         """
         Initialize with a callback function.
@@ -357,7 +358,7 @@ class CallbackStreamWriter(BaseStreamWriter):
         )
         await self._emit(chunk)
 
-    async def write_metadata(self, metadata: Dict[str, Any], **kwargs) -> None:
+    async def write_metadata(self, metadata: dict[str, Any], **kwargs) -> None:
         chunk = StreamChunk(
             type="metadata",
             content=metadata,
@@ -399,7 +400,7 @@ class NullStreamWriter(BaseStreamWriter):
     async def write_token(self, token: str, **kwargs) -> None:
         pass
 
-    async def write_metadata(self, metadata: Dict[str, Any], **kwargs) -> None:
+    async def write_metadata(self, metadata: dict[str, Any], **kwargs) -> None:
         pass
 
     async def write_error(self, error: str, **kwargs) -> None:
@@ -416,7 +417,7 @@ class MultiStreamWriter(BaseStreamWriter):
     Useful for logging and multiple consumers.
     """
 
-    def __init__(self, writers: Optional[List[BaseStreamWriter]] = None):
+    def __init__(self, writers: list[BaseStreamWriter] | None = None):
         self._writers = writers or []
 
     def add_writer(self, writer: BaseStreamWriter) -> None:
@@ -442,7 +443,7 @@ class MultiStreamWriter(BaseStreamWriter):
     async def write_token(self, token: str, **kwargs) -> None:
         await self._broadcast("write_token", token, **kwargs)
 
-    async def write_metadata(self, metadata: Dict[str, Any], **kwargs) -> None:
+    async def write_metadata(self, metadata: dict[str, Any], **kwargs) -> None:
         await self._broadcast("write_metadata", metadata, **kwargs)
 
     async def write_error(self, error: str, **kwargs) -> None:
@@ -452,7 +453,7 @@ class MultiStreamWriter(BaseStreamWriter):
         await self._broadcast("close")
 
 
-def get_stream_writer(enabled: Optional[bool] = None) -> BaseStreamWriter:
+def get_stream_writer(enabled: bool | None = None) -> BaseStreamWriter:
     """
     Get a stream writer based on configuration.
 

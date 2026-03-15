@@ -1,8 +1,8 @@
 """
 JWT helpers for issuing access tokens.
 """
-from datetime import datetime, timedelta, timezone
-from typing import Any, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from jose import jwt
 
@@ -15,7 +15,7 @@ def create_access_token(
     expires_minutes: int | None = None,
     tenant_id: str | None = None,
     extra_claims: dict[str, Any] | None = None,
-) -> Tuple[str, int]:
+) -> tuple[str, int]:
     """
     Create a signed JWT access token.
 
@@ -23,11 +23,11 @@ def create_access_token(
     """
     minutes = int(expires_minutes or getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 30))
     expires_delta = timedelta(minutes=max(1, minutes))
-    expire_at = datetime.now(timezone.utc) + expires_delta
+    expire_at = datetime.now(UTC) + expires_delta
     payload = {
         "sub": str(subject),
         "exp": expire_at,
-        "iat": datetime.now(timezone.utc),
+        "iat": datetime.now(UTC),
     }
     if extra_claims:
         for key, value in dict(extra_claims).items():

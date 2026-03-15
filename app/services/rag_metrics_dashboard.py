@@ -18,15 +18,16 @@ import json
 import math
 import time
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, List, Optional
+from typing import Any
 
 from app.core.config import settings
 
 
-def _percentile(values: List[float], p: float) -> Optional[float]:
+def _percentile(values: list[float], p: float) -> float | None:
     if not values:
         return None
     vals = sorted(float(v) for v in values if v is not None)
@@ -45,8 +46,8 @@ def _percentile(values: List[float], p: float) -> Optional[float]:
     return d0 + d1
 
 
-def _mean(values: Iterable[float]) -> Optional[float]:
-    vals: List[float] = []
+def _mean(values: Iterable[float]) -> float | None:
+    vals: list[float] = []
     for v in values:
         try:
             fv = float(v)
@@ -58,8 +59,8 @@ def _mean(values: Iterable[float]) -> Optional[float]:
     return sum(vals) / len(vals)
 
 
-def _stddev(values: Iterable[float]) -> Optional[float]:
-    vals: List[float] = []
+def _stddev(values: Iterable[float]) -> float | None:
+    vals: list[float] = []
     for v in values:
         try:
             fv = float(v)
@@ -334,7 +335,7 @@ def summarize_rag_metrics(
     # Build timeseries arrays (sorted by time).
     ts_keys = sorted(k for k in bucket.keys() if k)
     series = {
-        "ts_ms": [k for k in ts_keys],
+        "ts_ms": list(ts_keys),
         "rag_trace": [int(bucket[k]["rag_trace"]) for k in ts_keys],
         "reranker_api": [int(bucket[k]["reranker_api"]) for k in ts_keys],
         "retrieval_avg_elapsed_sec": [
@@ -1013,7 +1014,7 @@ def summarize_rag_query_analytics(
 
     ts_keys = sorted(k for k in bucket.keys() if k)
     timeseries = {
-        "ts_ms": [k for k in ts_keys],
+        "ts_ms": list(ts_keys),
         "requests": [int(bucket[k]["requests"]) for k in ts_keys],
         "zero_hit": [int(bucket[k]["zero_hit"]) for k in ts_keys],
         "slow": [int(bucket[k]["slow"]) for k in ts_keys],
@@ -1243,7 +1244,7 @@ class RagTraceBundle:
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _first_event(records: list[dict[str, Any]], event: str) -> dict[str, Any] | None:

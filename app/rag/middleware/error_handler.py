@@ -8,9 +8,10 @@ Provides error handling, retry, and fallback mechanisms for LLM calls.
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any
 
 from app.core.config import settings
 
@@ -38,8 +39,8 @@ class ErrorHandlerMiddleware:
     def __init__(
         self,
         max_retries: int = 3,
-        fallback_model: Optional[str] = None,
-        retryable_errors: Optional[List[Type[Exception]]] = None,
+        fallback_model: str | None = None,
+        retryable_errors: list[type[Exception]] | None = None,
     ):
         self.max_retries = max_retries
         self.fallback_model = fallback_model or getattr(settings, "LLM_MODEL_FAST", None)
@@ -52,7 +53,7 @@ class ErrorHandlerMiddleware:
         """Wrap a function with error handling."""
 
         @wraps(func)
-        async def async_wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        async def async_wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             last_exception = None
             attempts = 0
 
@@ -101,7 +102,7 @@ class ErrorHandlerMiddleware:
             return state
 
         @wraps(func)
-        def sync_wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        def sync_wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             last_exception = None
             attempts = 0
 
@@ -152,7 +153,7 @@ class RateLimitHandler:
         self,
         initial_delay: float = 1.0,
         max_delay: float = 120.0,
-        fallback_models: Optional[List[str]] = None,
+        fallback_models: list[str] | None = None,
     ):
         self.initial_delay = initial_delay
         self.max_delay = max_delay
@@ -162,7 +163,7 @@ class RateLimitHandler:
 
     def __call__(self, func: Callable) -> Callable:
         @wraps(func)
-        async def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        async def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             try:
                 result = await func(state, *args, **kwargs)
                 # Reset delay on success
@@ -206,14 +207,14 @@ class TimeoutHandler:
     def __init__(
         self,
         timeout: float = 60.0,
-        fallback_model: Optional[str] = None,
+        fallback_model: str | None = None,
     ):
         self.timeout = timeout
         self.fallback_model = fallback_model
 
     def __call__(self, func: Callable) -> Callable:
         @wraps(func)
-        async def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        async def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             try:
                 return await asyncio.wait_for(
                     func(state, *args, **kwargs),
@@ -239,7 +240,7 @@ class FallbackModelHandler:
 
     def __init__(
         self,
-        fallback_chain: Optional[List[str]] = None,
+        fallback_chain: list[str] | None = None,
     ):
         """
         Args:
@@ -254,7 +255,7 @@ class FallbackModelHandler:
 
     def __call__(self, func: Callable) -> Callable:
         @wraps(func)
-        async def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        async def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             last_error = None
 
             # Try primary model first
@@ -291,8 +292,8 @@ class FallbackModelHandler:
 
 # Convenience function to create a standard error handler
 def create_error_handler(
-    max_retries: Optional[int] = None,
-    fallback_model: Optional[str] = None,
+    max_retries: int | None = None,
+    fallback_model: str | None = None,
 ) -> ErrorHandlerMiddleware:
     """Create a standard error handler with sensible defaults."""
     return ErrorHandlerMiddleware(

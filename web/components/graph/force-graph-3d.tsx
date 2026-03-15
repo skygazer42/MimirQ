@@ -45,7 +45,7 @@ interface ForceGraph3DProps {
   height?: number
 }
 
-export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGraph3DProps) {
+export function KnowledgeGraph3D({ data, onNodeClick, width, height }: Readonly<ForceGraph3DProps>) {
   const { resolvedTheme } = useTheme()
   const fgRef = useRef<any>(null)
   const [mounted, setMounted] = useState(false)
@@ -99,12 +99,12 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGrap
       
       // Link Styling
       linkColor={(link: any) => {
-        const linkId = link?.id || (link?.index !== undefined ? `link-${link.index}` : null)
+        const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
         if (hoveredLinkId && linkId && hoveredLinkId === linkId) return hoverLinkColor
         return linkColor
       }}
       linkWidth={(link: any) => {
-        const linkId = link?.id || (link?.index !== undefined ? `link-${link.index}` : null)
+        const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
         if (hoveredLinkId && linkId && hoveredLinkId === linkId) return 2
         return 1
       }}
@@ -116,7 +116,7 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: ForceGrap
       // Interaction
       onNodeClick={handleNodeClick}
       onLinkHover={(link: any) => {
-        const linkId = link?.id || (link?.index !== undefined ? `link-${link.index}` : null)
+        const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
         setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
       }}
       

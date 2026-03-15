@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -144,7 +144,7 @@ def invalidate_dataset_cache_namespace(
     if dataset is None:
         raise LookupError("dataset not found")
 
-    invalidated_at = datetime.now(timezone.utc)
+    invalidated_at = datetime.now(UTC)
     dataset.updated_at = invalidated_at
 
     try:

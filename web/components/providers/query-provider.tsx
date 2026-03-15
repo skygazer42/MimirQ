@@ -21,7 +21,7 @@ function shouldRetryQuery(failureCount: number, error: unknown): boolean {
   return true
 }
 
-export function QueryProvider({ children }: { children: React.ReactNode }) {
+export function QueryProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [queryClient] = useState(
     () =>
       new QueryClient({

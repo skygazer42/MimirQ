@@ -70,11 +70,11 @@ class LayoutRecognizer(Recognizer):
     def __call__(self, image_list, ocr_res, scale_factor=3,
                  thr=0.2, batch_size=16, drop=True):
         def __is_garbage(b):
-            patt = [r"^•+$", "^[0-9]{1,2} / ?[0-9]{1,2}$",
-                    r"^[0-9]{1,2} of [0-9]{1,2}$", "^http://[^ ]{12,}",
-                    "\\(cid *: *[0-9]+ *\\)"
+            patt = [r"^•+$", "^\\d{1,2} / ?\\d{1,2}$",
+                    r"^\d{1,2} of \d{1,2}$", "^http://[^ ]{12,}",
+                    "\\(cid *: *\\d+ *\\)"
                     ]
-            return any([re.search(p, b["text"]) for p in patt])
+            return any(re.search(p, b["text"]) for p in patt)
 
         layouts = super().__call__(image_list, thr, batch_size)
         # save_results(image_list, layouts, self.labels, output_dir='output/', threshold=0.7)

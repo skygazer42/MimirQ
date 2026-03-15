@@ -7,7 +7,7 @@ import { IconButton } from "@/components/ui/icon-button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
-export type SearchInputProps = Omit<
+export type SearchInputProps = Readonly<Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   "type" | "value" | "onChange"
 > & {
@@ -16,7 +16,7 @@ export type SearchInputProps = Omit<
   containerClassName?: string
   inputClassName?: string
   onClear?: () => void
-}
+}>
 
 export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(function SearchInput(
   {

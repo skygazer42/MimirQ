@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid5
 
 from langchain_core.documents import Document
@@ -55,7 +55,7 @@ class _TableCandidate:
     source_ext: str | None
     table_id: str
     sheet_index: int
-    sheet_name: Optional[str]
+    sheet_name: str | None
     row_count: int
     col_count: int
     columns: list[dict[str, Any]]
@@ -172,7 +172,7 @@ def _score_candidate(
     *,
     terms: list[str],
     filename: str,
-    sheet_name: Optional[str],
+    sheet_name: str | None,
     columns: list[dict[str, Any]],
     sample_rows: list[dict[str, Any]],
 ) -> int:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -48,6 +49,7 @@ def test_parsing_workspace_returns_quality_gate_and_fallback(monkeypatch, tmp_pa
     monkeypatch.setattr(parsing_module.parser_factory, "resolve_backend", lambda *_a, **_k: "basic", raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         backend = str(payload.get("parser_backend") or "")
         if backend == "auto":
             # Simulate low-quality parse that should trigger fallback.

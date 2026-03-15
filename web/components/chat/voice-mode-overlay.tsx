@@ -11,7 +11,7 @@ interface VoiceModeOverlayProps {
     onSend: (text: string) => void
 }
 
-export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayProps) {
+export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceModeOverlayProps>) {
 	    const [isListening, setIsListening] = useState(false)
 	    const [transcript, setTranscript] = useState("")
 	    const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -21,8 +21,8 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
     const recognitionRef = useRef<any>(null)
 
     useEffect(() => {
-        if (typeof window !== 'undefined' && (window as any).webkitSpeechRecognition) {
-            const SpeechRecognition = (window as any).webkitSpeechRecognition
+        if (typeof globalThis.window !== 'undefined' && (globalThis.window as any).webkitSpeechRecognition) {
+            const SpeechRecognition = (globalThis.window as any).webkitSpeechRecognition
             const recognition = new SpeechRecognition()
             recognition.continuous = true
             recognition.interimResults = true
@@ -70,9 +70,9 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	        const primaryColorMuted = primaryVar ? `hsl(${primaryVar} / 0.3)` : 'rgba(14, 165, 233, 0.3)'
 
 	        const syncCanvasSize = () => {
-	            const dpr = Math.max(1, window.devicePixelRatio || 1)
-	            const width = window.innerWidth
-	            const height = window.innerHeight
+	            const dpr = Math.max(1, globalThis.window.devicePixelRatio || 1)
+	            const width = globalThis.window.innerWidth
+	            const height = globalThis.window.innerHeight
 	            viewport = { width, height }
 
 	            // Render in CSS pixels, but keep the backing store crisp on HiDPI.
@@ -84,7 +84,7 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	        const onResize = () => syncCanvasSize()
 
 	        syncCanvasSize()
-	        window.addEventListener('resize', onResize)
+	        globalThis.window.addEventListener('resize', onResize)
 
 	        const shouldAnimate = () =>
 	            !reduceMotion && isListening && document.visibilityState === 'visible'
@@ -119,7 +119,7 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	            }
 
 	            if (shouldAnimate()) {
-	                animationFrameId = window.requestAnimationFrame(render)
+	                animationFrameId = globalThis.window.requestAnimationFrame(render)
 	            } else {
 	                animationFrameId = null
 	            }
@@ -134,7 +134,7 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	            }
 
 	            if (animationFrameId != null) {
-	                window.cancelAnimationFrame(animationFrameId)
+	                globalThis.window.cancelAnimationFrame(animationFrameId)
 	                animationFrameId = null
 	            }
 
@@ -145,10 +145,10 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: VoiceModeOverlayPr
 	        document.addEventListener('visibilitychange', onVisibilityChange)
 	        render()
 	        return () => {
-	            window.removeEventListener('resize', onResize)
+	            globalThis.window.removeEventListener('resize', onResize)
 	            document.removeEventListener('visibilitychange', onVisibilityChange)
 	            if (animationFrameId != null) {
-	                window.cancelAnimationFrame(animationFrameId)
+	                globalThis.window.cancelAnimationFrame(animationFrameId)
 	            }
 	        }
 	    }, [isOpen, isListening, reduceMotion])

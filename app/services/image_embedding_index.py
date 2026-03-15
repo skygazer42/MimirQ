@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import contextlib
 import io
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, select

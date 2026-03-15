@@ -6,6 +6,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -41,8 +43,8 @@ def test_validate_queryset_health_policy_script_passes_with_valid_policy(tmp_pat
     assert rc == 0
     assert out.exists()
     payload = json.loads(out.read_text(encoding="utf-8"))
-    assert payload.get("miss_rate_regression_threshold") == 0.2
-    assert payload.get("weak_hit_rr_threshold") == 0.15
+    assert payload.get("miss_rate_regression_threshold") == pytest.approx(0.2)
+    assert payload.get("weak_hit_rr_threshold") == pytest.approx(0.15)
     assert payload.get("hard_cases_limit") == 8
     assert "valid" in (capsys.readouterr().out or "").lower()
 

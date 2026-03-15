@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -121,8 +121,8 @@ def test_db_catalog_fls_masks_denied_columns(monkeypatch):  # noqa: ANN001
             self.comment = None
             self.fingerprint = "fp"
             self.last_seen_at = None
-            self.created_at = datetime.now(timezone.utc)
-            self.updated_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.updated_at = datetime.now(UTC)
 
     table = _Table()
 
@@ -135,14 +135,14 @@ def test_db_catalog_fls_masks_denied_columns(monkeypatch):  # noqa: ANN001
             self.data_type = "text"
             self.nullable = True
             self.comment = comment
-            self.created_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
 
     col_ssn = _Col(cid=uuid.uuid4(), name="ssn", ordinal=1, comment="Sensitive")
     col_name = _Col(cid=uuid.uuid4(), name="name", ordinal=2, comment="Non-sensitive")
 
     # Dataset access: allow.
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tid, did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tid, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
 
     class _Member:
         role = "member"
@@ -150,7 +150,7 @@ def test_db_catalog_fls_masks_denied_columns(monkeypatch):  # noqa: ANN001
     class _Owner:
         role = "owner"
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tid, aid: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tid, _aid: _Member(), raising=True)
 
     import app.api.v1.db_catalog as mod
 
@@ -182,7 +182,7 @@ def test_db_catalog_fls_masks_denied_columns(monkeypatch):  # noqa: ANN001
 
     # Owner: raw values.
     events.clear()
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tid, aid: _Owner(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tid, _aid: _Owner(), raising=True)
 
     res = client.get(f"/api/v1/datasets/{dataset_id}/db-catalog/tables/{table_id}")
     assert res.status_code == 200

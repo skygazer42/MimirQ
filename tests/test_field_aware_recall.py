@@ -57,7 +57,7 @@ def test_field_aware_recall_boost_is_off_by_default(monkeypatch: pytest.MonkeyPa
 
     assert merged
     assert merged[0].get("document_id") == "doc-body"
-    assert float(merged[0].get("field_aware_boost") or 0.0) == 0.0
+    assert float(merged[0].get("field_aware_boost") or 0.0) == pytest.approx(0.0)
 
 
 def test_field_aware_recall_boost_is_applied_and_reported(monkeypatch: pytest.MonkeyPatch) -> None:

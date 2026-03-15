@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_redis_rate_limiter_fail_open(monkeypatch):
     import app.api.middleware.rate_limit as rl
@@ -14,7 +16,7 @@ def test_redis_rate_limiter_fail_open(monkeypatch):
     allowed, wait_time = limiter.check("ip:127.0.0.1")
 
     assert allowed is True
-    assert wait_time == 0.0
+    assert wait_time == pytest.approx(0.0)
 
 
 def test_get_default_limiter_uses_redis_when_enabled(monkeypatch):

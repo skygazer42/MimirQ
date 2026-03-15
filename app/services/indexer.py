@@ -7,7 +7,8 @@ import hashlib
 import logging
 import time
 import uuid
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from collections.abc import Iterable, Sequence
+from typing import Any
 from uuid import UUID
 
 from langchain_core.documents import Document as LCDocument
@@ -39,7 +40,7 @@ from app.types.indexing import (
 logger = logging.getLogger("indexer")
 
 
-def _safe_int(value: Any) -> Optional[int]:
+def _safe_int(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -48,7 +49,7 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
-def _safe_uuid(value: Any) -> Optional[UUID]:
+def _safe_uuid(value: Any) -> UUID | None:
     if value is None:
         return None
     if isinstance(value, UUID):
@@ -60,12 +61,12 @@ def _safe_uuid(value: Any) -> Optional[UUID]:
 
 
 def _ensure_chunk_metadata(
-    meta: Dict[str, Any],
+    meta: dict[str, Any],
     *,
     content: str,
     document_id: UUID,
     chunk_index: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Ensure stable per-chunk metadata fields exist (used across DB/vector/BM25)."""
     if not isinstance(meta, dict):
         meta = {}
@@ -84,7 +85,7 @@ def _ensure_chunk_metadata(
     return meta
 
 
-def _should_prefix_embedding(meta: Dict[str, Any]) -> bool:
+def _should_prefix_embedding(meta: dict[str, Any]) -> bool:
     """Best-effort filter: avoid prefixing non-text assets (images/tables)."""
     doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
     if doc_type in {"image", "table"}:
@@ -96,7 +97,7 @@ def _should_prefix_embedding(meta: Dict[str, Any]) -> bool:
     return True
 
 
-def _build_embedding_text(content: str, meta: Dict[str, Any], *, max_prefix_chars: int = 180) -> str:
+def _build_embedding_text(content: str, meta: dict[str, Any], *, max_prefix_chars: int = 180) -> str:
     """
     Build the text used for embedding (vector similarity).
 
@@ -133,7 +134,7 @@ def _coerce_short_text(value: Any, *, max_chars: int) -> str | None:
     return s or None
 
 
-def _extract_title_for_embedding(meta: Dict[str, Any]) -> str | None:
+def _extract_title_for_embedding(meta: dict[str, Any]) -> str | None:
     """
     Best-effort extract a document "title" string for field-aware embeddings.
 
@@ -157,7 +158,7 @@ def _extract_title_for_embedding(meta: Dict[str, Any]) -> str | None:
     return _coerce_short_text(meta.get("source"), max_chars=200)
 
 
-def _extract_heading_for_embedding(meta: Dict[str, Any]) -> str | None:
+def _extract_heading_for_embedding(meta: dict[str, Any]) -> str | None:
     """Best-effort extract a section heading/path string for field-aware embeddings."""
     if not isinstance(meta, dict):
         return None
@@ -187,22 +188,22 @@ class Indexer:
         self._event_vector = get_milvus_adapter(collection_name=event_collection, vector_field="embedding")
         self._entity_vector = get_milvus_adapter(collection_name=entity_collection, vector_field="embedding")
 
-    def _resolve_chunk_vector_enabled(self, options: Optional[IndexingOptions]) -> bool:
+    def _resolve_chunk_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.chunk_vector_enabled is not None:
             return bool(options.chunk_vector_enabled)
         return bool(getattr(settings, "CHUNK_VECTOR_ENABLED", True))
 
-    def _resolve_bm25_enabled(self, options: Optional[IndexingOptions]) -> bool:
+    def _resolve_bm25_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.bm25_index_enabled is not None:
             return bool(options.bm25_index_enabled)
         return bool(getattr(settings, "BM25_INDEX_ENABLED", True))
 
-    def _resolve_event_vector_enabled(self, options: Optional[IndexingOptions]) -> bool:
+    def _resolve_event_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.event_vector_enabled is not None:
             return bool(options.event_vector_enabled)
         return bool(getattr(settings, "EVENT_VECTOR_ENABLED", True))
 
-    def _resolve_entity_vector_enabled(self, options: Optional[IndexingOptions]) -> bool:
+    def _resolve_entity_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.entity_vector_enabled is not None:
             return bool(options.entity_vector_enabled)
         return bool(getattr(settings, "ENTITY_VECTOR_ENABLED", True))
@@ -221,7 +222,7 @@ class Indexer:
         records: Sequence[IndexRecord],
         default_source: str = "unknown",
         commit: bool = True,
-        options: Optional[IndexingOptions] = None,
+        options: IndexingOptions | None = None,
     ) -> IndexBatchResult:
         start = time.time()
         if not records:
@@ -233,7 +234,7 @@ class Indexer:
         if unknown_kinds:
             raise ValueError(f"Unsupported index kinds: {sorted(unknown_kinds)}")
 
-        chunk_result: Optional[PersistChunksResult] = None
+        chunk_result: PersistChunksResult | None = None
         if chunk_records:
             doc_ids = {r.document_id for r in chunk_records if r.document_id is not None}
             if not doc_ids:
@@ -251,7 +252,7 @@ class Indexer:
                 options=options,
             )
 
-        event_result: Optional[PersistEventsResult] = None
+        event_result: PersistEventsResult | None = None
         if event_records:
             event_inputs = [self._record_to_event_input(r) for r in event_records]
             event_result = self.index_events(
@@ -299,7 +300,7 @@ class Indexer:
         self,
         *,
         tenant_id: UUID,
-        document_ids: Optional[List[UUID]] = None,
+        document_ids: list[UUID] | None = None,
     ) -> None:
         self.rebuild_tenant(tenant_id=tenant_id, document_ids=document_ids)
 
@@ -307,8 +308,8 @@ class Indexer:
         self,
         *,
         tenant_id: UUID,
-        document_ids: Optional[List[UUID]] = None,
-        kinds: Optional[Sequence[IndexKind]] = None,
+        document_ids: list[UUID] | None = None,
+        kinds: Sequence[IndexKind] | None = None,
     ) -> None:
         active = set(kinds or (IndexKind.CHUNK, IndexKind.EVENT))
         if IndexKind.CHUNK in active:
@@ -321,10 +322,10 @@ class Indexer:
         *,
         document_id: UUID,
         tenant_id: UUID,
-        chunks: List[ChunkInput],
+        chunks: list[ChunkInput],
         default_source: str = "unknown",
         commit: bool = True,
-        options: Optional[IndexingOptions] = None,
+        options: IndexingOptions | None = None,
     ) -> PersistChunksResult:
         dataset_id_str: str | None = None
         file_type_str: str | None = None
@@ -369,10 +370,10 @@ class Indexer:
             # Fail open if quota checks are unavailable (misconfig/DB issues).
             pass
 
-        normalized_chunks: List[ChunkInput] = []
-        vector_docs: List[Dict[str, Any]] = []
-        extra_vector_docs: List[Dict[str, Any]] = []
-        chunk_ids: List[UUID] = []
+        normalized_chunks: list[ChunkInput] = []
+        vector_docs: list[dict[str, Any]] = []
+        extra_vector_docs: list[dict[str, Any]] = []
+        chunk_ids: list[UUID] = []
         embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
         field_aware_enabled = bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False
         for idx, c in enumerate(chunks):
@@ -476,10 +477,10 @@ class Indexer:
         *,
         document_id: UUID,
         tenant_id: UUID,
-        chunks: List[ChunkInput],
+        chunks: list[ChunkInput],
         default_source: str = "unknown",
         commit: bool = True,
-        options: Optional[IndexingOptions] = None,
+        options: IndexingOptions | None = None,
     ) -> PersistChunksResult:
         """
         Concurrently index document chunks (vector store, PostgreSQL, BM25).
@@ -502,7 +503,7 @@ class Indexer:
         tenant_id: UUID,
         events: Sequence[EventInput],
         commit: bool = True,
-        options: Optional[IndexingOptions] = None,
+        options: IndexingOptions | None = None,
     ) -> PersistEventsResult:
         if not events:
             return PersistEventsResult(
@@ -514,8 +515,8 @@ class Indexer:
                 entity_vector_ids=[],
             )
 
-        entity_cache: Dict[Tuple[str, str, str], KgEntity] = {}
-        db_events: List[KgSourceEvent] = []
+        entity_cache: dict[tuple[str, str, str], KgEntity] = {}
+        db_events: list[KgSourceEvent] = []
 
         for item in events:
             refs = item.references if isinstance(getattr(item, "references", None), dict) else {}
@@ -601,8 +602,8 @@ class Indexer:
         else:
             self._db.flush()
 
-        event_vector_ids: List[str] = []
-        entity_vector_ids: List[str] = []
+        event_vector_ids: list[str] = []
+        entity_vector_ids: list[str] = []
         if commit:
             if self._resolve_event_vector_enabled(options):
                 event_vector_ids = self._index_event_vectors(db_events)
@@ -622,10 +623,10 @@ class Indexer:
         self,
         *,
         tenant_id: UUID,
-        entities: Sequence[Dict[str, Any]],
+        entities: Sequence[dict[str, Any]],
         commit: bool = True,
-        options: Optional[IndexingOptions] = None,
-    ) -> List[KgEntity]:
+        options: IndexingOptions | None = None,
+    ) -> list[KgEntity]:
         """
         Upsert entities without creating events.
 
@@ -761,7 +762,7 @@ class Indexer:
         tenant_id: UUID,
         chunk_ids: Sequence[UUID],
         commit: bool = True,
-        exclude_event_ids: Optional[Sequence[UUID]] = None,
+        exclude_event_ids: Sequence[UUID] | None = None,
         prune_orphan_entities: bool = False,
     ) -> dict[str, int]:
         """
@@ -794,7 +795,7 @@ class Indexer:
         self,
         *,
         tenant_id: UUID,
-        entity_ids: Optional[Sequence[UUID]] = None,
+        entity_ids: Sequence[UUID] | None = None,
         commit: bool = True,
     ) -> int:
         """
@@ -891,7 +892,7 @@ class Indexer:
         self,
         *,
         tenant_id: UUID,
-        document_ids: Optional[List[UUID]] = None,
+        document_ids: list[UUID] | None = None,
     ) -> None:
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             return
@@ -910,7 +911,7 @@ class Indexer:
         self,
         *,
         tenant_id: UUID,
-        document_ids: Optional[List[UUID]] = None,
+        document_ids: list[UUID] | None = None,
     ) -> None:
         event_query = self._db.query(KgSourceEvent).filter(KgSourceEvent.tenant_id == tenant_id)
         if document_ids:
@@ -978,12 +979,12 @@ class Indexer:
 
     def _index_chunk_vectors(
         self,
-        docs: List[dict],
+        docs: list[dict],
         *,
         document_id: UUID,
         tenant_id: UUID,
         enable_vectors: bool,
-    ) -> List[Optional[str]]:
+    ) -> list[str | None]:
         if not docs:
             return []
 
@@ -996,10 +997,10 @@ class Indexer:
             max_retries = int(getattr(settings, "VECTOR_WRITE_MAX_RETRIES", 1) or 1)
             backoff = float(getattr(settings, "VECTOR_WRITE_RETRY_BACKOFF_SEC", 0.5) or 0.5)
 
-            out: List[Optional[str]] = []
+            out: list[str | None] = []
             for i in range(0, len(docs), batch_size):
                 batch = docs[i : i + batch_size]
-                last_exc: Optional[Exception] = None
+                last_exc: Exception | None = None
                 for attempt in range(max_retries + 1):
                     try:
                         out.extend(list(vector_store.add_documents(batch, document_id, tenant_id)))
@@ -1048,11 +1049,11 @@ class Indexer:
         *,
         document_id: UUID,
         tenant_id: UUID,
-        chunks: List[ChunkInput],
-        vector_ids: Optional[List[Optional[str]]] = None,
-        chunk_ids: Optional[List[UUID]] = None,
+        chunks: list[ChunkInput],
+        vector_ids: list[str | None] | None = None,
+        chunk_ids: list[UUID] | None = None,
         commit: bool = True,
-    ) -> List[DocumentChunk]:
+    ) -> list[DocumentChunk]:
         if not chunks:
             return []
 
@@ -1066,7 +1067,7 @@ class Indexer:
         if len(chunk_ids) != len(chunks):
             raise ValueError(f"chunk_ids length {len(chunk_ids)} != chunks length {len(chunks)}")
 
-        db_chunks: List[DocumentChunk] = []
+        db_chunks: list[DocumentChunk] = []
         for idx, (chunk, vector_id, chunk_id) in enumerate(zip(chunks, vector_ids, chunk_ids, strict=False)):
             meta = dict(chunk.metadata or {})
             normalize_image_metadata(meta)
@@ -1113,7 +1114,7 @@ class Indexer:
     def _update_bm25_for_chunks(
         self,
         *,
-        db_chunks: List[DocumentChunk],
+        db_chunks: list[DocumentChunk],
         tenant_id: UUID,
         document_id: UUID,
         default_source: str = "unknown",
@@ -1124,7 +1125,7 @@ class Indexer:
         if not enable_bm25:
             return
 
-        bm25_docs: List[LCDocument] = []
+        bm25_docs: list[LCDocument] = []
         for db_chunk in db_chunks:
             meta = dict(db_chunk.doc_metadata or {})
             normalize_image_metadata(meta)
@@ -1154,7 +1155,7 @@ class Indexer:
         name: str,
         normalized_name: str,
         type_: str,
-        description: Optional[str] = None,
+        description: str | None = None,
     ) -> KgEntity:
         existing = (
             self._db.query(KgEntity)
@@ -1181,9 +1182,9 @@ class Indexer:
         self._db.flush()
         return entity
 
-    def _index_event_vectors(self, events: Iterable[KgSourceEvent]) -> List[str]:
-        items: List[Dict[str, Any]] = []
-        embeddings: List[List[float]] = []
+    def _index_event_vectors(self, events: Iterable[KgSourceEvent]) -> list[str]:
+        items: list[dict[str, Any]] = []
+        embeddings: list[list[float]] = []
         for ev in events:
             if not ev.content_vector:
                 continue
@@ -1192,7 +1193,7 @@ class Indexer:
             pipeline_hash = str(getattr(ev, "pipeline_hash", None) or refs.get("pipeline_hash") or "").strip() or None
             if pipeline_hash and len(pipeline_hash) > 200:
                 pipeline_hash = pipeline_hash[:200]
-            meta: Dict[str, Any] = {
+            meta: dict[str, Any] = {
                 "tenant_id": str(ev.tenant_id),
                 "document_id": str(ev.document_id) if ev.document_id else "",
                 "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
@@ -1235,9 +1236,9 @@ class Indexer:
             logger.warning("Failed to store KG event vectors: %s", exc)
             return []
 
-    def _index_entity_vectors(self, entities: Iterable[KgEntity]) -> List[str]:
-        items: List[Dict[str, Any]] = []
-        embeddings: List[List[float]] = []
+    def _index_entity_vectors(self, entities: Iterable[KgEntity]) -> list[str]:
+        items: list[dict[str, Any]] = []
+        embeddings: list[list[float]] = []
         for ent in entities:
             if not ent.vector:
                 continue

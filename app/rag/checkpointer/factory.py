@@ -5,7 +5,6 @@ Provides configuration-based checkpoint saver selection.
 """
 
 import logging
-from typing import Optional
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
@@ -24,11 +23,11 @@ CHECKPOINT_BACKEND = getattr(settings, "CHECKPOINT_BACKEND", "memory")
 CHECKPOINT_SQLITE_PATH = getattr(settings, "CHECKPOINT_SQLITE_PATH", "./data/checkpoints.db")
 
 # Global instance
-_checkpointer: Optional[BaseCheckpointSaver] = None
+_checkpointer: BaseCheckpointSaver | None = None
 
 
 def get_checkpointer(
-    backend: Optional[str] = None,
+    backend: str | None = None,
     **kwargs,
 ) -> BaseCheckpointSaver:
     """

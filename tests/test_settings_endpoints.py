@@ -39,7 +39,7 @@ def test_settings_get_includes_url_ingest_and_governance(monkeypatch):  # noqa: 
     from app.core.config import settings
 
     # Bypass dataset membership + role checks.
-    monkeypatch.setattr(settings_module, "_ensure_settings_readable", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(settings_module, "_ensure_settings_readable", lambda *_args, **_kwargs: None, raising=True)
 
     # Seed values that must round-trip through the response model.
     monkeypatch.setattr(settings, "CHUNK_MIN_CHARS", 42, raising=False)
@@ -95,7 +95,7 @@ def test_settings_put_persists_new_env_keys(monkeypatch, tmp_path):  # noqa: ANN
     from app.api.v1.settings import update_settings
     from app.core.config import settings
 
-    monkeypatch.setattr(settings_module, "_ensure_settings_writable", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(settings_module, "_ensure_settings_writable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(settings_module, "ENV_FILE", tmp_path / "test.env", raising=True)
 
     # Ensure the runtime apply path sees a state transition for BM25.
@@ -195,7 +195,7 @@ def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
     from app.api.v1.settings import get_system_status
     from app.core.config import settings
 
-    monkeypatch.setattr(settings_module, "_ensure_settings_readable", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(settings_module, "_ensure_settings_readable", lambda *_args, **_kwargs: None, raising=True)
 
     # Enable paddle_vl and provide a convert endpoint.
     monkeypatch.setattr(settings, "PADDLE_VL_ENABLED", True, raising=False)
@@ -215,8 +215,8 @@ def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
 
     import pymilvus
 
-    monkeypatch.setattr(pymilvus.connections, "connect", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(pymilvus.connections, "disconnect", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(pymilvus.connections, "connect", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(pymilvus.connections, "disconnect", lambda *_args, **_kwargs: None, raising=True)
 
     # Mock the external /health probe.
     class _Resp:

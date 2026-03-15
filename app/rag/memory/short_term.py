@@ -12,8 +12,9 @@ Features:
 
 
 import logging
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Union
 
 from langchain_core.messages import (
     AIMessage,
@@ -55,7 +56,7 @@ def _estimate_tokens(text: str) -> int:
     return int(cjk_count / 2 + non_cjk_count / 4)
 
 
-def _message_to_tokens(message: Union[BaseMessage, Dict[str, Any]]) -> int:
+def _message_to_tokens(message: Union[BaseMessage, dict[str, Any]]) -> int:
     """Estimate tokens for a message."""
     if isinstance(message, BaseMessage):
         content = message.content or ""
@@ -73,14 +74,14 @@ def _message_to_tokens(message: Union[BaseMessage, Dict[str, Any]]) -> int:
 
 
 def trim_messages(
-    messages: List[Union[BaseMessage, Dict[str, Any]]],
+    messages: list[Union[BaseMessage, dict[str, Any]]],
     max_tokens: int = SHORT_TERM_MEMORY_MAX_TOKENS,
     strategy: str = "last",
     include_system: bool = True,
     allow_partial: bool = False,
-    start_on: Optional[str] = None,
-    end_on: Optional[str] = None,
-) -> List[Union[BaseMessage, Dict[str, Any]]]:
+    start_on: str | None = None,
+    end_on: str | None = None,
+) -> list[Union[BaseMessage, dict[str, Any]]]:
     """
     Trim messages to fit within token limit.
 
@@ -138,11 +139,11 @@ def trim_messages(
 
 
 def _fallback_trim(
-    messages: List[BaseMessage],
+    messages: list[BaseMessage],
     max_tokens: int,
     strategy: str,
     include_system: bool,
-) -> List[BaseMessage]:
+) -> list[BaseMessage]:
     """Fallback trimming implementation."""
     if not messages:
         return []
@@ -191,8 +192,8 @@ def _fallback_trim(
 
 
 async def summarize_messages(
-    messages: List[Union[BaseMessage, Dict[str, Any]]],
-    llm: Optional[Any] = None,
+    messages: list[Union[BaseMessage, dict[str, Any]]],
+    llm: Any | None = None,
     max_summary_tokens: int = 500,
 ) -> str:
     """
@@ -275,7 +276,7 @@ class ShortTermMemoryManager:
         strategy: str = "last",
         include_system: bool = True,
         enable_summarization: bool = True,
-        llm: Optional[Any] = None,
+        llm: Any | None = None,
     ):
         """
         Initialize the short-term memory manager.
@@ -294,13 +295,13 @@ class ShortTermMemoryManager:
         self.include_system = include_system
         self.enable_summarization = enable_summarization
         self.llm = llm
-        self._summary_cache: Dict[str, str] = {}
+        self._summary_cache: dict[str, str] = {}
 
     def process(
         self,
-        messages: List[Union[BaseMessage, Dict[str, Any]]],
-        session_id: Optional[str] = None,
-    ) -> List[Union[BaseMessage, Dict[str, Any]]]:
+        messages: list[Union[BaseMessage, dict[str, Any]]],
+        session_id: str | None = None,
+    ) -> list[Union[BaseMessage, dict[str, Any]]]:
         """
         Process messages: trim and optionally summarize.
 
@@ -357,9 +358,9 @@ class ShortTermMemoryManager:
 
     async def aprocess(
         self,
-        messages: List[Union[BaseMessage, Dict[str, Any]]],
-        session_id: Optional[str] = None,
-    ) -> List[Union[BaseMessage, Dict[str, Any]]]:
+        messages: list[Union[BaseMessage, dict[str, Any]]],
+        session_id: str | None = None,
+    ) -> list[Union[BaseMessage, dict[str, Any]]]:
         """
         Async version of process().
         """
@@ -389,7 +390,7 @@ class ShortTermMemoryManager:
             include_system=self.include_system,
         )
 
-    def _simple_summary(self, messages: List[Union[BaseMessage, Dict[str, Any]]]) -> str:
+    def _simple_summary(self, messages: list[Union[BaseMessage, dict[str, Any]]]) -> str:
         """Create a simple summary without LLM."""
         if not messages:
             return ""
@@ -409,7 +410,7 @@ class ShortTermMemoryManager:
 
         return f"[Previous context: {len(messages)} messages]\n" + "\n".join(parts)
 
-    def clear_cache(self, session_id: Optional[str] = None):
+    def clear_cache(self, session_id: str | None = None):
         """Clear summary cache."""
         if session_id:
             self._summary_cache.pop(session_id, None)
@@ -438,7 +439,7 @@ class SummarizationMiddleware:
         summarization_threshold: int = SUMMARIZATION_THRESHOLD,
         history_key: str = "history",
         messages_key: str = "messages",
-        llm: Optional[Any] = None,
+        llm: Any | None = None,
     ):
         """
         Initialize the summarization middleware.
@@ -458,7 +459,7 @@ class SummarizationMiddleware:
         self.history_key = history_key
         self.messages_key = messages_key
 
-    def before_model(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def before_model(self, state: dict[str, Any]) -> dict[str, Any]:
         """
         Pre-process state before model invocation.
 
@@ -480,7 +481,7 @@ class SummarizationMiddleware:
 
         return new_state
 
-    async def abefore_model(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def abefore_model(self, state: dict[str, Any]) -> dict[str, Any]:
         """Async version of before_model."""
         new_state = dict(state)
 
@@ -501,12 +502,12 @@ class SummarizationMiddleware:
         Decorator to wrap a function with summarization middleware.
         """
         @wraps(func)
-        async def async_wrapper(state: Dict[str, Any], *args, **kwargs):
+        async def async_wrapper(state: dict[str, Any], *args, **kwargs):
             state = await self.abefore_model(state)
             return await func(state, *args, **kwargs)
 
         @wraps(func)
-        def sync_wrapper(state: Dict[str, Any], *args, **kwargs):
+        def sync_wrapper(state: dict[str, Any], *args, **kwargs):
             state = self.before_model(state)
             return func(state, *args, **kwargs)
 
@@ -518,10 +519,10 @@ class SummarizationMiddleware:
 
 
 def delete_old_messages(
-    state: Dict[str, Any],
+    state: dict[str, Any],
     max_messages: int = CHAT_HISTORY_WINDOW,
     history_key: str = "history",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Delete old messages from state, keeping only recent ones.
 

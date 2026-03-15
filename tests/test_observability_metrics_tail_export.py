@@ -28,7 +28,7 @@ def test_observability_metrics_tail_export_redacted_gzip(monkeypatch, tmp_path):
     from app.core.config import settings
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     other_tenant_id = uuid.uuid4()
@@ -121,7 +121,7 @@ def test_observability_metrics_tail_export_has_size_limit(monkeypatch, tmp_path)
     from app.core.config import settings
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     metrics_path = tmp_path / "rag_metrics.jsonl"

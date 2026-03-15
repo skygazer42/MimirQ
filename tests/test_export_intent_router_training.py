@@ -54,10 +54,10 @@ def test_export_script_writes_output(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    from scripts.export_intent_router_training import main
-
-    from os import getcwd
     from os import chdir as os_chdir
+    from os import getcwd
+
+    from scripts.export_intent_router_training import main
 
     cwd = getcwd()
     try:
@@ -75,10 +75,10 @@ def test_export_script_rejects_output_outside_cwd(tmp_path: Path) -> None:
     in_path.write_text(json.dumps({"query": "q1", "metrics": {"retrieval_mode": "keyword"}}) + "\n", encoding="utf-8")
     outside_path = tmp_path.parent / "training_outside.json"
 
-    from scripts.export_intent_router_training import main
-
-    from os import getcwd
     from os import chdir as os_chdir
+    from os import getcwd
+
+    from scripts.export_intent_router_training import main
 
     cwd = getcwd()
     try:

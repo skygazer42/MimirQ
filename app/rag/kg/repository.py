@@ -6,7 +6,7 @@ and Milvus vector similarity search capabilities.
 """
 import re
 import unicodedata
-from typing import Iterable, List, Optional
+from collections.abc import Iterable
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -130,8 +130,8 @@ def _quote_milvus_str(value: str, *, max_len: int = 256) -> str:
     return f'"{escaped}"'
 
 
-def _as_uuid_list(values: Iterable[str | UUID]) -> List[UUID]:
-    out: List[UUID] = []
+def _as_uuid_list(values: Iterable[str | UUID]) -> list[UUID]:
+    out: list[UUID] = []
     seen: set[UUID] = set()
     for v in values:
         if isinstance(v, UUID):
@@ -161,11 +161,11 @@ class EntityRepository:
 
     def search_similar(
         self,
-        query_vector: List[float],
+        query_vector: list[float],
         tenant_id,
         k: int = 10,
-        entity_type: Optional[str] = None,
-    ) -> List[dict]:
+        entity_type: str | None = None,
+    ) -> list[dict]:
         expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
         if entity_type:
             expr_parts.append(f"type == {_quote_milvus_str(entity_type)}")
@@ -186,7 +186,7 @@ class EntityRepository:
             )
         return formatted
 
-    def get_entities_by_ids(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> List[KgEntity]:
+    def get_entities_by_ids(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> list[KgEntity]:
         id_list = _as_uuid_list(ids)
         if not id_list:
             return []
@@ -201,7 +201,7 @@ class EntityRepository:
         name: str,
         normalized_name: str,
         type_: str,
-        description: Optional[str] = None,
+        description: str | None = None,
         *,
         commit: bool = True,
     ) -> KgEntity:
@@ -503,7 +503,7 @@ class EventRepository:
 
     def link_event_entities(
         self,
-        links: List[KgEventEntity],
+        links: list[KgEventEntity],
     ) -> None:
         for link in links:
             self.session.merge(link)
@@ -514,10 +514,10 @@ class EventRepository:
         ids: Iterable[str | UUID],
         *,
         tenant_id: UUID | None = None,
-        document_ids: Optional[List[UUID]] = None,
+        document_ids: list[UUID] | None = None,
         dataset_id: UUID | None = None,
         account_id: str | None = None,
-    ) -> List[KgSourceEvent]:
+    ) -> list[KgSourceEvent]:
         id_list = _as_uuid_list(ids)
         if not id_list:
             return []
@@ -557,7 +557,7 @@ class EventRepository:
             ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
         return self.session.execute(stmt).scalars().all()
 
-    def get_events_with_entities(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> List[KgSourceEvent]:
+    def get_events_with_entities(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> list[KgSourceEvent]:
         id_list = _as_uuid_list(ids)
         if not id_list:
             return []
@@ -576,13 +576,13 @@ class EventRepository:
 
     def search_similar_by_content(
         self,
-        query_vector: List[float],
+        query_vector: list[float],
         tenant_id,
         k: int = 20,
-        document_ids: Optional[List[UUID]] = None,
+        document_ids: list[UUID] | None = None,
         dataset_id: UUID | None = None,
         account_id: str | None = None,
-    ) -> List[dict]:
+    ) -> list[dict]:
         expr_parts = [f"tenant_id == {_quote_milvus_str(str(tenant_id))}"]
         if document_ids is not None and not document_ids:
             # Explicit empty scope must never broaden vector search to the full tenant.
@@ -653,10 +653,10 @@ class EventRepository:
         entity_ids: Iterable[str | UUID],
         tenant_id,
         limit: int = 50,
-        document_ids: Optional[List[UUID]] = None,
+        document_ids: list[UUID] | None = None,
         dataset_id: UUID | None = None,
         account_id: str | None = None,
-    ) -> List[UUID]:
+    ) -> list[UUID]:
         ids = _as_uuid_list(entity_ids)
         if not ids:
             return []
@@ -720,7 +720,7 @@ class EventRepository:
         entity_ids: Iterable[str | UUID],
         *,
         tenant_id: UUID,
-        document_ids: List[UUID],
+        document_ids: list[UUID],
     ) -> set[UUID]:
         ids = _as_uuid_list(entity_ids)
         if not ids or not document_ids:
@@ -754,7 +754,7 @@ class EventRepository:
         event_ids: Iterable[str | UUID],
         *,
         tenant_id: UUID | None = None,
-    ) -> dict[str, List[KgEventEntity]]:
+    ) -> dict[str, list[KgEventEntity]]:
         ids = _as_uuid_list(event_ids)
         if not ids:
             return {}
@@ -764,7 +764,7 @@ class EventRepository:
                 KgSourceEvent.tenant_id == tenant_id
             )
         rows = self.session.execute(stmt).scalars().all()
-        mapping: dict[str, List[KgEventEntity]] = {}
+        mapping: dict[str, list[KgEventEntity]] = {}
         for row in rows:
             mapping.setdefault(str(row.event_id), []).append(row)
         return mapping
@@ -774,7 +774,7 @@ class EventRepository:
         event_ids: Iterable[str | UUID],
         *,
         tenant_id: UUID | None = None,
-    ) -> dict[str, List[KgEntity]]:
+    ) -> dict[str, list[KgEntity]]:
         ids = _as_uuid_list(event_ids)
         if not ids:
             return {}
@@ -790,7 +790,7 @@ class EventRepository:
                 .where(KgEntity.tenant_id == tenant_id)
             )
         rows = self.session.execute(stmt).all()
-        mapping: dict[str, List[KgEntity]] = {}
+        mapping: dict[str, list[KgEntity]] = {}
         for assoc, ent in rows:
             mapping.setdefault(str(assoc.event_id), []).append(ent)
         return mapping
@@ -800,10 +800,10 @@ class EventRepository:
         entity_ids: Iterable[str | UUID],
         tenant_id,
         limit: int = 50,
-        document_ids: Optional[List[UUID]] = None,
+        document_ids: list[UUID] | None = None,
         dataset_id: UUID | None = None,
         account_id: str | None = None,
-    ) -> List[KgSourceEvent]:
+    ) -> list[KgSourceEvent]:
         ids = _as_uuid_list(entity_ids)
         if not ids:
             return []
@@ -875,13 +875,13 @@ class RelationRepository:
         entity_ids: Iterable[str | UUID],
         *,
         tenant_id: UUID,
-        document_ids: Optional[List[UUID]] = None,
+        document_ids: list[UUID] | None = None,
         dataset_id: UUID | None = None,
         account_id: str | None = None,
         min_confidence: float | None = None,
-        allowed_predicates: Optional[Iterable[str]] = None,
+        allowed_predicates: Iterable[str] | None = None,
         limit: int = 2000,
-    ) -> List[KgRelation]:
+    ) -> list[KgRelation]:
         """
         List relations where either endpoint is within `entity_ids`.
 
@@ -971,7 +971,7 @@ class RelationRepository:
         tenant_id: UUID,
         document_ids: Iterable[str | UUID],
         limit: int = 2000,
-    ) -> List[KgRelation]:
+    ) -> list[KgRelation]:
         ids = _as_uuid_list(document_ids)
         if not ids:
             return []

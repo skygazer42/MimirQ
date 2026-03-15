@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { getAccessToken } from '@/lib/auth-storage'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 
-export function AuthGuard({ children }: { children: React.ReactNode }) {
+export function AuthGuard({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter()
   const pathname = usePathname()
   const { data: meta } = useBackendMeta()
@@ -27,4 +27,3 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>
 }
-

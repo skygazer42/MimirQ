@@ -7,7 +7,7 @@ frontend heatmap page (Kumi-style).
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -35,12 +35,12 @@ class SimilarityCollectionOut(BaseModel):
     label: str
     kind: str
     count: int
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class SimilarityCollectionsResponse(BaseModel):
     success: bool = True
-    collections: List[SimilarityCollectionOut] = Field(default_factory=list)
+    collections: list[SimilarityCollectionOut] = Field(default_factory=list)
     count: int = 0
 
 
@@ -68,19 +68,19 @@ def get_similarity_collections(
 class SimilarityRequest(BaseModel):
     x_collection: str = Field(..., description="X axis collection id")
     y_collection: str = Field(..., description="Y axis collection id")
-    x_max_items: Optional[int] = Field(100, description="X axis max items")
-    y_max_items: Optional[int] = Field(100, description="Y axis max items")
-    max_items: Optional[int] = Field(100, description="Back-compat max items")
+    x_max_items: int | None = Field(100, description="X axis max items")
+    y_max_items: int | None = Field(100, description="Y axis max items")
+    max_items: int | None = Field(100, description="Back-compat max items")
 
 
 class SimilarityCalculateResponse(BaseModel):
     success: bool = True
-    result: Optional[Dict[str, Any]] = None
-    message: Optional[str] = None
-    error: Optional[str] = None
-    error_type: Optional[str] = None
-    x_collection: Optional[str] = None
-    y_collection: Optional[str] = None
+    result: dict[str, Any] | None = None
+    message: str | None = None
+    error: str | None = None
+    error_type: str | None = None
+    x_collection: str | None = None
+    y_collection: str | None = None
 
 
 @router.post("/similarity/calculate", response_model=SimilarityCalculateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

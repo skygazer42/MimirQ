@@ -3,7 +3,6 @@ Prompt template schemas.
 Defines data models for prompt template creation, update, and query endpoints.
 """
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -14,7 +13,7 @@ from .base import OrmModel
 class PromptTemplateBase(BaseModel):
     """Base schema containing common prompt template fields."""
 
-    template_key: Optional[str] = Field(
+    template_key: str | None = Field(
         default=None,
         max_length=100,
         description="Stable template identifier (for versioning/grouping), e.g.: kb_assistant",
@@ -26,7 +25,7 @@ class PromptTemplateBase(BaseModel):
         description="Human-readable name for the template",
         example="Legal Consultant"
     )
-    description: Optional[str] = Field(
+    description: str | None = Field(
         None,
         description="Optional detailed description of template purpose",
         example="A template for legal advice and consultation"
@@ -36,18 +35,18 @@ class PromptTemplateBase(BaseModel):
         description="The prompt template content with variable placeholders",
         example="You are a legal consultant. Context: {context}\n\nQuestion: {question}"
     )
-    variables: List[str] = Field(
+    variables: list[str] = Field(
         default_factory=list,
         description="List of variable names supported in the template",
         example=["context", "question", "history"]
     )
-    category: Optional[str] = Field(
+    category: str | None = Field(
         None,
         max_length=100,
         description="Category for organizing templates",
         example="legal"
     )
-    tags: List[str] = Field(
+    tags: list[str] = Field(
         default_factory=list,
         description="Tags for searchability and filtering",
         example=["expert", "formal", "detailed"]
@@ -56,19 +55,19 @@ class PromptTemplateBase(BaseModel):
         True,
         description="Whether this template is currently enabled"
     )
-    version: Optional[int] = Field(
+    version: int | None = Field(
         default=1,
         ge=1,
         description="Version number (increments within same template_key)",
     )
-    parent_id: Optional[UUID] = Field(default=None, description="Parent version template ID (optional)")
-    ab_experiment_key: Optional[str] = Field(
+    parent_id: UUID | None = Field(default=None, description="Parent version template ID (optional)")
+    ab_experiment_key: str | None = Field(
         default=None,
         max_length=100,
         description="A/B experiment identifier (optional), e.g.: exp_2025w50",
     )
-    ab_variant: Optional[str] = Field(default=None, max_length=50, description="A/B variant identifier (optional), e.g.: A/B")
-    ab_weight: Optional[float] = Field(default=1.0, ge=0.0, description="A/B traffic weight (optional, default 1.0)")
+    ab_variant: str | None = Field(default=None, max_length=50, description="A/B variant identifier (optional), e.g.: A/B")
+    ab_weight: float | None = Field(default=1.0, ge=0.0, description="A/B traffic weight (optional, default 1.0)")
 
 
 class PromptTemplateCreate(PromptTemplateBase):
@@ -80,35 +79,35 @@ class PromptTemplateCreate(PromptTemplateBase):
 class PromptTemplateUpdate(BaseModel):
     """Schema for updating an existing prompt template (all fields optional)."""
 
-    template_key: Optional[str] = Field(None, max_length=100)
-    name: Optional[str] = Field(None, max_length=200)
-    description: Optional[str] = None
-    content: Optional[str] = None
-    variables: Optional[List[str]] = None
-    category: Optional[str] = Field(None, max_length=100)
-    tags: Optional[List[str]] = None
-    is_active: Optional[bool] = None
-    version: Optional[int] = Field(default=None, ge=1)
-    parent_id: Optional[UUID] = None
-    ab_experiment_key: Optional[str] = Field(None, max_length=100)
-    ab_variant: Optional[str] = Field(None, max_length=50)
-    ab_weight: Optional[float] = Field(default=None, ge=0.0)
+    template_key: str | None = Field(None, max_length=100)
+    name: str | None = Field(None, max_length=200)
+    description: str | None = None
+    content: str | None = None
+    variables: list[str] | None = None
+    category: str | None = Field(None, max_length=100)
+    tags: list[str] | None = None
+    is_active: bool | None = None
+    version: int | None = Field(default=None, ge=1)
+    parent_id: UUID | None = None
+    ab_experiment_key: str | None = Field(None, max_length=100)
+    ab_variant: str | None = Field(None, max_length=50)
+    ab_weight: float | None = Field(default=None, ge=0.0)
 
 
 class PromptTemplateNewVersion(BaseModel):
     """Create a new version (copy from old template, supports field overrides)."""
 
-    name: Optional[str] = Field(None, max_length=200)
-    description: Optional[str] = None
-    content: Optional[str] = None
-    variables: Optional[List[str]] = None
-    category: Optional[str] = Field(None, max_length=100)
-    tags: Optional[List[str]] = None
+    name: str | None = Field(None, max_length=200)
+    description: str | None = None
+    content: str | None = None
+    variables: list[str] | None = None
+    category: str | None = Field(None, max_length=100)
+    tags: list[str] | None = None
     is_active: bool = True
     deactivate_previous: bool = Field(default=True, description="Auto-deactivate previous version (default: true)")
 
-    ab_experiment_key: Optional[str] = Field(None, max_length=100)
-    ab_variant: Optional[str] = Field(None, max_length=50)
+    ab_experiment_key: str | None = Field(None, max_length=100)
+    ab_variant: str | None = Field(None, max_length=50)
     ab_weight: float = Field(default=1.0, ge=0.0)
 
 
@@ -117,20 +116,20 @@ class PromptTemplateOut(OrmModel):
 
     id: UUID
     tenant_id: UUID
-    template_key: Optional[str]
+    template_key: str | None
     name: str
-    description: Optional[str]
+    description: str | None
     content: str
-    variables: List[str]
+    variables: list[str]
     is_system: bool
     is_active: bool
-    category: Optional[str]
-    tags: List[str]
+    category: str | None
+    tags: list[str]
     usage_count: int
     version: int
-    parent_id: Optional[UUID]
-    ab_experiment_key: Optional[str]
-    ab_variant: Optional[str]
+    parent_id: UUID | None
+    ab_experiment_key: str | None
+    ab_variant: str | None
     ab_weight: float
     created_at: datetime
     updated_at: datetime
@@ -140,4 +139,4 @@ class PromptTemplateList(BaseModel):
     """Schema for paginated list of prompt templates."""
 
     total: int = Field(..., description="Total number of templates matching filters")
-    items: List[PromptTemplateOut] = Field(..., description="List of prompt templates")
+    items: list[PromptTemplateOut] = Field(..., description="List of prompt templates")

@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -153,8 +155,8 @@ def test_generate_thresholds_from_summary_includes_top_and_slice_bounds() -> Non
     )
     assert cfg["schema"] == "mimirq.thresholds.v2"
     assert cfg["dataset_id"] == "d"
-    assert cfg["metrics"]["retrieval_recall"]["min"] == 0.72
-    assert cfg["metrics"]["abstain_rate"]["max"] == 0.12
+    assert cfg["metrics"]["retrieval_recall"]["min"] == pytest.approx(0.72)
+    assert cfg["metrics"]["abstain_rate"]["max"] == pytest.approx(0.12)
     # Only include buckets with enough items.
     assert "pdf" in cfg["slices"]["file_type"]
     assert "md" not in cfg["slices"]["file_type"]

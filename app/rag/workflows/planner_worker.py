@@ -10,7 +10,8 @@ Pattern: Plan -> [Worker1, Worker2, ...] -> Synthesize -> Result
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.rag.workflows.base import (
     BaseWorkflow,
@@ -28,12 +29,12 @@ class SubTask:
         self,
         id: str,
         description: str,
-        dependencies: Optional[List[str]] = None,
+        dependencies: list[str] | None = None,
     ):
         self.id = id
         self.description = description
         self.dependencies = dependencies or []
-        self.result: Optional[str] = None
+        self.result: str | None = None
         self.completed: bool = False
 
 
@@ -52,7 +53,7 @@ class PlannerWorkerWorkflow(BaseWorkflow):
 
     def __init__(
         self,
-        llm: Optional[Any] = None,
+        llm: Any | None = None,
         max_subtasks: int = 5,
         parallel_execution: bool = True,
         **kwargs,
@@ -68,7 +69,7 @@ class PlannerWorkerWorkflow(BaseWorkflow):
         """
         super().__init__(**kwargs)
         self._llm = llm
-        self._worker: Optional[Callable[[str], Awaitable[str]]] = None
+        self._worker: Callable[[str], Awaitable[str]] | None = None
         self.max_subtasks = max_subtasks
         self.parallel_execution = parallel_execution
 
@@ -93,7 +94,7 @@ class PlannerWorkerWorkflow(BaseWorkflow):
         self._worker = worker
         return self
 
-    async def _plan(self, question: str) -> List[SubTask]:
+    async def _plan(self, question: str) -> list[SubTask]:
         """
         Create a plan of subtasks.
 
@@ -166,14 +167,14 @@ Plan:"""
             logger.error("Worker failed for %s: %s", subtask.id, e)
             return f"Error: {str(e)}"
 
-    async def _execute_subtasks(self, subtasks: List[SubTask]) -> Dict[str, str]:
+    async def _execute_subtasks(self, subtasks: list[SubTask]) -> dict[str, str]:
         """
         Execute subtasks respecting dependencies.
 
         Returns:
             Dict mapping task_id to result
         """
-        results: Dict[str, str] = {}
+        results: dict[str, str] = {}
         completed: set = set()
 
         while len(completed) < len(subtasks):
@@ -215,8 +216,8 @@ Plan:"""
     async def _synthesize(
         self,
         question: str,
-        subtasks: List[SubTask],
-        results: Dict[str, str],
+        subtasks: list[SubTask],
+        results: dict[str, str],
     ) -> str:
         """
         Synthesize subtask results into a final answer.
@@ -254,7 +255,7 @@ Final Answer:"""
         response = await self._llm.ainvoke(prompt)
         return response.content if hasattr(response, 'content') else str(response)
 
-    async def run(self, state: Dict[str, Any]) -> WorkflowResult:
+    async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
         Execute the planner-worker workflow.
 
@@ -273,7 +274,7 @@ Final Answer:"""
 
         question = self.get_question(state)
         current_state = dict(state)
-        execution_path: List[str] = ["plan"]
+        execution_path: list[str] = ["plan"]
 
         # Plan
         try:
@@ -337,8 +338,8 @@ Final Answer:"""
 
 
 def create_rag_worker(
-    retrieve_func: Callable[[str], Awaitable[List[Dict[str, Any]]]],
-    generate_func: Callable[[str, List[Dict[str, Any]]], Awaitable[str]],
+    retrieve_func: Callable[[str], Awaitable[list[dict[str, Any]]]],
+    generate_func: Callable[[str, list[dict[str, Any]]], Awaitable[str]],
 ) -> Callable[[str], Awaitable[str]]:
     """
     Create a RAG-based worker function.

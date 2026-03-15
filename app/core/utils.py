@@ -5,7 +5,7 @@ Provides common data conversion and validation helpers.
 """
 
 import os
-from typing import Any, Dict, List, Optional, TypeVar
+from typing import Any, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -43,7 +43,7 @@ def to_uuid(value: Any) -> UUID:
     return UUID(str(value))
 
 
-def to_uuid_or_none(value: Any) -> Optional[UUID]:
+def to_uuid_or_none(value: Any) -> UUID | None:
     """
     Safely convert to UUID, return None on failure.
 
@@ -61,7 +61,7 @@ def to_uuid_or_none(value: Any) -> Optional[UUID]:
         return None
 
 
-def uuid_list(values: List[Any]) -> List[UUID]:
+def uuid_list(values: list[Any]) -> list[UUID]:
     """
     Convert list values to a list of UUIDs.
 
@@ -78,7 +78,7 @@ def uuid_list(values: List[Any]) -> List[UUID]:
 # Pydantic model conversion
 # =============================================================================
 
-def models_to_dicts(models: List[T]) -> List[Dict[str, Any]]:
+def models_to_dicts(models: list[T]) -> list[dict[str, Any]]:
     """
     Convert a list of Pydantic models to a list of dicts.
 
@@ -96,7 +96,7 @@ def models_to_dicts(models: List[T]) -> List[Dict[str, Any]]:
     return [m.model_dump() for m in models]
 
 
-def model_to_dict(model: T, **kwargs) -> Dict[str, Any]:
+def model_to_dict(model: T, **kwargs) -> dict[str, Any]:
     """
     Convert a Pydantic model to dict.
 
@@ -114,7 +114,7 @@ def model_to_dict(model: T, **kwargs) -> Dict[str, Any]:
 # Proxy configuration
 # =============================================================================
 
-def get_proxy_url() -> Optional[str]:
+def get_proxy_url() -> str | None:
     """
     Get proxy URL.
 
@@ -186,7 +186,7 @@ def safe_str(value: Any, default: str = "") -> str:
 # Config utilities
 # =============================================================================
 
-def parse_csv(value: Optional[str]) -> List[str]:
+def parse_csv(value: str | None) -> list[str]:
     """
     Parse a comma-separated env/config value into a list of non-empty strings.
 
@@ -272,7 +272,7 @@ def get_env_float(key: str, default: float = 0.0) -> float:
 # List utilities
 # =============================================================================
 
-def chunk_list(lst: List[T], chunk_size: int) -> List[List[T]]:
+def chunk_list(lst: list[T], chunk_size: int) -> list[list[T]]:
     """
     Split a list into fixed-size chunks.
 
@@ -290,7 +290,7 @@ def chunk_list(lst: List[T], chunk_size: int) -> List[List[T]]:
     return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
-def flatten_list(nested: List[List[T]]) -> List[T]:
+def flatten_list(nested: list[list[T]]) -> list[T]:
     """
     Flatten a nested list.
 

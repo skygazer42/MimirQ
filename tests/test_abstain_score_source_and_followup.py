@@ -81,7 +81,7 @@ async def test_abstain_gate_uses_final_relevance_score_when_retrieval_score_pres
 
     assert (done_metrics or {}).get("abstain_triggered") is True
     assert (done_metrics or {}).get("abstain_reason") == "top_relevance_lt_min"
-    assert float((done_metrics or {}).get("top_relevance_score") or 0.0) == 0.1
+    assert float((done_metrics or {}).get("top_relevance_score") or 0.0) == pytest.approx(0.1)
 
     followup = (done_metrics or {}).get("abstain_followup")
     assert isinstance(followup, dict)
@@ -164,7 +164,7 @@ def test_langgraph_retrieve_node_abstain_gate_uses_final_relevance_score_and_set
     metrics = out.get("metrics") or {}
     assert out.get("abstain_triggered") is True
     assert metrics.get("abstain_reason") == "top_relevance_lt_min"
-    assert float(metrics.get("top_relevance_score") or 0.0) == 0.1
+    assert float(metrics.get("top_relevance_score") or 0.0) == pytest.approx(0.1)
     followup = metrics.get("abstain_followup")
     assert isinstance(followup, dict)
     assert isinstance(followup.get("question"), str) and followup.get("question")

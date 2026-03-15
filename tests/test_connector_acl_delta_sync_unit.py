@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def test_delta_sync_connector_documents_acl_by_source_url_updates_docs_and_provenance(monkeypatch):  # noqa: ANN001
@@ -213,7 +213,7 @@ def test_soft_disable_connector_documents_by_source_url_marks_docs_disabled(monk
         def query(self, _model):  # noqa: ANN001
             return _DummyQuery(self._docs)
 
-    now = datetime(2026, 3, 7, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 7, 12, 0, tzinfo=UTC)
     dummy_db = _DummyDB(docs)
     monkeypatch.setattr(connectors, "_now", lambda: now, raising=True)
 

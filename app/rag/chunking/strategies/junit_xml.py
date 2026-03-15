@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -22,8 +22,8 @@ class _CaseBlock:
     start: int
     end: int
     index: int
-    name: Optional[str]
-    classname: Optional[str]
+    name: str | None
+    classname: str | None
 
 
 _TESTCASE_ANY_RE = re.compile(r"(?is)<testcase\b[^>]*?/\s*>|<testcase\b[^>]*>")
@@ -32,7 +32,7 @@ _TESTSUITE_HINT_RE = re.compile(r"(?is)<testsuites\b|<testsuite\b")
 _ATTR_RE = re.compile(r"(?P<key>[A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(?P<q>['\"])(?P<val>.*?)(?P=q)")
 
 
-def _extract_attr(tag_text: str, key: str) -> Optional[str]:
+def _extract_attr(tag_text: str, key: str) -> str | None:
     if not tag_text:
         return None
     for m in _ATTR_RE.finditer(tag_text[:800]):
@@ -42,10 +42,10 @@ def _extract_attr(tag_text: str, key: str) -> Optional[str]:
     return None
 
 
-def _build_testcase_blocks(text: str) -> List[_CaseBlock]:
+def _build_testcase_blocks(text: str) -> list[_CaseBlock]:
     if not text:
         return []
-    blocks: List[_CaseBlock] = []
+    blocks: list[_CaseBlock] = []
     for m in _TESTCASE_ANY_RE.finditer(text):
         start = m.start()
         tag = (m.group(0) or "")
@@ -89,8 +89,8 @@ class JUnitXMLChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

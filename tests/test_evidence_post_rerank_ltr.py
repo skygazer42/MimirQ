@@ -42,7 +42,7 @@ def test_orchestrator_evidence_post_rerank_applies_ltr(tmp_path: Path, monkeypat
     spec = LTRFeatureSpec.default()
     rows = []
     for score, label in ((0.9, 1), (0.8, 1), (0.2, 0), (0.1, 0)):
-        feats = {k: 0.0 for k in spec.feature_names}
+        feats = dict.fromkeys(spec.feature_names, 0.0)
         feats["vector_score"] = float(score)
         feats["role_main"] = 1.0
         rows.append({"features": feats, "label": int(label)})

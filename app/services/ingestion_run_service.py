@@ -8,7 +8,7 @@ Design goals:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -18,7 +18,7 @@ from app.models.ingestion_run import IngestionRun, IngestionRunDocument
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _safe_int(v: object, *, default: int = 0) -> int:
@@ -409,7 +409,7 @@ class IngestionRunService:
         def _delta_dict(da: object, db_: object, *, top: int = 20) -> dict[str, int]:
             ma = da if isinstance(da, dict) else {}
             mb = db_ if isinstance(db_, dict) else {}
-            keys = set(str(k) for k in ma.keys()) | set(str(k) for k in mb.keys())
+            keys = {str(k) for k in ma.keys()} | {str(k) for k in mb.keys()}
             rows: list[tuple[str, int]] = []
             for k in keys:
                 dv = _safe_int(mb.get(k), default=0) - _safe_int(ma.get(k), default=0)

@@ -22,9 +22,10 @@ import argparse
 import gzip
 import json
 import sys
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 # Ensure repo root is on sys.path so `import app` works when invoked as:
 #   python scripts/access_graph_diff.py ...
@@ -36,7 +37,7 @@ from app.services.access_graph_diff_service import diff_access_graph_records  # 
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _open_text(path: Path):  # noqa: ANN202

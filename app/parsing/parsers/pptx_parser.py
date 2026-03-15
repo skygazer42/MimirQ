@@ -10,7 +10,6 @@ fail on certain presentations.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -42,7 +41,7 @@ def _escape_md_cell(text: str) -> str:
 class PptxParser:
     """Parse a PowerPoint .pptx into slide-level Documents."""
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         ext = file_path.suffix.lower()
         if ext != ".pptx":
             raise ValueError(f"PptxParser supports only .pptx, got: {ext or '(no ext)'}")
@@ -55,7 +54,7 @@ class PptxParser:
         prs = Presentation(str(file_path))
         total_slides = len(getattr(prs, "slides", []) or [])
 
-        documents: List[Document] = []
+        documents: list[Document] = []
 
         for idx, slide in enumerate(prs.slides):
             parts: list[str] = []

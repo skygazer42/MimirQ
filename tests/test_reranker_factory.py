@@ -40,9 +40,9 @@ def test_colbert_factory_raises_when_hf_not_ready_and_strict_enabled(
 def test_colbert_factory_warmup_failure_downgrades_to_deterministic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import app.rag.reranker.colbert as colbert_mod
     from app.core.config import settings
     from app.rag.reranker.factory import get_reranker
-    import app.rag.reranker.colbert as colbert_mod
 
     monkeypatch.setattr(settings, "COLBERT_RERANK_PROVIDER", "hf", raising=False)
     monkeypatch.setattr(settings, "COLBERT_RERANK_MODEL_NAME", "colbert-ir/colbertv2.0", raising=False)

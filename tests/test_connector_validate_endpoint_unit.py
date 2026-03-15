@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -43,6 +44,7 @@ def test_connectors_validate_endpoint_happy_path(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     async def _ok_url(url: str) -> str:
+        await asyncio.sleep(0)  # Sonar S7503
         return url
 
     # Avoid DNS/network in unit tests; validate endpoint should be patchable.
@@ -147,6 +149,7 @@ def test_connectors_validate_rejects_unknown_source_acl_groups(monkeypatch):  # 
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     async def _ok_url(url: str) -> str:
+        await asyncio.sleep(0)  # Sonar S7503
         return url
 
     monkeypatch.setattr(connectors_module, "validate_url_for_ingest", _ok_url, raising=False)

@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { feedbackApi } from '@/lib/api-client'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, detachPromise } from '@/lib/utils'
 import type { MessageFeedbackEnriched } from '@/types'
 import { formatApiError } from '@/lib/api-errors'
 
@@ -28,27 +28,9 @@ function classifyFeedback(rating: number): FeedbackType | 'neutral' {
   return 'neutral'
 }
 
-function Stars({ rating }: { rating: number }) {
-  const v = Math.max(1, Math.min(5, Number(rating) || 0))
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => {
-        const active = i <= v
-        return (
-          <Star
-            key={i}
-            className={cn('h-3.5 w-3.5', active ? 'text-yellow-500' : 'text-muted-foreground/40')}
-            fill={active ? 'currentColor' : 'none'}
-          />
-        )
-      })}
-    </div>
-  )
-}
-
 export default function FeedbackTriagePage() {
   const router = useRouter()
-  const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all')
+  const ratingFilter: RatingFilter = 'all'
   const [filterType, setFilterType] = useState<FeedbackTypeFilter>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [detail, setDetail] = useState<MessageFeedbackEnriched | null>(null)
@@ -161,9 +143,9 @@ export default function FeedbackTriagePage() {
               { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
               { label: '点踩 (Dislike)', value: stats.downvotes, icon: ThumbsDown, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'hover:border-rose-200 dark:hover:border-rose-800' },
               { label: '平均响应', value: '~1.2s', icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'hover:border-sky-200 dark:hover:border-sky-800' },
-	            ].map((stat, idx) => (
+	            ].map((stat) => (
 	              <div
-	                key={idx}
+	                key={stat.label}
 	                className={cn(
 	                  "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-sm hover:shadow-md transition-shadow duration-200 motion-reduce:transition-none",
 	                  stat.border
@@ -230,11 +212,19 @@ export default function FeedbackTriagePage() {
                   <div
                     className={cn(
                       "absolute left-0 top-0 bottom-0 w-1 transition-colors",
-                      isUp
-                        ? "bg-emerald-500 group-hover:bg-emerald-400"
-                        : isDown
-                          ? "bg-rose-500 group-hover:bg-rose-400"
-                          : "bg-slate-300 group-hover:bg-slate-400 dark:bg-slate-700 dark:group-hover:bg-slate-600"
+                      (() => {
+    if (isUp) {
+        return "bg-emerald-500 group-hover:bg-emerald-400";
+    }
+    else {
+        if (isDown) {
+            return "bg-rose-500 group-hover:bg-rose-400";
+        }
+        else {
+            return "bg-slate-300 group-hover:bg-slate-400 dark:bg-slate-700 dark:group-hover:bg-slate-600";
+        }
+    }
+})()
                     )}
                   />
 
@@ -242,20 +232,34 @@ export default function FeedbackTriagePage() {
                     <div
                       className={cn(
                         "w-10 h-10 rounded-full flex items-center justify-center shrink-0 border",
-                        isUp
-                          ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-                          : isDown
-                            ? "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400"
-                            : "bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-300"
+                        (() => {
+    if (isUp) {
+        return "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-100 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400";
+    }
+    else {
+        if (isDown) {
+            return "bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400";
+        }
+        else {
+            return "bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-300";
+        }
+    }
+})()
                       )}
                     >
-                      {isUp ? (
-                        <ThumbsUp className="w-5 h-5" />
-                      ) : isDown ? (
-                        <ThumbsDown className="w-5 h-5" />
-                      ) : (
-                        <Star className="w-5 h-5" />
-                      )}
+                      {(() => {
+    if (isUp) {
+        return (<ThumbsUp className="w-5 h-5"/>);
+    }
+    else {
+        if (isDown) {
+            return (<ThumbsDown className="w-5 h-5"/>);
+        }
+        else {
+            return (<Star className="w-5 h-5"/>);
+        }
+    }
+})()}
                     </div>
 
                     <div className="flex-1 min-w-0 pt-0.5">
@@ -312,7 +316,7 @@ export default function FeedbackTriagePage() {
                       setFilterType('all')
                       return
                     }
-                    void refetch()
+                    detachPromise(refetch())
                   }}
                 >
                   {searchTerm.trim().length > 0 || filterType !== 'all'
@@ -324,7 +328,7 @@ export default function FeedbackTriagePage() {
           </div>
       </PageScaffold>
 
-        <Dialog open={Boolean(detail)} onOpenChange={(o) => (!o ? setDetail(null) : null)}>
+        <Dialog open={Boolean(detail)} onOpenChange={(o) => (o ? null : setDetail(null))}>
           <DialogContent className="max-w-3xl p-0 overflow-hidden sm:rounded-2xl">
 
 	            <DialogHeader className="px-8 pt-8 pb-4 border-b border-border/60 bg-card relative z-10">

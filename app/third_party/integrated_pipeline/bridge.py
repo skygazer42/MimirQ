@@ -11,8 +11,9 @@ Available strategies:
 - integrated_email: Email format
 """
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, List, Literal, Optional
+from typing import Any, Literal
 
 from app.rag.core.logging import get_logger
 
@@ -26,10 +27,10 @@ def chunk_file(
     file_path: Path,
     *,
     strategy: ChunkStrategy,
-    binary: Optional[bytes] = None,
-    callback: Optional[Callable] = None,
+    binary: bytes | None = None,
+    callback: Callable | None = None,
     **kwargs: Any,
-) -> List[dict]:
+) -> list[dict]:
     """
     Process a file using the integrated parse+chunk pipeline.
 

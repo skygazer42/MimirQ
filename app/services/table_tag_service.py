@@ -16,14 +16,14 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
+from app.services.table_join_stats import build_join_statistics_snapshot
 from app.services.table_schema_graph import (
     infer_schema_relationships_for_tables as infer_schema_relationships_from_graph,
 )
 from app.services.table_schema_graph import (
-    score_multi_join_plan_candidates,
     score_join_plan_candidates,
+    score_multi_join_plan_candidates,
 )
-from app.services.table_join_stats import build_join_statistics_snapshot
 from app.services.table_sql_fingerprint import fingerprint_sql
 
 _FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]*?)\s*```", re.IGNORECASE)

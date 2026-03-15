@@ -4,7 +4,7 @@ Core LLM data models used by RAG and KG pipelines.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class LLMRole(str, Enum):
@@ -26,7 +26,7 @@ class LLMMessage:
 class LLMResponse:
     content: str
     raw: Any = None
-    usage: Optional[dict] = None
+    usage: dict | None = None
 
 
 __all__ = ["LLMMessage", "LLMResponse", "LLMRole"]

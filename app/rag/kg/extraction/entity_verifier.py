@@ -11,8 +11,9 @@ All outputs are gated by deterministic evidence checks in the caller.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Sequence
+from typing import Any
 
 from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.utils import get_logger
@@ -53,7 +54,7 @@ class EntityVerifier:
         candidates: Sequence[EntityCandidate],
         max_keep: int = 30,
         max_alias_edges: int = 10,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Return a sanitized payload:
         - kept: [{id, type, description, evidence_quote, confidence}]
@@ -74,7 +75,7 @@ class EntityVerifier:
         alias_lim = max(0, int(max_alias_edges or 0))
 
         # Keep the prompt compact and deterministic: id + name + type (+ short desc).
-        cand_lines: List[str] = []
+        cand_lines: list[str] = []
         for c in cand_list:
             cid = str(c.cid).strip()
             name = str(c.name or "").strip()
@@ -91,7 +92,7 @@ class EntityVerifier:
         if not cand_lines:
             return {"kept": [], "aliases": []}
 
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "type": "object",
             "properties": {
                 "kept": {

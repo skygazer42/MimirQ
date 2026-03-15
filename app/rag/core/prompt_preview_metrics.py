@@ -8,7 +8,7 @@ dependency-light so it can be unit-tested without DB/LLM/vector backends.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.core.token_utils import num_tokens_from_string
 
@@ -18,11 +18,11 @@ def compute_prompt_preview_metrics(
     prompt_text: str,
     context: str,
     history: str,
-    base_metrics: Optional[Dict[str, Any]] = None,
+    base_metrics: dict[str, Any] | None = None,
     elapsed_sec: float | None = None,
     context_build_elapsed_sec: float | None = None,
     prompt_render_elapsed_sec: float | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Augment a metrics dict with chars/tokens breakdown for prompt preview.
 
@@ -31,7 +31,7 @@ def compute_prompt_preview_metrics(
       conservative estimate when tiktoken is not available.
     - Rounds elapsed fields to 3 decimals for UI readability.
     """
-    metrics: Dict[str, Any] = dict(base_metrics or {})
+    metrics: dict[str, Any] = dict(base_metrics or {})
 
     prompt_text = prompt_text or ""
     context = context or ""

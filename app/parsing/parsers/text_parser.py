@@ -2,7 +2,6 @@
 Text / Markdown parsers.
 """
 from pathlib import Path
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -11,7 +10,7 @@ from app.parsing.utils.text import read_text_file
 
 class TextParser:
     """Plain text parser."""
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         """
         Parse a plain text file into Document list.
         """
@@ -33,7 +32,7 @@ class TextParser:
 class MarkdownParser:
     """Markdown parser."""
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         """
         Parse a Markdown file into Document list.
         Preserves raw Markdown text (better for RAG).

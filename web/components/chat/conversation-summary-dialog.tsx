@@ -25,12 +25,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { detachPromise } from '@/lib/utils'
 
-export function ConversationSummaryDialog(props: {
+
+export function ConversationSummaryDialog(props: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   conversationId?: string
-}) {
+}>) {
   const { open, onOpenChange, conversationId } = props
   const [loading, setLoading] = React.useState(false)
   const [updating, setUpdating] = React.useState(false)
@@ -57,7 +59,7 @@ export function ConversationSummaryDialog(props: {
 
   React.useEffect(() => {
     if (!open) return
-    void load()
+    detachPromise(load())
   }, [open, load])
 
   const copy = React.useCallback(async () => {
@@ -115,22 +117,30 @@ export function ConversationSummaryDialog(props: {
           </DialogDescription>
         </DialogHeader>
 
-        {!hasConversation ? (
-          <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-            当前还没有会话 ID。请先发送一条消息，再查看/更新摘要。
-          </div>
-        ) : (
+        {hasConversation ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
-                状态：{loading ? '加载中…' : available ? '可用' : '暂无'}
+                状态：{(() => {
+    if (loading) {
+        return '加载中…';
+    }
+    else {
+        if (available) {
+            return '可用';
+        }
+        else {
+            return '暂无';
+        }
+    }
+})()}
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => void load()}
+                  onClick={() => detachPromise(load())}
                   disabled={loading || !hasConversation}
                 >
                   <RefreshCw className={loading ? 'h-4 w-4 animate-spin motion-reduce:animate-none' : 'h-4 w-4'} />
@@ -140,7 +150,7 @@ export function ConversationSummaryDialog(props: {
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => void update()}
+                  onClick={() => detachPromise(update())}
                   disabled={updating || !hasConversation}
                 >
                   <RefreshCw className={updating ? 'h-4 w-4 animate-spin motion-reduce:animate-none' : 'h-4 w-4'} />
@@ -150,7 +160,7 @@ export function ConversationSummaryDialog(props: {
                   variant="outline"
                   size="sm"
                   className="h-8 gap-2"
-                  onClick={() => void copy()}
+                  onClick={() => detachPromise(copy())}
                   disabled={!summary.trim()}
                 >
                   <Copy className="h-4 w-4" />
@@ -163,7 +173,7 @@ export function ConversationSummaryDialog(props: {
                   cancelLabel="返回"
                   confirmVariant="destructive"
                   confirmDisabled={clearing || !hasConversation}
-                  onConfirm={() => void clear()}
+                  onConfirm={() => detachPromise(clear())}
                 >
                   <Button
                     variant="outline"
@@ -183,6 +193,10 @@ export function ConversationSummaryDialog(props: {
                 {summary.trim() ? summary : '(empty)'}
               </pre>
             </div>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+            当前还没有会话 ID。请先发送一条消息，再查看/更新摘要。
           </div>
         )}
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
@@ -16,6 +17,7 @@ def _build_app() -> FastAPI:
 
     @app.get("/state")
     async def state_endpoint(*, request: Request, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
+        await asyncio.sleep(0)  # Sonar S7503
         tenant_state = getattr(request.state, "tenant_id", None)
         return {
             "account_id": account_id,
@@ -55,7 +57,7 @@ def test_auth_dependency_sets_request_state_user_and_tenant_in_jwt_mode(monkeypa
 
     tenant_id = "00000000-0000-0000-0000-000000000000"
     token = jwt.encode(
-        {"sub": "jwt-user", "tenant_id": tenant_id, "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        {"sub": "jwt-user", "tenant_id": tenant_id, "exp": datetime.now(UTC) + timedelta(minutes=5)},
         secret_key,
         algorithm="HS256",
     )

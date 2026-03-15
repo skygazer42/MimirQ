@@ -9,7 +9,7 @@ available or fails.
 
 import json
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -39,7 +39,7 @@ def _try_parse_jsonl(raw: str) -> list[Any] | None:
 class JsonParser:
     """Parse JSON / JSONL into a chunk-friendly text representation."""
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         decoded = read_text_file(file_path)
         raw = decoded.text or ""
 

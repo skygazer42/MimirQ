@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -27,7 +28,7 @@ def test_observability_rag_cost_attribution(monkeypatch, tmp_path):  # noqa: ANN
     from app.core.config import settings
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     now_ms = int(time.time() * 1000)
@@ -131,4 +132,4 @@ def test_observability_rag_cost_attribution(monkeypatch, tmp_path):  # noqa: ANN
     assert float(body.get("retrieval_elapsed_avg_sec") or 0.0) > 0.35
     assert float(body.get("retrieval_elapsed_p95_sec") or 0.0) > 0.45
 
-    assert float(body.get("rerank_elapsed_avg_sec") or 0.0) == 0.1
+    assert float(body.get("rerank_elapsed_avg_sec") or 0.0) == pytest.approx(0.1)

@@ -12,17 +12,17 @@ import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { rbacApi, type TenantMember } from '@/lib/api-client'
 
 const ROLE_OPTIONS = [
-  { key: 'owner', label: 'owner (admin)' },
-  { key: 'admin', label: 'admin' },
-  { key: 'auditor', label: 'auditor' },
-  { key: 'editor', label: 'editor' },
-  { key: 'dataset_operator', label: 'dataset_operator' },
-  { key: 'viewer', label: 'viewer' },
-] as const
+    { key: 'owner', label: 'owner (admin)' },
+    { key: 'admin', label: 'admin' },
+    { key: 'auditor', label: 'auditor' },
+    { key: 'editor', label: 'editor' },
+    { key: 'dataset_operator', label: 'dataset_operator' },
+    { key: 'viewer', label: 'viewer' },
+]
 
 export default function SettingsRbacPage() {
   const [loading, setLoading] = useState(false)
@@ -78,7 +78,7 @@ export default function SettingsRbacPage() {
   }
 
   useEffect(() => {
-    void refresh()
+    detachPromise(refresh())
   }, [])
 
   return (
@@ -90,7 +90,7 @@ export default function SettingsRbacPage() {
         iconColor="text-emerald-600 dark:text-emerald-400"
         size="6xl"
         actions={
-          <Button variant="outline" size="sm" className="gap-2 rounded-xl" disabled={loading} onClick={() => void refresh()}>
+          <Button variant="outline" size="sm" className="gap-2 rounded-xl" disabled={loading} onClick={() => detachPromise(refresh())}>
             <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
             刷新
           </Button>
@@ -162,7 +162,7 @@ export default function SettingsRbacPage() {
                             size="sm"
                             className="rounded-xl"
                             disabled={!uid || saving}
-                            onClick={() => void saveRole(uid)}
+                            onClick={() => detachPromise(saveRole(uid))}
                           >
                             保存
                           </Button>

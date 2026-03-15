@@ -19,8 +19,9 @@ import contextlib
 import logging
 import math
 import re
+from collections.abc import Iterator
 from datetime import datetime
-from typing import Any, Dict, Iterator, Optional
+from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -78,9 +79,9 @@ def _document_permission_exists(
 async def search_documents(
     query: str,
     top_k: int = 5,
-    dataset_id: Optional[str] = None,
-    filter: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    dataset_id: str | None = None,
+    filter: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Search documents in the knowledge base.
 
@@ -152,12 +153,12 @@ async def search_documents(
 
 async def get_document_content(
     document_id: str,
-    page: Optional[int] = None,
+    page: int | None = None,
     *,
-    dataset_id: Optional[str] = None,
-    account_id: Optional[str] = None,
+    dataset_id: str | None = None,
+    account_id: str | None = None,
     max_chars: int = 50_000,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get full content of a document.
 
@@ -375,7 +376,7 @@ _MAX_MATH_INT_BITS = 4096
 _MAX_MATH_POW_ABS_EXP = 4096
 
 
-def _safe_eval_math(expression: str, allowed_names: Dict[str, Any]) -> Any:
+def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
     expr = (expression or "").strip().lower()
     if not expr:
         raise ValueError("Empty expression")
@@ -519,8 +520,8 @@ def _safe_eval_math(expression: str, allowed_names: Dict[str, Any]) -> Any:
 
 def get_current_time(
     format: str = "%Y-%m-%d %H:%M:%S",
-    timezone: Optional[str] = None,
-) -> Dict[str, str]:
+    timezone: str | None = None,
+) -> dict[str, str]:
     """
     Get current date and time.
 
@@ -546,7 +547,7 @@ def get_current_time(
     }
 
 
-def calculate(expression: str) -> Dict[str, Any]:
+def calculate(expression: str) -> dict[str, Any]:
     """
     Safely evaluate a mathematical expression.
 
@@ -595,7 +596,7 @@ def format_number(
     number: float,
     decimals: int = 2,
     thousands_separator: bool = True,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     Format a number for display.
 
@@ -631,7 +632,7 @@ def convert_units(
     value: float,
     from_unit: str,
     to_unit: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Convert between units.
 
@@ -738,7 +739,7 @@ def _convert_temperature(value: float, from_unit: str, to_unit: str) -> float:
 # ============================================================================
 
 
-def count_text(text: str) -> Dict[str, int]:
+def count_text(text: str) -> dict[str, int]:
     """
     Count characters, words, and lines in text.
 
@@ -763,7 +764,7 @@ def count_text(text: str) -> Dict[str, int]:
 def extract_keywords(
     text: str,
     max_keywords: int = 10,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Extract keywords from text (simple frequency-based).
 
@@ -818,7 +819,7 @@ def extract_keywords(
 # ============================================================================
 
 
-def register_default_tools(registry: Optional[MCPToolRegistry] = None) -> MCPToolRegistry:
+def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRegistry:
     """
     Register default tools with the registry.
 

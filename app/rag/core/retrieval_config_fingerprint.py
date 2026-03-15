@@ -8,7 +8,7 @@ or scope identifiers (tenant/dataset/document ids).
 from __future__ import annotations
 
 import json
-from typing import Any, Dict
+from typing import Any
 
 from app.rag.core.hashing import stable_hash
 
@@ -34,7 +34,7 @@ def _normalize_value(value: Any) -> Any:
     if isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, dict):
-        out: Dict[str, Any] = {}
+        out: dict[str, Any] = {}
         for k, v in value.items():
             key = str(k or "").strip()
             if not key:
@@ -59,7 +59,7 @@ def _normalize_value(value: Any) -> Any:
     return str(value)
 
 
-def build_retrieval_config_fingerprint(*, config: Dict[str, Any], schema: str = "mimirq.retrieval_config.v1") -> Dict[str, Any]:
+def build_retrieval_config_fingerprint(*, config: dict[str, Any], schema: str = "mimirq.retrieval_config.v1") -> dict[str, Any]:
     """
     Build a stable fingerprint for a retrieval config.
 

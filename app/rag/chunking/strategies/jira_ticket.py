@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -41,7 +41,7 @@ class _Heading:
 class _Section:
     start: int
     end: int
-    heading: Optional[_Heading]
+    heading: _Heading | None
 
 
 _ISSUE_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
@@ -55,7 +55,7 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip()).lower()
 
 
-_SECTION_SYNONYMS: Dict[str, List[str]] = {
+_SECTION_SYNONYMS: dict[str, list[str]] = {
     "summary": ["summary", "title", "标题", "概要", "问题概述"],
     "description": ["description", "details", "描述", "详情", "问题描述"],
     "steps": ["steps to reproduce", "repro steps", "reproduction steps", "复现步骤", "重现步骤", "复现", "步骤"],
@@ -67,14 +67,14 @@ _SECTION_SYNONYMS: Dict[str, List[str]] = {
     "attachments": ["attachments", "attachment", "附件"],
 }
 
-_TITLE_TO_KEY: Dict[str, str] = {}
+_TITLE_TO_KEY: dict[str, str] = {}
 for k, vals in _SECTION_SYNONYMS.items():
     for v in vals:
         _TITLE_TO_KEY[_norm(v)] = k
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -86,7 +86,7 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _parse_heading_line(plain: str) -> Optional[Tuple[str, str]]:
+def _parse_heading_line(plain: str) -> tuple[str, str] | None:
     s = (plain or "").strip()
     if not s:
         return None
@@ -127,8 +127,8 @@ def _parse_heading_line(plain: str) -> Optional[Tuple[str, str]]:
     return None
 
 
-def _iter_headings(text: str) -> List[_Heading]:
-    headings: List[_Heading] = []
+def _iter_headings(text: str) -> list[_Heading]:
+    headings: list[_Heading] = []
     for ln in _iter_lines(text):
         parsed = _parse_heading_line(ln.plain)
         if not parsed:
@@ -136,7 +136,7 @@ def _iter_headings(text: str) -> List[_Heading]:
         title, key = parsed
         headings.append(_Heading(start=ln.start, end=ln.end, title=title, key=key))
 
-    deduped: List[_Heading] = []
+    deduped: list[_Heading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -146,10 +146,10 @@ def _iter_headings(text: str) -> List[_Heading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[_Heading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[_Heading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = headings[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -160,7 +160,7 @@ def _build_sections(text: str, headings: List[_Heading]) -> List[_Section]:
     return sections
 
 
-def _extract_issue_key(text: str) -> Optional[str]:
+def _extract_issue_key(text: str) -> str | None:
     if not text:
         return None
     m = _ISSUE_KEY_RE.search(text[:4000])
@@ -198,8 +198,8 @@ class JiraTicketChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -211,7 +211,7 @@ class JiraTicketChunker(BaseChunker):
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            current: Optional[_Heading] = None
+            current: _Heading | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():

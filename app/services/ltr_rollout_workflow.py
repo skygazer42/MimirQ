@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 from uuid import UUID
 
 from app.models.chat import Conversation, Message
@@ -14,7 +15,7 @@ from app.models.feedback import MessageFeedback
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 _DEFAULT_LTR_ROLLOUT_GATE_THRESHOLDS: dict[str, Any] = {

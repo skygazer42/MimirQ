@@ -7,7 +7,7 @@ API compatibility:
 
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -16,7 +16,7 @@ from app.rag.core.logging import get_logger
 logger = get_logger("tasks.queue")
 
 # arq is optional: when TASK_QUEUE_ENABLED=false, do not require arq.
-_queue: Optional[Any] = None
+_queue: Any | None = None
 _queue_lock = asyncio.Lock()
 
 
@@ -61,7 +61,7 @@ async def close_queue() -> None:
         _queue = None
 
 
-async def get_queue() -> Optional[Any]:
+async def get_queue() -> Any | None:
     """Get queue connection (lazy init)."""
     if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
         return None
@@ -75,8 +75,8 @@ async def enqueue_document_processing(
     tenant_id: UUID,
     document_id: UUID,
     requested_by: str,
-    job_id: Optional[str] = None,
-) -> Optional[str]:
+    job_id: str | None = None,
+) -> str | None:
     """
     Enqueue a document processing job.
 
@@ -108,13 +108,13 @@ async def enqueue_kg_extraction(
     tenant_id: UUID,
     document_id: UUID,
     requested_by: str,
-    job_id: Optional[str] = None,
-    pipeline_hash: Optional[str] = None,
-    replace_existing: Optional[bool] = None,
-    prune_orphan_entities: Optional[bool] = None,
-    extract_relations: Optional[bool] = None,
-    extract_skills: Optional[bool] = None,
-) -> Optional[str]:
+    job_id: str | None = None,
+    pipeline_hash: str | None = None,
+    replace_existing: bool | None = None,
+    prune_orphan_entities: bool | None = None,
+    extract_relations: bool | None = None,
+    extract_skills: bool | None = None,
+) -> str | None:
     """Enqueue KG extraction job (returns None if queue disabled)."""
     q = await get_queue()
     if q is None:
@@ -141,8 +141,8 @@ async def enqueue_rebuild_indexes(
     *,
     tenant_id: UUID,
     requested_by: str,
-    job_id: Optional[str] = None,
-) -> Optional[str]:
+    job_id: str | None = None,
+) -> str | None:
     """Enqueue index rebuild job (returns None if queue disabled)."""
     q = await get_queue()
     if q is None:
@@ -165,8 +165,8 @@ async def enqueue_dataset_profile_scan(
     dataset_id: UUID,
     scan_run_id: UUID,
     requested_by: str,
-    job_id: Optional[str] = None,
-) -> Optional[str]:
+    job_id: str | None = None,
+) -> str | None:
     """Enqueue a dataset profile deep scan job (returns None if queue disabled)."""
     q = await get_queue()
     if q is None:
@@ -191,8 +191,8 @@ async def enqueue_dataset_precheck_scan(
     dataset_id: UUID,
     scan_run_id: UUID,
     requested_by: str,
-    job_id: Optional[str] = None,
-) -> Optional[str]:
+    job_id: str | None = None,
+) -> str | None:
     """Enqueue a dataset precheck scan job (returns None if queue disabled)."""
     q = await get_queue()
     if q is None:
@@ -216,8 +216,8 @@ async def enqueue_connector_run(
     tenant_id: UUID,
     run_id: UUID,
     requested_by: str,
-    job_id: Optional[str] = None,
-) -> Optional[str]:
+    job_id: str | None = None,
+) -> str | None:
     """Enqueue a connector run job (returns None if queue disabled)."""
     q = await get_queue()
     if q is None:
@@ -246,8 +246,8 @@ async def enqueue_evidence_reference_sources_repair(
     max_items: int,
     max_refs_per_item: int,
     max_changes: int,
-    job_id: Optional[str] = None,
-) -> Optional[str]:
+    job_id: str | None = None,
+) -> str | None:
     """
     Enqueue an EvidenceSuite reference_sources repair job (bounded).
 

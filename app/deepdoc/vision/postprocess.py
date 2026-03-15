@@ -171,7 +171,7 @@ class DBPostProcess:
 
     def get_mini_boxes(self, contour):
         bounding_box = cv2.minAreaRect(contour)
-        points = sorted(list(cv2.boxPoints(bounding_box)), key=lambda x: x[0])
+        points = sorted(cv2.boxPoints(bounding_box), key=lambda x: x[0])
 
         index_1, index_2, index_3, index_4 = 0, 1, 2, 3
         if points[1][1] > points[0][1]:

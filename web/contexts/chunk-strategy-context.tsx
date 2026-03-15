@@ -12,13 +12,13 @@ type ChunkStrategyContextValue = {
 
 const ChunkStrategyContext = createContext<ChunkStrategyContextValue | null>(null)
 
-export function ChunkStrategyProvider({ children }: { children: React.ReactNode }) {
+export function ChunkStrategyProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [chunkStrategy, setChunkStrategyState] = useState('langchain_recursive')
   const { capabilities, chunkStrategyAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const stored = window.localStorage.getItem(STORAGE_KEY)
+    if (typeof globalThis.window === 'undefined') return
+    const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
     if (stored) {
       setChunkStrategyState(stored)
     }
@@ -29,15 +29,15 @@ export function ChunkStrategyProvider({ children }: { children: React.ReactNode 
       }
     }
 
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
+    globalThis.window.addEventListener('storage', onStorage)
+    return () => globalThis.window.removeEventListener('storage', onStorage)
   }, [])
 
   const applyChunkStrategy = (value: string) => {
     const next = (value || '').trim().toLowerCase() || 'langchain_recursive'
     setChunkStrategyState(next)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, next)
+    if (typeof globalThis.window !== 'undefined') {
+      globalThis.window.localStorage.setItem(STORAGE_KEY, next)
     }
   }
 

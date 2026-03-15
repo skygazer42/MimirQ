@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
@@ -98,7 +98,7 @@ def build_retrieval_candidate_cache_key(
     return f"{prefix}:{tenant_id}:{digest}"
 
 
-def get_cached_retrieval_candidates(key: str) -> Optional[list[dict[str, Any]]]:
+def get_cached_retrieval_candidates(key: str) -> list[dict[str, Any]] | None:
     if not bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)):
         return None
 

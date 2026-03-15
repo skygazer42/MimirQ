@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -34,7 +34,7 @@ class _Line:
 class _Section:
     start: int
     end: int
-    name: Optional[str]
+    name: str | None
 
 
 @dataclass(frozen=True)
@@ -48,8 +48,8 @@ _TABLE_RE = re.compile(r"^\s*(?P<brackets>\[\[?)(?P<name>[^\]]{1,120})(?:\]\]?)\
 _KEY_RE = re.compile(r"^\s*(?P<key>[A-Za-z0-9_.-]{1,80})\s*=\s*(?P<val>.+?)\s*(?:#.*)?$")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -61,9 +61,9 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _build_sections(text: str) -> List[_Section]:
+def _build_sections(text: str) -> list[_Section]:
     lines = _iter_lines(text)
-    headers: List[tuple[int, str]] = []
+    headers: list[tuple[int, str]] = []
     for ln in lines:
         m = _TABLE_RE.match(ln.plain.strip())
         if not m:
@@ -80,7 +80,7 @@ def _build_sections(text: str) -> List[_Section]:
         return [_Section(start=0, end=len(text), name=None)]
 
     headers = sorted(headers, key=lambda x: x[0])
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     if headers[0][0] > 0:
         sections.append(_Section(start=0, end=headers[0][0], name=None))
     for idx, (start, name) in enumerate(headers):
@@ -89,11 +89,11 @@ def _build_sections(text: str) -> List[_Section]:
     return sections
 
 
-def _iter_entries(text: str, *, start: int, end: int) -> List[_Entry]:
+def _iter_entries(text: str, *, start: int, end: int) -> list[_Entry]:
     rel_lines = _iter_lines(text[start:end])
-    entries: List[_Entry] = []
-    start_idxs: List[int] = []
-    keys: List[str] = []
+    entries: list[_Entry] = []
+    start_idxs: list[int] = []
+    keys: list[str] = []
 
     for i, ln in enumerate(rel_lines):
         plain = ln.plain
@@ -143,8 +143,8 @@ class TOMLConfigChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

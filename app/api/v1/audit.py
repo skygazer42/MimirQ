@@ -9,8 +9,9 @@ from __future__ import annotations
 import gzip as gzip_lib
 import io
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, Dict, Iterator, List, Optional
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -77,14 +78,14 @@ def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
 class AuditLogOut(BaseModel):
     id: UUID
     tenant_id: UUID
-    actor_id: Optional[str] = None
+    actor_id: str | None = None
     action: str
-    resource_type: Optional[str] = None
-    resource_id: Optional[str] = None
-    request_id: Optional[str] = None
-    ip: Optional[str] = None
-    user_agent: Optional[str] = None
-    details: Dict[str, Any] = {}
+    resource_type: str | None = None
+    resource_id: str | None = None
+    request_id: str | None = None
+    ip: str | None = None
+    user_agent: str | None = None
+    details: dict[str, Any] = {}
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -92,7 +93,7 @@ class AuditLogOut(BaseModel):
 
 class AuditLogListResponse(BaseModel):
     total: int
-    items: List[AuditLogOut]
+    items: list[AuditLogOut]
 
 
 class AuditLogPurgeResponse(BaseModel):
@@ -170,13 +171,13 @@ def _dt_to_json(v: Any) -> str | None:
 def list_audit_logs(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    actor_id: Annotated[Optional[str], Query(max_length=255)] = None,
-    action: Annotated[Optional[str], Query(max_length=128)] = None,
-    resource_type: Annotated[Optional[str], Query(max_length=64)] = None,
-    resource_id: Annotated[Optional[str], Query(max_length=255)] = None,
-    request_id: Annotated[Optional[str], Query(max_length=128)] = None,
-    since: Annotated[Optional[datetime], Query()] = None,
-    until: Annotated[Optional[datetime], Query()] = None,
+    actor_id: Annotated[str | None, Query(max_length=255)] = None,
+    action: Annotated[str | None, Query(max_length=128)] = None,
+    resource_type: Annotated[str | None, Query(max_length=64)] = None,
+    resource_id: Annotated[str | None, Query(max_length=255)] = None,
+    request_id: Annotated[str | None, Query(max_length=128)] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
     include_sensitive: Annotated[bool, Query()] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -215,15 +216,15 @@ def list_audit_logs(
 @router.get("/logs/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_audit_logs(
     limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
-    actor_id: Annotated[Optional[str], Query(max_length=255)] = None,
-    action: Annotated[Optional[str], Query(max_length=128)] = None,
-    resource_type: Annotated[Optional[str], Query(max_length=64)] = None,
-    resource_id: Annotated[Optional[str], Query(max_length=255)] = None,
-    request_id: Annotated[Optional[str], Query(max_length=128)] = None,
-    since: Annotated[Optional[datetime], Query()] = None,
-    until: Annotated[Optional[datetime], Query()] = None,
-    after_created_at: Annotated[Optional[datetime], Query(description='Cursor: last seen created_at')] = None,
-    after_id: Annotated[Optional[UUID], Query(description='Cursor: last seen id (tie-breaker)')] = None,
+    actor_id: Annotated[str | None, Query(max_length=255)] = None,
+    action: Annotated[str | None, Query(max_length=128)] = None,
+    resource_type: Annotated[str | None, Query(max_length=64)] = None,
+    resource_id: Annotated[str | None, Query(max_length=255)] = None,
+    request_id: Annotated[str | None, Query(max_length=128)] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
+    after_created_at: Annotated[datetime | None, Query(description='Cursor: last seen created_at')] = None,
+    after_id: Annotated[UUID | None, Query(description='Cursor: last seen id (tie-breaker)')] = None,
     include_sensitive: Annotated[
         bool, Query(description='Include sensitive detail keys (admin/auditor only)')
     ] = False,
@@ -320,7 +321,7 @@ def purge_audit_logs(
         detail="No permission to manage audit logs",
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=int(retention_days or 0))
 
     eligible = int(plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=int(max_delete or 0)) or 0)
@@ -778,7 +779,7 @@ def access_graph_summary(
     payload = {
         "schema": "mimirq.access_graph_summary.v1",
         "tenant_id": str(tenant_id),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "group_count": int(group_count),
         "group_member_count": int(group_member_count),
         "dataset_count": int(dataset_count),

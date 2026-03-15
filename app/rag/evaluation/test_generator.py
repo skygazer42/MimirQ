@@ -8,7 +8,7 @@ Generates test questions from documents or conversation history for RAGAS regres
 import random
 import re
 from collections import Counter
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from langchain_core.output_parsers import JsonOutputParser
@@ -29,9 +29,9 @@ from app.services.document_access import filter_allowed_document_ids
 class GeneratedQuestion(BaseModel):
     """Generated question."""
     question: str = Field(description="Question content")
-    expected_answer: Optional[str] = Field(default=None, description="Expected answer (optional)")
-    context: Optional[str] = Field(default=None, description="Question source context")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    expected_answer: str | None = Field(default=None, description="Expected answer (optional)")
+    context: str | None = Field(default=None, description="Question source context")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
 # Prompt template for generating questions.
@@ -89,7 +89,7 @@ Please return in JSON format as follows:
 """
 
 
-def _calculate_text_diversity_scores(texts: List[str]) -> List[float]:
+def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
     """
     Calculate text diversity scores (simplified TF-IDF).
 
@@ -99,7 +99,7 @@ def _calculate_text_diversity_scores(texts: List[str]) -> List[float]:
         return []
     
     # Simple tokenization (by spaces and punctuation).
-    def tokenize(text: str) -> List[str]:
+    def tokenize(text: str) -> list[str]:
         return [w.lower() for w in re.findall(r'\w+', text) if len(w) > 1]
     
     # Count token frequency.
@@ -134,10 +134,10 @@ def _calculate_text_diversity_scores(texts: List[str]) -> List[float]:
 
 
 def _sample_diverse_chunks(
-    chunks: List[DocumentChunk],
+    chunks: list[DocumentChunk],
     num_samples: int,
     max_chars: int = 2000,
-) -> List[DocumentChunk]:
+) -> list[DocumentChunk]:
     """
     Sample chunks to ensure diversity.
 
@@ -184,11 +184,11 @@ def generate_questions_from_documents(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    dataset_id: Optional[UUID] = None,
-    document_ids: Optional[List[UUID]] = None,
+    dataset_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
     num_questions: int = 10,
-    question_types: Optional[List[str]] = None,
-) -> List[GeneratedQuestion]:
+    question_types: list[str] | None = None,
+) -> list[GeneratedQuestion]:
     """
     Generate test questions from documents.
 
@@ -270,7 +270,7 @@ def generate_questions_from_documents(
     chain = prompt | llm | parser
     
     # Generate questions for each chunk.
-    all_questions: List[GeneratedQuestion] = []
+    all_questions: list[GeneratedQuestion] = []
     questions_per_chunk = max(1, num_questions // len(sampled_chunks))
     
     for chunk in sampled_chunks:
@@ -308,10 +308,10 @@ def generate_questions_from_conversations(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    conversation_ids: List[UUID],
+    conversation_ids: list[UUID],
     num_questions: int = 10,
     quality_threshold: float = 0.7,
-) -> List[GeneratedQuestion]:
+) -> list[GeneratedQuestion]:
     """
     Generate test questions from conversation history.
 
@@ -340,7 +340,7 @@ def generate_questions_from_conversations(
         return []
     
     # Collect high-quality user questions.
-    high_quality_turns: List[Tuple[str, str, UUID]] = []
+    high_quality_turns: list[tuple[str, str, UUID]] = []
     
     for conv in conversations:
         messages = (
@@ -424,7 +424,7 @@ def generate_questions_from_conversations(
             "num_questions": num_questions
         })
         
-        questions: List[GeneratedQuestion] = []
+        questions: list[GeneratedQuestion] = []
         
         if isinstance(result, dict) and "questions" in result:
             for q in result["questions"]:

@@ -11,7 +11,7 @@ import type {
   RagvizSimilarityRequest,
 } from '@/types'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import {
   BarChart3,
   Database,
@@ -25,7 +25,6 @@ import {
 import { toast } from 'sonner'
 
 type LeftTopPanel = 'dataSource' | 'operations'
-type LeftBottomPanel = 'chartControl'
 type RightTopPanel = 'statistics' | null
 type RightBottomPanel = 'filters' | null
 
@@ -45,7 +44,6 @@ export function RagvizSimilarityWorkbench() {
   const [tempTopK, setTempTopK] = useState<{ value: number; axis: 'x' | 'y' }>({ value: 0, axis: 'x' })
 
   const [leftTopPanel, setLeftTopPanel] = useState<LeftTopPanel>('dataSource')
-  const [leftBottomPanel] = useState<LeftBottomPanel>('chartControl')
   const [rightTopPanel, setRightTopPanel] = useState<RightTopPanel>('statistics')
   const [rightBottomPanel, setRightBottomPanel] = useState<RightBottomPanel>('filters')
 
@@ -80,7 +78,7 @@ export function RagvizSimilarityWorkbench() {
   }, [])
 
   useEffect(() => {
-    void loadCollections()
+    detachPromise(loadCollections())
   }, [loadCollections])
 
   const availableCollectionOptions = useMemo(() => {
@@ -198,7 +196,7 @@ export function RagvizSimilarityWorkbench() {
     const idx = Math.max(0, Math.min(exportIndex, results.length - 1))
     const entry = results[idx]
     const payload = { version: 1, entries: [entry] }
-    const safe = `matrix_${idx + 1}`.replace(/[^\w.-]+/g, '_')
+    const safe = `matrix_${idx + 1}`.replaceAll(/[^\w.-]+/g, '_')
     downloadJson(`${safe}.json`, payload)
   }
 
@@ -210,7 +208,19 @@ export function RagvizSimilarityWorkbench() {
 
   const parseImportedPayload = (raw: any): SimilarityMatrixEntry[] => {
     if (!raw) return []
-    const entries = Array.isArray(raw) ? raw : Array.isArray(raw.entries) ? raw.entries : [raw]
+    const entries = (() => {
+    if (Array.isArray(raw)) {
+        return raw;
+    }
+    else {
+        if (Array.isArray(raw.entries)) {
+            return raw.entries;
+        }
+        else {
+            return [raw];
+        }
+    }
+})()
     const out: SimilarityMatrixEntry[] = []
     for (const e of entries) {
       const result: RagvizSimilarityMatrixResult | undefined = e?.result
@@ -269,8 +279,8 @@ export function RagvizSimilarityWorkbench() {
     toast.success(`已导入 ${imported.length} 个矩阵`)
   }
 
-  const primaryEntry = primaryIndex !== null ? results[primaryIndex] : null
-  const subtractEntry = subtractIndex !== null ? results[subtractIndex] : null
+  const primaryEntry = primaryIndex === null ? null : results[primaryIndex]
+  const subtractEntry = subtractIndex === null ? null : results[subtractIndex]
   const isDifferenceMode = Boolean(primaryEntry && subtractEntry)
   const rangeBounds = useMemo(() => (isDifferenceMode ? { min: -1, max: 1 } : { min: 0, max: 1 }), [isDifferenceMode])
 
@@ -393,7 +403,7 @@ export function RagvizSimilarityWorkbench() {
 
   const updateDisplayFields = (xField: string, yField: string) => {
     if (primaryIndex === null) return
-    const target = exclusiveIndex !== null ? exclusiveIndex : primaryIndex
+    const target = exclusiveIndex === null ? primaryIndex : exclusiveIndex
     setResults((prev) =>
       prev.map((entry, idx) => {
         if (idx !== target) return entry
@@ -530,7 +540,6 @@ export function RagvizSimilarityWorkbench() {
       }
 
       // Replace subtract.
-      const old = subtractIndex
       setSubtractIndex(index)
       return next.map((s, i) => ({ ...s, applyData: i === primaryIndex || i === index ? true : false }))
     })
@@ -616,12 +625,12 @@ export function RagvizSimilarityWorkbench() {
     }
 
     const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
+      globalThis.window.removeEventListener('mousemove', onMove)
+      globalThis.window.removeEventListener('mouseup', onUp)
     }
 
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+    globalThis.window.addEventListener('mousemove', onMove)
+    globalThis.window.addEventListener('mouseup', onUp)
   }
 
   const startResizeSplit = (side: 'left' | 'right', event: ReactMouseEvent) => {
@@ -643,12 +652,12 @@ export function RagvizSimilarityWorkbench() {
     }
 
     const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
+      globalThis.window.removeEventListener('mousemove', onMove)
+      globalThis.window.removeEventListener('mouseup', onUp)
     }
 
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+    globalThis.window.addEventListener('mousemove', onMove)
+    globalThis.window.addEventListener('mouseup', onUp)
   }
 
   return (
@@ -680,7 +689,9 @@ export function RagvizSimilarityWorkbench() {
           className="relative h-full border-r border-border bg-card flex flex-col"
           style={{ width: leftWidth }}
         >
-          <div
+          <button
+            type="button"
+            aria-label="Resize left sidebar"
             className="absolute top-0 right-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
             onMouseDown={(e) => startResizeSidebar('left', e)}
           />
@@ -752,7 +763,7 @@ export function RagvizSimilarityWorkbench() {
                           <option value="0">请先计算相似度</option>
                         ) : (
                           results.map((r, idx) => (
-                            <option key={`${r.xCollectionId}__${r.yCollectionId}__${idx}`} value={idx}>
+                            <option key={`${r.xCollectionId}__${r.yCollectionId}`} value={idx}>
                               {idx + 1}. {r.xCollectionLabel} vs {r.yCollectionLabel}
                             </option>
                           ))
@@ -784,7 +795,7 @@ export function RagvizSimilarityWorkbench() {
                       multiple
                       className="hidden"
                       onChange={(e) => {
-                        void importFiles(e.target.files)
+                        detachPromise(importFiles(e.target.files))
                         // Reset so selecting the same file again still triggers onChange.
                         e.currentTarget.value = ''
                       }}
@@ -794,7 +805,9 @@ export function RagvizSimilarityWorkbench() {
               )}
             </div>
 
-            <div
+            <button
+              type="button"
+              aria-label="Resize left split"
               className="h-2 cursor-row-resize bg-border/50 hover:bg-primary/20"
               onMouseDown={(e) => startResizeSplit('left', e)}
             />
@@ -817,7 +830,7 @@ export function RagvizSimilarityWorkbench() {
 
                         return (
                           <div
-                            key={`${entry.xCollectionId}__${entry.yCollectionId}__${idx}`}
+                            key={`${entry.xCollectionId}__${entry.yCollectionId}`}
                             className={cn(
                               'flex items-center gap-2 rounded-lg border p-2',
                               isPrimary ? 'border-primary/50 bg-primary/5' : 'border-border bg-background'
@@ -956,7 +969,9 @@ export function RagvizSimilarityWorkbench() {
           className="relative h-full border-l border-border bg-card flex flex-col"
           style={{ width: rightWidth }}
         >
-          <div
+          <button
+            type="button"
+            aria-label="Resize right sidebar"
             className="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-primary/20"
             onMouseDown={(e) => startResizeSidebar('right', e)}
           />
@@ -965,47 +980,44 @@ export function RagvizSimilarityWorkbench() {
             <div className="p-3 border-b border-border" style={rightTopStyle}>
               {rightTopPanel === 'statistics' ? (
                 <Panel title="统计信息">
-                  {!primaryEntry || !effectiveMask ? (
-                    <p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>
-                  ) : isDifferenceMode && differenceStats ? (
-                    <StatsGrid>
-                      <StatsItem label="True Positive" value={differenceStats.truePositive} tone="success" />
-                      <StatsItem label="True Negative" value={differenceStats.trueNegative} tone="muted" />
-                      <StatsItem label="False Positive" value={differenceStats.falsePositive} tone="warning" />
-                      <StatsItem label="False Negative" value={differenceStats.falseNegative} tone="danger" />
-                      <StatsItem
-                        label="上下文召回率"
-                        value={`${(differenceStats.contextRecall * 100).toFixed(2)}%`}
-                        tone="info"
-                      />
-                      <StatsItem
-                        label="上下文精度"
-                        value={`${(differenceStats.contextPrecision * 100).toFixed(2)}%`}
-                        tone="info"
-                      />
-                    </StatsGrid>
-                  ) : normalStats ? (
-                    <StatsGrid>
-                      <StatsItem label="当前显示对比数" value={`${normalStats.currentDisplayCount} / ${normalStats.totalCount}`} />
-                      <StatsItem label="斜对角线对比数" value={`${normalStats.diagonalTrueCount} / ${normalStats.diagonalTotalCount}`} />
-                      {normalStats.topKAxis !== 'none' ? (
-                        <StatsItem
-                          label={`缺失匹配(${normalStats.topKAxis === 'x' ? '横轴' : '纵轴'})`}
-                          value={normalStats.missingMatchCount}
-                          tone={normalStats.missingMatchCount > 0 ? 'warning' : 'muted'}
-                        />
-                      ) : null}
-                    </StatsGrid>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">暂无统计数据</p>
-                  )}
+                  {(() => {
+    if (!primaryEntry || !effectiveMask) {
+        return (<p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>);
+    }
+    else {
+        if (isDifferenceMode && differenceStats) {
+            return (<StatsGrid>
+                      <StatsItem label="True Positive" value={differenceStats.truePositive} tone="success"/>
+                      <StatsItem label="True Negative" value={differenceStats.trueNegative} tone="muted"/>
+                      <StatsItem label="False Positive" value={differenceStats.falsePositive} tone="warning"/>
+                      <StatsItem label="False Negative" value={differenceStats.falseNegative} tone="danger"/>
+                      <StatsItem label="上下文召回率" value={`${(differenceStats.contextRecall * 100).toFixed(2)}%`} tone="info"/>
+                      <StatsItem label="上下文精度" value={`${(differenceStats.contextPrecision * 100).toFixed(2)}%`} tone="info"/>
+                    </StatsGrid>);
+        }
+        else {
+            if (normalStats) {
+                return (<StatsGrid>
+                      <StatsItem label="当前显示对比数" value={`${normalStats.currentDisplayCount} / ${normalStats.totalCount}`}/>
+                      <StatsItem label="斜对角线对比数" value={`${normalStats.diagonalTrueCount} / ${normalStats.diagonalTotalCount}`}/>
+                      {normalStats.topKAxis === 'none' ? null : (<StatsItem label={`缺失匹配(${normalStats.topKAxis === 'x' ? '横轴' : '纵轴'})`} value={normalStats.missingMatchCount} tone={normalStats.missingMatchCount > 0 ? 'warning' : 'muted'}/>)}
+                    </StatsGrid>);
+            }
+            else {
+                return (<p className="text-xs text-muted-foreground">暂无统计数据</p>);
+            }
+        }
+    }
+})()}
                 </Panel>
               ) : (
                 <div className="h-full" />
               )}
             </div>
 
-            <div
+            <button
+              type="button"
+              aria-label="Resize right split"
               className="h-2 cursor-row-resize bg-border/50 hover:bg-primary/20"
               onMouseDown={(e) => startResizeSplit('right', e)}
             />
@@ -1013,9 +1025,7 @@ export function RagvizSimilarityWorkbench() {
             <div className="p-3 overflow-auto overscroll-contain no-scrollbar">
               {rightBottomPanel === 'filters' ? (
                 <Panel title="筛选器控制">
-                  {!primaryEntry ? (
-                    <p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>
-                  ) : (
+                  {primaryEntry ? (
                     <div className="space-y-5">
                       <div className="space-y-2">
                         <div className="text-xs font-medium text-foreground/80">横坐标显示字段</div>
@@ -1146,10 +1156,24 @@ export function RagvizSimilarityWorkbench() {
                           </Button>
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                          当前：Top-{uiTopK.value}（{uiTopK.value === 0 ? '显示全部' : uiTopK.axis === 'x' ? '按行取 Top-K' : '按列取 Top-K'}）
+                          当前：Top-{uiTopK.value}（{(() => {
+    if (uiTopK.value === 0) {
+        return '显示全部';
+    }
+    else {
+        if (uiTopK.axis === 'x') {
+            return '按行取 Top-K';
+        }
+        else {
+            return '按列取 Top-K';
+        }
+    }
+})()}）
                         </p>
                       </div>
                     </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>
                   )}
                 </Panel>
               ) : (
@@ -1168,12 +1192,12 @@ function IconBtn({
   icon,
   title,
   onClick,
-}: {
+}: Readonly<{
   active?: boolean
   icon: ReactNode
   title: string
   onClick?: () => void
-}) {
+}>) {
   return (
     <button
       type="button"
@@ -1193,11 +1217,11 @@ function Panel({
   title,
   children,
   rightSlot,
-}: {
+}: Readonly<{
   title: string
   children: ReactNode
   rightSlot?: ReactNode
-}) {
+}>) {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between gap-2 mb-2">
@@ -1216,18 +1240,28 @@ function CollectionSelectorBlock({
   selections,
   onChange,
   options,
-}: {
+}: Readonly<{
   label: string
   selections: string[]
   onChange: (next: string[]) => void
   options: SelectOption[]
-}) {
+}>) {
+  const keyedSelections = useMemo(() => {
+    const seen = new Map<string, number>()
+    return selections.map((value) => {
+      const base = value || '__empty__'
+      const count = (seen.get(base) ?? 0) + 1
+      seen.set(base, count)
+      return { value, key: `${base}:${count}` }
+    })
+  }, [selections])
+
   return (
     <div className="space-y-2">
       <div className="text-xs font-medium text-foreground/80">{label}</div>
       <div className="space-y-2">
-        {selections.map((value, idx) => (
-          <div key={idx} className="flex items-center gap-2">
+        {keyedSelections.map(({ value, key }, idx) => (
+          <div key={key} className="flex items-center gap-2">
             <select
               className="flex-1 h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
               value={value}
@@ -1281,13 +1315,13 @@ function NumberField({
   onChange,
   min,
   max,
-}: {
+}: Readonly<{
   label: string
   value: number
   onChange: (next: number) => void
   min: number
   max: number
-}) {
+}>) {
   return (
     <label className="space-y-2 block">
       <div className="text-xs font-medium text-foreground/80">{label}</div>
@@ -1307,7 +1341,7 @@ function NumberField({
   )
 }
 
-const DEFAULT_FIELD_NAMES = ['document', 'text', 'name'] as const
+const DEFAULT_FIELD_NAMES = ['document', 'text', 'name']
 
 function getDefaultDisplayField(fields: string[]) {
   for (const name of DEFAULT_FIELD_NAMES) {
@@ -1391,13 +1425,13 @@ function PlotlyHeatmap({
   yLabels,
   colorScheme,
   isDifference,
-}: {
+}: Readonly<{
   matrix: Array<Array<number | null>>
   xLabels: string[]
   yLabels: string[]
   colorScheme: ColorSchemeKey
   isDifference: boolean
-}) {
+}>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [plotly, setPlotly] = useState<any>(null)
 
@@ -1408,7 +1442,7 @@ function PlotlyHeatmap({
         const mod: any = await import('plotly.js-dist-min')
         const Plotly = mod?.default || mod
         if (!cancelled) setPlotly(() => Plotly)
-      } catch (e) {
+      } catch {
         if (!cancelled) setPlotly(null)
       }
     })()
@@ -1645,7 +1679,7 @@ function calculateDifferenceModeStatistics(groundTruthMask: boolean[][], current
   return { truePositive, trueNegative, falsePositive, falseNegative, contextRecall, contextPrecision }
 }
 
-function StatsGrid({ children }: { children: ReactNode }) {
+function StatsGrid({ children }: Readonly<{ children: ReactNode }>) {
   return <div className="grid grid-cols-2 gap-2">{children}</div>
 }
 
@@ -1653,23 +1687,40 @@ function StatsItem({
   label,
   value,
   tone = 'default',
-}: {
+}: Readonly<{
   label: string
   value: ReactNode
   tone?: 'default' | 'muted' | 'info' | 'success' | 'warning' | 'danger'
-}) {
+}>) {
   const toneClass =
-    tone === 'success'
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/15 dark:text-emerald-200 dark:border-emerald-900/30'
-      : tone === 'warning'
-        ? 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30'
-        : tone === 'danger'
-          ? 'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30'
-          : tone === 'info'
-            ? 'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30'
-            : tone === 'muted'
-              ? 'bg-muted text-muted-foreground border-border'
-              : 'bg-card text-foreground border-border'
+    (() => {
+    if (tone === 'success') {
+        return 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/15 dark:text-emerald-200 dark:border-emerald-900/30';
+    }
+    else {
+        if (tone === 'warning') {
+            return 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30';
+        }
+        else {
+            if (tone === 'danger') {
+                return 'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30';
+            }
+            else {
+                if (tone === 'info') {
+                    return 'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30';
+                }
+                else {
+                    if (tone === 'muted') {
+                        return 'bg-muted text-muted-foreground border-border';
+                    }
+                    else {
+                        return 'bg-card text-foreground border-border';
+                    }
+                }
+            }
+        }
+    }
+})()
 
   return (
     <div className={cn('rounded-lg border p-2', toneClass)}>

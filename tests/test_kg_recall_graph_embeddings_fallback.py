@@ -37,22 +37,22 @@ async def test_kg_recall_uses_graph_embeddings_when_vector_recall_disabled(monke
     import app.rag.kg.search.recall as recall_mod
 
     # No DB connections in unit tests.
-    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda self: None})(), raising=True)
+    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda _self: None})(), raising=True)
 
     # Seed entities come from aliases.
-    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *a, **k: [alias_hit], raising=True)
+    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *_a, **_k: [alias_hit], raising=True)
 
     # Vector entity recall should be disabled entirely.
     monkeypatch.setattr(
         recall_mod.EntityRepository,
         "search_similar",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("vector entity recall should be disabled")),
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("vector entity recall should be disabled")),
         raising=True,
     )
     monkeypatch.setattr(
         recall_mod.EventRepository,
         "search_similar_by_content",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("vector event recall should be disabled")),
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("vector event recall should be disabled")),
         raising=True,
     )
 
@@ -86,7 +86,7 @@ async def test_kg_recall_uses_graph_embeddings_when_vector_recall_disabled(monke
     monkeypatch.setattr(
         recall_mod.EntityRepository,
         "get_entities_by_ids",
-        lambda *a, **k: [_Ent()],
+        lambda *_a, **_k: [_Ent()],
         raising=True,
     )
 
@@ -94,12 +94,12 @@ async def test_kg_recall_uses_graph_embeddings_when_vector_recall_disabled(monke
     monkeypatch.setattr(
         recall_mod.EventRepository,
         "filter_entity_ids_in_documents",
-        lambda *a, **k: {alias_entity_id, graph_entity_id},
+        lambda *_a, **_k: {alias_entity_id, graph_entity_id},
         raising=True,
     )
 
     # Minimal event plumbing for steps 2/5/6/7.
-    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *a, **k: [event_id], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *_a, **_k: [event_id], raising=True)
 
     class _Ev:
         def __init__(self) -> None:
@@ -113,11 +113,11 @@ async def test_kg_recall_uses_graph_embeddings_when_vector_recall_disabled(monke
         def __init__(self, entity_id: UUID) -> None:
             self.entity_id = entity_id
 
-    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *a, **k: [_Ev()], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *_a, **_k: [_Ev()], raising=True)
     monkeypatch.setattr(
         recall_mod.EventRepository,
         "get_event_entities",
-        lambda *a, **k: {str(event_id): [_Link(alias_entity_id), _Link(graph_entity_id)]},
+        lambda *_a, **_k: {str(event_id): [_Link(alias_entity_id), _Link(graph_entity_id)]},
         raising=True,
     )
 

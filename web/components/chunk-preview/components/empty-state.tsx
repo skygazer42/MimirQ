@@ -47,6 +47,15 @@ export function EmptyState() {
             'w-full bg-card rounded-3xl p-2 shadow-strong border border-border/70 transition-colors transition-shadow duration-200 motion-reduce:transition-none',
             isDragging ? 'ring-4 ring-primary/15 border-primary/25' : 'hover:border-primary/25'
           )}
+          role="button"
+          tabIndex={0}
+          onClick={() => document.getElementById('chunk-file-input')?.click()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              document.getElementById('chunk-file-input')?.click()
+            }
+          }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -56,7 +65,6 @@ export function EmptyState() {
               'relative w-full h-60 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center transition-colors duration-200 motion-reduce:transition-none cursor-pointer overflow-hidden',
               isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40 hover:bg-primary/5'
             )}
-            onClick={() => document.getElementById('chunk-file-input')?.click()}
           >
             <input
               id="chunk-file-input"

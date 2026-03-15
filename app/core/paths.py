@@ -6,7 +6,6 @@ Centralizes project path definitions to avoid repeated computation.
 
 import os
 from pathlib import Path
-from typing import Optional
 
 # =============================================================================
 # Project root
@@ -79,7 +78,7 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
-def get_upload_path(filename: str, tenant_id: Optional[str] = None) -> Path:
+def get_upload_path(filename: str, tenant_id: str | None = None) -> Path:
     """
     Get storage path for uploaded file.
 

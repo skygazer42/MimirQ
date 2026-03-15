@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 
@@ -10,7 +10,7 @@ def test_document_scope_corpus_token_changes_when_pipeline_changes() -> None:
     rows = [
         {
             "id": "doc-1",
-            "updated_at": datetime(2026, 3, 7, 12, 0, tzinfo=timezone.utc),
+            "updated_at": datetime(2026, 3, 7, 12, 0, tzinfo=UTC),
             "active_pipeline_hash": "pipe-a",
         }
     ]
@@ -28,12 +28,12 @@ def test_document_scope_corpus_token_changes_when_document_updates() -> None:
 
     row = {
         "id": "doc-1",
-        "updated_at": datetime(2026, 3, 7, 12, 0, tzinfo=timezone.utc),
+        "updated_at": datetime(2026, 3, 7, 12, 0, tzinfo=UTC),
         "active_pipeline_hash": "pipe-a",
     }
     token_a = build_document_scope_corpus_cache_token([row])
     token_b = build_document_scope_corpus_cache_token(
-        [{**row, "updated_at": datetime(2026, 3, 7, 12, 5, tzinfo=timezone.utc)}]
+        [{**row, "updated_at": datetime(2026, 3, 7, 12, 5, tzinfo=UTC)}]
     )
 
     assert token_a != token_b
@@ -44,11 +44,11 @@ def test_dataset_scope_corpus_token_changes_when_dataset_updates() -> None:
 
     token_a = build_dataset_scope_corpus_cache_token(
         dataset_id="ds-1",
-        updated_at=datetime(2026, 3, 7, 12, 0, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 3, 7, 12, 0, tzinfo=UTC),
     )
     token_b = build_dataset_scope_corpus_cache_token(
         dataset_id="ds-1",
-        updated_at=datetime(2026, 3, 7, 12, 5, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 3, 7, 12, 5, tzinfo=UTC),
     )
 
     assert isinstance(token_a, str) and token_a
@@ -60,7 +60,7 @@ def test_invalidate_dataset_cache_namespace_rotates_dataset_token(monkeypatch) -
 
     tenant_id = uuid4()
     dataset_id = uuid4()
-    initial_updated_at = datetime(2026, 3, 10, 11, 0, tzinfo=timezone.utc)
+    initial_updated_at = datetime(2026, 3, 10, 11, 0, tzinfo=UTC)
 
     class _FakeDataset:
         def __init__(self) -> None:

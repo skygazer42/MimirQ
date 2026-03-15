@@ -13,8 +13,9 @@ Security posture:
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from app.rag.core.hashing import stable_hash
 
@@ -145,7 +146,7 @@ def _changed_fields(kind: str, fp_a: tuple[str | None, ...], fp_b: tuple[str | N
     elif kind == "document":
         names = ("dataset_id", "access_mode", "owner_id_hash")
     else:
-        names = tuple()
+        names = ()
 
     out: list[str] = []
     for idx, name in enumerate(names):

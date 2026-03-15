@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +11,7 @@ from app.services.ltr_model_registry import evaluate_online_rollback_trigger, ro
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _load_windows(path: Path) -> list[dict[str, Any]]:

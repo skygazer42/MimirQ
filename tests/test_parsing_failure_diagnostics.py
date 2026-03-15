@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import fitz  # PyMuPDF
@@ -52,6 +53,7 @@ def test_parsing_workspace_parse_returns_diagnostics_on_failure(monkeypatch, tmp
 
     # Force a subprocess failure so we can assert the error payload.
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         raise SubprocessWorkerError("boom", details={"type": "RuntimeError"})
 
     monkeypatch.setattr(parsing_module, "run_subprocess_worker", _fake_run_subprocess_worker, raising=True)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
@@ -72,7 +72,7 @@ class _FakeDB:
         self._added.append(obj)
         if getattr(obj, "id", None) is None:
             obj.id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -100,7 +100,7 @@ async def test_feedback_to_regression_case_includes_reference_sources_and_trace(
     document_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
     request_id = "req-30"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     conv = Conversation(
         id=conversation_id,
@@ -157,11 +157,11 @@ async def test_feedback_to_regression_case_includes_reference_sources_and_trace(
 
     db = _FakeDB(feedback_rows=[fb], messages=[assistant_msg, user_msg], conversations=[conv])
 
-    monkeypatch.setattr(feedback_mod.DatasetService, "ensure_member", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(feedback_mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         feedback_mod,
         "list_rag_traces",
-        lambda **kwargs: RagTraceListResponse(
+        lambda **_kwargs: RagTraceListResponse(
             enabled=True,
             path="/tmp/fake.jsonl",
             window_minutes=60,

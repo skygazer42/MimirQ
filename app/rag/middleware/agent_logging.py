@@ -13,7 +13,7 @@ This middleware is disabled by default (settings.AGENT_LOG_ENABLED).
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.rag.middleware.base import after_agent, before_agent
@@ -39,7 +39,7 @@ class AgentExecutionLoggingMiddleware:
     include_execution_path: bool = False
     max_preview_chars: int = 500
 
-    def before(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def before(self, state: dict[str, Any]) -> dict[str, Any]:
         if not self.enabled:
             return state
         agent = dict(state.get("_agent") or {})
@@ -47,14 +47,14 @@ class AgentExecutionLoggingMiddleware:
         state["_agent"] = agent
         return state
 
-    def after(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def after(self, state: dict[str, Any]) -> dict[str, Any]:
         if not self.enabled:
             return state
 
         agent = dict(state.get("_agent") or {})
         start_ts = agent.get("start_ts")
         end_ts = _now_ts()
-        elapsed_ms: Optional[float] = None
+        elapsed_ms: float | None = None
         if isinstance(start_ts, (int, float)):
             elapsed_ms = round((end_ts - float(start_ts)) * 1000, 2)
 
@@ -94,7 +94,7 @@ class AgentExecutionLoggingMiddleware:
 
 
 @before_agent(priority=50, name="agent_logging_before")
-def _agent_logging_before(state: Dict[str, Any]) -> Dict[str, Any]:
+def _agent_logging_before(state: dict[str, Any]) -> dict[str, Any]:
     mw = AgentExecutionLoggingMiddleware(
         enabled=bool(getattr(settings, "AGENT_LOG_ENABLED", False)),
         include_execution_path=bool(getattr(settings, "AGENT_LOG_INCLUDE_EXECUTION_PATH", False)),
@@ -104,7 +104,7 @@ def _agent_logging_before(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @after_agent(priority=50, name="agent_logging_after")
-def _agent_logging_after(state: Dict[str, Any]) -> Dict[str, Any]:
+def _agent_logging_after(state: dict[str, Any]) -> dict[str, Any]:
     mw = AgentExecutionLoggingMiddleware(
         enabled=bool(getattr(settings, "AGENT_LOG_ENABLED", False)),
         include_execution_path=bool(getattr(settings, "AGENT_LOG_INCLUDE_EXECUTION_PATH", False)),

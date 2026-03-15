@@ -6,7 +6,6 @@ This mirrors DatasetPermissionService but is scoped to individual documents.
 
 from __future__ import annotations
 
-from typing import List
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -20,7 +19,7 @@ from app.models.tenant_group import TenantGroup
 
 class DocumentPermissionService:
     @staticmethod
-    def get_document_partial_member_list(db: Session, tenant_id: UUID, document_id: UUID) -> List[str]:
+    def get_document_partial_member_list(db: Session, tenant_id: UUID, document_id: UUID) -> list[str]:
         rows = (
             db.query(DocumentPermission)
             .filter(
@@ -43,7 +42,7 @@ class DocumentPermissionService:
         db: Session,
         tenant_id: UUID,
         document_id: UUID,
-        member_ids: List[str],
+        member_ids: list[str],
         *,
         max_members: int = 200,
     ) -> None:
@@ -93,7 +92,7 @@ class DocumentPermissionService:
 
 class DocumentGroupPermissionService:
     @staticmethod
-    def get_document_partial_group_list(db: Session, tenant_id: UUID, document_id: UUID) -> List[UUID]:
+    def get_document_partial_group_list(db: Session, tenant_id: UUID, document_id: UUID) -> list[UUID]:
         rows = (
             db.query(DocumentGroupPermission.group_id)
             .filter(
@@ -116,7 +115,7 @@ class DocumentGroupPermissionService:
         db: Session,
         tenant_id: UUID,
         document_id: UUID,
-        group_ids: List[UUID],
+        group_ids: list[UUID],
         *,
         max_groups: int = 200,
     ) -> None:

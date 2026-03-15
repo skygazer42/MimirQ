@@ -5,20 +5,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import {
-  ScanLine,
-  Play,
-  CheckCircle,
-  AlertTriangle,
-  Info,
-  FileText,
-  Hash,
-  Languages,
-  Code,
-  List,
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react'
+import { ScanLine, Play, CheckCircle, AlertTriangle, Info, FileText, Languages, Code, List, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { pipelineApi } from '@/lib/api-client'
@@ -47,7 +34,7 @@ const CHECK_ITEMS = [
   { id: 'issues', label: '问题识别', icon: AlertTriangle },
 ]
 
-export function QualityChecker({ content, initialScore = 0, initialIssues = [], onComplete }: QualityCheckerProps) {
+export function QualityChecker({ content, initialScore = 0, initialIssues = [], onComplete }: Readonly<QualityCheckerProps>) {
   const [isScanning, setIsScanning] = useState(false)
   const [score, setScore] = useState(initialScore)
   const [issues, setIssues] = useState<QualityIssue[]>(initialIssues)
@@ -59,7 +46,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
   const textStats = useMemo(() => {
     const text = content || ''
     const chars = text.length
-    const charsNoSpaces = text.replace(/\s/g, '').length
+    const charsNoSpaces = text.replaceAll(/\s/g, '').length
     const words = text.trim() ? text.trim().split(/\s+/).length : 0
     const lines = text.split('\n').length
     const paragraphs = text.split(/\n\n+/).filter((p) => p.trim()).length
@@ -108,7 +95,19 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     const hasTables = (content.match(/\|.*\|/g) || []).length > 0
 
     return {
-      format: hasHtml ? 'HTML' : hasMarkdown ? 'Markdown' : '纯文本',
+      format: (() => {
+    if (hasHtml) {
+        return 'HTML';
+    }
+    else {
+        if (hasMarkdown) {
+            return 'Markdown';
+        }
+        else {
+            return '纯文本';
+        }
+    }
+})(),
       hasHeaders,
       hasLists,
       hasTables,
@@ -206,7 +205,19 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
         for (const it of backendIssues.slice(0, 10)) {
           detectedIssues.push({
             id: `backend:${it.code}`,
-            type: it.severity === 'error' ? 'error' : it.severity === 'warning' ? 'warning' : 'info',
+            type: (() => {
+    if (it.severity === 'error') {
+        return 'error';
+    }
+    else {
+        if (it.severity === 'warning') {
+            return 'warning';
+        }
+        else {
+            return 'info';
+        }
+    }
+})(),
             message: `后端检测：${it.message}${typeof it.count === 'number' && it.count > 0 ? `（${it.count}）` : ''}`,
           })
         }
@@ -263,10 +274,10 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
 
   // 获取分数等级
   const scoreGrade = useMemo(() => {
-    if (score >= 90) return { label: '优秀', tone: 'success' as const, badge: 'bg-success/10 text-success border border-success/20' }
-    if (score >= 75) return { label: '良好', tone: 'info' as const, badge: 'bg-info/10 text-info border border-info/20' }
-    if (score >= 60) return { label: '及格', tone: 'warning' as const, badge: 'bg-warning/10 text-warning border border-warning/20' }
-    return { label: '较差', tone: 'destructive' as const, badge: 'bg-destructive/10 text-destructive border border-destructive/20' }
+    if (score >= 90) return { label: '优秀', tone: 'success', badge: 'bg-success/10 text-success border border-success/20' }
+    if (score >= 75) return { label: '良好', tone: 'info', badge: 'bg-info/10 text-info border border-info/20' }
+    if (score >= 60) return { label: '及格', tone: 'warning', badge: 'bg-warning/10 text-warning border border-warning/20' }
+    return { label: '较差', tone: 'destructive', badge: 'bg-destructive/10 text-destructive border border-destructive/20' }
   }, [score])
 
   // 初始自动扫描
@@ -474,7 +485,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
   )
 }
 
-function StatRow({ label, value }: { label: string; value: string | number }) {
+function StatRow({ label, value }: Readonly<{ label: string; value: string | number | boolean }>) {
   return (
     <div className="flex items-center justify-between py-2">
       <span className="text-xs text-muted-foreground">{label}</span>

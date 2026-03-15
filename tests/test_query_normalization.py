@@ -74,7 +74,7 @@ def test_hybrid_retriever_normalizes_query_before_search(monkeypatch) -> None:  
 
     # Avoid DB / neighbor side effects; we're only asserting the query passed into the search.
     monkeypatch.setattr(retriever, "_hybrid_search", _hybrid_search_stub, raising=True)
-    monkeypatch.setattr(retriever, "_enrich_results_with_db_metadata", lambda results, stats=None: results, raising=True)  # noqa: E501
+    monkeypatch.setattr(retriever, "_enrich_results_with_db_metadata", lambda results, _stats=None: results, raising=True)  # noqa: E501
     monkeypatch.setattr(retriever, "_expand_results_with_neighbors", lambda results: results, raising=True)
     monkeypatch.setattr(retriever, "_auto_merge_parent_child", lambda results: results, raising=True)
 

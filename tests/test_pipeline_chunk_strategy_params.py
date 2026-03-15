@@ -16,7 +16,7 @@ def test_document_pipeline_options_validates_chunk_strategy_params_primitives():
             "separator": "\\n\\n",
         }
     )
-    assert opts.chunk_strategy_params["child_ratio"] == 0.5
+    assert opts.chunk_strategy_params["child_ratio"] == pytest.approx(0.5)
     assert opts.chunk_strategy_params["min_child_size"] == 200
 
 

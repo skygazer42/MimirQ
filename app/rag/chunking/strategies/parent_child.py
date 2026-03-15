@@ -8,7 +8,6 @@ Creates a two-level hierarchy:
 Child chunks maintain reference to parent via parent_id.
 """
 
-from typing import List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -60,8 +59,8 @@ class ParentChildChunker(BaseChunker):
             length_function=len,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        chunks: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        chunks: list[Document] = []
 
         for doc in documents:
             text = doc.page_content

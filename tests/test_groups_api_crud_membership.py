@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -61,7 +61,7 @@ def _build_client(*, monkeypatch: pytest.MonkeyPatch, tenant_id: uuid.UUID, allo
                 raise HTTPException(status_code=409, detail="Group name already exists")
 
         gid = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         obj = SimpleNamespace(
             id=gid,
             tenant_id=tenant_id,
@@ -98,7 +98,7 @@ def _build_client(*, monkeypatch: pytest.MonkeyPatch, tenant_id: uuid.UUID, allo
             g.name = name
         if external_id is not None:
             g.external_id = external_id
-        g.updated_at = datetime.now(timezone.utc)
+        g.updated_at = datetime.now(UTC)
         return g
 
     def _delete_group(_db, *, tenant_id: uuid.UUID, group_id: uuid.UUID):  # noqa: ANN001
@@ -129,7 +129,7 @@ def _build_client(*, monkeypatch: pytest.MonkeyPatch, tenant_id: uuid.UUID, allo
         if missing:
             raise HTTPException(status_code=400, detail=f"Unknown tenant members: {', '.join(missing[:20])}")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         members = store["members"].setdefault(group_id, {})
         added = 0
         for mid in member_ids:

@@ -9,7 +9,8 @@ Provides:
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -165,8 +166,8 @@ class DatasetCategoryService:
         tenant_id: UUID,
         account_id: str,
         name: str,
-        parent_id: Optional[UUID] = None,
-        sort_order: Optional[int] = None,
+        parent_id: UUID | None = None,
+        sort_order: int | None = None,
     ) -> DatasetCategory:
         _assert_can_edit(db, tenant_id, account_id)
         parent = None
@@ -191,8 +192,8 @@ class DatasetCategoryService:
         tenant_id: UUID,
         account_id: str,
         category_id: UUID,
-        name: Optional[str] = None,
-        sort_order: Optional[int] = None,
+        name: str | None = None,
+        sort_order: int | None = None,
     ) -> DatasetCategory:
         _assert_can_edit(db, tenant_id, account_id)
         row = DatasetCategoryService.get_category(db, tenant_id=tenant_id, category_id=category_id)
@@ -230,8 +231,8 @@ class DatasetCategoryService:
         tenant_id: UUID,
         account_id: str,
         category_id: UUID,
-        parent_id: Optional[UUID] = None,
-        sort_order: Optional[int] = None,
+        parent_id: UUID | None = None,
+        sort_order: int | None = None,
     ) -> DatasetCategory:
         _assert_can_edit(db, tenant_id, account_id)
         row = DatasetCategoryService.get_category(db, tenant_id=tenant_id, category_id=category_id)

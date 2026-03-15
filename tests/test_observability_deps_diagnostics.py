@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -24,7 +25,7 @@ def test_observability_deps_diagnostics_snapshot(monkeypatch):  # noqa: ANN001
     from app.api.v1.observability import get_deps_diagnostics_snapshot
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     # Make the snapshot deterministic without hitting real deps.
     import app.services.deps_diagnostics_service as deps_mod
@@ -77,7 +78,7 @@ def test_observability_deps_diagnostics_snapshot(monkeypatch):  # noqa: ANN001
 
     postgres = body.get("postgres") or {}
     assert postgres.get("status") == "connected"
-    assert postgres.get("elapsed_ms") == 12.3
+    assert postgres.get("elapsed_ms") == pytest.approx(12.3)
     assert postgres.get("version") == "15.2"
 
     redis = body.get("redis") or {}

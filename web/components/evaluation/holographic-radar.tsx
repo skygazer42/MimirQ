@@ -24,7 +24,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null
 }
 
-export function HolographicRadar({ data, className }: HolographicRadarProps) {
+export function HolographicRadar({ data, className }: Readonly<HolographicRadarProps>) {
   const reduceMotion = useReducedMotion()
   const primaryStroke = 'hsl(var(--primary))'
   const gridStroke = 'hsl(var(--primary) / 0.2)'
@@ -37,16 +37,16 @@ export function HolographicRadar({ data, className }: HolographicRadarProps) {
       
       {/* Scanning Animation */}
       <div className="absolute inset-0 rounded-full border border-primary/10 overflow-hidden pointer-events-none">
-         {!reduceMotion ? (
+         {reduceMotion ? (
+            <div
+              className="w-full h-1/2 bg-primary/5 origin-bottom"
+              style={{ position: 'absolute', top: 0, left: 0 }}
+            />
+         ) : (
             <motion.div 
               className="w-full h-1/2 bg-primary/5 origin-bottom"
               animate={{ rotate: 360 }}
               transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-              style={{ position: 'absolute', top: 0, left: 0 }}
-            />
-         ) : (
-            <div
-              className="w-full h-1/2 bg-primary/5 origin-bottom"
               style={{ position: 'absolute', top: 0, left: 0 }}
             />
          )}

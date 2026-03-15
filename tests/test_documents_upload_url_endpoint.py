@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -25,7 +27,7 @@ class _DummyDB:
             obj.chunk_count = 0
         if getattr(obj, "total_characters", None) is None:
             obj.total_characters = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -56,9 +58,11 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
 
     # Avoid SSRF/DNS logic in unit test.
     async def _ok_validate(url: str) -> str:  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return url
 
     async def _fake_download(url: str, destination, **kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         payload = b"hello from url"
         destination.write_bytes(payload)
         return DownloadedURL(
@@ -70,6 +74,7 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
         )
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return "task-123"
 
     class _Dataset:
@@ -82,7 +87,7 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
     monkeypatch.setattr(documents_module, "validate_url_for_ingest", _ok_validate, raising=True)
     monkeypatch.setattr(documents_module, "download_url_to_path", _fake_download, raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue, raising=True)
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *args, **kwargs: _Dataset(dataset_id), raising=True)
+    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -118,7 +123,7 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
     assert meta.get("source_etag") == "etag-123"
     assert isinstance(meta.get("source_fetched_at"), str) and meta.get("source_fetched_at")
     assert (meta.get("pipeline") or {}).get("chunk_merge_small_min_chars") == 200
-    assert ((meta.get("pipeline") or {}).get("chunk_strategy_params") or {}).get("child_ratio") == 0.25
+    assert ((meta.get("pipeline") or {}).get("chunk_strategy_params") or {}).get("child_ratio") == pytest.approx(0.25)
 
 
 def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch, tmp_path):  # noqa: ANN001
@@ -131,14 +136,17 @@ def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch,
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
 
     async def _ok_validate(url: str) -> str:  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return url
 
     async def _fake_download(url: str, destination, **kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         payload = b"hello from url"
         destination.write_bytes(payload)
         return DownloadedURL(size_bytes=len(payload), content_type="text/plain", final_url=url, etag="etag-456")
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return "task-123"
 
     class _Dataset:
@@ -151,7 +159,7 @@ def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch,
     monkeypatch.setattr(documents_module, "validate_url_for_ingest", _ok_validate, raising=True)
     monkeypatch.setattr(documents_module, "download_url_to_path", _fake_download, raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue, raising=True)
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *args, **kwargs: _Dataset(dataset_id), raising=True)
+    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db

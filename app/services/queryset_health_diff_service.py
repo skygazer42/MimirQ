@@ -8,7 +8,8 @@ Goal:
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 QUERYSET_HEALTH_DIFF_SCHEMA_V1 = "mimirq.queryset_health_diff.v1"
 

@@ -6,8 +6,8 @@ This is primarily used by the UI for rule-pack discovery and profile editors.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Annotated, Literal, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -62,12 +62,12 @@ class StaleDocumentItem(BaseModel):
     filename: str
     file_type: str
     status: str
-    lifecycle_owner: Optional[str] = None
-    review_due_at: Optional[datetime] = None
-    authority_level: Optional[int] = None
-    supersedes_document_id: Optional[UUID] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    lifecycle_owner: str | None = None
+    review_due_at: datetime | None = None
+    authority_level: int | None = None
+    supersedes_document_id: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class StaleDocumentsByDatasetResponse(BaseModel):
@@ -107,7 +107,7 @@ def list_stale_documents_by_dataset(
     ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
 
-    now = as_of or datetime.now(timezone.utc)
+    now = as_of or datetime.now(UTC)
     upper = due_before or (now + timedelta(days=int(due_within_days or 0)))
 
     q = (

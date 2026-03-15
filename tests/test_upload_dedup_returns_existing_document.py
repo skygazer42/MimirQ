@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -30,7 +31,7 @@ class _DummyDB:
             obj.chunk_count = 0
         if getattr(obj, "total_characters", None) is None:
             obj.total_characters = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -54,7 +55,7 @@ def test_upload_dedup_returns_existing_document(monkeypatch, tmp_path):  # noqa:
 
     payload = b"hello"
     sha = hashlib.sha256(payload).hexdigest()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     dup = DBDocument(
         id=dup_id,
@@ -88,18 +89,19 @@ def test_upload_dedup_returns_existing_document(monkeypatch, tmp_path):  # noqa:
     monkeypatch.setattr(
         documents_module,
         "_resolve_writable_dataset",
-        lambda *args, **kwargs: _Dataset(dataset_id),
+        lambda *_args, **_kwargs: _Dataset(dataset_id),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *args, **kwargs: dup, raising=True)
+    monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *_args, **_kwargs: dup, raising=True)
     monkeypatch.setattr(
         documents_module,
         "_find_duplicate_document_by_sha",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected cross-version dedup")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected cross-version dedup")),
         raising=True,
     )
 
     async def _unexpected_enqueue(**_kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         raise AssertionError("unexpected enqueue_document_processing call")
 
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _unexpected_enqueue, raising=True)

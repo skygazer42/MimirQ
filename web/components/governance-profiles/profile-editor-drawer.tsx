@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { governanceApi, pipelineApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import type {
   CleanPreviewResponse,
   DocumentPipelineOptions,
@@ -60,7 +60,7 @@ function safeParseJson<T>(text: string): { ok: true; value: T } | { ok: false; e
     const obj = JSON.parse(text)
     return { ok: true, value: obj as T }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err || 'Invalid JSON') }
+    return { ok: false, error: err instanceof Error ? err.message : 'Invalid JSON' }
   }
 }
 
@@ -97,14 +97,14 @@ function validateRegexRuleBestEffort(pattern: string, flags: number): string | n
   const stripped = stripLeadingInlineFlags(raw)
   const jsFlags = Array.from(new Set((pythonReFlagsToJs(flags) + stripped.inlineJsFlags).split(''))).join('')
   const jsPattern = stripped.pattern
-    .replace(/\\A/g, '^')
-    .replace(/\\Z/g, '$')
+    .replaceAll(/\\A/g, '^')
+    .replaceAll(/\\Z/g, '$')
 
   try {
     new RegExp(jsPattern, jsFlags)
     return null
   } catch (err) {
-    return err instanceof Error ? err.message : String(err || 'Invalid regex')
+    return err instanceof Error ? err.message : 'Invalid regex'
   }
 }
 
@@ -116,7 +116,7 @@ export function ProfileEditorDrawer({
   onOpenChange,
   onSaved,
   onCreated,
-}: Props) {
+}: Readonly<Props>) {
   const isReadOnly = mode === 'view'
   const isCreate = mode === 'create'
 
@@ -205,7 +205,7 @@ export function ProfileEditorDrawer({
 
     let cancelled = false
     setLoadingProfile(true)
-    void (async () => {
+    detachPromise((async () => {
       try {
         const prof = await pipelineApi.getGovernanceProfile(ref)
         if (cancelled) return
@@ -226,7 +226,7 @@ export function ProfileEditorDrawer({
       } finally {
         if (!cancelled) setLoadingProfile(false)
       }
-    })()
+    })())
 
     return () => {
       cancelled = true
@@ -238,7 +238,7 @@ export function ProfileEditorDrawer({
     if (!open) return
     let cancelled = false
     setLoadingRulePacks(true)
-    void (async () => {
+    detachPromise((async () => {
       try {
         const resp = await governanceApi.listRulePacks()
         if (cancelled) return
@@ -249,7 +249,7 @@ export function ProfileEditorDrawer({
       } finally {
         if (!cancelled) setLoadingRulePacks(false)
       }
-    })()
+    })())
     return () => {
       cancelled = true
     }
@@ -269,7 +269,7 @@ export function ProfileEditorDrawer({
       const set = new Set(prev)
       if (set.has(fmt)) set.delete(fmt)
       else set.add(fmt)
-      const next = Array.from(set) as Array<'markdown' | 'html'>
+      const next = Array.from(set)
       return next.length ? next : ['markdown']
     })
   }
@@ -414,14 +414,34 @@ export function ProfileEditorDrawer({
           <DialogHeader className="space-y-2">
             <DialogTitle className="flex items-center gap-2">
               <Braces className="w-5 h-5 text-primary" />
-              {isCreate ? '新建治理 Profile' : isReadOnly ? '查看治理 Profile' : '编辑治理 Profile'}
+              {(() => {
+    if (isCreate) {
+        return '新建治理 Profile';
+    }
+    else {
+        if (isReadOnly) {
+            return '查看治理 Profile';
+        }
+        else {
+            return '编辑治理 Profile';
+        }
+    }
+})()}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {isCreate
-                ? '创建后可用于入库策略（ingestion policy）或手动选择应用。'
-                : loadedProfile?.is_system
-                  ? '内置 Profile 只读；如需调整请复制为自定义 Profile。'
-                  : '修改后仅影响后续入库/重跑（不会自动回写历史版本）。'}
+              {(() => {
+    if (isCreate) {
+        return '创建后可用于入库策略（ingestion policy）或手动选择应用。';
+    }
+    else {
+        if (loadedProfile?.is_system) {
+            return '内置 Profile 只读；如需调整请复制为自定义 Profile。';
+        }
+        else {
+            return '修改后仅影响后续入库/重跑（不会自动回写历史版本）。';
+        }
+    }
+})()}
             </DialogDescription>
           </DialogHeader>
 
@@ -443,7 +463,7 @@ export function ProfileEditorDrawer({
                   type="button"
                   size="sm"
                   className="rounded-xl gap-2"
-                  onClick={() => void runTest()}
+                  onClick={() => detachPromise(runTest())}
                   disabled={testRunning}
                 >
                   {testRunning ? (
@@ -458,7 +478,7 @@ export function ProfileEditorDrawer({
                   type="button"
                   size="sm"
                   className="rounded-xl gap-2"
-                  onClick={() => void save()}
+                  onClick={() => detachPromise(save())}
                   disabled={!canSave}
                 >
                   {saving ? (
@@ -503,11 +523,11 @@ export function ProfileEditorDrawer({
                           disabled={!isCreate || isReadOnly}
                           placeholder={isCreate ? 'e.g. team:pdf_text' : undefined}
                         />
-                        {!isCreate ? (
+                        {isCreate ? null : (
                           <div className="text-[11px] text-muted-foreground">
                             key 创建后不可修改（可用 id 作为 profile_ref）
                           </div>
-                        ) : null}
+                        )}
                       </div>
                       <div className="md:col-span-2 space-y-1">
                         <Label htmlFor="gp-desc">Description</Label>
@@ -531,22 +551,22 @@ export function ProfileEditorDrawer({
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <label className="flex items-center gap-2 text-sm">
+                        <div className="flex items-center gap-2 text-sm">
                           <Checkbox
                             checked={inputFormats.includes('markdown')}
                             onCheckedChange={() => toggleInputFormat('markdown')}
                             disabled={isReadOnly}
                           />
                           markdown
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
                           <Checkbox
                             checked={inputFormats.includes('html')}
                             onCheckedChange={() => toggleInputFormat('html')}
                             disabled={isReadOnly}
                           />
                           html
-                        </label>
+                        </div>
                       </div>
                     </div>
                   </Panel>
@@ -561,70 +581,70 @@ export function ProfileEditorDrawer({
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <label className="flex items-center gap-2 text-sm">
+                      <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_enabled ?? true)}
                           onCheckedChange={(v) => updatePatchBool('governance_enabled', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         governance_enabled
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_unwrap_lines ?? true)}
                           onCheckedChange={(v) => updatePatchBool('governance_unwrap_lines', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         unwrap_lines
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_remove_common_lines ?? true)}
                           onCheckedChange={(v) => updatePatchBool('governance_remove_common_lines', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         remove_common_lines
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_remove_toc_lines ?? true)}
                           onCheckedChange={(v) => updatePatchBool('governance_remove_toc_lines', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         remove_toc_lines
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_remove_noise_lines ?? true)}
                           onCheckedChange={(v) => updatePatchBool('governance_remove_noise_lines', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         remove_noise_lines
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_remove_boilerplate ?? false)}
                           onCheckedChange={(v) => updatePatchBool('governance_remove_boilerplate', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         remove_boilerplate
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_normalize_tables ?? false)}
                           onCheckedChange={(v) => updatePatchBool('governance_normalize_tables', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         normalize_tables
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_normalize_urls ?? false)}
                           onCheckedChange={(v) => updatePatchBool('governance_normalize_urls', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         normalize_urls
-                      </label>
+                      </div>
                       <div className="flex items-center gap-3">
                         <Label className="text-sm text-muted-foreground">remove_images</Label>
                         <div className="flex-1">
@@ -764,7 +784,7 @@ export function ProfileEditorDrawer({
                     {regexRules.length ? (
                       <div className="mt-4 space-y-3">
                         {regexRules.map((r, idx) => (
-                          <div key={idx} className="rounded-xl border border-border bg-muted/30 p-3">
+                          <div key={[r.pattern || '', r.repl || '', String(r.flags ?? 0)].join('::')} className="rounded-xl border border-border bg-muted/30 p-3">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                               <div className="md:col-span-2 space-y-1">
                                 <Label className="text-[12px] text-muted-foreground">pattern</Label>

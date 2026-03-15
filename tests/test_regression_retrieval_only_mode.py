@@ -115,14 +115,14 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
 
     # No real DB; inject a fake session.
     monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
-    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
 
     # Keep case scoping deterministic.
     dataset_id = uuid4()
-    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **_kwargs: ([], dataset_id))
 
     # We don't need real chunk materialization here; just ensure cases are evaluatable.
-    monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["ctx"])
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **_kwargs: ["ctx"])
 
     # Inject deterministic retrieval meta (no ragas needed).
     def _fake_build_regression_sample(_case, _eval_item):
@@ -133,7 +133,7 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
     # Retrieval-only path should not call generation runner.
     import app.rag.graph as rag_graph
 
-    monkeypatch.setattr(rag_graph, "run_rag_graph", lambda **kwargs: (_ for _ in ()).throw(AssertionError("run_rag_graph called")))
+    monkeypatch.setattr(rag_graph, "run_rag_graph", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("run_rag_graph called")))
 
     # Stub out internal retrieval node so this test stays pure.
     import app.rag.pipelines.langgraph as langgraph
@@ -167,9 +167,9 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
 
     assert run.status == "completed"
     assert run.metrics == []
-    assert run.summary.get("retrieval_recall") == 1.0
-    assert run.summary.get("retrieval_hit_at_10") == 1.0
-    assert run.summary.get("retrieval_hit_at_20") == 1.0
+    assert run.summary.get("retrieval_recall") == pytest.approx(1.0)
+    assert run.summary.get("retrieval_hit_at_10") == pytest.approx(1.0)
+    assert run.summary.get("retrieval_hit_at_20") == pytest.approx(1.0)
     assert (run.params or {}).get("mode") == "retrieval_only"
 
 
@@ -181,11 +181,11 @@ def test_regression_eval_passes_extended_runtime_knobs_to_build_rag_state(monkey
     fake_db = _FakeDB(run=run, cases=[case])
 
     monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
-    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
 
     dataset_id = uuid4()
-    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **kwargs: ([], dataset_id))
-    monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["ctx"])
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **_kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **_kwargs: ["ctx"])
     monkeypatch.setattr(
         mod,
         "build_regression_sample",
@@ -194,7 +194,7 @@ def test_regression_eval_passes_extended_runtime_knobs_to_build_rag_state(monkey
 
     import app.rag.graph as rag_graph
 
-    monkeypatch.setattr(rag_graph, "run_rag_graph", lambda **kwargs: (_ for _ in ()).throw(AssertionError("run_rag_graph called")))
+    monkeypatch.setattr(rag_graph, "run_rag_graph", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("run_rag_graph called")))
 
     import app.rag.pipelines.langgraph as langgraph
 
@@ -243,11 +243,11 @@ def test_regression_eval_passes_extended_runtime_knobs_to_build_rag_state(monkey
     assert captured[0]["query_alias_max_queries"] == 5
     assert captured[0]["enable_multi_query"] is True
     assert captured[0]["multi_query_count"] == 3
-    assert captured[0]["multi_query_temperature"] == 0.2
+    assert captured[0]["multi_query_temperature"] == pytest.approx(0.2)
     assert captured[0]["multi_query_max_chars"] == 256
     assert captured[0]["enable_query_rewrite"] is True
     assert captured[0]["query_rewrite_strategy"] == "kb_followup.v2"
-    assert captured[0]["query_rewrite_temperature"] == 0.3
+    assert captured[0]["query_rewrite_temperature"] == pytest.approx(0.3)
     assert captured[0]["query_rewrite_max_chars"] == 180
     assert captured[0]["sparse_retrieval_enabled"] is True
     assert captured[0]["sparse_retrieval_provider"] == "splade"
@@ -274,11 +274,11 @@ def test_regression_eval_does_not_truncate_explicit_case_ids_and_orders_stably(m
     # explicit case_ids order (not updated_at and not id sorting).
     fake_db = _FakeDB(run=run, cases=[case_b, case_a])
     monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
-    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
 
     dataset_id = uuid4()
-    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **kwargs: ([], dataset_id))
-    monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["ctx"])
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **_kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **_kwargs: ["ctx"])
 
     captured_case_ids: list[UUID] = []
 
@@ -290,7 +290,7 @@ def test_regression_eval_does_not_truncate_explicit_case_ids_and_orders_stably(m
 
     import app.rag.graph as rag_graph
 
-    monkeypatch.setattr(rag_graph, "run_rag_graph", lambda **kwargs: (_ for _ in ()).throw(AssertionError("run_rag_graph called")))
+    monkeypatch.setattr(rag_graph, "run_rag_graph", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("run_rag_graph called")))
 
     import app.rag.pipelines.langgraph as langgraph
 
@@ -327,11 +327,11 @@ def test_regression_eval_fails_when_explicit_case_ids_missing(monkeypatch: pytes
 
     fake_db = _FakeDB(run=run, cases=[existing])
     monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
-    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
 
     dataset_id = uuid4()
-    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **kwargs: ([], dataset_id))
-    monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["ctx"])
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **_kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **_kwargs: ["ctx"])
     monkeypatch.setattr(
         mod,
         "build_regression_sample",

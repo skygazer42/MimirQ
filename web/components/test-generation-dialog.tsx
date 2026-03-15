@@ -23,17 +23,7 @@ import type {
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import {
-  Sparkles,
-  Loader2,
-  FileText,
-  MessageSquare,
-  CheckCircle2,
-  AlertCircle,
-  Settings,
-  ChevronRight,
-  Trash2,
-} from 'lucide-react'
+import { Sparkles, Loader2, FileText, MessageSquare, CheckCircle2, AlertCircle, ChevronRight, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
@@ -57,7 +47,7 @@ export function TestGenerationDialog({
   initialSourceType,
   initialDatasetId,
   initialDocumentIds,
-}: TestGenerationDialogProps) {
+}: Readonly<TestGenerationDialogProps>) {
   const [step, setStep] = useState<Step>('select_source')
   const [sourceType, setSourceType] = useState<SourceType>('documents')
 
@@ -318,9 +308,9 @@ export function TestGenerationDialog({
                   {/* 知识库选择 */}
                   {datasets.length > 0 && (
                     <div>
-                      <label className="block text-sm font-medium text-foreground/80 mb-2">
+                      <div className="block text-sm font-medium text-foreground/80 mb-2">
                         选择知识库（可选）
-                      </label>
+                      </div>
                       <select
                         value={selectedDatasetId}
                         onChange={(e) => setSelectedDatasetId(e.target.value)}
@@ -338,40 +328,36 @@ export function TestGenerationDialog({
 
                   {/* 文档列表 */}
                   <div>
-                    <label className="block text-sm font-medium text-foreground/80 mb-2">
+                    <div className="block text-sm font-medium text-foreground/80 mb-2">
                       选择文档
-                    </label>
+                    </div>
                     <div className="border border-border/60 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
-                      {isLoadingData ? (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
-                        </div>
-                      ) : documents.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground text-sm">
+                      {(() => {
+    if (isLoadingData) {
+        return (<div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
+                        </div>);
+    }
+    else {
+        if (documents.length === 0) {
+            return (<div className="text-center py-8 text-muted-foreground text-sm">
                           暂无可用文档
-                        </div>
-                      ) : (
-                        documents.map((doc) => (
-                          <label
-                            key={doc.id}
-                            className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedDocumentIds.has(doc.id)}
-                              onChange={() => toggleDocument(doc.id)}
-                              className="w-4 h-4 rounded"
-                            />
-                            <FileText className="w-4 h-4 text-muted-foreground" />
+                        </div>);
+        }
+        else {
+            return (documents.map((doc) => (<label key={doc.id} className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0">
+                            <input type="checkbox" checked={selectedDocumentIds.has(doc.id)} onChange={() => toggleDocument(doc.id)} className="w-4 h-4 rounded"/>
+                            <FileText className="w-4 h-4 text-muted-foreground"/>
                             <span className="flex-1 text-sm text-foreground truncate">
                               {doc.filename}
                             </span>
                             <span className="text-xs text-muted-foreground">
                               {doc.chunk_count} 切片
                             </span>
-                          </label>
-                        ))
-                      )}
+                          </label>)));
+        }
+    }
+})()}
                     </div>
                   </div>
                 </div>
@@ -380,40 +366,36 @@ export function TestGenerationDialog({
               {/* 对话选择 */}
               {sourceType === 'conversations' && (
                 <div>
-                  <label className="block text-sm font-medium text-foreground/80 mb-2">
+                  <div className="block text-sm font-medium text-foreground/80 mb-2">
                     选择对话
-                  </label>
+                  </div>
                   <div className="border border-border/60 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
-                    {isLoadingData ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
-                      </div>
-                    ) : conversations.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground text-sm">
+                    {(() => {
+    if (isLoadingData) {
+        return (<div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
+                      </div>);
+    }
+    else {
+        if (conversations.length === 0) {
+            return (<div className="text-center py-8 text-muted-foreground text-sm">
                         暂无对话记录
-                      </div>
-                    ) : (
-                      conversations.map((conv) => (
-                        <label
-                          key={conv.id}
-                          className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedConversationIds.has(conv.id)}
-                            onChange={() => toggleConversation(conv.id)}
-                            className="w-4 h-4 rounded"
-                          />
-                          <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                      </div>);
+        }
+        else {
+            return (conversations.map((conv) => (<label key={conv.id} className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0">
+                          <input type="checkbox" checked={selectedConversationIds.has(conv.id)} onChange={() => toggleConversation(conv.id)} className="w-4 h-4 rounded"/>
+                          <MessageSquare className="w-4 h-4 text-muted-foreground"/>
                           <span className="flex-1 text-sm text-foreground truncate">
                             {conv.title || `对话 ${conv.id.slice(0, 8)}`}
                           </span>
                           <span className="text-xs text-muted-foreground">
                             {conv.message_count} 消息
                           </span>
-                        </label>
-                      ))
-                    )}
+                        </label>)));
+        }
+    }
+})()}
                   </div>
                 </div>
               )}
@@ -447,9 +429,9 @@ export function TestGenerationDialog({
               {/* 问题类型（仅文档） */}
               {sourceType === 'documents' && (
                 <div>
-                  <label className="block text-sm font-medium text-foreground/80 mb-2">
+                  <div className="block text-sm font-medium text-foreground/80 mb-2">
                     问题类型
-                  </label>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {[
                       { key: 'factual', label: '事实型', desc: '询问具体信息' },
@@ -540,7 +522,7 @@ export function TestGenerationDialog({
                   <div className="space-y-3">
                     {generatedQuestions.map((q, index) => (
 	                      <div
-	                        key={index}
+	                        key={`${q.question}-${q.expected_answer || ''}-${q.metadata?.question_type || ''}`}
 	                        className="p-4 rounded-lg border border-border bg-card"
 	                      >
                         <div className="flex items-start justify-between gap-3">

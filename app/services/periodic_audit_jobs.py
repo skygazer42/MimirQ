@@ -18,7 +18,7 @@ Design principles (mirrors retention/stale jobs):
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -40,7 +40,7 @@ def _dt_to_json(v: datetime | None) -> str | None:
     if v is None:
         return None
     try:
-        s = v.astimezone(timezone.utc).isoformat()
+        s = v.astimezone(UTC).isoformat()
     except Exception:
         return None
     if s.endswith("+00:00"):
@@ -211,7 +211,7 @@ def run_daily_index_audit_report(
 
     If execute=True, writes exactly one audit log entry per tenant per day (unless --force).
     """
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
     report_date = now0.date().isoformat()
 
     if bool(execute) and (not bool(force)) and _audit_already_written(
@@ -372,7 +372,7 @@ def run_daily_evidence_drift_audit_report(
 
     If execute=True, writes exactly one audit log entry per tenant per day (unless --force).
     """
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
     report_date = now0.date().isoformat()
 
     if bool(execute) and (not bool(force)) and _audit_already_written(
@@ -521,7 +521,7 @@ def run_daily_access_review_summary(
 
     The payload is intentionally small: counts + ids only (no document content).
     """
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
     report_date = now0.date().isoformat()
 
     if bool(execute) and (not bool(force)) and _audit_already_written(

@@ -1,14 +1,16 @@
+import { toTrimmedPrimitiveString } from './primitive-text'
+
 function escapeHtml(raw: string): string {
   return String(raw)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+    .replaceAll(/&/g, '&amp;')
+    .replaceAll(/</g, '&lt;')
+    .replaceAll(/>/g, '&gt;')
+    .replaceAll(/"/g, '&quot;')
+    .replaceAll(/'/g, '&#39;')
 }
 
 function coerceTrimmedString(value: unknown): string {
-  return String(value ?? '').trim()
+  return toTrimmedPrimitiveString(value)
 }
 
 function shortId(value: unknown, opts?: { head?: number; tail?: number }): string {
@@ -63,15 +65,29 @@ export function buildGraphLinkProvenanceTooltipHtml(link: any): string {
   const contentHash = coerceTrimmedString(link?.meta?.content_hash)
 
   const title =
-    kind === 'entity_relation'
-      ? 'Relation (triple)'
-      : kind === 'event_entity'
-        ? 'Evidence (event → entity)'
-        : kind === 'entity_entity'
-          ? 'Co-occurrence (entity ↔ entity)'
-          : kind
-            ? `Link (${kind})`
-            : 'Link'
+    (() => {
+    if (kind === 'entity_relation') {
+        return 'Relation (triple)';
+    }
+    else {
+        if (kind === 'event_entity') {
+            return 'Evidence (event → entity)';
+        }
+        else {
+            if (kind === 'entity_entity') {
+                return 'Co-occurrence (entity ↔ entity)';
+            }
+            else {
+                if (kind) {
+                    return `Link (${kind})`;
+                }
+                else {
+                    return 'Link';
+                }
+            }
+        }
+    }
+})()
 
   const bodyLines = [
     label ? line('label', label) : '',

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 
@@ -8,6 +10,7 @@ class _FakeLLM:
         self._payload = payload
 
     async def chat_with_schema(self, *_a, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return self._payload
 
 
@@ -38,12 +41,12 @@ async def test_relation_processor_filters_candidates_and_allowlists_predicates()
     assert out[0]["object_id"] == "E2"
     assert out[0]["predicate"] == "works_with"
     assert out[0]["predicate_raw"] is None
-    assert out[0]["confidence"] == 0.8
+    assert out[0]["confidence"] == pytest.approx(0.8)
 
     # "Located In" is not in allowlist => predicate becomes "unknown" and raw preserved; confidence clamped to 1.0
     assert out[1]["predicate"] == "unknown"
     assert out[1]["predicate_raw"] == "Located In"
-    assert out[1]["confidence"] == 1.0
+    assert out[1]["confidence"] == pytest.approx(1.0)
 
     # Invalid candidate ids and self-loops are dropped.
     assert len(out) == 2

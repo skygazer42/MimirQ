@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -35,7 +35,7 @@ class BookHeading:
 class _Section:
     start: int
     end: int
-    heading: Optional[BookHeading]
+    heading: BookHeading | None
 
 
 _RE_ROMAN = r"[ivxlcdm]{1,10}"
@@ -76,8 +76,8 @@ _RE_CN_SECTION = re.compile(
 )
 
 
-def _iter_headings(text: str) -> List[BookHeading]:
-    headings: List[BookHeading] = []
+def _iter_headings(text: str) -> list[BookHeading]:
+    headings: list[BookHeading] = []
     if not text:
         return headings
 
@@ -92,8 +92,8 @@ def _iter_headings(text: str) -> List[BookHeading]:
         if len(line) > 160:
             continue
 
-        kind: Optional[str] = None
-        level: Optional[int] = None
+        kind: str | None = None
+        level: int | None = None
         if _RE_CN_VOLUME.match(line):
             kind, level = "volume", 1
         elif _RE_CN_PART.match(line):
@@ -127,7 +127,7 @@ def _iter_headings(text: str) -> List[BookHeading]:
         )
 
     # Best-effort de-dup.
-    deduped: List[BookHeading] = []
+    deduped: list[BookHeading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -137,11 +137,11 @@ def _iter_headings(text: str) -> List[BookHeading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[BookHeading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[BookHeading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = headings[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -154,7 +154,7 @@ def _build_sections(text: str, headings: List[BookHeading]) -> List[_Section]:
     return sections
 
 
-def _update_heading_stack(stack: List[str], *, level: int, heading_text: str) -> None:
+def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
     level = max(1, int(level))
     while len(stack) >= level:
         stack.pop()
@@ -188,8 +188,8 @@ class BookStructuredChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -200,7 +200,7 @@ class BookStructuredChunker(BaseChunker):
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            heading_stack: List[str] = []
+            heading_stack: list[str] = []
 
             for section in sections:
                 sec_text = text[section.start : section.end]

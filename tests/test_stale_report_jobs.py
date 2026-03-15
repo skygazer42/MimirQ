@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _FakeDB:
@@ -21,7 +21,7 @@ def test_run_daily_stale_report_dry_run(monkeypatch):  # noqa: ANN001
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
 
     doc1 = uuid.uuid4()
     doc2 = uuid.uuid4()
@@ -92,7 +92,7 @@ def test_run_daily_stale_report_execute_writes_audit(monkeypatch):  # noqa: ANN0
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
 
     doc1 = uuid.uuid4()
     dataset1 = uuid.uuid4()

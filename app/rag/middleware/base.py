@@ -16,15 +16,16 @@ Additional optional phases:
 import asyncio
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 # Type aliases
-StateDict = Dict[str, Any]
+StateDict = dict[str, Any]
 MiddlewareFunc = Callable[[StateDict], StateDict]
 AsyncMiddlewareFunc = Callable[[StateDict], "asyncio.Future[StateDict]"]
 WrapperFunc = Callable[[Callable], Callable]
@@ -69,7 +70,7 @@ class MiddlewareRegistry:
                 # Double-check locking pattern
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._middlewares: Dict[MiddlewarePhase, List[tuple]] = {
+                    cls._instance._middlewares: dict[MiddlewarePhase, list[tuple]] = {
                         phase: [] for phase in MiddlewarePhase
                     }
         return cls._instance
@@ -83,7 +84,7 @@ class MiddlewareRegistry:
         func: Callable,
         phase: MiddlewarePhase,
         priority: int = 100,
-        name: Optional[str] = None,
+        name: str | None = None,
     ) -> None:
         """Register a middleware function."""
         name = name or func.__name__
@@ -91,11 +92,11 @@ class MiddlewareRegistry:
         self._middlewares[phase].sort(key=lambda x: x[0])
         logger.debug(f"Registered middleware '{name}' for phase {phase.value}")
 
-    def get_middlewares(self, phase: MiddlewarePhase) -> List[Callable]:
+    def get_middlewares(self, phase: MiddlewarePhase) -> list[Callable]:
         """Get all middlewares for a phase, sorted by priority."""
         return [func for _, _, func in self._middlewares[phase]]
 
-    def clear(self, phase: Optional[MiddlewarePhase] = None) -> None:
+    def clear(self, phase: MiddlewarePhase | None = None) -> None:
         """Clear registered middlewares."""
         if phase:
             self._middlewares[phase] = []
@@ -109,10 +110,10 @@ _registry = MiddlewareRegistry()
 
 
 def before_model(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """
     Decorator for pre-model hooks.
@@ -147,10 +148,10 @@ def before_model(
 
 
 def after_model(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """
     Decorator for post-model hooks.
@@ -185,10 +186,10 @@ def after_model(
 
 
 def wrap_model_call(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """
     Decorator for wrapping model calls.
@@ -217,10 +218,10 @@ def wrap_model_call(
 
 
 def dynamic_prompt(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """
     Decorator for dynamic prompt injection.
@@ -252,10 +253,10 @@ def dynamic_prompt(
 
 
 def before_tool_call(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """
     Decorator for pre-tool hooks.
@@ -283,10 +284,10 @@ def before_tool_call(
 
 
 def after_tool_call(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """Decorator for post-tool hooks (runs after a tool call completes)."""
     def decorator(f: Callable) -> Callable:
@@ -304,10 +305,10 @@ def after_tool_call(
 
 
 def wrap_tool_call(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """
     Decorator for wrapping tool calls.
@@ -325,10 +326,10 @@ def wrap_tool_call(
 
 
 def before_agent(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """Decorator for agent/workflow lifecycle hooks (runs at agent start)."""
     def decorator(f: Callable) -> Callable:
@@ -346,10 +347,10 @@ def before_agent(
 
 
 def after_agent(
-    func: Optional[Callable] = None,
+    func: Callable | None = None,
     *,
     priority: int = 100,
-    name: Optional[str] = None,
+    name: str | None = None,
 ) -> Callable:
     """Decorator for agent/workflow lifecycle hooks (runs at agent end)."""
     def decorator(f: Callable) -> Callable:
@@ -369,11 +370,11 @@ def after_agent(
 class ToolMiddlewareChain:
     """Tool-call middleware chain (before/after + wrapper)."""
 
-    def __init__(self, registry: Optional[MiddlewareRegistry] = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None):
         self._registry = registry or _registry
-        self._custom_before: List[Callable] = []
-        self._custom_after: List[Callable] = []
-        self._custom_wrappers: List[Callable] = []
+        self._custom_before: list[Callable] = []
+        self._custom_after: list[Callable] = []
+        self._custom_wrappers: list[Callable] = []
 
     def add_before(self, func: Callable) -> "ToolMiddlewareChain":
         self._custom_before.append(func)
@@ -431,10 +432,10 @@ class ToolMiddlewareChain:
 class AgentMiddlewareChain:
     """Agent lifecycle middleware chain (before/after)."""
 
-    def __init__(self, registry: Optional[MiddlewareRegistry] = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None):
         self._registry = registry or _registry
-        self._custom_before: List[Callable] = []
-        self._custom_after: List[Callable] = []
+        self._custom_before: list[Callable] = []
+        self._custom_after: list[Callable] = []
 
     def add_before(self, func: Callable) -> "AgentMiddlewareChain":
         self._custom_before.append(func)
@@ -485,11 +486,11 @@ class MiddlewareChain:
         state = chain.run_after(state)
     """
 
-    def __init__(self, registry: Optional[MiddlewareRegistry] = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None):
         self._registry = registry or _registry
-        self._custom_before: List[Callable] = []
-        self._custom_after: List[Callable] = []
-        self._custom_wrappers: List[Callable] = []
+        self._custom_before: list[Callable] = []
+        self._custom_after: list[Callable] = []
+        self._custom_wrappers: list[Callable] = []
 
     def add_before(self, func: Callable) -> "MiddlewareChain":
         """Add a before-model middleware."""
@@ -573,9 +574,9 @@ class MiddlewareChain:
 def apply_middlewares(
     func: Callable,
     *,
-    before: Optional[List[Callable]] = None,
-    after: Optional[List[Callable]] = None,
-    wrappers: Optional[List[Callable]] = None,
+    before: list[Callable] | None = None,
+    after: list[Callable] | None = None,
+    wrappers: list[Callable] | None = None,
 ) -> Callable:
     """
     Apply middlewares to a function.

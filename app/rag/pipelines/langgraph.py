@@ -13,7 +13,7 @@ import logging
 import time
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, TypedDict
 from uuid import UUID, uuid4
 
 from langchain_core.documents import Document
@@ -52,11 +52,11 @@ logger = logging.getLogger(__name__)
 class RAGRuntimeContext:
     """Runtime-only context passed to LangGraph nodes (not persisted in state)."""
 
-    request_id: Optional[str] = None
-    conversation_id: Optional[str] = None
-    tenant_id: Optional[str] = None
-    account_id: Optional[str] = None
-    user_role: Optional[str] = None
+    request_id: str | None = None
+    conversation_id: str | None = None
+    tenant_id: str | None = None
+    account_id: str | None = None
+    user_role: str | None = None
 
 
 class RAGState(TypedDict, total=False):
@@ -65,66 +65,66 @@ class RAGState(TypedDict, total=False):
     Using TypedDict for better type hints and IDE support.
     """
     question: str
-    history: List[Dict[str, str]]
-    document_ids: Optional[List[UUID]]
-    tenant_id: Optional[UUID]
+    history: list[dict[str, str]]
+    document_ids: list[UUID] | None
+    tenant_id: UUID | None
     top_k: int
     score_threshold: float
     retrieval_mode: str
-    retrieval_profile: Optional[str]
-    retrieval_contract_mode: Optional[str]
-    intent_router: Optional[bool]
-    intent_router_policy: Optional[Dict[str, Any]]
-    enable_query_alias_expansion: Optional[bool]
-    query_aliases: Optional[Dict[str, List[str]]]
-    query_alias_max_queries: Optional[int]
-    enable_multi_query: Optional[bool]
-    multi_query_count: Optional[int]
-    multi_query_temperature: Optional[float]
-    multi_query_max_chars: Optional[int]
-    enable_query_rewrite: Optional[bool]
-    query_rewrite_strategy: Optional[str]
-    query_rewrite_temperature: Optional[float]
-    query_rewrite_max_chars: Optional[int]
-    sparse_retrieval_enabled: Optional[bool]
-    sparse_retrieval_provider: Optional[str]
+    retrieval_profile: str | None
+    retrieval_contract_mode: str | None
+    intent_router: bool | None
+    intent_router_policy: dict[str, Any] | None
+    enable_query_alias_expansion: bool | None
+    query_aliases: dict[str, list[str]] | None
+    query_alias_max_queries: int | None
+    enable_multi_query: bool | None
+    multi_query_count: int | None
+    multi_query_temperature: float | None
+    multi_query_max_chars: int | None
+    enable_query_rewrite: bool | None
+    query_rewrite_strategy: str | None
+    query_rewrite_temperature: float | None
+    query_rewrite_max_chars: int | None
+    sparse_retrieval_enabled: bool | None
+    sparse_retrieval_provider: str | None
     alpha: float
     enable_weight_rerank: bool
-    fusion_strategy: Optional[str]
-    fusion_budgets: Optional[Dict[str, int]]
-    fusion_min_scores: Optional[Dict[str, float]]
-    fusion_weights: Optional[Dict[str, float]]
+    fusion_strategy: str | None
+    fusion_budgets: dict[str, int] | None
+    fusion_min_scores: dict[str, float] | None
+    fusion_weights: dict[str, float] | None
     vector_weight: float
     keyword_weight: float
     mmr_lambda: float
     enable_reranker: bool
-    reranker_provider: Optional[str]
+    reranker_provider: str | None
     reranker_top_n: int
-    metadata_filter: Optional[Dict[str, Any]]
+    metadata_filter: dict[str, Any] | None
     format_instructions: str
     structured_output: bool
-    structured_preset: Optional[str]
-    prompt_template_content: Optional[str]
-    prompt_template_id: Optional[str]
-    prompt_template_key: Optional[str]
-    prompt_ab_experiment_key: Optional[str]
-    prompt_ab_variant: Optional[str]
+    structured_preset: str | None
+    prompt_template_content: str | None
+    prompt_template_id: str | None
+    prompt_template_key: str | None
+    prompt_ab_experiment_key: str | None
+    prompt_ab_variant: str | None
     # Optional: TAG injection (table_store query results) passed in by API layer.
-    tag_docs: Optional[List[Document]]
-    tag_meta: Optional[Dict[str, Any]]
+    tag_docs: list[Document] | None
+    tag_meta: dict[str, Any] | None
     # Output fields
-    query_for_retrieval: Optional[str]
-    docs: Optional[List[Document]]
-    citations: Optional[List[Dict[str, Any]]]
-    answer: Optional[str]
-    route: Optional[str]
-    model_used: Optional[str]
-    routing_reason: Optional[str]
-    metrics: Optional[Dict[str, Any]]
-    abstain_triggered: Optional[bool]
-    abstain_reason: Optional[str]
+    query_for_retrieval: str | None
+    docs: list[Document] | None
+    citations: list[dict[str, Any]] | None
+    answer: str | None
+    route: str | None
+    model_used: str | None
+    routing_reason: str | None
+    metrics: dict[str, Any] | None
+    abstain_triggered: bool | None
+    abstain_reason: str | None
     # Optional: best-effort debug payload (query normalization/expansion provenance).
-    query_debug: Optional[Dict[str, Any]]
+    query_debug: dict[str, Any] | None
 
 
 _RAG_TASK_RETRY_POLICY = RetryPolicy(
@@ -136,7 +136,7 @@ _RAG_TASK_RETRY_POLICY = RetryPolicy(
 _RAG_RETRIEVE_CACHE_TTL_SEC = max(0, int(getattr(settings, "RAG_GRAPH_CACHE_TTL_SEC", 0) or 0))
 
 
-def _retrieve_cache_key(state: Dict[str, Any]) -> str:
+def _retrieve_cache_key(state: dict[str, Any]) -> str:
     history_text = format_history_text(state.get("history") or [], window=settings.CHAT_HISTORY_WINDOW)
     history_text = history_text[:2000]
     doc_ids = state.get("document_ids") or []
@@ -215,7 +215,7 @@ _RAG_RETRIEVE_CACHE_POLICY = (
 )
 
 
-def _build_context(docs: List[Document], *, query: str | None = None) -> str:
+def _build_context(docs: list[Document], *, query: str | None = None) -> str:
     """Format retrieved document context."""
     if not docs:
         return "No relevant reference materials found."
@@ -282,7 +282,7 @@ def _build_context(docs: List[Document], *, query: str | None = None) -> str:
     return "\n\n".join(parts)
 
 
-def _build_history_text(history: Optional[List[Dict[str, str]]]) -> str:
+def _build_history_text(history: list[dict[str, str]] | None) -> str:
     """Compress history to readable text, keep only within window."""
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
@@ -333,7 +333,7 @@ def _generate_node(state: RAGState) -> RAGState:
             preset_key = (state.get("structured_preset") or "").lower()
             citations = state.get("citations") or []
             top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
-            structured_citations: List[Dict[str, Any]] = []
+            structured_citations: list[dict[str, Any]] = []
             for c in citations[: max(0, int(top_k or 0))]:
                 structured_citations.append(
                     {
@@ -343,7 +343,7 @@ def _generate_node(state: RAGState) -> RAGState:
                         "relevance_score": c.get("relevance_score"),
                     }
                 )
-            payload: Dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
+            payload: dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
             if preset_key == "faq":
                 payload["qa_pairs"] = []
             elif preset_key == "summary":
@@ -442,7 +442,7 @@ def _generate_node(state: RAGState) -> RAGState:
         if claim_check_mode == "text":
             claims = split_into_claims(str(answer or ""), max_claims=claim_check_max_claims)
             claim_check_total = len(claims)
-            kept: List[str] = []
+            kept: list[str] = []
             for c in claims:
                 vr = verify_claim_with_fallback(
                     c,
@@ -479,7 +479,7 @@ def _generate_node(state: RAGState) -> RAGState:
             parsed, _meta = parse_json_from_text(str(answer or ""), expected="object")
             if not isinstance(parsed, dict):
                 # Fail-safe: always return valid JSON when structured_output=true.
-                structured_citations: List[Dict[str, Any]] = []
+                structured_citations: list[dict[str, Any]] = []
                 for c in (state.get("citations") or [])[: max(0, int(state.get("top_k") or 0))]:
                     structured_citations.append(
                         {
@@ -541,7 +541,7 @@ def _generate_node(state: RAGState) -> RAGState:
     # Append cited images as inline Markdown to the answer (non-structured output only, configurable)
     if not bool(state.get("structured_output")) and bool(settings.SHOW_IMAGE_IN_ANSWER) and settings.IMAGE_APPEND_MAX > 0:
         citations = state.get("citations") or []
-        image_urls: List[str] = []
+        image_urls: list[str] = []
         for c in citations:
             if not c.get("has_image"):
                 continue
@@ -635,7 +635,7 @@ def _get_checkpointer():
 
 
 @task(retry_policy=_RAG_TASK_RETRY_POLICY, cache_policy=_RAG_RETRIEVE_CACHE_POLICY)
-def retrieve_task(state: Dict[str, Any]) -> Dict[str, Any]:
+def retrieve_task(state: dict[str, Any]) -> dict[str, Any]:
     """
     Retrieval task - using Functional API @task decorator.
 
@@ -713,7 +713,7 @@ def retrieve_task(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @task(retry_policy=_RAG_TASK_RETRY_POLICY)
-def generate_task(state: Dict[str, Any]) -> Dict[str, Any]:
+def generate_task(state: dict[str, Any]) -> dict[str, Any]:
     """
     Generation task - using Functional API @task decorator.
 
@@ -788,7 +788,7 @@ def generate_task(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @entrypoint(checkpointer=_get_checkpointer(), store=get_langgraph_store(), context_schema=RAGRuntimeContext)
-def rag_workflow(state: Dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> Dict[str, Any]:
+def rag_workflow(state: dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> dict[str, Any]:
     """
     RAG workflow entrypoint - using Functional API @entrypoint decorator.
 
@@ -820,12 +820,12 @@ def rag_workflow(state: Dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> 
 
 
 def run_rag_workflow_functional(
-    state: Dict[str, Any],
+    state: dict[str, Any],
     *,
-    thread_id: Optional[str] = None,
-    stream_mode: Optional[str] = None,
-    context: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    thread_id: str | None = None,
+    stream_mode: str | None = None,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Execute RAG workflow using Functional API.
 
@@ -838,7 +838,7 @@ def run_rag_workflow_functional(
         Execution result state
     """
     recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
-    config: Dict[str, Any] = {
+    config: dict[str, Any] = {
         "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
         "recursion_limit": recursion_limit,
     }
@@ -931,56 +931,56 @@ def build_rag_graph_subgraphs() -> Any:
 def build_rag_state(
     *,
     question: str,
-    history: Optional[List[Dict[str, str]]] = None,
-    document_ids: Optional[List[UUID]] = None,
-    tenant_id: Optional[UUID] = None,
-    account_id: Optional[str] = None,
-    dataset_id: Optional[UUID] = None,
+    history: list[dict[str, str]] | None = None,
+    document_ids: list[UUID] | None = None,
+    tenant_id: UUID | None = None,
+    account_id: str | None = None,
+    dataset_id: UUID | None = None,
     top_k: int = 5,
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
-    retrieval_profile: Optional[str] = None,
-    retrieval_contract_mode: Optional[str] = None,
-    must_recall: Optional[bool] = None,
-    must_recall_expected_source_keys: Optional[List[str]] = None,
-    must_recall_required_anchor_fields: Optional[List[str]] = None,
-    intent_router: Optional[bool] = None,
-    intent_router_policy: Optional[Dict[str, Any]] = None,
-    enable_query_alias_expansion: Optional[bool] = None,
-    query_aliases: Optional[Dict[str, List[str]]] = None,
-    query_alias_max_queries: Optional[int] = None,
-    enable_multi_query: Optional[bool] = None,
-    multi_query_count: Optional[int] = None,
-    multi_query_temperature: Optional[float] = None,
-    multi_query_max_chars: Optional[int] = None,
-    enable_query_rewrite: Optional[bool] = None,
-    query_rewrite_strategy: Optional[str] = None,
-    query_rewrite_temperature: Optional[float] = None,
-    query_rewrite_max_chars: Optional[int] = None,
-    sparse_retrieval_enabled: Optional[bool] = None,
-    sparse_retrieval_provider: Optional[str] = None,
+    retrieval_profile: str | None = None,
+    retrieval_contract_mode: str | None = None,
+    must_recall: bool | None = None,
+    must_recall_expected_source_keys: list[str] | None = None,
+    must_recall_required_anchor_fields: list[str] | None = None,
+    intent_router: bool | None = None,
+    intent_router_policy: dict[str, Any] | None = None,
+    enable_query_alias_expansion: bool | None = None,
+    query_aliases: dict[str, list[str]] | None = None,
+    query_alias_max_queries: int | None = None,
+    enable_multi_query: bool | None = None,
+    multi_query_count: int | None = None,
+    multi_query_temperature: float | None = None,
+    multi_query_max_chars: int | None = None,
+    enable_query_rewrite: bool | None = None,
+    query_rewrite_strategy: str | None = None,
+    query_rewrite_temperature: float | None = None,
+    query_rewrite_max_chars: int | None = None,
+    sparse_retrieval_enabled: bool | None = None,
+    sparse_retrieval_provider: str | None = None,
     alpha: float = 0.6,
-    fusion_strategy: Optional[str] = None,
-    fusion_budgets: Optional[Dict[str, int]] = None,
-    fusion_min_scores: Optional[Dict[str, float]] = None,
-    fusion_weights: Optional[Dict[str, float]] = None,
+    fusion_strategy: str | None = None,
+    fusion_budgets: dict[str, int] | None = None,
+    fusion_min_scores: dict[str, float] | None = None,
+    fusion_weights: dict[str, float] | None = None,
     enable_weight_rerank: bool = True,
     vector_weight: float = 0.6,
     keyword_weight: float = 0.4,
     mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
     enable_reranker: bool = settings.ENABLE_RERANKER,
-    reranker_provider: Optional[str] = settings.RERANKER_PROVIDER,
+    reranker_provider: str | None = settings.RERANKER_PROVIDER,
     reranker_top_n: int = settings.RERANKER_TOP_N,
-    metadata_filter: Optional[Dict[str, Any]] = None,
+    metadata_filter: dict[str, Any] | None = None,
     structured_output: bool = False,
-    structured_preset: Optional[str] = None,
+    structured_preset: str | None = None,
     visible_evidence_only: bool = False,
-    prompt_template_id: Optional[UUID] = None,
-    prompt_template_key: Optional[str] = None,
-    prompt_ab_experiment_key: Optional[str] = None,
-    ab_user_key: Optional[str] = None,
-    db: Optional[Any] = None,
-) -> Dict[str, Any]:
+    prompt_template_id: UUID | None = None,
+    prompt_template_key: str | None = None,
+    prompt_ab_experiment_key: str | None = None,
+    ab_user_key: str | None = None,
+    db: Any | None = None,
+) -> dict[str, Any]:
     """Build initial RAG graph state shared by run/stream entrypoints."""
 
     engine = get_rag_engine()
@@ -1138,34 +1138,34 @@ def build_rag_state(
 
 def run_rag_graph(
     question: str,
-    history: Optional[List[Dict[str, str]]] = None,
-    document_ids: Optional[List[UUID]] = None,
-    tenant_id: Optional[UUID] = None,
-    account_id: Optional[str] = None,
-    dataset_id: Optional[UUID] = None,
+    history: list[dict[str, str]] | None = None,
+    document_ids: list[UUID] | None = None,
+    tenant_id: UUID | None = None,
+    account_id: str | None = None,
+    dataset_id: UUID | None = None,
     top_k: int = 5,
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
-    retrieval_contract_mode: Optional[str] = None,
-    thread_id: Optional[str] = None,
-    runtime_context: Optional[Dict[str, Any]] = None,
+    retrieval_contract_mode: str | None = None,
+    thread_id: str | None = None,
+    runtime_context: dict[str, Any] | None = None,
     alpha: float = 0.6,
     enable_weight_rerank: bool = True,
     vector_weight: float = 0.6,
     keyword_weight: float = 0.4,
     mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
     enable_reranker: bool = settings.ENABLE_RERANKER,
-    reranker_provider: Optional[str] = settings.RERANKER_PROVIDER,
+    reranker_provider: str | None = settings.RERANKER_PROVIDER,
     reranker_top_n: int = settings.RERANKER_TOP_N,
-    metadata_filter: Optional[Dict[str, Any]] = None,
+    metadata_filter: dict[str, Any] | None = None,
     structured_output: bool = False,
-    structured_preset: Optional[str] = None,
-    prompt_template_id: Optional[UUID] = None,
-    prompt_template_key: Optional[str] = None,
-    prompt_ab_experiment_key: Optional[str] = None,
-    ab_user_key: Optional[str] = None,
-    db: Optional[Any] = None,
-) -> Dict[str, Any]:
+    structured_preset: str | None = None,
+    prompt_template_id: UUID | None = None,
+    prompt_template_key: str | None = None,
+    prompt_ab_experiment_key: str | None = None,
+    ab_user_key: str | None = None,
+    db: Any | None = None,
+) -> dict[str, Any]:
     """Execute LangGraph RAG flow, return answer/citations/model info."""
     state = build_rag_state(
         question=question,
@@ -1223,14 +1223,14 @@ def run_rag_graph(
 
 def stream_rag_graph(
     question: str,
-    history: Optional[List[Dict[str, str]]] = None,
-    document_ids: Optional[List[UUID]] = None,
-    tenant_id: Optional[UUID] = None,
+    history: list[dict[str, str]] | None = None,
+    document_ids: list[UUID] | None = None,
+    tenant_id: UUID | None = None,
     top_k: int = 5,
     score_threshold: float = 0.7,
     retrieval_mode: str = "hybrid",
-    thread_id: Optional[str] = None,
-    context: Optional[Dict[str, Any]] = None,
+    thread_id: str | None = None,
+    context: dict[str, Any] | None = None,
     **kwargs,
 ):
     """
@@ -1251,7 +1251,7 @@ def stream_rag_graph(
     }
 
     recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
-    config: Dict[str, Any] = {
+    config: dict[str, Any] = {
         "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
         "recursion_limit": recursion_limit,
     }

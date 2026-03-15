@@ -8,10 +8,10 @@ in a controlled, auditable way (no surprise Cartesian products).
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 
-def coerce_query_aliases(raw: Any) -> Dict[str, List[str]]:
+def coerce_query_aliases(raw: Any) -> dict[str, list[str]]:
     """
     Coerce a dataset/request-provided alias dictionary into a normalized mapping.
 
@@ -24,7 +24,7 @@ def coerce_query_aliases(raw: Any) -> Dict[str, List[str]]:
     if not isinstance(raw, dict):
         return {}
 
-    out: Dict[str, List[str]] = {}
+    out: dict[str, list[str]] = {}
     for k, v in raw.items():
         key = str(k or "").strip()
         if not key:
@@ -38,7 +38,7 @@ def coerce_query_aliases(raw: Any) -> Dict[str, List[str]]:
         else:
             continue
 
-        cleaned: List[str] = []
+        cleaned: list[str] = []
         for item in vals:
             s = str(item or "").strip()
             if not s:
@@ -52,7 +52,7 @@ def coerce_query_aliases(raw: Any) -> Dict[str, List[str]]:
 
         # Stable de-dup (case-insensitive for ASCII).
         seen: set[str] = set()
-        unique: List[str] = []
+        unique: list[str] = []
         for s in cleaned:
             sig = s.casefold() if s.isascii() else s
             if sig in seen:
@@ -69,11 +69,11 @@ def coerce_query_aliases(raw: Any) -> Dict[str, List[str]]:
 def generate_alias_queries(
     *,
     query: str,
-    aliases: Dict[str, List[str]] | None,
+    aliases: dict[str, list[str]] | None,
     max_queries: int = 5,
     max_rules: int = 200,
     max_query_chars: int = 400,
-) -> Tuple[List[str], Dict[str, Any]]:
+) -> tuple[list[str], dict[str, Any]]:
     """
     Generate query variants by applying dataset-scoped alias rules.
 
@@ -111,12 +111,12 @@ def generate_alias_queries(
             return re.sub(re.escape(src), tgt, base, flags=re.IGNORECASE)
         return base.replace(src, tgt)
 
-    variants: List[str] = []
+    variants: list[str] = []
     seen: set[str] = set()
-    applied: List[Dict[str, str]] = []
+    applied: list[dict[str, str]] = []
 
     # Build symmetric rule pairs: key <-> alias
-    pairs: List[Tuple[str, str]] = []
+    pairs: list[tuple[str, str]] = []
     for k, vs in rules_in.items():
         for a in vs:
             if not a:
@@ -127,7 +127,7 @@ def generate_alias_queries(
             pairs.append((a, k))
 
     # Stable de-dup of pairs.
-    uniq_pairs: List[Tuple[str, str]] = []
+    uniq_pairs: list[tuple[str, str]] = []
     seen_pairs: set[tuple[str, str]] = set()
     for src, tgt in pairs:
         key = (src.casefold() if src.isascii() else src, tgt.casefold() if tgt.isascii() else tgt)

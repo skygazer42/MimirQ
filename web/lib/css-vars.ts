@@ -1,5 +1,5 @@
 export function getCssVarValue(varName: string): string | null {
-  if (typeof window === "undefined") return null
+  if (typeof globalThis.window === "undefined") return null
   const raw = getComputedStyle(document.documentElement).getPropertyValue(varName)
   const value = (raw || "").trim()
   return value ? value : null

@@ -14,10 +14,10 @@ import time
 import uuid
 from collections import Counter
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Annotated, Any, List, Literal, Optional
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -202,7 +202,7 @@ def _asset_cache_control(*, token_in_url: bool, max_age: int) -> str:
     return "no-cache"
 
 
-def _coerce_bool_preview(value: Any) -> Optional[bool]:
+def _coerce_bool_preview(value: Any) -> bool | None:
     if value is None:
         return None
     if isinstance(value, bool):
@@ -218,7 +218,7 @@ def _coerce_bool_preview(value: Any) -> Optional[bool]:
     return None
 
 
-def _coerce_int_preview(value: Any) -> Optional[int]:
+def _coerce_int_preview(value: Any) -> int | None:
     if value is None:
         return None
     if isinstance(value, bool):
@@ -236,7 +236,7 @@ def _coerce_int_preview(value: Any) -> Optional[int]:
     return None
 
 
-def _coerce_float_preview(value: Any) -> Optional[float]:
+def _coerce_float_preview(value: Any) -> float | None:
     if value is None:
         return None
     if isinstance(value, bool):
@@ -516,7 +516,7 @@ def _parse_uuid(value: str) -> UUID:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
 
-async def _resolve_account_id_for_asset_request(request: Request, *, tenant_id: UUID | None = None) -> Optional[str]:
+async def _resolve_account_id_for_asset_request(request: Request, *, tenant_id: UUID | None = None) -> str | None:
     """
     Resolve account id for asset endpoints that may be requested by <img src>.
 
@@ -551,7 +551,7 @@ async def _resolve_account_id_for_asset_request(request: Request, *, tenant_id: 
         raise HTTPException(status_code=401, detail="Authentication required") from None
 
 
-def _get_tenant_id_from_request_if_provided(request: Request) -> Optional[UUID]:
+def _get_tenant_id_from_request_if_provided(request: Request) -> UUID | None:
     """
     Return tenant id from header/query if explicitly provided; otherwise None.
 
@@ -791,7 +791,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
                 candidate_rel.append(ref_path_decoded.lstrip("/"))
             candidate_rel.append(ref_path_decoded)
 
-            resolved_path: Optional[Path] = None
+            resolved_path: Path | None = None
             for candidate in candidate_rel:
                 if not candidate:
                     continue
@@ -1164,7 +1164,7 @@ def _sanitize_filename(filename: str) -> str:
     return cleaned
 
 
-def _parse_pipeline_json(pipeline: Optional[str]) -> Optional[DocumentPipelineOptions]:
+def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None:
     """
     Parse JSON-encoded pipeline options from multipart/form-data.
 
@@ -1637,24 +1637,24 @@ def _compute_chunk_preview_quality(
 
 def _to_pipeline_options(
     *,
-    pipeline: Optional[DocumentPipelineOptions] = None,
-    governance_enabled: Optional[bool] = None,
-    governance_remove_toc_lines: Optional[bool] = None,
-    governance_remove_noise_lines: Optional[bool] = None,
-    governance_unwrap_lines: Optional[bool] = None,
-    governance_remove_common_lines: Optional[bool] = None,
-    governance_unwrap_max_line_length: Optional[int] = None,
-    governance_noise_min_chars: Optional[int] = None,
-    governance_noise_ratio_threshold: Optional[float] = None,
-    governance_common_lines_min_docs: Optional[int] = None,
-    governance_common_lines_min_ratio: Optional[float] = None,
-    chunk_size: Optional[int] = None,
-    chunk_overlap: Optional[int] = None,
-    chunk_vector_enabled: Optional[bool] = None,
-    bm25_index_enabled: Optional[bool] = None,
-    kg_enabled: Optional[bool] = None,
-    event_vector_enabled: Optional[bool] = None,
-    entity_vector_enabled: Optional[bool] = None,
+    pipeline: DocumentPipelineOptions | None = None,
+    governance_enabled: bool | None = None,
+    governance_remove_toc_lines: bool | None = None,
+    governance_remove_noise_lines: bool | None = None,
+    governance_unwrap_lines: bool | None = None,
+    governance_remove_common_lines: bool | None = None,
+    governance_unwrap_max_line_length: int | None = None,
+    governance_noise_min_chars: int | None = None,
+    governance_noise_ratio_threshold: float | None = None,
+    governance_common_lines_min_docs: int | None = None,
+    governance_common_lines_min_ratio: float | None = None,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+    chunk_vector_enabled: bool | None = None,
+    bm25_index_enabled: bool | None = None,
+    kg_enabled: bool | None = None,
+    event_vector_enabled: bool | None = None,
+    entity_vector_enabled: bool | None = None,
 ) -> PipelineOptions:
     overrides = {
         "governance_enabled": governance_enabled,
@@ -1714,7 +1714,7 @@ def _rewrite_preview_images_to_minio(
     local_id_to_img_id: dict[str, str],
     digest_to_img_id: dict[str, str],
     start_index: int = 0,
-) -> tuple[str, List[str], int]:
+) -> tuple[str, list[str], int]:
     """
     Convert preview-time local image refs (/api/v1/documents/image/{uuid}) into
     persisted MinIO refs (/api/v1/documents/image-url/{img_id}) and upload images.
@@ -1772,7 +1772,7 @@ def _rewrite_preview_images_to_minio(
         img_id = local_id_to_img_id.get(local_id)
         if not img_id:
             # Find local file.
-            img_path: Optional[Path] = None
+            img_path: Path | None = None
             for ext in image_exts:
                 candidate = images_dir / f"{local_id}{ext}"
                 if candidate.exists() and candidate.is_file():
@@ -1883,7 +1883,7 @@ def _resolve_writable_dataset(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    dataset_id: Optional[UUID],
+    dataset_id: UUID | None,
 ) -> Dataset:
     """
     Resolve a dataset that the current user can write to.
@@ -1991,7 +1991,7 @@ def _assert_document_acl_readable(
     raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
 
 
-def _get_document_for_lifecycle(db: Session, tenant_id: UUID, document_id: UUID) -> Optional[DBDocument]:
+def _get_document_for_lifecycle(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
     return (
         db.query(DBDocument)
         .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
@@ -2019,7 +2019,7 @@ def _assert_document_writable_for_lifecycle(
     _assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=ds)
 
 
-def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> Optional[DBDocument]:
+def _get_document_for_chunk_ops(db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
     return (
         db.query(DBDocument)
         .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
@@ -2032,7 +2032,7 @@ def _get_chunk_for_chunk_ops(
     tenant_id: UUID,
     document_id: UUID,
     chunk_id: UUID,
-) -> Optional[DocumentChunk]:
+) -> DocumentChunk | None:
     return (
         db.query(DocumentChunk)
         .filter(
@@ -2068,14 +2068,14 @@ class UrlUploadRequest(BaseModel):
     """Upload a document by fetching a remote URL (connector skeleton)."""
 
     url: str = Field(..., max_length=2000)
-    dataset_id: Optional[UUID] = None
-    filename: Optional[str] = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
+    dataset_id: UUID | None = None
+    filename: str | None = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
     # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
-    fetch_headers: Optional[dict[str, str]] = None
-    user_agent: Optional[str] = Field(default=None, max_length=200)
+    fetch_headers: dict[str, str] | None = None
+    user_agent: str | None = Field(default=None, max_length=200)
     parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
     chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
-    pipeline: Optional[DocumentPipelineOptions] = None
+    pipeline: DocumentPipelineOptions | None = None
 
 
 def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
@@ -2093,8 +2093,8 @@ def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
     with contextlib.suppress(Exception):
         dt = parsedate_to_datetime(value)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
 
     with contextlib.suppress(Exception):
         iso = value
@@ -2102,8 +2102,8 @@ def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
             iso = iso[:-1] + "+00:00"
         dt = datetime.fromisoformat(iso)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
 
     return None
 
@@ -2119,12 +2119,12 @@ class LocalHtmlIngestRequest(BaseModel):
     """Ingest a local HTML payload as a document (internal connector helper)."""
 
     html: str = Field(..., description="HTML content (fragment or full document)")
-    source_url: Optional[str] = Field(default=None, max_length=2000, description="Best-effort source URL for citations/debug")
-    dataset_id: Optional[UUID] = None
-    filename: Optional[str] = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
+    source_url: str | None = Field(default=None, max_length=2000, description="Best-effort source URL for citations/debug")
+    dataset_id: UUID | None = None
+    filename: str | None = Field(default=None, max_length=500, description="Optional override filename (used for extension + display)")
     parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
     chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
-    pipeline: Optional[DocumentPipelineOptions] = None
+    pipeline: DocumentPipelineOptions | None = None
 
 
 async def _ingest_url_upload_request(
@@ -2167,7 +2167,7 @@ async def _ingest_url_upload_request(
         extra_headers=(body.fetch_headers or None),
     )
 
-    fetched_at_iso = datetime.now(timezone.utc).isoformat()
+    fetched_at_iso = datetime.now(UTC).isoformat()
     last_modified_raw = str(getattr(downloaded, "last_modified", "") or "").strip() or None
     last_modified_norm = _normalize_datetime_utc_iso(last_modified_raw) if last_modified_raw else None
     etag_raw = str(getattr(downloaded, "etag", "") or "").strip() or None
@@ -2282,7 +2282,7 @@ async def _ingest_url_upload_request(
     parser_backend_choice = str(body.parser_backend or default_pb_eff)
     chunk_strategy_choice = str(body.chunk_strategy or default_cs_eff)
     policy_patch = PipelineOptions()
-    ingestion_meta: Optional[dict[str, Any]] = None
+    ingestion_meta: dict[str, Any] | None = None
 
     if matched_rule is not None:
         default_pb = default_pb_eff
@@ -2500,26 +2500,26 @@ async def upload_document(
     file: Annotated[UploadFile, File(...)],
     parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
     chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
-    pipeline: Annotated[Optional[str], Form()] = None,
-    governance_enabled: Annotated[Optional[bool], Form()] = None,
-    governance_remove_toc_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_noise_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_common_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_max_line_length: Annotated[Optional[int], Form()] = None,
-    governance_noise_min_chars: Annotated[Optional[int], Form()] = None,
-    governance_noise_ratio_threshold: Annotated[Optional[float], Form()] = None,
-    governance_common_lines_min_docs: Annotated[Optional[int], Form()] = None,
-    governance_common_lines_min_ratio: Annotated[Optional[float], Form()] = None,
-    chunk_size: Annotated[Optional[int], Form()] = None,
-    chunk_overlap: Annotated[Optional[int], Form()] = None,
-    chunk_vector_enabled: Annotated[Optional[bool], Form()] = None,
-    bm25_index_enabled: Annotated[Optional[bool], Form()] = None,
-    kg_enabled: Annotated[Optional[bool], Form()] = None,
-    event_vector_enabled: Annotated[Optional[bool], Form()] = None,
-    entity_vector_enabled: Annotated[Optional[bool], Form()] = None,
-    dataset_id: Annotated[Optional[UUID], Form()] = None,
-    user_metadata: Annotated[Optional[str], Form()] = None,
+    pipeline: Annotated[str | None, Form()] = None,
+    governance_enabled: Annotated[bool | None, Form()] = None,
+    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
+    governance_noise_min_chars: Annotated[int | None, Form()] = None,
+    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
+    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
+    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
+    chunk_size: Annotated[int | None, Form()] = None,
+    chunk_overlap: Annotated[int | None, Form()] = None,
+    chunk_vector_enabled: Annotated[bool | None, Form()] = None,
+    bm25_index_enabled: Annotated[bool | None, Form()] = None,
+    kg_enabled: Annotated[bool | None, Form()] = None,
+    event_vector_enabled: Annotated[bool | None, Form()] = None,
+    entity_vector_enabled: Annotated[bool | None, Form()] = None,
+    dataset_id: Annotated[UUID | None, Form()] = None,
+    user_metadata: Annotated[str | None, Form()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2578,7 +2578,7 @@ async def upload_document(
     policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
     matched_rule = match_ingestion_rule(policy, filename=upload_key or file.filename, file_ext=file_ext)
 
-    ingestion_meta: Optional[dict[str, Any]] = None
+    ingestion_meta: dict[str, Any] | None = None
     # Dataset-level ingestion defaults (parser/chunk strategy). These apply when the request uses
     # the global defaults, keeping explicit user choices untouched.
     dataset_default_pb = None
@@ -3026,7 +3026,7 @@ async def _ingest_local_html_request(
     content_type = "text/html"
     source_url = (str(body.source_url or "").strip() or None)
     url_normalized = normalize_url_for_dedup(source_url) if source_url else None
-    fetched_at_iso = datetime.now(timezone.utc).isoformat()
+    fetched_at_iso = datetime.now(UTC).isoformat()
 
     # 3) Resolve ingestion policy (best-effort) based on filename/ext.
     pipeline_options = PipelineOptions(**(body.pipeline.model_dump(exclude_none=True) if body.pipeline else {}))
@@ -3057,7 +3057,7 @@ async def _ingest_local_html_request(
     parser_backend_choice = str(body.parser_backend or default_pb_eff)
     chunk_strategy_choice = str(body.chunk_strategy or default_cs_eff)
     policy_patch = PipelineOptions()
-    ingestion_meta: Optional[dict[str, Any]] = None
+    ingestion_meta: dict[str, Any] | None = None
 
     if matched_rule is not None:
         default_pb = default_pb_eff
@@ -3272,30 +3272,30 @@ async def upload_document_from_url(
 @router.post("/upload-batch", response_model=DocumentBatchUploadResponse, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_documents_batch(
     background_tasks: BackgroundTasks,
-    files: Annotated[List[UploadFile], File(...)],
+    files: Annotated[list[UploadFile], File(...)],
     parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
     chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
-    pipeline: Annotated[Optional[str], Form()] = None,
-    governance_enabled: Annotated[Optional[bool], Form()] = None,
-    governance_remove_toc_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_noise_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_common_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_max_line_length: Annotated[Optional[int], Form()] = None,
-    governance_noise_min_chars: Annotated[Optional[int], Form()] = None,
-    governance_noise_ratio_threshold: Annotated[Optional[float], Form()] = None,
-    governance_common_lines_min_docs: Annotated[Optional[int], Form()] = None,
-    governance_common_lines_min_ratio: Annotated[Optional[float], Form()] = None,
-    chunk_size: Annotated[Optional[int], Form()] = None,
-    chunk_overlap: Annotated[Optional[int], Form()] = None,
-    chunk_vector_enabled: Annotated[Optional[bool], Form()] = None,
-    bm25_index_enabled: Annotated[Optional[bool], Form()] = None,
-    kg_enabled: Annotated[Optional[bool], Form()] = None,
-    event_vector_enabled: Annotated[Optional[bool], Form()] = None,
-    entity_vector_enabled: Annotated[Optional[bool], Form()] = None,
-    dataset_id: Annotated[Optional[UUID], Form()] = None,
+    pipeline: Annotated[str | None, Form()] = None,
+    governance_enabled: Annotated[bool | None, Form()] = None,
+    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
+    governance_noise_min_chars: Annotated[int | None, Form()] = None,
+    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
+    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
+    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
+    chunk_size: Annotated[int | None, Form()] = None,
+    chunk_overlap: Annotated[int | None, Form()] = None,
+    chunk_vector_enabled: Annotated[bool | None, Form()] = None,
+    bm25_index_enabled: Annotated[bool | None, Form()] = None,
+    kg_enabled: Annotated[bool | None, Form()] = None,
+    event_vector_enabled: Annotated[bool | None, Form()] = None,
+    entity_vector_enabled: Annotated[bool | None, Form()] = None,
+    dataset_id: Annotated[UUID | None, Form()] = None,
     precheck_first: Annotated[bool, Form()] = False,
-    user_metadata_map: Annotated[Optional[str], Form()] = None,
+    user_metadata_map: Annotated[str | None, Form()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -3625,7 +3625,7 @@ async def upload_documents_batch(
                                 if row is not None:
                                     row.status = "failed"
                                     row.error_message = str(exc)[:200]
-                                    row.finished_at = datetime.now(timezone.utc)
+                                    row.finished_at = datetime.now(UTC)
                                     db2.commit()
                             except Exception:
                                 pass
@@ -3713,7 +3713,7 @@ async def upload_documents_batch(
                     )
 
                     matched_rule = match_ingestion_rule(policy, filename=str(upload_key or filename0), file_ext=file_ext)
-                    ingestion_meta: Optional[dict[str, Any]] = None
+                    ingestion_meta: dict[str, Any] | None = None
                     parser_backend_choice: str = parser_backend_base
                     chunk_strategy_choice: str = chunk_strategy_base
                     preprocess_steps: list[dict] = []
@@ -4056,7 +4056,7 @@ async def upload_documents_batch(
 
                 # Ingestion policy overrides (per file).
                 matched_rule = match_ingestion_rule(policy, filename=upload_key or file.filename, file_ext=file_ext)
-                ingestion_meta: Optional[dict[str, Any]] = None
+                ingestion_meta: dict[str, Any] | None = None
                 parser_backend_choice: str = parser_backend_base
                 chunk_strategy_choice: str = chunk_strategy_base
                 preprocess_steps: list[dict] = []
@@ -4399,13 +4399,13 @@ async def upload_documents_batch(
 async def list_documents(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
-    status: Optional[str] = None,
+    status: str | None = None,
     lifecycle: Annotated[Literal["active", "archived", "disabled", "all"], Query()] = "active",
-    dataset_id: Optional[UUID] = None,
-    file_type: Annotated[Optional[str], Query(max_length=20)] = None,
-    owner_id: Annotated[Optional[str], Query(max_length=255)] = None,
-    q: Annotated[Optional[str], Query(max_length=200)] = None,
-    source_path_prefix: Annotated[Optional[str], Query(max_length=500)] = None,
+    dataset_id: UUID | None = None,
+    file_type: Annotated[str | None, Query(max_length=20)] = None,
+    owner_id: Annotated[str | None, Query(max_length=255)] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    source_path_prefix: Annotated[str | None, Query(max_length=500)] = None,
     order_by: Annotated[Literal["created_at", "filename", "file_size"], Query()] = "created_at",
     order_dir: Annotated[Literal["asc", "desc"], Query()] = "desc",
     *,
@@ -4649,11 +4649,11 @@ async def list_document_folders(
 
 @router.get("/stats", response_model=DocumentStats, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_document_stats(
-    dataset_id: Optional[UUID] = None,
+    dataset_id: UUID | None = None,
     lifecycle: Annotated[Literal["active", "archived", "disabled", "all"], Query()] = "active",
-    file_type: Annotated[Optional[str], Query(max_length=20)] = None,
-    owner_id: Annotated[Optional[str], Query(max_length=255)] = None,
-    q: Annotated[Optional[str], Query(max_length=200)] = None,
+    file_type: Annotated[str | None, Query(max_length=20)] = None,
+    owner_id: Annotated[str | None, Query(max_length=255)] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -5056,7 +5056,7 @@ async def list_document_duplicates(
 async def get_document(
     document_id: uuid.UUID,
     include_chunks: bool = False,
-    pipeline_hash: Annotated[Optional[str], Query(max_length=64, description='Optional: filter chunks by a specific pipeline_hash version (when include_chunks=true)')] = None,
+    pipeline_hash: Annotated[str | None, Query(max_length=64, description='Optional: filter chunks by a specific pipeline_hash version (when include_chunks=true)')] = None,
     all_versions: Annotated[bool, Query(description='If true, include chunks across all pipeline versions (debug; when include_chunks=true)')] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -5947,8 +5947,8 @@ async def list_document_chunks(
     document_id: uuid.UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
-    q: Annotated[Optional[str], Query(max_length=200)] = None,
-    pipeline_hash: Annotated[Optional[str], Query(max_length=64, description='Optional: filter by a specific pipeline_hash version')] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    pipeline_hash: Annotated[str | None, Query(max_length=64, description='Optional: filter by a specific pipeline_hash version')] = None,
     all_versions: Annotated[bool, Query(description='If true, return chunks across all pipeline versions (debug)')] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -6010,7 +6010,7 @@ async def list_document_chunk_matches(
     document_id: uuid.UUID,
     q: Annotated[str, Query(..., max_length=200, description='Case-insensitive substring match against chunk content')],
     limit: Annotated[int, Query(ge=1, le=5000, description='Max returned matches (may be truncated)')] = 2000,
-    pipeline_hash: Annotated[Optional[str], Query(max_length=64, description='Optional: filter by a specific pipeline_hash version')] = None,
+    pipeline_hash: Annotated[str | None, Query(max_length=64, description='Optional: filter by a specific pipeline_hash version')] = None,
     all_versions: Annotated[bool, Query(description='If true, return matches across all pipeline versions (debug)')] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -6917,7 +6917,7 @@ async def disable_document_chunk(
         raise HTTPException(status_code=409, detail="Index consistency strict mode blocked disable; drift item recorded")
 
     if getattr(chunk, "disabled_at", None) is None:
-        chunk.disabled_at = datetime.now(timezone.utc)
+        chunk.disabled_at = datetime.now(UTC)
     try:
         chunk.vector_id = None
     except Exception:
@@ -7623,7 +7623,7 @@ async def download_document(
 
         range_header = (request.headers.get("range") or "").strip()
         offset = 0
-        length: Optional[int] = None
+        length: int | None = None
         status_code = 200
         headers: dict[str, str] = {
             "Cache-Control": cache_control,
@@ -8375,7 +8375,7 @@ async def _delete_document_lifecycle(
     # deleted chunks until the next ingestion run touches the dataset.
     if getattr(document, "dataset_id", None) is not None:
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
 
             from app.models.dataset import Dataset as DBDataset  # noqa: WPS433
 
@@ -8388,7 +8388,7 @@ async def _delete_document_lifecycle(
                 .first()
             )
             if ds is not None:
-                ds.updated_at = datetime.now(timezone.utc)
+                ds.updated_at = datetime.now(UTC)
         except Exception:
             pass
 
@@ -8473,7 +8473,7 @@ async def batch_disable_documents(
     denied: list[UUID] = []
     conflicts: list[UUID] = []
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for document_id in payload.document_ids:
         doc = _get_document_for_lifecycle(db, tenant_id, document_id)
@@ -8569,7 +8569,7 @@ async def batch_archive_documents(
     denied: list[UUID] = []
     conflicts: list[UUID] = []
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for document_id in payload.document_ids:
         doc = _get_document_for_lifecycle(db, tenant_id, document_id)
@@ -9056,7 +9056,7 @@ async def get_image_url(
     # Resolve tenant_id even when the request is coming from <img src> (no custom headers).
     requested_tenant = _get_tenant_id_from_request_if_provided(request)
 
-    def _tenant_from_img_id(val: str) -> Optional[UUID]:
+    def _tenant_from_img_id(val: str) -> UUID | None:
         if ":" not in val:
             return None
         raw_tenant = (val.split(":", 1)[0] or "").strip()
@@ -9243,18 +9243,18 @@ async def preview_document(
     file: Annotated[UploadFile, File(...)],
     parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
     chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
-    dataset_id: Annotated[Optional[str], Form()] = None,
-    pipeline: Annotated[Optional[str], Form()] = None,
-    governance_enabled: Annotated[Optional[bool], Form()] = None,
-    governance_remove_toc_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_noise_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_common_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_max_line_length: Annotated[Optional[int], Form()] = None,
-    governance_noise_min_chars: Annotated[Optional[int], Form()] = None,
-    governance_noise_ratio_threshold: Annotated[Optional[float], Form()] = None,
-    governance_common_lines_min_docs: Annotated[Optional[int], Form()] = None,
-    governance_common_lines_min_ratio: Annotated[Optional[float], Form()] = None,
+    dataset_id: Annotated[str | None, Form()] = None,
+    pipeline: Annotated[str | None, Form()] = None,
+    governance_enabled: Annotated[bool | None, Form()] = None,
+    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
+    governance_noise_min_chars: Annotated[int | None, Form()] = None,
+    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
+    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
+    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -9417,7 +9417,7 @@ async def preview_document(
             language_min_chars=int(pipeline_effective.governance_language_min_chars or 0),
         ).to_dict()
 
-        segments: List[ParsedSegment] = []
+        segments: list[ParsedSegment] = []
         for idx, doc in enumerate(documents):
             segments.append(ParsedSegment(
                 index=idx,
@@ -9573,7 +9573,7 @@ async def create_document_with_manual_chunks(
         asset_index = 0
         document_img_ids: set[str] = set()
 
-        records: List[IndexRecord] = []
+        records: list[IndexRecord] = []
         for idx, chunk in enumerate(request.chunks):
             content = chunk.content or ""
             pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
@@ -9733,24 +9733,24 @@ async def preview_chunking(
     parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
     chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
     # Strategy-specific options (enterprise tuning). Currently used by parent_child.
-    child_ratio: Annotated[Optional[float], Form()] = None,
-    min_child_size: Annotated[Optional[int], Form()] = None,
-    separator_preset: Annotated[Optional[str], Form()] = None,
-    separator: Annotated[Optional[str], Form()] = None,
-    keep_separator: Annotated[Optional[bool], Form()] = None,
-    separator_max_chunk_size: Annotated[Optional[int], Form()] = None,
-    dataset_id: Annotated[Optional[str], Form()] = None,
-    pipeline: Annotated[Optional[str], Form()] = None,
-    governance_enabled: Annotated[Optional[bool], Form()] = None,
-    governance_remove_toc_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_noise_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_common_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_max_line_length: Annotated[Optional[int], Form()] = None,
-    governance_noise_min_chars: Annotated[Optional[int], Form()] = None,
-    governance_noise_ratio_threshold: Annotated[Optional[float], Form()] = None,
-    governance_common_lines_min_docs: Annotated[Optional[int], Form()] = None,
-    governance_common_lines_min_ratio: Annotated[Optional[float], Form()] = None,
+    child_ratio: Annotated[float | None, Form()] = None,
+    min_child_size: Annotated[int | None, Form()] = None,
+    separator_preset: Annotated[str | None, Form()] = None,
+    separator: Annotated[str | None, Form()] = None,
+    keep_separator: Annotated[bool | None, Form()] = None,
+    separator_max_chunk_size: Annotated[int | None, Form()] = None,
+    dataset_id: Annotated[str | None, Form()] = None,
+    pipeline: Annotated[str | None, Form()] = None,
+    governance_enabled: Annotated[bool | None, Form()] = None,
+    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
+    governance_noise_min_chars: Annotated[int | None, Form()] = None,
+    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
+    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
+    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -9774,10 +9774,10 @@ async def preview_chunking(
     file.filename = _sanitize_filename(file.filename)
     preview_started = time.perf_counter()
     parse_cache_hit = False
-    parse_cache_age_ms: Optional[int] = None
-    file_sha256: Optional[str] = None
-    upload_duration_ms: Optional[int] = None
-    parse_duration_ms: Optional[int] = 0
+    parse_cache_age_ms: int | None = None
+    file_sha256: str | None = None
+    upload_duration_ms: int | None = None
+    parse_duration_ms: int | None = 0
     governance_duration_ms: int = 0
     chunking_duration_ms: int = 0
     stats_duration_ms: int = 0
@@ -10320,7 +10320,7 @@ async def preview_chunking(
         # Build response.
         _stats_started = time.perf_counter()
         unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
-        chunk_items: List[ChunkPreviewItem] = []
+        chunk_items: list[ChunkPreviewItem] = []
         chunk_ranges: list[tuple[int, int]] = []
         length_samples: list[int] = []
         token_lengths: list[int] = []
@@ -10604,9 +10604,9 @@ async def preview_chunking_by_sha(
     request: Request,
     response: Response,
     file_sha256: Annotated[str, Form(...)],
-    file_type: Annotated[Optional[str], Form()] = None,
-    filename: Annotated[Optional[str], Form()] = None,
-    file_size: Annotated[Optional[int], Form()] = None,
+    file_type: Annotated[str | None, Form()] = None,
+    filename: Annotated[str | None, Form()] = None,
+    file_size: Annotated[int | None, Form()] = None,
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
     include_original_text: bool = True,
@@ -10618,24 +10618,24 @@ async def preview_chunking_by_sha(
     parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
     chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
     # Strategy-specific options (enterprise tuning). Currently used by parent_child.
-    child_ratio: Annotated[Optional[float], Form()] = None,
-    min_child_size: Annotated[Optional[int], Form()] = None,
-    separator_preset: Annotated[Optional[str], Form()] = None,
-    separator: Annotated[Optional[str], Form()] = None,
-    keep_separator: Annotated[Optional[bool], Form()] = None,
-    separator_max_chunk_size: Annotated[Optional[int], Form()] = None,
-    dataset_id: Annotated[Optional[str], Form()] = None,
-    pipeline: Annotated[Optional[str], Form()] = None,
-    governance_enabled: Annotated[Optional[bool], Form()] = None,
-    governance_remove_toc_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_noise_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_lines: Annotated[Optional[bool], Form()] = None,
-    governance_remove_common_lines: Annotated[Optional[bool], Form()] = None,
-    governance_unwrap_max_line_length: Annotated[Optional[int], Form()] = None,
-    governance_noise_min_chars: Annotated[Optional[int], Form()] = None,
-    governance_noise_ratio_threshold: Annotated[Optional[float], Form()] = None,
-    governance_common_lines_min_docs: Annotated[Optional[int], Form()] = None,
-    governance_common_lines_min_ratio: Annotated[Optional[float], Form()] = None,
+    child_ratio: Annotated[float | None, Form()] = None,
+    min_child_size: Annotated[int | None, Form()] = None,
+    separator_preset: Annotated[str | None, Form()] = None,
+    separator: Annotated[str | None, Form()] = None,
+    keep_separator: Annotated[bool | None, Form()] = None,
+    separator_max_chunk_size: Annotated[int | None, Form()] = None,
+    dataset_id: Annotated[str | None, Form()] = None,
+    pipeline: Annotated[str | None, Form()] = None,
+    governance_enabled: Annotated[bool | None, Form()] = None,
+    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
+    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
+    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
+    governance_noise_min_chars: Annotated[int | None, Form()] = None,
+    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
+    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
+    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -10651,7 +10651,7 @@ async def preview_chunking_by_sha(
 
     preview_started = time.perf_counter()
     parse_cache_hit = False
-    parse_cache_age_ms: Optional[int] = None
+    parse_cache_age_ms: int | None = None
     upload_duration_ms: int = 0
     parse_duration_ms: int = 0
     governance_duration_ms: int = 0
@@ -11022,7 +11022,7 @@ async def preview_chunking_by_sha(
     # Build response.
     _stats_started = time.perf_counter()
     unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
-    chunk_items: List[ChunkPreviewItem] = []
+    chunk_items: list[ChunkPreviewItem] = []
     chunk_ranges: list[tuple[int, int]] = []
     length_samples: list[int] = []
     token_lengths: list[int] = []

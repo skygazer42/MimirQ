@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -76,7 +76,7 @@ def test_scim_groups_list_get_pagination_and_tenant_isolation(monkeypatch: pytes
     tenant_a = uuid.uuid4()
     tenant_b = uuid.uuid4()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     g1 = SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_a, name="engineering", external_id=None, created_at=now, updated_at=now)
     g2 = SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_a, name="finance", external_id="ext-1", created_at=now, updated_at=now)
     g_other = SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_b, name="other", external_id=None, created_at=now, updated_at=now)
@@ -149,7 +149,7 @@ def test_scim_users_list_get_and_patch_group_membership(monkeypatch: pytest.Monk
     monkeypatch.setattr(scim_api.settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", True, raising=False)
 
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     users = [
         SimpleNamespace(tenant_id=tenant_id, user_id="alice", is_current=True, created_at=now, updated_at=now),
@@ -184,7 +184,7 @@ def test_scim_users_list_get_and_patch_group_membership(monkeypatch: pytest.Monk
 
     def _list_members(_db, *, tenant_id, group_id, skip=0, limit=2000):  # noqa: ANN001
         _get_group(_db, tenant_id=tenant_id, group_id=group_id)
-        ids = sorted(list(members.get(group_id, set())))
+        ids = sorted(members.get(group_id, set()))
         ids = ids[max(0, int(skip or 0)) : max(0, int(skip or 0)) + max(1, int(limit or 0))]
         rows = [SimpleNamespace(user_id=uid, created_at=now) for uid in ids]
         return len(members.get(group_id, set())), rows
@@ -326,7 +326,7 @@ def test_scim_users_create_and_patch_active(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(scim_api.settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", True, raising=False)
 
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     store: dict[str, SimpleNamespace] = {}
 
@@ -406,7 +406,7 @@ def test_scim_deprovision_policy_revokes_group_memberships(monkeypatch: pytest.M
     monkeypatch.setattr(scim_api.settings, "SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED", True, raising=False)
 
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     user = SimpleNamespace(tenant_id=tenant_id, user_id="alice", is_active=True, is_current=False, created_at=now, updated_at=now)
 
@@ -457,7 +457,7 @@ def test_scim_groups_create_put_delete_and_external_id_uniqueness(monkeypatch: p
     monkeypatch.setattr(scim_api.settings, "SCIM_GROUPS_MUTATION_ENABLED", True, raising=False)
 
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     groups: dict[uuid.UUID, SimpleNamespace] = {}
 

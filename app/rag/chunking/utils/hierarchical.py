@@ -10,7 +10,6 @@ Returns chunk data with positions for frontend highlighting.
 
 import re
 import uuid
-from typing import Dict, List, Tuple
 
 
 def _estimate_tokens(text: str) -> int:
@@ -25,7 +24,7 @@ _CODE_FENCE_RE = re.compile(r"^\s*```")
 _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 
 
-def _split_paragraphs(text: str) -> List[Tuple[str, int, int]]:
+def _split_paragraphs(text: str) -> list[tuple[str, int, int]]:
     """
     Split text into paragraph-like blocks while preserving offsets.
 
@@ -41,8 +40,8 @@ def _split_paragraphs(text: str) -> List[Tuple[str, int, int]]:
     if not text:
         return []
 
-    paragraphs: List[Tuple[str, int, int]] = []
-    buf: List[str] = []
+    paragraphs: list[tuple[str, int, int]] = []
+    buf: list[str] = []
     buf_start = 0
     offset = 0
     in_code = False
@@ -104,7 +103,7 @@ def _split_paragraphs(text: str) -> List[Tuple[str, int, int]]:
     return paragraphs
 
 
-def _split_sentences(paragraph: str, base_offset: int) -> List[Tuple[str, int, int]]:
+def _split_sentences(paragraph: str, base_offset: int) -> list[tuple[str, int, int]]:
     """
     Split paragraph into sentences (Chinese and English).
 
@@ -127,7 +126,7 @@ def _split_sentences(paragraph: str, base_offset: int) -> List[Tuple[str, int, i
     return sentences
 
 
-def hierarchical_chunk_markdown(markdown: str) -> Dict[str, List[Dict]]:
+def hierarchical_chunk_markdown(markdown: str) -> dict[str, list[dict]]:
     """
     Perform hierarchical chunking on markdown text.
 
@@ -148,8 +147,8 @@ def hierarchical_chunk_markdown(markdown: str) -> Dict[str, List[Dict]]:
     text = markdown or ""
     paragraphs = _split_paragraphs(text)
 
-    paragraph_chunks: List[Dict] = []
-    sentence_chunks: List[Dict] = []
+    paragraph_chunks: list[dict] = []
+    sentence_chunks: list[dict] = []
 
     for p_idx, (p_text, start, end) in enumerate(paragraphs):
         if not p_text.strip():

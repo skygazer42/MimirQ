@@ -7,8 +7,8 @@ Goal:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -568,7 +568,7 @@ class ReportService:
         tenant_id: UUID,
         account_id: str,
         dataset_id: UUID,
-        pipeline_hash: Optional[str] = None,
+        pipeline_hash: str | None = None,
         connector_runs_limit: int = 20,
     ) -> DatasetReportOut:
         dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
@@ -683,7 +683,7 @@ class ReportService:
                             id=row.id,
                             connector_id=str(getattr(row, "connector_id", "") or ""),
                             status=str(getattr(row, "status", "") or ""),
-                            created_at=getattr(row, "created_at", datetime.now(timezone.utc)),
+                            created_at=getattr(row, "created_at", datetime.now(UTC)),
                             finished_at=getattr(row, "finished_at", None),
                             error_message=getattr(row, "error_message", None),
                             stats=dict(getattr(row, "stats", None) or {}),
@@ -1083,7 +1083,7 @@ class ReportService:
             dataset_id=dataset_id,
             dataset_name=str(getattr(dataset, "name", "") or "") or None,
             pipeline_hash=pipeline_hash_norm,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
             profile=profile,
             compliance=compliance,
             pipeline_versions=pipeline_versions,

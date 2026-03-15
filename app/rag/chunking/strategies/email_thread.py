@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -69,10 +69,10 @@ _QUOTE_LINE_RE = re.compile(r"(?m)^\s*>+")
 class _Message:
     start: int
     end: int
-    headers: Dict[str, str]
+    headers: dict[str, str]
 
 
-def _count_header_lines(lines: List[str]) -> int:
+def _count_header_lines(lines: list[str]) -> int:
     return sum(1 for ln in lines if _HEADER_LINE_RE.match(ln) is not None)
 
 
@@ -92,8 +92,8 @@ def _has_plausible_header_block(text: str, start: int) -> bool:
     return bool(has_from and has_subject_or_to)
 
 
-def _extract_headers(message_text: str) -> Dict[str, str]:
-    headers: Dict[str, str] = {}
+def _extract_headers(message_text: str) -> dict[str, str]:
+    headers: dict[str, str] = {}
     lines = message_text.splitlines()
     for ln in lines[:40]:
         if not ln.strip():
@@ -111,11 +111,11 @@ def _extract_headers(message_text: str) -> Dict[str, str]:
     return headers
 
 
-def _iter_messages(text: str) -> List[_Message]:
+def _iter_messages(text: str) -> list[_Message]:
     if not text:
         return []
 
-    candidates: List[int] = [0]
+    candidates: list[int] = [0]
     for m in _THREAD_SEPARATOR_RE.finditer(text):
         candidates.append(m.start())
     for m in _HEADER_START_RE.finditer(text):
@@ -124,11 +124,11 @@ def _iter_messages(text: str) -> List[_Message]:
     for m in _ON_WROTE_RE.finditer(text):
         candidates.append(m.start())
 
-    starts = sorted(set(i for i in candidates if 0 <= i < len(text)))
+    starts = sorted({i for i in candidates if 0 <= i < len(text)})
     if len(starts) < 2:
         return []
 
-    msgs: List[_Message] = []
+    msgs: list[_Message] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
         if end <= start:
@@ -140,7 +140,7 @@ def _iter_messages(text: str) -> List[_Message]:
         msgs.append(_Message(start=start, end=end, headers=headers))
 
     # Filter out accidental micro-segments (e.g., inline "On ... wrote:" lines).
-    filtered: List[_Message] = []
+    filtered: list[_Message] = []
     for m in msgs:
         if (m.end - m.start) < 40:
             continue
@@ -172,8 +172,8 @@ class EmailThreadChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -215,8 +215,8 @@ class EmailThreadChunker(BaseChunker):
                 chunk_end = msgs[end_idx - 1].end
                 content = text[chunk_start:chunk_end]
 
-                subjects: List[str] = []
-                froms: List[str] = []
+                subjects: list[str] = []
+                froms: list[str] = []
                 for m in msgs[start_idx:end_idx]:
                     h = m.headers
                     subj = h.get("subject") or h.get("主题")

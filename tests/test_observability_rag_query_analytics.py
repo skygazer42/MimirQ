@@ -27,7 +27,7 @@ def test_observability_rag_query_analytics(monkeypatch, tmp_path):  # noqa: ANN0
     from app.core.config import settings
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     now_ms = int(time.time() * 1000)
@@ -121,7 +121,7 @@ def test_observability_rag_query_analytics_anomalies(monkeypatch, tmp_path):  # 
     from app.core.config import settings
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     now_ms = int(time.time() * 1000)

@@ -33,7 +33,7 @@ export function ModelConfigDialog({
   open,
   onClose,
   onSave,
-}: ModelConfigDialogProps) {
+}: Readonly<ModelConfigDialogProps>) {
   const idPrefix = useId()
   const [config, setConfig] = useState<ProviderConfig>({
     apiKey: '',
@@ -284,7 +284,7 @@ export function ModelConfigDialog({
                     id={maxTokensId}
                     type="number"
                     value={config.maxTokens}
-                    onChange={(e) => setConfig({ ...config, maxTokens: parseInt(e.target.value) })}
+                    onChange={(e) => setConfig({ ...config, maxTokens: Number.parseInt(e.target.value) })}
                     className="h-9 text-sm"
                   />
                 </div>

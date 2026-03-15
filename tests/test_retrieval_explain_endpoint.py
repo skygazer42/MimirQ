@@ -65,8 +65,8 @@ async def test_retrieval_explain_endpoint_returns_deterministic_schema_payload(
     assert res.rerank.get("used") is True
     assert res.rerank.get("candidates_n") == 20
     assert res.rerank.get("pipeline_stages") == ["ltr", "colbert"]
-    assert res.stage_timings.get("retrieval_elapsed_sec") == 0.123
-    assert res.stage_timings.get("post_rerank_elapsed_sec") == 0.014
+    assert res.stage_timings.get("retrieval_elapsed_sec") == pytest.approx(0.123)
+    assert res.stage_timings.get("post_rerank_elapsed_sec") == pytest.approx(0.014)
     assert len(res.top_citations) == 2
     assert res.top_citations[0].get("chunk_id") == "c1"
     assert str(captured.get("retrieval_profile") or "").strip().lower() == "recall50"

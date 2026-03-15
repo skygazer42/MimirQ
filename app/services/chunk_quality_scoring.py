@@ -9,7 +9,8 @@ Goal:
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.normalization import normalize_text

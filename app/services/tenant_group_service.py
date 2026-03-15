@@ -9,7 +9,7 @@ This is intentionally simple:
 from __future__ import annotations
 
 import contextlib
-from typing import Iterable, List, Optional
+from collections.abc import Iterable
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -83,7 +83,7 @@ class TenantGroupService:
         return group_ids
 
     @staticmethod
-    def list_groups(db: Session, *, tenant_id: UUID, skip: int = 0, limit: int = 200) -> tuple[int, List[TenantGroup]]:
+    def list_groups(db: Session, *, tenant_id: UUID, skip: int = 0, limit: int = 200) -> tuple[int, list[TenantGroup]]:
         q = db.query(TenantGroup).filter(TenantGroup.tenant_id == tenant_id)
         total = int(q.count())
         items = (
@@ -150,8 +150,8 @@ class TenantGroupService:
         *,
         tenant_id: UUID,
         group_id: UUID,
-        name: Optional[str],
-        external_id: Optional[str],
+        name: str | None,
+        external_id: str | None,
     ) -> TenantGroup:
         group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
 
@@ -232,7 +232,7 @@ class TenantGroupService:
         *,
         tenant_id: UUID,
         group_id: UUID,
-        member_ids: List[str],
+        member_ids: list[str],
     ) -> int:
         TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
 
@@ -286,7 +286,7 @@ class TenantGroupService:
         *,
         tenant_id: UUID,
         group_id: UUID,
-        member_ids: List[str],
+        member_ids: list[str],
     ) -> int:
         TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
 

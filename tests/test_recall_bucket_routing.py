@@ -108,7 +108,7 @@ async def test_rag_engine_routes_auto_mode_by_recall_bucket(monkeypatch: pytest.
 
     update = captured_updates[0]
     assert update.get("retrieval_mode") == "keyword"
-    assert update.get("score_threshold") == 0.0
+    assert update.get("score_threshold") == pytest.approx(0.0)
 
     rag_trace = next(r for r in log_records if r.get("event") == "rag_trace")
     assert (rag_trace.get("retrieval") or {}).get("recall_bucket") == "schema"

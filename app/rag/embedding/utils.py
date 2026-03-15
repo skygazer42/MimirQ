@@ -3,7 +3,6 @@ Embedding utility functions.
 """
 import hashlib
 import os
-from typing import Optional
 from urllib.parse import urlsplit
 
 from app.core.constants import EmbeddingProviders
@@ -12,7 +11,7 @@ from app.rag.core.logging import get_logger
 logger = get_logger("rag.embedding")
 
 
-def hashstr(input_string: str, length: Optional[int] = None) -> str:
+def hashstr(input_string: str, length: int | None = None) -> str:
     """Generate MD5 hash of a string.
 
     Args:
@@ -33,7 +32,7 @@ def hashstr(input_string: str, length: Optional[int] = None) -> str:
     return hash_value
 
 
-def get_docker_safe_url(base_url: Optional[str]) -> Optional[str]:
+def get_docker_safe_url(base_url: str | None) -> str | None:
     """Convert URL for Docker internal networking.
 
     Replaces localhost/127.0.0.1 with host.docker.internal
@@ -55,7 +54,7 @@ def get_docker_safe_url(base_url: Optional[str]) -> Optional[str]:
     return base_url
 
 
-def current_embedding_space_hash(*, length: Optional[int] = 16) -> str:
+def current_embedding_space_hash(*, length: int | None = 16) -> str:
     """
     Return a stable hash for the current embedding "space" (model/provider endpoint).
 

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -29,14 +29,14 @@ class SqlStmt:
     start: int
     end: int
     stmt_type: str
-    object_name: Optional[str]
+    object_name: str | None
 
 
 @dataclass(frozen=True)
 class _Section:
     start: int
     end: int
-    stmt: Optional[SqlStmt]
+    stmt: SqlStmt | None
 
 
 _STMT_START_RE = re.compile(
@@ -52,7 +52,7 @@ _ALTER_NAME_RE = re.compile(
 )
 
 
-def _infer_object_name(stmt_text: str) -> tuple[str, Optional[str]]:
+def _infer_object_name(stmt_text: str) -> tuple[str, str | None]:
     if not stmt_text:
         return "sql", None
     m = _OBJ_NAME_RE.search(stmt_text[:2000])
@@ -85,7 +85,7 @@ def _find_stmt_end(text: str, *, start: int, next_start: int) -> int:
     return min(end, next_start)
 
 
-def _iter_statements(text: str) -> List[SqlStmt]:
+def _iter_statements(text: str) -> list[SqlStmt]:
     if not text:
         return []
 
@@ -94,7 +94,7 @@ def _iter_statements(text: str) -> List[SqlStmt]:
         return []
 
     starts = sorted(set(starts))
-    stmts: List[SqlStmt] = []
+    stmts: list[SqlStmt] = []
     for idx, start in enumerate(starts):
         next_start = starts[idx + 1] if idx + 1 < len(starts) else len(text)
         end = _find_stmt_end(text, start=start, next_start=next_start)
@@ -104,11 +104,11 @@ def _iter_statements(text: str) -> List[SqlStmt]:
     return stmts
 
 
-def _build_sections(text: str, stmts: List[SqlStmt]) -> List[_Section]:
+def _build_sections(text: str, stmts: list[SqlStmt]) -> list[_Section]:
     if not stmts:
         return [_Section(start=0, end=len(text), stmt=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = stmts[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, stmt=None))
@@ -145,8 +145,8 @@ class SqlSchemaChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

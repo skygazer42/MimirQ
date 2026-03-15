@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -39,8 +39,8 @@ _IMAGE_HINT_RE = re.compile(r"(?m)^\s*(image|build|container_name|ports|depends_
 _VERSION_RE = re.compile(r"(?m)^\s*version\s*:\s*(?P<val>[^\s#]+)")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -52,14 +52,14 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _find_services_anchor(text: str) -> Optional[Tuple[int, int]]:
+def _find_services_anchor(text: str) -> tuple[int, int] | None:
     m = _SERVICES_RE.search(text or "")
     if not m:
         return None
     return m.start(), len(m.group("indent") or "")
 
 
-def _extract_version(text: str) -> Optional[str]:
+def _extract_version(text: str) -> str | None:
     head = (text or "")[:8000]
     m = _VERSION_RE.search(head)
     if not m:
@@ -67,7 +67,7 @@ def _extract_version(text: str) -> Optional[str]:
     return (m.group("val") or "").strip()[:40] or None
 
 
-def _build_service_blocks(text: str) -> List[_ServiceBlock]:
+def _build_service_blocks(text: str) -> list[_ServiceBlock]:
     anchor = _find_services_anchor(text)
     if not anchor:
         return []
@@ -80,7 +80,7 @@ def _build_service_blocks(text: str) -> List[_ServiceBlock]:
             anchor_idx = i
             break
 
-    candidates: List[Tuple[int, int, str]] = []
+    candidates: list[tuple[int, int, str]] = []
     services_end = len(text)
 
     for i in range(anchor_idx + 1, len(lines)):
@@ -102,11 +102,11 @@ def _build_service_blocks(text: str) -> List[_ServiceBlock]:
         return []
 
     service_indent = min(ind for _, ind, _ in candidates)
-    service_keys: List[Tuple[int, str]] = [(i, key) for i, ind, key in candidates if ind == service_indent]
+    service_keys: list[tuple[int, str]] = [(i, key) for i, ind, key in candidates if ind == service_indent]
     if not service_keys:
         return []
 
-    blocks: List[_ServiceBlock] = []
+    blocks: list[_ServiceBlock] = []
     for idx, (i, key) in enumerate(service_keys):
         start = lines[i].start
         end = lines[service_keys[idx + 1][0]].start if idx + 1 < len(service_keys) else services_end
@@ -141,8 +141,8 @@ class DockerComposeChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

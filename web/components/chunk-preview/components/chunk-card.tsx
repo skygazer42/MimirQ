@@ -8,7 +8,7 @@ import type { ReactNode } from 'react'
 import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import type { ChunkPreviewItem } from '@/types'
 import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
 
@@ -95,15 +95,15 @@ export function ChunkCard({
   onToggleSelect,
   onEdit,
   onToggleDisabled,
-}: ChunkCardProps) {
+}: Readonly<ChunkCardProps>) {
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
   const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
-  const chunkRole = (chunk.metadata as Record<string, any> | undefined)?.chunk_role as string | undefined
+  const chunkRole = (chunk.metadata)?.chunk_role as string | undefined
   const sectionLabel = useMemo(() => getChunkSectionLabel(chunk), [chunk])
   const citationText = useMemo(() => {
     const name = (sourceFilename || '').trim() || 'document'
-    const pageLabel = chunk.page_number != null ? ` · P.${chunk.page_number}` : ''
-    const tokLabel = tokens != null ? ` · ${tokens} tok` : ''
+    const pageLabel = chunk.page_number == null ? '' : ` · P.${chunk.page_number}`
+    const tokLabel = tokens == null ? '' : ` · ${tokens} tok`
     const fence = '````'
     const raw = String(chunk.content || '').trim()
     const excerpt = raw.length > 2000 ? `${raw.slice(0, 2000)}…` : raw
@@ -132,17 +132,32 @@ export function ChunkCard({
     <div
       className={cn(
         'group relative bg-card p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer focus-within:ring-1 focus-within:ring-ring/20',
-        isSelected
-          ? 'border-primary/45 shadow-lg shadow-primary/10 ring-1 ring-primary/20'
-          : isHovered
-            ? 'border-primary/30 shadow-sm shadow-primary/10 ring-1 ring-ring/10 z-10'
-            : 'border-border hover:border-primary/25 hover:shadow-sm hover:shadow-primary/10',
+        (() => {
+    if (isSelected) {
+        return 'border-primary/45 shadow-lg shadow-primary/10 ring-1 ring-primary/20';
+    }
+    else {
+        if (isHovered) {
+            return 'border-primary/30 shadow-sm shadow-primary/10 ring-1 ring-ring/10 z-10';
+        }
+        else {
+            return 'border-border hover:border-primary/25 hover:shadow-sm hover:shadow-primary/10';
+        }
+    }
+})(),
         isDisabled && !isSelected && !isHovered ? 'opacity-60' : ''
       )}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onClick={onToggleSelect}
       role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onToggleSelect()
+        }
+      }}
       aria-label={`切片 #${index + 1}`}
     >
       <div className="flex items-center justify-between mb-2">
@@ -192,15 +207,23 @@ export function ChunkCard({
               OVR
             </span>
           ) : null}
-          {chunkRole === 'parent' ? (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">
+          {(() => {
+    if (chunkRole === 'parent') {
+        return (<span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">
               PARENT
-            </span>
-          ) : chunkRole === 'child' ? (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
+            </span>);
+    }
+    else {
+        if (chunkRole === 'child') {
+            return (<span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
               CHILD
-            </span>
-          ) : null}
+            </span>);
+        }
+        else {
+            return null;
+        }
+    }
+})()}
           {sectionLabel ? (
             <span
               className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60 max-w-[180px] truncate"
@@ -217,7 +240,7 @@ export function ChunkCard({
           ) : (
             <span
               className="text-[10px] text-muted-foreground font-mono"
-              title={tokens != null ? `${chunk.length} chars · ${tokens} tok` : `${chunk.length} chars`}
+              title={tokens == null ? `${chunk.length} chars` : `${chunk.length} chars · ${tokens} tok`}
             >
               {chunk.length} chars
             </span>
@@ -270,7 +293,7 @@ export function ChunkCard({
               className="h-7 w-7"
               onClick={(e) => {
                 e.stopPropagation()
-                void copyText(citationText, '已复制引用')
+                detachPromise(copyText(citationText, '已复制引用'))
               }}
               aria-label="复制引用"
               title="复制引用"
@@ -285,9 +308,9 @@ export function ChunkCard({
               onClick={(e) => {
                 e.stopPropagation()
                 try {
-                  const url = new URL(window.location.href)
+                  const url = new URL(globalThis.window.location.href)
                   url.searchParams.set('chunk', String(index + 1))
-                  void copyText(url.toString(), '已复制链接')
+                  detachPromise(copyText(url.toString(), '已复制链接'))
                 } catch {
                   toast.error('无法生成链接')
                 }
@@ -304,7 +327,7 @@ export function ChunkCard({
               className="h-7 w-7"
               onClick={(e) => {
                 e.stopPropagation()
-                void copyText(chunk.content || '', '已复制切片内容')
+                detachPromise(copyText(chunk.content || '', '已复制切片内容'))
               }}
               aria-label="复制切片内容"
               title="复制切片内容"
@@ -318,7 +341,7 @@ export function ChunkCard({
               className="h-7 w-7"
               onClick={(e) => {
                 e.stopPropagation()
-                void copyText(JSON.stringify(chunk, null, 2), '已复制切片 JSON')
+                detachPromise(copyText(JSON.stringify(chunk, null, 2), '已复制切片 JSON'))
               }}
               aria-label="复制切片 JSON"
               title="复制切片 JSON"

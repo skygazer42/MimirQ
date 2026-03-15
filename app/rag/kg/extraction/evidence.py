@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Optional
 
 _WS_RE = re.compile(r"\s+")
 _SENTENCE_BREAK_RE = re.compile(r"[。！？!?。\n\r]")
@@ -39,7 +38,7 @@ class EvidenceSpan:
     source: str
 
 
-def find_evidence_span(text: str, quote: str) -> Optional[tuple[int, int]]:
+def find_evidence_span(text: str, quote: str) -> tuple[int, int] | None:
     """
     Find (start,end) for `quote` inside `text`.
 
@@ -126,7 +125,7 @@ def derive_evidence_from_mention(
     mention: str,
     max_quote_chars: int = 240,
     window_chars: int = 200,
-) -> Optional[EvidenceSpan]:
+) -> EvidenceSpan | None:
     """
     Build an evidence quote for a mention surface by locating the mention in the text.
 
@@ -177,7 +176,7 @@ def coerce_evidence(
     evidence_quote: str | None,
     fallback_mention: str | None,
     max_quote_chars: int = 240,
-) -> Optional[EvidenceSpan]:
+) -> EvidenceSpan | None:
     """
     Coerce evidence into a quote + span that exists in the given text.
 

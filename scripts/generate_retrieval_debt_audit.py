@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,7 @@ DEFAULT_TEMPLATE = REPO_ROOT / "docs" / "templates" / "retrieval_debt_audit_temp
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc).replace(microsecond=0)
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def _safe_json(path: Path) -> dict[str, Any]:
@@ -29,7 +29,7 @@ def _safe_json(path: Path) -> dict[str, Any]:
 def _age_days(path: Path, now: datetime) -> int | None:
     if not path.exists():
         return None
-    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
     delta = now - mtime
     return max(0, int(delta.total_seconds() // 86400))
 

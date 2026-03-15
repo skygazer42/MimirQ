@@ -6,9 +6,12 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
-import { ParsingBlock, ParsingPosition } from '@/lib/parsing-positions'
+import { ParsingBlock } from '@/lib/parsing-positions'
+import { toPrimitiveString } from '@/lib/primitive-text'
 import { Button } from '@/components/ui/button'
 import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
+import { detachPromise } from '@/lib/utils'
+
 
 type Box = BboxOverlayItem
 
@@ -30,7 +33,7 @@ export function PdfViewer({
   showAllBoxes = true,
   onHoverBlockId,
   onClickBlockId,
-}: PdfViewerProps) {
+}: Readonly<PdfViewerProps>) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
@@ -44,6 +47,7 @@ export function PdfViewer({
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
   const renderingPagesRef = useRef<Set<number>>(new Set())
   const renderGenRef = useRef(0)
+  const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, pageNumber) => pageNumber + 1), [pageCount])
 
   const retryLoad = useCallback(() => {
     setReloadTick((prev) => prev + 1)
@@ -73,7 +77,7 @@ export function PdfViewer({
         setRenderedPages(new Set())
       } catch (err) {
         if (!cancelled) {
-          const message = err instanceof Error ? err.message : String(err || '')
+          const message = err instanceof Error ? err.message : toPrimitiveString(err)
           setLoadError(message || 'PDF 加载失败')
           setPdfDoc(null)
           setPageCount(0)
@@ -187,9 +191,9 @@ export function PdfViewer({
         for (const entry of entries) {
           if (!entry.isIntersecting) continue
           const idxAttr = (entry.target as HTMLElement).dataset.pageIndex
-          const idx = idxAttr ? Number(idxAttr) : NaN
+          const idx = idxAttr ? Number(idxAttr) : Number.NaN
           if (!Number.isFinite(idx)) continue
-          void renderPage(idx)
+          detachPromise(renderPage(idx))
         }
       },
       {
@@ -207,7 +211,7 @@ export function PdfViewer({
     }
 
     // Kickstart: render first page ASAP.
-    void renderPage(0)
+    detachPromise(renderPage(0))
 
     return () => {
       cancelled = true
@@ -257,9 +261,9 @@ export function PdfViewer({
     if (pageIndex == null) return
     const el = pageRefs.current.get(pageIndex)
     const reduceMotion =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      typeof globalThis.window !== 'undefined' &&
+      typeof globalThis.window.matchMedia === 'function' &&
+      globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
     el?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
   }, [activeBlockIds, blocks])
 
@@ -303,12 +307,13 @@ export function PdfViewer({
   return (
     <div ref={containerRef} className="h-full overflow-y-auto overscroll-contain no-scrollbar px-4 py-6">
       <div ref={contentRef} className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-        {Array.from({ length: pageCount }).map((_, index) => {
+        {pageNumbers.map((pageNumber) => {
+          const index = pageNumber - 1
           const pageBoxes = boxesByPage.get(index) || []
           const isRendered = renderedPages.has(index)
 	          return (
 	            <div
-	              key={`page-${index}`}
+	              key={`page-${pageNumber}`}
               ref={(el) => {
                 if (el) pageRefs.current.set(index, el)
               }}
@@ -321,12 +326,12 @@ export function PdfViewer({
                 }}
                 className="block h-auto w-full rounded-xl"
               />
-		              {!isRendered ? (
+		              {isRendered ? null : (
 		                <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-background/60 rounded-xl">
 		                  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
 		                  渲染中...
 		                </div>
-              ) : null}
+              )}
               <BboxOverlay
                 items={pageBoxes}
                 scale={scale}

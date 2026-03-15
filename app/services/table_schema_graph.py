@@ -598,7 +598,7 @@ def score_multi_join_plan_candidates(
         expanded: list[dict[str, Any]] = []
         for state in states:
             current_tables = set(state.get("tables") or set())
-            current_join_ids = set(str(v) for v in (state.get("join_ids") or []) if str(v).strip())
+            current_join_ids = {str(v) for v in (state.get("join_ids") or []) if str(v).strip()}
             for c in edge_candidates:
                 cid = str(c.get("candidate_id") or "").strip()
                 if not cid or cid in current_join_ids:

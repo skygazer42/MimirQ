@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_integrated_pdf_parser_remove_tag_is_static():
     from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 
@@ -93,8 +96,8 @@ def test_integrated_llmbundle_configured_calls_openai_compatible(monkeypatch):
     assert headers["Authorization"].startswith("Bearer ")
     assert payload["model"] == "gpt-4o-mini"
     assert payload["max_tokens"] == 1234
-    assert payload["temperature"] == 0.0
-    assert timeout == 12.0
+    assert payload["temperature"] == pytest.approx(0.0)
+    assert timeout == pytest.approx(12.0)
 
     msg = payload["messages"][0]
     assert msg["role"] == "user"

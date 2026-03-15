@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -33,7 +33,7 @@ def test_export_regression_run_bundle_is_pii_safe_by_default():
         params={"rag_params": {"top_k": 20}},
         summary={"retrieval_mrr": 0.5},
         error_message=None,
-        created_at=datetime(2026, 3, 2, tzinfo=timezone.utc),
+        created_at=datetime(2026, 3, 2, tzinfo=UTC),
         started_at=None,
         finished_at=None,
     )
@@ -55,7 +55,7 @@ def test_export_regression_run_bundle_is_pii_safe_by_default():
             ],
             scores={"retrieval_mrr": 0.5},
             meta={"slice_file_type": "pdf"},
-            created_at=datetime(2026, 3, 2, tzinfo=timezone.utc),
+            created_at=datetime(2026, 3, 2, tzinfo=UTC),
         )
     ]
 

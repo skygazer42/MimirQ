@@ -8,18 +8,19 @@ We treat dataset prompt settings as *fallbacks*:
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional, Tuple
+from collections.abc import Iterable
+from typing import Any
 from uuid import UUID
 
 
 def merge_prompt_defaults_with_dataset(
     *,
-    prompt_template_id: Optional[UUID],
-    prompt_template_key: Optional[str],
-    prompt_ab_experiment_key: Optional[str],
+    prompt_template_id: UUID | None,
+    prompt_template_key: str | None,
+    prompt_ab_experiment_key: str | None,
     request_fields_set: Iterable[str] | None,
     dataset_meta: Any,
-) -> Tuple[Optional[UUID], Optional[str], Optional[str], list[str]]:
+) -> tuple[UUID | None, str | None, str | None, list[str]]:
     """
     Merge dataset-level prompt defaults into request prompt fields.
 

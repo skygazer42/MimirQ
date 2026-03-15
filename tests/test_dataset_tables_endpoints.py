@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -115,7 +115,7 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
             self.filename = "demo.docx"
             self.file_type = "docx"
             self.status = "completed"
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(UTC)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -137,19 +137,19 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     doc = _Doc()
 
     # Dataset access: allow.
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
 
     class _Member:
         role = "owner"
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Member(), raising=True)
 
     # Doc ACL: allow.
     import app.api.v1.dataset_tables as mod
 
-    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda db, tenant_id, account_id, doc_ids: doc_ids, raising=True)
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda db, tenant_id, account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda _db, _tenant_id, _account_id, doc_ids: doc_ids, raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
 
     # Query executor: stub.
     monkeypatch.setattr(
@@ -174,11 +174,11 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
 
     # TAG: stub LLM helpers (avoid real network).
     monkeypatch.setattr(mod, "tag_enabled", lambda: True, raising=True)
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT * FROM "sheet_0" LIMIT 10', raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT * FROM "sheet_0" LIMIT 10', raising=True)
     monkeypatch.setattr(
         mod,
         "generate_sql_for_table_with_metadata",
-        lambda **kwargs: (
+        lambda **_kwargs: (
             'SELECT * FROM "sheet_0" LIMIT 10',
             "llm",
             {
@@ -206,7 +206,7 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
         ),
         raising=False,
     )
-    monkeypatch.setattr(mod, "generate_answer_from_result", lambda **kwargs: "answer", raising=True)
+    monkeypatch.setattr(mod, "generate_answer_from_result", lambda **_kwargs: "answer", raising=True)
 
     # Enable NL2SQL flag checks in endpoint.
     from app.core.config import settings
@@ -287,7 +287,7 @@ def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001
             self.filename = "demo.xlsx"
             self.file_type = "xlsx"
             self.status = "completed"
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(UTC)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -314,14 +314,14 @@ def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001
     doc = _Doc()
 
     # Dataset access: allow.
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
 
     import app.api.v1.dataset_tables as mod
 
     # Doc ACL: allow.
-    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda db, tenant_id, account_id, doc_ids: doc_ids, raising=True)
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda db, tenant_id, account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda _db, _tenant_id, _account_id, doc_ids: doc_ids, raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
 
     # Query executor: return sensitive strings.
     monkeypatch.setattr(
@@ -342,7 +342,7 @@ def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001
         role = "owner"
 
     # Non-admin: redacted.
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Member(), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db([doc])
@@ -367,7 +367,7 @@ def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001
     assert got["rows"][0][1] == "[SECRET]"
 
     # Admin: raw values.
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Owner(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Owner(), raising=True)
 
     res = client.get(f"/api/v1/datasets/{dataset_id}/tables/{table_id}")
     assert res.status_code == 200
@@ -420,7 +420,7 @@ def test_dataset_tables_fls_masks_sample_rows_and_query_rows(monkeypatch):  # no
             self.filename = "demo.xlsx"
             self.file_type = "xlsx"
             self.status = "completed"
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(UTC)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -442,14 +442,14 @@ def test_dataset_tables_fls_masks_sample_rows_and_query_rows(monkeypatch):  # no
     doc = _Doc()
 
     # Dataset access: allow.
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
 
     import app.api.v1.dataset_tables as mod
 
     # Doc ACL: allow.
-    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda db, tenant_id, account_id, doc_ids: doc_ids, raising=True)
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda db, tenant_id, account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda _db, _tenant_id, _account_id, doc_ids: doc_ids, raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
 
     # Query executor: return sensitive values.
     monkeypatch.setattr(
@@ -470,7 +470,7 @@ def test_dataset_tables_fls_masks_sample_rows_and_query_rows(monkeypatch):  # no
         role = "owner"
 
     # Non-owner role: masked.
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Member(), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db([doc])
@@ -495,7 +495,7 @@ def test_dataset_tables_fls_masks_sample_rows_and_query_rows(monkeypatch):  # no
     assert got["rows"][0][1] == "Alice"
 
     # Owner role: raw.
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Owner(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Owner(), raising=True)
 
     res = client.get(f"/api/v1/datasets/{dataset_id}/tables/{table_id}")
     assert res.status_code == 200
@@ -544,7 +544,7 @@ def test_dataset_tables_fls_emits_audit_event_when_applied(monkeypatch):  # noqa
             self.filename = "demo.xlsx"
             self.file_type = "xlsx"
             self.status = "completed"
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(UTC)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -566,13 +566,13 @@ def test_dataset_tables_fls_emits_audit_event_when_applied(monkeypatch):  # noqa
     doc = _Doc()
 
     # Dataset access: allow.
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
 
     import app.api.v1.dataset_tables as mod
 
     # Doc ACL: allow.
-    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda db, tenant_id, account_id, doc_ids: doc_ids, raising=True)
+    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda _db, _tenant_id, _account_id, doc_ids: doc_ids, raising=True)
 
     events: list[str] = []
 
@@ -592,7 +592,7 @@ def test_dataset_tables_fls_emits_audit_event_when_applied(monkeypatch):  # noqa
         role = "owner"
 
     # Masked -> audit event.
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Member(), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db([doc])
@@ -608,7 +608,7 @@ def test_dataset_tables_fls_emits_audit_event_when_applied(monkeypatch):  # noqa
 
     # Allowed -> no event.
     events.clear()
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Owner(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Owner(), raising=True)
 
     res = client.get(f"/api/v1/datasets/{dataset_id}/tables/{table_id}")
     assert res.status_code == 200
@@ -643,7 +643,7 @@ def test_dataset_tables_list_includes_pdf_table_store_docs(monkeypatch):  # noqa
             self.filename = "demo.pdf"
             self.file_type = "pdf"
             self.status = "completed"
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(UTC)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -666,18 +666,18 @@ def test_dataset_tables_list_includes_pdf_table_store_docs(monkeypatch):  # noqa
     doc = _Doc()
 
     # Dataset access: allow.
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
 
     class _Member:
         role = "member"
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Member(), raising=True)
 
     # Doc ACL: allow.
     import app.api.v1.dataset_tables as mod
 
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda db, tenant_id, account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db([doc])
@@ -719,7 +719,7 @@ def test_dataset_tables_list_includes_db_row_sidecar_docs(monkeypatch):  # noqa:
             self.filename = "db_rows_demo.sqlite"
             self.file_type = "dbrows"
             self.status = "completed"
-            self.updated_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(UTC)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -748,17 +748,17 @@ def test_dataset_tables_list_includes_db_row_sidecar_docs(monkeypatch):  # noqa:
 
     doc = _Doc()
 
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, dataset, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _dataset, _account_id: None, raising=True)
 
     class _Member:
         role = "member"
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: _Member(), raising=True)
 
     import app.api.v1.dataset_tables as mod
 
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda db, tenant_id, account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db([doc])

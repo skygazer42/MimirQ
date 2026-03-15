@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -31,7 +31,7 @@ class _Block:
     start: int
     end: int
     kind: str
-    exception: Optional[str]
+    exception: str | None
     frame_count: int
 
 
@@ -43,8 +43,8 @@ _PY_EXCEPTION_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_.]*)(?:Error|Exception)
 _JS_EXCEPTION_RE = re.compile(r"^\s*(Error|TypeError|ReferenceError|SyntaxError|RangeError|URIError)\b.*")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -56,7 +56,7 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _has_frames(lines: List[_Line], i: int) -> bool:
+def _has_frames(lines: list[_Line], i: int) -> bool:
     for j in range(i, min(len(lines), i + 30)):
         p = lines[j].plain
         if _FRAME_RE.match(p):
@@ -64,7 +64,7 @@ def _has_frames(lines: List[_Line], i: int) -> bool:
     return False
 
 
-def _is_block_start(lines: List[_Line], i: int) -> bool:
+def _is_block_start(lines: list[_Line], i: int) -> bool:
     p = lines[i].plain
     if _PY_START_RE.match(p):
         return True
@@ -86,7 +86,7 @@ def _infer_kind(block_text: str) -> str:
     return "generic"
 
 
-def _infer_exception(lines: List[_Line], start: int, end: int) -> Optional[str]:
+def _infer_exception(lines: list[_Line], start: int, end: int) -> str | None:
     for i in range(end - 1, start - 1, -1):
         p = lines[i].plain.strip()
         if not p:
@@ -104,7 +104,7 @@ def _infer_exception(lines: List[_Line], start: int, end: int) -> Optional[str]:
     return None
 
 
-def _count_frames(lines: List[_Line], start: int, end: int) -> int:
+def _count_frames(lines: list[_Line], start: int, end: int) -> int:
     n = 0
     for i in range(start, end):
         if _FRAME_RE.match(lines[i].plain):
@@ -112,14 +112,14 @@ def _count_frames(lines: List[_Line], start: int, end: int) -> int:
     return n
 
 
-def _build_blocks(text: str) -> List[_Block]:
+def _build_blocks(text: str) -> list[_Block]:
     if not text:
         return []
     lines = _iter_lines(text)
     if not lines:
         return []
 
-    starts: List[int] = []
+    starts: list[int] = []
     for i in range(len(lines)):
         if _is_block_start(lines, i):
             starts.append(i)
@@ -127,7 +127,7 @@ def _build_blocks(text: str) -> List[_Block]:
     if not starts:
         return [_Block(start=0, end=len(text), kind=_infer_kind(text), exception=None, frame_count=0)]
 
-    blocks: List[_Block] = []
+    blocks: list[_Block] = []
     for idx, i in enumerate(starts):
         j = starts[idx + 1] if idx + 1 < len(starts) else len(lines)
         start_pos = lines[i].start
@@ -170,8 +170,8 @@ class StackTraceChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

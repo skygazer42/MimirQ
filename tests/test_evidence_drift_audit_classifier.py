@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.services.evidence_drift_audit import (
@@ -143,7 +143,7 @@ def test_reference_source_drift_chunk_disabled_has_last_priority():  # noqa: D40
     ok, reason, _exp, _obs = classify_reference_source_drift(
         reference_source=ref,
         document_row=_doc(dataset_id=None),
-        chunk_row=_chunk(document_id=doc_id, disabled_at=datetime.now(timezone.utc)),
+        chunk_row=_chunk(document_id=doc_id, disabled_at=datetime.now(UTC)),
         suite_dataset_id=None,
     )
     assert ok is False

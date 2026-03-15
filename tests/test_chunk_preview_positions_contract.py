@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -47,6 +48,7 @@ def test_chunk_preview_includes_original_text_cleaned_when_position_tags(monkeyp
     monkeypatch.setattr(chunker_factory, "get_chunker", lambda *_a, **_k: _Chunker(), raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         assert payload.get("action") == "parse_documents"
         return {
             "resolved_backend": "auto",

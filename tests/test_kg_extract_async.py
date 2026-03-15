@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -113,6 +114,7 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
         extract_relations=None,
         extract_skills=None,
     ):
+        await asyncio.sleep(0)  # Sonar S7503
         assert requested_by == "u"
         assert job_id and job_id.startswith("kg:")
         assert pipeline_hash == "ph"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -35,7 +35,7 @@ def test_dataset_create_and_update_round_trips_group_allowlist(monkeypatch: pyte
     group_id_1 = uuid.uuid4()
     group_id_2 = uuid.uuid4()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     dataset_obj = SimpleNamespace(
         id=dataset_id,
         tenant_id=tenant_id,

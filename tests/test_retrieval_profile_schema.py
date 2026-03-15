@@ -1,10 +1,13 @@
+import pytest
+
+
 def test_chat_rag_config_recall20_overrides_top_k_and_threshold() -> None:
     from app.api.schemas.chat import ChatRAGConfig
 
     cfg = ChatRAGConfig(retrieval_profile="recall20", top_k=5, score_threshold=0.7)
 
     assert cfg.top_k >= 20
-    assert cfg.score_threshold == 0.0
+    assert cfg.score_threshold == pytest.approx(0.0)
 
 
 def test_chat_rag_config_recall50_overrides_top_k_and_threshold() -> None:
@@ -13,7 +16,7 @@ def test_chat_rag_config_recall50_overrides_top_k_and_threshold() -> None:
     cfg = ChatRAGConfig(retrieval_profile="recall50", top_k=5, score_threshold=0.7)
 
     assert cfg.top_k >= 50
-    assert cfg.score_threshold == 0.0
+    assert cfg.score_threshold == pytest.approx(0.0)
 
 
 def test_chat_rag_config_coverage80_overrides_top_k_and_threshold() -> None:
@@ -22,7 +25,7 @@ def test_chat_rag_config_coverage80_overrides_top_k_and_threshold() -> None:
     cfg = ChatRAGConfig(retrieval_profile="coverage80", top_k=5, score_threshold=0.7)
 
     assert cfg.top_k >= 80
-    assert cfg.score_threshold == 0.0
+    assert cfg.score_threshold == pytest.approx(0.0)
 
 
 def test_chat_rag_config_hybrid_ce_enables_cross_encoder_baseline() -> None:
@@ -42,7 +45,7 @@ def test_chat_rag_config_hybrid_ce_enables_cross_encoder_baseline() -> None:
     assert cfg.retrieval_profile == "hybrid_ce"
     assert cfg.retrieval_mode == "hybrid"
     assert cfg.top_k >= 20
-    assert cfg.score_threshold == 0.0
+    assert cfg.score_threshold == pytest.approx(0.0)
     assert cfg.enable_reranker is True
     assert cfg.reranker_provider == "cross_encoder"
     assert cfg.reranker_top_n >= 20
@@ -68,7 +71,7 @@ def test_grounded_strict_profile_contract_enforces_strict_evidence_defaults() ->
     assert applied["retrieval_profile"] == "grounded_strict"
     assert applied["retrieval_mode"] == "hybrid"
     assert applied["top_k"] >= 20
-    assert applied["score_threshold"] == 0.0
+    assert applied["score_threshold"] == pytest.approx(0.0)
     assert applied["enable_reranker"] is True
     assert applied["reranker_provider"] == "cross_encoder"
     assert applied["reranker_top_n"] >= 20

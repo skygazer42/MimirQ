@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -24,8 +24,8 @@ class PipelineVersionSummary(BaseModel):
 class ComplianceSummary(BaseModel):
     """Lightweight compliance signals derived from governance/profile stats."""
 
-    pii_hits_total: Dict[str, int] = Field(default_factory=dict)
-    secrets_hits_total: Dict[str, int] = Field(default_factory=dict)
+    pii_hits_total: dict[str, int] = Field(default_factory=dict)
+    secrets_hits_total: dict[str, int] = Field(default_factory=dict)
     quarantined_documents: int = 0
     failed_documents: int = 0
 
@@ -35,9 +35,9 @@ class ConnectorRunSummary(BaseModel):
     connector_id: str
     status: str
     created_at: datetime
-    finished_at: Optional[datetime] = None
-    error_message: Optional[str] = None
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    finished_at: datetime | None = None
+    error_message: str | None = None
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class DatasetGovernanceMetricsOut(BaseModel):
@@ -52,8 +52,8 @@ class DatasetGovernanceMetricsOut(BaseModel):
     changed_documents_total: int = 0
     dropped_documents_total: int = 0
 
-    drop_reasons_total: Dict[str, int] = Field(default_factory=dict)
-    rule_packs_docs: Dict[str, int] = Field(default_factory=dict)
+    drop_reasons_total: dict[str, int] = Field(default_factory=dict)
+    rule_packs_docs: dict[str, int] = Field(default_factory=dict)
 
 
 class DatasetChunkQualityMetricsOut(BaseModel):
@@ -63,7 +63,7 @@ class DatasetChunkQualityMetricsOut(BaseModel):
     used_documents: int = 0
     truncated: bool = False
 
-    gate_grade_docs: Dict[str, int] = Field(default_factory=dict)
+    gate_grade_docs: dict[str, int] = Field(default_factory=dict)
     coverage_low_documents: int = 0
     overlap_waste_high_documents: int = 0
     token_stats_missing_documents: int = 0
@@ -87,13 +87,13 @@ class DatasetParseRiskSummaryOut(BaseModel):
     healthy_documents: int = 0
     high_risk_ratio: float = 0.0
     recommendation: str = "no_parse_quality_metadata"
-    top_low_quality_documents: List[DatasetParseRiskDocumentOut] = Field(default_factory=list)
+    top_low_quality_documents: list[DatasetParseRiskDocumentOut] = Field(default_factory=list)
 
 
 class DatasetMustRecallSummaryOut(BaseModel):
     """Best-effort must-recall summary counters derived from latest regression run summary."""
 
-    pass_rate: Optional[float] = None
+    pass_rate: float | None = None
     cases_total: int = 0
     cases_passed: int = 0
     cases_failed: int = 0
@@ -124,7 +124,7 @@ class DatasetGovernanceAuditOut(BaseModel):
     # Distribution of per-document char reduction (percentage points, 0-100).
     # Computed from either persist_parsed_content stats OR lightweight governance_char_stats (best-effort).
     char_reduction_pct_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    char_reduction_pct_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    char_reduction_pct_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Doc-level outcomes derived from governance_* document metadata (best-effort).
     docs_changed: int = 0
@@ -133,9 +133,9 @@ class DatasetGovernanceAuditOut(BaseModel):
     # Optional governance quality metrics (best-effort; derived from document.metadata.governance_quality).
     docs_with_governance_quality: int = 0
     density_pct_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    density_pct_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    density_pct_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
     heading_ratio_pct_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    heading_ratio_pct_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    heading_ratio_pct_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Aggregated effect counters (best-effort; only present when recorded by ingestion pipeline).
     paragraphs_dropped_total: int = 0
@@ -161,7 +161,7 @@ class DatasetKGTopDocumentOut(BaseModel):
     """Best-effort KG drilldown row scoped by document-level ACL."""
 
     document_id: UUID
-    source: Optional[str] = None
+    source: str | None = None
     event_count: int = 0
     skipped_chunks: int = 0
     skipped_short_chunks: int = 0
@@ -192,9 +192,9 @@ class DatasetKGStatsOut(BaseModel):
     retry_chunks_total: int = 0
 
     # Optional drilldowns (bounded).
-    top_documents: List[DatasetKGTopDocumentOut] = Field(default_factory=list)
-    entity_types: List[DatasetKGEntityTypeCount] = Field(default_factory=list)
-    updated_at: Optional[datetime] = None
+    top_documents: list[DatasetKGTopDocumentOut] = Field(default_factory=list)
+    entity_types: list[DatasetKGEntityTypeCount] = Field(default_factory=list)
+    updated_at: datetime | None = None
 
 
 class DatasetRegressionRunSummaryOut(BaseModel):
@@ -202,55 +202,55 @@ class DatasetRegressionRunSummaryOut(BaseModel):
 
     run_id: UUID
     status: str
-    metrics: List[str] = Field(default_factory=list)
-    params: Dict[str, Any] = Field(default_factory=dict)
-    summary: Dict[str, Any] = Field(default_factory=dict)
-    error_message: Optional[str] = None
-    created_at: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    metrics: list[str] = Field(default_factory=list)
+    params: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class DatasetReportOut(BaseModel):
     dataset_id: UUID
-    dataset_name: Optional[str] = None
-    pipeline_hash: Optional[str] = None
+    dataset_name: str | None = None
+    pipeline_hash: str | None = None
     generated_at: datetime
 
     profile: DatasetProfileSummary
     compliance: ComplianceSummary
-    pipeline_versions: List[PipelineVersionSummary] = Field(default_factory=list)
+    pipeline_versions: list[PipelineVersionSummary] = Field(default_factory=list)
     # Best-effort per-pipeline version provenance snapshots (keyed by pipeline_hash).
-    pipeline_snapshots: Dict[str, Any] = Field(default_factory=dict)
-    connectors: List[ConnectorRunSummary] = Field(default_factory=list)
+    pipeline_snapshots: dict[str, Any] = Field(default_factory=dict)
+    connectors: list[ConnectorRunSummary] = Field(default_factory=list)
 
     # A snapshot of dataset-level config (best-effort), useful for sharing.
-    dataset_metadata: Dict[str, Any] = Field(default_factory=dict)
+    dataset_metadata: dict[str, Any] = Field(default_factory=dict)
 
     # Optional: dataset folder tree derived from document.metadata.source_path (best-effort).
-    folder_tree: Optional[DocumentFolderTreeResponse] = None
+    folder_tree: DocumentFolderTreeResponse | None = None
 
     # Optional: governance metrics derived from document.metadata.governance_* (best-effort).
-    governance_metrics: Optional[DatasetGovernanceMetricsOut] = None
+    governance_metrics: DatasetGovernanceMetricsOut | None = None
 
     # Optional: governance audit (effects + impact metrics; best-effort).
-    governance_audit: Optional[DatasetGovernanceAuditOut] = None
+    governance_audit: DatasetGovernanceAuditOut | None = None
 
     # Optional: chunking quality metrics derived from document.metadata.chunk_* (best-effort).
-    chunk_quality_metrics: Optional[DatasetChunkQualityMetricsOut] = None
+    chunk_quality_metrics: DatasetChunkQualityMetricsOut | None = None
     # Optional: retrieval parse-risk summary derived from document parse_quality metadata (best-effort).
-    parse_risk_summary: Optional[DatasetParseRiskSummaryOut] = None
+    parse_risk_summary: DatasetParseRiskSummaryOut | None = None
 
     # Optional: KG stats for the dataset, filtered by doc-level ACL (best-effort).
-    kg_stats: Optional[DatasetKGStatsOut] = None
+    kg_stats: DatasetKGStatsOut | None = None
 
     # Optional: latest regression run summary for the dataset (best-effort).
-    latest_regression_run: Optional[DatasetRegressionRunSummaryOut] = None
+    latest_regression_run: DatasetRegressionRunSummaryOut | None = None
     # Optional: must-recall counters summarized from latest regression run (best-effort).
-    must_recall_summary: Optional[DatasetMustRecallSummaryOut] = None
+    must_recall_summary: DatasetMustRecallSummaryOut | None = None
 
     # Optional: latest precheck summary snapshot for the dataset (best-effort).
     #
     # This is the "before ingestion" scan output (local folder scan) and is intended
     # to be used by offline HTML exports (RAG audit) and report center drill-down.
-    precheck_summary: Optional[Dict[str, Any]] = None
+    precheck_summary: dict[str, Any] | None = None

@@ -21,7 +21,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { datasetApi, pipelineApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import type {
   Dataset,
@@ -792,19 +792,27 @@ export default function DatasetIngestionPolicyPage() {
     const newRules: IngestionRule[] = tpl.rules.map((r, i) => ({ ...r, id: ids[i] }))
 
     const merged =
-      mode === 'replace'
-        ? newRules
-        : mode === 'append'
-          ? [...existing, ...newRules]
-          : [...newRules, ...existing]
+      (() => {
+    if (mode === 'replace') {
+        return newRules;
+    }
+    else {
+        if (mode === 'append') {
+            return [...existing, ...newRules];
+        }
+        else {
+            return [...newRules, ...existing];
+        }
+    }
+})()
 
     setPolicy({ version: '1', rules: merged })
     setTemplatesOpen(false)
     toast.success(`已应用模板：${tpl.name}（${newRules.length} 条规则）`)
 
     // Bring the user back to the top to see the newly inserted rules.
-    window.requestAnimationFrame(() => {
-      const sc = document.querySelector<HTMLElement>('[data-page-scroll-container=\"true\"]')
+    globalThis.window.requestAnimationFrame(() => {
+      const sc = document.querySelector<HTMLElement>('[data-page-scroll-container="true"]')
       sc?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
     })
   }, [policy])
@@ -828,7 +836,7 @@ export default function DatasetIngestionPolicyPage() {
     if (!datasetId) return
     try {
       const blob = await datasetApi.exportIngestionPolicy(datasetId)
-      const safe = (dataset?.name || datasetId).replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = (dataset?.name || datasetId).replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.ingestion-policy.json`)
     } catch (e: any) {
       console.error('Failed to export ingestion policy', e)
@@ -914,7 +922,7 @@ export default function DatasetIngestionPolicyPage() {
 	              <FileUp className="w-4 h-4" />
 	              导入脚本
 	            </Button>
-              <Button variant="outline" onClick={() => void openVersions()} className="gap-2">
+              <Button variant="outline" onClick={() => detachPromise(openVersions())} className="gap-2">
                 <History className="w-4 h-4" />
                 版本
               </Button>
@@ -932,7 +940,7 @@ export default function DatasetIngestionPolicyPage() {
                 icon={FileUp}
                 label="文档数"
                 value={ingestionStats.total_documents}
-                subValue={`completed ${(ingestionStats.by_status?.completed || 0) as number} · failed ${(ingestionStats.by_status?.failed || 0) as number}`}
+                subValue={`completed ${(ingestionStats.by_status?.completed || 0)} · failed ${(ingestionStats.by_status?.failed || 0)}`}
                 color="sky"
               />
               <StatCard
@@ -1078,8 +1086,8 @@ export default function DatasetIngestionPolicyPage() {
                   <Panel variant="muted" className="p-4">
                     <div className="text-sm font-semibold mb-2">后端检测到的问题（issues）</div>
                     <div className="space-y-2">
-                      {preview.clean.issues.slice(0, 8).map((it, i) => (
-                        <div key={`${it.code}-${i}`} className="text-xs">
+                      {preview.clean.issues.slice(0, 8).map((it) => (
+                        <div key={`${it.code}-${it.message}`} className="text-xs">
                           <span className="font-mono text-muted-foreground">{it.severity}</span>{' '}
                           <span className="font-mono">{it.code}</span> · {it.message}
                           {it.count ? <span className="text-muted-foreground"> ×{it.count}</span> : null}
@@ -1179,7 +1187,7 @@ export default function DatasetIngestionPolicyPage() {
                     {PREPROCESS_STEP_CATALOG.map((s) => {
                       const checked = draft.preprocessStepIds.includes(s.id)
                       return (
-                        <label key={s.id} className="flex items-start gap-3 rounded-lg border border-border/60 p-3 hover:bg-muted/30 transition-colors cursor-pointer">
+                        <div key={s.id} className="flex items-start gap-3 rounded-lg border border-border/60 p-3 hover:bg-muted/30 transition-colors cursor-pointer">
                           <Checkbox
                             checked={checked}
                             onCheckedChange={(v) => {
@@ -1194,7 +1202,7 @@ export default function DatasetIngestionPolicyPage() {
                             <div className="text-xs text-muted-foreground">{s.desc}</div>
                             <div className="text-[11px] text-muted-foreground font-mono mt-1">{s.id}</div>
                           </div>
-                        </label>
+                        </div>
                       )
                     })}
                   </div>
@@ -1358,7 +1366,7 @@ export default function DatasetIngestionPolicyPage() {
                   size="sm"
                   variant="outline"
                   className="h-8 px-3 text-[11px] gap-2"
-                  onClick={() => void loadVersions()}
+                  onClick={() => detachPromise(loadVersions())}
                   disabled={versionsLoading}
                 >
                   <RefreshCw className={cn('w-4 h-4', versionsLoading && 'animate-spin motion-reduce:animate-none')} />
@@ -1367,18 +1375,20 @@ export default function DatasetIngestionPolicyPage() {
               </div>
 
               <div className="max-h-[520px] overflow-auto pr-2 space-y-2">
-                {versionsLoading ? (
-                  <div className="text-sm text-muted-foreground">加载中…</div>
-                ) : (versions?.items || []).length ? (
-                  (versions?.items || []).map((v, idx) => {
-                    const id = String((v as any)?.id || '').trim()
-                    const isCurrent = Boolean(id && versions?.current_version_id && id === versions.current_version_id)
-                    const createdAt = String((v as any)?.created_at || '').trim()
-                    const source = String((v as any)?.source || '').trim() || 'put'
-                    const createdBy = String((v as any)?.created_by || '').trim()
-                    const policyJson = (v as any)?.policy
-                    return (
-                      <div key={id || String(idx)} className="rounded-xl border border-border/60 bg-card p-3">
+                {(() => {
+    if (versionsLoading) {
+        return (<div className="text-sm text-muted-foreground">加载中…</div>);
+    }
+    else {
+        if ((versions?.items || []).length) {
+            return ((versions?.items || []).map((v, idx) => {
+                const id = String((v as any)?.id || '').trim();
+                const isCurrent = Boolean(id && versions?.current_version_id && id === versions.current_version_id);
+                const createdAt = String((v as any)?.created_at || '').trim();
+                const source = String((v as any)?.source || '').trim() || 'put';
+                const createdBy = String((v as any)?.created_by || '').trim();
+                const policyJson = (v as any)?.policy;
+                return (<div key={id || String(idx)} className="rounded-xl border border-border/60 bg-card p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
@@ -1394,17 +1404,8 @@ export default function DatasetIngestionPolicyPage() {
                             </div>
                           </div>
 
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isCurrent ? 'secondary' : 'destructive'}
-                            className="h-8 px-3 text-[11px]"
-                            onClick={() => void rollbackPolicy(id)}
-                            disabled={!id || isCurrent || Boolean(rollbackingVersionId)}
-                          >
-                            {rollbackingVersionId === id ? (
-                              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
-                            ) : null}
+                          <Button type="button" size="sm" variant={isCurrent ? 'secondary' : 'destructive'} className="h-8 px-3 text-[11px]" onClick={() => detachPromise(rollbackPolicy(id))} disabled={!id || isCurrent || Boolean(rollbackingVersionId)}>
+                            {rollbackingVersionId === id ? (<Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/>) : null}
                             回滚
                           </Button>
                         </div>
@@ -1417,12 +1418,14 @@ export default function DatasetIngestionPolicyPage() {
                             {JSON.stringify(policyJson ?? null, null, 2)}
                           </pre>
                         </details>
-                      </div>
-                    )
-                  })
-                ) : (
-                  <div className="text-sm text-muted-foreground">暂无版本（保存/导入后会自动生成）</div>
-                )}
+                      </div>);
+            }));
+        }
+        else {
+            return (<div className="text-sm text-muted-foreground">暂无版本（保存/导入后会自动生成）</div>);
+        }
+    }
+})()}
               </div>
             </div>
 

@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -39,7 +41,7 @@ def test_build_run_create_request_payload_includes_retrieval_overrides() -> None
     assert payload["max_cases"] == 2
     assert payload["retrieval_mode"] == "keyword"
     assert payload["top_k"] == 10
-    assert payload["score_threshold"] == 0.0
+    assert payload["score_threshold"] == pytest.approx(0.0)
 
 
 def test_build_run_create_request_payload_omits_none_overrides() -> None:
@@ -88,7 +90,7 @@ def test_build_run_create_request_payload_includes_extended_runtime_overrides() 
     assert payload["multi_query_count"] == 4
     assert payload["enable_query_rewrite"] is True
     assert payload["query_rewrite_strategy"] == "kb_followup.v2"
-    assert payload["query_rewrite_temperature"] == 0.3
+    assert payload["query_rewrite_temperature"] == pytest.approx(0.3)
     assert payload["query_rewrite_max_chars"] == 180
     assert payload["sparse_retrieval_enabled"] is True
     assert payload["sparse_retrieval_provider"] == "splade"

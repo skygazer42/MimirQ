@@ -30,10 +30,11 @@ import json
 import math
 import sys
 import time
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 from uuid import UUID, uuid5
 
 from huggingface_hub import HfApi, hf_hub_download
@@ -107,7 +108,7 @@ def _load_qrels_positive_docids(path: Path) -> dict[str, list[str]]:
             out.setdefault(qid, []).append(docid)
     # Dedup deterministically.
     for qid, ids in list(out.items()):
-        uniq = sorted(set([str(x).strip() for x in ids if str(x).strip()]))
+        uniq = sorted({str(x).strip() for x in ids if str(x).strip()})
         out[qid] = uniq
     return out
 
@@ -765,7 +766,7 @@ def main(argv: list[str] | None = None) -> int:
         qrels_files = [f"miracl-v1.0-{LANG}/qrels/qrels.miracl-v1.0-{LANG}-{s}.tsv" for s in splits_norm]
         manifest = {
             "schema": MANIFEST_SCHEMA,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "bench_key": BENCH_KEY,
             "tenant_id": str(tenant_id),
             "dataset_id": str(dataset_id),

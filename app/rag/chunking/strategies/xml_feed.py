@@ -12,7 +12,7 @@ from __future__ import annotations
 import html as _html
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -26,7 +26,7 @@ class _Block:
     end: int
     kind: str
     index: int
-    title: Optional[str]
+    title: str | None
 
 
 _ITEM_START_RE = re.compile(r"(?is)<item\b[^>]*>")
@@ -43,7 +43,7 @@ def _clean_text(s: str) -> str:
     return re.sub(r"\s+", " ", out).strip()
 
 
-def _extract_title(block_text: str) -> Optional[str]:
+def _extract_title(block_text: str) -> str | None:
     m = _TITLE_RE.search(block_text or "")
     if not m:
         return None
@@ -51,7 +51,7 @@ def _extract_title(block_text: str) -> Optional[str]:
     return title[:200] or None
 
 
-def _iter_blocks(text: str, *, kind: str) -> List[_Block]:
+def _iter_blocks(text: str, *, kind: str) -> list[_Block]:
     if not text:
         return []
 
@@ -60,7 +60,7 @@ def _iter_blocks(text: str, *, kind: str) -> List[_Block]:
     else:
         start_re, end_re = _ENTRY_START_RE, _ENTRY_END_RE
 
-    blocks: List[_Block] = []
+    blocks: list[_Block] = []
     for sm in start_re.finditer(text):
         em = end_re.search(text, pos=sm.end())
         if not em:
@@ -106,8 +106,8 @@ class XMLFeedChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

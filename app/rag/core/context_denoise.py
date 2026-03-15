@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from langchain_core.documents import Document
 
@@ -150,7 +150,7 @@ def _apply_jaccard_dedup(
     return out
 
 
-def denoise_context_docs(docs: Optional[Iterable[Document]]) -> list[Document]:
+def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     """
     Clean and deduplicate retrieved context docs before prompt assembly.
 

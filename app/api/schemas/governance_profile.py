@@ -9,7 +9,7 @@ Important:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -30,47 +30,47 @@ class GovernanceProfilePayload(BaseModel):
     """
 
     version: str = Field(default="1", description="Payload schema version")
-    extends: Optional[str] = Field(
+    extends: str | None = Field(
         default=None,
         max_length=120,
         description="Optional parent profile ref (builtin:<key> | UUID | tenant-scoped key).",
     )
-    input_formats: List[Literal["markdown", "html"]] = Field(
+    input_formats: list[Literal["markdown", "html"]] = Field(
         default_factory=lambda: ["markdown"],
         description="Recommended input format(s) for preview tools",
     )
-    pipeline_patch: Dict[str, Any] = Field(default_factory=dict)
-    regex_rules: List[RegexRuleModel] = Field(default_factory=list)
+    pipeline_patch: dict[str, Any] = Field(default_factory=dict)
+    regex_rules: list[RegexRuleModel] = Field(default_factory=list)
 
 
 class GovernanceProfileSummary(BaseModel):
-    id: Optional[UUID] = None
+    id: UUID | None = None
     key: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     is_system: bool = False
 
 
 class GovernanceProfileListResponse(BaseModel):
     total: int
-    items: List[GovernanceProfileSummary] = Field(default_factory=list)
+    items: list[GovernanceProfileSummary] = Field(default_factory=list)
 
 
 class GovernanceProfileOut(BaseModel):
-    id: Optional[UUID] = None
+    id: UUID | None = None
     key: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     is_system: bool = False
     payload: GovernanceProfilePayload
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class GovernanceProfileCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(default=None, max_length=2000)
-    key: Optional[str] = Field(
+    description: str | None = Field(default=None, max_length=2000)
+    key: str | None = Field(
         default=None,
         max_length=100,
         description="Optional stable key/slug for the profile (tenant-scoped).",
@@ -79,15 +79,15 @@ class GovernanceProfileCreate(BaseModel):
 
 
 class GovernanceProfileUpdate(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
-    description: Optional[str] = Field(default=None, max_length=2000)
-    payload: Optional[GovernanceProfilePayload] = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    payload: GovernanceProfilePayload | None = None
 
 
 class GovernanceProfileImportResponse(BaseModel):
     created: int = 0
     updated: int = 0
-    items: List[GovernanceProfileSummary] = Field(default_factory=list)
+    items: list[GovernanceProfileSummary] = Field(default_factory=list)
 
 
 class GovernanceProfileResolvedResponse(BaseModel):
@@ -100,5 +100,5 @@ class GovernanceProfileResolvedResponse(BaseModel):
     """
 
     profile: GovernanceProfileOut
-    chain: List[GovernanceProfileSummary] = Field(default_factory=list)
+    chain: list[GovernanceProfileSummary] = Field(default_factory=list)
     effective: GovernanceProfilePayload

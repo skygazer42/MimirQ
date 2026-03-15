@@ -10,19 +10,19 @@ def test_resolve_chat_response_cache_key_changes_with_dataset_corpus_token(
 ) -> None:
     import app.services.chat_response_cache as cache_mod
 
-    base = dict(
-        db=object(),
-        tenant_id=uuid4(),
-        account_id="acct-1",
-        dataset_id=uuid4(),
-        document_ids=[],
-        question="What changed?",
-        rag_config={"top_k": 5, "retrieval_mode": "hybrid"},
-        prompt_config={"prompt_template_id": None},
-        structured_output=False,
-        structured_preset=None,
-        use_graph=False,
-    )
+    base = {
+        "db": object(),
+        "tenant_id": uuid4(),
+        "account_id": "acct-1",
+        "dataset_id": uuid4(),
+        "document_ids": [],
+        "question": "What changed?",
+        "rag_config": {"top_k": 5, "retrieval_mode": "hybrid"},
+        "prompt_config": {"prompt_template_id": None},
+        "structured_output": False,
+        "structured_preset": None,
+        "use_graph": False,
+    }
 
     monkeypatch.setattr(cache_mod, "resolve_corpus_cache_token", lambda *_a, **_k: "corp-a", raising=False)
     key_a, skip_a = cache_mod.resolve_chat_response_cache_key(**base)

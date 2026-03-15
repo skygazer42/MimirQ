@@ -7,7 +7,7 @@ import contextlib
 import logging
 import random
 import threading
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -30,10 +30,10 @@ class HTTPClientPool:
     """Global HTTP client pool with connection reuse and concurrency control."""
     
     def __init__(self):
-        self._async_client: Optional[httpx.AsyncClient] = None
-        self._async_client_external: Optional[httpx.AsyncClient] = None
-        self._sync_client: Optional[httpx.Client] = None
-        self._sync_client_external: Optional[httpx.Client] = None
+        self._async_client: httpx.AsyncClient | None = None
+        self._async_client_external: httpx.AsyncClient | None = None
+        self._sync_client: httpx.Client | None = None
+        self._sync_client_external: httpx.Client | None = None
         self._async_lock = threading.Lock()
         self._sync_lock = threading.Lock()
         # Preserve legacy lock usage for code that expects async locking semantics.
@@ -247,10 +247,10 @@ class HTTPClientPool:
     
     async def close(self):
         """Close the client pool."""
-        async_client: Optional[httpx.AsyncClient]
-        sync_client: Optional[httpx.Client]
-        async_client_external: Optional[httpx.AsyncClient]
-        sync_client_external: Optional[httpx.Client]
+        async_client: httpx.AsyncClient | None
+        sync_client: httpx.Client | None
+        async_client_external: httpx.AsyncClient | None
+        sync_client_external: httpx.Client | None
         with self._async_lock:
             async_client = self._async_client
             self._async_client = None
@@ -293,10 +293,10 @@ class HTTPClientPool:
         method: str,
         url: str,
         *,
-        max_retries: Optional[int] = None,
-        retry_delay: Optional[float] = None,
-        backoff_factor: Optional[float] = None,
-        jitter: Optional[float] = None,
+        max_retries: int | None = None,
+        retry_delay: float | None = None,
+        backoff_factor: float | None = None,
+        jitter: float | None = None,
         use_external_client: bool = False,
         **kwargs: Any,
     ) -> httpx.Response:
@@ -411,7 +411,7 @@ class HTTPClientPool:
 
 
 # Global singleton.
-_http_client_pool: Optional[HTTPClientPool] = None
+_http_client_pool: HTTPClientPool | None = None
 
 
 def get_http_client_pool() -> HTTPClientPool:

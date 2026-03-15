@@ -75,7 +75,7 @@ def test_precheck_cancel_endpoint(monkeypatch):  # noqa: ANN001
     )
 
     # Bypass dataset permission checks.
-    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *a, **k: object(), raising=True)
+    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *_a, **_k: object(), raising=True)
 
     db = _DummyDB([run])
     out = cancel_dataset_precheck_scan_run(dataset_id=dataset_id, scan_run_id=run_id, tenant_id=tenant_id, account_id="u", db=db)
@@ -91,10 +91,10 @@ def test_precheck_samples_endpoint(monkeypatch):  # noqa: ANN001
 
     run = SimpleNamespace(id=run_id, tenant_id=tenant_id, dataset_id=dataset_id, status="completed", config={}, artifacts={})
 
-    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *a, **k: object(), raising=True)
+    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
         "app.api.v1.dataset_precheck.load_precheck_samples_from_row",
-        lambda *a, **k: {"requested": 1, "strata_count": 1, "representative": [], "needs_review": {}, "top_large_files": [], "top_long_text": []},
+        lambda *_a, **_k: {"requested": 1, "strata_count": 1, "representative": [], "needs_review": {}, "top_large_files": [], "top_long_text": []},
         raising=True,
     )
 
@@ -116,10 +116,10 @@ def test_precheck_suggest_and_apply_ingestion_policy_endpoints(monkeypatch):  # 
 
     run = SimpleNamespace(id=run_id, tenant_id=tenant_id, dataset_id=dataset_id, summary={"x": 1}, artifacts={}, config={})
 
-    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *a, **k: SimpleNamespace(dataset_metadata={}), raising=True)
+    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *_a, **_k: SimpleNamespace(dataset_metadata={}), raising=True)
     monkeypatch.setattr(
         "app.api.v1.dataset_precheck.build_ingestion_policy_suggestion",
-        lambda *a, **k: {
+        lambda *_a, **_k: {
             "generated_at": "2026-01-01T00:00:00Z",
             "policy": {"version": "1", "rules": []},
             "notes": [],
@@ -129,7 +129,7 @@ def test_precheck_suggest_and_apply_ingestion_policy_endpoints(monkeypatch):  # 
     )
     monkeypatch.setattr(
         "app.api.v1.dataset_precheck.apply_ingestion_policy_suggestion",
-        lambda *a, **k: {"replaced": True, "rule_count": 0},
+        lambda *_a, **_k: {"replaced": True, "rule_count": 0},
         raising=True,
     )
 
@@ -167,10 +167,10 @@ def test_precheck_diff_endpoint(monkeypatch):  # noqa: ANN001
     base = SimpleNamespace(id=base_id, tenant_id=tenant_id, dataset_id=dataset_id, summary={"total_files": 1}, artifacts={}, config={})
     target = SimpleNamespace(id=target_id, tenant_id=tenant_id, dataset_id=dataset_id, summary={"total_files": 2}, artifacts={}, config={})
 
-    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *a, **k: object(), raising=True)
+    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
         "app.api.v1.dataset_precheck.diff_precheck_summaries",
-        lambda *a, **k: {
+        lambda *_a, **_k: {
             "base_scan_run_id": str(base_id),
             "target_scan_run_id": str(target_id),
             "generated_at": "2026-01-01T00:00:00Z",
@@ -207,7 +207,7 @@ def test_precheck_diff_endpoint_missing_summary_404(monkeypatch):  # noqa: ANN00
     base = SimpleNamespace(id=base_id, tenant_id=tenant_id, dataset_id=dataset_id, summary={}, artifacts={}, config={})
     target = SimpleNamespace(id=target_id, tenant_id=tenant_id, dataset_id=dataset_id, summary={}, artifacts={}, config={})
 
-    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *a, **k: object(), raising=True)
+    monkeypatch.setattr("app.api.v1.dataset_precheck.get_dataset_for_precheck", lambda *_a, **_k: object(), raising=True)
     db = _DummyDB([base, target])
     with pytest.raises(HTTPException) as exc:
         diff_dataset_precheck_scan_runs(

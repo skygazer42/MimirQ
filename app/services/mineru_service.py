@@ -13,7 +13,7 @@ import time
 import uuid
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 from langchain_core.documents import Document
@@ -34,11 +34,11 @@ class MinerUService:
         self.api_base = ""
         self.api_token = ""
         self.model_version = "vlm"
-        self.local_server_url: Optional[str] = None
+        self.local_server_url: str | None = None
         self.enabled = False
 
         # Best-effort JWT expiry diagnostics (MinerU online API token may expire).
-        self._token_exp: Optional[int] = None
+        self._token_exp: int | None = None
         self._warned_token_expired = False
 
         self._refresh_config(log_disabled_warning=True)
@@ -95,15 +95,15 @@ class MinerUService:
     def _ensure_online_enabled(self) -> None:
         self._refresh_config()
         if not bool(getattr(settings, "MINERU_ENABLED", False)):
-            raise Exception("MinerU is disabled. Set MINERU_ENABLED=true to enable.")
+            raise RuntimeError("MinerU is disabled. Set MINERU_ENABLED=true to enable.")
         if not self.api_token:
-            raise Exception("MinerU online API requires MINERU_API_TOKEN.")
+            raise RuntimeError("MinerU online API requires MINERU_API_TOKEN.")
         if self._token_exp is not None and int(self._token_exp) <= int(time.time()):
-            raise Exception(
+            raise RuntimeError(
                 f"MINERU_API_TOKEN expired at {format_unix_ts_utc(int(self._token_exp))}. Please refresh token."
             )
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Get request headers."""
         self._ensure_online_enabled()
         return {
@@ -117,10 +117,10 @@ class MinerUService:
         method: str,
         url: str,
         *,
-        headers: Optional[Dict[str, str]] = None,
-        timeout: Optional[float] = None,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Send an HTTP request and parse JSON (async with retries).
 
@@ -132,10 +132,10 @@ class MinerUService:
         except httpx.HTTPStatusError as exc:
             status = int(getattr(exc.response, "status_code", 0) or 0)
             if status in {401, 403}:
-                raise Exception(self._format_auth_error(status)) from exc
-            raise Exception(f"MinerU API request failed (HTTP {status}): {str(exc)[:200]}") from exc
+                raise RuntimeError(self._format_auth_error(status)) from exc
+            raise RuntimeError(f"MinerU API request failed (HTTP {status}): {str(exc)[:200]}") from exc
         except httpx.HTTPError as exc:
-            raise Exception(f"MinerU API request failed: {str(exc)[:200]}") from exc
+            raise RuntimeError(f"MinerU API request failed: {str(exc)[:200]}") from exc
         try:
             return resp.json()
         finally:
@@ -145,7 +145,7 @@ class MinerUService:
             except Exception:
                 pass
 
-    async def aapply_upload_url(self, filename: str, data_id: str) -> Dict[str, Any]:
+    async def aapply_upload_url(self, filename: str, data_id: str) -> dict[str, Any]:
         """Request a single file upload URL (async)."""
         self._ensure_online_enabled()
 
@@ -157,9 +157,9 @@ class MinerUService:
             batch_id = result["data"]["batch_id"]
             upload_url = result["data"]["file_urls"][0]
             return {"batch_id": batch_id, "upload_url": upload_url, "data_id": data_id}
-        raise Exception(f"Apply upload URL failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Apply upload URL failed: {result.get('msg', 'Unknown error')}")
 
-    def apply_upload_url(self, filename: str, data_id: str) -> Dict[str, Any]:
+    def apply_upload_url(self, filename: str, data_id: str) -> dict[str, Any]:
         """
         Request a single file upload URL.
 
@@ -187,20 +187,20 @@ class MinerUService:
         except requests.exceptions.HTTPError as e:
             status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
             if status in {401, 403}:
-                raise Exception(self._format_auth_error(status)) from e
-            raise Exception(
+                raise RuntimeError(self._format_auth_error(status)) from e
+            raise RuntimeError(
                 f"MinerU API request failed (HTTP {status}) when applying upload URL: {str(e)[:200]}"
             ) from e
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Network error when applying upload URL: {str(e)}") from e
+            raise RuntimeError(f"Network error when applying upload URL: {str(e)}") from e
 
         if result.get("code") == 0:
             batch_id = result["data"]["batch_id"]
             upload_url = result["data"]["file_urls"][0]
             return {"batch_id": batch_id, "upload_url": upload_url, "data_id": data_id}
-        raise Exception(f"Apply upload URL failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Apply upload URL failed: {result.get('msg', 'Unknown error')}")
 
-    async def aapply_batch_upload_urls(self, files: List[Dict[str, str]]) -> Dict[str, Any]:
+    async def aapply_batch_upload_urls(self, files: list[dict[str, str]]) -> dict[str, Any]:
         """Request batch upload URLs (async)."""
         self._ensure_online_enabled()
         if len(files) > 200:
@@ -212,12 +212,12 @@ class MinerUService:
         result = await self._arequest_json("POST", url, headers=self._get_headers(), json=data, timeout=30.0)
         if result.get("code") == 0:
             return {"batch_id": result["data"]["batch_id"], "file_urls": result["data"]["file_urls"], "files": files}
-        raise Exception(f"Apply batch upload URLs failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Apply batch upload URLs failed: {result.get('msg', 'Unknown error')}")
 
     def apply_batch_upload_urls(
         self,
-        files: List[Dict[str, str]]
-    ) -> Dict[str, Any]:
+        files: list[dict[str, str]]
+    ) -> dict[str, Any]:
         """
         Request batch upload URLs.
 
@@ -249,16 +249,16 @@ class MinerUService:
         except requests.exceptions.HTTPError as e:
             status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
             if status in {401, 403}:
-                raise Exception(self._format_auth_error(status)) from e
-            raise Exception(
+                raise RuntimeError(self._format_auth_error(status)) from e
+            raise RuntimeError(
                 f"MinerU API request failed (HTTP {status}) when applying batch upload URLs: {str(e)[:200]}"
             ) from e
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Network error when applying batch upload URLs: {str(e)}") from e
+            raise RuntimeError(f"Network error when applying batch upload URLs: {str(e)}") from e
 
         if result.get("code") == 0:
             return {"batch_id": result["data"]["batch_id"], "file_urls": result["data"]["file_urls"], "files": files}
-        raise Exception(f"Apply batch upload URLs failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Apply batch upload URLs failed: {result.get('msg', 'Unknown error')}")
 
     async def aupload_file(self, file_path: Path, upload_url: str) -> bool:
         """
@@ -298,7 +298,7 @@ class MinerUService:
             logger.error("Upload file failed: %s", str(e)[:200])
             return False
 
-    async def aget_task_status(self, batch_id: str) -> Dict[str, Any]:
+    async def aget_task_status(self, batch_id: str) -> dict[str, Any]:
         """
         Query batch parsing task status (async).
 
@@ -312,9 +312,9 @@ class MinerUService:
         if result.get("code") == 0:
             data = result.get("data") or {}
             return self._normalize_batch_status(data)
-        raise Exception(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
 
-    def get_task_status(self, batch_id: str) -> Dict[str, Any]:
+    def get_task_status(self, batch_id: str) -> dict[str, Any]:
         """
         Query batch parsing task status.
 
@@ -337,20 +337,20 @@ class MinerUService:
         except requests.exceptions.HTTPError as e:
             status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
             if status in {401, 403}:
-                raise Exception(self._format_auth_error(status)) from e
-            raise Exception(
+                raise RuntimeError(self._format_auth_error(status)) from e
+            raise RuntimeError(
                 f"MinerU API request failed (HTTP {status}) when getting task status: {str(e)[:200]}"
             ) from e
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Network error when getting task status: {str(e)}") from e
+            raise RuntimeError(f"Network error when getting task status: {str(e)}") from e
 
         if result.get("code") == 0:
             data = result.get("data") or {}
             return self._normalize_batch_status(data)
-        raise Exception(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
 
     @staticmethod
-    def _normalize_batch_status(batch_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _normalize_batch_status(batch_data: dict[str, Any]) -> dict[str, Any]:
         """
         Normalize MinerU batch results response into our API-friendly schema.
 
@@ -370,7 +370,7 @@ class MinerUService:
         completed_files = 0
         failed_files = 0
         running_files = 0
-        first_error: Optional[str] = None
+        first_error: str | None = None
 
         for item in extract_result:
             if not isinstance(item, dict):
@@ -413,11 +413,11 @@ class MinerUService:
 
     @staticmethod
     def _pick_extract_item(
-        extract_result: List[Dict[str, Any]],
+        extract_result: list[dict[str, Any]],
         *,
-        data_id: Optional[str] = None,
-        filename: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
+        data_id: str | None = None,
+        filename: str | None = None,
+    ) -> dict[str, Any] | None:
         if not extract_result:
             return None
 
@@ -439,16 +439,16 @@ class MinerUService:
             return extract_result[0]
         return None
 
-    async def aget_batch_results(self, batch_id: str) -> Dict[str, Any]:
+    async def aget_batch_results(self, batch_id: str) -> dict[str, Any]:
         """Fetch raw MinerU batch results (async)."""
         self._ensure_online_enabled()
         url = f"{self.api_base}/extract-results/batch/{batch_id}"
         result = await self._arequest_json("GET", url, headers=self._get_headers(), timeout=30.0)
         if result.get("code") == 0:
             return result.get("data") or {}
-        raise Exception(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
 
-    def get_batch_results(self, batch_id: str) -> Dict[str, Any]:
+    def get_batch_results(self, batch_id: str) -> dict[str, Any]:
         """Fetch raw MinerU batch results (sync)."""
         import requests  # local import to avoid blocking deps in async paths
 
@@ -461,29 +461,29 @@ class MinerUService:
         except requests.exceptions.HTTPError as e:
             status = int(getattr(getattr(e, "response", None), "status_code", 0) or 0)
             if status in {401, 403}:
-                raise Exception(self._format_auth_error(status)) from e
-            raise Exception(
+                raise RuntimeError(self._format_auth_error(status)) from e
+            raise RuntimeError(
                 f"MinerU API request failed (HTTP {status}) when getting batch results: {str(e)[:200]}"
             ) from e
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Network error when getting batch results: {str(e)}") from e
+            raise RuntimeError(f"Network error when getting batch results: {str(e)}") from e
 
         if result.get("code") == 0:
             return result.get("data") or {}
-        raise Exception(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
 
     async def await_for_completion(
         self,
         batch_id: str,
         *,
-        data_id: Optional[str] = None,
-        filename: Optional[str] = None,
+        data_id: str | None = None,
+        filename: str | None = None,
         timeout: int = 600,
         poll_interval: int = 5,
         max_interval: int = 30,
         backoff_factor: float = 1.5,
         jitter: float = 0.2,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Wait for parsing completion for a single file in a batch.
 
@@ -518,7 +518,7 @@ class MinerUService:
                 return item or {}
             if state == "failed":
                 err = (item or {}).get("err_msg") or "Unknown error"
-                raise Exception(f"Task {batch_id} failed: {err}")
+                raise RuntimeError(f"Task {batch_id} failed: {err}")
 
             # Exponential backoff with jitter (best-effort)
             sleep_for = float(current_interval)
@@ -533,11 +533,11 @@ class MinerUService:
         self,
         batch_id: str,
         *,
-        data_id: Optional[str] = None,
-        filename: Optional[str] = None,
+        data_id: str | None = None,
+        filename: str | None = None,
         timeout: int = 600,
         poll_interval: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         start_time = time.time()
 
         while True:
@@ -558,7 +558,7 @@ class MinerUService:
                 return item or {}
             if state == "failed":
                 err = (item or {}).get("err_msg") or "Unknown error"
-                raise Exception(f"Task {batch_id} failed: {err}")
+                raise RuntimeError(f"Task {batch_id} failed: {err}")
 
             time.sleep(poll_interval)
 
@@ -591,7 +591,7 @@ class MinerUService:
             response.raise_for_status()
             return response.text
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Download result failed: {str(e)}") from e
+            raise RuntimeError(f"Download result failed: {str(e)}") from e
 
     async def adownload_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (async)."""
@@ -614,7 +614,7 @@ class MinerUService:
             response.raise_for_status()
             return bytes(response.content)
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Download result ZIP failed: {str(e)}") from e
+            raise RuntimeError(f"Download result ZIP failed: {str(e)}") from e
 
     @staticmethod
     def _extract_markdown_from_zip_bytes(zip_bytes: bytes) -> str:
@@ -652,7 +652,7 @@ class MinerUService:
             if not md_infos:
                 return ""
 
-            chosen: Optional[zipfile.ZipInfo] = None
+            chosen: zipfile.ZipInfo | None = None
             preferred = ["full.md", "output.md", "result.md", "index.md", "readme.md"]
             for pref in preferred:
                 for info in md_infos:
@@ -681,7 +681,7 @@ class MinerUService:
         zip_bytes: bytes,
         markdown: str,
         tenant_id: str,
-    ) -> tuple[str, List[Dict[str, str]]]:
+    ) -> tuple[str, list[dict[str, str]]]:
         """
         MinerU online API returns images inside the result ZIP (e.g. "images/xxx.jpg")
         while Markdown references them with relative paths. For preview endpoints (no
@@ -707,7 +707,7 @@ class MinerUService:
         )
         html_pat = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
 
-        refs: List[str] = []
+        refs: list[str] = []
         seen: set[str] = set()
         for pat in (md_pat, html_pat):
             for m in pat.finditer(markdown):
@@ -729,7 +729,7 @@ class MinerUService:
 
         # Index ZIP members by common lookup keys.
         image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
-        member_by_key: Dict[str, str] = {}
+        member_by_key: dict[str, str] = {}
         try:
             zf = zipfile.ZipFile(io.BytesIO(zip_bytes), "r")
         except Exception:
@@ -756,9 +756,9 @@ class MinerUService:
             max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
             max_bytes = max(1_000_000, max_bytes)
 
-            extracted: List[Dict[str, str]] = []
-            mapping: Dict[str, Dict[str, str]] = {}
-            cached_id_by_norm: Dict[str, str] = {}
+            extracted: list[dict[str, str]] = []
+            mapping: dict[str, dict[str, str]] = {}
+            cached_id_by_norm: dict[str, str] = {}
 
             for ref in refs:
                 # Skip remote URLs and already-rewritten refs.
@@ -818,12 +818,12 @@ class MinerUService:
     async def aparse_file(
         self,
         file_path: Path,
-        data_id: Optional[str] = None,
+        data_id: str | None = None,
         *,
-        tenant_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        document_id: Optional[str] = None,
-    ) -> List[Document]:
+        tenant_id: str | None = None,
+        dataset_id: str | None = None,
+        document_id: str | None = None,
+    ) -> list[Document]:
         """
         End-to-end parsing flow (upload → wait → download result), async version.
         """
@@ -840,7 +840,7 @@ class MinerUService:
         logger.info("Uploading %s...", file_path.name)
         success = await self.aupload_file(file_path, upload_url)
         if not success:
-            raise Exception(f"Failed to upload {file_path.name}")
+            raise RuntimeError(f"Failed to upload {file_path.name}")
 
         logger.info("Upload complete. Batch ID: %s", batch_id)
         logger.info("Waiting for parsing completion...")
@@ -854,14 +854,14 @@ class MinerUService:
 
         zip_url = (item or {}).get("full_zip_url") or (item or {}).get("zip_url")
         if not zip_url:
-            raise Exception("No result ZIP URL in response")
+            raise RuntimeError("No result ZIP URL in response")
 
         logger.info("Downloading result ZIP...")
         zip_bytes = await self.adownload_result_zip(str(zip_url))
 
         images_meta: list[dict] = []
         if dataset_id and document_id and settings.MINIO_ENABLED:
-            tmp_zip_path: Optional[Path] = None
+            tmp_zip_path: Path | None = None
             try:
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
                     tmp_zip.write(zip_bytes)
@@ -911,9 +911,9 @@ class MinerUService:
         file_path: Path,
         dataset_id: str,
         document_id: str,
-        tenant_id: Optional[str] = None,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Document]:
+        tenant_id: str | None = None,
+        params: dict[str, Any] | None = None,
+    ) -> list[Document]:
         """
         Parse with local MinerU (returns ZIP with Markdown + images), async version.
 
@@ -924,14 +924,14 @@ class MinerUService:
         """
         self._refresh_config()
         if not self.local_server_url:
-            raise Exception(
+            raise RuntimeError(
                 "MinerU local service not configured. Please set MINERU_LOCAL_SERVER_URL, e.g., http://localhost:30001"
             )
 
         parse_endpoint = f"{self.local_server_url}/file_parse"
         params = params or {}
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "lang_list": params.get("lang_list", ["ch"]),
             # Use a backend that works with a single MinerU API service by default.
             # Users can override via `params["backend"]` (e.g. "vlm-http-client" with MINERU_VL_SERVER).
@@ -950,7 +950,7 @@ class MinerUService:
         logger.info("MinerU local parsing started (async): %s", file_path.name)
 
         pool = get_http_client_pool()
-        tmp_zip_path: Optional[Path] = None
+        tmp_zip_path: Path | None = None
         try:
             # multipart upload (keep file open until request finishes)
             with open(file_path, "rb") as f:
@@ -973,7 +973,7 @@ class MinerUService:
                     pass
 
             if ("zip" not in content_type.lower()) and ("application/octet-stream" not in content_type.lower()):
-                raise Exception(f"MinerU returned unexpected content type: {content_type}")
+                raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
 
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
                 tmp_zip.write(body)
@@ -1007,7 +1007,7 @@ class MinerUService:
             return [Document(page_content=markdown_content, metadata=metadata)]
         except Exception as e:  # noqa: BLE001
             logger.error("MinerU local parsing failed (async): %s", str(e)[:200])
-            raise Exception(f"MinerU local parsing failed: {str(e)}") from e
+            raise RuntimeError(f"MinerU local parsing failed: {str(e)}") from e
         finally:
             if tmp_zip_path and tmp_zip_path.exists():
                 try:
@@ -1018,12 +1018,12 @@ class MinerUService:
     def parse_file(
         self,
         file_path: Path,
-        data_id: Optional[str] = None,
+        data_id: str | None = None,
         *,
-        tenant_id: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        document_id: Optional[str] = None,
-    ) -> List[Document]:
+        tenant_id: str | None = None,
+        dataset_id: str | None = None,
+        document_id: str | None = None,
+    ) -> list[Document]:
         """
         End-to-end parsing flow (upload → wait → download result).
 
@@ -1048,7 +1048,7 @@ class MinerUService:
         logger.info("Uploading %s...", file_path.name)
         success = self.upload_file(file_path, upload_url)
         if not success:
-            raise Exception(f"Failed to upload {file_path.name}")
+            raise RuntimeError(f"Failed to upload {file_path.name}")
 
         logger.info("Upload complete. Batch ID: %s", batch_id)
 
@@ -1065,14 +1065,14 @@ class MinerUService:
         # 4. Download parse result.
         zip_url = (item or {}).get("full_zip_url") or (item or {}).get("zip_url")
         if not zip_url:
-            raise Exception("No result ZIP URL in response")
+            raise RuntimeError("No result ZIP URL in response")
 
         logger.info("Downloading result ZIP...")
         zip_bytes = self.download_result_zip(str(zip_url))
 
         images_meta: list[dict] = []
         if dataset_id and document_id and settings.MINIO_ENABLED:
-            tmp_zip_path: Optional[Path] = None
+            tmp_zip_path: Path | None = None
             try:
                 with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
                     tmp_zip.write(zip_bytes)
@@ -1123,9 +1123,9 @@ class MinerUService:
         file_path: Path,
         dataset_id: str,
         document_id: str,
-        tenant_id: Optional[str] = None,
-        params: Optional[Dict[str, Any]] = None
-    ) -> List[Document]:
+        tenant_id: str | None = None,
+        params: dict[str, Any] | None = None
+    ) -> list[Document]:
         """
         Parse with local MinerU (returns ZIP with Markdown + images).
 
@@ -1140,7 +1140,7 @@ class MinerUService:
         """
         self._refresh_config()
         if not self.local_server_url:
-            raise Exception(
+            raise RuntimeError(
                 "MinerU local service not configured. Please set MINERU_LOCAL_SERVER_URL, "
                 "e.g., http://localhost:30001"
             )
@@ -1185,9 +1185,9 @@ class MinerUService:
                 # Try parsing JSON error.
                 try:
                     error_data = response.json()
-                    raise Exception(f"MinerU parsing failed: {error_data}")
+                    raise RuntimeError(f"MinerU parsing failed: {error_data}")
                 except (ValueError, TypeError) as json_err:
-                    raise Exception(f"MinerU returned unexpected content type: {content_type}") from json_err
+                    raise RuntimeError(f"MinerU returned unexpected content type: {content_type}") from json_err
             
             # Save ZIP to temp file.
             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
@@ -1230,7 +1230,7 @@ class MinerUService:
         
         except Exception as e:
             logger.error("MinerU local parsing failed: %s", e)
-            raise Exception(f"MinerU local parsing failed: {str(e)}") from e
+            raise RuntimeError(f"MinerU local parsing failed: {str(e)}") from e
 
 
 # Global instance

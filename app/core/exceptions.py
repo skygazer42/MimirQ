@@ -3,7 +3,7 @@ MimirQ API unified exception handling module
 """
 import logging
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -87,9 +87,9 @@ def _derive_hint(
 class ErrorResponse(BaseModel):
     error: str
     message: str
-    detail: Optional[Dict[str, Any]] = None
-    request_id: Optional[str] = None
-    hint: Optional[str] = None
+    detail: dict[str, Any] | None = None
+    request_id: str | None = None
+    hint: str | None = None
 
 
 class MimirQError(Exception):
@@ -100,7 +100,7 @@ class MimirQError(Exception):
         message: str,
         error_code: str = "INTERNAL_ERROR",
         status_code: int = HTTP_500_INTERNAL_SERVER_ERROR,
-        detail: Optional[Dict[str, Any]] = None,
+        detail: dict[str, Any] | None = None,
     ):
         self.message = message
         self.error_code = error_code
@@ -108,7 +108,7 @@ class MimirQError(Exception):
         self.detail = detail or {}
         super().__init__(message)
 
-    def to_response(self, request_id: Optional[str] = None) -> ErrorResponse:
+    def to_response(self, request_id: str | None = None) -> ErrorResponse:
         return ErrorResponse(
             error=self.error_code,
             message=self.message,
@@ -124,10 +124,10 @@ class ValidationError(MimirQError):
     def __init__(
         self,
         message: str,
-        field: Optional[str] = None,
-        detail: Optional[Dict[str, Any]] = None,
+        field: str | None = None,
+        detail: dict[str, Any] | None = None,
     ):
-        merged_detail: Dict[str, Any] = dict(detail or {})
+        merged_detail: dict[str, Any] = dict(detail or {})
         if field:
             merged_detail["field"] = field
         super().__init__(
@@ -139,8 +139,8 @@ class ValidationError(MimirQError):
 
 
 class NotFoundError(MimirQError):
-    def __init__(self, resource: str, identifier: Optional[str] = None):
-        detail: Dict[str, Any] = {"resource": resource}
+    def __init__(self, resource: str, identifier: str | None = None):
+        detail: dict[str, Any] = {"resource": resource}
         if identifier:
             detail["identifier"] = identifier
         super().__init__(
@@ -161,8 +161,8 @@ class AuthenticationError(MimirQError):
 
 
 class AuthorizationError(MimirQError):
-    def __init__(self, message: str = "Permission denied", resource: Optional[str] = None):
-        detail: Dict[str, Any] = {}
+    def __init__(self, message: str = "Permission denied", resource: str | None = None):
+        detail: dict[str, Any] = {}
         if resource:
             detail["resource"] = resource
         super().__init__(
@@ -184,7 +184,7 @@ class RateLimitError(MimirQError):
 
 
 class ServiceUnavailableError(MimirQError):
-    def __init__(self, service: str, message: Optional[str] = None):
+    def __init__(self, service: str, message: str | None = None):
         super().__init__(
             message=message or f"Service '{service}' is temporarily unavailable",
             error_code="SERVICE_UNAVAILABLE",
@@ -194,8 +194,8 @@ class ServiceUnavailableError(MimirQError):
 
 
 class LLMError(MimirQError):
-    def __init__(self, message: str, provider: Optional[str] = None):
-        detail: Dict[str, Any] = {}
+    def __init__(self, message: str, provider: str | None = None):
+        detail: dict[str, Any] = {}
         if provider:
             detail["provider"] = provider
         super().__init__(
@@ -210,10 +210,10 @@ class DocumentProcessingError(MimirQError):
     def __init__(
         self,
         message: str,
-        document_id: Optional[str] = None,
-        stage: Optional[str] = None,
+        document_id: str | None = None,
+        stage: str | None = None,
     ):
-        detail: Dict[str, Any] = {}
+        detail: dict[str, Any] = {}
         if document_id:
             detail["document_id"] = document_id
         if stage:
@@ -227,8 +227,8 @@ class DocumentProcessingError(MimirQError):
 
 
 class RetrievalError(MimirQError):
-    def __init__(self, message: str, backend: Optional[str] = None):
-        detail: Dict[str, Any] = {}
+    def __init__(self, message: str, backend: str | None = None):
+        detail: dict[str, Any] = {}
         if backend:
             detail["backend"] = backend
         super().__init__(
@@ -263,7 +263,7 @@ class ConfigError(Exception):
 
 class LLMTimeoutError(LLMError):
     """LLM timeout error."""
-    def __init__(self, message: str = "LLM request timed out", provider: Optional[str] = None):
+    def __init__(self, message: str = "LLM request timed out", provider: str | None = None):
         super().__init__(message=message, provider=provider)
 
 
@@ -275,7 +275,7 @@ class PromptError(Exception):
     """Prompt template error."""
 
 
-def get_request_id(request: Request) -> Optional[str]:
+def get_request_id(request: Request) -> str | None:
     return request.headers.get("X-Request-ID") or getattr(request.state, "request_id", None)
 
 

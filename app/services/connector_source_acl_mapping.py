@@ -9,7 +9,6 @@ This module is intentionally connector-agnostic. Individual connectors are expec
 
 from __future__ import annotations
 
-from typing import Optional
 from uuid import UUID
 
 from app.api.schemas.connector_acl import ConnectorSourceAclConfig, SourceAcl
@@ -19,9 +18,9 @@ from app.api.schemas.document import DocumentAccessUpdateRequest
 def resolve_document_access_from_source_acl(
     *,
     source_acl: SourceAcl,
-    config: Optional[ConnectorSourceAclConfig],
+    config: ConnectorSourceAclConfig | None,
     max_groups: int = 200,
-) -> Optional[DocumentAccessUpdateRequest]:
+) -> DocumentAccessUpdateRequest | None:
     """
     Map a connector-provided `SourceAcl` into a document-level access override.
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -86,6 +87,7 @@ async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatc
     created_docs: list[_Doc] = []
 
     async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
+        await asyncio.sleep(0)  # Sonar S7503
         d = _Doc()
         created_docs.append(d)
         return d
@@ -115,6 +117,7 @@ async def test_drive_connector_applies_sharing_permissions_as_doc_acl(monkeypatc
     monkeypatch.setattr(connectors.DocumentGroupPermissionService, "clear_partial_group_list", lambda *_a, **_k: None, raising=True)
 
     async def _fake_fetch_permissions(*_a, **_k):  # noqa: ANN001, ANN201
+        await asyncio.sleep(0)  # Sonar S7503
         return [
             {
                 "type": "group",

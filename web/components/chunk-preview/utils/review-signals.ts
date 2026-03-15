@@ -25,11 +25,11 @@ export function computeDuplicateIndices(chunks: ChunkPreviewItem[]) {
     if (!trimmed) continue
     const key = fnv1a32(trimmed)
     const prev = seen.get(key)
-    if (prev != null) {
+    if (prev == null) {
+      seen.set(key, Number(c.index))
+    } else {
       dups.add(prev)
       dups.add(Number(c.index))
-    } else {
-      seen.set(key, Number(c.index))
     }
   }
   return dups
@@ -50,7 +50,7 @@ export function computeRoleIndices(chunks: ChunkPreviewItem[]) {
   const parents = new Set<number>()
   const children = new Set<number>()
   for (const c of chunks || []) {
-    const meta = (c.metadata || {}) as Record<string, any>
+    const meta = (c.metadata || {})
     const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : undefined
     const idx = Number(c.index)
     if (!Number.isFinite(idx)) continue

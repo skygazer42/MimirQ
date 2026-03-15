@@ -4,7 +4,7 @@ import base64
 import re
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from PIL import Image as PILImage
 
@@ -74,7 +74,7 @@ def _safe_read_image_path(raw_path: str, *, tenant_id: str) -> bytes:
     return candidate.read_bytes()
 
 
-def load_image_for_ocr(meta: dict[str, Any], *, tenant_id: str) -> Tuple[Optional[PILImage.Image], bool]:
+def load_image_for_ocr(meta: dict[str, Any], *, tenant_id: str) -> tuple[PILImage.Image | None, bool]:
     """
     Load a PIL image from chunk metadata for OCR (best-effort).
 

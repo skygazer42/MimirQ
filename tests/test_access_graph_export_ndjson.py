@@ -4,7 +4,7 @@ import gzip
 import json
 import operator
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -147,7 +147,7 @@ def _parse_ndjson(text: str) -> list[dict]:  # noqa: ANN001
 
 def test_access_graph_export_denies_viewer(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     db = _FakeDB(
         groups=[TenantGroup(id=uuid.uuid4(), tenant_id=tenant_id, name="g", created_at=now, updated_at=now)],
@@ -167,7 +167,7 @@ def test_access_graph_export_denies_viewer(monkeypatch):  # noqa: ANN001
 
 def test_access_graph_export_json_page_supports_cursor_and_is_pii_safe(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    t0 = datetime.now(timezone.utc)
+    t0 = datetime.now(UTC)
     t1 = t0 + timedelta(seconds=1)
     t2 = t0 + timedelta(seconds=2)
 
@@ -248,7 +248,7 @@ def test_access_graph_export_json_page_supports_cursor_and_is_pii_safe(monkeypat
 
 def test_access_graph_export_ndjson_supports_gzip(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     g1 = TenantGroup(id=uuid.uuid4(), tenant_id=tenant_id, name="g", created_at=now, updated_at=now)
     db = _FakeDB(

@@ -25,16 +25,16 @@ export interface GraphViewerRef {
 export type LayoutMode = 'force' | 'tree' | 'radial'
 
 interface GraphViewerProps {
-  data: {
+  readonly data: {
     nodes: any[]
     links: any[]
   }
-  onNodeClick?: (node: any) => void
-  onBackgroundClick?: () => void
-  highlightedNodeIds?: Set<string>
-  highlightedLinkIds?: Set<string>
-  showEdgeLabels?: boolean
-  layoutMode?: LayoutMode
+  readonly onNodeClick?: (node: any) => void
+  readonly onBackgroundClick?: () => void
+  readonly highlightedNodeIds?: Set<string>
+  readonly highlightedLinkIds?: Set<string>
+  readonly showEdgeLabels?: boolean
+  readonly layoutMode?: LayoutMode
 }
 
 export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({ 
@@ -67,10 +67,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
         ...link,
         // Reset source/target to IDs if they are objects (from previous d3 simulation)
         source: (typeof link.source === 'object' && link.source !== null && 'id' in link.source) 
-          ? (link.source as any).id 
+          ? (link.source).id 
           : link.source,
         target: (typeof link.target === 'object' && link.target !== null && 'id' in link.target)
-          ? (link.target as any).id
+          ? (link.target).id
           : link.target
       }))
     }
@@ -177,12 +177,12 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
         fgRef.current.zoomToFit(400, 20)
       } else if (attempts < maxAttempts) {
         attempts++
-        timeoutId = window.setTimeout(tryZoom, 200)
+        timeoutId = globalThis.window.setTimeout(tryZoom, 200)
       }
     }
     
     // Initial delay to allow render
-    timeoutId = window.setTimeout(tryZoom, 300)
+    timeoutId = globalThis.window.setTimeout(tryZoom, 300)
     return () => {
       if (timeoutId != null) {
         clearTimeout(timeoutId)
@@ -259,7 +259,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           
           // Link styling
           linkColor={(link: any) => {
-             const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+             const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
              const linkKind = link?.meta?.kind || link?.kind
               if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                  return '#f59e0b' // Amber 500 (Path Highlight)
@@ -280,7 +280,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               return '#cbd5e1'
            }}
           linkWidth={(link: any) => {
-             const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+             const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
              const linkKind = link?.meta?.kind || link?.kind
              if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                  return 4 
@@ -300,7 +300,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           onNodeClick={handleNodeClick}
           onBackgroundClick={onBackgroundClick}
           onLinkHover={(link: any) => {
-            const linkId = link?.id || (link?.index !== undefined ? `link-${link.index}` : null)
+            const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
             setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
           }}
           onNodeDragEnd={(node: any) => {
@@ -375,7 +375,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             // Check if source/target are objects (handled by d3) or raw strings
             if (typeof start !== 'object' || typeof end !== 'object') return
 
-            const linkId = link.id || (link.index !== undefined ? `link-${link.index}` : null)
+            const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
             const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
 
             if (!allowEdgeLabels && !isPathLink) return

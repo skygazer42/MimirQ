@@ -15,11 +15,12 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, formatFileSize } from '@/lib/utils'
 import type { IngestionPreviewResponse } from '@/types'
 
 function toShortNote(note: unknown, maxChars: number = 180): string {
-  const s = String(note ?? '').trim()
+  const s = toTrimmedPrimitiveString(note)
   if (!s) return ''
   if (s.length <= maxChars) return s
   return `${s.slice(0, Math.max(0, maxChars - 3))}...`
@@ -28,7 +29,7 @@ function toShortNote(note: unknown, maxChars: number = 180): string {
 function downloadJsonObject(obj: unknown, filename: string) {
   const safe = String(filename || 'export.json')
     .trim()
-    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replaceAll(/[\\/:*?"<>|]+/g, '_')
     .slice(0, 128)
   const blob = new Blob([JSON.stringify(obj ?? {}, null, 2)], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -36,7 +37,7 @@ function downloadJsonObject(obj: unknown, filename: string) {
   a.href = url
   a.download = safe.endsWith('.json') ? safe : `${safe}.json`
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export function IngestionPreviewDetailsDialog({
@@ -45,13 +46,13 @@ export function IngestionPreviewDetailsDialog({
   preview,
   datasetId,
   onApplyPipelinePatch,
-}: {
+}: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   preview: IngestionPreviewResponse | null
   datasetId?: string
   onApplyPipelinePatch?: (patch: Record<string, any>) => void
-}) {
+}>) {
   const router = useRouter()
   const ruleTitle = useMemo(() => {
     if (!preview) return ''
@@ -215,7 +216,7 @@ export function IngestionPreviewDetailsDialog({
                             const applied = Boolean(s?.applied)
                             const changed = Boolean(s?.changed)
                             return (
-                              <div key={`${idx}-${id}`} className="rounded-lg border border-border/60 bg-background p-2">
+                            <div key={id} className="rounded-lg border border-border/60 bg-background p-2">
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="text-[11px] font-mono text-foreground/90">{id}</div>
                                   <div className="flex items-center gap-1.5">
@@ -255,8 +256,8 @@ export function IngestionPreviewDetailsDialog({
                     <ScrollArea className="h-[240px] mt-2 pr-2">
                       {preprocessSummary.warnings.length ? (
                         <div className="space-y-1">
-                          {preprocessSummary.warnings.map((w, i) => (
-                            <div key={`${i}-${w.slice(0, 16)}`} className="rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[11px] text-warning">
+                          {preprocessSummary.warnings.map((w) => (
+                            <div key={w} className="rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[11px] text-warning">
                               {w}
                             </div>
                           ))}
@@ -282,14 +283,34 @@ export function IngestionPreviewDetailsDialog({
                     <span
                       className={cn(
                         'text-[11px] px-2 py-0.5 rounded-full border',
-                        cleanSummary.dropped
-                          ? 'bg-destructive/10 text-destructive border-destructive/25'
-                          : cleanSummary.changed
-                            ? 'bg-warning/10 text-warning border-warning/25'
-                            : 'bg-success/10 text-success border-success/25'
+                        (() => {
+    if (cleanSummary.dropped) {
+        return 'bg-destructive/10 text-destructive border-destructive/25';
+    }
+    else {
+        if (cleanSummary.changed) {
+            return 'bg-warning/10 text-warning border-warning/25';
+        }
+        else {
+            return 'bg-success/10 text-success border-success/25';
+        }
+    }
+})()
                       )}
                     >
-                      {cleanSummary.dropped ? 'dropped' : cleanSummary.changed ? 'changed' : 'no change'}
+                      {(() => {
+    if (cleanSummary.dropped) {
+        return 'dropped';
+    }
+    else {
+        if (cleanSummary.changed) {
+            return 'changed';
+        }
+        else {
+            return 'no change';
+        }
+    }
+})()}
                     </span>
                   </div>
                   {cleanSummary.dropReason ? (
@@ -459,13 +480,21 @@ export function IngestionPreviewDetailsDialog({
                       const patch = it?.suggested_pipeline_patch && typeof it.suggested_pipeline_patch === 'object' ? it.suggested_pipeline_patch : null
                       const patchKeys = patch ? Object.keys(patch || {}) : []
                       const badgeCls =
-                        severity === 'error'
-                          ? 'bg-destructive/10 text-destructive border-destructive/25'
-                          : severity === 'warning'
-                            ? 'bg-warning/10 text-warning border-warning/25'
-                            : 'bg-muted text-muted-foreground border-border/60'
+                        (() => {
+    if (severity === 'error') {
+        return 'bg-destructive/10 text-destructive border-destructive/25';
+    }
+    else {
+        if (severity === 'warning') {
+            return 'bg-warning/10 text-warning border-warning/25';
+        }
+        else {
+            return 'bg-muted text-muted-foreground border-border/60';
+        }
+    }
+})()
                       return (
-                        <div key={`${idx}-${code}`} className="rounded-xl border border-border/60 bg-background p-3">
+                        <div key={`${code}-${message}`} className="rounded-xl border border-border/60 bg-background p-3">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
@@ -504,9 +533,9 @@ export function IngestionPreviewDetailsDialog({
                             <div className="mt-2">
                               <div className="text-[10px] text-muted-foreground">samples</div>
                               <div className="mt-1 space-y-1">
-                                {samples.slice(0, 4).map((s: string, i: number) => (
+                                {samples.slice(0, 4).map((s: string) => (
                                   <div
-                                    key={`${i}-${s.slice(0, 16)}`}
+                                    key={s}
                                     className="rounded-lg border border-border/60 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground"
                                   >
                                     {toShortNote(s, 240)}
@@ -553,9 +582,9 @@ export function IngestionPreviewDetailsDialog({
                       return
                     }
                     const snap = (exp as any)?.snapshot ?? exp
-                    const rawName = String((snap as any)?.filename || 'ingestion-preview')
+                    const rawName = String((snap)?.filename || 'ingestion-preview')
                       .trim()
-                      .replace(/[^a-zA-Z0-9_.-]+/g, '_')
+                      .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
                       .slice(0, 64)
                     downloadJsonObject(snap, `${rawName}.ingestion-preview.explain.json`)
                     toast.success('已导出 explain 快照')

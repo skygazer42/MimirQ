@@ -2,7 +2,6 @@
 PDF parser (based on PyMuPDF).
 """
 from pathlib import Path
-from typing import List
 
 import fitz  # PyMuPDF
 from langchain_core.documents import Document
@@ -11,11 +10,11 @@ from langchain_core.documents import Document
 class PDFParser:
     """PDF document parser."""
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         """
         Parse a PDF into a list of LangChain Documents.
         """
-        documents: List[Document] = []
+        documents: list[Document] = []
 
         # Open PDF file.
         pdf_document = fitz.open(str(file_path))

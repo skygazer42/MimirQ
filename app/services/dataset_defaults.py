@@ -9,7 +9,7 @@ These utilities keep "per-dataset defaults" logic out of API endpoints so it can
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -23,7 +23,7 @@ def resolve_single_dataset_id_for_documents(
     *,
     tenant_id: UUID,
     document_ids: list[UUID],
-) -> Optional[UUID]:
+) -> UUID | None:
     """
     Return the dataset_id if and only if all documents belong to the same non-null dataset.
 

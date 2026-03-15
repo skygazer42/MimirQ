@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.services.hardcase_discovery_service import (
     build_parse_risk_hardcase_candidate,
     build_rag_trace_index_from_records,
@@ -128,7 +130,7 @@ def test_build_parse_risk_hardcase_candidate_emits_only_for_actionable_levels() 
     assert isinstance(c, dict)
     assert c.get("reason") == "parse_risk_tail"
     assert c.get("parse_risk_level") == "high"
-    assert c.get("parse_risk_score") == 0.82
+    assert c.get("parse_risk_score") == pytest.approx(0.82)
     assert isinstance(c.get("dedupe_key"), str) and len(str(c.get("dedupe_key") or "")) >= 16
 
     c2 = build_parse_risk_hardcase_candidate(

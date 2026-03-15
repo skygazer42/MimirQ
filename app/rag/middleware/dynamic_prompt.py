@@ -10,9 +10,10 @@ Provides dynamic prompt injection capabilities:
 
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from app.core.config import settings
 
@@ -32,7 +33,7 @@ class ContextInjector:
 
     def __init__(
         self,
-        context_sources: Optional[Dict[str, Callable]] = None,
+        context_sources: dict[str, Callable] | None = None,
     ):
         """
         Args:
@@ -44,7 +45,7 @@ class ContextInjector:
         """Add a context source."""
         self.context_sources[name] = source
 
-    def get_context(self, source_names: Optional[List[str]] = None) -> str:
+    def get_context(self, source_names: list[str] | None = None) -> str:
         """Get context from specified sources (or all if not specified)."""
         sources = source_names or list(self.context_sources.keys())
         parts = []
@@ -66,7 +67,7 @@ class ContextInjector:
         """Wrap a function to inject context."""
 
         @wraps(func)
-        def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             # Get requested context sources
             sources = state.get("context_sources", None)
             context = self.get_context(sources)
@@ -100,13 +101,13 @@ class StyleInjector:
 
     def __init__(
         self,
-        styles: Optional[Dict[str, str]] = None,
+        styles: dict[str, str] | None = None,
         default_style: str = "professional",
     ):
         self.styles = {**self.DEFAULT_STYLES, **(styles or {})}
         self.default_style = default_style
 
-    def get_style_prompt(self, style_name: Optional[str] = None) -> str:
+    def get_style_prompt(self, style_name: str | None = None) -> str:
         """Get the style prompt for a given style name."""
         name = style_name or self.default_style
         return self.styles.get(name, self.styles.get(self.default_style, ""))
@@ -115,7 +116,7 @@ class StyleInjector:
         """Wrap a function to inject style."""
 
         @wraps(func)
-        def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             style = state.get("response_style")
             if style:
                 style_prompt = self.get_style_prompt(style)
@@ -163,7 +164,7 @@ class TimeInjector:
         """Wrap a function to inject time context."""
 
         @wraps(func)
-        def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             # Only inject if time context is requested or query seems time-related
             inject_time = state.get("inject_time_context", False)
             query = state.get("question", "").lower()
@@ -194,8 +195,8 @@ class DynamicPromptMiddleware:
         self,
         enabled: bool = True,
         inject_time: bool = True,
-        default_style: Optional[str] = None,
-        context_sources: Optional[Dict[str, Callable]] = None,
+        default_style: str | None = None,
+        context_sources: dict[str, Callable] | None = None,
     ):
         self.enabled = enabled
         self.inject_time = inject_time
@@ -205,13 +206,13 @@ class DynamicPromptMiddleware:
         self.style_injector = StyleInjector(default_style=default_style or "professional")
         self.time_injector = TimeInjector()
 
-        self._custom_transformers: List[Callable] = []
+        self._custom_transformers: list[Callable] = []
 
     def add_transformer(self, transformer: Callable) -> None:
         """Add a custom prompt transformer."""
         self._custom_transformers.append(transformer)
 
-    def transform(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def transform(self, state: dict[str, Any]) -> dict[str, Any]:
         """Apply all prompt transformations."""
         if not self.enabled:
             return state
@@ -256,7 +257,7 @@ class DynamicPromptMiddleware:
         """Wrap a function with dynamic prompt injection."""
 
         @wraps(func)
-        def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             state = self.transform(state)
             return func(state, *args, **kwargs)
 
@@ -265,9 +266,9 @@ class DynamicPromptMiddleware:
 
 # Pre-configured middleware instances
 def create_dynamic_prompt_middleware(
-    enabled: Optional[bool] = None,
-    inject_time: Optional[bool] = None,
-    default_style: Optional[str] = None,
+    enabled: bool | None = None,
+    inject_time: bool | None = None,
+    default_style: str | None = None,
 ) -> DynamicPromptMiddleware:
     """Create a dynamic prompt middleware with settings from config."""
     return DynamicPromptMiddleware(
@@ -295,7 +296,7 @@ def inject_style(style: str) -> Callable:
         injector = StyleInjector(default_style=style)
 
         @wraps(func)
-        def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             if not state.get("response_style"):
                 state["response_style"] = style
             return injector(func)(state, *args, **kwargs)

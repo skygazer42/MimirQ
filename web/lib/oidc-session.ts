@@ -1,6 +1,7 @@
 'use client'
 
 import type { AuthToken } from '@/types'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 
 type RefreshResponse = {
   access_token?: string
@@ -11,7 +12,7 @@ type RefreshResponse = {
 }
 
 function normalizeTokenType(raw: unknown): string {
-  const t = String(raw || '').trim()
+  const t = toTrimmedPrimitiveString(raw)
   return t ? t.toLowerCase() : 'bearer'
 }
 
@@ -53,4 +54,3 @@ export async function tryRefreshOidcAccessToken(): Promise<AuthToken | null> {
 
   return inFlight
 }
-

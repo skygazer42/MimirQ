@@ -5,6 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function detachPromise<T>(value: PromiseLike<T> | T): void {
+  Promise.resolve(value).catch(() => {})
+}
+
 /**
  * 格式化文件大小
  */

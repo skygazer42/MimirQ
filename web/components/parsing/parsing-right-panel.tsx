@@ -7,7 +7,7 @@ type ParsingRightPanelProps = {
   className?: string
 }
 
-export function ParsingRightPanel({ children, className }: ParsingRightPanelProps) {
+export function ParsingRightPanel({ children, className }: Readonly<ParsingRightPanelProps>) {
   return (
     <div
       data-page-scroll-container="true"

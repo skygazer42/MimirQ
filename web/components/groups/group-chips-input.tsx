@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { groupApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import type { TenantGroupOut } from '@/types/backend'
 
 export function GroupChipsInput({
@@ -20,14 +20,14 @@ export function GroupChipsInput({
   placeholder = '选择组…',
   maxItems = 200,
   className,
-}: {
+}: Readonly<{
   value: string[]
   onChange: (next: string[]) => void
   disabled?: boolean
   placeholder?: string
   maxItems?: number
   className?: string
-}) {
+}>) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [groups, setGroups] = useState<TenantGroupOut[]>([])
@@ -50,7 +50,7 @@ export function GroupChipsInput({
       }
     }
 
-    void load()
+    detachPromise(load())
     return () => {
       cancelled = true
     }

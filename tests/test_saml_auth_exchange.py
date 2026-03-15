@@ -4,7 +4,7 @@ import importlib
 import json
 import uuid
 from base64 import b64decode, b64encode
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from cryptography import x509
@@ -47,8 +47,8 @@ def _build_cert_pair() -> tuple[bytes, bytes]:
         .issuer_name(issuer)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.now(timezone.utc) - timedelta(days=1))
-        .not_valid_after(datetime.now(timezone.utc) + timedelta(days=30))
+        .not_valid_before(datetime.now(UTC) - timedelta(days=1))
+        .not_valid_after(datetime.now(UTC) + timedelta(days=30))
         .sign(key, hashes.SHA256())
     )
     return (
@@ -62,7 +62,7 @@ def _build_cert_pair() -> tuple[bytes, bytes]:
 
 
 def _saml_dt(value: datetime) -> str:
-    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return value.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _build_signed_saml_response(
@@ -80,7 +80,7 @@ def _build_signed_saml_response(
     not_before: datetime | None = None,
     not_on_or_after: datetime | None = None,
 ) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     not_before = not_before or (now - timedelta(minutes=1))
     not_on_or_after = not_on_or_after or (now + timedelta(minutes=5))
     response_id = response_id or f"resp-{uuid.uuid4()}"
@@ -196,7 +196,7 @@ def _patch_user_resolution(monkeypatch: pytest.MonkeyPatch, *, user: User | None
         raising=True,
     )
     monkeypatch.setattr(UserService, "mark_login", staticmethod(lambda _db, _user: None), raising=True)
-    monkeypatch.setattr(UserService, "get_current_tenant_id", staticmethod(lambda _db, user_id: tenant_id), raising=True)
+    monkeypatch.setattr(UserService, "get_current_tenant_id", staticmethod(lambda _db, _user_id: tenant_id), raising=True)
 
 
 def test_exchange_saml_response_returns_auth_session_for_valid_assertion(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -215,7 +215,7 @@ def test_exchange_saml_response_returns_auth_session_for_valid_assertion(monkeyp
         username="alice",
         password_hash="not-used",
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         last_login_at=None,
     )
     _patch_user_resolution(monkeypatch, user=user, tenant_id=tenant_id)
@@ -277,12 +277,12 @@ def test_exchange_saml_response_rejects_expired_assertion(monkeypatch: pytest.Mo
         username="alice",
         password_hash="not-used",
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         last_login_at=None,
     )
     _patch_user_resolution(monkeypatch, user=user, tenant_id=uuid.uuid4())
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     saml_response = _build_signed_saml_response(
         private_key_pem=private_key_pem,
         cert_pem=cert_pem,
@@ -316,7 +316,7 @@ def test_exchange_saml_response_rejects_replayed_assertion(monkeypatch: pytest.M
         username="alice",
         password_hash="not-used",
         is_active=True,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         last_login_at=None,
     )
     _patch_user_resolution(monkeypatch, user=user, tenant_id=uuid.uuid4())

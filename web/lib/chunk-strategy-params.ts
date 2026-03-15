@@ -33,8 +33,8 @@ export function validateChunkStrategyParams(value: unknown): ChunkStrategyParams
       continue
     }
     if (t === 'string') {
-      if (String(v).length > 500) return { ok: false, error: '存在过长 string value（最长 500 字符）' }
-      cleaned[key] = String(v)
+      if (v.length > 500) return { ok: false, error: '存在过长 string value（最长 500 字符）' }
+      cleaned[key] = v
       continue
     }
 

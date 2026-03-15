@@ -21,11 +21,12 @@ import os
 import re
 import time
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -366,7 +367,7 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _parse_csv(raw: str) -> list[str]:
@@ -687,20 +688,20 @@ class _FileRecord:
     file_mtime: int = 0
     text_characters: int = 0
     text_tokens_est: int = 0
-    language: Optional[str] = None
-    language_confidence: Optional[float] = None
+    language: str | None = None
+    language_confidence: float | None = None
     estimated_text: bool = False
-    pdf_scanned: Optional[bool] = None
-    pdf_pages: Optional[dict[str, Any]] = None
-    spreadsheet: Optional[dict[str, Any]] = None
-    text_simhash64: Optional[str] = None
+    pdf_scanned: bool | None = None
+    pdf_pages: dict[str, Any] | None = None
+    spreadsheet: dict[str, Any] | None = None
+    text_simhash64: str | None = None
     pii_hits: dict[str, int] = field(default_factory=dict)
     secrets_hits: dict[str, int] = field(default_factory=dict)
     pii_samples: list[dict[str, Any]] = field(default_factory=list)
     secrets_samples: list[dict[str, Any]] = field(default_factory=list)
-    file_sha256: Optional[str] = None
+    file_sha256: str | None = None
     findings: list[str] = field(default_factory=list)
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 def _iter_files(root: Path, *, max_files: int) -> Iterable[Path]:
@@ -981,7 +982,7 @@ def run_dataset_precheck_scan(
     pdf_scanned = 0
     pdf_not_scanned = 0
     pdf_unknown = 0
-    finding_counts: dict[str, int] = {k: 0 for k in FINDING_KEY_REASONS.keys()}
+    finding_counts: dict[str, int] = dict.fromkeys(FINDING_KEY_REASONS.keys(), 0)
     risk_bucket_counts: dict[str, int] = {}
 
     # For exact-dup finding: sha256 -> count.

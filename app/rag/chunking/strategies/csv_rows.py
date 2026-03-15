@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -30,11 +30,11 @@ class _Row:
 _ROW_LINE_RE = re.compile(r"(?m)^\s*row\s+(?P<num>\d{1,9})\s*:\s*", flags=re.IGNORECASE)
 
 
-def _iter_rows(text: str) -> List[_Row]:
+def _iter_rows(text: str) -> list[_Row]:
     matches = list(_ROW_LINE_RE.finditer(text or ""))
     if len(matches) < 2:
         return []
-    rows: List[_Row] = []
+    rows: list[_Row] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -66,8 +66,8 @@ class CsvRowsChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _FakeDB:
@@ -21,7 +21,7 @@ def test_run_audit_log_retention_dry_run(monkeypatch):  # noqa: ANN001
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 2, 27, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 2, 27, 0, 0, 0, tzinfo=UTC)
 
     called = {"plan": 0, "purge": 0, "audit": 0}
 
@@ -65,7 +65,7 @@ def test_run_audit_log_retention_execute(monkeypatch):  # noqa: ANN001
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 2, 27, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 2, 27, 0, 0, 0, tzinfo=UTC)
 
     monkeypatch.setattr(retention_jobs, "plan_audit_log_purge", lambda *_a, **_k: 3, raising=True)
     monkeypatch.setattr(retention_jobs, "purge_audit_log_rows", lambda *_a, **_k: 2, raising=True)

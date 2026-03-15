@@ -12,7 +12,7 @@ Security notes:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -25,12 +25,12 @@ class IngestionPreprocessStep(BaseModel):
     """
 
     id: str = Field(..., min_length=1, max_length=80)
-    params: Dict[str, Any] = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 class IngestionPreprocessConfig(BaseModel):
     enabled: bool = True
-    steps: List[IngestionPreprocessStep] = Field(default_factory=list)
+    steps: list[IngestionPreprocessStep] = Field(default_factory=list)
 
 
 class IngestionRuleMatch(BaseModel):
@@ -41,8 +41,8 @@ class IngestionRuleMatch(BaseModel):
     - filename_regex: optional regex applied to the *original filename*.
     """
 
-    extensions: List[str] = Field(default_factory=list)
-    filename_regex: Optional[str] = Field(default=None, max_length=500)
+    extensions: list[str] = Field(default_factory=list)
+    filename_regex: str | None = Field(default=None, max_length=500)
 
 
 class IngestionRule(BaseModel):
@@ -53,17 +53,17 @@ class IngestionRule(BaseModel):
     preprocess: IngestionPreprocessConfig = Field(default_factory=IngestionPreprocessConfig)
 
     # Optional overrides (applied when policy is enabled and matches).
-    parser_backend: Optional[str] = Field(default=None, max_length=50)
-    chunk_strategy: Optional[str] = Field(default=None, max_length=80)
-    governance_profile_ref: Optional[str] = Field(default=None, max_length=120)
+    parser_backend: str | None = Field(default=None, max_length=50)
+    chunk_strategy: str | None = Field(default=None, max_length=80)
+    governance_profile_ref: str | None = Field(default=None, max_length=120)
 
     # Partial DocumentPipelineOptions shape (validated server-side).
-    pipeline_patch: Dict[str, Any] = Field(default_factory=dict)
+    pipeline_patch: dict[str, Any] = Field(default_factory=dict)
 
 
 class IngestionPolicy(BaseModel):
     version: str = Field(default="1", description="Policy schema version")
-    rules: List[IngestionRule] = Field(default_factory=list)
+    rules: list[IngestionRule] = Field(default_factory=list)
 
 
 class TableRoutingSettingAudit(BaseModel):
@@ -75,7 +75,7 @@ class IngestionRuleTableRoutingAudit(BaseModel):
     rule_id: str
     rule_name: str
     enabled: bool
-    match_extensions: List[str] = Field(default_factory=list)
+    match_extensions: list[str] = Field(default_factory=list)
     table_rule_match: bool = False
     table_store_enabled: TableRoutingSettingAudit
     table_store_auto_route: TableRoutingSettingAudit
@@ -84,10 +84,10 @@ class IngestionRuleTableRoutingAudit(BaseModel):
 
 class DatasetTableRoutingPolicyAudit(BaseModel):
     version: str = Field(default="1")
-    table_extensions: List[str] = Field(default_factory=lambda: [".csv", ".xls", ".xlsx"])
-    global_defaults: Dict[str, bool] = Field(default_factory=dict)
-    dataset_pipeline_defaults: Dict[str, bool] = Field(default_factory=dict)
-    rules: List[IngestionRuleTableRoutingAudit] = Field(default_factory=list)
+    table_extensions: list[str] = Field(default_factory=lambda: [".csv", ".xls", ".xlsx"])
+    global_defaults: dict[str, bool] = Field(default_factory=dict)
+    dataset_pipeline_defaults: dict[str, bool] = Field(default_factory=dict)
+    rules: list[IngestionRuleTableRoutingAudit] = Field(default_factory=list)
 
 
 class IngestionPolicyWithAudit(IngestionPolicy):
@@ -108,17 +108,17 @@ class IngestionPolicyVersion(BaseModel):
 
     id: str = Field(..., min_length=1, max_length=100)
     created_at: datetime
-    created_by: Optional[str] = None
+    created_by: str | None = None
     source: Literal["put", "import", "rollback"] = "put"
     policy: IngestionPolicy
-    note: Optional[str] = Field(default=None, max_length=200)
-    rollback_from_version_id: Optional[str] = None
-    rollback_to_version_id: Optional[str] = None
+    note: str | None = Field(default=None, max_length=200)
+    rollback_from_version_id: str | None = None
+    rollback_to_version_id: str | None = None
 
 
 class IngestionPolicyVersionListResponse(BaseModel):
-    current_version_id: Optional[str] = None
-    items: List[IngestionPolicyVersion] = Field(default_factory=list)
+    current_version_id: str | None = None
+    items: list[IngestionPolicyVersion] = Field(default_factory=list)
 
 
 class IngestionPolicyRollbackRequest(BaseModel):

@@ -7,8 +7,8 @@ It intentionally does not commit; callers manage transaction boundaries.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Optional, Sequence
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -27,7 +27,7 @@ class SqlAlchemyCatalogStore(CatalogStore):
         *,
         tenant_id: UUID,
         dataset_id: UUID,
-        connector_config_id: Optional[UUID],
+        connector_config_id: UUID | None,
         table: CatalogTableInput,
         seen_at: datetime,
     ) -> UUID:

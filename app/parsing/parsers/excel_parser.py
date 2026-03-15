@@ -10,7 +10,6 @@ Outputs Markdown tables (best-effort) for better fidelity in downstream preview/
 
 import io
 from pathlib import Path
-from typing import List, Optional
 
 from langchain_core.documents import Document
 
@@ -61,7 +60,7 @@ class ExcelParser:
         self.max_cols = int(max_cols or 0)
         self.max_cell_chars = int(max_cell_chars or 0)
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         ext = file_path.suffix.lower()
 
         if ext == ".xlsx":
@@ -70,7 +69,7 @@ class ExcelParser:
         # Best-effort for .xls using pandas; may require extra engines.
         return self._parse_via_pandas(file_path)
 
-    def _parse_xlsx(self, file_path: Path) -> List[Document]:
+    def _parse_xlsx(self, file_path: Path) -> list[Document]:
         from openpyxl import load_workbook  # type: ignore
 
         # read_only=False so we can inspect merged cells reliably.
@@ -191,7 +190,7 @@ class ExcelParser:
             except Exception:
                 pass
 
-    def _parse_via_pandas(self, file_path: Path) -> List[Document]:
+    def _parse_via_pandas(self, file_path: Path) -> list[Document]:
         import pandas as pd  # type: ignore
 
         # Read a small preview; pandas will select an engine based on extension.
@@ -227,7 +226,7 @@ class ExcelParser:
         else:
             out.write("_Empty sheet._\n")
 
-        cols: Optional[list[str]] = None
+        cols: list[str] | None = None
         try:
             cols = [str(c) for c in list(df.columns)]
         except Exception:

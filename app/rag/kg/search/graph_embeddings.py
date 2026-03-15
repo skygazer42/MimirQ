@@ -17,8 +17,8 @@ Implementation notes:
 from __future__ import annotations
 
 import random
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Sequence
 
 import numpy as np
 
@@ -91,7 +91,7 @@ def compute_walkhash_embeddings(
         if not neighbors[start]:
             continue
         for _ in range(num_walks):
-            walk: List[int] = [start]
+            walk: list[int] = [start]
             cur = start
             for _step in range(walk_length):
                 nbrs = neighbors[cur]
@@ -122,13 +122,13 @@ def compute_walkhash_embeddings(
     return emb
 
 
-def _normalize_adj(adjacency: Dict[str, Iterable[str]]) -> Dict[str, List[str]]:
-    adj: Dict[str, List[str]] = {}
+def _normalize_adj(adjacency: dict[str, Iterable[str]]) -> dict[str, list[str]]:
+    adj: dict[str, list[str]] = {}
     for src, nbrs in (adjacency or {}).items():
         s = str(src or "").strip()
         if not s:
             continue
-        out: List[str] = []
+        out: list[str] = []
         seen: set[str] = set()
         for nb in nbrs or []:
             t = str(nb or "").strip()
@@ -153,13 +153,13 @@ def _normalize_adj(adjacency: Dict[str, Iterable[str]]) -> Dict[str, List[str]]:
 
 def recall_similar_entity_nodes(
     *,
-    adjacency: Dict[str, Iterable[str]],
+    adjacency: dict[str, Iterable[str]],
     seed_entity_node_keys: Sequence[str],
     params: WalkHashParams,
     top_k: int,
     min_similarity: float,
     entity_prefix: str = "ent:",
-) -> List[dict]:
+) -> list[dict]:
     """
     Given an adjacency dict and a set of seed entity nodes, return top-K similar entity nodes.
 
@@ -180,12 +180,12 @@ def recall_similar_entity_nodes(
 
     nodes = sorted(adj.keys())
     idx_by_node = {n: i for i, n in enumerate(nodes)}
-    neighbors_idx: List[List[int]] = []
+    neighbors_idx: list[list[int]] = []
     for n in nodes:
         nbrs = [idx_by_node[t] for t in adj.get(n, []) if t in idx_by_node]
         neighbors_idx.append(nbrs)
 
-    seed_idx: List[int] = [idx_by_node[s] for s in seeds if s in idx_by_node]
+    seed_idx: list[int] = [idx_by_node[s] for s in seeds if s in idx_by_node]
     if not seed_idx:
         return []
 
@@ -209,7 +209,7 @@ def recall_similar_entity_nodes(
     best = sims.max(axis=1)
     best_seed = sims.argmax(axis=1)
 
-    hits: List[dict] = []
+    hits: list[dict] = []
     for row_idx, cand_i in enumerate(candidate_idx):
         raw = float(best[row_idx])
         sim = max(0.0, min(1.0, raw))
@@ -233,16 +233,16 @@ def build_entity_event_adjacency(
     *,
     seed_entity_ids: Sequence[str],
     event_ids: Sequence[str],
-    event_entity_links: Dict[str, Sequence[object]],
+    event_entity_links: dict[str, Sequence[object]],
     kept_entity_ids: set[str],
     relation_edges: Sequence[tuple[str, str]] | None = None,
-) -> Dict[str, List[str]]:
+) -> dict[str, list[str]]:
     """
     Build adjacency dict for a bipartite Entity<->Event graph with optional Entity<->Entity relation edges.
 
     This helper is intentionally decoupled from SQLAlchemy so it can be unit-tested easily.
     """
-    adj: Dict[str, set[str]] = {}
+    adj: dict[str, set[str]] = {}
 
     def _add(a: str, b: str) -> None:
         if not a or not b or a == b:
@@ -280,7 +280,7 @@ def build_entity_event_adjacency(
         _add(f"ent:{aa}", f"ent:{bb}")
 
     # Convert to list adjacency (sorted for determinism).
-    out: Dict[str, List[str]] = {}
+    out: dict[str, list[str]] = {}
     for k, v in adj.items():
         out[str(k)] = sorted(str(x) for x in v if str(x))
     return out

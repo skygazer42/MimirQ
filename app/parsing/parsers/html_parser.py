@@ -9,7 +9,6 @@ that works well with downstream governance + chunking.
 
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional
 
 from langchain_core.documents import Document
 
@@ -32,11 +31,11 @@ def _get_html_text():  # noqa: ANN202
 class HtmlParser:
     """HTML document parser with readability-based main-content extraction."""
 
-    def parse(self, file_path: Path, *, html_xpath: str | None = None) -> List[Document]:
+    def parse(self, file_path: Path, *, html_xpath: str | None = None) -> list[Document]:
         decoded = read_text_file(file_path)
         raw_html = decoded.text or ""
 
-        title: Optional[str] = None
+        title: str | None = None
         extracted_html: str = raw_html
 
         # 1) Best-effort: extract "main article" using readability-lxml.

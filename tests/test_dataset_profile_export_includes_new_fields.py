@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _DummyDataset:  # noqa: D101
@@ -20,7 +20,7 @@ def test_dataset_profile_export_includes_new_distribution_fields(monkeypatch) ->
 
     dataset_id = uuid.uuid4()
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     stub = DatasetProfileSummary(
         dataset_id=dataset_id,

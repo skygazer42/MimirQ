@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import threading
 
@@ -64,6 +65,7 @@ def test_embedding_concurrency_cap_limits_in_flight_requests(monkeypatch):  # no
 
     class _DummyAsyncClient:
         async def post(self, _url: str, *, json: dict, headers: dict, timeout=None):  # noqa: ANN201, ANN001
+            await asyncio.sleep(0)  # Sonar S7503
             _ = json
             _ = headers
             _ = timeout

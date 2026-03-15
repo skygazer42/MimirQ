@@ -6,7 +6,6 @@ canonical backend names used internally.
 """
 
 
-from typing import Optional
 
 _BACKEND_ALIASES: dict[str, str] = {
     # PyMuPDF basic parser aliases
@@ -42,7 +41,7 @@ _BACKEND_ALIASES: dict[str, str] = {
 }
 
 
-def normalize_parser_backend(value: Optional[str]) -> str:
+def normalize_parser_backend(value: str | None) -> str:
     """
     Normalize user-facing backend values into our canonical identifiers.
 

@@ -4,7 +4,6 @@ LlamaIndex-based chunking strategies.
 Provides intelligent chunking strategies based on LlamaIndex.
 """
 
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -53,10 +52,10 @@ class LlamaIndexChunker(BaseChunker):
             include_prev_next_rel=False,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         from llama_index.core import Document as LlamaDocument
         
-        chunks: List[Document] = []
+        chunks: list[Document] = []
         for doc in documents:
             li_doc = LlamaDocument(text=doc.page_content, metadata=dict(doc.metadata or {}))
             nodes = self.splitter.get_nodes_from_documents([li_doc])
@@ -111,11 +110,11 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
             include_prev_next_rel=False,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         from llama_index.core import Document as LlamaDocument
         from llama_index.core.schema import NodeRelationship
         
-        chunks: List[Document] = []
+        chunks: list[Document] = []
         for doc in documents:
             li_doc = LlamaDocument(text=doc.page_content, metadata=dict(doc.metadata or {}))
             nodes = self.parser.get_nodes_from_documents([li_doc])

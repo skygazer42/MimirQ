@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -39,12 +39,12 @@ _ENDPOINT_RE = re.compile(
 )
 
 
-def _iter_endpoints(text: str) -> List[_Endpoint]:
+def _iter_endpoints(text: str) -> list[_Endpoint]:
     matches = list(_ENDPOINT_RE.finditer(text or ""))
     if len(matches) < 2:
         return []
 
-    endpoints: List[_Endpoint] = []
+    endpoints: list[_Endpoint] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -76,8 +76,8 @@ class APIReferenceChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

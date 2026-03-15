@@ -4,7 +4,6 @@ Global constants.
 Centralize magic strings and hardcoded values for maintainability.
 """
 
-from typing import FrozenSet
 
 # =============================================================================
 # Timeout constants (seconds)
@@ -58,25 +57,25 @@ class FileTypes:
     JSON = ".json"
 
     # Supported extension sets
-    DOCUMENT_EXTENSIONS: FrozenSet[str] = frozenset({
+    DOCUMENT_EXTENSIONS: frozenset[str] = frozenset({
         ".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX
     })
 
-    SPREADSHEET_EXTENSIONS: FrozenSet[str] = frozenset({
+    SPREADSHEET_EXTENSIONS: frozenset[str] = frozenset({
         ".xls", XLSX, ".csv"
     })
 
-    WEB_EXTENSIONS: FrozenSet[str] = frozenset({
+    WEB_EXTENSIONS: frozenset[str] = frozenset({
         HTML, ".htm", JSON
     })
 
-    ALL_SUPPORTED: FrozenSet[str] = frozenset({
+    ALL_SUPPORTED: frozenset[str] = frozenset({
         ".pdf", ".txt", ".md", ".doc", DOCX, ".ppt", PPTX,
         ".xls", XLSX, ".csv", HTML, ".htm", JSON
     })
 
     # MarkItDown special support
-    MARKITDOWN_EXTENSIONS: FrozenSet[str] = frozenset({
+    MARKITDOWN_EXTENSIONS: frozenset[str] = frozenset({
         ".doc", DOCX, ".ppt", PPTX, ".xls", XLSX, ".csv", HTML, ".htm", JSON
     })
 
@@ -96,12 +95,12 @@ class DocumentStatus:
     CANCELLED = "cancelled"
 
     # Terminal states
-    TERMINAL_STATES: FrozenSet[str] = frozenset({
+    TERMINAL_STATES: frozenset[str] = frozenset({
         "completed", "failed", "quarantined", "cancelled"
     })
 
     # Active states
-    ACTIVE_STATES: FrozenSet[str] = frozenset({
+    ACTIVE_STATES: frozenset[str] = frozenset({
         "pending", "processing"
     })
 
@@ -155,7 +154,7 @@ class EmbeddingProviders:
     DASHSCOPE = "dashscope"
     OLLAMA = "ollama"
 
-    ALL: FrozenSet[str] = frozenset({
+    ALL: frozenset[str] = frozenset({
         "openai", "openai_compatible", "local", "dashscope", "ollama"
     })
 
@@ -185,7 +184,7 @@ class PDFBackends:
     DOCLING = "docling"
     TCADP = "tcadp"
 
-    ALL: FrozenSet[str] = frozenset({
+    ALL: frozenset[str] = frozenset({
         "auto", "basic", "mineru", "deepdoc", "deepseek_ocr", "markitdown", "docling", "tcadp"
     })
 
@@ -203,7 +202,7 @@ class RetrievalModes:
     MMR = "mmr"
     AUTO = "auto"
 
-    ALL: FrozenSet[str] = frozenset({
+    ALL: frozenset[str] = frozenset({
         "vector", "keyword", "hybrid", "mmr", "auto"
     })
 
@@ -223,12 +222,12 @@ class UserRoles:
     VIEWER = "viewer"
 
     # Editable roles
-    EDIT_ROLES: FrozenSet[str] = frozenset({
+    EDIT_ROLES: frozenset[str] = frozenset({
         "owner", "admin", "editor", "dataset_operator"
     })
 
     # Admin roles
-    ADMIN_ROLES: FrozenSet[str] = frozenset({
+    ADMIN_ROLES: frozenset[str] = frozenset({
         "owner", "admin"
     })
 

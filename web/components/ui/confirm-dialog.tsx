@@ -1,7 +1,7 @@
 /**
  * ConfirmDialog - Baseline UI wrapper for confirmations.
  *
- * Prefer this over native `window.confirm` dialogs so we keep:
+ * Prefer this over native `globalThis.window.confirm` dialogs so we keep:
  * - consistent styling (token-first)
  * - keyboard/focus behavior (Radix)
  * - reduced-motion support
@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { cn } from "@/lib/utils"
+import { cn, detachPromise } from '@/lib/utils'
 
 type ConfirmDialogProps = {
   title: React.ReactNode
@@ -44,7 +44,7 @@ export function ConfirmDialog({
   confirmDisabled = false,
   onConfirm,
   children,
-}: ConfirmDialogProps) {
+}: Readonly<ConfirmDialogProps>) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
@@ -58,7 +58,7 @@ export function ConfirmDialog({
           <AlertDialogPrimitive.Action
             type="button"
             disabled={confirmDisabled}
-            onClick={() => void onConfirm()}
+            onClick={() => detachPromise(onConfirm())}
             className={cn(buttonVariants({ variant: confirmVariant, size: "sm" }))}
           >
             {confirmLabel}

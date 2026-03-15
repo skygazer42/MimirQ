@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -31,7 +32,7 @@ class _DummyDB:
             obj.chunk_count = 0
         if getattr(obj, "total_characters", None) is None:
             obj.total_characters = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -54,7 +55,7 @@ def test_upload_dedup_cross_version_reuses_existing_doc_and_reprocesses(monkeypa
 
     payload = b"hello"
     sha = hashlib.sha256(payload).hexdigest()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     dup = DBDocument(
         id=dup_id,
@@ -86,17 +87,18 @@ def test_upload_dedup_cross_version_reuses_existing_doc_and_reprocesses(monkeypa
             self.dataset_metadata = {}
 
     # Avoid real DB lookups in unit test.
-    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *args, **kwargs: _Dataset(dataset_id), raising=True)
+    monkeypatch.setattr(documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True)
 
     # Ensure exact-dedup (same sha + same pipeline_hash) does not trigger.
-    monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module, "_find_duplicate_document", lambda *_args, **_kwargs: None, raising=True)
 
     # Cross-version dedup should hit by sha only (new helper is introduced by the feature).
-    monkeypatch.setattr(documents_module, "_find_duplicate_document_by_sha", lambda *args, **kwargs: dup, raising=False)
+    monkeypatch.setattr(documents_module, "_find_duplicate_document_by_sha", lambda *_args, **_kwargs: dup, raising=False)
 
     calls = {"retry": 0}
 
     async def _fake_retry(**kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         calls["retry"] += 1
         dup.status = "pending"
         dup.processing_progress = 0
@@ -113,6 +115,7 @@ def test_upload_dedup_cross_version_reuses_existing_doc_and_reprocesses(monkeypa
     monkeypatch.setattr(documents_module, "retry_document_processing", _fake_retry, raising=True)
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return "task-123"
 
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue, raising=True)

@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, FolderTree, Loader2, RefreshCw } from 'lucid
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { datasetCategoryApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 
@@ -32,7 +32,7 @@ export function DatasetCategoryTreeView({
   onSelect,
   className,
   expandAll = false,
-}: DatasetCategoryTreeViewProps) {
+}: Readonly<DatasetCategoryTreeViewProps>) {
   const initialExpanded = useMemo(() => {
     const next = new Set<string>()
     if (expandAll) {
@@ -116,7 +116,7 @@ export function DatasetCategoryTreeView({
         onClick={() => onSelect(null)}
         className={cn(
           'w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-sm transition-colors focus-ring',
-          !selectedId ? 'bg-primary/10 text-primary' : 'hover:bg-muted/40'
+          selectedId ? 'hover:bg-muted/40' : 'bg-primary/10 text-primary'
         )}
       >
         <span className="flex items-center gap-2 min-w-0">
@@ -135,7 +135,7 @@ type DatasetCategoryTreeProps = {
   className?: string
 }
 
-export function DatasetCategoryTree({ selectedId, onSelect, className }: DatasetCategoryTreeProps) {
+export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonly<DatasetCategoryTreeProps>) {
   const [resp, setResp] = useState<DatasetCategoryTreeResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -154,7 +154,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Dataset
   }, [])
 
   useEffect(() => {
-    void load()
+    detachPromise(load())
   }, [load])
 
   const items = resp?.items || []
@@ -167,7 +167,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Dataset
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-muted-foreground"
-          onClick={() => void load()}
+          onClick={() => detachPromise(load())}
           disabled={loading}
           aria-label="刷新分类树"
         >
@@ -175,16 +175,22 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Dataset
         </Button>
       </div>
 
-      {loading && !resp ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+      {(() => {
+    if (loading && !resp) {
+        return (<div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
           加载中…
-        </div>
-      ) : items.length ? (
-        <DatasetCategoryTreeView items={items} selectedId={selectedId} onSelect={onSelect} />
-      ) : (
-        <div className="text-xs text-muted-foreground">暂无分类</div>
-      )}
+        </div>);
+    }
+    else {
+        if (items.length) {
+            return (<DatasetCategoryTreeView items={items} selectedId={selectedId} onSelect={onSelect}/>);
+        }
+        else {
+            return (<div className="text-xs text-muted-foreground">暂无分类</div>);
+        }
+    }
+})()}
     </div>
   )
 }

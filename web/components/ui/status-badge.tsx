@@ -54,13 +54,13 @@ export function StatusBadge({
   label,
   showIcon = true,
   dense = false,
-}: {
+}: Readonly<{
   status: StatusBadgeStatus
   className?: string
   label?: string
   showIcon?: boolean
   dense?: boolean
-}) {
+}>) {
   const meta = STATUS_META[status]
   const Icon = meta.icon
   return (

@@ -9,7 +9,8 @@ Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> 
 
 
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.core.config import settings
 from app.rag.workflows.base import (
@@ -32,7 +33,7 @@ class EvaluationResult:
         self,
         score: float,
         feedback: str = "",
-        criteria_scores: Optional[Dict[str, float]] = None,
+        criteria_scores: dict[str, float] | None = None,
     ):
         self.score = score
         self.feedback = feedback
@@ -60,7 +61,7 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
 
     def __init__(
         self,
-        llm: Optional[Any] = None,
+        llm: Any | None = None,
         threshold: float = EVALUATOR_THRESHOLD,
         max_iterations: int = EVALUATOR_MAX_ITERATIONS,
         **kwargs,
@@ -77,9 +78,9 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
         super().__init__(max_iterations=max_iterations, **kwargs)
         self._llm = llm
         self.threshold = threshold
-        self._generator: Optional[Callable[[Dict[str, Any]], Awaitable[str]]] = None
-        self._evaluator: Optional[Callable[[str, str, List[Dict[str, Any]]], Awaitable[EvaluationResult]]] = None
-        self._optimizer: Optional[Callable[[str, str, str], Awaitable[str]]] = None
+        self._generator: Callable[[dict[str, Any]], Awaitable[str]] | None = None
+        self._evaluator: Callable[[str, str, list[dict[str, Any]]], Awaitable[EvaluationResult]] | None = None
+        self._optimizer: Callable[[str, str, str], Awaitable[str]] | None = None
 
     @property
     def mode(self) -> WorkflowMode:
@@ -92,7 +93,7 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
 
     def set_generator(
         self,
-        generator: Callable[[Dict[str, Any]], Awaitable[str]],
+        generator: Callable[[dict[str, Any]], Awaitable[str]],
     ) -> "EvaluatorOptimizerWorkflow":
         """Set the answer generator function."""
         self._generator = generator
@@ -100,7 +101,7 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
 
     def set_evaluator(
         self,
-        evaluator: Callable[[str, str, List[Dict[str, Any]]], Awaitable[EvaluationResult]],
+        evaluator: Callable[[str, str, list[dict[str, Any]]], Awaitable[EvaluationResult]],
     ) -> "EvaluatorOptimizerWorkflow":
         """
         Set the evaluator function.
@@ -122,7 +123,7 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
         self._optimizer = optimizer
         return self
 
-    async def _default_generate(self, state: Dict[str, Any]) -> str:
+    async def _default_generate(self, state: dict[str, Any]) -> str:
         """Default generation using LLM."""
         if self._llm is None:
             raise ValueError("LLM not configured")
@@ -154,7 +155,7 @@ Provide a clear, comprehensive answer:"""
         self,
         question: str,
         answer: str,
-        contexts: List[Dict[str, Any]],
+        contexts: list[dict[str, Any]],
     ) -> EvaluationResult:
         """Default evaluation using LLM."""
         if self._llm is None:
@@ -251,7 +252,7 @@ Provide an improved answer that addresses the feedback:"""
         response = await self._llm.ainvoke(prompt)
         return response.content if hasattr(response, 'content') else str(response)
 
-    async def run(self, state: Dict[str, Any]) -> WorkflowResult:
+    async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
         Execute the evaluator-optimizer workflow.
 
@@ -271,9 +272,9 @@ Provide an improved answer that addresses the feedback:"""
         question = self.get_question(state)
         contexts = state.get("contexts", [])
         current_state = dict(state)
-        execution_path: List[str] = []
+        execution_path: list[str] = []
         iterations = 0
-        evaluation_history: List[Dict[str, Any]] = []
+        evaluation_history: list[dict[str, Any]] = []
 
         # Get functions (use defaults if not set)
         generate = self._generator or self._default_generate
@@ -366,8 +367,8 @@ Provide an improved answer that addresses the feedback:"""
 
 
 def create_ragas_evaluator(
-    metrics: Optional[List[str]] = None,
-) -> Callable[[str, str, List[Dict[str, Any]]], Awaitable[EvaluationResult]]:
+    metrics: list[str] | None = None,
+) -> Callable[[str, str, list[dict[str, Any]]], Awaitable[EvaluationResult]]:
     """
     Create an evaluator using RAGAS metrics.
 
@@ -382,7 +383,7 @@ def create_ragas_evaluator(
     async def evaluator(
         question: str,
         answer: str,
-        contexts: List[Dict[str, Any]],
+        contexts: list[dict[str, Any]],
     ) -> EvaluationResult:
         try:
             from datasets import Dataset

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import pytest
@@ -13,6 +14,7 @@ from app.core.logging_config import configure_logging
 @pytest.mark.asyncio
 async def test_log_records_include_trace_id_and_span_id(caplog):
     # Ensure our record factory is installed.
+    await asyncio.sleep(0)  # Sonar S7503
     configure_logging(log_level="INFO", log_format="plain")
 
     logger = logging.getLogger("tests.otel")

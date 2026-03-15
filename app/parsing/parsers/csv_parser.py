@@ -10,7 +10,6 @@ key-value rows, which works well for downstream chunking and retrieval.
 import csv
 import io
 from pathlib import Path
-from typing import List, Optional
 
 from langchain_core.documents import Document
 
@@ -27,11 +26,11 @@ def _safe_cell(value: str, *, max_chars: int = 2000) -> str:
 class CsvParser:
     """CSV parser that emits a row-oriented, chunk-friendly text representation."""
 
-    def __init__(self, *, max_rows: Optional[int] = None, max_cell_chars: int = 2000) -> None:
+    def __init__(self, *, max_rows: int | None = None, max_cell_chars: int = 2000) -> None:
         self.max_rows = int(max_rows) if max_rows is not None else None
         self.max_cell_chars = int(max_cell_chars or 0)
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         decoded = read_text_file(file_path)
         raw = decoded.text or ""
         sample = raw[:8192]

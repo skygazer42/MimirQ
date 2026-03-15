@@ -9,7 +9,7 @@ Usage:
 """
 
 import inspect
-from typing import Any, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.rag.chunking.base import BaseChunker
@@ -471,7 +471,7 @@ class ChunkerFactory:
         "pdf_layout_v1": "pdf_layout",
     }
 
-    def resolve_strategy(self, strategy: Optional[str]) -> str:
+    def resolve_strategy(self, strategy: str | None) -> str:
         """
         Resolve and validate the chunking strategy name.
 
@@ -508,7 +508,7 @@ class ChunkerFactory:
 
     def get_chunker(
         self,
-        strategy: Optional[str],
+        strategy: str | None,
         chunk_size: int,
         chunk_overlap: int,
         **kwargs: Any,
@@ -571,7 +571,7 @@ class ChunkerFactory:
 
         return chunker_cls(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
-    def is_integrated_pipeline_strategy(self, strategy: Optional[str]) -> bool:
+    def is_integrated_pipeline_strategy(self, strategy: str | None) -> bool:
         """Check if the strategy requires the integrated parse+chunk pipeline."""
         try:
             resolved = self.resolve_strategy(strategy)

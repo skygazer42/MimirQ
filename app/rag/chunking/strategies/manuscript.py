@@ -68,7 +68,6 @@ from __future__ import annotations
 
 import json
 import re
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -603,8 +602,8 @@ class ManuscriptChunker(BaseChunker):
 
         return self._fallback_recursive, "langchain_recursive"
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        chunks: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        chunks: list[Document] = []
         for doc in documents:
             chunker, selected = self._select(doc)
             produced = chunker.split_documents([doc])

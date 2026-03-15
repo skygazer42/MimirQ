@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -94,6 +95,7 @@ async def test_kg_search_no_accessible_documents_returns_empty(monkeypatch: pyte
     monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [], raising=True)
 
     async def _should_not_be_called(*_a, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         raise AssertionError("kg_search should not run when no documents are accessible")
 
     monkeypatch.setattr(routes_mod, "kg_search", _should_not_be_called, raising=True)
@@ -137,6 +139,7 @@ async def test_kg_search_timeout_returns_504(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
 
     async def _fake_kg_search(*_a, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         raise asyncio.TimeoutError("boom")
 
     monkeypatch.setattr(routes_mod, "kg_search", _fake_kg_search, raising=True)
@@ -163,6 +166,7 @@ async def test_kg_search_allows_dataset_scope_without_document_ids(monkeypatch: 
     called: dict[str, object] = {}
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         called["query"] = query
         called["tenant_id"] = tenant_id
         called["document_ids"] = document_ids

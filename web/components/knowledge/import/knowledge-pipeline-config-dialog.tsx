@@ -12,7 +12,7 @@ type KnowledgePipelineConfigDialogProps = {
   onOpenChange: (open: boolean) => void
 }
 
-export function KnowledgePipelineConfigDialog({ open, onOpenChange }: KnowledgePipelineConfigDialogProps) {
+export function KnowledgePipelineConfigDialog({ open, onOpenChange }: Readonly<KnowledgePipelineConfigDialogProps>) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
 

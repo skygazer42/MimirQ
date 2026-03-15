@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -32,7 +32,7 @@ class _Block:
     start: int
     end: int
     kind: str  # "text" | "table"
-    header_end: Optional[int] = None  # for table blocks
+    header_end: int | None = None  # for table blocks
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ _ALIGN_RE = re.compile(
 )
 
 
-def _is_table_start(lines: List[_Line], i: int) -> bool:
+def _is_table_start(lines: list[_Line], i: int) -> bool:
     if i + 1 >= len(lines):
         return False
     a = lines[i].text.rstrip("\r\n")
@@ -56,8 +56,8 @@ def _is_table_start(lines: List[_Line], i: int) -> bool:
     return bool(_ALIGN_RE.match(b))
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -69,12 +69,12 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _build_blocks(text: str) -> List[_Block]:
+def _build_blocks(text: str) -> list[_Block]:
     lines = _iter_lines(text)
     if not lines:
         return [_Block(start=0, end=len(text), kind="text")]
 
-    blocks: List[_Block] = []
+    blocks: list[_Block] = []
     i = 0
     cursor = 0
     while i < len(lines):
@@ -108,7 +108,7 @@ def _build_blocks(text: str) -> List[_Block]:
         blocks.append(_Block(start=cursor, end=len(text), kind="text"))
 
     # Merge adjacent text blocks.
-    merged: List[_Block] = []
+    merged: list[_Block] = []
     for b in blocks:
         if merged and b.kind == "text" and merged[-1].kind == "text" and merged[-1].end == b.start:
             prev = merged.pop()
@@ -125,13 +125,13 @@ def looks_like_markdown_table(text: str) -> bool:
     return any(b.kind == "table" for b in blocks)
 
 
-def _iter_table_rows(text: str, *, start: int, end: int, header_end: int) -> List[_Span]:
+def _iter_table_rows(text: str, *, start: int, end: int, header_end: int) -> list[_Span]:
     # Rows are any non-empty lines after the alignment row.
     body = text[header_end:end]
     if not body:
         return []
 
-    rows: List[_Span] = []
+    rows: list[_Span] = []
     offset = header_end
     for raw in body.splitlines(keepends=True):
         line_start = offset
@@ -158,8 +158,8 @@ class MarkdownTableChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

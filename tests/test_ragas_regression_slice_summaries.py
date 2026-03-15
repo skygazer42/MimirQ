@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_merge_summary_includes_retrieval_slices_by_bucket() -> None:
     from app.rag.evaluation import ragas as mod
@@ -57,9 +59,9 @@ def test_merge_summary_includes_retrieval_slices_by_bucket() -> None:
     pdf = next((b for b in buckets if isinstance(b, dict) and b.get("key") == "pdf"), None)
     assert pdf is not None
     assert pdf.get("items") == 2
-    assert pdf.get("retrieval_recall") == 0.5
-    assert pdf.get("retrieval_hit_at_20") == 0.5
-    assert pdf.get("abstain_rate") == 0.5
+    assert pdf.get("retrieval_recall") == pytest.approx(0.5)
+    assert pdf.get("retrieval_hit_at_20") == pytest.approx(0.5)
+    assert pdf.get("abstain_rate") == pytest.approx(0.5)
 
     ht = slices.get("hit_type")
     assert isinstance(ht, dict)
@@ -68,8 +70,8 @@ def test_merge_summary_includes_retrieval_slices_by_bucket() -> None:
     vec = next((b for b in buckets if isinstance(b, dict) and b.get("key") == "vector"), None)
     assert vec is not None
     assert vec.get("items") == 2
-    assert vec.get("retrieval_recall") == 1.0
-    assert vec.get("retrieval_hit_at_20") == 1.0
+    assert vec.get("retrieval_recall") == pytest.approx(1.0)
+    assert vec.get("retrieval_hit_at_20") == pytest.approx(1.0)
 
     qb = slices.get("quality")
     assert isinstance(qb, dict)
@@ -78,7 +80,7 @@ def test_merge_summary_includes_retrieval_slices_by_bucket() -> None:
     high = next((b for b in buckets if isinstance(b, dict) and b.get("key") == "high_density"), None)
     assert high is not None
     assert high.get("items") == 2
-    assert high.get("retrieval_recall") == 1.0
+    assert high.get("retrieval_recall") == pytest.approx(1.0)
 
     ph = slices.get("pipeline_hash")
     assert isinstance(ph, dict)
@@ -87,4 +89,4 @@ def test_merge_summary_includes_retrieval_slices_by_bucket() -> None:
     ph1 = next((b for b in buckets if isinstance(b, dict) and b.get("key") == "ph1"), None)
     assert ph1 is not None
     assert ph1.get("items") == 2
-    assert ph1.get("retrieval_recall") == 0.5
+    assert ph1.get("retrieval_recall") == pytest.approx(0.5)

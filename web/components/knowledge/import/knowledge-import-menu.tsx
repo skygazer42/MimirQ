@@ -24,7 +24,7 @@ export function KnowledgeImportMenu({
   onOpenJiraProject,
   onOpenPipelineConfig,
   className,
-}: KnowledgeImportMenuProps) {
+}: Readonly<KnowledgeImportMenuProps>) {
   return (
     <div className={cn('min-w-0', className)}>
       <DropdownMenuLabel className="text-xs text-muted-foreground">添加</DropdownMenuLabel>

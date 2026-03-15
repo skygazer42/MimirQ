@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -14,7 +14,7 @@ class EvidenceDriftSliceBucketOut(BaseModel):
     ok: int = 0
     drift: int = 0
     drift_rate: float = 0.0
-    reasons: Dict[str, int] = Field(default_factory=dict)
+    reasons: dict[str, int] = Field(default_factory=dict)
 
 
 class EvidenceReferenceDriftDetailOut(BaseModel):
@@ -25,16 +25,16 @@ class EvidenceReferenceDriftDetailOut(BaseModel):
     document_id: UUID
     chunk_id: UUID
     reason: str
-    expected: Dict[str, Any] = Field(default_factory=dict)
-    observed: Dict[str, Any] = Field(default_factory=dict)
+    expected: dict[str, Any] = Field(default_factory=dict)
+    observed: dict[str, Any] = Field(default_factory=dict)
     # Stable slice keys for drilldowns.
-    slice: Dict[str, str] = Field(default_factory=dict)
+    slice: dict[str, str] = Field(default_factory=dict)
 
 
 class EvidenceReferenceDriftAuditOut(BaseModel):
     generated_at: datetime
     dataset_id: UUID
-    suite_id: Optional[UUID] = None
+    suite_id: UUID | None = None
 
     total_items: int = 0
     total_references: int = 0
@@ -42,11 +42,11 @@ class EvidenceReferenceDriftAuditOut(BaseModel):
     drift_references: int = 0
     drift_rate: float = 0.0
 
-    reasons: Dict[str, int] = Field(default_factory=dict)
+    reasons: dict[str, int] = Field(default_factory=dict)
     # slices[slice_name][bucket_key] = bucket metrics
-    slices: Dict[str, Dict[str, EvidenceDriftSliceBucketOut]] = Field(default_factory=dict)
+    slices: dict[str, dict[str, EvidenceDriftSliceBucketOut]] = Field(default_factory=dict)
 
     # Optional PII-safe details (bounded).
     details_truncated: bool = False
-    drifted_references: List[EvidenceReferenceDriftDetailOut] = Field(default_factory=list)
+    drifted_references: list[EvidenceReferenceDriftDetailOut] = Field(default_factory=list)
 

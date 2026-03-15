@@ -75,7 +75,7 @@ export function buildWhyMissedReport(args: {
 
   const driftByChunkId = new Map<string, any>()
   for (const d of drifted) {
-    const chunkId = asNonEmptyString((d as any)?.chunk_id)
+    const chunkId = asNonEmptyString((d)?.chunk_id)
     if (!chunkId) continue
     driftByChunkId.set(chunkId, d)
   }
@@ -111,10 +111,10 @@ export function buildWhyMissedReport(args: {
   let unknown = 0
 
   for (const ref of referenceSources) {
-    const chunkId = asNonEmptyString((ref as any)?.chunk_id) || ''
-    const docId = asNonEmptyString((ref as any)?.document_id)
-    const chunkIndex = asOptionalInt((ref as any)?.chunk_index)
-    const label = (ref as any)?.label ?? null
+    const chunkId = asNonEmptyString((ref)?.chunk_id) || ''
+    const docId = asNonEmptyString((ref)?.document_id)
+    const chunkIndex = asOptionalInt((ref)?.chunk_index)
+    const label = (ref)?.label ?? null
 
     const driftDetail = chunkId ? driftByChunkId.get(chunkId) : undefined
     const cite = chunkId ? citationByChunkId.get(chunkId) : undefined
@@ -159,9 +159,9 @@ export function buildWhyMissedReport(args: {
         : undefined,
       drift: driftDetail
         ? {
-            reason: String((driftDetail as any)?.reason || 'drift'),
-            expected: (driftDetail as any)?.expected,
-            observed: (driftDetail as any)?.observed,
+            reason: String((driftDetail)?.reason || 'drift'),
+            expected: (driftDetail)?.expected,
+            observed: (driftDetail)?.observed,
           }
         : undefined,
       hints: Object.keys(hints).length ? hints : undefined,
@@ -170,8 +170,42 @@ export function buildWhyMissedReport(args: {
 
   // Stable ordering for UI.
   rows.sort((a, b) => {
-    const aw = a.status === 'drifted' ? 0 : a.status === 'missing' ? 1 : a.status === 'retrieved' ? 2 : 3
-    const bw = b.status === 'drifted' ? 0 : b.status === 'missing' ? 1 : b.status === 'retrieved' ? 2 : 3
+    const aw = (() => {
+    if (a.status === 'drifted') {
+        return 0;
+    }
+    else {
+        if (a.status === 'missing') {
+            return 1;
+        }
+        else {
+            if (a.status === 'retrieved') {
+                return 2;
+            }
+            else {
+                return 3;
+            }
+        }
+    }
+})()
+    const bw = (() => {
+    if (b.status === 'drifted') {
+        return 0;
+    }
+    else {
+        if (b.status === 'missing') {
+            return 1;
+        }
+        else {
+            if (b.status === 'retrieved') {
+                return 2;
+            }
+            else {
+                return 3;
+            }
+        }
+    }
+})()
     if (aw !== bw) return aw - bw
     const ar = a.retrieval?.rank ?? 1_000_000
     const br = b.retrieval?.rank ?? 1_000_000

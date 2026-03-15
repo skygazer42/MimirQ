@@ -14,7 +14,7 @@ Design goals:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -27,7 +27,7 @@ PERIODIC_JOB_FRESHNESS_SCHEMA_V1 = "mimirq.periodic_job_freshness.v1"
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _as_utc(dt: datetime) -> datetime:
@@ -37,9 +37,9 @@ def _as_utc(dt: datetime) -> datetime:
     Note: DB timestamps should already be tz-aware; this is defensive for tests/mocks.
     """
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     try:
-        return dt.astimezone(timezone.utc)
+        return dt.astimezone(UTC)
     except Exception:
         return dt
 

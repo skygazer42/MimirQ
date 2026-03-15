@@ -8,8 +8,9 @@ Keep this module pure and dependency-free so it can be used from:
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
 
 def safe_int(value: object, *, default: int = 0) -> int:
@@ -61,8 +62,8 @@ def percentile_from_sorted(sorted_values: Sequence[int], p: int) -> int:
 @dataclass(frozen=True)
 class HistogramBinSpec:
     label: str
-    min: Optional[int] = None
-    max: Optional[int] = None
+    min: int | None = None
+    max: int | None = None
 
     def contains(self, value: int) -> bool:
         v = int(value or 0)
@@ -73,7 +74,7 @@ class HistogramBinSpec:
         return True
 
 
-def histogram(values: Iterable[int], bins: List[HistogramBinSpec]) -> List[dict]:
+def histogram(values: Iterable[int], bins: list[HistogramBinSpec]) -> list[dict]:
     specs = list(bins or [])
     counts = [0 for _ in specs]
     for raw in values:
@@ -82,14 +83,14 @@ def histogram(values: Iterable[int], bins: List[HistogramBinSpec]) -> List[dict]
             if spec.contains(v):
                 counts[i] += 1
                 break
-    out: List[dict] = []
+    out: list[dict] = []
     for spec, count in zip(specs, counts, strict=False):
         out.append({"label": spec.label, "min": spec.min, "max": spec.max, "count": int(count)})
     return out
 
 
 # Default bins (v1): tune later based on real customer corpora.
-TEXT_LENGTH_BINS: List[HistogramBinSpec] = [
+TEXT_LENGTH_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("0-500", 0, 500),
     HistogramBinSpec("500-2k", 500, 2_000),
     HistogramBinSpec("2k-10k", 2_000, 10_000),
@@ -98,7 +99,7 @@ TEXT_LENGTH_BINS: List[HistogramBinSpec] = [
 ]
 
 # Best-effort token-length bins for precheck reports (rough cost proxy).
-TEXT_TOKEN_BINS: List[HistogramBinSpec] = [
+TEXT_TOKEN_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("0-200", 0, 200),
     HistogramBinSpec("200-1k", 200, 1_000),
     HistogramBinSpec("1k-5k", 1_000, 5_000),
@@ -106,7 +107,7 @@ TEXT_TOKEN_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("20k+", 20_000, None),
 ]
 
-FILE_SIZE_BINS: List[HistogramBinSpec] = [
+FILE_SIZE_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("0-100KB", 0, 100 * 1024),
     HistogramBinSpec("100KB-1MB", 100 * 1024, 1 * 1024 * 1024),
     HistogramBinSpec("1-5MB", 1 * 1024 * 1024, 5 * 1024 * 1024),
@@ -114,7 +115,7 @@ FILE_SIZE_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("20MB+", 20 * 1024 * 1024, None),
 ]
 
-PAGE_COUNT_BINS: List[HistogramBinSpec] = [
+PAGE_COUNT_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("1-2", 1, 3),
     HistogramBinSpec("3-5", 3, 6),
     HistogramBinSpec("6-10", 6, 11),
@@ -126,7 +127,7 @@ PAGE_COUNT_BINS: List[HistogramBinSpec] = [
 # Chunk-level proxies derived from per-document stats:
 # - chunk_count: number of chunks per document
 # - avg_chunk_chars: approximate avg chunk length = total_characters / chunk_count
-CHUNK_COUNT_BINS: List[HistogramBinSpec] = [
+CHUNK_COUNT_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("1-5", 1, 6),
     HistogramBinSpec("6-10", 6, 11),
     HistogramBinSpec("11-20", 11, 21),
@@ -135,7 +136,7 @@ CHUNK_COUNT_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("100+", 101, None),
 ]
 
-AVG_CHUNK_CHARS_BINS: List[HistogramBinSpec] = [
+AVG_CHUNK_CHARS_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("0-200", 0, 200),
     HistogramBinSpec("200-500", 200, 500),
     HistogramBinSpec("500-800", 500, 800),
@@ -146,11 +147,11 @@ AVG_CHUNK_CHARS_BINS: List[HistogramBinSpec] = [
 
 # Chunk length bins (per-chunk distribution). Keep aligned with AVG_CHUNK_CHARS_BINS for now so
 # charts are comparable (doc-level proxy vs real chunk-level).
-CHUNK_LENGTH_BINS: List[HistogramBinSpec] = list(AVG_CHUNK_CHARS_BINS)
+CHUNK_LENGTH_BINS: list[HistogramBinSpec] = list(AVG_CHUNK_CHARS_BINS)
 
 # Token-length bins for chunk-level stats (used by chunk preview + ingest-time token stats).
 # Note: This is intentionally coarse; tune later based on real corpora.
-CHUNK_TOKEN_BINS: List[HistogramBinSpec] = [
+CHUNK_TOKEN_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("0-50", 0, 50),
     HistogramBinSpec("50-100", 50, 100),
     HistogramBinSpec("100-200", 100, 200),
@@ -160,11 +161,11 @@ CHUNK_TOKEN_BINS: List[HistogramBinSpec] = [
 ]
 
 # Doc-level proxy: average tokens per chunk (derived from ingest-time token stats).
-AVG_CHUNK_TOKENS_BINS: List[HistogramBinSpec] = list(CHUNK_TOKEN_BINS)
+AVG_CHUNK_TOKENS_BINS: list[HistogramBinSpec] = list(CHUNK_TOKEN_BINS)
 
 # Chunk coverage / overlap waste distributions (percentage points).
 # These are computed from ingest-time `chunk_coverage.*_ratio` values multiplied by 100.
-COVERAGE_PCT_BINS: List[HistogramBinSpec] = [
+COVERAGE_PCT_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("0-50%", 0, 50),
     HistogramBinSpec("50-80%", 50, 80),
     HistogramBinSpec("80-90%", 80, 90),
@@ -172,7 +173,7 @@ COVERAGE_PCT_BINS: List[HistogramBinSpec] = [
     HistogramBinSpec("98-100%", 98, 101),  # include 100
 ]
 
-OVERLAP_WASTE_PCT_BINS: List[HistogramBinSpec] = [
+OVERLAP_WASTE_PCT_BINS: list[HistogramBinSpec] = [
     HistogramBinSpec("0-10%", 0, 10),
     HistogramBinSpec("10-20%", 10, 20),
     HistogramBinSpec("20-35%", 20, 35),
@@ -200,12 +201,12 @@ def _risk_severity(*, pct: int, warn: int, error: int) -> str | None:
 def build_recall_risk_hints(
     *,
     total_documents: int,
-    chunk_token_bins_by_label: Dict[str, int] | None,
+    chunk_token_bins_by_label: dict[str, int] | None,
     chunk_token_total: int,
     duplicate_like_docs: int,
     low_density_docs: int,
     parse_low_quality_docs: int,
-) -> List[dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Build non-blocking recall-risk hints from dataset-profile aggregates.
 
@@ -215,7 +216,7 @@ def build_recall_risk_hints(
     - low text quality ratio from existing low-density/parse-quality counters
     """
 
-    hints: List[dict[str, Any]] = []
+    hints: list[dict[str, Any]] = []
     total_docs = int(max(0, total_documents))
     token_total = int(max(0, chunk_token_total))
     by_label = dict(chunk_token_bins_by_label or {})

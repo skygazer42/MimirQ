@@ -5,7 +5,7 @@ type PageBodyProps = {
   className?: string
 }
 
-export function PageBody({ children, className }: PageBodyProps) {
+export function PageBody({ children, className }: Readonly<PageBodyProps>) {
   return (
     <section
       data-page-scroll-container="true"

@@ -3,7 +3,7 @@
 import * as React from "react"
 import { X, Maximize2, Minimize2, FileText, Loader2, Download, Copy, Link2, Pencil, Trash2, Plus, Sparkles } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { cn } from "@/lib/utils"
+import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -23,7 +23,7 @@ import { formatApiError } from "@/lib/api-errors"
 import { toast } from "sonner"
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -152,7 +152,7 @@ export function DocumentViewerPanel() {
     matchRequestSeqRef.current += 1
 
     // Reset scroll position when switching documents so the panel doesn't open "half scrolled".
-    const raf = window.requestAnimationFrame(() => {
+    const raf = globalThis.window.requestAnimationFrame(() => {
       chunksListRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" })
     })
 
@@ -164,7 +164,7 @@ export function DocumentViewerPanel() {
       .catch(console.error)
       .finally(() => setIsLoading(false))
 
-    return () => window.cancelAnimationFrame(raf)
+    return () => globalThis.window.cancelAnimationFrame(raf)
   }, [documentId])
 
   // Best-effort cache: show parsed markdown quickly (used by the "text" tab).
@@ -248,11 +248,11 @@ export function DocumentViewerPanel() {
         parsedContentServerKeyRef.current = documentId
         setParsedContent(data)
         if (data?.available) {
-          void saveDocContentToCache({
+          detachPromise(saveDocContentToCache({
             id: documentId,
             markdownContent: data.markdown_content || "",
             originalMarkdownContent: data.original_markdown_content || "",
-          })
+          }))
         }
       })
       .catch((err) => {
@@ -321,7 +321,19 @@ export function DocumentViewerPanel() {
 
   const textChunkItems = React.useMemo(() => {
     // Only show the active chunk when we haven't loaded the full chunk list yet.
-    const base = chunksLoaded ? chunks : highlightChunk ? [highlightChunk] : []
+    const base = (() => {
+    if (chunksLoaded) {
+        return chunks;
+    }
+    else {
+        if (highlightChunk) {
+            return [highlightChunk];
+        }
+        else {
+            return [];
+        }
+    }
+})()
     return mapDocumentChunksToPreviewItems(base)
   }, [chunks, chunksLoaded, highlightChunk])
 
@@ -352,8 +364,8 @@ export function DocumentViewerPanel() {
         chunkSearchRef.current?.select()
       }
     }
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
+    globalThis.window.addEventListener("keydown", onKeyDown)
+    return () => globalThis.window.removeEventListener("keydown", onKeyDown)
   }, [isOpen, activeTab, chunkQuery, closeDocument])
 
   // Scroll to highlighted chunk
@@ -400,7 +412,7 @@ export function DocumentViewerPanel() {
 
     const seq = ++matchRequestSeqRef.current
     setServerMatchLoading(true)
-    const t = window.setTimeout(() => {
+    const t = globalThis.window.setTimeout(() => {
       documentApi
         .getChunkMatches(documentId, { q, limit: 5000 })
         .then((res) => {
@@ -423,7 +435,7 @@ export function DocumentViewerPanel() {
         })
     }, 250)
 
-    return () => window.clearTimeout(t)
+    return () => globalThis.window.clearTimeout(t)
   }, [documentId, chunkQuery, chunksLoaded])
 
   const matchChunkIds = React.useMemo(() => {
@@ -459,7 +471,7 @@ export function DocumentViewerPanel() {
   const buildChunkLink = React.useCallback((chunkId: string, range?: { start?: number | null; end?: number | null }) => {
     if (!documentId) return ""
     try {
-      const url = new URL("/", window.location.origin)
+      const url = new URL("/", globalThis.window.location.origin)
       url.searchParams.set("doc", documentId)
       url.searchParams.set("chunk", chunkId)
       const start = range?.start
@@ -571,7 +583,7 @@ export function DocumentViewerPanel() {
       }
 
       // Re-measure virtualization after content changes (best-effort).
-      window.requestAnimationFrame(() => rowVirtualizer.measure())
+      globalThis.window.requestAnimationFrame(() => rowVirtualizer.measure())
 
       setChunkEditorOpen(false)
     } catch (err: any) {
@@ -615,7 +627,7 @@ export function DocumentViewerPanel() {
           setHighlightChunkState(null)
         }
 
-        window.requestAnimationFrame(() => rowVirtualizer.measure())
+        globalThis.window.requestAnimationFrame(() => rowVirtualizer.measure())
       } catch (err) {
         console.error(err)
         toast.error(formatApiError(err, "切片删除失败"))
@@ -767,7 +779,7 @@ export function DocumentViewerPanel() {
           </Button>
           <Button
             type="button"
-            onClick={() => void submitChunkEditor()}
+            onClick={() => detachPromise(submitChunkEditor())}
             disabled={chunkEditorSubmitting || !canEditChunks || !chunkEditorContent.trim()}
             className="gap-2"
           >
@@ -838,8 +850,8 @@ export function DocumentViewerPanel() {
             <div className="rounded-xl border border-border bg-background/60 p-3">
               <div className="text-xs font-semibold text-foreground mb-2">Preview</div>
               <div className="space-y-2 max-h-[220px] overflow-auto">
-                {qaLastResult.preview.slice(0, 10).map((p, idx) => (
-                  <div key={`${idx}-${p.question.slice(0, 24)}`} className="rounded-lg border border-border/60 bg-muted/10 p-2">
+                {qaLastResult.preview.slice(0, 10).map((p) => (
+                  <div key={`${p.question}-${p.answer}`} className="rounded-lg border border-border/60 bg-muted/10 p-2">
                     <div className="text-[11px] text-muted-foreground">Q</div>
                     <div className="text-xs text-foreground whitespace-pre-wrap">{p.question}</div>
                     <div className="mt-2 text-[11px] text-muted-foreground">A</div>
@@ -857,7 +869,7 @@ export function DocumentViewerPanel() {
           </Button>
           <Button
             type="button"
-            onClick={() => void runQaGeneration()}
+            onClick={() => detachPromise(runQaGeneration())}
             disabled={!canEditChunks || qaSubmitting || !documentId}
             className="gap-2"
           >
@@ -945,22 +957,22 @@ export function DocumentViewerPanel() {
             </div>
 
             <TabsContent value="preview" className="flex-1 m-0 h-full bg-muted/30 dark:bg-muted/20 relative">
-	                {isLoading && !doc ? (
-	                  <div className="flex items-center justify-center h-full text-muted-foreground">
-	                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
-	                  </div>
-	                ) : canInlinePreview && fileUrl ? (
-                  <iframe
-                    src={`${fileUrl}#toolbar=0`}
-                    className="w-full h-full border-none"
-                    title="Document Preview"
-                  />
-                ) : (
-                  <div className="h-full flex items-center justify-center p-6">
+	                {(() => {
+    if (isLoading && !doc) {
+        return (<div className="flex items-center justify-center h-full text-muted-foreground">
+	                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
+	                  </div>);
+    }
+    else {
+        if (canInlinePreview && fileUrl) {
+            return (<iframe src={`${fileUrl}#toolbar=0`} className="w-full h-full border-none" title="Document Preview"/>);
+        }
+        else {
+            return (<div className="h-full flex items-center justify-center p-6">
                     <div className="max-w-md w-full rounded-xl border border-border bg-background p-6 shadow-sm">
                       <div className="flex items-start gap-3">
                         <div className="p-2 rounded-lg bg-primary/10">
-                          <FileText className="h-5 w-5 text-primary" />
+                          <FileText className="h-5 w-5 text-primary"/>
                         </div>
                         <div className="flex-1">
                           <h4 className="text-sm font-semibold">暂不支持内嵌预览</h4>
@@ -981,8 +993,10 @@ export function DocumentViewerPanel() {
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  </div>);
+        }
+    }
+})()}
             </TabsContent>
 
             <TabsContent value="text" className="flex-1 m-0 h-full overflow-hidden flex flex-col bg-muted/20 dark:bg-muted/10">
@@ -1026,7 +1040,7 @@ export function DocumentViewerPanel() {
                            </Button>
                          ) : null}
 
-                         {!chunksLoaded ? (
+                         {chunksLoaded ? null : (
                            <Button
                              type="button"
                              size="sm"
@@ -1035,7 +1049,7 @@ export function DocumentViewerPanel() {
                            >
                              加载全部切片
                            </Button>
-                         ) : null}
+                         )}
                        </div>
                      </div>
 
@@ -1046,7 +1060,7 @@ export function DocumentViewerPanel() {
                          onKeyDown={(e) => {
                            if (e.key !== "Enter") return
                            e.preventDefault()
-                           void runRetrievePreview()
+                           detachPromise(runRetrievePreview())
                          }}
                          placeholder="检索测试：输入问题，查看真实检索命中的切片…"
                          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -1057,7 +1071,7 @@ export function DocumentViewerPanel() {
                            size="sm"
                            variant="outline"
                            disabled={!retrieveQuery.trim() || retrieveLoading}
-                           onClick={() => void runRetrievePreview()}
+                           onClick={() => detachPromise(runRetrievePreview())}
                          >
                            {retrieveLoading ? (
                              <span className="inline-flex items-center gap-2">
@@ -1094,11 +1108,11 @@ export function DocumentViewerPanel() {
                        <div className="rounded-xl border border-border/60 bg-background/60 p-3 max-h-[220px] overflow-auto">
                          <div className="text-xs font-semibold text-foreground mb-2">检索命中</div>
                          <div className="space-y-2">
-                           {retrieveCitations.slice(0, 6).map((c, idx) => {
+                           {retrieveCitations.slice(0, 6).map((c) => {
                              const hasChunk = Boolean(c.chunk_id)
                              return (
                                <button
-                                 key={`${c.chunk_id || idx}-${idx}`}
+                                 key={`${String(c.document_id || '')}:${String(c.chunk_id || '')}:${String(c.page_number ?? '')}`}
                                  type="button"
                                  className={cn(
                                    "w-full text-left rounded-lg border border-border bg-background px-3 py-2",
@@ -1153,29 +1167,27 @@ export function DocumentViewerPanel() {
                  </div>
 
                  <div className="flex-1 overflow-hidden p-4">
-                   {parsedContentLoading && !parsedContent ? (
-                     <div className="h-full flex items-center justify-center text-muted-foreground">
-                       <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none" />
-                     </div>
-                   ) : parsedContent?.available && textValue ? (
-                     <OriginalPreviewMonaco
-                       text={textValue}
-                       chunks={textMode === "cleaned" ? textChunkItems : []}
-                       activeChunkIndex={textMode === "cleaned" ? textActiveChunkIndex : null}
-                       activeRange={textMode === "cleaned" ? (highlightRange ?? null) : null}
-                       onSelectChunkIndex={(chunkIndex) => {
-                         const target =
-                           chunks.find((c) => c.chunk_index === chunkIndex) ||
-                           (highlightChunk && highlightChunk.chunk_index === chunkIndex ? highlightChunk : null)
-                         if (target) setHighlightChunk(target.id)
-                       }}
-                     />
-                   ) : (
-                     <div className="h-full flex items-center justify-center p-6">
+                   {(() => {
+    if (parsedContentLoading && !parsedContent) {
+        return (<div className="h-full flex items-center justify-center text-muted-foreground">
+                       <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
+                     </div>);
+    }
+    else {
+        if (parsedContent?.available && textValue) {
+            return (<OriginalPreviewMonaco text={textValue} chunks={textMode === "cleaned" ? textChunkItems : []} activeChunkIndex={textMode === "cleaned" ? textActiveChunkIndex : null} activeRange={textMode === "cleaned" ? (highlightRange ?? null) : null} onSelectChunkIndex={(chunkIndex) => {
+                    const target = chunks.find((c) => c.chunk_index === chunkIndex) ||
+                        (highlightChunk && highlightChunk.chunk_index === chunkIndex ? highlightChunk : null);
+                    if (target)
+                        setHighlightChunk(target.id);
+                }}/>);
+        }
+        else {
+            return (<div className="h-full flex items-center justify-center p-6">
                        <div className="max-w-md w-full rounded-xl border border-border bg-background p-6 shadow-sm">
                          <div className="flex items-start gap-3">
                            <div className="p-2 rounded-lg bg-primary/10">
-                             <FileText className="h-5 w-5 text-primary" />
+                             <FileText className="h-5 w-5 text-primary"/>
                            </div>
                            <div className="flex-1">
                              <h4 className="text-sm font-semibold">未持久化解析文本</h4>
@@ -1194,8 +1206,10 @@ export function DocumentViewerPanel() {
                            </div>
                          </div>
                        </div>
-                     </div>
-                   )}
+                     </div>);
+        }
+    }
+})()}
                  </div>
             </TabsContent>
 
@@ -1221,28 +1235,42 @@ export function DocumentViewerPanel() {
                          jumpToMatch(matchCursor)
                        }}
                        placeholder={
-                         serverMatchLoading
-                           ? "搜索中…"
-                           : chunksLoaded
-                             ? "搜索切片内容…"
-                             : "搜索切片内容…（无需加载全部切片）"
+                         (() => {
+    if (serverMatchLoading) {
+        return "搜索中…";
+    }
+    else {
+        if (chunksLoaded) {
+            return "搜索切片内容…";
+        }
+        else {
+            return "搜索切片内容…（无需加载全部切片）";
+        }
+    }
+})()
                        }
                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                      />
                      <div className="flex items-center gap-2">
                        <div className="text-xs text-muted-foreground tabular-nums min-w-[88px] text-right">
                          {chunkQuery.trim() ? (
-                           serverMatchLoading ? (
-                             <span>…</span>
-                           ) : matchChunkIds.length ? (
-                             <span>
+                           (() => {
+    if (serverMatchLoading) {
+        return (<span>…</span>);
+    }
+    else {
+        if (matchChunkIds.length) {
+            return (<span>
                                {matchCursor + 1}/
                                {chunksLoaded ? matchChunkIds.length : (serverMatchTotal || matchChunkIds.length)}
                                {!chunksLoaded && serverMatchTruncated ? "+" : ""}
-                             </span>
-                           ) : (
-                             <span>0/0</span>
-                           )
+                             </span>);
+        }
+        else {
+            return (<span>0/0</span>);
+        }
+    }
+})()
                          ) : (
                            <span>—</span>
                          )}
@@ -1330,87 +1358,38 @@ export function DocumentViewerPanel() {
                        </div>
 
                        <div className="mt-3">
-                         {highlightChunkLoading ? (
-                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                             <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                         {(() => {
+    if (highlightChunkLoading) {
+        return (<div className="flex items-center gap-2 text-xs text-muted-foreground">
+                             <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
                              <span>加载命中切片…</span>
-                           </div>
-                         ) : highlightChunk ? (
-                           <div className="rounded-xl border border-border bg-background p-4">
+                           </div>);
+    }
+    else {
+        if (highlightChunk) {
+            return (<div className="rounded-xl border border-border bg-background p-4">
                              <div className="flex items-center justify-between mb-2">
                                <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
                                  #{highlightChunk.chunk_index}
                                </span>
                                <div className="flex items-center gap-2">
-                                 {highlightChunk.page_number != null ? (
-                                   <span className="text-xs text-muted-foreground">P.{highlightChunk.page_number}</span>
-                                 ) : null}
+                                 {highlightChunk.page_number == null ? null : (<span className="text-xs text-muted-foreground">P.{highlightChunk.page_number}</span>)}
                                  <div className="flex items-center gap-1">
-                                   <Button
-                                     type="button"
-                                     variant="ghost"
-                                     size="icon"
-                                     className="h-7 w-7"
-                                     onClick={() => copyText(highlightChunk.content, "已复制切片内容")}
-                                     aria-label="复制切片内容"
-                                     title="复制切片内容"
-                                   >
-                                     <Copy className="h-4 w-4" />
+                                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyText(highlightChunk.content, "已复制切片内容")} aria-label="复制切片内容" title="复制切片内容">
+                                     <Copy className="h-4 w-4"/>
                                    </Button>
-                                   <Button
-                                     type="button"
-                                     variant="ghost"
-                                     size="icon"
-                                     className="h-7 w-7"
-                                    onClick={() =>
-                                      copyText(
-                                        buildChunkLink(highlightChunk.id, {
-                                          start: typeof highlightChunk.start_char === "number" ? highlightChunk.start_char : null,
-                                          end: typeof highlightChunk.end_char === "number" ? highlightChunk.end_char : null,
-                                        }),
-                                        "已复制定位链接"
-                                      )
-                                    }
-                                     aria-label="复制定位链接"
-                                     title="复制定位链接"
-                                   >
-                                     <Link2 className="h-4 w-4" />
+                                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyText(buildChunkLink(highlightChunk.id, {
+                    start: typeof highlightChunk.start_char === "number" ? highlightChunk.start_char : null,
+                    end: typeof highlightChunk.end_char === "number" ? highlightChunk.end_char : null,
+                }), "已复制定位链接")} aria-label="复制定位链接" title="复制定位链接">
+                                     <Link2 className="h-4 w-4"/>
                                    </Button>
-                                   <Button
-                                     type="button"
-                                     variant="ghost"
-                                     size="icon"
-                                     className="h-7 w-7"
-                                     onClick={() => openEditChunk(highlightChunk)}
-                                     disabled={!canEditChunks || chunkEditorSubmitting}
-                                     aria-label="Edit chunk"
-                                     title="Edit chunk"
-                                   >
-                                     <Pencil className="h-4 w-4" />
+                                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditChunk(highlightChunk)} disabled={!canEditChunks || chunkEditorSubmitting} aria-label="Edit chunk" title="Edit chunk">
+                                     <Pencil className="h-4 w-4"/>
                                    </Button>
-                                   <ConfirmDialog
-                                     title={`Delete chunk #${highlightChunk.chunk_index}?`}
-                                     description="This cannot be undone."
-                                     confirmLabel="Delete"
-                                     cancelLabel="Cancel"
-                                     confirmVariant="destructive"
-                                     confirmDisabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id}
-                                     onConfirm={() => void deleteChunk(highlightChunk)}
-                                   >
-                                     <Button
-                                       type="button"
-                                       variant="ghost"
-                                       size="icon"
-                                       className="h-7 w-7 text-destructive hover:text-destructive"
-                                       disabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id}
-                                       aria-label="Delete chunk"
-                                       title="Delete chunk"
-                                     >
-                                       {chunkDeleteSubmitting === highlightChunk.id ? (
-                                         <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                                       ) : (
-                                         <Trash2 className="h-4 w-4" />
-                                       )}
+                                   <ConfirmDialog title={`Delete chunk #${highlightChunk.chunk_index}?`} description="This cannot be undone." confirmLabel="Delete" cancelLabel="Cancel" confirmVariant="destructive" confirmDisabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id} onConfirm={() => detachPromise(deleteChunk(highlightChunk))}>
+                                     <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id} aria-label="Delete chunk" title="Delete chunk">
+                                       {chunkDeleteSubmitting === highlightChunk.id ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : (<Trash2 className="h-4 w-4"/>)}
                                      </Button>
                                    </ConfirmDialog>
                                  </div>
@@ -1419,10 +1398,13 @@ export function DocumentViewerPanel() {
                              <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
                                {highlightText(highlightChunk.content, chunkQuery)}
                              </p>
-                           </div>
-                         ) : (
-                           <div className="text-xs text-muted-foreground">未找到命中切片（可能已被删除或无权限）</div>
-                         )}
+                           </div>);
+        }
+        else {
+            return (<div className="text-xs text-muted-foreground">未找到命中切片（可能已被删除或无权限）</div>);
+        }
+    }
+})()}
                        </div>
                      </div>
                    ) : null}
@@ -1474,9 +1456,9 @@ export function DocumentViewerPanel() {
                                     #{chunk.chunk_index}
                                   </span>
                                   <div className="flex items-center gap-2">
-                                    {chunk.page_number != null ? (
+                                    {chunk.page_number == null ? null : (
                                       <span className="text-xs text-muted-foreground">P.{chunk.page_number}</span>
-                                    ) : null}
+                                    )}
                                     <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                       <Button
                                         type="button"
@@ -1527,7 +1509,7 @@ export function DocumentViewerPanel() {
                                         cancelLabel="Cancel"
                                         confirmVariant="destructive"
                                         confirmDisabled={!canEditChunks || chunkDeleteSubmitting === chunk.id}
-                                        onConfirm={() => void deleteChunk(chunk)}
+                                        onConfirm={() => detachPromise(deleteChunk(chunk))}
                                       >
                                         <Button
                                           type="button"

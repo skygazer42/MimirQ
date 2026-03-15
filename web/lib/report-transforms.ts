@@ -39,7 +39,7 @@ export function flattenFolderTree(folderTree: FolderTreePayload | null | undefin
     const next = Array.isArray(node.children) ? node.children : []
     // Preserve a roughly stable traversal order (not critical; UI sorts anyway).
     for (let i = next.length - 1; i >= 0; i -= 1) {
-      stack.push(next[i] as FolderNode)
+      stack.push(next[i])
     }
   }
 

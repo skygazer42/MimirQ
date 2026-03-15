@@ -16,7 +16,7 @@ export function FloatingMenu() {
 
   useEffect(() => {
     const handleMouseUp = () => {
-      const sel = window.getSelection()
+      const sel = globalThis.window.getSelection()
       if (!sel || sel.isCollapsed) {
         setVisible(false)
         setAnchor(null)
@@ -48,13 +48,13 @@ export function FloatingMenu() {
 
   useEffect(() => {
     if (!visible || !anchor) return
-    const raf = window.requestAnimationFrame(() => {
+    const raf = globalThis.window.requestAnimationFrame(() => {
       const el = menuRef.current
       if (!el) return
 
       const menuRect = el.getBoundingClientRect()
-      const viewportW = window.innerWidth
-      const viewportH = window.innerHeight
+      const viewportW = globalThis.window.innerWidth
+      const viewportH = globalThis.window.innerHeight
 
       // Keep a bit of breathing room from the edges (and let CSS safe-area padding handle notches).
       const padding = 10
@@ -74,7 +74,7 @@ export function FloatingMenu() {
       })
     })
 
-    return () => window.cancelAnimationFrame(raf)
+    return () => globalThis.window.cancelAnimationFrame(raf)
   }, [anchor, visible])
 
   const handleAction = (action: string) => {
@@ -93,7 +93,7 @@ export function FloatingMenu() {
     
     globalEventBus.emit("chat:send", prompt)
     setVisible(false)
-    window.getSelection()?.removeAllRanges()
+    globalThis.window.getSelection()?.removeAllRanges()
   }
 
   if (!visible) return null

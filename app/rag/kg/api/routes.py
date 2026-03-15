@@ -5,6 +5,7 @@ import hashlib
 import time
 import uuid
 import zlib
+from datetime import UTC
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -1884,8 +1885,8 @@ def create_kg_entity_alias(
         normalized_alias=norm[:500],
         created_by=str(account_id or "").strip() or None,
         extra_data={"method": "manual"},
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+        updated_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(alias_row)
 
@@ -2201,7 +2202,7 @@ def create_kg_predicate_ontology(
         existing.display_name = payload.display_name
         existing.description = payload.description
         existing.is_enabled = bool(payload.is_enabled)
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = datetime.now(UTC).replace(tzinfo=None)
         row = existing
     else:
         row = KgPredicateOntology(
@@ -2212,8 +2213,8 @@ def create_kg_predicate_ontology(
             description=(str(payload.description) if payload.description else None),
             is_enabled=bool(payload.is_enabled),
             extra_data={"source": "ui"},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+            updated_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db.add(row)
 
@@ -2272,7 +2273,7 @@ def update_kg_predicate_ontology(
         row.description = str(payload.description) if payload.description else None
     if payload.is_enabled is not None:
         row.is_enabled = bool(payload.is_enabled)
-    row.updated_at = datetime.utcnow()
+    row.updated_at = datetime.now(UTC).replace(tzinfo=None)
 
     try:
         db.add(
@@ -2445,7 +2446,7 @@ def merge_kg_entities(
             "redirect_created": False,
             "vector_deleted": False,
         },
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(action)
 
@@ -2484,7 +2485,7 @@ def merge_kg_entities(
                 action_id=action.id,
                 created_by=str(account_id or "").strip() or None,
                 extra_data={"reason": "merge"},
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
             )
         )
         redirect_created = True
@@ -2659,8 +2660,8 @@ def split_kg_entity(
         description=None,
         vector=None,
         extra_data={"split_from": str(original_id)},
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+        updated_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(new_ent)
 
@@ -2708,7 +2709,7 @@ def split_kg_entity(
             "new_entity_name": new_name,
             "moved_events": [str(eid) for eid in event_ids],
         },
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(action)
 
@@ -2795,9 +2796,9 @@ def undo_kg_entity_resolution_action(
         if source_id is None or target_id is None:
             raise HTTPException(status_code=400, detail="Invalid action payload (missing entity ids)")
 
-        updated_assoc_ids = set(str(u) for u in _uuid_list(payload.get("event_entity_updated_ids")) if u)
+        updated_assoc_ids = {str(u) for u in _uuid_list(payload.get("event_entity_updated_ids")) if u}
         deleted_assoc_rows = _dict_list(payload.get("event_entity_deleted_rows"))
-        updated_relation_ids = set(str(u) for u in _uuid_list(payload.get("relation_updated_ids")) if u)
+        updated_relation_ids = {str(u) for u in _uuid_list(payload.get("relation_updated_ids")) if u}
         deleted_relation_rows = _dict_list(payload.get("relation_deleted_rows"))
         redirect_created = bool(payload.get("redirect_created", False))
         vector_deleted = bool(payload.get("vector_deleted", False))
@@ -2863,8 +2864,8 @@ def undo_kg_entity_resolution_action(
                     qualifiers=(row.get("qualifiers") if isinstance(row.get("qualifiers"), dict) else None),
                     references=(row.get("references") if isinstance(row.get("references"), dict) else None),
                     extra_data=(row.get("extra_data") if isinstance(row.get("extra_data"), dict) else None),
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC).replace(tzinfo=None),
+                    updated_at=datetime.now(UTC).replace(tzinfo=None),
                 )
             )
             restored_relations += 1
@@ -2965,7 +2966,7 @@ def undo_kg_entity_resolution_action(
         target_id = new_id
 
     action.status = "reverted"
-    action.reversed_at = datetime.utcnow()
+    action.reversed_at = datetime.now(UTC).replace(tzinfo=None)
     action.reversed_by = str(account_id or "").strip() or None
 
     try:

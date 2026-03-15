@@ -51,7 +51,7 @@ export function KnowledgeScopePanel({
   processingDocsValue,
   failedDocsValue,
   quarantinedDocsValue,
-}: KnowledgeScopePanelProps) {
+}: Readonly<KnowledgeScopePanelProps>) {
   const DATASET_ALL = datasetAllValue ?? '__all__'
 
   return (
@@ -91,17 +91,17 @@ export function KnowledgeScopePanel({
           <div className="flex flex-wrap items-center gap-2">
             {(
               [
-                { key: 'all', label: '全部', count: totalDocs },
-                { key: 'completed', label: '已就绪', count: completedDocsValue },
-                { key: 'processing', label: '处理中', count: processingDocsValue },
-                { key: 'failed', label: '失败', count: failedDocsValue },
-                { key: 'quarantined', label: '隔离', count: quarantinedDocsValue },
-              ] as const
+    { key: 'all', label: '全部', count: totalDocs },
+    { key: 'completed', label: '已就绪', count: completedDocsValue },
+    { key: 'processing', label: '处理中', count: processingDocsValue },
+    { key: 'failed', label: '失败', count: failedDocsValue },
+    { key: 'quarantined', label: '隔离', count: quarantinedDocsValue },
+]
             ).map((item) => (
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setStatusFilter(item.key)}
+                onClick={() => setStatusFilter(item.key as DocStatusFilter)}
                 className={cn(
                   'h-9 px-3 rounded-full border text-xs font-semibold transition-colors focus-ring',
                   statusFilter === item.key

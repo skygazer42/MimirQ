@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
 
 def test_orchestrator_applies_channel_budget_policy(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.config import settings
     import app.rag.retrieval.orchestrator as orch
+    from app.core.config import settings
 
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
 
-    captured_updates: List[Dict[str, Any]] = []
+    captured_updates: list[dict[str, Any]] = []
 
     class _CapturingRetriever:
-        _last_debug_metrics: Dict[str, Any] = {}
+        _last_debug_metrics: dict[str, Any] = {}
 
         def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
             captured_updates.append(dict((kwargs or {}).get("update") or {}))

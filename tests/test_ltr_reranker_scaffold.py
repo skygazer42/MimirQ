@@ -19,7 +19,7 @@ def test_ltr_reranker_trains_and_reranks(tmp_path: Path) -> None:
     # Training data: prefer higher vector_score.
     rows = []
     for score, label in ((0.9, 1), (0.8, 1), (0.2, 0), (0.1, 0)):
-        feats = {k: 0.0 for k in spec.feature_names}
+        feats = dict.fromkeys(spec.feature_names, 0.0)
         feats["vector_score"] = float(score)
         feats["role_main"] = 1.0
         rows.append({"features": feats, "label": int(label)})

@@ -4,7 +4,8 @@ KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED).
 """
 
 import threading
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -107,18 +108,18 @@ def _load_engine() -> KGEngine:
 
 async def extract_events(
     chunk_ids: Iterable[UUID],
-    tenant_id: Optional[UUID] = None,
+    tenant_id: UUID | None = None,
     *,
-    chunks: Optional[Sequence[DocumentChunk]] = None,
-    index_options: Optional[IndexingOptions] = None,
-    prompt_template_id: Optional[UUID] = None,
-    prompt_template_key: Optional[str] = None,
-    prompt_ab_experiment_key: Optional[str] = None,
-    ab_user_key: Optional[str] = None,
-    extract_relations: Optional[bool] = None,
-    extract_skills: Optional[bool] = None,
-    replace_existing: Optional[bool] = None,
-    prune_orphan_entities: Optional[bool] = None,
+    chunks: Sequence[DocumentChunk] | None = None,
+    index_options: IndexingOptions | None = None,
+    prompt_template_id: UUID | None = None,
+    prompt_template_key: str | None = None,
+    prompt_ab_experiment_key: str | None = None,
+    ab_user_key: str | None = None,
+    extract_relations: bool | None = None,
+    extract_skills: bool | None = None,
+    replace_existing: bool | None = None,
+    prune_orphan_entities: bool | None = None,
 ):
     engine = _load_engine()
     return await engine.extract(
@@ -139,12 +140,12 @@ async def extract_events(
 
 async def kg_search(
     query: str,
-    tenant_id: Optional[UUID] = None,
-    document_ids: Optional[List[UUID]] = None,
-    dataset_id: Optional[UUID] = None,
-    account_id: Optional[str] = None,
-    query_mode: Optional[str] = None,
-) -> Dict:
+    tenant_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
+    dataset_id: UUID | None = None,
+    account_id: str | None = None,
+    query_mode: str | None = None,
+) -> dict:
     default_mode = str(getattr(settings, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto")
     requested_mode = normalize_kg_query_mode(query_mode, default=default_mode)
     classifier_enabled = bool(getattr(settings, "KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED", True))

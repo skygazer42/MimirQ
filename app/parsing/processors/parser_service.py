@@ -9,7 +9,6 @@ import re
 import uuid
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -30,7 +29,7 @@ class DocumentParserService:
     def __init__(self):
         pass
 
-    def _materialize_local_images_for_preview(self, documents: List[Document], tenant_id: UUID) -> List[Dict]:
+    def _materialize_local_images_for_preview(self, documents: list[Document], tenant_id: UUID) -> list[dict]:
         """
         Rewrite local/relative image references in Markdown/HTML into preview-time
         `/api/v1/documents/image/{uuid}` URLs.
@@ -130,7 +129,7 @@ class DocumentParserService:
                     candidate_rel.append(ref_path_decoded.lstrip("/"))
                 candidate_rel.append(ref_path_decoded)
 
-                resolved_path: Optional[Path] = None
+                resolved_path: Path | None = None
                 for candidate in candidate_rel:
                     if not candidate:
                         continue
@@ -244,8 +243,8 @@ class DocumentParserService:
         self,
         file_path: Path,
         tenant_id: UUID,
-        parser_backend: Optional[str] = None,
-    ) -> Dict:
+        parser_backend: str | None = None,
+    ) -> dict:
         """
         Parse file and return Markdown plus image list (no persistence).
         """
@@ -294,14 +293,14 @@ class DocumentParserService:
             ],
         }
 
-    def _merge_documents(self, documents: List[Document]) -> str:
+    def _merge_documents(self, documents: list[Document]) -> str:
         parts = []
         for doc in documents:
             text = doc.page_content or ""
             parts.append(text.strip())
         return "\n\n".join(p for p in parts if p)
 
-    def _extract_and_save_inline_images(self, markdown_text: str, tenant_id: UUID) -> List[Dict]:
+    def _extract_and_save_inline_images(self, markdown_text: str, tenant_id: UUID) -> list[dict]:
         """
         Find data URI images, save to uploads/{tenant_id}/images, and return mapping info.
         """

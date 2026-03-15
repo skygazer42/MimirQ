@@ -15,7 +15,7 @@ import json
 import re
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 from langchain_core.documents import Document
@@ -59,7 +59,7 @@ class MarkerParser:
 
         self._session = requests.Session()
 
-    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+    def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
         run_id = _sanitize_run_id(document_id or file_path.stem or "marker")
         return (file_path.parent / ".marker" / run_id).absolute()
 
@@ -87,7 +87,7 @@ class MarkerParser:
                     return val
         return ""
 
-    def _handle_zip_response(self, *, resp: requests.Response, artifact_root: Path) -> Tuple[str, Optional[str]]:
+    def _handle_zip_response(self, *, resp: requests.Response, artifact_root: Path) -> tuple[str, str | None]:
         artifact_root.mkdir(parents=True, exist_ok=True)
 
         zip_path = artifact_root / "marker_output.zip"
@@ -114,12 +114,12 @@ class MarkerParser:
         self,
         file_path: Path,
         *,
-        dataset_id: Optional[str] = None,  # kept for interface parity
-        document_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,  # noqa: ARG002 - reserved for future use
-        pdf_quality: Optional[dict[str, Any]] = None,  # noqa: ARG002 - reserved for future use
+        dataset_id: str | None = None,  # kept for interface parity
+        document_id: str | None = None,
+        tenant_id: str | None = None,  # noqa: ARG002 - reserved for future use
+        pdf_quality: dict[str, Any] | None = None,  # noqa: ARG002 - reserved for future use
         **_kwargs,
-    ) -> List[Document]:
+    ) -> list[Document]:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -132,7 +132,7 @@ class MarkerParser:
             raise RuntimeError(f"Marker API error {resp.status_code}: {(resp.text or '')[:500]}")
 
         markdown_text = ""
-        asset_base_dir: Optional[str] = None
+        asset_base_dir: str | None = None
 
         if self._looks_like_zip(resp):
             markdown_text, asset_base_dir = self._handle_zip_response(resp=resp, artifact_root=artifact_root)
@@ -147,7 +147,7 @@ class MarkerParser:
             else:
                 markdown_text = resp.text or ""
 
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "source": str(file_path.name),
             "file_type": "pdf",
             "parser_backend": "marker",

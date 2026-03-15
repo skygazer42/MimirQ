@@ -7,7 +7,7 @@ type ParserResolveResult = {
 function normalizeBackend(value?: string): string {
   const raw = (value || '').trim().toLowerCase()
   if (!raw) return 'auto'
-  const normalized = raw.replace(/_/g, '-')
+  const normalized = raw.replaceAll(/_/g, '-')
 
   if (normalized === 'pymupdf' || normalized === 'fitz') return 'basic'
   if (normalized === 'magic-pdf') return 'magicpdf'

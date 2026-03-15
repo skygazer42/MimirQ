@@ -27,7 +27,7 @@ def test_deterministic_hardcases_dedupe_and_cap() -> None:
     )
     assert len(out) == 3
     qs = [h.question for h in out]
-    assert len(set([q.casefold() for q in qs])) == 3
+    assert len({q.casefold() for q in qs}) == 3
 
 
 def test_deterministic_hardcases_spillover_when_alias_missing() -> None:

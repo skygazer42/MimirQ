@@ -16,7 +16,7 @@ import re
 import shutil
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 from langchain_core.documents import Document
@@ -63,7 +63,7 @@ class PaddleVLParser:
 
         self._session = requests.Session()
 
-    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+    def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
         run_id = _sanitize_run_id(document_id or file_path.stem or "paddlevl")
         return (file_path.parent / ".paddlevl" / run_id).absolute()
 
@@ -210,7 +210,7 @@ class PaddleVLParser:
                 logger.warning("[paddle_vl] failed to process %s: %s", str(json_file.name), str(exc)[:200])
                 continue
 
-        standard_json: Optional[Path] = None
+        standard_json: Path | None = None
         if all_pages_data:
             standard_json = output_dir / self.STANDARD_JSON_NAME
             combined = {
@@ -225,7 +225,7 @@ class PaddleVLParser:
 
         # 3) Normalize Markdown and rewrite image refs.
         md_files = list(output_dir.rglob("*.md"))
-        standard_md: Optional[Path] = None
+        standard_md: Path | None = None
 
         if md_files:
             main_md = ZipImageProcessor._choose_markdown_file(md_files)
@@ -289,10 +289,10 @@ class PaddleVLParser:
         *,
         resp: requests.Response,
         artifact_root: Path,
-        dataset_id: Optional[str],
-        document_id: Optional[str],
-        tenant_id: Optional[str],
-    ) -> Tuple[str, Optional[str]]:
+        dataset_id: str | None,
+        document_id: str | None,
+        tenant_id: str | None,
+    ) -> tuple[str, str | None]:
         artifact_root.mkdir(parents=True, exist_ok=True)
 
         zip_path = artifact_root / "paddlevl_output.zip"
@@ -335,12 +335,12 @@ class PaddleVLParser:
         self,
         file_path: Path,
         *,
-        dataset_id: Optional[str] = None,  # kept for interface parity
-        document_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,  # noqa: ARG002 - reserved for future use
-        pdf_quality: Optional[dict[str, Any]] = None,  # noqa: ARG002 - reserved for future use
+        dataset_id: str | None = None,  # kept for interface parity
+        document_id: str | None = None,
+        tenant_id: str | None = None,  # noqa: ARG002 - reserved for future use
+        pdf_quality: dict[str, Any] | None = None,  # noqa: ARG002 - reserved for future use
         **_kwargs,
-    ) -> List[Document]:
+    ) -> list[Document]:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -353,7 +353,7 @@ class PaddleVLParser:
             raise RuntimeError(f"PaddleOCR-VL API error {resp.status_code}: {(resp.text or '')[:500]}")
 
         markdown_text = ""
-        asset_base_dir: Optional[str] = None
+        asset_base_dir: str | None = None
 
         if self._looks_like_zip(resp):
             markdown_text, asset_base_dir = self._handle_zip_response(
@@ -379,7 +379,7 @@ class PaddleVLParser:
             markdown_text = re.sub(r"!\[[^\]]*\]\(\s*[^)\s]+?\s*\)\s*", "", markdown_text)
             markdown_text = re.sub(r"<img[^>]*?>", "", markdown_text, flags=re.IGNORECASE)
 
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "source": str(file_path.name),
             "file_type": "pdf",
             "parser_backend": "paddle_vl",

@@ -6,7 +6,7 @@ Currently supports a rolling per-tenant assistant-token quota for chat.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -38,7 +38,7 @@ def check_chat_assistant_token_quota(
         return {"enabled": False, "limit": 0, "used": 0, "window_hours": window_hours, "exceeded": False, "mode": mode}
 
     window_hours = max(1, window_hours)
-    since = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+    since = datetime.now(UTC) - timedelta(hours=window_hours)
 
     used = 0
     try:

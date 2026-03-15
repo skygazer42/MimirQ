@@ -11,7 +11,6 @@ Final score 0-1; higher is cleaner. Low scores prefer OCR/structured flow.
 
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import pdfplumber  # type: ignore
 
@@ -25,7 +24,7 @@ def score_pdf_quality(
     file_path: Path,
     sample_pages: int = 3,
     use_ocr_validation: bool = False
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     Lightweight scoring for a PDF (sample first sample_pages).
 
@@ -98,10 +97,10 @@ def score_pdf_quality(
 
 
 def _score_text_quality(
-    pages: List,
+    pages: list,
     file_path: Path,
     use_ocr_validation: bool
-) -> Tuple[float, bool]:
+) -> tuple[float, bool]:
     """
     Evaluate text extraction quality (0-1).
     Metrics: text density, noise ratio, readability, scan detection.
@@ -164,7 +163,7 @@ def _score_text_quality(
     return max(0.0, min(1.0, score)), is_scanned
 
 
-def _score_format_consistency(pages: List) -> float:
+def _score_format_consistency(pages: list) -> float:
     """
     Evaluate format consistency (0-1).
     Metrics: font diversity, line spacing variance, paragraph structure.
@@ -182,7 +181,7 @@ def _score_format_consistency(pages: List) -> float:
                 font_sizes.extend([c.get("size", 0) for c in chars if c.get("size")])
                 
                 # Line heights (group by y).
-                y_coords = sorted(set(c.get("top", 0) for c in chars))
+                y_coords = sorted({c.get("top", 0) for c in chars})
                 if len(y_coords) > 1:
                     heights = [y_coords[i+1] - y_coords[i] for i in range(len(y_coords)-1)]
                     line_heights.extend(heights)
@@ -224,7 +223,7 @@ def _score_format_consistency(pages: List) -> float:
     return max(0.0, min(1.0, score))
 
 
-def _score_table_quality(pages: List) -> float:
+def _score_table_quality(pages: list) -> float:
     """
     Evaluate table integrity (0-1).
     Metrics: detection rate, cell alignment.

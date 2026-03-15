@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.services.rag_config_template_resolver import (
@@ -23,7 +23,7 @@ class _Template:
     ab_variant: str | None = None
     ab_weight: float = 1.0
     config_patch: dict[str, Any] = field(default_factory=dict)
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class _FakeQuery:

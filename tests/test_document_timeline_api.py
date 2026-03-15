@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -27,8 +27,8 @@ def test_document_timeline_returns_events(monkeypatch):  # noqa: ANN001
             self.status = "processing"
             self.current_stage = "parsing"
             self.processing_progress = 12
-            self.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-            self.updated_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+            self.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+            self.updated_at = datetime(2026, 1, 2, tzinfo=UTC)
 
     dummy_doc = _DummyDoc()
 
@@ -41,7 +41,7 @@ def test_document_timeline_returns_events(monkeypatch):  # noqa: ANN001
             self.resource_id = str(doc_id)
             self.request_id = "req_test"
             self.details = {"stage": "parsing"}
-            self.created_at = datetime(2026, 1, 2, 12, 0, tzinfo=timezone.utc)
+            self.created_at = datetime(2026, 1, 2, 12, 0, tzinfo=UTC)
 
     dummy_audits = [_DummyAudit("document.parse.started")]
 

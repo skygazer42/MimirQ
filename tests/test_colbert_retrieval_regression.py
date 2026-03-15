@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -53,4 +55,4 @@ def test_sample_benchmark_can_run_with_colbert_fixture(tmp_path: Path) -> None:
     runtime = payload.get("runtime") if isinstance(payload.get("runtime"), dict) else {}
     assert runtime.get("colbert_retrieval_enabled") is True
     assert runtime.get("colbert_retrieval_provider") == "deterministic"
-    assert payload.get("summary", {}).get("hit_at_k") == 1.0
+    assert payload.get("summary", {}).get("hit_at_k") == pytest.approx(1.0)

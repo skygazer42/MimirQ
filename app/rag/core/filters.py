@@ -4,13 +4,13 @@ Small, dependency-light filter helpers shared across modules.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 _MAX_FILTER_DEPTH = 8
 _MAX_FILTER_NODES = 200
 
 
-def _get_meta_value(meta: Dict[str, Any], key: str) -> Any:
+def _get_meta_value(meta: dict[str, Any], key: str) -> Any:
     """
     Return metadata value for a key, supporting dotted paths.
 
@@ -81,7 +81,7 @@ def _any_endswith(haystack: Any, needle: Any) -> bool:
     return str(haystack).lower().endswith(expected)
 
 
-def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
+def match_metadata_filter(meta: dict[str, Any], filter_spec: dict[str, Any]) -> bool:
     """
     Check if metadata matches the filter specification.
 
@@ -117,7 +117,7 @@ def match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> 
     budget = [0]
     invalid = [False]
 
-    def _match(meta0: Dict[str, Any], spec0: Dict[str, Any], *, depth: int) -> bool:
+    def _match(meta0: dict[str, Any], spec0: dict[str, Any], *, depth: int) -> bool:
         if depth > _MAX_FILTER_DEPTH:
             invalid[0] = True
             return False
@@ -243,7 +243,7 @@ def summarize_metadata_filter(
     filter_spec: Any,
     *,
     max_keys_sample: int = 10,
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Return a PII-safe summary of a metadata filter spec.
 
@@ -332,7 +332,7 @@ def summarize_metadata_filter(
 def apply_metadata_filter_with_stats(
     items: list[dict[str, Any]],
     filter_spec: Any,
-) -> Tuple[list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """
     Apply `match_metadata_filter(...)` to a list of items and return (filtered, stats).
 

@@ -19,7 +19,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Panel } from '@/components/ui/panel'
 import { formatApiError } from '@/lib/api-errors'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { evaluationApi, ragApi } from '@/lib/api-client'
 import { toast } from 'sonner'
 
@@ -84,7 +84,7 @@ async function copyToClipboard(text: string, label: string): Promise<void> {
   }
 }
 
-export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrievePreviewPanelProps) {
+export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<RetrievePreviewPanelProps>) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Citation[]>([])
   const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState<string>('')
@@ -175,7 +175,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
       setSearchResults(citations.map(toCitation).filter(Boolean) as Citation[])
       setSearchQueryForRetrieval(res.query_for_retrieval || '')
       setSearchMetrics(res.metrics || null)
-      setSearchRetrievalTrace(((res as any).retrieval_trace as any) || null)
+      setSearchRetrievalTrace(((res as any).retrieval_trace) || null)
       setSearchHasEvidence(Boolean((res as any).has_evidence))
       setSearchAbstainTriggered(Boolean((res as any).abstain_triggered))
       setSearchAbstainReason(((res as any).abstain_reason as string | null | undefined) ?? null)
@@ -202,7 +202,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
     if (!searchResults.length) return
 
     const exportedAt = new Date().toISOString()
-    const safeTs = exportedAt.replace(/[:.]/g, '-')
+    const safeTs = exportedAt.replaceAll(/[:.]/g, '-')
     const ds = selectedDatasetId || 'all'
     const filename = `evidence-pack-${ds}-${safeTs}.json`
 
@@ -340,12 +340,12 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void handleSearch()}
+              onKeyDown={(e) => e.key === 'Enter' && detachPromise(handleSearch())}
               placeholder="例如：请按第十二条说明例外条件"
               className="flex-1 px-4 py-3 bg-transparent outline-none text-foreground placeholder:text-muted-foreground/60 text-lg"
             />
             <Button
-              onClick={() => void handleSearch()}
+              onClick={() => detachPromise(handleSearch())}
               disabled={isSearching || !searchQuery.trim()}
               className="rounded-xl px-6 h-12 text-base font-medium shadow-md border border-primary/20"
             >
@@ -379,8 +379,8 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                   variant="outline"
                   className="h-7 rounded-full px-3 gap-1.5 border-border/60 bg-background/60 text-muted-foreground hover:bg-background"
                   disabled={isCreatingRegressionCase || selectedEvidenceSet.size === 0 || !selectedDatasetId}
-                  onClick={() => void handleCreateRegressionCaseFromSelection()}
-                  title={!selectedDatasetId ? '请先选择数据集' : '用选中的证据创建回归用例'}
+                  onClick={() => detachPromise(handleCreateRegressionCaseFromSelection())}
+                  title={selectedDatasetId ? '用选中的证据创建回归用例' : '请先选择数据集'}
                 >
                   {isCreatingRegressionCase ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
@@ -466,7 +466,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                     const pathStr = String((hit as any).policy_path_str || '')
                     const docName = String(hit.document_name || '')
                     return (
-                      <tr key={`${hit.document_id}-${chunkId || idx}-${idx}`} className="border-b border-border/40 hover:bg-muted/20">
+                      <tr key={`${String(hit.document_id || '')}:${chunkId}:${role}:${clause}:${pathStr}`} className="border-b border-border/40 hover:bg-muted/20">
                         <td className="p-3 align-top">
                           <input
                             type="checkbox"
@@ -573,7 +573,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                               label="复制 chunk_id"
                               variant="ghost"
                               className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
-                              onClick={() => void copyToClipboard(chunkId, 'chunk_id')}
+                              onClick={() => detachPromise(copyToClipboard(chunkId, 'chunk_id'))}
                               disabled={!chunkId}
                             >
                               <Copy className="w-4 h-4" />
@@ -662,7 +662,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                       <div className="rounded-lg border border-border/60 bg-background/60 p-2">
                         <div className="text-[11px]">query_variant_fusion</div>
                         <div className="mt-1 font-mono text-foreground/90">
-                          {String((selectedPassTrace?.query_variant_fusion as any)?.strategy ?? '—')}
+                          {String((selectedPassTrace?.query_variant_fusion)?.strategy ?? '—')}
                         </div>
                       </div>
                     </div>
@@ -747,7 +747,19 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                       const divChan = isRecord(ch?.diversity) ? ch?.diversity : null
                       const divDropped = toInt(divChan?.dropped)
 
-                      const enrich = isRecord(dbg.enrich_pass2) ? dbg.enrich_pass2 : isRecord(dbg.enrich_pass1) ? dbg.enrich_pass1 : null
+                      const enrich = (() => {
+    if (isRecord(dbg.enrich_pass2)) {
+        return dbg.enrich_pass2;
+    }
+    else {
+        if (isRecord(dbg.enrich_pass1)) {
+            return dbg.enrich_pass1;
+        }
+        else {
+            return null;
+        }
+    }
+})()
                       const trimKeys: Array<[string, string]> = [
                         ['filtered_metadata_filter', 'metadata_filter'],
                         ['filtered_acl', 'acl'],
@@ -869,8 +881,8 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                         </tr>
                       </thead>
                       <tbody>
-                        {retrievalPerQuery.map((item, i) => (
-                          <tr key={`${String(item.kind || i)}-${i}`} className="border-b border-border/40 align-top">
+                        {retrievalPerQuery.map((item) => (
+                          <tr key={`${String(item.kind || 'query')}:${String(item.query_chars ?? '')}:${String(item.elapsed_sec ?? '')}`} className="border-b border-border/40 align-top">
                             <td className="p-2 font-mono text-foreground/90">{String(item.kind || '—')}</td>
                             <td className="p-2 font-mono tabular-nums text-muted-foreground">
                               {typeof item.elapsed_sec === 'number' ? item.elapsed_sec.toFixed(3) : String(item.elapsed_sec ?? '—')}
@@ -939,7 +951,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                       type="button"
                       variant="outline"
                       className="h-8 rounded-full px-3 gap-2"
-                      onClick={() => void copyToClipboard(String(activeHit.chunk_id || ''), 'chunk_id')}
+                      onClick={() => detachPromise(copyToClipboard(String(activeHit.chunk_id || ''), 'chunk_id'))}
                       disabled={!activeHit.chunk_id}
                     >
                       <Copy className="h-4 w-4" />
@@ -949,7 +961,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                       type="button"
                       variant="outline"
                       className="h-8 rounded-full px-3 gap-2"
-                      onClick={() => void copyToClipboard(String(activeHit.doc_pipeline_key || ''), 'doc_pipeline_key')}
+                      onClick={() => detachPromise(copyToClipboard(String(activeHit.doc_pipeline_key || ''), 'doc_pipeline_key'))}
                       disabled={!activeHit.doc_pipeline_key}
                     >
                       <Copy className="h-4 w-4" />
@@ -959,7 +971,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                       type="button"
                       variant="outline"
                       className="h-8 rounded-full px-3 gap-2"
-                      onClick={() => void copyToClipboard((activeMatchedTerms || []).join(' '), 'matched_terms')}
+                      onClick={() => detachPromise(copyToClipboard((activeMatchedTerms || []).join(' '), 'matched_terms'))}
                       disabled={!activeMatchedTerms.length}
                     >
                       <Copy className="h-4 w-4" />
@@ -1050,10 +1062,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                           variant="outline"
                           className="h-8 rounded-full px-3 gap-2"
                           onClick={() =>
-                            void copyToClipboard(
+                            detachPromise(copyToClipboard(
                               JSON.stringify((activeHit as any).kg_path || [], null, 0),
                               'kg_path'
-                            )
+                            ))
                           }
                         >
                           <Copy className="h-4 w-4" />
@@ -1061,9 +1073,9 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                         </Button>
                       </div>
                       <div className="space-y-2 text-xs">
-                        {((activeHit as any).kg_path || []).map((step: any, idx: number) => (
+                        {((activeHit as any).kg_path || []).map((step: any) => (
                           <div
-                            key={`${String(step?.entity_id || idx)}-${idx}`}
+                            key={`${String(step?.entity_id || '')}:${String(step?.type || 'entity')}`}
                             className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
                           >
                             <div className="text-muted-foreground">{String(step?.type || 'entity')}</div>
@@ -1088,10 +1100,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                           variant="outline"
                           className="h-8 rounded-full px-3 gap-2"
                           onClick={() =>
-                            void copyToClipboard(
+                            detachPromise(copyToClipboard(
                               JSON.stringify((activeHit as any).kg_path_provenance || {}, null, 2),
                               'kg_path_provenance'
-                            )
+                            ))
                           }
                         >
                           <Copy className="h-4 w-4" />
@@ -1103,25 +1115,25 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                         <div className="rounded-lg border border-border/60 bg-background/60 p-2">
                           <div className="text-[11px] text-muted-foreground">kind</div>
                           <div className="mt-1 font-mono text-foreground/90">
-                            {String(((activeHit as any).kg_path_provenance as any)?.kind || '—')}
+                            {String(((activeHit as any).kg_path_provenance)?.kind || '—')}
                           </div>
                         </div>
                         <div className="rounded-lg border border-border/60 bg-background/60 p-2">
                           <div className="text-[11px] text-muted-foreground">hops</div>
                           <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                            {Number.isFinite(Number(((activeHit as any).kg_path_provenance as any)?.hops))
-                              ? Number(((activeHit as any).kg_path_provenance as any)?.hops)
+                            {Number.isFinite(Number(((activeHit as any).kg_path_provenance)?.hops))
+                              ? Number(((activeHit as any).kg_path_provenance)?.hops)
                               : '—'}
                           </div>
                         </div>
                       </div>
 
-                      {Array.isArray(((activeHit as any).kg_path_provenance as any)?.nodes) &&
-                      (((activeHit as any).kg_path_provenance as any)?.nodes || []).length ? (
+                      {Array.isArray(((activeHit as any).kg_path_provenance)?.nodes) &&
+                      (((activeHit as any).kg_path_provenance)?.nodes || []).length ? (
                         <div className="mt-3">
                           <div className="text-xs font-semibold text-foreground mb-2">Nodes</div>
                           <div className="space-y-2 text-xs">
-                            {(((activeHit as any).kg_path_provenance as any)?.nodes || []).slice(0, 12).map((n: any, idx: number) => {
+                            {(((activeHit as any).kg_path_provenance)?.nodes || []).slice(0, 12).map((n: any) => {
                               const kind = String(n?.kind || 'node')
                               const id = String(n?.entity_id || n?.event_id || '—')
                               const typ = String(n?.type || '')
@@ -1129,12 +1141,12 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                               const chunk = n?.chunk_id ? shortId(String(n.chunk_id)) : ''
                               return (
                                 <div
-                                  key={`${kind}-${id}-${idx}`}
+                                  key={`${kind}:${id}:${typ}:${doc}:${chunk}`}
                                   className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
                                 >
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="text-muted-foreground">{kind}{typ ? ` · ${typ}` : ''}</div>
-                                    <div className="font-mono text-foreground/90 break-all">{id !== '—' ? shortId(id, { head: 10, tail: 6 }) : '—'}</div>
+                                    <div className="font-mono text-foreground/90 break-all">{id === '—' ? '—' : shortId(id, { head: 10, tail: 6 })}</div>
                                   </div>
                                   {doc || chunk ? (
                                     <div className="mt-1 text-[11px] text-muted-foreground break-all">
@@ -1150,12 +1162,12 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                         </div>
                       ) : null}
 
-                      {Array.isArray(((activeHit as any).kg_path_provenance as any)?.edges) &&
-                      (((activeHit as any).kg_path_provenance as any)?.edges || []).length ? (
+                      {Array.isArray(((activeHit as any).kg_path_provenance)?.edges) &&
+                      (((activeHit as any).kg_path_provenance)?.edges || []).length ? (
                         <div className="mt-3">
                           <div className="text-xs font-semibold text-foreground mb-2">Edges</div>
                           <div className="space-y-2 text-xs">
-                            {(((activeHit as any).kg_path_provenance as any)?.edges || []).slice(0, 12).map((e: any, idx: number) => {
+                            {(((activeHit as any).kg_path_provenance)?.edges || []).slice(0, 12).map((e: any) => {
                               const kind = String(e?.kind || 'edge')
                               const pred = String(e?.predicate || '')
                               const bucket = String(e?.confidence_bucket || '')
@@ -1165,7 +1177,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: RetrieveP
                               const chunk = e?.chunk_id ? shortId(String(e.chunk_id)) : ''
                               return (
                                 <div
-                                  key={`${kind}-${pred}-${idx}`}
+                                  key={`${kind}:${pred}:${bucket}:${src}:${rel}:${doc}:${chunk}`}
                                   className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
                                 >
                                   <div className="flex flex-wrap items-center justify-between gap-2">

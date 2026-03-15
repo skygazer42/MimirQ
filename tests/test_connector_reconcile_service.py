@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 
@@ -42,7 +42,7 @@ def test_plan_connector_reconcile_can_disable_stale_and_reenable_known_refs() ->
 
     config_id = str(uuid4())
     dataset_id = str(uuid4())
-    now = datetime(2026, 3, 10, 10, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 10, 10, 0, 0, tzinfo=UTC)
 
     active_keep = _Doc(source_ref="docs/keep.md", config_id=config_id)
     active_stale = _Doc(source_ref="docs/stale.md", config_id=config_id)

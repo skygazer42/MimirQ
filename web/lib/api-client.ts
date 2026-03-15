@@ -2,239 +2,7 @@
  * API 客户端
  */
 import axios, { AxiosHeaders } from 'axios'
-import type {
-  Document,
-  DocumentList,
-  DocumentChunk,
-  DocumentChunkList,
-  DocumentChunkCreateRequest,
-  DocumentChunkMatchList,
-  DocumentChunkReembedRequest,
-  DocumentChunkReembedResponse,
-  DocumentChunkUpdateRequest,
-  DocumentQAGenerateRequest,
-  DocumentQAGenerateResponse,
-  DocumentStatus,
-  DocumentTimelineResponse,
-  DocumentFolderTreeResponse,
-  DocumentStats,
-  DocumentAccessInfo,
-  DocumentAccessUpdateRequest,
-  DocumentBatchLifecycleResponse,
-  DocumentBatchReingestRequest,
-  DocumentBatchRetryRequest,
-  DocumentBatchRetryResponse,
-  DocumentBatchMoveRequest,
-  DocumentBatchMoveResponse,
-  DocumentBatchAccessUpdateRequest,
-  DocumentBatchAccessUpdateResponse,
-  DocumentDuplicateList,
-  DocumentVersionList,
-  DocumentVersionDiff,
-  ConnectorInfo,
-  ConnectorConfigCreateRequest,
-  ConnectorConfigListResponse,
-  ConnectorConfigOut,
-  ConnectorConfigUpdateRequest,
-  ConnectorScheduledTickResponse,
-  ConnectorRunCreateRequest,
-  ConnectorRunListResponse,
-  ConnectorRunOut,
-  IngestionRunCompareResponse,
-  IngestionRunListResponse,
-  IngestionRunOut,
-  ConnectorValidateRequest,
-  ConnectorValidateResponse,
-  DocumentUserMetadataPatchRequest,
-  DocumentBatchUserMetadataPatchRequest,
-  DocumentBatchUserMetadataPatchResponse,
-  DocumentPipelinePatchRequest,
-  DocumentLifecycleMetadata,
-  DocumentLifecycleMetadataUpdateRequest,
-  Conversation,
-  Message,
-  ChatRequest,
-  ChatResponse,
-  ConversationSummaryResponse,
-  ConversationSummaryUpdateResponse,
-  ChatTokenUsageSummary,
-  ChatCostUsageSummary,
-  ChatTokenQuotaStatus,
-  TenantQuotaSummary,
-  AuditLogListResponse,
-  DocumentPreview,
-  DocumentParsedContentResponse,
-  ManualChunk,
-  DocumentPipelineOptions,
-  ChunkPreviewResponse,
-  ChunkPreset,
-  ChunkPresetCreateRequest,
-  ChunkPresetUpdateRequest,
-  ChunkPresetListResponse,
-  DocumentBatchUploadResponse,
-  Dataset,
-  DatasetCreate,
-  DatasetUpdate,
-  DatasetListResponse,
-  DatasetCategoryTreeResponse,
-  DatasetCategoryCreate,
-  DatasetCategoryUpdate,
-  DatasetCategoryMoveRequest,
-  DatasetCategoryOut,
-  DatasetCategoryAssignmentRequest,
-  DatasetCategoryAssignmentResponse,
-  DatasetIngestionStats,
-  DatasetHealthResponse,
-  DatasetReport,
-  DatasetConfigExport,
-  DatasetConfigImportRequest,
-  DatasetCloneRequest,
-  DatasetProfileSummary,
-  DatasetProfileDocumentListResponse,
-  DatasetProfileFindingListResponse,
-  DatasetProfileScanRunCreateRequest,
-  DatasetProfileScanRunListResponse,
-  DatasetProfileScanRunOut,
-  DatasetPrecheckSummary,
-  DatasetPrecheckFindingListResponse,
-  DatasetPrecheckScanRunCreateRequest,
-  DatasetPrecheckScanRunListResponse,
-  DatasetPrecheckScanRunOut,
-  DatasetPrecheckSamplesResponse,
-  DatasetPrecheckNearDupResponse,
-  DatasetPrecheckDiffResponse,
-  DatasetPrecheckIngestionSuggestionResponse,
-  DatasetTablesListResponse,
-  DatasetTableAsset,
-  TableQueryRequest,
-  TableQueryResponse,
-  TableAskRequest,
-  TableAskResponse,
-  LotusSemFilterRequest,
-  DbCatalogTablesListResponse,
-  DbCatalogTableDetail,
-  DbProfileSnapshotListResponse,
-  MessageFeedback,
-  MessageFeedbackCreate,
-  MessageFeedbackListResponse,
-  MessageFeedbackEnrichedListResponse,
-  KGDeleteResponse,
-  KGEntityDetailResponse,
-  KGEntityMergeRequest,
-  KGEntityMergePreviewResponse,
-  KGEntityMergeResponse,
-  KGEntityResolutionUndoResponse,
-  KGEntitySplitRequest,
-  KGEntitySplitResponse,
-  KGEntityAliasCreateRequest,
-  KGEntityAliasItem,
-  KGEntityAliasesResponse,
-  KGEntityAliasSuggestionsResponse,
-  KGPredicateOntologyCreateRequest,
-  KGPredicateOntologyItem,
-  KGPredicateOntologyListResponse,
-  KGPredicateOntologyUpdateRequest,
-  KGEventDetailResponse,
-  KGExtractResponse,
-  KGGraphNode,
-  KGGraphResponse,
-  KGSearchRequest,
-  KGSearchResponse,
-  KGStatsResponse,
-  BatchUploadRequest,
-  BatchUploadResponse,
-  BatchTaskStatus,
-  BatchFileInfo,
-  CleanPreviewRequest,
-  CleanPreviewResponse,
-  CleanRulesResponse,
-  CheckpointDetailResponse,
-  CheckpointListResponse,
-  HealthResponse,
-  KeywordExtractRequest,
-  KeywordExtractResponse,
-  LLMCleanPreviewRequest,
-  LLMCleanPreviewResponse,
-  PipelineCapabilitiesResponse,
-  GovernanceAnalyzeRequest,
-  GovernanceAnalyzeResponse,
-  GovernanceRulePackListResponse,
-  StaleDocumentsByDatasetResponse,
-  GovernanceCommonLinesLearnRequest,
-  GovernanceCommonLinesLearnResponse,
-  GovernanceProfileListResponse,
-  GovernanceProfileOut,
-  GovernanceProfileCreate,
-  GovernanceProfileUpdate,
-  GovernanceProfileImportResponse,
-  GovernanceProfileResolvedResponse,
-  PipelineChunkPreviewRequest,
-  PipelineChunkPreviewResponse,
-  PipelineParsePreviewResponse,
-  ReadyResponse,
-  RetrievePreviewRequest,
-  RetrievePreviewResponse,
-  EvidenceRetrieveRequest,
-  EvidenceRetrieveResponse,
-  EvidenceItem,
-  EvidenceItemCreate,
-  EvidenceItemImportResponse,
-  EvidenceItemList,
-  EvidenceItemPatch,
-  EvidenceReferenceDriftAudit,
-  EvidenceReferenceRepairRequest,
-  EvidenceReferenceRepairResponse,
-  EvidenceHardcaseDiscovery,
-  EvidenceSuite,
-  EvidenceSuiteCreate,
-  EvidenceSuiteExportV1,
-  EvidenceSuiteDashboard,
-  EvidenceSuiteList,
-  EvidenceSuitePatch,
-  EvidenceSuiteSyncRegressionResponse,
-  PromptPreviewRequest,
-  PromptPreviewResponse,
-  RegressionCase,
-  RegressionCaseCreate,
-  RegressionCaseBundleV1,
-  RegressionCaseImportResponse,
-  RegressionCaseList,
-  RegressionCasePatch,
-  TestGenFromDocsRequest,
-  TestGenFromConversationsRequest,
-  TestGenResponse,
-  RegressionRun,
-  RegressionRunCreate,
-  RegressionRunList,
-  RegressionRunDetail,
-  AuthResponse,
-  LoginRequest,
-  RegisterRequest,
-  UserProfile,
-	  ZipWithImagesResponse,
-	  IngestionPolicy,
-	  IngestionPolicyImportResponse,
-	  IngestionPolicyRollbackRequest,
-	  IngestionPolicyVersionListResponse,
-	  IngestionPreviewResponse,
-		  RagvizSimilarityCollectionsResponse,
-		  RagvizSimilarityRequest,
-		  RagvizSimilarityCalculateResponse,
-		  RagMetricsSummaryResponse,
-		  RagQueryAnalyticsResponse,
-		  RagCostAttributionResponse,
-			  RagTraceBundleResponse,
-			  RagTraceBundleDiffResponse,
-			  OpsConfigSnapshotResponse,
-			  PeriodicJobFreshnessResponse,
-			  DepsDiagnosticsResponse,
-			  TaskQueueObservabilitySnapshotResponse,
-			  SloSnapshotResponse,
-			  IndexAuditResponse,
-		  IngestionDashboardSummaryResponse,
-		  RagTraceListResponse,
-		  RagasRegressionRunDiffResponse,
-	} from '@/types'
+import type { Document, DocumentList, DocumentChunk, DocumentChunkList, DocumentChunkCreateRequest, DocumentChunkMatchList, DocumentChunkReembedRequest, DocumentChunkReembedResponse, DocumentChunkUpdateRequest, DocumentQAGenerateRequest, DocumentQAGenerateResponse, DocumentStatus, DocumentTimelineResponse, DocumentFolderTreeResponse, DocumentStats, DocumentAccessInfo, DocumentAccessUpdateRequest, DocumentBatchLifecycleResponse, DocumentBatchReingestRequest, DocumentBatchRetryRequest, DocumentBatchRetryResponse, DocumentBatchMoveRequest, DocumentBatchMoveResponse, DocumentBatchAccessUpdateRequest, DocumentBatchAccessUpdateResponse, DocumentDuplicateList, DocumentVersionList, DocumentVersionDiff, ConnectorInfo, ConnectorConfigCreateRequest, ConnectorConfigListResponse, ConnectorConfigOut, ConnectorConfigUpdateRequest, ConnectorScheduledTickResponse, ConnectorRunCreateRequest, ConnectorRunListResponse, ConnectorRunOut, IngestionRunCompareResponse, IngestionRunListResponse, IngestionRunOut, ConnectorValidateRequest, ConnectorValidateResponse, DocumentUserMetadataPatchRequest, DocumentBatchUserMetadataPatchRequest, DocumentBatchUserMetadataPatchResponse, DocumentPipelinePatchRequest, DocumentLifecycleMetadata, DocumentLifecycleMetadataUpdateRequest, Conversation, Message, ChatRequest, ChatResponse, ConversationSummaryResponse, ConversationSummaryUpdateResponse, ChatTokenUsageSummary, ChatCostUsageSummary, ChatTokenQuotaStatus, TenantQuotaSummary, AuditLogListResponse, DocumentPreview, DocumentParsedContentResponse, ManualChunk, DocumentPipelineOptions, ChunkPreviewResponse, ChunkPreset, ChunkPresetCreateRequest, ChunkPresetUpdateRequest, ChunkPresetListResponse, DocumentBatchUploadResponse, Dataset, DatasetCreate, DatasetUpdate, DatasetListResponse, DatasetCategoryTreeResponse, DatasetCategoryCreate, DatasetCategoryUpdate, DatasetCategoryMoveRequest, DatasetCategoryOut, DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse, DatasetIngestionStats, DatasetHealthResponse, DatasetReport, DatasetConfigExport, DatasetConfigImportRequest, DatasetCloneRequest, DatasetProfileSummary, DatasetProfileDocumentListResponse, DatasetProfileFindingListResponse, DatasetProfileScanRunCreateRequest, DatasetProfileScanRunListResponse, DatasetProfileScanRunOut, DatasetPrecheckSummary, DatasetPrecheckFindingListResponse, DatasetPrecheckScanRunCreateRequest, DatasetPrecheckScanRunListResponse, DatasetPrecheckScanRunOut, DatasetPrecheckSamplesResponse, DatasetPrecheckNearDupResponse, DatasetPrecheckDiffResponse, DatasetPrecheckIngestionSuggestionResponse, DatasetTablesListResponse, DatasetTableAsset, TableQueryRequest, TableQueryResponse, TableAskRequest, TableAskResponse, LotusSemFilterRequest, DbCatalogTablesListResponse, DbCatalogTableDetail, DbProfileSnapshotListResponse, MessageFeedback, MessageFeedbackCreate, MessageFeedbackListResponse, MessageFeedbackEnrichedListResponse, KGDeleteResponse, KGEntityDetailResponse, KGEntityMergeRequest, KGEntityMergePreviewResponse, KGEntityMergeResponse, KGEntityResolutionUndoResponse, KGEntitySplitRequest, KGEntitySplitResponse, KGEntityAliasCreateRequest, KGEntityAliasItem, KGEntityAliasesResponse, KGEntityAliasSuggestionsResponse, KGPredicateOntologyCreateRequest, KGPredicateOntologyItem, KGPredicateOntologyListResponse, KGPredicateOntologyUpdateRequest, KGEventDetailResponse, KGExtractResponse, KGGraphNode, KGGraphResponse, KGSearchRequest, KGSearchResponse, KGStatsResponse, BatchUploadResponse, BatchTaskStatus, BatchFileInfo, CleanPreviewRequest, CleanPreviewResponse, CleanRulesResponse, CheckpointDetailResponse, CheckpointListResponse, HealthResponse, KeywordExtractRequest, KeywordExtractResponse, LLMCleanPreviewRequest, LLMCleanPreviewResponse, PipelineCapabilitiesResponse, GovernanceAnalyzeRequest, GovernanceAnalyzeResponse, GovernanceRulePackListResponse, StaleDocumentsByDatasetResponse, GovernanceCommonLinesLearnRequest, GovernanceCommonLinesLearnResponse, GovernanceProfileListResponse, GovernanceProfileOut, GovernanceProfileCreate, GovernanceProfileUpdate, GovernanceProfileImportResponse, GovernanceProfileResolvedResponse, PipelineChunkPreviewRequest, PipelineChunkPreviewResponse, PipelineParsePreviewResponse, ReadyResponse, RetrievePreviewRequest, RetrievePreviewResponse, EvidenceRetrieveRequest, EvidenceRetrieveResponse, EvidenceItem, EvidenceItemCreate, EvidenceItemImportResponse, EvidenceItemList, EvidenceItemPatch, EvidenceReferenceDriftAudit, EvidenceReferenceRepairRequest, EvidenceReferenceRepairResponse, EvidenceHardcaseDiscovery, EvidenceSuite, EvidenceSuiteCreate, EvidenceSuiteExportV1, EvidenceSuiteDashboard, EvidenceSuiteList, EvidenceSuitePatch, EvidenceSuiteSyncRegressionResponse, PromptPreviewRequest, PromptPreviewResponse, RegressionCase, RegressionCaseCreate, RegressionCaseBundleV1, RegressionCaseImportResponse, RegressionCaseList, RegressionCasePatch, TestGenFromDocsRequest, TestGenFromConversationsRequest, TestGenResponse, RegressionRun, RegressionRunCreate, RegressionRunList, RegressionRunDetail, AuthResponse, LoginRequest, RegisterRequest, UserProfile, ZipWithImagesResponse, IngestionPolicy, IngestionPolicyImportResponse, IngestionPolicyRollbackRequest, IngestionPolicyVersionListResponse, IngestionPreviewResponse, RagvizSimilarityCollectionsResponse, RagvizSimilarityRequest, RagvizSimilarityCalculateResponse, RagMetricsSummaryResponse, RagQueryAnalyticsResponse, RagCostAttributionResponse, RagTraceBundleResponse, RagTraceBundleDiffResponse, OpsConfigSnapshotResponse, PeriodicJobFreshnessResponse, DepsDiagnosticsResponse, TaskQueueObservabilitySnapshotResponse, SloSnapshotResponse, IndexAuditResponse, IngestionDashboardSummaryResponse, RagTraceListResponse, RagasRegressionRunDiffResponse } from '@/types'
 import type {
   MetaResponse,
   TenantGroupCreateRequest,
@@ -245,7 +13,7 @@ import type {
   TenantGroupOut,
   TenantGroupUpdateRequest,
 } from '@/types/backend'
-import { extractBackendMessage, extractBackendRequestId, withRequestId } from '@/lib/api-errors'
+import { extractBackendMessage, extractBackendRequestId } from '@/lib/api-errors'
 import { buildFetchError } from '@/lib/fetch-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { clearAuthSession, getAccessToken, setAccessToken } from '@/lib/auth-storage'
@@ -257,9 +25,23 @@ import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@
 import { generateRequestId } from '@/lib/request-id'
 import { readSseDataStrings } from '@/lib/sse-reader'
 
+function headerValueToString(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    const joined = value
+      .filter((item): item is string | number | boolean => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')
+      .map((item) => String(item))
+      .join(', ')
+      .trim()
+    return joined || undefined
+  }
+  return undefined
+}
+
 function getOrCreateRequestId(headers: AxiosHeaders): string {
-  const existing = headers.get('X-Request-ID')
-  if (existing) return String(existing)
+  const existing = headerValueToString(headers.get('X-Request-ID'))
+  if (existing) return existing
 
   const requestId = generateRequestId()
 
@@ -324,9 +106,9 @@ apiClient.interceptors.response.use(
       const status = error.response.status
       const data = error.response.data
       const detail = extractBackendMessage(data) || error.message
-      const headerRequestId = error.response.headers?.['x-request-id']
-      const requestId = extractBackendRequestId(data) || (headerRequestId ? String(headerRequestId) : undefined)
-      ;(error as any).requestId = requestId
+      const headerRequestId = headerValueToString(error.response.headers?.['x-request-id'])
+      const requestId = extractBackendRequestId(data) || headerRequestId
+      ;(error).requestId = requestId
 
       switch (status) {
         case 401: {
@@ -336,9 +118,9 @@ apiClient.interceptors.response.use(
           // so the UI doesn't stay in a broken "logged-in" state.
           const token = getAccessToken()
           const canAttemptRefresh =
-            !!token && typeof window !== 'undefined' && !!error?.config && !(error.config as any).__mimirqOidcRetried
+            !!token && typeof globalThis.window !== 'undefined' && !!error?.config && !(error.config).__mimirqOidcRetried
           if (canAttemptRefresh) {
-            ;(error.config as any).__mimirqOidcRetried = true
+            ;(error.config).__mimirqOidcRetried = true
 
             const refreshed = await tryRefreshOidcAccessToken()
             if (refreshed) {
@@ -351,10 +133,10 @@ apiClient.interceptors.response.use(
 
           if (token) {
             clearAuthSession()
-            if (typeof window !== 'undefined') {
-              const path = String(window.location?.pathname || '')
+            if (typeof globalThis.window !== 'undefined') {
+              const path = String(globalThis.window.location?.pathname || '')
               if (!path.startsWith('/auth')) {
-                window.location.href = '/auth'
+                globalThis.window.location.href = '/auth'
               }
             }
           }
@@ -371,16 +153,27 @@ apiClient.interceptors.response.use(
           break
         case 429: {
           const retryAfterHeader = error.response.headers?.['retry-after']
-          const detailObj = data && typeof data === 'object' ? ((data as any).detail as any) : null
+          const detailObj = data && typeof data === 'object' ? ((data).detail) : null
           const retryAfterBody = detailObj?.retry_after_sec
           const retryAfterSec =
-            typeof retryAfterBody === 'number'
-              ? retryAfterBody
-              : typeof retryAfterBody === 'string'
-                ? Number(retryAfterBody)
-                : retryAfterHeader
-                  ? Number(retryAfterHeader)
-                  : undefined
+            (() => {
+    if (typeof retryAfterBody === 'number') {
+        return retryAfterBody;
+    }
+    else {
+        if (typeof retryAfterBody === 'string') {
+            return Number(retryAfterBody);
+        }
+        else {
+            if (retryAfterHeader) {
+                return Number(retryAfterHeader);
+            }
+            else {
+                return undefined;
+            }
+        }
+    }
+})()
           const scope = typeof detailObj?.scope === 'string' ? detailObj.scope : undefined
           const limit = typeof detailObj?.limit === 'number' ? detailObj.limit : undefined
 
@@ -405,8 +198,8 @@ apiClient.interceptors.response.use(
       }
     } else if (error.request) {
       const headers = AxiosHeaders.from(error.config?.headers)
-      const requestId = headers.get('X-Request-ID')
-      ;(error as any).requestId = requestId ? String(requestId) : undefined
+      const requestId = headerValueToString(headers.get('X-Request-ID'))
+      ;(error).requestId = requestId
       console.error('[API] 网络错误，请检查后端服务是否启动', requestId ? `(request_id=${requestId})` : '')
     }
 
@@ -1413,7 +1206,7 @@ function normalizeRegexRuleForApi(rule: { pattern: string; repl?: string; flags?
 }
 
 function normalizeGovernanceProfilePayload(payload: any): GovernanceProfileOut['payload'] {
-  const p = (payload || {}) as any
+  const p = (payload || {})
   const inputFormatsRaw = p.input_formats
   const input_formats =
     Array.isArray(inputFormatsRaw) && inputFormatsRaw.length > 0 ? inputFormatsRaw : ['markdown']
@@ -1423,13 +1216,13 @@ function normalizeGovernanceProfilePayload(payload: any): GovernanceProfileOut['
     version: typeof p.version === 'string' && p.version ? p.version : '1',
     extends: p.extends ?? null,
     input_formats,
-    pipeline_patch: (p.pipeline_patch ?? {}) as any,
+    pipeline_patch: (p.pipeline_patch ?? {}),
     regex_rules,
   }
 }
 
 function normalizeGovernanceProfileOut(profile: any): GovernanceProfileOut {
-  const pr = (profile || {}) as any
+  const pr = (profile || {})
   return { ...pr, payload: normalizeGovernanceProfilePayload(pr.payload) }
 }
 
@@ -3811,7 +3604,7 @@ export const ltrApi = {
 export interface RagasRun {
   id: string
   conversation_id?: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | string
+  status: string
   metrics: string[]
   params: Record<string, any>
   summary: Record<string, any>

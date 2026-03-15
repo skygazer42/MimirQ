@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -29,7 +29,7 @@ class _ReleaseHeading:
     end: int
     title: str
     version: str
-    date: Optional[str]
+    date: str | None
     index: int
 
 
@@ -37,7 +37,7 @@ class _ReleaseHeading:
 class _Section:
     start: int
     end: int
-    heading: Optional[_ReleaseHeading]
+    heading: _ReleaseHeading | None
 
 
 _MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
@@ -59,11 +59,11 @@ def _normalize_heading(raw: str) -> str:
     return t
 
 
-def _iter_release_headings(text: str) -> List[_ReleaseHeading]:
+def _iter_release_headings(text: str) -> list[_ReleaseHeading]:
     if not text:
         return []
 
-    headings: List[_ReleaseHeading] = []
+    headings: list[_ReleaseHeading] = []
     offset = 0
     for raw_line in text.splitlines(keepends=True):
         line_start = offset
@@ -102,7 +102,7 @@ def _iter_release_headings(text: str) -> List[_ReleaseHeading]:
         )
 
     # De-dup by start position.
-    deduped: List[_ReleaseHeading] = []
+    deduped: list[_ReleaseHeading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -112,11 +112,11 @@ def _iter_release_headings(text: str) -> List[_ReleaseHeading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[_ReleaseHeading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[_ReleaseHeading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = headings[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -148,8 +148,8 @@ class ChangelogChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -160,7 +160,7 @@ class ChangelogChunker(BaseChunker):
             headings = _iter_release_headings(text)
             sections = _build_sections(text, headings)
 
-            current_release: Optional[_ReleaseHeading] = None
+            current_release: _ReleaseHeading | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():

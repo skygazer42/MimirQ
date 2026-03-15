@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 
+import pytest
 from langchain_core.documents import Document
 
 from app.rag.core.citations import build_citations_from_docs
@@ -74,7 +75,7 @@ def test_tag_citation_includes_stable_traceability_keys() -> None:
     assert c0.get("sheet_index") == 0
     assert str(c0.get("sheet_name") or "") == "Sales"
     assert str(c0.get("sql_generation_mode") or "") == "deterministic"
-    assert float(c0.get("tag_schema_link_score") or 0.0) == 0.78
+    assert float(c0.get("tag_schema_link_score") or 0.0) == pytest.approx(0.78)
     assert str(c0.get("tag_schema_link_strategy") or "") == "column_overlap"
     assert str(c0.get("row_source_table") or "") == "demo.sales"
     assert str(c0.get("row_source_sync_token") or "") == "tok-sales-v1"

@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 from threading import Lock
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -62,7 +62,7 @@ class DeepDocParser:
             self._docx_parser = DeepDocDocxParser()
         return self._docx_parser
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         """
         Run DeepDoc on the provided document and normalize the output into LangChain
         Document objects.
@@ -83,7 +83,7 @@ class DeepDocParser:
                 except Exception as exc:  # pragma: no cover - passthrough
                     raise RuntimeError(f"DeepDoc failed to parse {file_path}") from exc
 
-            parts: List[str] = []
+            parts: list[str] = []
             if isinstance(sections, list):
                 for item in sections:
                     if isinstance(item, tuple):
@@ -152,7 +152,7 @@ class DeepDocParser:
         if total_pages:
             base_meta["total_pages"] = total_pages
 
-        docs: List[Document] = []
+        docs: list[Document] = []
 
         pos_tag_re = re.compile(r"@@[0-9-]+\t[0-9.\t]+##")
 
@@ -185,7 +185,7 @@ class DeepDocParser:
             return str(section or "").strip()
 
         # 1) Merge text sections into one doc (for downstream chunker).
-        text_parts: List[str] = []
+        text_parts: list[str] = []
         if isinstance(sections, str):
             normalized = _normalize_section(sections)
             if normalized:

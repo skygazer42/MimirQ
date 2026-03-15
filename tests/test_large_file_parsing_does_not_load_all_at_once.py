@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import builtins
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, List, Tuple
+from typing import Any
 
 from app.parsing.parsers.base_parser import BaseAdvancedParser
 
@@ -42,7 +43,7 @@ class _DummyAdvancedParser(BaseAdvancedParser):
     def _get_parser_name(self) -> str:
         return "dummy"
 
-    def _check_parser_installation(self, parser: Any) -> Tuple[bool, str]:
+    def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
         return (True, "")
 
     def _call_parse_method(
@@ -52,7 +53,7 @@ class _DummyAdvancedParser(BaseAdvancedParser):
         binary: bytes | None,
         callback: Callable[[float, str], None],
         **kwargs: Any,
-    ) -> Tuple[List, List]:
+    ) -> tuple[list, list]:
         # The "streaming" contract for O23: BaseAdvancedParser should not
         # eagerly load full file bytes into memory.
         assert binary is None

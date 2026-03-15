@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -40,10 +40,10 @@ class WebCrawlAuthConfig(BaseModel):
     """
 
     type: Literal["none", "cookie", "bearer", "basic"] = "none"
-    cookie: Optional[str] = Field(default=None, max_length=20_000, description="Cookie header value (login session)")
-    token: Optional[str] = Field(default=None, max_length=10_000, description="Bearer token")
-    username: Optional[str] = Field(default=None, max_length=500)
-    password: Optional[str] = Field(default=None, max_length=10_000)
+    cookie: str | None = Field(default=None, max_length=20_000, description="Cookie header value (login session)")
+    token: str | None = Field(default=None, max_length=10_000, description="Bearer token")
+    username: str | None = Field(default=None, max_length=500)
+    password: str | None = Field(default=None, max_length=10_000)
 
     @model_validator(mode="after")
     def _validate(self) -> "WebCrawlAuthConfig":
@@ -81,21 +81,21 @@ class WebCrawlAuthConfig(BaseModel):
 class UrlBatchConnectorConfig(BaseModel):
     """Config for `url_batch` connector."""
 
-    urls: List[str] = Field(..., min_length=1, max_length=50, description="One URL per entry")
-    filename: Optional[str] = Field(
+    urls: list[str] = Field(..., min_length=1, max_length=50, description="One URL per entry")
+    filename: str | None = Field(
         default=None,
         max_length=500,
         description="Optional: override filename for display/extension inference (applies to all urls).",
     )
     # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
-    user_agent: Optional[str] = Field(default=None, max_length=200)
-    auth: Optional[WebCrawlAuthConfig] = None
+    user_agent: str | None = Field(default=None, max_length=200)
+    auth: WebCrawlAuthConfig | None = None
 
     parser_backend: str = Field(default="auto")
     chunk_strategy: str = Field(default="langchain_recursive")
-    pipeline: Optional[DocumentPipelineOptions] = None
-    access: Optional[DocumentAccessUpdateRequest] = None
-    source_acl: Optional[ConnectorSourceAclConfig] = None
+    pipeline: DocumentPipelineOptions | None = None
+    access: DocumentAccessUpdateRequest | None = None
+    source_acl: ConnectorSourceAclConfig | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "UrlBatchConnectorConfig":
@@ -117,17 +117,17 @@ class UrlBatchConnectorConfig(BaseModel):
 class WebCrawlConnectorConfig(BaseModel):
     """Config for `web_crawl` connector (site-level crawling)."""
 
-    start_urls: List[str] = Field(..., min_length=1, max_length=5, description="One or more seed URLs")
+    start_urls: list[str] = Field(..., min_length=1, max_length=5, description="One or more seed URLs")
     max_pages: int = Field(default=50, ge=1, le=500)
     max_depth: int = Field(default=3, ge=0, le=10)
     same_host_only: bool = Field(default=True, description="Only follow links under the same host as start_urls")
-    include_patterns: List[str] = Field(default_factory=list, description="Regex patterns; if set, only matched URLs are crawled")
-    exclude_patterns: List[str] = Field(default_factory=list, description="Regex patterns to exclude URLs")
+    include_patterns: list[str] = Field(default_factory=list, description="Regex patterns; if set, only matched URLs are crawled")
+    exclude_patterns: list[str] = Field(default_factory=list, description="Regex patterns to exclude URLs")
     use_sitemaps: bool = Field(
         default=False,
         description="If true, try sitemap.xml (and robots.txt Sitemap hints) before link crawling (best-effort).",
     )
-    sitemap_urls: List[str] = Field(
+    sitemap_urls: list[str] = Field(
         default_factory=list,
         description="Optional explicit sitemap URLs (one or more sitemap.xml / sitemapindex.xml).",
     )
@@ -136,16 +136,16 @@ class WebCrawlConnectorConfig(BaseModel):
         default=True,
         description="If true, deduplicate pages by <link rel='canonical'> when crawling HTML (best-effort).",
     )
-    user_agent: Optional[str] = Field(default=None, max_length=200)
-    auth: Optional[WebCrawlAuthConfig] = None
+    user_agent: str | None = Field(default=None, max_length=200)
+    auth: WebCrawlAuthConfig | None = None
 
     # Ingest options for each discovered URL.
-    filename: Optional[str] = Field(default=None, max_length=500, description="Optional: override filename for display/extension inference")
+    filename: str | None = Field(default=None, max_length=500, description="Optional: override filename for display/extension inference")
     parser_backend: str = Field(default="auto")
     chunk_strategy: str = Field(default="langchain_recursive")
-    pipeline: Optional[DocumentPipelineOptions] = None
-    access: Optional[DocumentAccessUpdateRequest] = None
-    source_acl: Optional[ConnectorSourceAclConfig] = None
+    pipeline: DocumentPipelineOptions | None = None
+    access: DocumentAccessUpdateRequest | None = None
+    source_acl: ConnectorSourceAclConfig | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "WebCrawlConnectorConfig":
@@ -186,20 +186,20 @@ class GitHubRepoConnectorConfig(BaseModel):
 
     repo: str = Field(..., max_length=200, description="GitHub repo in owner/repo format")
     branch: str = Field(default="main", max_length=200, description="Branch or tag name (default: main)")
-    include_extensions: List[str] = Field(
+    include_extensions: list[str] = Field(
         default_factory=lambda: [".md", ".txt", ".pdf"],
         description="File extensions to ingest (case-insensitive).",
     )
     max_files: int = Field(default=50, ge=1, le=200)
-    user_agent: Optional[str] = Field(default=None, max_length=200)
-    auth: Optional[WebCrawlAuthConfig] = None  # bearer token for GitHub API (optional)
+    user_agent: str | None = Field(default=None, max_length=200)
+    auth: WebCrawlAuthConfig | None = None  # bearer token for GitHub API (optional)
 
     # Ingest options for each discovered file URL.
     parser_backend: str = Field(default="auto")
     chunk_strategy: str = Field(default="langchain_recursive")
-    pipeline: Optional[DocumentPipelineOptions] = None
-    access: Optional[DocumentAccessUpdateRequest] = None
-    source_acl: Optional[ConnectorSourceAclConfig] = None
+    pipeline: DocumentPipelineOptions | None = None
+    access: DocumentAccessUpdateRequest | None = None
+    source_acl: ConnectorSourceAclConfig | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "GitHubRepoConnectorConfig":
@@ -241,20 +241,20 @@ class GitHubRepoConnectorConfig(BaseModel):
 class DriveFilesConnectorConfig(BaseModel):
     """Config for `drive_files` connector (Google Drive share links -> direct download)."""
 
-    urls: List[str] = Field(..., min_length=1, max_length=50, description="Google Drive file share links")
-    filename: Optional[str] = Field(
+    urls: list[str] = Field(..., min_length=1, max_length=50, description="Google Drive file share links")
+    filename: str | None = Field(
         default=None,
         max_length=500,
         description="Optional override filename for display/extension inference (applies to all urls).",
     )
-    user_agent: Optional[str] = Field(default=None, max_length=200)
-    auth: Optional[WebCrawlAuthConfig] = None
+    user_agent: str | None = Field(default=None, max_length=200)
+    auth: WebCrawlAuthConfig | None = None
 
     parser_backend: str = Field(default="auto")
     chunk_strategy: str = Field(default="langchain_recursive")
-    pipeline: Optional[DocumentPipelineOptions] = None
-    access: Optional[DocumentAccessUpdateRequest] = None
-    source_acl: Optional[ConnectorSourceAclConfig] = None
+    pipeline: DocumentPipelineOptions | None = None
+    access: DocumentAccessUpdateRequest | None = None
+    source_acl: ConnectorSourceAclConfig | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "DriveFilesConnectorConfig":
@@ -275,17 +275,17 @@ class DriveFilesConnectorConfig(BaseModel):
 class MinioBucketConnectorConfig(BaseModel):
     """Config for `minio_bucket` connector (list objects -> presigned URLs -> ingest)."""
 
-    bucket: Optional[str] = Field(default=None, max_length=63, description="MinIO bucket name (default: settings.MINIO_BUCKET_NAME)")
-    prefix: Optional[str] = Field(default=None, max_length=512)
-    include_extensions: List[str] = Field(default_factory=lambda: [".pdf", ".md", ".txt"])
+    bucket: str | None = Field(default=None, max_length=63, description="MinIO bucket name (default: settings.MINIO_BUCKET_NAME)")
+    prefix: str | None = Field(default=None, max_length=512)
+    include_extensions: list[str] = Field(default_factory=lambda: [".pdf", ".md", ".txt"])
     max_objects: int = Field(default=50, ge=1, le=200)
     presign_expiry_sec: int = Field(default=3600, ge=60, le=7 * 24 * 3600)
 
     parser_backend: str = Field(default="auto")
     chunk_strategy: str = Field(default="langchain_recursive")
-    pipeline: Optional[DocumentPipelineOptions] = None
-    access: Optional[DocumentAccessUpdateRequest] = None
-    source_acl: Optional[ConnectorSourceAclConfig] = None
+    pipeline: DocumentPipelineOptions | None = None
+    access: DocumentAccessUpdateRequest | None = None
+    source_acl: ConnectorSourceAclConfig | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "MinioBucketConnectorConfig":
@@ -315,7 +315,7 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
     space_key: str = Field(..., max_length=255, description="Confluence space key")
 
     # Confluence auth typically supports basic (email + API token) / bearer / cookie session.
-    auth: Optional[WebCrawlAuthConfig] = None
+    auth: WebCrawlAuthConfig | None = None
 
     # How to ingest each page after listing:
     # - api_view: fetch HTML via Confluence REST API (body.view)
@@ -337,14 +337,14 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
     max_attachments_per_page: int = Field(default=10, ge=1, le=50, description="Max attachments ingested per page (bounded).")
     max_total_attachments: int = Field(default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded).")
 
-    user_agent: Optional[str] = Field(default=None, max_length=200)
+    user_agent: str | None = Field(default=None, max_length=200)
 
     # Ingest options per page.
     parser_backend: str = Field(default="auto")
     chunk_strategy: str = Field(default="langchain_recursive")
-    pipeline: Optional[DocumentPipelineOptions] = None
-    access: Optional[DocumentAccessUpdateRequest] = None
-    source_acl: Optional[ConnectorSourceAclConfig] = None
+    pipeline: DocumentPipelineOptions | None = None
+    access: DocumentAccessUpdateRequest | None = None
+    source_acl: ConnectorSourceAclConfig | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "ConfluenceSpaceConnectorConfig":
@@ -365,9 +365,9 @@ class JiraProjectConnectorConfig(BaseModel):
 
     base_url: str = Field(..., max_length=2000, description="Jira base URL. Example: https://<site>.atlassian.net")
     project_key: str = Field(..., max_length=255, description="Jira project key")
-    jql: Optional[str] = Field(default=None, max_length=2000, description="Optional extra JQL filter appended to the project query.")
+    jql: str | None = Field(default=None, max_length=2000, description="Optional extra JQL filter appended to the project query.")
 
-    auth: Optional[WebCrawlAuthConfig] = None
+    auth: WebCrawlAuthConfig | None = None
 
     sync_mode: Literal["auto", "full", "incremental"] = Field(
         default="auto",
@@ -377,7 +377,7 @@ class JiraProjectConnectorConfig(BaseModel):
     page_size: int = Field(default=25, ge=1, le=100)
     include_comments: bool = Field(default=True, description="If true, include issue comments in the rendered HTML document.")
     max_comments_per_issue: int = Field(default=20, ge=0, le=200)
-    custom_fields: List[str] = Field(
+    custom_fields: list[str] = Field(
         default_factory=list,
         description="Optional: allowlist additional Jira custom fields to fetch and include in the rendered issue document. Example: customfield_10016",
     )
@@ -391,13 +391,13 @@ class JiraProjectConnectorConfig(BaseModel):
     max_attachments_per_issue: int = Field(default=10, ge=1, le=50, description="Max attachments ingested per issue (bounded).")
     max_total_attachments: int = Field(default=200, ge=1, le=2000, description="Max attachments ingested per run (bounded).")
 
-    user_agent: Optional[str] = Field(default=None, max_length=200)
+    user_agent: str | None = Field(default=None, max_length=200)
 
     parser_backend: str = Field(default="auto")
     chunk_strategy: str = Field(default="jira_ticket")
-    pipeline: Optional[DocumentPipelineOptions] = None
-    access: Optional[DocumentAccessUpdateRequest] = None
-    source_acl: Optional[ConnectorSourceAclConfig] = None
+    pipeline: DocumentPipelineOptions | None = None
+    access: DocumentAccessUpdateRequest | None = None
+    source_acl: ConnectorSourceAclConfig | None = None
 
     @model_validator(mode="after")
     def _normalize(self) -> "JiraProjectConnectorConfig":
@@ -447,8 +447,8 @@ class MySQLCatalogConnectorConfig(BaseModel):
     username: str = Field(..., max_length=255)
     password: str = Field(..., max_length=10_000)
     # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
-    include_schemas: List[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
-    include_tables: List[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
+    include_schemas: list[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
+    include_tables: list[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
     max_tables: int = Field(default=200, ge=1, le=2000)
     profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
     row_sync_enabled: bool = Field(
@@ -483,8 +483,8 @@ class SQLServerCatalogConnectorConfig(BaseModel):
     username: str = Field(..., max_length=255)
     password: str = Field(..., max_length=10_000)
     # Optional: allowlist which schemas/tables to ingest (best-effort; connector runner may ignore).
-    include_schemas: List[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
-    include_tables: List[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
+    include_schemas: list[str] = Field(default_factory=list, description="Optional: ingest only these schemas")
+    include_tables: list[str] = Field(default_factory=list, description="Optional: ingest only these tables (names, not patterns)")
     max_tables: int = Field(default=200, ge=1, le=2000)
     profile_enabled: bool = Field(default=True, description="If true, compute safe aggregate profiles (no raw rows)")
     row_sync_enabled: bool = Field(
@@ -512,9 +512,9 @@ class SQLServerCatalogConnectorConfig(BaseModel):
 
 class ConnectorRunCreateRequest(BaseModel):
     connector_id: ConnectorId = "url_batch"
-    dataset_id: Optional[UUID] = None
+    dataset_id: UUID | None = None
     # Connector-specific config payload (validated in the API layer).
-    config: Dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConnectorValidateRequest(BaseModel):
@@ -527,22 +527,22 @@ class ConnectorValidateRequest(BaseModel):
     """
 
     connector_id: ConnectorId = "url_batch"
-    config: Dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
     check_connectivity: bool = True
 
 
 class ConnectorValidateResponse(BaseModel):
     ok: bool
     connector_id: str
-    config: Dict[str, Any] = Field(default_factory=dict)
-    errors: List[Dict[str, Any]] = Field(default_factory=list)
-    warnings: List[Dict[str, Any]] = Field(default_factory=list)
-    checks: Dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+    checks: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConnectorRunDocumentOut(BaseModel):
     document_id: UUID
-    source_ref: Optional[str] = None
+    source_ref: str | None = None
     status: str = "created"
 
 
@@ -556,36 +556,36 @@ class ConnectorRunAclSummaryOut(BaseModel):
 
     mode: str = Field(default="inherit", description="Normalized access_mode; 'mixed' when docs have multiple modes.")
     documents_total: int = 0
-    access_mode_counts: Dict[str, int] = Field(default_factory=dict)
+    access_mode_counts: dict[str, int] = Field(default_factory=dict)
 
     partial_members_doc_count: int = 0
-    partial_member_count_min: Optional[int] = None
-    partial_member_count_max: Optional[int] = None
-    partial_group_count_min: Optional[int] = None
-    partial_group_count_max: Optional[int] = None
+    partial_member_count_min: int | None = None
+    partial_member_count_max: int | None = None
+    partial_group_count_min: int | None = None
+    partial_group_count_max: int | None = None
 
 
 class ConnectorRunOut(BaseModel):
     id: UUID
     tenant_id: UUID
-    dataset_id: Optional[UUID] = None
+    dataset_id: UUID | None = None
     connector_id: str
-    requested_by: Optional[str] = None
+    requested_by: str | None = None
     status: ConnectorRunStatus
-    config: Dict[str, Any] = Field(default_factory=dict)
-    stats: Dict[str, Any] = Field(default_factory=dict)
-    error_message: Optional[str] = None
-    task_id: Optional[str] = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
+    task_id: str | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    acl_summary: Optional[ConnectorRunAclSummaryOut] = None
-    documents: List[ConnectorRunDocumentOut] = Field(default_factory=list)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    acl_summary: ConnectorRunAclSummaryOut | None = None
+    documents: list[ConnectorRunDocumentOut] = Field(default_factory=list)
 
 
 class ConnectorRunListResponse(BaseModel):
     total: int
-    items: List[ConnectorRunOut]
+    items: list[ConnectorRunOut]
 
 
 class ConnectorConfigCreateRequest(BaseModel):
@@ -593,16 +593,16 @@ class ConnectorConfigCreateRequest(BaseModel):
     dataset_id: UUID
     name: str = Field(..., max_length=255)
     enabled: bool = True
-    schedule_cron: Optional[str] = Field(default=None, max_length=64)
-    config: Dict[str, Any] = Field(default_factory=dict)
+    schedule_cron: str | None = Field(default=None, max_length=64)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConnectorConfigUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=255)
-    enabled: Optional[bool] = None
-    schedule_cron: Optional[str] = Field(default=None, max_length=64)
-    config: Optional[Dict[str, Any]] = None
-    state: Optional[Dict[str, Any]] = None
+    name: str | None = Field(default=None, max_length=255)
+    enabled: bool | None = None
+    schedule_cron: str | None = Field(default=None, max_length=64)
+    config: dict[str, Any] | None = None
+    state: dict[str, Any] | None = None
 
 
 class ConnectorConfigOut(BaseModel):
@@ -612,15 +612,15 @@ class ConnectorConfigOut(BaseModel):
     connector_id: str
     name: str
     enabled: bool
-    schedule_cron: Optional[str] = None
-    config: Dict[str, Any] = Field(default_factory=dict)
-    state: Dict[str, Any] = Field(default_factory=dict)
-    last_run_at: Optional[datetime] = None
-    last_error: Optional[str] = None
+    schedule_cron: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    state: dict[str, Any] = Field(default_factory=dict)
+    last_run_at: datetime | None = None
+    last_error: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class ConnectorConfigListResponse(BaseModel):
     total: int
-    items: List[ConnectorConfigOut]
+    items: list[ConnectorConfigOut]

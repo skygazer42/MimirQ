@@ -2,7 +2,6 @@
 Auth schemas for user registration and login.
 """
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -16,7 +15,7 @@ class UserPublic(OrmModel):
     username: str
     is_active: bool
     created_at: datetime
-    last_login_at: Optional[datetime] = None
+    last_login_at: datetime | None = None
 
 
 class RegisterRequest(BaseModel):
@@ -43,10 +42,10 @@ class AuthResponse(BaseModel):
 
 
 class SamlExchangeRequest(BaseModel):
-    provider_id: Optional[str] = None
+    provider_id: str | None = None
     saml_response: str
-    relay_state: Optional[str] = None
-    acs_url: Optional[str] = None
+    relay_state: str | None = None
+    acs_url: str | None = None
 
 
 class SamlExchangeResponse(AuthResponse):

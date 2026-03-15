@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -96,12 +97,14 @@ async def test_ingest_progress_moves_through_expected_stages(monkeypatch, tmp_pa
         stage,
         **kwargs,
     ):
+        await asyncio.sleep(0)  # Sonar S7503
         progress_events.append((str(stage), int(progress)))
         return None
 
     monkeypatch.setattr(processor_mod.DocumentProcessorService, "_update_status", _fake_update_status, raising=True)
 
     async def _fake_parse_run(self, **_kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return processor_mod.ParseResult(
             resolved_backend="basic",
             resolved_chunk_strategy="langchain_recursive",

@@ -17,9 +17,9 @@ import logging
 import sqlite3
 import threading
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 from app.core.config import settings
@@ -53,15 +53,15 @@ class MemoryItem:
 
     def __init__(
         self,
-        id: Optional[str] = None,
+        id: str | None = None,
         namespace: str = "default",
         key: str = "",
         value: Any = None,
         memory_type: str = "fact",
-        metadata: Optional[Dict[str, Any]] = None,
-        created_at: Optional[datetime] = None,
-        updated_at: Optional[datetime] = None,
-        expires_at: Optional[datetime] = None,
+        metadata: dict[str, Any] | None = None,
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
+        expires_at: datetime | None = None,
     ):
         self.id = id or str(uuid4())
         self.namespace = namespace
@@ -69,11 +69,11 @@ class MemoryItem:
         self.value = value
         self.memory_type = memory_type
         self.metadata = metadata or {}
-        self.created_at = created_at or datetime.utcnow()
+        self.created_at = created_at or datetime.now(UTC).replace(tzinfo=None)
         self.updated_at = updated_at or self.created_at
         self.expires_at = expires_at
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": self.id,
@@ -88,7 +88,7 @@ class MemoryItem:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MemoryItem":
+    def from_dict(cls, data: dict[str, Any]) -> "MemoryItem":
         """Create from dictionary."""
         def parse_datetime(value):
             if value is None:
@@ -135,7 +135,7 @@ class BaseMemoryStore(ABC):
         pass
 
     @abstractmethod
-    def get(self, namespace: str, key: str) -> Optional[MemoryItem]:
+    def get(self, namespace: str, key: str) -> MemoryItem | None:
         """
         Retrieve a memory item by key.
 
@@ -152,10 +152,10 @@ class BaseMemoryStore(ABC):
     def search(
         self,
         namespace: str,
-        query: Optional[str] = None,
-        memory_type: Optional[str] = None,
+        query: str | None = None,
+        memory_type: str | None = None,
         limit: int = 10,
-    ) -> List[MemoryItem]:
+    ) -> list[MemoryItem]:
         """
         Search memory items.
 
@@ -185,7 +185,7 @@ class BaseMemoryStore(ABC):
         pass
 
     @abstractmethod
-    def list(self, namespace: str, limit: int = 100) -> List[MemoryItem]:
+    def list(self, namespace: str, limit: int = 100) -> list[MemoryItem]:
         """
         List all memory items in a namespace.
 
@@ -221,7 +221,7 @@ class InMemoryStore(BaseMemoryStore):
     """
 
     def __init__(self):
-        self._store: Dict[str, Dict[str, MemoryItem]] = {}
+        self._store: dict[str, dict[str, MemoryItem]] = {}
         self._lock = threading.RLock()
 
     def put(self, namespace: str, key: str, value: Any, **kwargs) -> MemoryItem:
@@ -230,7 +230,7 @@ class InMemoryStore(BaseMemoryStore):
                 self._store[namespace] = {}
 
             existing = self._store[namespace].get(key)
-            now = datetime.utcnow()
+            now = datetime.now(UTC).replace(tzinfo=None)
 
             item = MemoryItem(
                 id=existing.id if existing else None,
@@ -247,12 +247,12 @@ class InMemoryStore(BaseMemoryStore):
             self._store[namespace][key] = item
             return item
 
-    def get(self, namespace: str, key: str) -> Optional[MemoryItem]:
+    def get(self, namespace: str, key: str) -> MemoryItem | None:
         with self._lock:
             ns_store = self._store.get(namespace, {})
             item = ns_store.get(key)
 
-            if item and item.expires_at and item.expires_at < datetime.utcnow():
+            if item and item.expires_at and item.expires_at < datetime.now(UTC).replace(tzinfo=None):
                 # Item has expired
                 del ns_store[key]
                 return None
@@ -262,14 +262,14 @@ class InMemoryStore(BaseMemoryStore):
     def search(
         self,
         namespace: str,
-        query: Optional[str] = None,
-        memory_type: Optional[str] = None,
+        query: str | None = None,
+        memory_type: str | None = None,
         limit: int = 10,
-    ) -> List[MemoryItem]:
+    ) -> list[MemoryItem]:
         with self._lock:
             ns_store = self._store.get(namespace, {})
             results = []
-            now = datetime.utcnow()
+            now = datetime.now(UTC).replace(tzinfo=None)
 
             for item in ns_store.values():
                 # Skip expired items
@@ -303,10 +303,10 @@ class InMemoryStore(BaseMemoryStore):
                 return True
             return False
 
-    def list(self, namespace: str, limit: int = 100) -> List[MemoryItem]:
+    def list(self, namespace: str, limit: int = 100) -> list[MemoryItem]:
         with self._lock:
             ns_store = self._store.get(namespace, {})
-            now = datetime.utcnow()
+            now = datetime.now(UTC).replace(tzinfo=None)
 
             # Filter out expired items
             items = [
@@ -333,7 +333,7 @@ class SqliteStore(BaseMemoryStore):
     across application restarts.
     """
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = db_path or MEMORY_SQLITE_PATH
         self._local = threading.local()
         self._init_db()
@@ -378,7 +378,7 @@ class SqliteStore(BaseMemoryStore):
 
     def put(self, namespace: str, key: str, value: Any, **kwargs) -> MemoryItem:
         conn = self._get_conn()
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         # Check for existing item
         cursor = conn.execute(
@@ -431,9 +431,9 @@ class SqliteStore(BaseMemoryStore):
             expires_at=datetime.fromisoformat(row["expires_at"]) if row["expires_at"] else None,
         )
 
-    def get(self, namespace: str, key: str) -> Optional[MemoryItem]:
+    def get(self, namespace: str, key: str) -> MemoryItem | None:
         conn = self._get_conn()
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat()
 
         cursor = conn.execute("""
             SELECT * FROM memory_items
@@ -449,19 +449,19 @@ class SqliteStore(BaseMemoryStore):
     def search(
         self,
         namespace: str,
-        query: Optional[str] = None,
-        memory_type: Optional[str] = None,
+        query: str | None = None,
+        memory_type: str | None = None,
         limit: int = 10,
-    ) -> List[MemoryItem]:
+    ) -> list[MemoryItem]:
         conn = self._get_conn()
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat()
 
         sql = """
             SELECT * FROM memory_items
             WHERE namespace = ?
             AND (expires_at IS NULL OR expires_at > ?)
         """
-        params: List[Any] = [namespace, now]
+        params: list[Any] = [namespace, now]
 
         if memory_type:
             sql += " AND memory_type = ?"
@@ -486,9 +486,9 @@ class SqliteStore(BaseMemoryStore):
         )
         return cursor.rowcount > 0
 
-    def list(self, namespace: str, limit: int = 100) -> List[MemoryItem]:
+    def list(self, namespace: str, limit: int = 100) -> list[MemoryItem]:
         conn = self._get_conn()
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat()
 
         cursor = conn.execute("""
             SELECT * FROM memory_items
@@ -511,7 +511,7 @@ class SqliteStore(BaseMemoryStore):
     def cleanup_expired(self) -> int:
         """Remove all expired items."""
         conn = self._get_conn()
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(UTC).replace(tzinfo=None).isoformat()
         cursor = conn.execute(
             "DELETE FROM memory_items WHERE expires_at IS NOT NULL AND expires_at < ?",
             (now,)
@@ -532,8 +532,8 @@ class UserMemory:
     def __init__(
         self,
         user_id: str,
-        tenant_id: Optional[str] = None,
-        store: Optional[BaseMemoryStore] = None,
+        tenant_id: str | None = None,
+        store: BaseMemoryStore | None = None,
     ):
         """
         Initialize user memory.
@@ -595,10 +595,10 @@ class UserMemory:
 
     def search_memory(
         self,
-        query: Optional[str] = None,
-        memory_type: Optional[str] = None,
+        query: str | None = None,
+        memory_type: str | None = None,
         limit: int = 10,
-    ) -> List[MemoryItem]:
+    ) -> list[MemoryItem]:
         """Search user memory."""
         return self.store.search(
             self._namespace,
@@ -607,7 +607,7 @@ class UserMemory:
             limit=limit,
         )
 
-    def get_all_preferences(self) -> Dict[str, Any]:
+    def get_all_preferences(self) -> dict[str, Any]:
         """Get all user preferences as a dictionary."""
         items = self.store.search(
             self._namespace,
@@ -619,7 +619,7 @@ class UserMemory:
             for item in items
         }
 
-    def get_all_facts(self) -> Dict[str, Any]:
+    def get_all_facts(self) -> dict[str, Any]:
         """Get all user facts as a dictionary."""
         items = self.store.search(
             self._namespace,
@@ -659,7 +659,7 @@ class UserMemory:
 
 
 # Global store instance
-_memory_store: Optional[BaseMemoryStore] = None
+_memory_store: BaseMemoryStore | None = None
 
 
 def get_memory_store() -> BaseMemoryStore:
@@ -701,9 +701,9 @@ def set_memory_store(store: BaseMemoryStore):
 def retrieve_user_memory(
     user_id: str,
     query: str,
-    tenant_id: Optional[str] = None,
+    tenant_id: str | None = None,
     top_k: int = LONG_TERM_MEMORY_TOP_K,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Retrieve relevant user memory for a query.
 
@@ -726,11 +726,11 @@ def retrieve_user_memory(
 
 
 def inject_user_memory_context(
-    state: Dict[str, Any],
+    state: dict[str, Any],
     user_id_key: str = "user_id",
     tenant_id_key: str = "tenant_id",
     context_key: str = "user_context",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Inject user memory context into state.
 

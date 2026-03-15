@@ -9,8 +9,9 @@ This layer is intentionally declarative:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Mapping
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -184,7 +185,7 @@ def validate_and_normalize_fls_policy(policy: FlsPolicy) -> FlsPolicy:
     return FlsPolicy(version="1", rules=out_rules)
 
 
-def parse_fls_policy_from_metadata(metadata: Dict[str, Any]) -> FlsPolicy | None:
+def parse_fls_policy_from_metadata(metadata: dict[str, Any]) -> FlsPolicy | None:
     if not isinstance(metadata, dict):
         return None
     raw = metadata.get("fls_policy")

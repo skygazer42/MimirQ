@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.rag.evaluation.evidence_retrieve_gate import (  # noqa: F401
     build_retrieval_gate_summary,
     compute_retrieval_item_meta,
@@ -23,8 +25,8 @@ def test_compute_retrieval_item_meta_matches_by_chunk_id() -> None:
     ]
 
     meta = compute_retrieval_item_meta(case=case, citations=citations)
-    assert meta["retrieval_recall"] == 1.0
-    assert meta["retrieval_mrr"] == 1.0
+    assert meta["retrieval_recall"] == pytest.approx(1.0)
+    assert meta["retrieval_mrr"] == pytest.approx(1.0)
     assert meta["retrieval_hit_at_1"] is True
     assert meta["retrieval_hit_at_10"] is True
 
@@ -50,8 +52,8 @@ def test_compute_retrieval_item_meta_matches_by_pipeline_key_and_chunk_index_whe
     ]
 
     meta = compute_retrieval_item_meta(case=case, citations=citations)
-    assert meta["retrieval_recall"] == 1.0
-    assert meta["retrieval_mrr"] == 1.0
+    assert meta["retrieval_recall"] == pytest.approx(1.0)
+    assert meta["retrieval_mrr"] == pytest.approx(1.0)
     assert meta["retrieval_hit_at_1"] is True
 
 
@@ -74,9 +76,9 @@ def test_compute_retrieval_item_meta_includes_parse_slo_fields_from_metrics() ->
         },
     )
     assert meta["parse_quality_alert"] is True
-    assert float(meta["parse_quality_low_ratio"]) == 0.7
+    assert float(meta["parse_quality_low_ratio"]) == pytest.approx(0.7)
     assert str(meta["parse_risk_level"]) == "high"
-    assert float(meta["parse_risk_score"]) == 0.9
+    assert float(meta["parse_risk_score"]) == pytest.approx(0.9)
     assert str(meta["parse_quality_gate_profile"]) == "strict"
     assert meta["parse_quality_gate_blocked"] is True
     assert meta["provenance_integrity_passed"] is True
@@ -109,14 +111,14 @@ def test_build_retrieval_gate_summary_aggregates_items() -> None:
     ]
 
     summary = build_retrieval_gate_summary(items)
-    assert summary["retrieval_recall"] == 0.5
-    assert summary["retrieval_hit_at_10"] == 0.5
-    assert summary["abstain_rate"] == 0.5
-    assert summary["must_recall_pass_rate"] == 0.5
+    assert summary["retrieval_recall"] == pytest.approx(0.5)
+    assert summary["retrieval_hit_at_10"] == pytest.approx(0.5)
+    assert summary["abstain_rate"] == pytest.approx(0.5)
+    assert summary["must_recall_pass_rate"] == pytest.approx(0.5)
     assert summary["must_recall_cases_total"] == 2
-    assert summary["parse_quality_alert_rate"] == 0.5
-    assert summary["parse_quality_gate_block_rate"] == 0.5
+    assert summary["parse_quality_alert_rate"] == pytest.approx(0.5)
+    assert summary["parse_quality_gate_block_rate"] == pytest.approx(0.5)
     assert summary["parse_risk_high_cases"] == 1
-    assert summary["parse_risk_high_rate"] == 0.5
-    assert summary["provenance_integrity_rate"] == 0.5
+    assert summary["parse_risk_high_rate"] == pytest.approx(0.5)
+    assert summary["provenance_integrity_rate"] == pytest.approx(0.5)
     assert summary["provenance_cases_total"] == 2

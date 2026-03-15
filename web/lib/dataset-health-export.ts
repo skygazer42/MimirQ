@@ -1,3 +1,5 @@
+import { toSingleLinePrimitiveString } from './primitive-text'
+
 export type DatasetHealthSuggestion = {
   severity: 'info' | 'warning' | 'error'
   title: string
@@ -20,33 +22,25 @@ function asInt(value: unknown): number {
 }
 
 function oneLine(value: unknown): string {
-  return String(value ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return toSingleLinePrimitiveString(value)
 }
 
 export function datasetHealthToMarkdown(input: DatasetHealthExportInput): string {
   const lines: string[] = []
 
-  lines.push('# Dataset Health')
-  lines.push('')
-  lines.push(`- dataset_id: ${oneLine(input.datasetId)}`)
+    lines.push('# Dataset Health', '', `- dataset_id: ${oneLine(input.datasetId)}`)
   if (input.datasetName) lines.push(`- dataset_name: ${oneLine(input.datasetName)}`)
   if (input.exportedAt) lines.push(`- exported_at: ${oneLine(input.exportedAt)}`)
   if (input.generatedAt) lines.push(`- generated_at: ${oneLine(input.generatedAt)}`)
   lines.push('')
 
   const profile = input.profile || {}
-  lines.push('## Profile')
-  lines.push(`- total_documents: ${asInt(profile.total_documents)}`)
+    lines.push('## Profile', `- total_documents: ${asInt(profile.total_documents)}`)
   if (profile.total_size_bytes != null) lines.push(`- total_size_bytes: ${asInt(profile.total_size_bytes)}`)
   lines.push('')
 
   const ingestion = input.ingestion || {}
-  lines.push('## Ingestion')
-  lines.push(`- total_documents: ${asInt(ingestion.total_documents)}`)
-  lines.push(`- failed: ${asInt(ingestion.failed)}`)
-  lines.push(`- quarantined: ${asInt(ingestion.quarantined)}`)
+    lines.push('## Ingestion', `- total_documents: ${asInt(ingestion.total_documents)}`, `- failed: ${asInt(ingestion.failed)}`, `- quarantined: ${asInt(ingestion.quarantined)}`)
 
   const byStatus = ingestion.by_status && typeof ingestion.by_status === 'object' ? ingestion.by_status : null
   if (byStatus) {

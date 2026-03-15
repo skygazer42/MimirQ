@@ -82,7 +82,7 @@ function formatRewriteStep(data: any): string | null {
 
   if (!rewritten) return null
   const preview = rewritten.length > 120 ? `${rewritten.slice(0, 120)}…` : rewritten
-  return elapsedSec != null ? `查询改写：${preview}（${elapsedSec.toFixed(2)}s）` : `查询改写：${preview}`
+  return elapsedSec == null ? `查询改写：${preview}` : `查询改写：${preview}（${elapsedSec.toFixed(2)}s）`
 }
 
 export function useChat({
@@ -122,7 +122,7 @@ export function useChat({
     return () => {
       abortControllerRef.current?.abort()
       if (rafIdRef.current != null) {
-        window.cancelAnimationFrame(rafIdRef.current)
+        globalThis.window.cancelAnimationFrame(rafIdRef.current)
         rafIdRef.current = null
       }
     }
@@ -130,7 +130,7 @@ export function useChat({
 
   const scheduleCurrentResponseUpdate = useCallback(() => {
     if (rafIdRef.current != null) return
-    rafIdRef.current = window.requestAnimationFrame(() => {
+    rafIdRef.current = globalThis.window.requestAnimationFrame(() => {
       rafIdRef.current = null
       setCurrentResponse(fullResponseRef.current)
     })
@@ -138,7 +138,7 @@ export function useChat({
 
   const flushCurrentResponseUpdate = useCallback(() => {
     if (rafIdRef.current != null) {
-      window.cancelAnimationFrame(rafIdRef.current)
+      globalThis.window.cancelAnimationFrame(rafIdRef.current)
       rafIdRef.current = null
     }
     setCurrentResponse(fullResponseRef.current)
@@ -207,7 +207,7 @@ export function useChat({
       currentStepsRef.current = []
 
       if (rafIdRef.current != null) {
-        window.cancelAnimationFrame(rafIdRef.current)
+        globalThis.window.cancelAnimationFrame(rafIdRef.current)
         rafIdRef.current = null
       }
 
@@ -215,7 +215,7 @@ export function useChat({
       abortControllerRef.current = new AbortController()
 
       let didTimeout = false
-      let timeoutId = window.setTimeout(() => {
+      let timeoutId = globalThis.window.setTimeout(() => {
         didTimeout = true
         abortControllerRef.current?.abort()
       }, API_TIMEOUT_MS)
@@ -255,7 +255,7 @@ export function useChat({
               if (!sawFirstEvent) {
                 sawFirstEvent = true
                 // Treat this as a "connect" timeout: once the first SSE frame arrives, stop the timer.
-                window.clearTimeout(timeoutId)
+                globalThis.window.clearTimeout(timeoutId)
               }
 
               let event: StreamEvent
@@ -390,15 +390,15 @@ export function useChat({
             console.warn('SSE unavailable; falling back to non-streaming chat', streamErr)
 
             // Switch to a longer timeout when falling back to non-streaming chat.
-            window.clearTimeout(timeoutId)
-            timeoutId = window.setTimeout(() => {
+            globalThis.window.clearTimeout(timeoutId)
+            timeoutId = globalThis.window.setTimeout(() => {
               didTimeout = true
               abortControllerRef.current?.abort()
             }, API_LONG_TIMEOUT_MS)
 
             const resp = await chatApi.chat(chatRequest, { signal: abortControllerRef.current.signal })
 
-            window.clearTimeout(timeoutId)
+            globalThis.window.clearTimeout(timeoutId)
 
             const nextConversationId = (resp?.conversation_id || '').trim()
             if (nextConversationId && nextConversationId !== (conversationId || '')) {
@@ -461,9 +461,9 @@ export function useChat({
           onError?.(err?.message || 'Failed to send message')
         }
       } finally {
-        window.clearTimeout(timeoutId)
+        globalThis.window.clearTimeout(timeoutId)
         if (rafIdRef.current != null) {
-          window.cancelAnimationFrame(rafIdRef.current)
+          globalThis.window.cancelAnimationFrame(rafIdRef.current)
           rafIdRef.current = null
         }
         setIsLoading(false)

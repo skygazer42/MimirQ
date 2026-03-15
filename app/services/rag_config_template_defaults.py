@@ -8,18 +8,19 @@ We treat dataset default selectors as *fallbacks*:
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional, Tuple
+from collections.abc import Iterable
+from typing import Any
 from uuid import UUID
 
 
 def merge_rag_config_template_defaults_with_dataset(
     *,
-    rag_config_template_id: Optional[UUID],
-    rag_config_template_key: Optional[str],
-    rag_config_ab_experiment_key: Optional[str],
+    rag_config_template_id: UUID | None,
+    rag_config_template_key: str | None,
+    rag_config_ab_experiment_key: str | None,
     request_fields_set: Iterable[str] | None,
     dataset_meta: Any,
-) -> Tuple[Optional[UUID], Optional[str], Optional[str], list[str]]:
+) -> tuple[UUID | None, str | None, str | None, list[str]]:
     """
     Merge dataset-level RAG config template defaults into request fields.
 

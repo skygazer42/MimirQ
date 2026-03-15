@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -27,7 +27,7 @@ class _Block:
     start: int
     end: int
     kind: str
-    title: Optional[str]
+    title: str | None
     level: int
 
 
@@ -37,7 +37,7 @@ _SERVER_NAME_RE = re.compile(r"(?m)^\s*server_name\s+(?P<val>[^;#]+);")
 _LISTEN_RE = re.compile(r"(?m)^\s*listen\s+(?P<val>[^;#]+);")
 
 
-def _find_matching_brace(text: str, start: int) -> Optional[int]:
+def _find_matching_brace(text: str, start: int) -> int | None:
     i = text.find("{", start)
     if i < 0:
         return None
@@ -56,8 +56,8 @@ def _find_matching_brace(text: str, start: int) -> Optional[int]:
     return None
 
 
-def _iter_named_blocks(text: str, kind: str) -> List[_Block]:
-    blocks: List[_Block] = []
+def _iter_named_blocks(text: str, kind: str) -> list[_Block]:
+    blocks: list[_Block] = []
     for m in _BLOCK_OPEN_RE.finditer(text):
         if (m.group("kind") or "").strip().lower() != kind:
             continue
@@ -71,7 +71,7 @@ def _iter_named_blocks(text: str, kind: str) -> List[_Block]:
     return blocks
 
 
-def _build_blocks(text: str) -> List[_Block]:
+def _build_blocks(text: str) -> list[_Block]:
     if not text:
         return []
 
@@ -79,7 +79,7 @@ def _build_blocks(text: str) -> List[_Block]:
     if server_blocks:
         # Ensure stable ordering and no overlaps.
         server_blocks = sorted(server_blocks, key=lambda b: b.start)
-        dedup: List[_Block] = []
+        dedup: list[_Block] = []
         last_end = -1
         for b in server_blocks:
             if b.start < last_end:
@@ -124,8 +124,8 @@ class NginxConfigChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

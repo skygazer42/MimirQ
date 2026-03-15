@@ -18,7 +18,7 @@ import re
 import time
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import fitz  # PyMuPDF
 import requests
@@ -66,7 +66,7 @@ class Etl4LlmParser:
 
         self._session = requests.Session()
 
-    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+    def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
         run_id = (document_id or file_path.stem or "etl4llm").strip()
         run_id = re.sub(r"[^a-zA-Z0-9._-]+", "_", run_id)[:120] or "etl4llm"
         return (file_path.parent / ".etl4llm" / run_id).absolute()
@@ -78,7 +78,7 @@ class Etl4LlmParser:
             return bool(pdf_quality.get("is_scanned", False))
         return False
 
-    def _call_api(self, *, file_path: Path, force_ocr: bool) -> Dict[str, Any]:
+    def _call_api(self, *, file_path: Path, force_ocr: bool) -> dict[str, Any]:
         file_bytes = file_path.read_bytes()
         b64_data = base64.b64encode(file_bytes).decode("utf-8")
 
@@ -86,7 +86,7 @@ class Etl4LlmParser:
         if mode not in {"partition", "text"}:
             mode = "partition"
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "filename": file_path.name,
             "b64_data": [b64_data],
             "mode": mode,
@@ -110,7 +110,7 @@ class Etl4LlmParser:
         pdf_path: Path,
         partitions: list[dict[str, Any]],
         images_dir: Path,
-    ) -> Tuple[int, dict[str, str]]:
+    ) -> tuple[int, dict[str, str]]:
         """
         Crop image partitions from the source PDF into `images_dir`.
 
@@ -279,11 +279,11 @@ class Etl4LlmParser:
         self,
         file_path: Path,
         *,
-        dataset_id: Optional[str] = None,  # kept for interface parity
-        document_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,  # kept for interface parity
+        dataset_id: str | None = None,  # kept for interface parity
+        document_id: str | None = None,
+        tenant_id: str | None = None,  # kept for interface parity
         **_kwargs,
-    ) -> List[Document]:
+    ) -> list[Document]:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")

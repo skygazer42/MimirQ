@@ -11,9 +11,10 @@ It uses conservative patterns with basic validators to reduce false positives.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
-from typing import Callable, Literal
+from typing import Literal
 
 PiiMode = Literal["mask", "token"]
 

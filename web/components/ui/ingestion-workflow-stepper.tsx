@@ -55,10 +55,10 @@ function getCurrentStepIndex(pathname: string) {
 export function IngestionWorkflowStepper({
   className,
   compact = true,
-}: {
+}: Readonly<{
   className?: string
   compact?: boolean
-}) {
+}>) {
   const pathname = usePathname() || '/'
   const currentIndex = getCurrentStepIndex(pathname)
 
@@ -77,15 +77,35 @@ export function IngestionWorkflowStepper({
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors focus-ring',
                 compact ? 'h-7' : 'h-8',
-                isActive
-                  ? 'bg-primary/10 text-primary border-primary/25'
-                  : isDone
-                    ? 'bg-card/70 text-foreground border-border/60 hover:bg-primary/5 hover:border-primary/20'
-                    : 'bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground'
+                (() => {
+    if (isActive) {
+        return 'bg-primary/10 text-primary border-primary/25';
+    }
+    else {
+        if (isDone) {
+            return 'bg-card/70 text-foreground border-border/60 hover:bg-primary/5 hover:border-primary/20';
+        }
+        else {
+            return 'bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground';
+        }
+    }
+})()
               )}
               title={step.label}
             >
-              <Icon className={cn('w-3.5 h-3.5', isActive ? 'text-primary' : isDone ? 'text-foreground/80' : 'text-muted-foreground')} />
+              <Icon className={cn('w-3.5 h-3.5', (() => {
+    if (isActive) {
+        return 'text-primary';
+    }
+    else {
+        if (isDone) {
+            return 'text-foreground/80';
+        }
+        else {
+            return 'text-muted-foreground';
+        }
+    }
+})())} />
               <span className="whitespace-nowrap">{step.label}</span>
             </Link>
             {index < STEPS.length - 1 ? (

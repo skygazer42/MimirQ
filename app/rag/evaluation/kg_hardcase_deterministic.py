@@ -13,7 +13,8 @@ Design goals:
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 from app.rag.evaluation.kg_hardcase_generator import Hardcase
 from app.rag.kg.extraction.alias import is_abbrev_token

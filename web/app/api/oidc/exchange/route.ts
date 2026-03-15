@@ -76,8 +76,8 @@ async function discoverTokenEndpoint(issuer: string): Promise<OidcDiscovery> {
   if (!res.ok) {
     throw new Error(`oidc_discovery_failed_${res.status}`)
   }
-  const data = (await res.json().catch(() => null)) as any
-  const tokenEndpoint = String(data?.token_endpoint || '').trim()
+  const data = (await res.json().catch(() => null))
+  const tokenEndpoint = typeof data?.token_endpoint === 'string' ? data.token_endpoint.trim() : ''
   if (!tokenEndpoint) {
     throw new Error('oidc_discovery_missing_endpoints')
   }
@@ -85,7 +85,7 @@ async function discoverTokenEndpoint(issuer: string): Promise<OidcDiscovery> {
 }
 
 function normalizeTokenType(raw: unknown): string {
-  const t = String(raw || '').trim()
+  const t = typeof raw === 'string' ? raw.trim() : ''
   return t ? t.toLowerCase() : 'bearer'
 }
 
@@ -99,8 +99,8 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => null)) as ExchangeRequestBody | null
-  const code = String(body?.code || '').trim()
-  const codeVerifier = String(body?.code_verifier || '').trim()
+  const code = body?.code?.trim() ?? ''
+  const codeVerifier = body?.code_verifier?.trim() ?? ''
   const redirectUri = resolveRedirectUri(req, body?.redirect_uri)
 
   if (!code || !codeVerifier) {
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
     return jsonNoStore({ error: 'invalid_request' }, { status: 400 })
   }
 
-  const providerId = String(body?.provider_id || '').trim() || undefined
+  const providerId = body?.provider_id?.trim() || undefined
   const provider = resolveOidcServerProvider(providerId)
   if (!provider) {
     const available = getOidcServerProvidersFromEnv()
@@ -122,8 +122,8 @@ export async function POST(req: NextRequest) {
     }
     return jsonNoStore({ error: 'oidc_not_configured' }, { status: 400 })
   }
-  const issuer = String(provider.issuer || '').trim()
-  const clientId = String(provider.client_id || '').trim()
+  const issuer = provider.issuer.trim()
+  const clientId = provider.client_id.trim()
 
   let tokenEndpoint = ''
   try {
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
     return jsonNoStore({ error: String(e?.message || 'oidc_discovery_failed') }, { status: 400 })
   }
 
-  const secret = String(provider.client_secret || '').trim()
+  const secret = provider.client_secret?.trim() ?? ''
   const authMethod: 'basic' | 'post' = provider.client_auth_method === 'post' ? 'post' : 'basic'
 
   const form = new URLSearchParams()

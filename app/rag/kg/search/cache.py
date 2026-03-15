@@ -19,7 +19,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from app.rag.core.hashing import stable_hash
 
@@ -92,7 +92,7 @@ class KGSearchCache:
         for key in expired:
             self._entries.pop(key, None)
 
-    def get(self, key: str, *, ttl_sec: int) -> tuple[Optional[dict[str, Any]], Optional[int]]:
+    def get(self, key: str, *, ttl_sec: int) -> tuple[dict[str, Any] | None, int | None]:
         if not key:
             return None, None
         if int(ttl_sec or 0) <= 0:

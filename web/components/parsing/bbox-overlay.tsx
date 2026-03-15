@@ -12,7 +12,7 @@ export type BboxOverlayItem = {
   position: ParsingPosition
 }
 
-export function BboxOverlay(props: {
+export function BboxOverlay(props: Readonly<{
   items: BboxOverlayItem[]
   scale: number
   showAll: boolean
@@ -20,7 +20,7 @@ export function BboxOverlay(props: {
   hoveredIds: Set<string>
   onHoverId?: (id: string | null) => void
   onClickId?: (id: string) => void
-}) {
+}>) {
   const { items, scale, showAll, activeIds, hoveredIds, onHoverId, onClickId } = props
 
   return (
@@ -43,7 +43,7 @@ export function BboxOverlay(props: {
 
         return (
           <button
-            key={`${item.id}-${idx}`}
+            key={item.id}
             type="button"
             className={`pointer-events-auto absolute rounded border ${baseColor} ${hoverColor}`}
             style={{ left: x, top: y, width, height }}
@@ -56,4 +56,3 @@ export function BboxOverlay(props: {
     </div>
   )
 }
-

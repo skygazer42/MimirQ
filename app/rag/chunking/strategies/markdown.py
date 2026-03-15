@@ -8,7 +8,7 @@ header context in chunk metadata.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import (
@@ -49,7 +49,7 @@ class MarkdownHeaderChunker(BaseChunker):
         self,
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
-        headers_to_split_on: Optional[List[Tuple[str, str]]] = None,
+        headers_to_split_on: list[tuple[str, str]] | None = None,
         strip_headers: bool = False,
         return_each_line: bool = False,
     ):
@@ -84,7 +84,7 @@ class MarkdownHeaderChunker(BaseChunker):
             keep_separator="end",
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         """
         Split documents by markdown headers.
 
@@ -94,7 +94,7 @@ class MarkdownHeaderChunker(BaseChunker):
         Returns:
             List of chunked Document objects with header metadata
         """
-        all_chunks: List[Document] = []
+        all_chunks: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -203,7 +203,7 @@ class MarkdownHeaderChunker(BaseChunker):
 
         return False
 
-    def _build_header_path(self, metadata: Dict[str, Any]) -> str:
+    def _build_header_path(self, metadata: dict[str, Any]) -> str:
         """Build a header path from metadata."""
         parts = []
         for _, meta_key in self.headers_to_split_on:
@@ -211,7 +211,7 @@ class MarkdownHeaderChunker(BaseChunker):
                 parts.append(str(metadata[meta_key]))
         return " > ".join(parts) if parts else ""
 
-    def _fallback_split(self, doc: Document) -> List[Document]:
+    def _fallback_split(self, doc: Document) -> list[Document]:
         """Split document using fallback splitter."""
         text = doc.page_content or ""
         original_metadata = dict(doc.metadata or {})
@@ -300,9 +300,9 @@ class MarkdownAwareChunker(BaseChunker):
             separators=separators,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         """Split documents with markdown awareness."""
-        all_chunks: List[Document] = []
+        all_chunks: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -359,7 +359,7 @@ class MarkdownAwareChunker(BaseChunker):
 
         return all_chunks
 
-    def _protect_code_blocks(self, text: str) -> Tuple[str, Dict[str, str]]:
+    def _protect_code_blocks(self, text: str) -> tuple[str, dict[str, str]]:
         """Replace code blocks with placeholders."""
         code_blocks = {}
         placeholder_idx = 0
@@ -389,7 +389,7 @@ class MarkdownAwareChunker(BaseChunker):
 
     _LIST_ITEM_RE = re.compile(r"^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)")
 
-    def _protect_list_items(self, text: str) -> Tuple[str, Dict[str, str]]:
+    def _protect_list_items(self, text: str) -> tuple[str, dict[str, str]]:
         """
         Replace markdown list *items* with placeholders (best-effort).
 
@@ -404,7 +404,7 @@ class MarkdownAwareChunker(BaseChunker):
         if not lines:
             return text, {}
 
-        items: Dict[str, str] = {}
+        items: dict[str, str] = {}
         out: list[str] = []
         idx = 0
         placeholder_idx = 0
@@ -461,7 +461,7 @@ class MarkdownAwareChunker(BaseChunker):
 
         return "".join(out), items
 
-    def _restore_placeholders(self, text: str, mapping: Dict[str, str]) -> str:
+    def _restore_placeholders(self, text: str, mapping: dict[str, str]) -> str:
         """Restore placeholders from a mapping (best-effort)."""
         if not mapping:
             return text
@@ -470,7 +470,7 @@ class MarkdownAwareChunker(BaseChunker):
             out = out.replace(placeholder, value)
         return out
 
-    def _extract_header_context(self, full_text: str, position: int) -> Optional[str]:
+    def _extract_header_context(self, full_text: str, position: int) -> str | None:
         """Extract the most recent header at-or-before the given position."""
         if not full_text:
             return None

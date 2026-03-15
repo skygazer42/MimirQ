@@ -1,5 +1,6 @@
 
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.rag.kg.search.config import RerankStrategy, SearchConfig
 from app.rag.kg.search.ranking.pagerank import RerankPageRankSearcher

@@ -148,7 +148,7 @@ export function useDocuments() {
           return
         }
 
-        const timeoutId = window.setTimeout(pollOnce, 2000)
+        const timeoutId = globalThis.window.setTimeout(pollOnce, 2000)
         pollTimersRef.current.set(documentId, timeoutId)
       }
 

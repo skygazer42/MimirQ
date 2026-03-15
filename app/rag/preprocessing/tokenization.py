@@ -10,7 +10,6 @@ These are used across:
 import re
 import unicodedata
 from functools import lru_cache
-from typing import List
 
 import jieba
 
@@ -61,13 +60,13 @@ def _keep_token(norm: str) -> bool:
     return True
 
 
-def _camel_subtokens(raw_token: str) -> List[str]:
+def _camel_subtokens(raw_token: str) -> list[str]:
     if not raw_token:
         return []
     # Require some casing signal to avoid splitting normal lowercase words.
     if not (any(c.islower() for c in raw_token) and any(c.isupper() for c in raw_token)):
         return []
-    out: List[str] = []
+    out: list[str] = []
     for part in _CAMEL_SPLIT_RE.findall(raw_token):
         norm = str(part).strip().casefold()
         if _keep_token(norm):
@@ -75,7 +74,7 @@ def _camel_subtokens(raw_token: str) -> List[str]:
     return out
 
 
-def _version_subtokens(norm_token: str) -> List[str]:
+def _version_subtokens(norm_token: str) -> list[str]:
     """
     Extract version-like subtokens to reduce false negatives.
 
@@ -91,7 +90,7 @@ def _version_subtokens(norm_token: str) -> List[str]:
         return []
     ver = str(m.group(1))
     parts = ver.split(".")
-    out: List[str] = []
+    out: list[str] = []
     if _keep_token(ver):
         out.append(ver)
     # Add a major.minor prefix when available (helps queries that omit patch).
@@ -102,11 +101,11 @@ def _version_subtokens(norm_token: str) -> List[str]:
     return out
 
 
-def _numeric_normalization_tokens(text: str) -> List[str]:
+def _numeric_normalization_tokens(text: str) -> list[str]:
     if not bool(getattr(settings, "BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED", True)):
         return []
     raw = text or ""
-    out: List[str] = []
+    out: list[str] = []
     # 1) Plain digit sequences (>= 2 chars), e.g. 2024, 42.
     for m in _NUM_SEQ_RE.findall(raw):
         norm = str(m)
@@ -120,8 +119,8 @@ def _numeric_normalization_tokens(text: str) -> List[str]:
     return out
 
 
-def _tokenize_for_bm25_ascii(text: str) -> List[str]:
-    tokens: List[str] = []
+def _tokenize_for_bm25_ascii(text: str) -> list[str]:
+    tokens: list[str] = []
     extra: set[str] = set()
     for token in _ASCII_TOKEN_RE.findall(text or ""):
         raw_tok = str(token).strip()
@@ -188,7 +187,7 @@ def _is_cjk_char(ch: str) -> bool:
     return (0x4E00 <= o <= 0x9FFF) or (0x3400 <= o <= 0x4DBF)
 
 
-def _flush_cjk_oov_buffer(buf: List[str], out_tokens: List[str], *, extra_budget: List[int]) -> None:
+def _flush_cjk_oov_buffer(buf: list[str], out_tokens: list[str], *, extra_budget: list[int]) -> None:
     """
     Convert a sequence of single-character CJK tokens into recall-friendly subtokens.
 
@@ -219,7 +218,7 @@ def _flush_cjk_oov_buffer(buf: List[str], out_tokens: List[str], *, extra_budget
             extra_budget[0] = max(0, extra_budget[0] - 1)
 
 
-def _tokenize_for_bm25_impl(text: str) -> List[str]:
+def _tokenize_for_bm25_impl(text: str) -> list[str]:
     raw = _normalize_for_bm25(text)
     if not raw:
         return []
@@ -227,10 +226,10 @@ def _tokenize_for_bm25_impl(text: str) -> List[str]:
     if raw.isascii():
         return _tokenize_for_bm25_ascii(raw)
 
-    tokens: List[str] = []
+    tokens: list[str] = []
     # Keep a small expansion budget to avoid pathological token explosion on weird inputs.
     extra_budget = [int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 128) or 128)]
-    cjk_oov_buf: List[str] = []
+    cjk_oov_buf: list[str] = []
 
     for token in jieba.cut_for_search(raw):
         tok = str(token).strip()
@@ -267,7 +266,7 @@ def _tokenize_for_bm25_impl(text: str) -> List[str]:
     return tokens
 
 
-def tokenize_for_bm25(text: str) -> List[str]:
+def tokenize_for_bm25(text: str) -> list[str]:
     """
     Tokenize text for BM25.
 

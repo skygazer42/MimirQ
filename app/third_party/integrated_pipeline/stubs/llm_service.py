@@ -16,7 +16,7 @@ fail-soft and fall back to plaintext parsing (see `integrated/chunkers/naive.py`
 from __future__ import annotations
 
 import base64
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 
@@ -116,7 +116,7 @@ class LLMBundle:
             "Content-Type": "application/json",
         }
 
-    def _build_payload(self, *, image_bytes: bytes, prompt: Optional[str]) -> Dict[str, Any]:
+    def _build_payload(self, *, image_bytes: bytes, prompt: str | None) -> dict[str, Any]:
         mime_type = _guess_mime_type(image_bytes)
         encoded = base64.b64encode(image_bytes).decode("utf-8")
         data_url = f"data:{mime_type};base64,{encoded}"
@@ -140,7 +140,7 @@ class LLMBundle:
             "stream": False,
         }
 
-    def describe_with_prompt(self, image_bytes: bytes, prompt: Optional[str] = None) -> str:
+    def describe_with_prompt(self, image_bytes: bytes, prompt: str | None = None) -> str:
         """
         Describe an image with an explicit prompt (image -> markdown/text).
 

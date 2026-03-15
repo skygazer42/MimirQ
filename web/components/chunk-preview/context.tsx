@@ -18,7 +18,7 @@ import { useParsedFiles } from '@/store/use-parsed-files-store'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import type { ChunkPreviewResponse } from '@/types'
-import type { ChunkPreviewState, ChunkPreviewActions, ChunkPreviewFileItem, ChunkPreviewContextType } from './types'
+import type { ChunkPreviewState, ChunkPreviewFileItem, ChunkPreviewContextType } from './types'
 import { EXAMPLE_TEXT } from './constants'
 import { scanFiles } from './utils/file-scanner'
 
@@ -33,7 +33,7 @@ function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
   if (!value) return ''
   try {
-    return JSON.parse(`"${value.replace(/"/g, '\\"')}"`)
+    return JSON.parse(`"${value.replaceAll(/"/g, '\\"')}"`)
   } catch {
     return value
   }
@@ -53,7 +53,7 @@ interface ChunkPreviewProviderProps {
   onClose?: () => void
 }
 
-export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPreviewProviderProps) {
+export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<ChunkPreviewProviderProps>) {
   const router = useRouter()
   const searchParams = useSearchParams()
   // 外部依赖
@@ -169,10 +169,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
   // Sync selectedChunkIndex -> URL param (best-effort).
   // Important: avoid clobbering inbound deep links before we have applied them.
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
 
     const current = (searchParams.get('chunk') || '').trim()
-    const next = selectedChunkIndex != null ? String(selectedChunkIndex + 1) : ''
+    const next = selectedChunkIndex == null ? '' : String(selectedChunkIndex + 1)
 
     // Keep ref in sync when URL already matches state.
     if (current === next) {
@@ -191,31 +191,31 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     lastSyncedChunkParamRef.current = next
 
     const qs = params.toString()
-    const path = window.location.pathname || '/chunk-preview'
+    const path = globalThis.window.location.pathname || '/chunk-preview'
     router.replace(`${path}${qs ? `?${qs}` : ''}`)
   }, [router, searchParams, selectedChunkIndex])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const saved = (window.localStorage.getItem(STORAGE_DATASET_ID_KEY) || '').trim()
+    if (typeof globalThis.window === 'undefined') return
+    const saved = (globalThis.window.localStorage.getItem(STORAGE_DATASET_ID_KEY) || '').trim()
     if (saved) setDatasetIdState(saved)
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (datasetId) window.localStorage.setItem(STORAGE_DATASET_ID_KEY, datasetId)
-    else window.localStorage.removeItem(STORAGE_DATASET_ID_KEY)
+    if (typeof globalThis.window === 'undefined') return
+    if (datasetId) globalThis.window.localStorage.setItem(STORAGE_DATASET_ID_KEY, datasetId)
+    else globalThis.window.localStorage.removeItem(STORAGE_DATASET_ID_KEY)
   }, [datasetId])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const raw = (window.localStorage.getItem(STORAGE_SEPARATOR_SETTINGS_KEY) || '').trim()
+    if (typeof globalThis.window === 'undefined') return
+    const raw = (globalThis.window.localStorage.getItem(STORAGE_SEPARATOR_SETTINGS_KEY) || '').trim()
     if (!raw) {
       separatorSettingsLoadedRef.current = true
       return
     }
     try {
-      const data = JSON.parse(raw) as any
+      const data = JSON.parse(raw)
       if (typeof data?.separatorPreset === 'string') setSeparatorPreset(data.separatorPreset)
       if (typeof data?.separatorCustom === 'string') setSeparatorCustom(data.separatorCustom)
       if (typeof data?.keepSeparator === 'boolean') setKeepSeparator(data.keepSeparator)
@@ -229,14 +229,14 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   // Load parent-child strategy settings (best-effort).
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const raw = (window.localStorage.getItem(STORAGE_PARENT_CHILD_SETTINGS_KEY) || '').trim()
+    if (typeof globalThis.window === 'undefined') return
+    const raw = (globalThis.window.localStorage.getItem(STORAGE_PARENT_CHILD_SETTINGS_KEY) || '').trim()
     if (!raw) {
       parentChildSettingsLoadedRef.current = true
       return
     }
     try {
-      const data = JSON.parse(raw) as any
+      const data = JSON.parse(raw)
       if (typeof data?.parentChildRatio === 'number' && Number.isFinite(data.parentChildRatio)) {
         setParentChildRatio(Math.max(0.05, Math.min(1.0, Number(data.parentChildRatio))))
       }
@@ -252,17 +252,17 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   // Persist parent-child strategy settings.
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     if (!parentChildSettingsLoadedRef.current) return
     const payload = JSON.stringify({
       parentChildRatio,
       parentChildMinChildSize,
     })
-    window.localStorage.setItem(STORAGE_PARENT_CHILD_SETTINGS_KEY, payload)
+    globalThis.window.localStorage.setItem(STORAGE_PARENT_CHILD_SETTINGS_KEY, payload)
   }, [parentChildRatio, parentChildMinChildSize])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     if (!separatorSettingsLoadedRef.current) return
     const payload = JSON.stringify({
       separatorPreset,
@@ -270,16 +270,16 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
       keepSeparator,
       separatorMaxChunkSize,
     })
-    window.localStorage.setItem(STORAGE_SEPARATOR_SETTINGS_KEY, payload)
+    globalThis.window.localStorage.setItem(STORAGE_SEPARATOR_SETTINGS_KEY, payload)
   }, [separatorPreset, separatorCustom, keepSeparator, separatorMaxChunkSize])
 
   // Load preview perf settings (best-effort).
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const raw = (window.localStorage.getItem(STORAGE_PERF_SETTINGS_KEY) || '').trim()
+    if (typeof globalThis.window === 'undefined') return
+    const raw = (globalThis.window.localStorage.getItem(STORAGE_PERF_SETTINGS_KEY) || '').trim()
     if (!raw) return
     try {
-      const data = JSON.parse(raw) as any
+      const data = JSON.parse(raw)
       if (typeof data?.includeOriginalText === 'boolean') setIncludeOriginalText(data.includeOriginalText)
       if (typeof data?.originalTextMaxChars === 'number' && Number.isFinite(data.originalTextMaxChars)) {
         setOriginalTextMaxChars(Math.max(0, Math.min(2_000_000, Math.trunc(data.originalTextMaxChars))))
@@ -295,14 +295,14 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   // Persist preview perf settings.
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     const payload = JSON.stringify({
       includeOriginalText,
       originalTextMaxChars,
       maxChunks,
       useParseCache,
     })
-    window.localStorage.setItem(STORAGE_PERF_SETTINGS_KEY, payload)
+    globalThis.window.localStorage.setItem(STORAGE_PERF_SETTINGS_KEY, payload)
   }, [includeOriginalText, originalTextMaxChars, maxChunks, useParseCache])
 
   // 当前文件
@@ -314,8 +314,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
     if (fileList.length === 0) {
       setCurrentFileIndex(0)
       focusFileLoadedRef.current = false
-      if (typeof window !== 'undefined') {
-        window.localStorage.removeItem(STORAGE_FOCUS_FILE_ID_KEY)
+      if (typeof globalThis.window !== 'undefined') {
+        globalThis.window.localStorage.removeItem(STORAGE_FOCUS_FILE_ID_KEY)
       }
       return
     }
@@ -326,17 +326,17 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   // Persist the currently focused file (best-effort UX when coming back to the page).
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     if (!currentFileItem?.id) return
-    window.localStorage.setItem(STORAGE_FOCUS_FILE_ID_KEY, currentFileItem.id)
+    globalThis.window.localStorage.setItem(STORAGE_FOCUS_FILE_ID_KEY, currentFileItem.id)
   }, [currentFileItem?.id])
 
   // Restore focused file after fileList is initialized.
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     if (focusFileLoadedRef.current) return
     if (fileList.length === 0) return
-    const saved = (window.localStorage.getItem(STORAGE_FOCUS_FILE_ID_KEY) || '').trim()
+    const saved = (globalThis.window.localStorage.getItem(STORAGE_FOCUS_FILE_ID_KEY) || '').trim()
     if (saved) {
       const idx = fileList.findIndex((f) => f.id === saved)
       if (idx >= 0) setCurrentFileIndex(idx)
@@ -649,30 +649,38 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
     try {
       const separator =
-        chunkStrategy === 'separator'
-          ? separatorPreset === 'custom'
-            ? decodeSeparatorInput(separatorCustom) || '\n\n'
-            : undefined
-          : undefined
+        (() => {
+    if (chunkStrategy === 'separator') {
+        if (separatorPreset === 'custom') {
+            return decodeSeparatorInput(separatorCustom) || '\n\n';
+        }
+        else {
+            return undefined;
+        }
+    }
+    else {
+        return undefined;
+    }
+})()
 
       const baseParams = {
-        chunk_size: chunkSize,
-        chunk_overlap: effectiveOverlap,
-        include_original_text: includeOriginalText,
-        original_text_max_chars: originalTextMaxChars,
-        max_chunks: maxChunks,
-        use_parse_cache: useParseCache,
-        parser_backend: parserBackend,
-        chunk_strategy: chunkStrategy,
-        child_ratio: chunkStrategy === 'parent_child' ? parentChildRatio : undefined,
-        min_child_size: chunkStrategy === 'parent_child' ? parentChildMinChildSize : undefined,
-        dataset_id: datasetId || undefined,
-        pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-        separator_preset: chunkStrategy === 'separator' ? separatorPreset : undefined,
-        separator: separator,
-        keep_separator: chunkStrategy === 'separator' ? keepSeparator : undefined,
-        separator_max_chunk_size: chunkStrategy === 'separator' ? separatorMaxChunkSize : undefined,
-      } as const
+    chunk_size: chunkSize,
+    chunk_overlap: effectiveOverlap,
+    include_original_text: includeOriginalText,
+    original_text_max_chars: originalTextMaxChars,
+    max_chunks: maxChunks,
+    use_parse_cache: useParseCache,
+    parser_backend: parserBackend,
+    chunk_strategy: chunkStrategy,
+    child_ratio: chunkStrategy === 'parent_child' ? parentChildRatio : undefined,
+    min_child_size: chunkStrategy === 'parent_child' ? parentChildMinChildSize : undefined,
+    dataset_id: datasetId || undefined,
+    pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+    separator_preset: chunkStrategy === 'separator' ? separatorPreset : undefined,
+    separator: separator,
+    keep_separator: chunkStrategy === 'separator' ? keepSeparator : undefined,
+    separator_max_chunk_size: chunkStrategy === 'separator' ? separatorMaxChunkSize : undefined,
+}
 
       // Enterprise UX: when parse cache is enabled and we have a prior file_sha256, avoid re-uploading the file.
       // If server cache miss/disabled, fall back to uploading.
@@ -791,7 +799,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         const override = chunkOverrides[idx] || null
         if (override?.disabled) return acc
         const content = String(override?.content ?? chunk.content ?? '')
-        const metadata = (override?.metadata ?? chunk.metadata ?? {}) as Record<string, any>
+        const metadata = (override?.metadata ?? chunk.metadata ?? {})
         acc.push({
           content,
           page_number: chunk.page_number,
@@ -936,10 +944,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         if (!curDisabled) continue
         const { disabled: _omit, ...rest } = cur as any
         const hasOther = rest.content !== undefined || rest.metadata !== undefined
-        if (!hasOther) {
-          delete next[idx]
-        } else {
+        if (hasOther) {
           next[idx] = { ...rest, updatedAt: now }
+        } else {
+          delete next[idx]
         }
         changed = true
       }
@@ -965,7 +973,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
 
   const updateSettings = useCallback(
     (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => {
-      const nextStrategy = settings.strategy !== undefined ? settings.strategy : chunkStrategy
+      const nextStrategy = settings.strategy === undefined ? chunkStrategy : settings.strategy
 
       if (settings.chunkSize !== undefined) {
         setChunkSize(settings.chunkSize)
@@ -1090,8 +1098,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: ChunkPrev
         return
       }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    globalThis.window.addEventListener('keydown', handleKeyDown)
+    return () => globalThis.window.removeEventListener('keydown', handleKeyDown)
   }, [runPreview, submitChunks])
 
   const toggleAutoPreview = useCallback((enabled?: boolean) => {

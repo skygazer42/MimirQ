@@ -67,7 +67,7 @@ def test_get_allowed_document_id_sets_enforces_doc_acl_and_dataset_owner_bypass(
     monkeypatch.setattr(
         da,
         "_resolve_allowed_dataset_ids",
-        lambda db, tenant_id, account_id, dataset_ids: (dataset_map, allowed_dataset_ids),
+        lambda _db, _tenant_id, _account_id, _dataset_ids: (dataset_map, allowed_dataset_ids),
         raising=True,
     )
 
@@ -128,7 +128,7 @@ def test_get_allowed_document_id_sets_allows_doc_acl_via_group_allowlist(monkeyp
     monkeypatch.setattr(
         da,
         "_resolve_allowed_dataset_ids",
-        lambda db, tenant_id, account_id, dataset_ids: (dataset_map, allowed_dataset_ids),
+        lambda _db, _tenant_id, _account_id, _dataset_ids: (dataset_map, allowed_dataset_ids),
         raising=True,
     )
 

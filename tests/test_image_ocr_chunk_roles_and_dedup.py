@@ -34,8 +34,8 @@ class _FakeProcessorSvc:
 
 def test_image_and_ocr_chunks_get_roles_and_ocr_is_separate(monkeypatch):  # noqa: ANN001
     # Stub OCR pipeline to avoid external dependencies.
-    monkeypatch.setattr(iu, "load_image_for_ocr", lambda meta, tenant_id: ("img", False), raising=True)
-    monkeypatch.setattr(iu, "ocr_image", lambda _img, max_chars=2000: "HELLO", raising=True)
+    monkeypatch.setattr(iu, "load_image_for_ocr", lambda _meta, _tenant_id: ("img", False), raising=True)
+    monkeypatch.setattr(iu, "ocr_image", lambda _img, _max_chars=2000: "HELLO", raising=True)
 
     stage = ChunkAssetStage(_FakeProcessorSvc())
 
@@ -78,8 +78,8 @@ def test_image_and_ocr_chunks_get_roles_and_ocr_is_separate(monkeypatch):  # noq
 
 
 def test_duplicate_ocr_chunks_are_deduped_by_hash(monkeypatch):  # noqa: ANN001
-    monkeypatch.setattr(iu, "load_image_for_ocr", lambda meta, tenant_id: ("img", False), raising=True)
-    monkeypatch.setattr(iu, "ocr_image", lambda _img, max_chars=2000: "SAME", raising=True)
+    monkeypatch.setattr(iu, "load_image_for_ocr", lambda _meta, _tenant_id: ("img", False), raising=True)
+    monkeypatch.setattr(iu, "ocr_image", lambda _img, _max_chars=2000: "SAME", raising=True)
 
     stage = ChunkAssetStage(_FakeProcessorSvc())
 

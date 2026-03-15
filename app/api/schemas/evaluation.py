@@ -5,7 +5,7 @@ Defines data models for evaluation tasks and results.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -17,7 +17,7 @@ class RagasRunCreateRequest(BaseModel):
     """Create a RAGAS evaluation run for a conversation."""
 
     conversation_id: UUID = Field(..., description="Conversation ID to evaluate")
-    metrics: List[str] = Field(
+    metrics: list[str] = Field(
         default_factory=lambda: ["faithfulness", "response_relevancy"],
         description="Evaluation metrics list (default: faithfulness, response_relevancy)",
     )
@@ -30,15 +30,15 @@ class RagasRunSchema(OrmModel):
     """Evaluation run metadata."""
 
     id: UUID
-    conversation_id: Optional[UUID] = None
+    conversation_id: UUID | None = None
     status: str
-    metrics: List[str] = Field(default_factory=list)
-    params: Dict[str, Any] = Field(default_factory=dict)
-    summary: Dict[str, Any] = Field(default_factory=dict)
-    error_message: Optional[str] = None
+    metrics: list[str] = Field(default_factory=list)
+    params: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class RagasItemSchema(OrmModel):
@@ -47,24 +47,24 @@ class RagasItemSchema(OrmModel):
     id: UUID
     run_id: UUID
     turn_index: int
-    user_message_id: Optional[UUID] = None
-    assistant_message_id: Optional[UUID] = None
+    user_message_id: UUID | None = None
+    assistant_message_id: UUID | None = None
     user_input: str
     response: str
-    retrieved_contexts: Optional[List[str]] = None
-    citations: List[Dict[str, Any]] = Field(default_factory=list)
-    scores: Dict[str, Any] = Field(default_factory=dict)
+    retrieved_contexts: list[str] | None = None
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    scores: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
 class RagasRunDetail(BaseModel):
     run: RagasRunSchema
-    items: List[RagasItemSchema] = Field(default_factory=list)
+    items: list[RagasItemSchema] = Field(default_factory=list)
 
 
 class RagasRunList(BaseModel):
     total: int
-    items: List[RagasRunSchema]
+    items: list[RagasRunSchema]
 
 
 # ==================== Test question generation schemas ====================
@@ -73,10 +73,10 @@ class RagasRunList(BaseModel):
 class TestGenFromDocsRequest(BaseModel):
     """Request to generate test questions from documents."""
 
-    dataset_id: Optional[UUID] = Field(default=None, description="Dataset ID (optional)")
-    document_ids: List[UUID] = Field(default_factory=list, description="Document ID list (takes priority over dataset_id)")
+    dataset_id: UUID | None = Field(default=None, description="Dataset ID (optional)")
+    document_ids: list[UUID] = Field(default_factory=list, description="Document ID list (takes priority over dataset_id)")
     num_questions: int = Field(default=10, ge=1, le=50, description="Number of questions to generate")
-    question_types: List[str] = Field(
+    question_types: list[str] = Field(
         default_factory=lambda: ["factual", "reasoning", "comparison"],
         description="Question types: factual, reasoning, comparison"
     )
@@ -86,7 +86,7 @@ class TestGenFromDocsRequest(BaseModel):
 class TestGenFromConversationsRequest(BaseModel):
     """Request to generate test questions from conversation history."""
 
-    conversation_ids: List[UUID] = Field(..., min_length=1, description="Conversation ID list")
+    conversation_ids: list[UUID] = Field(..., min_length=1, description="Conversation ID list")
     num_questions: int = Field(default=10, ge=1, le=50, description="Number of questions to generate")
     quality_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="Quality threshold")
     auto_save_as_cases: bool = Field(default=True, description="Auto-save as regression test cases")
@@ -96,17 +96,17 @@ class GeneratedQuestion(BaseModel):
     """Generated question."""
 
     question: str = Field(..., description="Question content")
-    expected_answer: Optional[str] = Field(default=None, description="Expected answer")
-    context: Optional[str] = Field(default=None, description="Question source context")
+    expected_answer: str | None = Field(default=None, description="Expected answer")
+    context: str | None = Field(default=None, description="Question source context")
     source_type: str = Field(..., description="Source type: document or conversation")
     source_id: str = Field(..., description="Source ID")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
 
 
 class TestGenResponse(BaseModel):
     """Test question generation response."""
 
     status: str = Field(..., description="Status: completed or failed")
-    generated_questions: List[GeneratedQuestion] = Field(default_factory=list, description="Generated questions list")
-    saved_case_ids: List[UUID] = Field(default_factory=list, description="IDs of saved cases")
-    error_message: Optional[str] = Field(default=None, description="Error message (if failed)")
+    generated_questions: list[GeneratedQuestion] = Field(default_factory=list, description="Generated questions list")
+    saved_case_ids: list[UUID] = Field(default_factory=list, description="IDs of saved cases")
+    error_message: str | None = Field(default=None, description="Error message (if failed)")

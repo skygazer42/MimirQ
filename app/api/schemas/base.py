@@ -5,7 +5,6 @@ Provides common base classes for all API schemas, eliminating duplicate Config d
 """
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -27,7 +26,7 @@ class TimestampMixin(BaseModel):
     Provides created_at and updated_at fields.
     """
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
 
 
 class OrmTimestampModel(OrmModel):
@@ -37,7 +36,7 @@ class OrmTimestampModel(OrmModel):
     Combines OrmModel and TimestampMixin functionality.
     """
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
 
 
 __all__ = [

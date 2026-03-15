@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -24,7 +24,7 @@ class _Def:
     start: int
     end: int
     kind: str
-    name: Optional[str]
+    name: str | None
     index: int
 
 
@@ -32,7 +32,7 @@ class _Def:
 class _Section:
     start: int
     end: int
-    definition: Optional[_Def]
+    definition: _Def | None
 
 
 _DEF_RE = re.compile(
@@ -43,12 +43,12 @@ _NAME_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b")
 _DIRECTIVE_NAME_RE = re.compile(r"^@(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b")
 
 
-def _iter_defs(text: str) -> List[_Def]:
-    defs: List[_Def] = []
+def _iter_defs(text: str) -> list[_Def]:
+    defs: list[_Def] = []
     for m in _DEF_RE.finditer(text or ""):
         kind = (m.group("kind") or "").strip().lower()
         rest = (m.group("rest") or "").strip()
-        name: Optional[str] = None
+        name: str | None = None
         if kind in {"type", "input", "enum", "interface", "union", "scalar"}:
             nm = _NAME_RE.match(rest)
             if nm:
@@ -59,7 +59,7 @@ def _iter_defs(text: str) -> List[_Def]:
                 name = (nm.group("name") or "").strip() or None
         defs.append(_Def(start=m.start(), end=m.end(), kind=kind, name=name, index=len(defs)))
 
-    deduped: List[_Def] = []
+    deduped: list[_Def] = []
     last_start = -1
     for d in defs:
         if d.start == last_start:
@@ -69,11 +69,11 @@ def _iter_defs(text: str) -> List[_Def]:
     return deduped
 
 
-def _build_sections(text: str, defs: List[_Def]) -> List[_Section]:
+def _build_sections(text: str, defs: list[_Def]) -> list[_Section]:
     if not defs:
         return [_Section(start=0, end=len(text), definition=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = defs[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, definition=None))
@@ -109,8 +109,8 @@ class GraphQLSchemaChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -121,7 +121,7 @@ class GraphQLSchemaChunker(BaseChunker):
             defs = _iter_defs(text)
             sections = _build_sections(text, defs)
 
-            current: Optional[_Def] = None
+            current: _Def | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():

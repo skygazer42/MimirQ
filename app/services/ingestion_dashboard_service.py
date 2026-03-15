@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -26,7 +26,7 @@ _TERMINAL_STATUSES = ("completed", "failed", "quarantined", "cancelled")
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 def _coerce_bucket_config(bucket_minutes: int) -> tuple[int, str]:
     """

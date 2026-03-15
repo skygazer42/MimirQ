@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Textarea } from '@/components/ui/textarea'
-import { cn, formatDate } from '@/lib/utils'
+import { cn, formatDate, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { groupApi } from '@/lib/api-client'
 import type { TenantGroupMemberOut, TenantGroupOut } from '@/types/backend'
@@ -114,8 +114,8 @@ export default function SettingsGroupDetailPage() {
   }, [groupId])
 
   useEffect(() => {
-    void loadGroup()
-    void loadMembers()
+    detachPromise(loadGroup())
+    detachPromise(loadMembers())
   }, [loadGroup, loadMembers])
 
   const canSaveGroup = useMemo(() => {
@@ -232,14 +232,14 @@ export default function SettingsGroupDetailPage() {
               className="gap-2 rounded-xl"
               disabled={loadingGroup || loadingMembers}
               onClick={() => {
-                void loadGroup()
-                void loadMembers()
+                detachPromise(loadGroup())
+                detachPromise(loadMembers())
               }}
             >
               <RefreshCw className={cn('h-4 w-4', (loadingGroup || loadingMembers) && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
-            <Button size="sm" className="gap-2 rounded-xl" disabled={!canSaveGroup || savingGroup} onClick={() => void saveGroup()}>
+            <Button size="sm" className="gap-2 rounded-xl" disabled={!canSaveGroup || savingGroup} onClick={() => detachPromise(saveGroup())}>
               {savingGroup ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Save className="h-4 w-4" />}
               保存
             </Button>
@@ -348,7 +348,7 @@ export default function SettingsGroupDetailPage() {
                         <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={adding}>
                           取消
                         </Button>
-                        <Button onClick={() => void addMembers()} disabled={adding}>
+                        <Button onClick={() => detachPromise(addMembers())} disabled={adding}>
                           {adding ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
                           添加
                         </Button>
@@ -397,7 +397,7 @@ export default function SettingsGroupDetailPage() {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => void removeMember(uid)} disabled={removing}>
+                                <AlertDialogAction onClick={() => detachPromise(removeMember(uid))} disabled={removing}>
                                   {removing ? '移除中…' : '移除'}
                                 </AlertDialogAction>
                               </AlertDialogFooter>

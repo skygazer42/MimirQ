@@ -7,8 +7,8 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime
-from typing import Annotated, Any, List, Optional
+from datetime import UTC, datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
@@ -256,7 +256,7 @@ async def _persist_chat_stream_turn_background(
             )
             if conv is not None:
                 conv.message_count = int(conv.message_count or 0) + 1
-                conv.updated_at = datetime.utcnow()
+                conv.updated_at = datetime.now(UTC).replace(tzinfo=None)
 
             db2.commit()
         finally:
@@ -293,7 +293,7 @@ def _ensure_conversation_access(
     tenant_id: UUID,
     account_id: str,
     conv: Conversation
-) -> List[UUID]:
+) -> list[UUID]:
     """
     Ensure the current user can access all documents bound to the conversation.
     Returns the allowed document ids (possibly empty if conversation has no docs).
@@ -323,7 +323,7 @@ def _retrieve_long_term_messages(
     tenant_id: UUID,
     query: str,
     top_k: int = 3
-) -> List[dict]:
+) -> list[dict]:
     """
     Simple long-term memory recall using BM25 over past messages.
     Used to enrich history context only; it does not modify storage.
@@ -346,7 +346,7 @@ def _retrieve_long_term_messages(
 
     rows = list(reversed(rows))
 
-    docs: List[Document] = []
+    docs: list[Document] = []
     for content, role, created_at in rows:
         if not content or len(content.strip()) < settings.LONG_TERM_MEMORY_MIN_LEN:
             continue
@@ -1086,7 +1086,7 @@ async def chat(
         )
 
         conversation.message_count += 1
-        conversation.updated_at = datetime.utcnow()
+        conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
         db.commit()
 
     except Exception as exc:  # noqa: BLE001
@@ -1674,7 +1674,7 @@ async def stream_chat(
             )
 
             conversation.message_count += 1
-            conversation.updated_at = datetime.utcnow()
+            conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
 
             if (
@@ -1978,7 +1978,7 @@ async def stream_chat(
                 )
 
                 conversation.message_count += 1
-                conversation.updated_at = datetime.utcnow()
+                conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
                 db.commit()
 
                 if (
@@ -2319,7 +2319,7 @@ async def stream_chat(
 
             # Update conversation metadata.
             conversation.message_count += 1
-            conversation.updated_at = datetime.utcnow()
+            conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
 
             if (
@@ -2508,7 +2508,7 @@ async def export_conversation(
         payload = {
             "conversation_id": str(conversation_id),
             "title": title,
-            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "exported_at": datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z",
             "messages": [
                 {
                     "id": str(m.id),
@@ -2528,7 +2528,7 @@ async def export_conversation(
         parts.append(f"# {title}")
         parts.append("")
         parts.append(f"- conversation_id: `{conversation_id}`")
-        parts.append(f"- exported_at_utc: `{datetime.utcnow().isoformat()}Z`")
+        parts.append(f"- exported_at_utc: `{datetime.now(UTC).replace(tzinfo=None).isoformat()}Z`")
         parts.append("")
 
         for m in messages:
@@ -2701,8 +2701,8 @@ async def list_conversations(
 @router.get("/conversations/{conversation_id}/messages", response_model=ConversationDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_conversation_messages(
     conversation_id: UUID,
-    limit: Annotated[Optional[int], Query(ge=1, le=500)] = None,
-    before: Annotated[Optional[UUID], Query()] = None,
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    before: Annotated[UUID | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2907,7 +2907,7 @@ def _checkpoint_values_to_json(values: dict | None) -> dict:
 async def list_conversation_checkpoints(
     conversation_id: UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
-    before: Annotated[Optional[str], Query()] = None,
+    before: Annotated[str | None, Query()] = None,
     include_values: Annotated[bool, Query()] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],

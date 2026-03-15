@@ -6,7 +6,7 @@ Tenant-scoped CRUD endpoints for reusable chunking configurations.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -34,20 +34,20 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 class ChunkPresetCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    description: Optional[str] = Field(default=None, max_length=10_000)
+    description: str | None = Field(default=None, max_length=10_000)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkPresetUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    description: Optional[str] = Field(default=None, max_length=10_000)
+    description: str | None = Field(default=None, max_length=10_000)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkPresetResponse(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

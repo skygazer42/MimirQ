@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -26,6 +27,7 @@ async def test_kg_recall_relation_expansion_adds_events(monkeypatch: pytest.Monk
     monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeSession(), raising=True)
 
     async def _fake_generate_embedding(self, _text: str):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return [0.0]
 
     monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _fake_generate_embedding, raising=True)
@@ -123,7 +125,7 @@ async def test_kg_recall_relation_expansion_adds_events(monkeypatch: pytest.Monk
             assert document_ids == [UUID(int=2)]
             assert dataset_id is None
             assert account_id is None
-            assert min_confidence == 0.1
+            assert min_confidence == pytest.approx(0.1)
             assert allowed_predicates is None
             assert limit == 50
             return [_Rel()]
@@ -159,6 +161,7 @@ async def test_kg_recall_relation_expansion_can_be_forced_off(monkeypatch: pytes
     monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeSession(), raising=True)
 
     async def _fake_generate_embedding(self, _text: str):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return [0.0]
 
     monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _fake_generate_embedding, raising=True)
@@ -272,6 +275,7 @@ async def test_kg_recall_relation_expansion_downweights_mention_evidence(monkeyp
     monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeSession(), raising=True)
 
     async def _fake_generate_embedding(self, _text: str):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return [0.0]
 
     monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _fake_generate_embedding, raising=True)
@@ -370,7 +374,7 @@ async def test_kg_recall_relation_expansion_downweights_mention_evidence(monkeyp
             assert entity_ids == [str(UUID(int=10))]
             assert tenant_id == UUID(int=1)
             assert document_ids == [UUID(int=2)]
-            assert min_confidence == 0.1
+            assert min_confidence == pytest.approx(0.1)
             assert allowed_predicates is None
             assert limit == 50
             # Without downweighting, the "mention" edge would win due to higher confidence.

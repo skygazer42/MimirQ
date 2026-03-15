@@ -13,7 +13,7 @@ type RagTraceDialogProps = {
   title?: string | null
 }
 
-export function RagTraceDialog({ open, onOpenChange, conversationId, title }: RagTraceDialogProps) {
+export function RagTraceDialog({ open, onOpenChange, conversationId, title }: Readonly<RagTraceDialogProps>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">

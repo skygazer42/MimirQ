@@ -13,7 +13,7 @@ function normalizeRegexRules(rules: unknown): RegexRuleModel[] {
   const out: RegexRuleModel[] = []
   for (const item of rules) {
     if (!item || typeof item !== 'object') continue
-    const raw = item as any
+    const raw = item
     const pattern = typeof raw.pattern === 'string' ? raw.pattern : ''
     if (!pattern) continue
     out.push({
@@ -27,7 +27,7 @@ function normalizeRegexRules(rules: unknown): RegexRuleModel[] {
 
 export function buildIngestionPolicyExportFilename(profileKey: string): string {
   const raw = String(profileKey || '').trim()
-  const safe = (raw || 'profile').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64) || 'profile'
+  const safe = (raw || 'profile').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64) || 'profile'
   return `${safe}.ingestion_policy.json`
 }
 
@@ -137,6 +137,6 @@ export function buildGovernanceProfileCreateFromExisting(profile: GovernanceProf
     name: `${name} (copy)`,
     description: descriptionRaw ? descriptionRaw : undefined,
     // Leave `key` empty by default; the backend will validate and store it as optional.
-    payload: (profile?.payload || { version: '1', input_formats: ['markdown'], pipeline_patch: {}, regex_rules: [] }) as GovernanceProfilePayload,
+    payload: (profile?.payload || { version: '1', input_formats: ['markdown'], pipeline_patch: {}, regex_rules: [] }),
   }
 }

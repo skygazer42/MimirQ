@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd  # type: ignore
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -35,7 +35,7 @@ from app.core.openai_compat import normalize_openai_compatible_base_url
 @dataclass(frozen=True)
 class LotusAvailability:
     ok: bool
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.IGNORECASE)

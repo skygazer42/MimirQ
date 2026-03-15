@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -40,7 +40,7 @@ class OrgHeading:
 class _Section:
     start: int
     end: int
-    heading: Optional[OrgHeading]
+    heading: OrgHeading | None
 
 
 _HEADING_RE = re.compile(r"^\s*(?P<stars>\*{1,12})\s+(?P<title>.+?)\s*$")
@@ -49,8 +49,8 @@ _TAGS_RE = re.compile(r"\s+:[A-Za-z0-9_@#%:.-]+:\s*$")
 _TODO_RE = re.compile(r"^(TODO|DONE|NEXT|WAIT|CANCELLED)\s+(?P<rest>.*)$", re.IGNORECASE)
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -71,8 +71,8 @@ def _clean_title(raw: str) -> str:
     return s
 
 
-def _iter_headings(text: str) -> List[OrgHeading]:
-    headings: List[OrgHeading] = []
+def _iter_headings(text: str) -> list[OrgHeading]:
+    headings: list[OrgHeading] = []
     for ln in _iter_lines(text):
         m = _HEADING_RE.match(ln.text.rstrip("\r\n"))
         if not m:
@@ -89,7 +89,7 @@ def _iter_headings(text: str) -> List[OrgHeading]:
                 title=title,
             )
         )
-    deduped: List[OrgHeading] = []
+    deduped: list[OrgHeading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -99,11 +99,11 @@ def _iter_headings(text: str) -> List[OrgHeading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[OrgHeading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[OrgHeading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = headings[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -114,7 +114,7 @@ def _build_sections(text: str, headings: List[OrgHeading]) -> List[_Section]:
     return sections
 
 
-def _update_heading_stack(stack: List[str], *, level: int, heading_text: str) -> None:
+def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
     level = max(1, int(level))
     while len(stack) >= level:
         stack.pop()
@@ -145,8 +145,8 @@ class OrgModeSectionsChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -157,7 +157,7 @@ class OrgModeSectionsChunker(BaseChunker):
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            heading_stack: List[str] = []
+            heading_stack: list[str] = []
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():

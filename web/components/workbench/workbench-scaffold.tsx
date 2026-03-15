@@ -52,7 +52,7 @@ export function WorkbenchScaffold({
   headerClassName,
   toolbarClassName,
   bodyClassName,
-}: WorkbenchScaffoldProps) {
+}: Readonly<WorkbenchScaffoldProps>) {
   const resolvedMainPanel =
     mainPanel ?? (children ? <WorkbenchPane className="flex-1">{children}</WorkbenchPane> : null)
 

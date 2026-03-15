@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -37,9 +37,9 @@ class _Doc:
     start: int
     end: int
     index: int
-    kind: Optional[str]
-    name: Optional[str]
-    api_version: Optional[str]
+    kind: str | None
+    name: str | None
+    api_version: str | None
 
 
 _DOC_SEP_RE = re.compile(r"(?m)^\s*---\s*(?:#.*)?$")
@@ -53,8 +53,8 @@ _METADATA_RE = re.compile(r"^(?P<indent>\s*)metadata\s*:\s*(?:#.*)?$")
 _NAME_RE = re.compile(r"^(?P<indent>\s*)name\s*:\s*(?P<val>[^\s#]+)")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -66,7 +66,7 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _extract_doc_meta(doc_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None]:
     if not doc_text:
         return None, None, None
     api = None
@@ -81,7 +81,7 @@ def _extract_doc_meta(doc_text: str) -> tuple[Optional[str], Optional[str], Opti
         kind = (m.group("val") or "").strip() or None
 
     lines = _iter_lines(doc_text[:8000])
-    meta_indent: Optional[int] = None
+    meta_indent: int | None = None
     for ln in lines:
         if meta_indent is None:
             mm = _METADATA_RE.match(ln.plain)
@@ -101,12 +101,12 @@ def _extract_doc_meta(doc_text: str) -> tuple[Optional[str], Optional[str], Opti
     return kind, name, api
 
 
-def _build_docs(text: str) -> List[_Doc]:
+def _build_docs(text: str) -> list[_Doc]:
     if not text:
         return []
 
     seps = [m.start() for m in _DOC_SEP_RE.finditer(text)]
-    docs: List[_Doc] = []
+    docs: list[_Doc] = []
     if not seps:
         kind, name, api = _extract_doc_meta(text)
         return [_Doc(start=0, end=len(text), index=0, kind=kind, name=name, api_version=api)]
@@ -179,8 +179,8 @@ class YAMLManifestChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

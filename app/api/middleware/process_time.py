@@ -7,8 +7,8 @@ Adds a lightweight timing header to responses for debugging/perf checks:
 """
 
 
+from collections.abc import Callable
 from time import perf_counter
-from typing import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request

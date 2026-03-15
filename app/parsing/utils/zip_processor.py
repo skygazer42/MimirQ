@@ -10,7 +10,7 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
@@ -78,7 +78,7 @@ class ZipImageProcessor:
                 shutil.copyfileobj(src, dst)
 
     @staticmethod
-    def _choose_markdown_file(markdown_files: List[Path]) -> Path:
+    def _choose_markdown_file(markdown_files: list[Path]) -> Path:
         preferred = {"output.md", "result.md", "index.md", "readme.md"}
         candidates = []
         for path in markdown_files:
@@ -130,8 +130,8 @@ class ZipImageProcessor:
         zip_path: Path,
         dataset_id: str,
         document_id: str,
-        tenant_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Process a ZIP containing Markdown + images.
 
@@ -306,7 +306,7 @@ class ZipImageProcessor:
     @staticmethod
     def _replace_image_refs(
         markdown: str,
-        image_mapping: Dict[str, Dict[str, str]]
+        image_mapping: dict[str, dict[str, str]]
     ) -> str:
         """
         Replace image references in Markdown.

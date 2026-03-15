@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 
 def _find_metric(metrics: list[dict], key: str) -> dict | None:
     for m in metrics:
@@ -50,7 +52,7 @@ def test_diff_regression_run_summaries_includes_top_level_and_slice_diffs() -> N
 
     top = _find_metric(out.get("metric_diffs") or [], "retrieval_recall")
     assert top is not None
-    assert top.get("delta") == 0.5
+    assert top.get("delta") == pytest.approx(0.5)
 
     sd = out.get("slice_diffs") or {}
     ft = sd.get("file_type") or {}
@@ -59,7 +61,7 @@ def test_diff_regression_run_summaries_includes_top_level_and_slice_diffs() -> N
 
     m = _find_metric(buckets[0].get("metrics") or [], "retrieval_recall")
     assert m is not None
-    assert m.get("delta") == 0.5
+    assert m.get("delta") == pytest.approx(0.5)
 
 
 def test_diff_regression_run_summaries_includes_access_mode_slice_diff() -> None:
@@ -104,7 +106,7 @@ def test_diff_regression_run_summaries_includes_access_mode_slice_diff() -> None
 
     m = _find_metric(buckets[0].get("metrics") or [], "retrieval_recall")
     assert m is not None
-    assert m.get("delta") == 0.5
+    assert m.get("delta") == pytest.approx(0.5)
 
 
 def test_diff_regression_run_summaries_includes_compact_diff_score() -> None:

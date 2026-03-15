@@ -7,7 +7,6 @@ for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 
 import hashlib
 import json
-from typing import List, Optional, Tuple
 
 from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
@@ -80,7 +79,7 @@ class LangChainEmbeddingsAdapter:
         self._normalize = normalize
         self._dimension = model.dimension
 
-    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed a list of text documents.
 
         Args:
@@ -98,7 +97,7 @@ class LangChainEmbeddingsAdapter:
         if not texts:
             return []
 
-        embeddings: List[List[float]]
+        embeddings: list[list[float]]
         if client is None:
             embeddings = self._model.encode(texts)
         else:
@@ -120,8 +119,8 @@ class LangChainEmbeddingsAdapter:
             cache_misses = 0
             cache_corrupt = 0
 
-            missing: List[Tuple[int, str]] = []
-            out: List[Optional[List[float]]] = [None] * len(texts)
+            missing: list[tuple[int, str]] = []
+            out: list[list[float] | None] = [None] * len(texts)
             for i, raw in enumerate(cached_raw):
                 if raw:
                     try:
@@ -179,7 +178,7 @@ class LangChainEmbeddingsAdapter:
 
         return embeddings
 
-    def embed_query(self, text: str) -> List[float]:
+    def embed_query(self, text: str) -> list[float]:
         """Embed a single query text.
 
         Args:
@@ -245,7 +244,7 @@ class LangChainEmbeddingsAdapter:
 
         return embeddings[0]
 
-    def _normalize_vectors(self, vectors: List[List[float]]) -> List[List[float]]:
+    def _normalize_vectors(self, vectors: list[list[float]]) -> list[list[float]]:
         """Normalize embeddings to unit length."""
         import numpy as np
 

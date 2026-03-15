@@ -65,7 +65,8 @@ describe('SAML ACS route', () => {
     expect(url).toContain('/api/v1/auth/saml/exchange')
     expect(init.method).toBe('POST')
     expect(init.headers).toEqual({ 'Content-Type': 'application/json' })
-    expect(JSON.parse(String(init.body))).toEqual({
+    expect(typeof init.body).toBe('string')
+    expect(JSON.parse(init.body as string)).toEqual({
       provider_id: 'default',
       saml_response: 'base64-response',
       relay_state: '/datasets/123',

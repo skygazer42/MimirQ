@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Mapping, Sequence, TypeVar
+from datetime import UTC, datetime
+from typing import Any, TypeVar
 from uuid import UUID
 
 from app.services.connector_registry import CONNECTOR_REGISTRY, ConnectorDefinition
@@ -25,7 +26,7 @@ CONNECTOR_SYNC_POLICIES: dict[str, ConnectorSyncPolicy] = {
 
 
 def _isoformat_utc(value: datetime) -> str:
-    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return value.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _normalize_recorded_at(value: datetime | str | None) -> str:
@@ -34,7 +35,7 @@ def _normalize_recorded_at(value: datetime | str | None) -> str:
     text = str(value or "").strip()
     if text:
         return text
-    return _isoformat_utc(datetime.now(timezone.utc))
+    return _isoformat_utc(datetime.now(UTC))
 
 
 def normalize_source_manifest(value: Mapping[str, Any] | None) -> dict[str, str]:
@@ -50,7 +51,7 @@ def normalize_source_manifest(value: Mapping[str, Any] | None) -> dict[str, str]
         items.append((path, sha))
 
     items.sort(key=lambda item: item[0])
-    return {path: sha for path, sha in items}
+    return dict(items)
 
 
 def normalize_boundary_ids(value: Any, *, max_items: int = 200) -> list[str]:

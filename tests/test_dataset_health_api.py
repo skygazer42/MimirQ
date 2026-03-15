@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -35,7 +35,7 @@ def test_dataset_health_summary(monkeypatch):  # noqa: ANN001
 
     dummy_summary = DatasetProfileSummary(
         dataset_id=dataset_id,
-        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 1, 1, tzinfo=UTC),
         total_documents=3,
         by_status={"completed": 2, "failed": 1},
     )

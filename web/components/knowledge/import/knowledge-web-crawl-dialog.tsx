@@ -19,6 +19,8 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api-client'
+import { detachPromise } from '@/lib/utils'
+
 
 function parseStartUrls(raw: string): string[] {
   const parts = (raw || '')
@@ -118,7 +120,7 @@ export function KnowledgeWebCrawlDialog({
   loadDocuments,
   loadConnectorRuns,
   onRunCreated,
-}: KnowledgeWebCrawlDialogProps) {
+}: Readonly<KnowledgeWebCrawlDialogProps>) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
@@ -252,8 +254,8 @@ export function KnowledgeWebCrawlDialog({
       setAccessMode('inherit')
       setAccessMembers('')
       setAccessGroupIds([])
-      void loadConnectorRuns({ datasetId: selectedDatasetId })
-      void loadDocuments()
+      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
+      detachPromise(loadDocuments())
     } catch (err: any) {
       toast.error(formatApiError(err, '创建网页爬取任务失败'))
     } finally {

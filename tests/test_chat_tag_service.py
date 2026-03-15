@@ -105,7 +105,7 @@ def test_chat_tag_builds_context_doc(monkeypatch):  # noqa: ANN001
     # Avoid real LLM + sqlite access.
     import app.services.chat_tag_service as mod
 
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT "amount" FROM "sheet_0" LIMIT 5', raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT "amount" FROM "sheet_0" LIMIT 5', raising=True)
     monkeypatch.setattr(
         mod,
         "run_table_query",
@@ -184,7 +184,7 @@ def test_chat_tag_includes_docx_tables(monkeypatch):  # noqa: ANN001
     # Avoid real LLM + sqlite access.
     import app.services.chat_tag_service as mod
 
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT "amount" FROM "sheet_0" LIMIT 5', raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT "amount" FROM "sheet_0" LIMIT 5', raising=True)
     monkeypatch.setattr(
         mod,
         "run_table_query",
@@ -252,7 +252,7 @@ def test_chat_tag_includes_pdf_tables(monkeypatch):  # noqa: ANN001
     # Avoid real LLM + sqlite access.
     import app.services.chat_tag_service as mod
 
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT "amount" FROM "sheet_0" LIMIT 5', raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT "amount" FROM "sheet_0" LIMIT 5', raising=True)
     monkeypatch.setattr(
         mod,
         "run_table_query",
@@ -336,8 +336,8 @@ def test_chat_tag_intent_with_no_match_skips_when_ambiguous(monkeypatch):  # noq
     # Ensure we do NOT call LLM/sql runner on ambiguous no-match queries.
     import app.services.chat_tag_service as mod
 
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: (_ for _ in ()).throw(AssertionError("LLM called")), raising=True)
-    monkeypatch.setattr(mod, "run_table_query", lambda **kwargs: (_ for _ in ()).throw(AssertionError("SQL called")), raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("LLM called")), raising=True)
+    monkeypatch.setattr(mod, "run_table_query", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("SQL called")), raising=True)
 
     docs, meta = build_chat_tag_context_docs(
         _FakeDB([_Doc(doc_id=doc1_id, filename="a.xlsx"), _Doc(doc_id=doc2_id, filename="b.xlsx")]),
@@ -398,7 +398,7 @@ def test_chat_tag_intent_with_no_match_falls_back_for_single_document(monkeypatc
     # Avoid real LLM + sqlite access.
     import app.services.chat_tag_service as mod
 
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT COUNT(*) AS n FROM "sheet_0" LIMIT 1', raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT COUNT(*) AS n FROM "sheet_0" LIMIT 1', raising=True)
     monkeypatch.setattr(
         mod,
         "run_table_query",
@@ -480,7 +480,7 @@ def test_chat_tag_can_match_sample_rows(monkeypatch):  # noqa: ANN001
 
     chosen: dict[str, str] = {}
 
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT "value" FROM "sheet_0" LIMIT 5', raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT "value" FROM "sheet_0" LIMIT 5', raising=True)
 
     def _fake_run_table_query(**kwargs):  # noqa: ANN001
         chosen["table_id"] = str(kwargs.get("table_id") or "")
@@ -840,7 +840,7 @@ def test_chat_tag_selection_tie_break_is_deterministic(monkeypatch):  # noqa: AN
 
     chosen: dict[str, str] = {}
 
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT COUNT(*) AS n FROM "sheet_0" LIMIT 1', raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT COUNT(*) AS n FROM "sheet_0" LIMIT 1', raising=True)
 
     def _fake_run_table_query(**kwargs):  # noqa: ANN001
         chosen["table_id"] = str(kwargs.get("table_id") or "")
@@ -910,7 +910,7 @@ def test_chat_tag_carries_db_row_source_metadata_into_payload(monkeypatch):  # n
 
     import app.services.chat_tag_service as mod
 
-    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **kwargs: 'SELECT * FROM "sheet_0" LIMIT 10', raising=True)
+    monkeypatch.setattr(mod, "generate_sql_for_table", lambda **_kwargs: 'SELECT * FROM "sheet_0" LIMIT 10', raising=True)
     monkeypatch.setattr(
         mod,
         "run_table_query",

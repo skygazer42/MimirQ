@@ -1,3 +1,4 @@
+import asyncio
 from uuid import uuid4
 
 import pytest
@@ -11,14 +12,16 @@ async def test_run_subprocess_worker_log_size_guard(monkeypatch, tmp_path):
     import app.parsing.subprocess_runner as runner_mod
 
     monkeypatch.setattr(settings, "SUBPROCESS_LOG_MAX_BYTES", 50, raising=False)
-    monkeypatch.setattr(runner_mod, "_get_subprocess_workdir", lambda *, tenant_id: tmp_path, raising=True)
+    monkeypatch.setattr(runner_mod, "_get_subprocess_workdir", lambda *, _tenant_id: tmp_path, raising=True)
 
     async def _noop_terminate(_proc, *, grace_sec=2.0):  # noqa: ANN001, ANN201
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     monkeypatch.setattr(runner_mod, "_terminate_process_group", _noop_terminate, raising=True)
 
     async def _fake_create_subprocess_exec(*_args, **kwargs):  # noqa: ANN001, ANN002
+        await asyncio.sleep(0)  # Sonar S7503
         stdout = kwargs.get("stdout")
         if stdout is not None:
             stdout.write(b"x" * 200)

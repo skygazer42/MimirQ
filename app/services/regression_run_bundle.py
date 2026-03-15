@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Sequence
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from app.rag.core.hashing import stable_hash
@@ -148,7 +149,7 @@ def export_regression_run_bundle(
     }
     run_payload = {k: v for k, v in run_payload.items() if v is not None}
 
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
 
     return {
         "schema": REGRESSION_RUN_BUNDLE_SCHEMA_V1,

@@ -47,7 +47,7 @@ function safeTime(run: ParseCompareRun): string {
   }
 }
 
-export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId, onUseRun }: Props) {
+export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId, onUseRun }: Readonly<Props>) {
   const [mode, setMode] = useState<CompareMode>('cleaned')
   const [baseId, setBaseId] = useState<string>('')
   const [compareId, setCompareId] = useState<string>('')

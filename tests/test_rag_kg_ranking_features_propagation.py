@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -76,6 +77,7 @@ def test_orchestrator_propagates_kg_ranking_features_from_kg_search(monkeypatch:
     kg_chunk = uuid.uuid4()
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         assert query
         assert tenant_id is not None
         assert document_ids
@@ -142,10 +144,10 @@ def test_orchestrator_propagates_kg_ranking_features_from_kg_search(monkeypatch:
     assert c0.get("kg_evidence_anchored") is False
 
     # Buckets derived from the KG score when not explicitly provided.
-    assert c0.get("kg_pagerank") == 0.6
-    assert c0.get("kg_edge_conf_low") == 0.0
-    assert c0.get("kg_edge_conf_mid") == 1.0
-    assert c0.get("kg_edge_conf_high") == 0.0
+    assert c0.get("kg_pagerank") == pytest.approx(0.6)
+    assert c0.get("kg_edge_conf_low") == pytest.approx(0.0)
+    assert c0.get("kg_edge_conf_mid") == pytest.approx(1.0)
+    assert c0.get("kg_edge_conf_high") == pytest.approx(0.0)
 
     # Provenance payload should be propagated to citations (PII-safe, bounded).
     assert c0.get("kg_path") == [{"entity_id": "e1", "type": "Skill"}]

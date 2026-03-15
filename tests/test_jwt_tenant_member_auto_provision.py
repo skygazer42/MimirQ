@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 import pytest
@@ -90,7 +91,7 @@ def test_auth_dependency_calls_auto_provision_when_enabled(monkeypatch: pytest.M
 
     tenant_id = "00000000-0000-0000-0000-000000000000"
     token = jwt.encode(
-        {"sub": "jwt-user", "tenant_id": tenant_id, "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        {"sub": "jwt-user", "tenant_id": tenant_id, "exp": datetime.now(UTC) + timedelta(minutes=5)},
         secret_key,
         algorithm="HS256",
     )
@@ -109,6 +110,7 @@ def test_auth_dependency_calls_auto_provision_when_enabled(monkeypatch: pytest.M
 
     @app.get("/state")
     async def state_endpoint(*, request: Request, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
+        await asyncio.sleep(0)  # Sonar S7503
         return {
             "account_id": account_id,
             "state_user_id": getattr(request.state, "user_id", None),

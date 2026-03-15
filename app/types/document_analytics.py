@@ -9,8 +9,9 @@ counts for common UI panels (parsing/governance/chunk-preview).
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any
 
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.rag.preprocessing.language import detect_language as detect_language_fn
@@ -32,10 +33,10 @@ class DocumentAnalytics:
     block_count: int = 0
 
     # Lightweight language signal (used by governance UI and tuning)
-    language: Optional[str] = None
-    language_confidence: Optional[float] = None
-    cjk_chars: Optional[int] = None
-    latin_chars: Optional[int] = None
+    language: str | None = None
+    language_confidence: float | None = None
+    cjk_chars: int | None = None
+    latin_chars: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v is not None}
@@ -66,10 +67,10 @@ def compute_document_analytics(
         pdf_quality=pdf_quality,
     )
 
-    lang_val: Optional[str] = None
-    lang_conf: Optional[float] = None
-    cjk: Optional[int] = None
-    latin: Optional[int] = None
+    lang_val: str | None = None
+    lang_conf: float | None = None
+    cjk: int | None = None
+    latin: int | None = None
     if detect_language:
         out = detect_language_fn(raw, min_chars=int(language_min_chars or 0))
         lang_val = str(getattr(out, "language", "") or "").strip() or None

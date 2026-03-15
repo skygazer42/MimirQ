@@ -6,8 +6,8 @@ Focus: low-friction, DB-backed aggregates for chat token usage.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Annotated, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -50,7 +50,7 @@ def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
 
 
 class ChatTokenUsageRow(BaseModel):
-    dataset_id: Optional[str] = None
+    dataset_id: str | None = None
     assistant_messages: int
     assistant_tokens: int
 
@@ -60,11 +60,11 @@ class ChatTokenUsageSummary(BaseModel):
     window_end: datetime
     total_assistant_messages: int
     total_assistant_tokens: int
-    by_dataset: List[ChatTokenUsageRow]
+    by_dataset: list[ChatTokenUsageRow]
 
 
 class ChatCostUsageRow(BaseModel):
-    dataset_id: Optional[str] = None
+    dataset_id: str | None = None
     assistant_messages: int
     llm_prompt_tokens: int
     llm_completion_tokens: int
@@ -86,7 +86,7 @@ class ChatCostUsageSummary(BaseModel):
     total_embedding_query_chars: int
     total_retrieval_elapsed_sec: float
     total_rerank_elapsed_sec: float
-    by_dataset: List[ChatCostUsageRow]
+    by_dataset: list[ChatCostUsageRow]
 
 
 class ChatTokenQuotaStatus(BaseModel):
@@ -134,7 +134,7 @@ class TenantQpsQuotaConfig(BaseModel):
     mode: str
     rps: float
     burst: int
-    scopes: List[str]
+    scopes: list[str]
 
 
 class TenantQuotaSummary(BaseModel):
@@ -158,7 +158,7 @@ def get_chat_token_quota_status(
     """
     _ensure_admin(db, tenant_id, account_id)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
     enabled = bool(meta.get("enabled"))
     limit = int(meta.get("limit") or 0)
@@ -196,7 +196,7 @@ def get_tenant_quota_summary(
     """
     _ensure_admin(db, tenant_id, account_id)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     doc_meta = check_tenant_document_quota(db, tenant_id=tenant_id)
     doc_enabled = bool(doc_meta.get("enabled"))
@@ -264,8 +264,8 @@ def get_tenant_quota_summary(
 @router.get("/chat/tokens/summary", response_model=ChatTokenUsageSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_chat_token_usage_summary(
     window_days: Annotated[int, Query(ge=1, le=30)] = 1,
-    since: Annotated[Optional[datetime], Query()] = None,
-    until: Annotated[Optional[datetime], Query()] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -280,7 +280,7 @@ def get_chat_token_usage_summary(
     """
     _ensure_admin(db, tenant_id, account_id)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window_end = until or now
     window_start = since or (window_end - timedelta(days=int(window_days or 1)))
 
@@ -332,8 +332,8 @@ def get_chat_token_usage_summary(
 @router.get("/chat/cost/summary", response_model=ChatCostUsageSummary, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_chat_cost_usage_summary(
     window_days: Annotated[int, Query(ge=1, le=30)] = 1,
-    since: Annotated[Optional[datetime], Query()] = None,
-    until: Annotated[Optional[datetime], Query()] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -348,7 +348,7 @@ def get_chat_cost_usage_summary(
     """
     _ensure_admin(db, tenant_id, account_id)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window_end = until or now
     window_start = since or (window_end - timedelta(days=int(window_days or 1)))
 

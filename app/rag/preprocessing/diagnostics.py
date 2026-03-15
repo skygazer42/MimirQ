@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal
+from typing import Any, Literal
 
 from app.rag.preprocessing.cleaning import build_repeated_line_signatures
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
@@ -36,12 +36,12 @@ class GovernanceIssue:
     severity: Literal["info", "warning", "error"]
     message: str
     count: int = 0
-    samples: List[str] | None = None
-    suggested_pipeline_patch: Dict[str, Any] | None = None
+    samples: list[str] | None = None
+    suggested_pipeline_patch: dict[str, Any] | None = None
 
 
-def _clip_samples(samples: List[str], *, limit: int = 5, max_len: int = 160) -> List[str]:
-    out: List[str] = []
+def _clip_samples(samples: list[str], *, limit: int = 5, max_len: int = 160) -> list[str]:
+    out: list[str] = []
     for s in samples[: max(0, int(limit))]:
         val = (s or "").strip()
         if not val:
@@ -76,9 +76,9 @@ def analyze_governance(
     after: str,
     *,
     input_format: str = "markdown",
-    options: Dict[str, Any] | None = None,
+    options: dict[str, Any] | None = None,
     max_chars: int = 200_000,
-) -> tuple[List[GovernanceIssue], Dict[str, Any]]:
+) -> tuple[list[GovernanceIssue], dict[str, Any]]:
     """
     Analyze text for common governance problems and return (issues, suggested_pipeline_patch).
 
@@ -90,8 +90,8 @@ def analyze_governance(
     raw_before = (before or "")[: max(0, int(max_chars))]
     raw_after = (after or "")[: max(0, int(max_chars))]
 
-    issues: List[GovernanceIssue] = []
-    patch: Dict[str, Any] = {}
+    issues: list[GovernanceIssue] = []
+    patch: dict[str, Any] = {}
 
     # 1) HTML artifacts present in "markdown" mode
     if str(input_format or "markdown").lower() != "html":

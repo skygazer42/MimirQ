@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -45,17 +45,17 @@ class _QAPair:
     start: int
     end: int
     question_end: int
-    answer_start: Optional[int]
+    answer_start: int | None
     has_answer: bool
-    question_preview: Optional[str]
+    question_preview: str | None
 
 
-def _iter_tag_segments(text: str) -> List[_TagSeg]:
+def _iter_tag_segments(text: str) -> list[_TagSeg]:
     matches = list(_QA_TAG_LINE_RE.finditer(text or ""))
     if len(matches) < 2:
         return []
 
-    segs: List[_TagSeg] = []
+    segs: list[_TagSeg] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -67,7 +67,7 @@ def _iter_tag_segments(text: str) -> List[_TagSeg]:
     return segs
 
 
-def _build_pairs(text: str, segs: List[_TagSeg]) -> List[_QAPair]:
+def _build_pairs(text: str, segs: list[_TagSeg]) -> list[_QAPair]:
     if not segs:
         return []
 
@@ -75,12 +75,12 @@ def _build_pairs(text: str, segs: List[_TagSeg]) -> List[_QAPair]:
     if not q_indices:
         return []
 
-    pairs: List[_QAPair] = []
+    pairs: list[_QAPair] = []
     for pos, q_idx in enumerate(q_indices):
         pair_start = segs[q_idx].start
         next_q_start = segs[q_indices[pos + 1]].start if pos + 1 < len(q_indices) else len(text)
 
-        first_a_start: Optional[int] = None
+        first_a_start: int | None = None
         for s in segs[q_idx + 1 : (q_indices[pos + 1] if pos + 1 < len(q_indices) else len(segs))]:
             if s.kind == "A":
                 first_a_start = s.start
@@ -130,8 +130,8 @@ class QAPairsChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

@@ -3,7 +3,7 @@ Unified entry for KG search: recall -> expand -> rerank.
 """
 import asyncio
 import time
-from typing import Any, Dict
+from typing import Any
 
 from app.core.config import settings
 from app.rag.kg.search.config import ReturnType, SearchConfig
@@ -19,7 +19,7 @@ class KGSearcher:
         self.recall_searcher = RecallSearcher()
         self.expand_searcher = ExpandSearcher()
 
-    async def search(self, config: SearchConfig) -> Dict[str, Any]:
+    async def search(self, config: SearchConfig) -> dict[str, Any]:
         timeout_sec = float(getattr(settings, "KG_SEARCH_TIMEOUT_SEC", 0.0) or 0.0)
         if timeout_sec <= 0:
             return await self._search_impl(config)
@@ -41,7 +41,7 @@ class KGSearcher:
                 )
             raise
 
-    async def _search_impl(self, config: SearchConfig) -> Dict[str, Any]:
+    async def _search_impl(self, config: SearchConfig) -> dict[str, Any]:
         metrics_enabled = bool(getattr(settings, "KG_SEARCH_METRICS_ENABLED", False))
         doc_count = len(config.document_ids or [])
         query_chars = len(config.query or "")
@@ -120,7 +120,7 @@ class KGSearcher:
             [str(x) for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()][:8],
         )
         if getattr(config, "query_mode_confidence", None) is not None:
-            stats.setdefault("query_mode_confidence", str(getattr(config, "query_mode_confidence") or ""))
+            stats.setdefault("query_mode_confidence", str(config.query_mode_confidence or ""))
         if getattr(recall_result, "relation_debug", None):
             stats.setdefault("relation_expansion", getattr(recall_result, "relation_debug", {}) or {})
         stats.setdefault(
@@ -173,7 +173,7 @@ class KGSearcher:
                     "mode_reason_codes": [
                         str(x) for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()
                     ][:8],
-                    "mode_confidence": (str(getattr(config, "query_mode_confidence") or "").strip() or None),
+                    "mode_confidence": (str(config.query_mode_confidence or "").strip() or None),
                 },
             }
 

@@ -15,7 +15,8 @@ This module provides small, deterministic helpers:
 from __future__ import annotations
 
 import math
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from app.rag.evaluation.regression_sample_builder import build_regression_sample
 

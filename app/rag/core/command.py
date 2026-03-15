@@ -16,7 +16,7 @@ Usage:
 
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
 
 @dataclass
@@ -57,11 +57,11 @@ class Command:
         ])
     """
 
-    update: Dict[str, Any] = field(default_factory=dict)
-    goto: Optional[Union[str, List[str]]] = None
-    resume: Optional[Any] = None
-    send: Optional[List["Send"]] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    update: dict[str, Any] = field(default_factory=dict)
+    goto: Union[str, list[str]] | None = None
+    resume: Any | None = None
+    send: list["Send"] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         """Validate command configuration."""
@@ -85,7 +85,7 @@ class Command:
         return cls(update=updates, goto="__retry__")
 
     @classmethod
-    def fan_out(cls, nodes: List[str], **updates) -> "Command":
+    def fan_out(cls, nodes: list[str], **updates) -> "Command":
         """Create a command that fans out to multiple nodes."""
         return cls(update=updates, goto=nodes)
 
@@ -128,7 +128,7 @@ class Command:
         """Check if this command fans out to multiple nodes."""
         return isinstance(self.goto, list) and len(self.goto) > 1
 
-    def get_destinations(self) -> List[str]:
+    def get_destinations(self) -> list[str]:
         """Get list of destination nodes."""
         if self.goto is None:
             return []
@@ -146,9 +146,9 @@ class Send:
     """
 
     node: str
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {"node": self.node, "data": self.data}
 
@@ -164,10 +164,10 @@ class Interrupt:
 
     value: Any
     prompt: str = ""
-    options: Optional[List[str]] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    options: list[str] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "value": self.value,
@@ -180,7 +180,7 @@ class Interrupt:
 def interrupt(
     value: Any = None,
     prompt: str = "",
-    options: Optional[List[str]] = None,
+    options: list[str] | None = None,
     **metadata,
 ) -> Interrupt:
     """
@@ -224,15 +224,15 @@ class CommandProcessor:
     Used internally by workflow engines to interpret Command returns.
     """
 
-    def __init__(self, state: Dict[str, Any]):
+    def __init__(self, state: dict[str, Any]):
         """Initialize with current state."""
         self.state = dict(state)
-        self.pending_sends: List[Send] = []
-        self.next_nodes: List[str] = []
+        self.pending_sends: list[Send] = []
+        self.next_nodes: list[str] = []
         self.is_interrupted: bool = False
-        self.interrupt_value: Optional[Interrupt] = None
+        self.interrupt_value: Interrupt | None = None
 
-    def process(self, result: Union[Command, Interrupt, Dict[str, Any]]) -> Dict[str, Any]:
+    def process(self, result: Union[Command, Interrupt, dict[str, Any]]) -> dict[str, Any]:
         """
         Process a node result and update state.
 
@@ -276,11 +276,11 @@ class CommandProcessor:
         # Unknown type - return unchanged
         return self.state
 
-    def get_next_nodes(self) -> List[str]:
+    def get_next_nodes(self) -> list[str]:
         """Get the next nodes to execute."""
         return self.next_nodes
 
-    def get_pending_sends(self) -> List[Send]:
+    def get_pending_sends(self) -> list[Send]:
         """Get pending Send operations."""
         return self.pending_sends
 
@@ -288,10 +288,10 @@ class CommandProcessor:
         """Check if workflow should be interrupted."""
         return self.is_interrupted
 
-    def get_interrupt(self) -> Optional[Interrupt]:
+    def get_interrupt(self) -> Interrupt | None:
         """Get the interrupt value if any."""
         return self.interrupt_value
 
 
 # Type aliases for cleaner signatures
-NodeReturn = Union[Command, Interrupt, Dict[str, Any]]
+NodeReturn = Union[Command, Interrupt, dict[str, Any]]

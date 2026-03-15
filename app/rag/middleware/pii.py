@@ -14,7 +14,7 @@ This middleware is disabled by default (see settings.PII_REDACTION_ENABLED).
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from app.core.pii_redaction import PIIRedactor
 from app.core.pii_redaction import pii_redaction_enabled as _pii_redaction_enabled
@@ -64,7 +64,7 @@ def redact_obj(obj: Any) -> Any:
 
 
 @before_tool_call(priority=20, name="pii_before_tool_call")
-def _pii_before_tool_call(state: Dict[str, Any]) -> Dict[str, Any]:
+def _pii_before_tool_call(state: dict[str, Any]) -> dict[str, Any]:
     if not pii_enabled():
         return state
     args = state.get("arguments") or {}
@@ -73,7 +73,7 @@ def _pii_before_tool_call(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @after_tool_call(priority=20, name="pii_after_tool_call")
-def _pii_after_tool_call(state: Dict[str, Any]) -> Dict[str, Any]:
+def _pii_after_tool_call(state: dict[str, Any]) -> dict[str, Any]:
     if not pii_enabled():
         return state
     state["result"] = redact_obj(state.get("result"))
@@ -83,7 +83,7 @@ def _pii_after_tool_call(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @before_model(priority=20, name="pii_before_model")
-def _pii_before_model(state: Dict[str, Any]) -> Dict[str, Any]:
+def _pii_before_model(state: dict[str, Any]) -> dict[str, Any]:
     """
     Best-effort redaction for model inputs.
 
@@ -101,7 +101,7 @@ def _pii_before_model(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @after_model(priority=20, name="pii_after_model")
-def _pii_after_model(state: Dict[str, Any]) -> Dict[str, Any]:
+def _pii_after_model(state: dict[str, Any]) -> dict[str, Any]:
     if not pii_enabled():
         return state
     for key in ("answer", "response", "output"):

@@ -17,7 +17,7 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import pandas as pd  # type: ignore
@@ -45,7 +45,7 @@ class TableAsset:
     table_id: str
     document_id: UUID
     sheet_index: int
-    sheet_name: Optional[str]
+    sheet_name: str | None
     sql_table: str
     row_count: int
     col_count: int
@@ -424,7 +424,7 @@ def _write_single_sheet(
     document_id: UUID,
     df: "pd.DataFrame",
     sheet_index: int,
-    sheet_name: Optional[str],
+    sheet_name: str | None,
     truncated: bool,
     sample_rows: int,
     row_source_table: str | None = None,

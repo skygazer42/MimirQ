@@ -19,7 +19,7 @@ export function EmptyState({
   iconClassName,
   className,
   children,
-}: EmptyStateProps) {
+}: Readonly<EmptyStateProps>) {
   return (
     <section
       className={cn(

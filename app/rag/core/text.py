@@ -5,7 +5,7 @@ Small text helpers shared across RAG modules.
 
 import json
 import re
-from typing import Any, Dict, Literal, Tuple
+from typing import Any, Literal
 
 from app.core.token_utils import estimate_tokens  # noqa: F401
 from app.rag.core.claim_nli_verifier import verify_claim_with_nli
@@ -145,7 +145,7 @@ def parse_json_from_text(
     text: str,
     *,
     expected: Literal["any", "array", "object"] = "any",
-) -> Tuple[Any | None, Dict[str, Any]]:
+) -> tuple[Any | None, dict[str, Any]]:
     """
     Best-effort JSON parser for LLM outputs.
 
@@ -591,7 +591,7 @@ def scrub_structured_output_visible_evidence_only(
     nli_timeout_sec: float | None = None,
     max_depth: int = 6,
     max_items: int = 500,
-) -> tuple[Any, Dict[str, Any]]:
+) -> tuple[Any, dict[str, Any]]:
     """
     Best-effort structured-output scrubbing for strict grounding.
 
@@ -624,7 +624,7 @@ def scrub_structured_output_visible_evidence_only(
         "rerank_model_used",
     }
 
-    meta: Dict[str, Any] = {
+    meta: dict[str, Any] = {
         "strings_scrubbed": 0,
         "strings_changed": 0,
         "claims_total": 0,

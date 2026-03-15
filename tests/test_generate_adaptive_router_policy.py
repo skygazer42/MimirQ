@@ -61,8 +61,8 @@ def test_main_writes_policy_file(tmp_path: Path) -> None:
     report_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     out_path = tmp_path / "adaptive_router_policy.v1.json"
 
-    from os import getcwd
     from os import chdir as os_chdir
+    from os import getcwd
 
     cwd = getcwd()
     try:
@@ -94,8 +94,8 @@ def test_main_rejects_output_outside_cwd(tmp_path: Path) -> None:
     report_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
     outside_path = tmp_path.parent / "adaptive_router_policy_outside.json"
 
-    from os import getcwd
     from os import chdir as os_chdir
+    from os import getcwd
 
     cwd = getcwd()
     try:

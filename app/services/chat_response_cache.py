@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -152,7 +152,7 @@ def resolve_chat_response_cache_key(
     return key, None
 
 
-def get_cached_chat_response(key: str) -> Optional[dict[str, Any]]:
+def get_cached_chat_response(key: str) -> dict[str, Any] | None:
     """Return cached payload dict or None."""
     if not bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False)):
         return None

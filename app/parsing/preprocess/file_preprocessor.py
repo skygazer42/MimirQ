@@ -22,7 +22,7 @@ import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.optional_deps import optional_import
 
@@ -85,10 +85,10 @@ class FilePreprocessResult:
     size_after: int
     sha256_before: str
     sha256_after: str
-    steps: List[PreprocessStepLog]
-    warnings: List[str]
+    steps: list[PreprocessStepLog]
+    warnings: list[str]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "input_path": self.input_path,
             "output_path": self.output_path,
@@ -202,8 +202,8 @@ _RE_HTML_BOILERPLATE_TAGS = re.compile(r"(?is)<(nav|header|footer|aside|noscript
 def preprocess_file(
     *,
     input_path: Path,
-    steps: List[Dict[str, Any]],
-    output_path: Optional[Path] = None,
+    steps: list[dict[str, Any]],
+    output_path: Path | None = None,
     max_text_bytes: int = 10_000_000,
 ) -> FilePreprocessResult:
     """

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -33,11 +33,11 @@ class EvidenceReferenceRepairChangeOut(BaseModel):
     item_status: str
     document_id: UUID
     chunk_id_before: UUID
-    chunk_id_after: Optional[UUID] = None
+    chunk_id_after: UUID | None = None
     reason: str
     repaired: bool = False
-    method: Optional[str] = None
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    method: str | None = None
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvidenceReferenceRepairResponse(BaseModel):
@@ -53,5 +53,5 @@ class EvidenceReferenceRepairResponse(BaseModel):
     skipped_archived_items: int = 0
 
     changes_truncated: bool = False
-    changes: List[EvidenceReferenceRepairChangeOut] = Field(default_factory=list)
+    changes: list[EvidenceReferenceRepairChangeOut] = Field(default_factory=list)
 

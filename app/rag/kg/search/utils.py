@@ -1,10 +1,11 @@
 
-from typing import Any, Dict, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.rag.kg.models import KgSourceEvent
 
 
-def cosine_similarity(a: List[float], b: List[float]) -> float:
+def cosine_similarity(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
     dot = sum(x * y for x, y in zip(a, b, strict=False))
@@ -40,21 +41,21 @@ def confidence_bucket(confidence: float, *, low_max: float = 0.4, mid_max: float
 
 def format_events(
     events: Sequence[KgSourceEvent],
-    scores: Dict[str, float],
+    scores: dict[str, float],
     limit: int,
     *,
     extra_by_event_id: dict[str, dict[str, Any]] | None = None,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     if not events or not scores:
         return []
     event_map = {str(ev.id): ev for ev in events}
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    results: List[Dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     for eid, score in ranked[:limit]:
         ev = event_map.get(str(eid))
         if not ev:
             continue
-        item: Dict[str, Any] = {
+        item: dict[str, Any] = {
             "id": str(ev.id),
             "title": ev.title,
             "summary": ev.summary,

@@ -182,7 +182,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
 
     make_colon_as_title(sections)
     bull = bullets_category(
-        [t for t in random_choices([t for t, _ in sections], k=100)])
+        list(random_choices([t for t, _ in sections], k=100)))
     if bull >= 0:
         chunks = ["\n".join(ck)
                   for ck in hierarchical_merge(bull, sections, 5)]

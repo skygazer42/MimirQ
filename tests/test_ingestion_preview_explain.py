@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -38,10 +39,12 @@ def test_ingestion_preview_returns_explain_payload(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(pipeline_module, "resolve_pipeline_effective", lambda *_a, **_k: object(), raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         assert payload.get("action") == "pipeline_parse_preview"
         return {"backend": "basic", "pdf_quality": None, "markdown": "Hello", "images": []}
 
     async def _fake_clean_preview(*, body, tenant_id, account_id, db):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return {"markdown": body.markdown, "applied_rules": 0, "changed": False}
 
     monkeypatch.setattr(pipeline_module, "run_subprocess_worker", _fake_run_subprocess_worker, raising=True)

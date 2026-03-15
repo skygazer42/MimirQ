@@ -44,9 +44,9 @@ async def test_build_slo_snapshot_falls_back_to_metrics_jsonl(monkeypatch):
     w1 = out["windows"][0]
     assert w1["window_minutes"] == 60
     assert w1["source"] == "metrics_jsonl"
-    assert w1["retrieval_p95_elapsed_sec"] == 1.1
-    assert w1["retrieval_p99_elapsed_sec"] == 2.2
-    assert w1["zero_hit_rate"] == 0.1
+    assert w1["retrieval_p95_elapsed_sec"] == pytest.approx(1.1)
+    assert w1["retrieval_p99_elapsed_sec"] == pytest.approx(2.2)
+    assert w1["zero_hit_rate"] == pytest.approx(0.1)
     assert w1["error_rate"] == pytest.approx(3.0 / 100.0)
 
     w24 = out["windows"][1]

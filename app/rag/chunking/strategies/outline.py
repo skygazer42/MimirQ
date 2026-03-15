@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -35,7 +35,7 @@ class OutlineHeading:
 class _Section:
     start: int
     end: int
-    heading: Optional[OutlineHeading]
+    heading: OutlineHeading | None
 
 
 _RE_NUMERIC = re.compile(
@@ -49,8 +49,8 @@ _RE_CN_PAREN = re.compile(r"^[（(]\s*(?P<num>[0-9一二三四五六七八九十
 _RE_EN_CHAPTER = re.compile(r"^(?P<prefix>chapter)\s+(?P<num>\d{1,3})\b\s*(?P<title>.*?)\s*$", re.IGNORECASE)
 
 
-def _iter_headings(text: str) -> List[OutlineHeading]:
-    headings: List[OutlineHeading] = []
+def _iter_headings(text: str) -> list[OutlineHeading]:
+    headings: list[OutlineHeading] = []
     if not text:
         return headings
 
@@ -66,7 +66,7 @@ def _iter_headings(text: str) -> List[OutlineHeading]:
         if len(line) > 160:
             continue
 
-        level: Optional[int] = None
+        level: int | None = None
         if (m := _RE_NUMERIC.match(line)) is not None:
             # 1. / 1.1 / 1.1.1 -> level = segments
             level = max(1, len(m.group("num").split(".")))
@@ -92,7 +92,7 @@ def _iter_headings(text: str) -> List[OutlineHeading]:
         )
 
     # De-duplicate headings that start at the same position (best-effort).
-    deduped: List[OutlineHeading] = []
+    deduped: list[OutlineHeading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -102,11 +102,11 @@ def _iter_headings(text: str) -> List[OutlineHeading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[OutlineHeading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[OutlineHeading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
 
     first = headings[0]
     if first.start > 0:
@@ -120,7 +120,7 @@ def _build_sections(text: str, headings: List[OutlineHeading]) -> List[_Section]
     return sections
 
 
-def _update_heading_stack(stack: List[str], *, level: int, heading_text: str) -> None:
+def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
     level = max(1, int(level))
     # Ensure stack depth matches heading level.
     while len(stack) >= level:
@@ -145,8 +145,8 @@ class OutlineChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -157,7 +157,7 @@ class OutlineChunker(BaseChunker):
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            heading_stack: List[str] = []
+            heading_stack: list[str] = []
 
             for section in sections:
                 sec_text = text[section.start : section.end]

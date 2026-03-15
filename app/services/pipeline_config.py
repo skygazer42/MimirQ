@@ -6,14 +6,14 @@ Provides parsing, building, and resolution for pipeline configuration.
 
 import re
 from dataclasses import asdict
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.types.indexing import IndexingOptions
 from app.types.pipeline import PipelineEffective, PipelineOptions
 
 
-def _coerce_bool(value: Any) -> Optional[bool]:
+def _coerce_bool(value: Any) -> bool | None:
     if value is None:
         return None
     if isinstance(value, bool):
@@ -29,7 +29,7 @@ def _coerce_bool(value: Any) -> Optional[bool]:
     return None
 
 
-def _coerce_int(value: Any) -> Optional[int]:
+def _coerce_int(value: Any) -> int | None:
     if value is None:
         return None
     try:
@@ -38,7 +38,7 @@ def _coerce_int(value: Any) -> Optional[int]:
         return None
 
 
-def _coerce_float(value: Any) -> Optional[float]:
+def _coerce_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
@@ -47,7 +47,7 @@ def _coerce_float(value: Any) -> Optional[float]:
         return None
 
 
-def _coerce_str(value: Any) -> Optional[str]:
+def _coerce_str(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
@@ -64,7 +64,7 @@ _RULE_PACKS_MAX = 20
 _RULE_PACK_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.:\-]{0,63}$")
 
 
-def _sanitize_chunk_strategy_params(value: Any) -> Optional[dict[str, Any]]:
+def _sanitize_chunk_strategy_params(value: Any) -> dict[str, Any] | None:
     """
     Best-effort validation for user-provided chunk strategy params stored in metadata.
 
@@ -98,7 +98,7 @@ def _sanitize_chunk_strategy_params(value: Any) -> Optional[dict[str, Any]]:
     return cleaned or None
 
 
-def _sanitize_regex_rules(value: Any) -> Optional[list[dict]]:
+def _sanitize_regex_rules(value: Any) -> list[dict] | None:
     """
     Best-effort validation for user-provided regex rules stored in metadata.
 
@@ -154,7 +154,7 @@ def _sanitize_regex_rules(value: Any) -> Optional[list[dict]]:
     return out or None
 
 
-def _sanitize_rule_packs(value: Any) -> Optional[list[str]]:
+def _sanitize_rule_packs(value: Any) -> list[str] | None:
     """
     Best-effort validation for user-provided governance rule packs.
 
@@ -189,7 +189,7 @@ def _sanitize_rule_packs(value: Any) -> Optional[list[str]]:
     return out or None
 
 
-def _resolve_flag(default: bool, override: Optional[bool]) -> bool:
+def _resolve_flag(default: bool, override: bool | None) -> bool:
     return bool(default) and override is not False
 
 
@@ -210,7 +210,7 @@ def merge_pipeline_options(*options: PipelineOptions) -> PipelineOptions:
     return PipelineOptions(**merged) if merged else PipelineOptions()
 
 
-def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
+def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
     if not isinstance(metadata, dict):
         return PipelineOptions()
     pipeline = metadata.get("pipeline")
@@ -317,11 +317,11 @@ def parse_pipeline_from_metadata(metadata: Dict[str, Any]) -> PipelineOptions:
     )
 
 
-def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]]:
+def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
     if options is None:
         return None
 
-    pipeline: Dict[str, Any] = {}
+    pipeline: dict[str, Any] = {}
     if options.governance_enabled is not None:
         pipeline["governance_enabled"] = bool(options.governance_enabled)
     if options.parse_fallback_enabled is not None:
@@ -345,7 +345,7 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
         if sanitized:
             pipeline["chunk_strategy_params"] = sanitized
 
-    tables: Dict[str, Any] = {}
+    tables: dict[str, Any] = {}
     if options.table_store_enabled is not None:
         tables["enabled"] = bool(options.table_store_enabled)
     if options.table_store_max_rows is not None:
@@ -369,7 +369,7 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
     if tables:
         pipeline["tables"] = tables
 
-    images: Dict[str, Any] = {}
+    images: dict[str, Any] = {}
     if options.image_caption_enabled is not None:
         images["caption_enabled"] = bool(options.image_caption_enabled)
     if options.image_ocr_enabled is not None:
@@ -381,7 +381,7 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
     if images:
         pipeline["images"] = images
 
-    governance: Dict[str, Any] = {}
+    governance: dict[str, Any] = {}
     if options.governance_remove_toc_lines is not None:
         governance["remove_toc_lines"] = bool(options.governance_remove_toc_lines)
     if options.governance_remove_noise_lines is not None:
@@ -481,7 +481,7 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
     if governance:
         pipeline["governance"] = governance
 
-    dedup: Dict[str, Any] = {}
+    dedup: dict[str, Any] = {}
     if options.near_dedup_enabled is not None:
         dedup["enabled"] = bool(options.near_dedup_enabled)
     if options.near_dedup_hamming_threshold is not None:
@@ -491,7 +491,7 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
     if dedup:
         pipeline["dedup"] = dedup
 
-    index: Dict[str, Any] = {}
+    index: dict[str, Any] = {}
     if options.chunk_vector_enabled is not None:
         index["chunk_vector_enabled"] = bool(options.chunk_vector_enabled)
     if options.bm25_index_enabled is not None:
@@ -512,7 +512,7 @@ def build_pipeline_metadata(options: PipelineOptions) -> Optional[Dict[str, Any]
     return pipeline or None
 
 
-def upsert_pipeline_metadata(meta: Dict[str, Any], *, options: PipelineOptions | None) -> bool:
+def upsert_pipeline_metadata(meta: dict[str, Any], *, options: PipelineOptions | None) -> bool:
     """
     Upsert `meta["pipeline"]` from PipelineOptions (or remove it when empty).
 
@@ -530,9 +530,9 @@ def upsert_pipeline_metadata(meta: Dict[str, Any], *, options: PipelineOptions |
 
 def resolve_pipeline_effective(
     *,
-    dataset_metadata: Optional[Dict[str, Any]] = None,
-    document_metadata: Optional[Dict[str, Any]] = None,
-    request_overrides: Optional[PipelineOptions] = None,
+    dataset_metadata: dict[str, Any] | None = None,
+    document_metadata: dict[str, Any] | None = None,
+    request_overrides: PipelineOptions | None = None,
 ) -> PipelineEffective:
     """
     Resolve the final PipelineEffective for a document processing path using 3 layers:

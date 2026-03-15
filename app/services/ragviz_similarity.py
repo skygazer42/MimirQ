@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any
 from uuid import UUID
 
 import numpy as np
@@ -34,7 +34,7 @@ class RagvizCollection:
     label: str
     kind: str
     count: int
-    meta: Dict[str, Any]
+    meta: dict[str, Any]
 
 
 _embeddings_adapter = None
@@ -60,7 +60,7 @@ def _get_embeddings_adapter():
     return _embeddings_adapter
 
 
-def _parse_collection_id(collection_id: str) -> Tuple[str, str]:
+def _parse_collection_id(collection_id: str) -> tuple[str, str]:
     raw = str(collection_id or "").strip()
     if ":" not in raw:
         raise ValueError("Invalid collection id")
@@ -82,7 +82,7 @@ def _is_dataset_readable(ds: Dataset, account_id: str, *, allowed_partial_ids: s
     return ds.id in allowed_partial_ids
 
 
-def list_similarity_collections(db: Session, tenant_id: UUID, account_id: str) -> List[RagvizCollection]:
+def list_similarity_collections(db: Session, tenant_id: UUID, account_id: str) -> list[RagvizCollection]:
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.desc()).all()
@@ -130,7 +130,7 @@ def list_similarity_collections(db: Session, tenant_id: UUID, account_id: str) -
         .all()
     )
 
-    collections: List[RagvizCollection] = []
+    collections: list[RagvizCollection] = []
     for ds in readable_datasets:
         ds_chunk_count = int(chunk_counts.get(ds.id) or 0)
         ds_case_count = int(case_counts.get(ds.id) or 0)
@@ -173,7 +173,7 @@ def _dataset_chunks_items(
     dataset_id: UUID,
     *,
     max_items: int,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     ds = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
     if not ds:
         raise ValueError("Dataset not found")
@@ -193,8 +193,8 @@ def _dataset_chunks_items(
         .all()
     )
 
-    items: List[Dict[str, Any]] = []
-    texts: List[str] = []
+    items: list[dict[str, Any]] = []
+    texts: list[str] = []
     for idx, (chunk, filename, document_id, file_type) in enumerate(rows):
         items.append(
             {
@@ -219,7 +219,7 @@ def _document_chunks_items(
     document_id: UUID,
     *,
     max_items: int,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     allowed_ids = filter_allowed_document_ids(db, tenant_id, account_id, [document_id])
     if not allowed_ids:
         raise ValueError("No accessible document")
@@ -236,8 +236,8 @@ def _document_chunks_items(
         .all()
     )
 
-    items: List[Dict[str, Any]] = []
-    texts: List[str] = []
+    items: list[dict[str, Any]] = []
+    texts: list[str] = []
     for idx, chunk in enumerate(rows):
         items.append(
             {
@@ -280,14 +280,14 @@ def _regression_questions_items(
     dataset_id: UUID,
     *,
     max_items: int,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     query = _regression_cases_base_query(db, tenant_id, account_id, dataset_id)
 
     # Only keep cases with ground-truth chunk id so it can align with regression_chunks.
     rows = query.limit(max_items * 10).all()
 
-    items: List[Dict[str, Any]] = []
-    texts: List[str] = []
+    items: list[dict[str, Any]] = []
+    texts: list[str] = []
     for row in rows:
         extra = row.extra if isinstance(row.extra, dict) else {}
         chunk_id = str(extra.get("chunk_id") or "").strip()
@@ -318,12 +318,12 @@ def _regression_chunks_items(
     dataset_id: UUID,
     *,
     max_items: int,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     query = _regression_cases_base_query(db, tenant_id, account_id, dataset_id)
     rows = query.limit(max_items * 10).all()
 
-    wanted: List[UUID] = []
-    ordered_case_rows: List[Tuple[RagasRegressionCase, UUID]] = []
+    wanted: list[UUID] = []
+    ordered_case_rows: list[tuple[RagasRegressionCase, UUID]] = []
     for row in rows:
         extra = row.extra if isinstance(row.extra, dict) else {}
         chunk_id_raw = str(extra.get("chunk_id") or "").strip()
@@ -351,12 +351,12 @@ def _regression_chunks_items(
         )
         .all()
     )
-    chunk_map: Dict[UUID, Tuple[DocumentChunk, str, UUID, str]] = {}
+    chunk_map: dict[UUID, tuple[DocumentChunk, str, UUID, str]] = {}
     for chunk, filename, doc_id, file_type in chunk_rows:
         chunk_map[chunk.id] = (chunk, str(filename or ""), doc_id, str(file_type or ""))
 
-    items: List[Dict[str, Any]] = []
-    texts: List[str] = []
+    items: list[dict[str, Any]] = []
+    texts: list[str] = []
     for case, chunk_id in ordered_case_rows:
         mapped = chunk_map.get(chunk_id)
         if not mapped:
@@ -389,7 +389,7 @@ def get_collection_items(
     collection_id: str,
     *,
     max_items: int,
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+) -> tuple[list[dict[str, Any]], list[str]]:
     kind, value = _parse_collection_id(collection_id)
 
     if max_items <= 0:
@@ -416,7 +416,7 @@ def calculate_similarity_matrix(
     y_collection: str,
     x_max_items: int,
     y_max_items: int,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     start = time.time()
 
     x_items, x_texts = get_collection_items(db, tenant_id, account_id, x_collection, max_items=x_max_items)

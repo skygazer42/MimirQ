@@ -17,13 +17,13 @@ function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(value)))
 }
 
-export function CoverageHeatmapMini(props: {
+export function CoverageHeatmapMini(props: Readonly<{
   chunks: ChunkPreviewItem[]
   totalChars: number
   strategy?: string
   bins?: number
   className?: string
-}) {
+}>) {
   const { chunks, totalChars, strategy, bins, className } = props
 
   const model = useMemo(() => {
@@ -38,6 +38,11 @@ export function CoverageHeatmapMini(props: {
     }
   }, [bins, chunks, strategy, totalChars])
 
+  const keyedCounts = useMemo(
+    () => model.counts.map((count, index) => ({ count, key: `bin-${index + 1}` })),
+    [model.counts]
+  )
+
   if (!model.bins) return null
 
   const title = `coverage bins: ${model.bins - model.gapBins}/${model.bins} · gaps ~${model.gapPct}% · max overlap ${model.max}`
@@ -50,7 +55,7 @@ export function CoverageHeatmapMini(props: {
       aria-label={aria}
       title={title}
     >
-      {model.counts.map((count, i) => {
+      {keyedCounts.map(({ count, key }) => {
         const c = clampInt(count, 0, 999)
         const alpha =
           c <= 0
@@ -60,8 +65,7 @@ export function CoverageHeatmapMini(props: {
           c <= 0 ? `hsl(var(--destructive) / ${alpha})` : `hsl(var(--primary) / ${alpha})`
         return (
           <span
-            // Keep DOM stable across runs; `i` is fine because bins are fixed.
-            key={i}
+            key={key}
             className="h-3 w-[2px] rounded-[1px]"
             style={{ backgroundColor: bg }}
           />
@@ -70,4 +74,3 @@ export function CoverageHeatmapMini(props: {
     </div>
   )
 }
-

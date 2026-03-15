@@ -2,7 +2,7 @@
 Clue tracker with normalized node formats for query/entity/event.
 """
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.rag.kg.search.config import SearchConfig
@@ -10,12 +10,12 @@ from app.rag.kg.search.config import SearchConfig
 
 class Tracker:
     def __init__(self):
-        self.clues: List[Dict[str, Any]] = []
+        self.clues: list[dict[str, Any]] = []
         self.clues_dropped: int = 0
         self._clues_enabled: bool = bool(getattr(settings, "KG_SEARCH_CLUES_ENABLED", True))
         self._max_clues: int = max(0, int(getattr(settings, "KG_SEARCH_MAX_CLUES", 0) or 0))
 
-    def extend_clues(self, clues: List[Dict[str, Any]]) -> None:
+    def extend_clues(self, clues: list[dict[str, Any]]) -> None:
         if not self._clues_enabled:
             return
         if not clues:
@@ -49,7 +49,7 @@ class Tracker:
         return s[:max_chars]
 
     @staticmethod
-    def build_query_node(config: SearchConfig, use_origin: bool = False) -> Dict[str, Any]:
+    def build_query_node(config: SearchConfig, use_origin: bool = False) -> dict[str, Any]:
         query_text = config.original_query if (use_origin and config.original_query) else config.query
         return {
             "id": Tracker._uuid_from_text("query", query_text),
@@ -60,7 +60,7 @@ class Tracker:
         }
 
     @staticmethod
-    def build_entity_node(entity: Dict[str, Any]) -> Dict[str, Any]:
+    def build_entity_node(entity: dict[str, Any]) -> dict[str, Any]:
         ent_id = entity.get("entity_id") or entity.get("id") or Tracker._uuid_from_text(
             "entity", entity.get("name", "unknown")
         )
@@ -74,7 +74,7 @@ class Tracker:
         }
 
     @staticmethod
-    def build_event_node(event: Any, stage: Optional[str] = None, hop: Optional[int] = None) -> Dict[str, Any]:
+    def build_event_node(event: Any, stage: str | None = None, hop: int | None = None) -> dict[str, Any]:
         ev_id = getattr(event, "id", None) or event.get("id") if isinstance(event, dict) else None  # type: ignore
         title = getattr(event, "title", None) or (event.get("title") if isinstance(event, dict) else "")
         content = getattr(event, "content", None) or getattr(event, "summary", None) or (
@@ -94,11 +94,11 @@ class Tracker:
     def add_clue(
         self,
         stage: str,
-        from_node: Dict[str, Any],
-        to_node: Dict[str, Any],
+        from_node: dict[str, Any],
+        to_node: dict[str, Any],
         confidence: float = 0.0,
         relation: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         if not self._clues_enabled:
             return
@@ -117,5 +117,5 @@ class Tracker:
             }
         )
 
-    def get_clues(self) -> List[Dict[str, Any]]:
+    def get_clues(self) -> list[dict[str, Any]]:
         return self.clues

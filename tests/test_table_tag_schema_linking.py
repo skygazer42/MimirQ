@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_score_schema_link_diagnostics_matches_columns_values_and_tables() -> None:
     from app.services.table_tag_service import score_schema_link_diagnostics
@@ -32,7 +34,7 @@ def test_score_schema_link_diagnostics_returns_none_strategy_when_no_overlap() -
         table_aliases=["sales.xlsx"],
     )
 
-    assert float(diag.get("score") or 0.0) == 0.0
+    assert float(diag.get("score") or 0.0) == pytest.approx(0.0)
     assert list(diag.get("matched_columns") or []) == []
     assert list(diag.get("matched_values") or []) == []
     assert list(diag.get("matched_tables") or []) == []

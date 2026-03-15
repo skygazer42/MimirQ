@@ -11,8 +11,9 @@ Provides a reference implementation of `@wrap_tool_call`:
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict
+from typing import Any
 
 from app.core.config import settings
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
@@ -58,9 +59,9 @@ class ToolCallLoggingMiddleware:
 
         if asyncio.iscoroutinefunction(func):
 
-            async def async_wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+            async def async_wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
                 tool_name = str(state.get("tool_name") or "")
-                arg_keys = sorted(list((state.get("arguments") or {}).keys()))
+                arg_keys = sorted((state.get("arguments") or {}).keys())
                 t0 = time.time()
                 try:
                     out = await func(state, *args, **kwargs)
@@ -114,9 +115,9 @@ class ToolCallLoggingMiddleware:
 
             return async_wrapper
 
-        def sync_wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        def sync_wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             tool_name = str(state.get("tool_name") or "")
-            arg_keys = sorted(list((state.get("arguments") or {}).keys()))
+            arg_keys = sorted((state.get("arguments") or {}).keys())
             t0 = time.time()
             out = func(state, *args, **kwargs)
             elapsed_ms = round((time.time() - t0) * 1000, 2)

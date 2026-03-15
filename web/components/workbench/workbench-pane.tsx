@@ -15,7 +15,7 @@ export function WorkbenchPane({
   className,
   headerClassName,
   bodyClassName,
-}: WorkbenchPaneProps) {
+}: Readonly<WorkbenchPaneProps>) {
   return (
     <Panel padding="none" className={cn('min-h-0 overflow-hidden flex flex-col', className)}>
       {header ? (

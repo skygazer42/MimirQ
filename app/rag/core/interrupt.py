@@ -25,9 +25,9 @@ Usage:
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 from app.core.config import settings
@@ -59,14 +59,14 @@ class PendingInterrupt:
     id: str
     session_id: str
     thread_id: str
-    checkpoint_id: Optional[str]
+    checkpoint_id: str | None
     interrupt: Interrupt
     status: InterruptStatus = InterruptStatus.PENDING
     created_at: datetime = field(default_factory=datetime.utcnow)
-    expires_at: Optional[datetime] = None
-    response: Optional[Any] = None
-    resolved_at: Optional[datetime] = None
-    resolved_by: Optional[str] = None
+    expires_at: datetime | None = None
+    response: Any | None = None
+    resolved_at: datetime | None = None
+    resolved_by: str | None = None
 
     def __post_init__(self):
         if self.expires_at is None:
@@ -76,13 +76,13 @@ class PendingInterrupt:
         """Check if the interrupt has expired."""
         if self.expires_at is None:
             return False
-        return datetime.utcnow() > self.expires_at
+        return datetime.now(UTC).replace(tzinfo=None) > self.expires_at
 
     def is_pending(self) -> bool:
         """Check if still waiting for response."""
         return self.status == InterruptStatus.PENDING and not self.is_expired()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
             "id": self.id,
@@ -111,9 +111,9 @@ class InterruptRegistry:
     """
 
     def __init__(self):
-        self._pending: Dict[str, PendingInterrupt] = {}
-        self._by_session: Dict[str, List[str]] = {}
-        self._by_thread: Dict[str, List[str]] = {}
+        self._pending: dict[str, PendingInterrupt] = {}
+        self._by_session: dict[str, list[str]] = {}
+        self._by_thread: dict[str, list[str]] = {}
         self._lock = asyncio.Lock()
 
     async def register(
@@ -121,7 +121,7 @@ class InterruptRegistry:
         interrupt_obj: Interrupt,
         session_id: str,
         thread_id: str,
-        checkpoint_id: Optional[str] = None,
+        checkpoint_id: str | None = None,
     ) -> PendingInterrupt:
         """
         Register a new pending interrupt.
@@ -161,7 +161,7 @@ class InterruptRegistry:
             )
             return pending
 
-    async def get(self, interrupt_id: str) -> Optional[PendingInterrupt]:
+    async def get(self, interrupt_id: str) -> PendingInterrupt | None:
         """Get a pending interrupt by ID."""
         async with self._lock:
             pending = self._pending.get(interrupt_id)
@@ -169,7 +169,7 @@ class InterruptRegistry:
                 pending.status = InterruptStatus.TIMEOUT
             return pending
 
-    async def get_by_session(self, session_id: str) -> List[PendingInterrupt]:
+    async def get_by_session(self, session_id: str) -> list[PendingInterrupt]:
         """Get all pending interrupts for a session."""
         async with self._lock:
             interrupt_ids = self._by_session.get(session_id, [])
@@ -183,7 +183,7 @@ class InterruptRegistry:
                         result.append(pending)
             return result
 
-    async def get_by_thread(self, thread_id: str) -> List[PendingInterrupt]:
+    async def get_by_thread(self, thread_id: str) -> list[PendingInterrupt]:
         """Get all pending interrupts for a thread."""
         async with self._lock:
             interrupt_ids = self._by_thread.get(thread_id, [])
@@ -202,8 +202,8 @@ class InterruptRegistry:
         interrupt_id: str,
         status: InterruptStatus,
         response: Any = None,
-        resolved_by: Optional[str] = None,
-    ) -> Optional[PendingInterrupt]:
+        resolved_by: str | None = None,
+    ) -> PendingInterrupt | None:
         """
         Resolve a pending interrupt.
 
@@ -227,7 +227,7 @@ class InterruptRegistry:
 
             pending.status = status
             pending.response = response
-            pending.resolved_at = datetime.utcnow()
+            pending.resolved_at = datetime.now(UTC).replace(tzinfo=None)
             pending.resolved_by = resolved_by
 
             logger.info(
@@ -240,8 +240,8 @@ class InterruptRegistry:
         self,
         interrupt_id: str,
         response: Any = None,
-        resolved_by: Optional[str] = None,
-    ) -> Optional[PendingInterrupt]:
+        resolved_by: str | None = None,
+    ) -> PendingInterrupt | None:
         """Approve an interrupt."""
         return await self.resolve(
             interrupt_id,
@@ -254,8 +254,8 @@ class InterruptRegistry:
         self,
         interrupt_id: str,
         response: Any = None,
-        resolved_by: Optional[str] = None,
-    ) -> Optional[PendingInterrupt]:
+        resolved_by: str | None = None,
+    ) -> PendingInterrupt | None:
         """Reject an interrupt."""
         return await self.resolve(
             interrupt_id,
@@ -264,7 +264,7 @@ class InterruptRegistry:
             resolved_by,
         )
 
-    async def cancel(self, interrupt_id: str) -> Optional[PendingInterrupt]:
+    async def cancel(self, interrupt_id: str) -> PendingInterrupt | None:
         """Cancel a pending interrupt."""
         return await self.resolve(interrupt_id, InterruptStatus.CANCELLED)
 
@@ -285,7 +285,7 @@ class InterruptRegistry:
 
 
 # Global registry instance
-_interrupt_registry: Optional[InterruptRegistry] = None
+_interrupt_registry: InterruptRegistry | None = None
 
 
 def get_interrupt_registry() -> InterruptRegistry:
@@ -304,7 +304,7 @@ class InterruptHandler:
     from interrupts.
     """
 
-    def __init__(self, registry: Optional[InterruptRegistry] = None):
+    def __init__(self, registry: InterruptRegistry | None = None):
         self.registry = registry or get_interrupt_registry()
 
     async def wait_for_approval(
@@ -312,8 +312,8 @@ class InterruptHandler:
         interrupt_obj: Interrupt,
         session_id: str,
         thread_id: str,
-        checkpoint_id: Optional[str] = None,
-        timeout_sec: Optional[int] = None,
+        checkpoint_id: str | None = None,
+        timeout_sec: int | None = None,
         poll_interval: float = 1.0,
     ) -> tuple[bool, Any]:
         """
@@ -338,9 +338,9 @@ class InterruptHandler:
         )
 
         timeout = timeout_sec or INTERRUPT_TIMEOUT_SEC
-        deadline = datetime.utcnow() + timedelta(seconds=timeout)
+        deadline = datetime.now(UTC).replace(tzinfo=None) + timedelta(seconds=timeout)
 
-        while datetime.utcnow() < deadline:
+        while datetime.now(UTC).replace(tzinfo=None) < deadline:
             current = await self.registry.get(pending.id)
             if current is None:
                 return False, None
@@ -382,7 +382,7 @@ class InterruptHandler:
 def require_approval(
     value: Any,
     prompt: str = "Please approve this action",
-    options: Optional[List[str]] = None,
+    options: list[str] | None = None,
     **metadata,
 ) -> Interrupt:
     """
@@ -467,7 +467,7 @@ def require_input(
 
 def require_selection(
     prompt: str,
-    options: List[str],
+    options: list[str],
     allow_multiple: bool = False,
     **metadata,
 ) -> Interrupt:

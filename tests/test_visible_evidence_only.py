@@ -70,7 +70,7 @@ async def test_strict_mode_abstains_when_no_citations(monkeypatch: pytest.Monkey
 
     full_response = "".join(parts).strip()
     assert full_response == "Unable to answer this question based on the available materials."
-    assert (done_metrics or {}).get("generation_elapsed_sec") == 0.0
+    assert (done_metrics or {}).get("generation_elapsed_sec") == pytest.approx(0.0)
     followup = (done_metrics or {}).get("abstain_followup")
     assert isinstance(followup, dict)
     assert followup.get("type") == "refine_query"

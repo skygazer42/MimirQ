@@ -20,6 +20,8 @@ import { formatApiError } from '@/lib/api-errors'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
+import { detachPromise } from '@/lib/utils'
+
 
 type TuneCandidate = {
   chunkSize: number
@@ -172,23 +174,23 @@ export function ChunkAutoTuneDialog() {
     setResults([])
 
     const baseParams = {
-      file_sha256: String(sha),
-      file_type: fileType || undefined,
-      filename: String(filename),
-      file_size: typeof fileSize === 'number' ? fileSize : currentFile?.size,
-      parser_backend: parserBackend || 'auto',
-      chunk_strategy: chunkStrategy || 'langchain_recursive',
-      dataset_id: datasetId || undefined,
-      pipeline: pipelineCtx.enabled ? pipelineCtx.options : undefined,
-      // Performance: stats-only, no original text.
-      include_original_text: false,
-      include_chunks: false,
-      max_chunks: 0,
-      use_parse_cache: true,
-      // Strategy-specific.
-      child_ratio: chunkStrategy === 'parent_child' ? parentChildRatio : undefined,
-      min_child_size: chunkStrategy === 'parent_child' ? parentChildMinChildSize : undefined,
-    } as const
+    file_sha256: String(sha),
+    file_type: fileType || undefined,
+    filename: String(filename),
+    file_size: typeof fileSize === 'number' ? fileSize : currentFile?.size,
+    parser_backend: parserBackend || 'auto',
+    chunk_strategy: chunkStrategy || 'langchain_recursive',
+    dataset_id: datasetId || undefined,
+    pipeline: pipelineCtx.enabled ? pipelineCtx.options : undefined,
+    // Performance: stats-only, no original text.
+    include_original_text: false,
+    include_chunks: false,
+    max_chunks: 0,
+    use_parse_cache: true,
+    // Strategy-specific.
+    child_ratio: chunkStrategy === 'parent_child' ? parentChildRatio : undefined,
+    min_child_size: chunkStrategy === 'parent_child' ? parentChildMinChildSize : undefined,
+}
 
     const started = performance.now()
     const out: TuneCandidate[] = []
@@ -196,7 +198,7 @@ export function ChunkAutoTuneDialog() {
     try {
       for (let i = 0; i < candidates.length; i += 1) {
         if (controller.signal.aborted) break
-        const c = candidates[i]!
+        const c = candidates[i]
         const t0 = performance.now()
         try {
           const res = await documentApi.chunkPreviewBySha(
@@ -323,11 +325,11 @@ export function ChunkAutoTuneDialog() {
               <div className="mt-1 text-xs text-muted-foreground font-mono break-all">
                 {filename} · sha:{sha ? String(sha).slice(0, 10) : '-'} · strategy:{chunkStrategy} · unit:{isTokenStrategy ? 'tokens' : 'chars'}
               </div>
-              {!isAutoTuneAvailable ? (
+              {isAutoTuneAvailable ? null : (
                 <div className="mt-2 text-xs text-warning">
                   {isSeparatorStrategy ? 'separator 策略不支持 overlap 调优（可用 chunk_size 调优建议后续补齐）' : '需要先生成一次预览以获得 file_sha256。'}
                 </div>
-              ) : null}
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -405,7 +407,7 @@ export function ChunkAutoTuneDialog() {
                   type="button"
                   size="sm"
                   className="h-8 px-3 text-xs"
-                  onClick={() => void runTune()}
+                  onClick={() => detachPromise(runTune())}
                   disabled={!isAutoTuneAvailable || running}
                 >
                   {running ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin motion-reduce:animate-none" /> : null}
@@ -428,9 +430,9 @@ export function ChunkAutoTuneDialog() {
                   </tr>
                 </thead>
                 <tbody>
-                  {scoredTop.length ? (
-                    scoredTop.map((r) => (
-                      <tr key={`${r.chunkSize}:${r.chunkOverlap}`} className="border-t border-border/60">
+                  {(() => {
+    if (scoredTop.length) {
+        return (scoredTop.map((r) => (<tr key={`${r.chunkSize}:${r.chunkOverlap}`} className="border-t border-border/60">
                         <td className="px-3 py-2 font-mono">
                           size:{r.chunkSize} · overlap:{r.chunkOverlap}
                         </td>
@@ -446,30 +448,29 @@ export function ChunkAutoTuneDialog() {
                         </td>
                         <td className="px-3 py-2 font-mono">{r.quality?.grade || '-'}</td>
                         <td className="px-3 py-2 text-right">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-7 px-2 text-[11px]"
-                            onClick={() => void applyCandidate(r)}
-                          >
+                          <Button type="button" size="sm" className="h-7 px-2 text-[11px]" onClick={() => detachPromise(applyCandidate(r))}>
                             应用并预览
                           </Button>
                         </td>
-                      </tr>
-                    ))
-                  ) : results.length ? (
-                    <tr className="border-t border-border/60">
+                      </tr>)));
+    }
+    else {
+        if (results.length) {
+            return (<tr className="border-t border-border/60">
                       <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
                         没有命中约束的组合（可尝试降低 min 覆盖率/提高 max 重叠浪费/放宽 max chunks）。
                       </td>
-                    </tr>
-                  ) : (
-                    <tr className="border-t border-border/60">
+                    </tr>);
+        }
+        else {
+            return (<tr className="border-t border-border/60">
                       <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
                         还没有结果。点击“开始调优”生成 TopN 推荐。
                       </td>
-                    </tr>
-                  )}
+                    </tr>);
+        }
+    }
+})()}
                 </tbody>
               </table>
             </div>

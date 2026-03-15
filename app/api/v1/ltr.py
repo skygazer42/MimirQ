@@ -9,7 +9,7 @@ Provides a small, file-based registry for LTR reranker artifacts:
 
 from __future__ import annotations
 
-from typing import Annotated, Any, List, Optional
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -45,16 +45,16 @@ class LTRModelInfo(BaseModel):
     model_sha256: str
     size_bytes: int = 0
     created_at: str = ""
-    created_by: Optional[str] = None
+    created_by: str | None = None
     feature_spec_version: int = 1
     feature_schema: str = ""
-    feature_names: List[str] = Field(default_factory=list)
+    feature_names: list[str] = Field(default_factory=list)
     has_manifest: bool = True
     active: bool = False
 
 
 class LTRModelListResponse(BaseModel):
-    items: List[LTRModelInfo] = Field(default_factory=list)
+    items: list[LTRModelInfo] = Field(default_factory=list)
 
 
 class LTRModelRegisterResponse(BaseModel):

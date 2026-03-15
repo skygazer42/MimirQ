@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from types import SimpleNamespace
 from uuid import UUID
@@ -101,6 +102,7 @@ def test_dataset_purge_dry_run_plans_only(monkeypatch: pytest.MonkeyPatch) -> No
     deleted_ids: list[UUID] = []
 
     async def _fake_delete_document(*, document_id: UUID, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         deleted_ids.append(UUID(str(document_id)))
         return None
 
@@ -149,6 +151,7 @@ def test_dataset_purge_executes_delete_document(monkeypatch: pytest.MonkeyPatch)
     deleted_ids: list[UUID] = []
 
     async def _fake_delete_document(*, document_id: UUID, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         deleted_ids.append(UUID(str(document_id)))
         return None
 
@@ -250,6 +253,7 @@ def test_dataset_purge_deletes_even_if_public_delete_is_denied(monkeypatch: pyte
     monkeypatch.setattr(datasets_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
     async def _deny_public_delete(*_a, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         raise HTTPException(status_code=403, detail="No dataset write permission")
 
     monkeypatch.setattr(docs_mod, "delete_document", _deny_public_delete, raising=True)
@@ -257,6 +261,7 @@ def test_dataset_purge_deletes_even_if_public_delete_is_denied(monkeypatch: pyte
     deleted_ids: list[UUID] = []
 
     async def _force_delete_document(*, document_id: UUID, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         deleted_ids.append(UUID(str(document_id)))
         return None
 

@@ -46,7 +46,7 @@ export function PageScaffold({
   toolbarBarClassName,
   bodyClassName,
   bodyContainerClassName,
-}: PageScaffoldProps) {
+}: Readonly<PageScaffoldProps>) {
   return (
     <>
       {showHeader ? (

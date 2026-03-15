@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -30,7 +30,7 @@ class PolicyHeading:
     text: str
     level: int
     kind: str  # chapter|section|article|clause
-    number: Optional[str] = None
+    number: str | None = None
 
 
 _RE_CN_CHAPTER = re.compile(r"^\s*(?P<prefix>第[0-9一二三四五六七八九十百千]+章)\s*(?P<title>.*?)\s*$")
@@ -49,8 +49,8 @@ def _stable_id24(text: str) -> str:
     return _sha256_hex(text)[:24]
 
 
-def _iter_headings(text: str) -> List[PolicyHeading]:
-    headings: List[PolicyHeading] = []
+def _iter_headings(text: str) -> list[PolicyHeading]:
+    headings: list[PolicyHeading] = []
     if not text:
         return headings
 
@@ -66,9 +66,9 @@ def _iter_headings(text: str) -> List[PolicyHeading]:
         if len(line) > 240:
             continue
 
-        kind: Optional[str] = None
-        level: Optional[int] = None
-        num: Optional[str] = None
+        kind: str | None = None
+        level: int | None = None
+        num: str | None = None
 
         if (m := _RE_CN_CHAPTER.match(raw_line)) is not None:
             kind, level = "chapter", 1
@@ -154,8 +154,8 @@ class PolicyManualStructuredChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

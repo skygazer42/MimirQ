@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 from app.rag.embedding.base import BaseEmbeddingModel
 
@@ -13,6 +15,7 @@ class _DummyEmbeddingModel(BaseEmbeddingModel):
         return [[float(len(t))] for t in texts]
 
     async def aencode(self, message):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return self.encode(message)
 
 

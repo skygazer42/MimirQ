@@ -1,3 +1,4 @@
+import asyncio
 import json
 from pathlib import Path
 from uuid import uuid4
@@ -11,9 +12,10 @@ from app.parsing.subprocess_runner import run_subprocess_worker
 async def test_run_subprocess_worker_falls_back_when_asyncio_subprocess_unavailable(monkeypatch, tmp_path):
     import app.parsing.subprocess_runner as runner_mod
 
-    monkeypatch.setattr(runner_mod, "_get_subprocess_workdir", lambda *, tenant_id: tmp_path, raising=True)
+    monkeypatch.setattr(runner_mod, "_get_subprocess_workdir", lambda *, _tenant_id: tmp_path, raising=True)
 
     async def _fake_create_subprocess_exec(*_args, **_kwargs):  # noqa: ANN001, ANN002
+        await asyncio.sleep(0)  # Sonar S7503
         raise NotImplementedError
 
     monkeypatch.setattr(runner_mod.asyncio, "create_subprocess_exec", _fake_create_subprocess_exec, raising=True)
@@ -56,4 +58,4 @@ async def test_run_subprocess_worker_falls_back_when_asyncio_subprocess_unavaila
         poll_interval_sec=0.01,
     )
 
-    assert result.get("slept_sec") == 0.0
+    assert result.get("slept_sec") == pytest.approx(0.0)

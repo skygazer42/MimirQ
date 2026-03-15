@@ -34,7 +34,7 @@ def _build_client(monkeypatch):  # noqa: ANN001
     from app.api.v1.pipeline import get_governance_profile_resolved
     from app.services.dataset_service import DatasetService
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: None, raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db

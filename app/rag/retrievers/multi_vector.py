@@ -28,9 +28,10 @@ Usage:
 import logging
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
@@ -55,30 +56,30 @@ class DocumentRepresentation:
     doc_id: str  # ID of the original document
     type: RepresentationType
     content: str
-    vector: Optional[List[float]] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    vector: list[float] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class BaseDocStore(ABC):
     """Abstract base class for document storage."""
 
     @abstractmethod
-    def add(self, docs: Dict[str, Document]) -> None:
+    def add(self, docs: dict[str, Document]) -> None:
         """Add documents to the store."""
         pass
 
     @abstractmethod
-    def get(self, doc_ids: List[str]) -> Dict[str, Document]:
+    def get(self, doc_ids: list[str]) -> dict[str, Document]:
         """Get documents by IDs."""
         pass
 
     @abstractmethod
-    def delete(self, doc_ids: List[str]) -> None:
+    def delete(self, doc_ids: list[str]) -> None:
         """Delete documents by IDs."""
         pass
 
     @abstractmethod
-    def search(self, query: str, limit: int = 10) -> List[Document]:
+    def search(self, query: str, limit: int = 10) -> list[Document]:
         """Search documents (optional, for hybrid search)."""
         pass
 
@@ -87,19 +88,19 @@ class InMemoryDocStore(BaseDocStore):
     """In-memory document store."""
 
     def __init__(self):
-        self._docs: Dict[str, Document] = {}
+        self._docs: dict[str, Document] = {}
 
-    def add(self, docs: Dict[str, Document]) -> None:
+    def add(self, docs: dict[str, Document]) -> None:
         self._docs.update(docs)
 
-    def get(self, doc_ids: List[str]) -> Dict[str, Document]:
+    def get(self, doc_ids: list[str]) -> dict[str, Document]:
         return {doc_id: self._docs[doc_id] for doc_id in doc_ids if doc_id in self._docs}
 
-    def delete(self, doc_ids: List[str]) -> None:
+    def delete(self, doc_ids: list[str]) -> None:
         for doc_id in doc_ids:
             self._docs.pop(doc_id, None)
 
-    def search(self, query: str, limit: int = 10) -> List[Document]:
+    def search(self, query: str, limit: int = 10) -> list[Document]:
         # Simple keyword search fallback
         query_lower = query.lower()
         results = []
@@ -131,13 +132,13 @@ class MultiVectorRetriever(BaseRetriever):
     """
 
     vectorstore: Any = None
-    docstore: Optional[BaseDocStore] = None
+    docstore: BaseDocStore | None = None
     id_key: str = "doc_id"
     search_type: str = "similarity"
-    search_kwargs: Dict[str, Any] = {}
+    search_kwargs: dict[str, Any] = {}
 
     # Private attributes
-    _embedding_func: Optional[Callable] = None
+    _embedding_func: Callable | None = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -145,11 +146,11 @@ class MultiVectorRetriever(BaseRetriever):
     def __init__(
         self,
         vectorstore: Any = None,
-        docstore: Optional[BaseDocStore] = None,
-        embedding_func: Optional[Callable] = None,
+        docstore: BaseDocStore | None = None,
+        embedding_func: Callable | None = None,
         id_key: str = "doc_id",
         search_type: str = "similarity",
-        search_kwargs: Optional[Dict[str, Any]] = None,
+        search_kwargs: dict[str, Any] | None = None,
         **kwargs,
     ):
         """
@@ -173,13 +174,13 @@ class MultiVectorRetriever(BaseRetriever):
 
     def add_documents(
         self,
-        documents: List[Document],
+        documents: list[Document],
         *,
-        representations: Optional[List[List[str]]] = None,
+        representations: list[list[str]] | None = None,
         representation_type: RepresentationType = RepresentationType.RAW,
-        ids: Optional[List[str]] = None,
+        ids: list[str] | None = None,
         add_to_docstore: bool = True,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Add documents with optional alternative representations.
 
@@ -202,7 +203,7 @@ class MultiVectorRetriever(BaseRetriever):
 
         # Add to docstore
         if add_to_docstore:
-            doc_dict = {doc_id: doc for doc_id, doc in zip(ids, documents, strict=False)}
+            doc_dict = dict(zip(ids, documents, strict=False))
             self.docstore.add(doc_dict)
 
         # Prepare vectors for indexing
@@ -239,10 +240,10 @@ class MultiVectorRetriever(BaseRetriever):
 
     def add_summaries(
         self,
-        documents: List[Document],
-        summaries: List[str],
-        ids: Optional[List[str]] = None,
-    ) -> List[str]:
+        documents: list[Document],
+        summaries: list[str],
+        ids: list[str] | None = None,
+    ) -> list[str]:
         """
         Add documents with summary representations.
 
@@ -266,10 +267,10 @@ class MultiVectorRetriever(BaseRetriever):
 
     def add_hypothetical_questions(
         self,
-        documents: List[Document],
-        questions: List[List[str]],
-        ids: Optional[List[str]] = None,
-    ) -> List[str]:
+        documents: list[Document],
+        questions: list[list[str]],
+        ids: list[str] | None = None,
+    ) -> list[str]:
         """
         Add documents with hypothetical question representations (HyDE).
 
@@ -293,10 +294,10 @@ class MultiVectorRetriever(BaseRetriever):
 
     def add_parent_child(
         self,
-        parent_documents: List[Document],
-        child_chunks: List[List[Document]],
-        parent_ids: Optional[List[str]] = None,
-    ) -> List[str]:
+        parent_documents: list[Document],
+        child_chunks: list[list[Document]],
+        parent_ids: list[str] | None = None,
+    ) -> list[str]:
         """
         Add parent documents with smaller child chunks for retrieval.
 
@@ -318,7 +319,7 @@ class MultiVectorRetriever(BaseRetriever):
             raise ValueError("Number of IDs must match number of parent documents")
 
         # Add parents to docstore
-        parent_dict = {pid: doc for pid, doc in zip(parent_ids, parent_documents, strict=False)}
+        parent_dict = dict(zip(parent_ids, parent_documents, strict=False))
         self.docstore.add(parent_dict)
 
         # Add child chunks to vectorstore with parent reference
@@ -350,7 +351,7 @@ class MultiVectorRetriever(BaseRetriever):
         query: str,
         *,
         run_manager: CallbackManagerForRetrieverRun,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """
         Retrieve relevant documents.
 
@@ -403,7 +404,7 @@ class MultiVectorRetriever(BaseRetriever):
         query: str,
         *,
         run_manager,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Async version of _get_relevant_documents."""
         # For now, just call sync version
         return self._get_relevant_documents(
@@ -415,7 +416,7 @@ class MultiVectorRetriever(BaseRetriever):
 def create_summary_retriever(
     vectorstore: Any,
     llm: Any,
-    documents: List[Document],
+    documents: list[Document],
     **kwargs,
 ) -> MultiVectorRetriever:
     """
@@ -458,7 +459,7 @@ def create_summary_retriever(
 def create_hypothetical_question_retriever(
     vectorstore: Any,
     llm: Any,
-    documents: List[Document],
+    documents: list[Document],
     questions_per_doc: int = 3,
     **kwargs,
 ) -> MultiVectorRetriever:
@@ -511,7 +512,7 @@ Questions:"""
 
 def create_parent_child_retriever(
     vectorstore: Any,
-    parent_documents: List[Document],
+    parent_documents: list[Document],
     child_splitter: Any,
     **kwargs,
 ) -> MultiVectorRetriever:

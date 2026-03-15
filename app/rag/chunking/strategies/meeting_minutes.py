@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -32,7 +32,7 @@ class _Heading:
 class _Section:
     start: int
     end: int
-    heading: Optional[_Heading]
+    heading: _Heading | None
 
 
 _MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
@@ -90,7 +90,7 @@ def _normalize_title(raw: str) -> str:
     return t
 
 
-def _section_key(title: str) -> Optional[str]:
+def _section_key(title: str) -> str | None:
     if not title:
         return None
     if title in _CN_SECTIONS:
@@ -99,10 +99,10 @@ def _section_key(title: str) -> Optional[str]:
     return _EN_CANON.get(lower)
 
 
-def _iter_headings(text: str) -> List[_Heading]:
+def _iter_headings(text: str) -> list[_Heading]:
     if not text:
         return []
-    headings: List[_Heading] = []
+    headings: list[_Heading] = []
     offset = 0
     for raw_line in text.splitlines(keepends=True):
         line_start = offset
@@ -122,7 +122,7 @@ def _iter_headings(text: str) -> List[_Heading]:
         headings.append(_Heading(start=line_start, end=line_start + len(raw_line), title=title, key=key))
 
     # De-dup by start pos.
-    deduped: List[_Heading] = []
+    deduped: list[_Heading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -132,11 +132,11 @@ def _iter_headings(text: str) -> List[_Heading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[_Heading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[_Heading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = headings[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -171,8 +171,8 @@ class MeetingMinutesChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -183,7 +183,7 @@ class MeetingMinutesChunker(BaseChunker):
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            current_heading: Optional[_Heading] = None
+            current_heading: _Heading | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():

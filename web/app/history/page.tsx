@@ -101,7 +101,7 @@ function HistoryPageContent() {
       const result = await chatApi.getMessages(conversation.id, { limit: DEFAULT_VISIBLE_MESSAGES })
       setMessages(result.messages || [])
       setHasMoreMessages(Boolean(result.has_more))
-      window.requestAnimationFrame(() => {
+      globalThis.window.requestAnimationFrame(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto' })
       })
     } catch (error) {
@@ -256,44 +256,35 @@ function HistoryPageContent() {
 
             {/* 对话列表 */}
             <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
-              {isLoadingList ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
-                </div>
-              ) : filteredConversations.length === 0 ? (
-                <div className="text-center py-12 px-4 text-muted-foreground text-sm">
-                  <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-20" />
+              {(() => {
+    if (isLoadingList) {
+        return (<div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
+                </div>);
+    }
+    else {
+        if (filteredConversations.length === 0) {
+            return (<div className="text-center py-12 px-4 text-muted-foreground text-sm">
+                  <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-20"/>
                   <p>{searchQuery ? '没有找到匹配的对话' : '暂无对话记录'}</p>
-                  {!searchQuery ? (
-                    <p className="mt-2 text-[11px] text-muted-foreground/80">去首页发起新对话开始探索</p>
-                  ) : null}
-                </div>
-              ) : (
-                groupOrder.map((group) => {
-                  const convs = groupedConversations[group]
-                  if (!convs || convs.length === 0) return null
-
-                  return (
-                    <div key={group}>
+                  {searchQuery ? null : (<p className="mt-2 text-[11px] text-muted-foreground/80">去首页发起新对话开始探索</p>)}
+                </div>);
+        }
+        else {
+            return (groupOrder.map((group) => {
+                const convs = groupedConversations[group];
+                if (!convs || convs.length === 0)
+                    return null;
+                return (<div key={group}>
                       <div className="px-4 py-2 text-[10px] font-bold text-muted-foreground uppercase sticky top-0 bg-card z-10 border-b border-border/60">
                         {group}
                       </div>
-                      {convs.map((conversation) => (
-                        <ConversationItem
-                          key={conversation.id}
-                          conversation={conversation}
-                          isSelected={selectedConversation?.id === conversation.id}
-                          onSelect={() => handleSelectConversation(conversation)}
-                          onDelete={() => setShowDeleteConfirm(conversation.id)}
-                          showDeleteConfirm={showDeleteConfirm === conversation.id}
-                          onConfirmDelete={() => handleDeleteConversation(conversation.id)}
-                          onCancelDelete={() => setShowDeleteConfirm(null)}
-                        />
-                      ))}
-                    </div>
-                  )
-                })
-              )}
+                      {convs.map((conversation) => (<ConversationItem key={conversation.id} conversation={conversation} isSelected={selectedConversation?.id === conversation.id} onSelect={() => handleSelectConversation(conversation)} onDelete={() => setShowDeleteConfirm(conversation.id)} showDeleteConfirm={showDeleteConfirm === conversation.id} onConfirmDelete={() => handleDeleteConversation(conversation.id)} onCancelDelete={() => setShowDeleteConfirm(null)}/>))}
+                    </div>);
+            }));
+        }
+    }
+})()}
             </div>
           </div>
 
@@ -348,36 +339,32 @@ function HistoryPageContent() {
 
                 {/* 消息列表 */}
                 <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-6 py-8">
-                  {isLoadingMessages ? (
-                    <div className="flex items-center justify-center h-full">
-                      <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground" />
-                    </div>
-                  ) : messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                      <MessageSquare className="h-12 w-12 mb-4 opacity-10" />
+                  {(() => {
+    if (isLoadingMessages) {
+        return (<div className="flex items-center justify-center h-full">
+                      <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground"/>
+                    </div>);
+    }
+    else {
+        if (messages.length === 0) {
+            return (<div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                      <MessageSquare className="h-12 w-12 mb-4 opacity-10"/>
                       <p>暂无消息记录</p>
-                    </div>
-                  ) : (
-                    <div className="max-w-3xl mx-auto space-y-10">
-                      {hasMoreMessages ? (
-                        <div className="flex justify-center">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={loadOlderMessages}
-                            disabled={isLoadingOlder}
-                            className="rounded-full text-xs"
-                          >
+                    </div>);
+        }
+        else {
+            return (<div className="max-w-3xl mx-auto space-y-10">
+                      {hasMoreMessages ? (<div className="flex justify-center">
+                          <Button variant="outline" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full text-xs">
                             {isLoadingOlder ? '加载中…' : '加载更早消息'}
                           </Button>
-                        </div>
-                      ) : null}
-                      {messages.map((message) => (
-                        <ChatMessageItem key={message.id} message={message} />
-                      ))}
-                      <div ref={messagesEndRef} className="h-4" />
-                    </div>
-                  )}
+                        </div>) : null}
+                      {messages.map((message) => (<ChatMessageItem key={message.id} message={message}/>))}
+                      <div ref={messagesEndRef} className="h-4"/>
+                    </div>);
+        }
+    }
+})()}
                 </div>
               </>
             ) : (
@@ -426,7 +413,7 @@ function ConversationItem({
   showDeleteConfirm,
   onConfirmDelete,
   onCancelDelete,
-}: {
+}: Readonly<{
   conversation: Conversation
   isSelected: boolean
   onSelect: () => void
@@ -434,7 +421,7 @@ function ConversationItem({
   showDeleteConfirm: boolean
   onConfirmDelete: () => void
   onCancelDelete: () => void
-}) {
+}>) {
   return (
     <div
       className={cn(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -100,6 +101,7 @@ async def test_execute_url_batch_run_resumes_from_cursor_and_skips_processed(mon
             self.owner_id = ""
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _Doc()
 

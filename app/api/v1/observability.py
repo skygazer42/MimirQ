@@ -7,8 +7,8 @@ JSONL metrics log (ENABLE_METRICS_LOG / METRICS_LOG_PATH).
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated, Any, Dict, List
+from datetime import UTC, datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -68,13 +68,13 @@ class RagMetricsSummaryResponse(BaseModel):
     retriever_filtered_acl_total: int = 0
     retrieval_candidate_cache_hit_count: int = 0
     retrieval_candidate_cache_store_ok_count: int = 0
-    retrieval_candidate_cache_backend_counts: Dict[str, int] = {}
-    retrieval_candidate_cache_skip_reason_counts: Dict[str, int] = {}
-    retrieval_rerank_skip_reason_counts: Dict[str, int] = {}
-    retrieval_mode_counts: Dict[str, int] = {}
-    hit_type_counts: Dict[str, int] = {}
-    error_counts: Dict[str, int] = {}
-    timeseries: Dict[str, List[Any]] = {}
+    retrieval_candidate_cache_backend_counts: dict[str, int] = {}
+    retrieval_candidate_cache_skip_reason_counts: dict[str, int] = {}
+    retrieval_rerank_skip_reason_counts: dict[str, int] = {}
+    retrieval_mode_counts: dict[str, int] = {}
+    hit_type_counts: dict[str, int] = {}
+    error_counts: dict[str, int] = {}
+    timeseries: dict[str, list[Any]] = {}
 
 
 class RagQueryAnalyticsResponse(BaseModel):
@@ -97,11 +97,11 @@ class RagQueryAnalyticsResponse(BaseModel):
     retrieval_p95_elapsed_sec: float | None = None
     retrieval_p99_elapsed_sec: float | None = None
 
-    error_kind_counts: Dict[str, int] = Field(default_factory=dict)
-    top_zero_hit_queries: List[Dict[str, Any]] = Field(default_factory=list)
-    top_slow_queries: List[Dict[str, Any]] = Field(default_factory=list)
-    timeseries: Dict[str, List[Any]] = Field(default_factory=dict)
-    anomalies: List[Dict[str, Any]] = Field(default_factory=list)
+    error_kind_counts: dict[str, int] = Field(default_factory=dict)
+    top_zero_hit_queries: list[dict[str, Any]] = Field(default_factory=list)
+    top_slow_queries: list[dict[str, Any]] = Field(default_factory=list)
+    timeseries: dict[str, list[Any]] = Field(default_factory=dict)
+    anomalies: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RagCostAttributionResponse(BaseModel):
@@ -115,20 +115,20 @@ class RagCostAttributionResponse(BaseModel):
     llm_prompt_tokens: int = 0
     llm_completion_tokens: int = 0
     llm_total_tokens: int = 0
-    llm_model_counts: Dict[str, int] = Field(default_factory=dict)
-    llm_source_counts: Dict[str, int] = Field(default_factory=dict)
+    llm_model_counts: dict[str, int] = Field(default_factory=dict)
+    llm_source_counts: dict[str, int] = Field(default_factory=dict)
 
     embed_query_tokens: int = 0
     embed_query_chars: int = 0
     embed_query_count: int = 0
-    embed_provider_counts: Dict[str, int] = Field(default_factory=dict)
-    embed_model_counts: Dict[str, int] = Field(default_factory=dict)
+    embed_provider_counts: dict[str, int] = Field(default_factory=dict)
+    embed_model_counts: dict[str, int] = Field(default_factory=dict)
 
     retrieval_elapsed_avg_sec: float | None = None
     retrieval_elapsed_p95_sec: float | None = None
     rerank_elapsed_avg_sec: float | None = None
     rerank_elapsed_p95_sec: float | None = None
-    retrieval_vector_backend_counts: Dict[str, int] = Field(default_factory=dict)
+    retrieval_vector_backend_counts: dict[str, int] = Field(default_factory=dict)
     retrieval_query_count: int = 0
 
 
@@ -139,7 +139,7 @@ class RagTraceBundleResponse(BaseModel):
     truncated: bool
     record_count: int
     request_id: str
-    records: List[Dict[str, Any]] = Field(default_factory=list)
+    records: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RagTraceBundleSummaryResponse(BaseModel):
@@ -160,7 +160,7 @@ class RagTraceBundleSummaryResponse(BaseModel):
     retrieval_query_parallelism: int | None = None
     retrieval_query_count: int | None = None
     retrieval_elapsed_sec: float | None = None
-    retrieval_error_kinds: Dict[str, int] = Field(default_factory=dict)
+    retrieval_error_kinds: dict[str, int] = Field(default_factory=dict)
 
     citations_count: int | None = None
 
@@ -185,13 +185,13 @@ class RagTraceBundleDiffResponse(BaseModel):
 
     summary_a: RagTraceBundleSummaryResponse
     summary_b: RagTraceBundleSummaryResponse
-    diff: List[RagTraceBundleDiffItem] = Field(default_factory=list)
+    diff: list[RagTraceBundleDiffItem] = Field(default_factory=list)
 
 
 class OpsConfigSnapshotResponse(BaseModel):
     schema: str
     fingerprint: str
-    config: Dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class TaskQueueObservabilitySnapshotResponse(BaseModel):
@@ -209,7 +209,7 @@ class TaskQueueObservabilitySnapshotResponse(BaseModel):
     heartbeat_interval_sec: float = 0.0
     heartbeat_ttl_sec: int = 0
     poll_interval_sec: float = 0.0
-    recent_job_outcomes: List[Dict[str, Any]] = Field(default_factory=list)
+    recent_job_outcomes: list[dict[str, Any]] = Field(default_factory=list)
 
     error: str | None = None
 
@@ -232,7 +232,7 @@ class PeriodicJobFreshnessResponse(BaseModel):
     schema: str
     generated_at: datetime
     tenant_id: str
-    items: List[PeriodicJobFreshnessItemResponse] = Field(default_factory=list)
+    items: list[PeriodicJobFreshnessItemResponse] = Field(default_factory=list)
 
 
 class SloWindowSnapshotResponse(BaseModel):
@@ -248,7 +248,7 @@ class SloWindowSnapshotResponse(BaseModel):
 class SloSnapshotResponse(BaseModel):
     schema: str
     generated_at: datetime
-    windows: List[SloWindowSnapshotResponse] = Field(default_factory=list)
+    windows: list[SloWindowSnapshotResponse] = Field(default_factory=list)
 
 
 class IndexAuditResponse(BaseModel):
@@ -263,10 +263,10 @@ class IndexAuditResponse(BaseModel):
 
     vector_ids_checked: int = 0
     vector_ids_missing_in_backend: int = 0
-    vector_ids_missing_in_backend_sample: List[str] = []
+    vector_ids_missing_in_backend_sample: list[str] = []
 
     milvus_ids_sampled: int = 0
-    milvus_orphan_ids_sample: List[str] = []
+    milvus_orphan_ids_sample: list[str] = []
 
 
 class IndexDriftItemResponse(BaseModel):
@@ -280,7 +280,7 @@ class IndexDriftItemResponse(BaseModel):
     strictness: str
     status: str
     reason: str
-    details: Dict[str, Any] = Field(default_factory=dict)
+    details: dict[str, Any] = Field(default_factory=dict)
     reconcile_task_id: str | None = None
     replay_count: int = 0
     created_at: datetime | None = None
@@ -293,7 +293,7 @@ class IndexDriftItemResponse(BaseModel):
 
 class IndexDriftListResponse(BaseModel):
     schema: str
-    items: List[IndexDriftItemResponse] = Field(default_factory=list)
+    items: list[IndexDriftItemResponse] = Field(default_factory=list)
 
 
 class IndexDriftResolveRequest(BaseModel):
@@ -308,22 +308,22 @@ class IngestionDashboardSummaryResponse(BaseModel):
     dataset_id: str | None = None
 
     created_count: int = 0
-    by_status: Dict[str, int] = {}
-    by_stage_processing: Dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    by_stage_processing: dict[str, int] = {}
     avg_completed_latency_sec: float | None = None
 
-    top_error_reasons: Dict[str, int] = {}
-    timeseries: Dict[str, List[Any]] = {}
+    top_error_reasons: dict[str, int] = {}
+    timeseries: dict[str, list[Any]] = {}
 
 
 class DepsDiagnosticsResponse(BaseModel):
     schema: str
     generated_at: datetime
 
-    postgres: Dict[str, Any] = Field(default_factory=dict)
-    redis: Dict[str, Any] = Field(default_factory=dict)
-    minio: Dict[str, Any] = Field(default_factory=dict)
-    milvus: Dict[str, Any] = Field(default_factory=dict)
+    postgres: dict[str, Any] = Field(default_factory=dict)
+    redis: dict[str, Any] = Field(default_factory=dict)
+    minio: dict[str, Any] = Field(default_factory=dict)
+    milvus: dict[str, Any] = Field(default_factory=dict)
 
 
 class DatasetCacheInvalidationResponse(BaseModel):
@@ -420,7 +420,7 @@ def get_rag_metrics_tail(
         max_bytes=int(max_bytes),
     )
 
-    ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
     filename = f"rag-metrics-tail.{ts}.jsonl.gz"
     return Response(
         content=payload,

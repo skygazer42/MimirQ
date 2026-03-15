@@ -4,8 +4,8 @@ Integrated from an upstream splitter implementation (vendored for stability).
 """
 
 import re
-from collections.abc import Collection, Set
-from typing import Any, Callable, Literal, TypeVar, Union
+from collections.abc import Callable, Collection, Set
+from typing import Any, Literal, TypeVar, Union
 
 from app.rag.chunking.utils.splitters.text_splitter import RecursiveCharacterTextSplitter
 

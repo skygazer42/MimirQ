@@ -12,7 +12,7 @@ Design goals:
 
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -39,7 +39,7 @@ class SourcePrincipal(BaseModel):
     system: SourceSystem
     kind: SourcePrincipalKind
     id: str = Field(default="", max_length=512, description="Principal identifier in the upstream system")
-    display: Optional[str] = Field(default=None, max_length=512, description="Optional human display label (best-effort)")
+    display: str | None = Field(default=None, max_length=512, description="Optional human display label (best-effort)")
 
     @model_validator(mode="after")
     def _normalize(self) -> "SourcePrincipal":
@@ -74,7 +74,7 @@ class SourceAcl(BaseModel):
     extend this to include roles and provenance.
     """
 
-    principals: List[SourcePrincipal] = Field(default_factory=list, max_length=500)
+    principals: list[SourcePrincipal] = Field(default_factory=list, max_length=500)
 
     @model_validator(mode="after")
     def _normalize(self) -> "SourceAcl":
@@ -120,7 +120,7 @@ class ConnectorSourceAclConfig(BaseModel):
         default="disabled",
         description="disabled: ignore source ACL; inherit: apply mapped source ACL to document access.",
     )
-    group_mappings: List[SourceAclGroupMappingRule] = Field(
+    group_mappings: list[SourceAclGroupMappingRule] = Field(
         default_factory=list,
         max_length=200,
         description="Bounded mapping rules from source principals -> tenant groups.",

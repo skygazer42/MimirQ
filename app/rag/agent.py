@@ -11,7 +11,8 @@ This module is kept for backwards compatibility; it simply forwards calls to
 
 
 import threading
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from collections.abc import AsyncGenerator
+from typing import Any
 from uuid import UUID
 
 from app.rag.engine import RAGEngine, get_rag_engine
@@ -26,15 +27,15 @@ class RAGAgent:
     async def stream_chat(
         self,
         question: str,
-        conversation_id: Optional[UUID] = None,
-        document_ids: Optional[List[UUID]] = None,
+        conversation_id: UUID | None = None,
+        document_ids: list[UUID] | None = None,
         top_k: int = 5,
-        tenant_id: Optional[UUID] = None,
-        account_id: Optional[str] = None,
-        dataset_id: Optional[UUID] = None,
-        history: Optional[List[Dict[str, str]]] = None,
+        tenant_id: UUID | None = None,
+        account_id: str | None = None,
+        dataset_id: UUID | None = None,
+        history: list[dict[str, str]] | None = None,
         score_threshold: float = 0.7,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         async for event in self._engine.stream_chat(
             question=question,
             history=history,
@@ -49,7 +50,7 @@ class RAGAgent:
             yield event
 
 
-_rag_agent_instance: Optional[RAGAgent] = None
+_rag_agent_instance: RAGAgent | None = None
 _rag_agent_lock: threading.Lock = threading.Lock()
 
 

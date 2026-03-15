@@ -10,7 +10,7 @@ These schemas power the Evidence Workbench (enterprise ground-truth evidence man
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -24,17 +24,17 @@ EvidenceItemStatus = Literal["draft", "reviewed", "approved", "archived"]
 class EvidenceSuiteCreateRequest(BaseModel):
     dataset_id: UUID
     name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    config: Dict[str, Any] = Field(default_factory=dict)
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    config: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvidenceSuitePatchRequest(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    description: Optional[str] = None
-    tags: Optional[List[str]] = None
-    config: Optional[Dict[str, Any]] = None
-    archived_at: Optional[datetime] = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    tags: list[str] | None = None
+    config: dict[str, Any] | None = None
+    archived_at: datetime | None = None
 
     @model_validator(mode="after")
     def _non_empty_patch(self):
@@ -48,47 +48,47 @@ class EvidenceSuiteOut(OrmModel):
     tenant_id: UUID
     dataset_id: UUID
     name: str
-    description: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    config: Dict[str, Any] = Field(default_factory=dict)
-    created_by: Optional[str] = None
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    config: dict[str, Any] = Field(default_factory=dict)
+    created_by: str | None = None
     created_at: datetime
     updated_at: datetime
-    archived_at: Optional[datetime] = None
+    archived_at: datetime | None = None
 
     # Aggregated counts (best-effort; may be omitted in some endpoints).
-    item_counts: Optional[Dict[str, int]] = None
+    item_counts: dict[str, int] | None = None
 
 
 class EvidenceSuiteList(BaseModel):
     total: int
-    items: List[EvidenceSuiteOut] = Field(default_factory=list)
+    items: list[EvidenceSuiteOut] = Field(default_factory=list)
 
 
 class EvidenceItemCreateRequest(BaseModel):
     suite_id: UUID
     dataset_id: UUID
     query: str = Field(..., min_length=1)
-    expected_answer: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    source_metadata: Dict[str, Any] = Field(default_factory=dict)
-    reference_sources: List[ReferenceSource] = Field(..., min_length=1)
+    expected_answer: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
+    reference_sources: list[ReferenceSource] = Field(..., min_length=1)
 
     # Best-effort snapshots for reproducibility/audit.
-    retrieval_snapshot: Dict[str, Any] = Field(default_factory=dict)
-    rag_config_snapshot: Dict[str, Any] = Field(default_factory=dict)
-    notes: Optional[str] = None
+    retrieval_snapshot: dict[str, Any] = Field(default_factory=dict)
+    rag_config_snapshot: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
 
 
 class EvidenceItemPatchRequest(BaseModel):
-    query: Optional[str] = Field(default=None, min_length=1)
-    expected_answer: Optional[str] = None
-    tags: Optional[List[str]] = None
-    source_metadata: Optional[Dict[str, Any]] = None
-    reference_sources: Optional[List[ReferenceSource]] = Field(default=None, min_length=1)
-    retrieval_snapshot: Optional[Dict[str, Any]] = None
-    rag_config_snapshot: Optional[Dict[str, Any]] = None
-    notes: Optional[str] = None
+    query: str | None = Field(default=None, min_length=1)
+    expected_answer: str | None = None
+    tags: list[str] | None = None
+    source_metadata: dict[str, Any] | None = None
+    reference_sources: list[ReferenceSource] | None = Field(default=None, min_length=1)
+    retrieval_snapshot: dict[str, Any] | None = None
+    rag_config_snapshot: dict[str, Any] | None = None
+    notes: str | None = None
 
     @model_validator(mode="after")
     def _non_empty_patch(self):
@@ -105,24 +105,24 @@ class EvidenceItemOut(OrmModel):
     status: EvidenceItemStatus
 
     query: str
-    expected_answer: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    source_metadata: Dict[str, Any] = Field(default_factory=dict)
-    reference_sources: List[ReferenceSource] = Field(default_factory=list)
-    retrieval_snapshot: Dict[str, Any] = Field(default_factory=dict)
-    rag_config_snapshot: Dict[str, Any] = Field(default_factory=dict)
-    notes: Optional[str] = None
+    expected_answer: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
+    reference_sources: list[ReferenceSource] = Field(default_factory=list)
+    retrieval_snapshot: dict[str, Any] = Field(default_factory=dict)
+    rag_config_snapshot: dict[str, Any] = Field(default_factory=dict)
+    notes: str | None = None
 
-    regression_case_id: Optional[UUID] = None
+    regression_case_id: UUID | None = None
 
-    created_by: Optional[str] = None
-    reviewed_by: Optional[str] = None
-    approved_by: Optional[str] = None
-    archived_by: Optional[str] = None
+    created_by: str | None = None
+    reviewed_by: str | None = None
+    approved_by: str | None = None
+    archived_by: str | None = None
 
-    reviewed_at: Optional[datetime] = None
-    approved_at: Optional[datetime] = None
-    archived_at: Optional[datetime] = None
+    reviewed_at: datetime | None = None
+    approved_at: datetime | None = None
+    archived_at: datetime | None = None
 
     created_at: datetime
     updated_at: datetime
@@ -130,7 +130,7 @@ class EvidenceItemOut(OrmModel):
 
 class EvidenceItemList(BaseModel):
     total: int
-    items: List[EvidenceItemOut] = Field(default_factory=list)
+    items: list[EvidenceItemOut] = Field(default_factory=list)
 
 
 class EvidenceSuiteSyncRegressionResponse(BaseModel):
@@ -139,15 +139,15 @@ class EvidenceSuiteSyncRegressionResponse(BaseModel):
     created: int = 0
     updated: int = 0
     skipped: int = 0
-    errors: List[Dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class EvidenceSuiteExportV1(BaseModel):
     schema: str = "mimirq.evidence_suite.v1"
     exported_at: str
     dataset_id: UUID
-    suite: Dict[str, Any]
-    items: List[Dict[str, Any]]
+    suite: dict[str, Any]
+    items: list[dict[str, Any]]
 
 
 class EvidenceItemImportResponse(BaseModel):
@@ -156,7 +156,7 @@ class EvidenceItemImportResponse(BaseModel):
     parsed: int = 0
     created: int = 0
     skipped: int = 0
-    errors: List[Dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class EvidenceCoverageBucket(BaseModel):
@@ -166,18 +166,18 @@ class EvidenceCoverageBucket(BaseModel):
 
 
 class EvidenceCoverageHeatmap(BaseModel):
-    x: List[str] = Field(default_factory=list)
-    y: List[str] = Field(default_factory=list)
-    z: List[List[int]] = Field(default_factory=list)
+    x: list[str] = Field(default_factory=list)
+    y: list[str] = Field(default_factory=list)
+    z: list[list[int]] = Field(default_factory=list)
     metric: str = "items"
 
 
 class EvidenceSuiteCoverage(BaseModel):
-    language: List[EvidenceCoverageBucket] = Field(default_factory=list)
-    file_type: List[EvidenceCoverageBucket] = Field(default_factory=list)
-    quality_bucket: List[EvidenceCoverageBucket] = Field(default_factory=list)
-    channel: List[EvidenceCoverageBucket] = Field(default_factory=list)
-    heatmaps: Dict[str, EvidenceCoverageHeatmap] = Field(default_factory=dict)
+    language: list[EvidenceCoverageBucket] = Field(default_factory=list)
+    file_type: list[EvidenceCoverageBucket] = Field(default_factory=list)
+    quality_bucket: list[EvidenceCoverageBucket] = Field(default_factory=list)
+    channel: list[EvidenceCoverageBucket] = Field(default_factory=list)
+    heatmaps: dict[str, EvidenceCoverageHeatmap] = Field(default_factory=dict)
 
 
 class EvidenceThroughputWindow(BaseModel):
@@ -188,9 +188,9 @@ class EvidenceThroughputWindow(BaseModel):
 
 class EvidenceLeadTimeStats(BaseModel):
     count: int = 0
-    p50_sec: Optional[float] = None
-    p90_sec: Optional[float] = None
-    mean_sec: Optional[float] = None
+    p50_sec: float | None = None
+    p90_sec: float | None = None
+    mean_sec: float | None = None
 
 
 class EvidenceSuiteThroughput(BaseModel):
@@ -205,7 +205,7 @@ class EvidenceSuiteDashboardOut(BaseModel):
     generated_at: datetime
     suite_id: UUID
     dataset_id: UUID
-    item_counts: Dict[str, int] = Field(default_factory=dict)
+    item_counts: dict[str, int] = Field(default_factory=dict)
     coverage: EvidenceSuiteCoverage = Field(default_factory=EvidenceSuiteCoverage)
     throughput: EvidenceSuiteThroughput = Field(default_factory=EvidenceSuiteThroughput)
 
@@ -223,13 +223,13 @@ class EvidenceHardcaseCandidateOut(BaseModel):
     cluster_size: int = 0
     in_suite: bool = False
 
-    feedback_ids: List[str] = Field(default_factory=list)
-    request_ids: List[str] = Field(default_factory=list)
+    feedback_ids: list[str] = Field(default_factory=list)
+    request_ids: list[str] = Field(default_factory=list)
 
-    retrieval_config_hash: Optional[str] = None
-    citations_count: Optional[int] = None
-    retrieval_error_kinds: Dict[str, int] = Field(default_factory=dict)
-    rag_config_template: Optional[Dict[str, Any]] = None
+    retrieval_config_hash: str | None = None
+    citations_count: int | None = None
+    retrieval_error_kinds: dict[str, int] = Field(default_factory=dict)
+    rag_config_template: dict[str, Any] | None = None
 
 
 class EvidenceHardcaseDiscoveryOut(BaseModel):
@@ -245,4 +245,4 @@ class EvidenceHardcaseDiscoveryOut(BaseModel):
 
     feedback_scanned: int = 0
     trace_index_size: int = 0
-    candidates: List[EvidenceHardcaseCandidateOut] = Field(default_factory=list)
+    candidates: list[EvidenceHardcaseCandidateOut] = Field(default_factory=list)

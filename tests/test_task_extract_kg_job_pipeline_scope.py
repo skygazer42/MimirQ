@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -74,6 +75,7 @@ async def test_extract_kg_job_scopes_chunks_to_active_pipeline(monkeypatch: pyte
     called: dict[str, object] = {}
 
     async def _fake_extract_events(chunk_ids, tenant_id=None, *, chunks=None, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         called["chunk_ids"] = [str(cid) for cid in chunk_ids]
         called["chunks"] = chunks
         return [{"id": "e1"}]
@@ -116,6 +118,7 @@ async def test_extract_kg_job_can_override_pipeline_hash(monkeypatch: pytest.Mon
     called: dict[str, object] = {}
 
     async def _fake_extract_events(chunk_ids, tenant_id=None, *, chunks=None, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         called["chunk_ids"] = [str(cid) for cid in chunk_ids]
         called["chunks"] = chunks
         return [{"id": "e1"}]

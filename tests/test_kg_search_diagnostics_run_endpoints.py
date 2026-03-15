@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -63,7 +63,7 @@ async def test_list_kg_search_diagnostics_runs_returns_total_and_items(monkeypat
         status="completed",
         params={"x": 1},
         summary={"baseline_hit_rate": 0.5},
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db = _FakeSession(runs=[run])
 
@@ -97,7 +97,7 @@ async def test_get_kg_search_diagnostics_run_returns_items(monkeypatch: pytest.M
         params={"x": 1},
         summary={"baseline_hit_rate": 0.5},
         items=items,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db = _FakeSession(run=run)
 

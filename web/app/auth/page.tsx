@@ -12,7 +12,7 @@ import { startOidcLogin } from '@/lib/oidc'
 import { getOidcPublicProvidersFromEnv } from '@/lib/oidc-providers'
 import { formatRequestId, toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
 import { FullScreenFrame } from '@/components/full-screen-frame'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 
 type Mode = 'login' | 'register'
 
@@ -103,7 +103,7 @@ export default function AuthPage() {
                                         variant="secondary"
                                         className="w-full h-11 rounded-xl justify-between"
                                         disabled={isSubmitting || isSsoSubmitting}
-                                        onClick={() => void handleSso(p.id)}
+                                        onClick={() => detachPromise(handleSso(p.id))}
                                       >
                                         <span className="inline-flex items-center">
                                           {working ? (
@@ -122,7 +122,7 @@ export default function AuthPage() {
                                   variant="secondary"
                                   className="w-full h-11 rounded-xl"
                                   disabled={isSubmitting || isSsoSubmitting}
-                                  onClick={() => void handleSso(oidcProviders[0]?.id || 'default')}
+                                  onClick={() => detachPromise(handleSso(oidcProviders[0]?.id || 'default'))}
                                 >
                                   {isSsoSubmitting ? (
                                     <>

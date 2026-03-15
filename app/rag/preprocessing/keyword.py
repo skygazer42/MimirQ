@@ -14,9 +14,10 @@ import importlib.util
 import os
 import re
 from collections import Counter
+from collections.abc import Iterable
 from operator import itemgetter
 from threading import Lock
-from typing import Any, Dict, Iterable, cast
+from typing import Any, cast
 
 from app.rag.preprocessing.stopwords import STOPWORDS
 
@@ -33,7 +34,7 @@ UnsupportedKeywordProvider = UnsupportedKeywordProviderError
 KeywordProviderUnavailable = KeywordProviderUnavailableError
 
 
-_extractor_cache: Dict[str, object] = {}
+_extractor_cache: dict[str, object] = {}
 _STOPWORDS_CASEFOLD = {str(s).casefold() for s in STOPWORDS if isinstance(s, str) and s.strip()}
 
 

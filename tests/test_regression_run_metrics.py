@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.rag.evaluation.evidence_retrieve_gate import build_retrieval_gate_summary
 
 
@@ -24,7 +26,7 @@ def test_retrieval_gate_summary_includes_parse_quality_slo_fields() -> None:
             },
         ]
     )
-    assert summary["must_recall_pass_rate"] == 0.5
-    assert summary["parse_quality_alert_rate"] == 0.5
-    assert summary["parse_quality_gate_block_rate"] == 0.5
+    assert summary["must_recall_pass_rate"] == pytest.approx(0.5)
+    assert summary["parse_quality_alert_rate"] == pytest.approx(0.5)
+    assert summary["parse_quality_gate_block_rate"] == pytest.approx(0.5)
     assert summary["parse_risk_high_cases"] == 1

@@ -7,7 +7,8 @@ without needing to run connector background tasks.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from app.services.metrics_logger import log_metrics
 

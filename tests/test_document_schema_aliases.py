@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.api.schemas.document import DocumentChunkSchema, DocumentDetail
@@ -16,8 +16,8 @@ def test_document_detail_metadata_reads_doc_metadata_first():
         processing_progress = 0
         chunk_count = 0
         total_characters = 0
-        created_at = datetime.now(timezone.utc)
-        updated_at = datetime.now(timezone.utc)
+        created_at = datetime.now(UTC)
+        updated_at = datetime.now(UTC)
         processed_at = None
         error_message = None
         dataset_id = None

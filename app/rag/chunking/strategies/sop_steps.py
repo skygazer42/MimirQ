@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -28,14 +28,14 @@ class StepHeading:
     end: int
     text: str
     step_no: str
-    title: Optional[str]
+    title: str | None
 
 
 @dataclass(frozen=True)
 class _Section:
     start: int
     end: int
-    heading: Optional[StepHeading]
+    heading: StepHeading | None
 
 
 _RE_EN_STEP = re.compile(
@@ -47,8 +47,8 @@ _RE_CN_STEP = re.compile(
 )
 
 
-def _iter_steps(text: str) -> List[StepHeading]:
-    steps: List[StepHeading] = []
+def _iter_steps(text: str) -> list[StepHeading]:
+    steps: list[StepHeading] = []
     if not text:
         return steps
 
@@ -81,7 +81,7 @@ def _iter_steps(text: str) -> List[StepHeading]:
             )
         )
 
-    deduped: List[StepHeading] = []
+    deduped: list[StepHeading] = []
     last_start = -1
     for s in steps:
         if s.start == last_start:
@@ -91,11 +91,11 @@ def _iter_steps(text: str) -> List[StepHeading]:
     return deduped
 
 
-def _build_sections(text: str, steps: List[StepHeading]) -> List[_Section]:
+def _build_sections(text: str, steps: list[StepHeading]) -> list[_Section]:
     if not steps:
         return [_Section(start=0, end=len(text), heading=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = steps[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -126,8 +126,8 @@ class SOPStepsChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

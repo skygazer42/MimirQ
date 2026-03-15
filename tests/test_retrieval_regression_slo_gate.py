@@ -234,5 +234,5 @@ def test_retrieval_regression_slo_gate_hit_at_20_and_recall(monkeypatch: pytest.
     summary = _build_regression_gate_summary(eval_items)  # noqa: SLF001
 
     # SLO baselines (per dataset): keep these strict to prevent silent recall regressions.
-    assert summary.get("retrieval_hit_at_20") == 1.0
-    assert summary.get("retrieval_recall") == 1.0
+    assert summary.get("retrieval_hit_at_20") == pytest.approx(1.0)
+    assert summary.get("retrieval_recall") == pytest.approx(1.0)

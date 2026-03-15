@@ -3,11 +3,11 @@ Conversation helpers shared by different RAG pipelines.
 """
 
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 def format_history_text(
-    history: Optional[List[Dict[str, Any]]],
+    history: list[dict[str, Any]] | None,
     *,
     window: int,
     empty_placeholder: str = "(No conversation history)",

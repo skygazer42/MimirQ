@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from cryptography.hazmat.primitives import serialization
@@ -39,7 +40,7 @@ def test_jwt_secret_key_fallback_allows_key_rotation(monkeypatch):
     monkeypatch.setattr(settings, "SECRET_KEY_FALLBACKS", old_key, raising=False)
 
     token = jwt.encode(
-        {"sub": "user-rotated", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        {"sub": "user-rotated", "exp": datetime.now(UTC) + timedelta(minutes=5)},
         old_key,
         algorithm="HS256",
     )
@@ -75,7 +76,7 @@ def test_jwt_issuer_audience_enforced_when_configured(monkeypatch):
     client = TestClient(_build_app())
 
     bad_token = jwt.encode(
-        {"sub": "user-1", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        {"sub": "user-1", "exp": datetime.now(UTC) + timedelta(minutes=5)},
         secret_key,
         algorithm="HS256",
     )
@@ -126,7 +127,7 @@ def test_jwt_tenant_claim_header_match_enforced_when_enabled(monkeypatch):
         {
             "sub": "user-tenant-1",
             "tenant_id": tenant_id,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
         },
         secret_key,
         algorithm="HS256",
@@ -172,7 +173,7 @@ def test_jwt_tenant_enforcement_accepts_custom_tenant_header(monkeypatch):
         {
             "sub": "user-tenant-2",
             "tenant_id": tenant_id,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
         },
         secret_key,
         algorithm="HS256",
@@ -225,13 +226,14 @@ def test_jwt_jwks_verification_allows_rs256_tokens(monkeypatch):
     jwk_key["use"] = "sig"
 
     async def _fake_fetch(url: str):
+        await asyncio.sleep(0)  # Sonar S7503
         assert url == jwks_url
         return [dict(jwk_key)]
 
     monkeypatch.setattr(jwt_verify, "_fetch_jwks_keys", _fake_fetch, raising=True)
 
     token = jwt.encode(
-        {"sub": "user-jwks", "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        {"sub": "user-jwks", "exp": datetime.now(UTC) + timedelta(minutes=5)},
         private_pem,
         algorithm="RS256",
         headers={"kid": kid},
@@ -274,6 +276,7 @@ def test_jwt_oidc_discovery_can_resolve_jwks_uri(monkeypatch):
     jwks_url = "https://idp.example/.well-known/jwks.json"
 
     async def _fake_fetch_oidc(url: str):
+        await asyncio.sleep(0)  # Sonar S7503
         assert url == "https://idp.example/.well-known/openid-configuration"
         return {"jwks_uri": jwks_url}
 
@@ -296,6 +299,7 @@ def test_jwt_oidc_discovery_can_resolve_jwks_uri(monkeypatch):
     jwk_key["use"] = "sig"
 
     async def _fake_fetch_jwks(url: str):
+        await asyncio.sleep(0)  # Sonar S7503
         assert url == jwks_url
         return [dict(jwk_key)]
 
@@ -305,7 +309,7 @@ def test_jwt_oidc_discovery_can_resolve_jwks_uri(monkeypatch):
         {
             "sub": "user-oidc",
             "iss": issuer,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
         },
         private_pem,
         algorithm="RS256",

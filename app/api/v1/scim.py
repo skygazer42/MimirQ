@@ -19,8 +19,9 @@ import hashlib
 import hmac
 import ipaddress
 import re
-from datetime import datetime, timezone
-from typing import Annotated, Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -65,7 +66,7 @@ def _dt_iso(dt: Any) -> str | None:
     if not isinstance(dt, datetime):
         return None
     try:
-        utc = dt.astimezone(timezone.utc)
+        utc = dt.astimezone(UTC)
     except Exception:
         utc = dt
     # SCIM examples commonly use RFC3339 with Z.

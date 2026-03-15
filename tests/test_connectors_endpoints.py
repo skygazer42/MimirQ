@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import types
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -42,6 +43,7 @@ if "app.api.v1.documents" not in sys.modules:
                 setattr(self, key, value)
 
     async def _noop_async(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     documents_mod.LocalHtmlIngestRequest = _DummyRequest
@@ -56,6 +58,7 @@ if "app.services.web_crawler" not in sys.modules:
     web_crawler_mod = types.ModuleType("app.services.web_crawler")
 
     async def _crawl_noop(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     web_crawler_mod.crawl_site = _crawl_noop
@@ -79,7 +82,7 @@ class _DummyDB:
         if getattr(obj, "id", None) is None:
             obj.id = uuid.uuid4()
         if getattr(obj, "created_at", None) is None:
-            obj.created_at = datetime.now(timezone.utc)
+            obj.created_at = datetime.now(UTC)
         if getattr(obj, "documents", None) is None:
             obj.documents = []
 
@@ -763,7 +766,7 @@ def test_connectors_runs_list_includes_acl_summary(monkeypatch):  # noqa: ANN001
             self.stats = {}
             self.error_message = None
             self.task_id = None
-            self.created_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
             self.started_at = self.created_at
             self.finished_at = self.created_at
             self.documents = [_DummyRunDoc()]

@@ -5,7 +5,6 @@ All chunking strategies should inherit from BaseChunker.
 """
 
 from abc import ABC, abstractmethod
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -14,7 +13,7 @@ class BaseChunker(ABC):
     """Abstract base class for all chunking strategies."""
 
     @abstractmethod
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         """
         Split documents into chunks.
 

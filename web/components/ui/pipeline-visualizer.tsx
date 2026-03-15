@@ -16,7 +16,7 @@ const STAGES = [
   { id: 'index', label: '索引', icon: Database, threshold: 90 },
 ]
 
-export function PipelineVisualizer({ progress, stage, className }: PipelineVisualizerProps) {
+export function PipelineVisualizer({ progress, stage, className }: Readonly<PipelineVisualizerProps>) {
   // Calculate active stage index based on progress
   const clamped = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0
   const nextIndex = STAGES.findIndex((s) => clamped < s.threshold)
@@ -48,11 +48,19 @@ export function PipelineVisualizer({ progress, stage, className }: PipelineVisua
                       className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center border-2 shadow-sm z-10 transition-transform transition-colors duration-200 ease-out motion-reduce:transition-none",
                         isActive && "scale-110",
-                        isCompleted
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : isActive
-                          ? "bg-background text-primary border-primary ring-4 ring-primary/10"
-                          : "bg-secondary text-muted-foreground border-transparent"
+                        (() => {
+    if (isCompleted) {
+        return "bg-primary text-primary-foreground border-primary";
+    }
+    else {
+        if (isActive) {
+            return "bg-background text-primary border-primary ring-4 ring-primary/10";
+        }
+        else {
+            return "bg-secondary text-muted-foreground border-transparent";
+        }
+    }
+})()
                       )}
                     >
                       {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-4 h-4" />}

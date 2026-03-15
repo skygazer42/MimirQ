@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -234,7 +234,7 @@ def validate_and_normalize_ingestion_policy(policy: IngestionPolicy) -> Ingestio
     return IngestionPolicy(version="1", rules=normalized_rules)
 
 
-def parse_ingestion_policy_from_metadata(metadata: Dict[str, Any]) -> IngestionPolicy | None:
+def parse_ingestion_policy_from_metadata(metadata: dict[str, Any]) -> IngestionPolicy | None:
     if not isinstance(metadata, dict):
         return None
     raw = metadata.get("ingestion_policy")

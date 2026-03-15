@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import sys
 import types
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -86,6 +87,7 @@ def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
                 setattr(self, key, value)
 
     async def _noop_async(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     documents.LocalHtmlIngestRequest = _DummyRequest
@@ -219,11 +221,13 @@ async def test_execute_web_crawl_run_resumes_from_saved_state_cursor(monkeypatch
     )
 
     async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return crawl
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -271,11 +275,13 @@ async def test_execute_web_crawl_run_incremental_skips_unchanged_urls(monkeypatc
     )
 
     async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return crawl
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -334,11 +340,13 @@ async def test_execute_web_crawl_run_incremental_replays_changed_content_same_ur
     )
 
     async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return crawl
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -385,6 +393,7 @@ async def test_execute_web_crawl_run_manifest_token_prefers_etag_last_modified_a
     )
 
     async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return crawl
 
     class _MetaDoc(_DummyDoc):
@@ -396,6 +405,7 @@ async def test_execute_web_crawl_run_manifest_token_prefers_etag_last_modified_a
             }
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         assert str(getattr(body, "url", "")) == "https://example.com/docs/a"
         return _MetaDoc()
 
@@ -442,12 +452,14 @@ async def test_execute_web_crawl_run_incremental_prunes_removed_urls_and_soft_di
     )
 
     async def _fake_crawl_site(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return crawl
 
     ingested_urls: list[str] = []
     disabled_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -510,19 +522,23 @@ async def test_execute_github_repo_run_resumes_from_saved_state_cursor(monkeypat
 
     class _FakeGitHubClient:
         async def __aenter__(self):  # noqa: ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return False
 
         async def get(self, *_a, **_k):  # noqa: ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             return _FakeGitHubResponse()
 
-    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *_args, **_kwargs: _FakeGitHubClient(), raising=True)
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -571,19 +587,23 @@ async def test_execute_github_repo_run_incremental_skips_unchanged_blob_shas(mon
 
     class _FakeGitHubClient:
         async def __aenter__(self):  # noqa: ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return False
 
         async def get(self, *_a, **_k):  # noqa: ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             return _FakeGitHubResponse()
 
-    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *_args, **_kwargs: _FakeGitHubClient(), raising=True)
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -633,19 +653,23 @@ async def test_execute_github_repo_run_incremental_noop_when_manifest_matches(mo
 
     class _FakeGitHubClient:
         async def __aenter__(self):  # noqa: ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return False
 
         async def get(self, *_a, **_k):  # noqa: ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             return _FakeGitHubResponse()
 
-    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *_args, **_kwargs: _FakeGitHubClient(), raising=True)
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -692,19 +716,23 @@ async def test_execute_github_repo_run_incremental_partial_failure_only_advances
 
     class _FakeGitHubClient:
         async def __aenter__(self):  # noqa: ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return False
 
         async def get(self, *_a, **_k):  # noqa: ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             return _FakeGitHubResponse()
 
-    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *_args, **_kwargs: _FakeGitHubClient(), raising=True)
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         url = str(getattr(body, "url", ""))
         ingested_urls.append(url)
         if url.endswith("/a.md"):
@@ -755,19 +783,23 @@ async def test_execute_github_repo_run_incremental_prunes_removed_paths_and_soft
 
     class _FakeGitHubClient:
         async def __aenter__(self):  # noqa: ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return False
 
         async def get(self, *_a, **_k):  # noqa: ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             return _FakeGitHubResponse()
 
-    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *_args, **_kwargs: _FakeGitHubClient(), raising=True)
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -826,19 +858,23 @@ async def test_execute_github_repo_run_does_not_mark_tracked_paths_removed_when_
 
     class _FakeGitHubClient:
         async def __aenter__(self):  # noqa: ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return False
 
         async def get(self, *_a, **_k):  # noqa: ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             return _FakeGitHubResponse()
 
-    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *_args, **_kwargs: _FakeGitHubClient(), raising=True)
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -895,19 +931,23 @@ async def test_execute_github_repo_run_does_not_mark_tracked_paths_removed_when_
 
     class _FakeGitHubClient:
         async def __aenter__(self):  # noqa: ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN204
+            await asyncio.sleep(0)  # Sonar S7503
             return False
 
         async def get(self, *_a, **_k):  # noqa: ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             return _FakeGitHubResponse()
 
-    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *args, **kwargs: _FakeGitHubClient(), raising=True)
+    monkeypatch.setattr(connectors.httpx, "AsyncClient", lambda *_args, **_kwargs: _FakeGitHubClient(), raising=True)
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -951,6 +991,7 @@ async def test_execute_drive_files_run_resumes_from_saved_state_cursor(monkeypat
     monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
 
     async def _fake_drive_sync_token(*, file_id: str, source_url: str, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return f"token-{file_id}-{len(source_url)}"
 
     monkeypatch.setattr(connectors, "_drive_fetch_file_sync_token", _fake_drive_sync_token, raising=True)
@@ -958,6 +999,7 @@ async def test_execute_drive_files_run_resumes_from_saved_state_cursor(monkeypat
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -994,6 +1036,7 @@ async def test_execute_drive_files_run_incremental_skips_unchanged_files(monkeyp
     tokens = {"file-a": "token-a", "file-b": "token-b-new", "file-c": "token-c"}
 
     async def _fake_drive_sync_token(*, file_id: str, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return tokens[file_id]
 
     monkeypatch.setattr(connectors, "_drive_fetch_file_sync_token", _fake_drive_sync_token, raising=True)
@@ -1001,6 +1044,7 @@ async def test_execute_drive_files_run_incremental_skips_unchanged_files(monkeyp
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -1041,9 +1085,11 @@ async def test_execute_drive_files_run_incremental_noop_when_manifest_matches(mo
     monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
 
     async def _fake_drive_sync_token(*, file_id: str, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return {"file-a": "token-a", "file-b": "token-b"}[file_id]
 
     async def _fail_if_ingest_called(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         raise AssertionError("ingest should not be called for noop incremental run")
 
     monkeypatch.setattr(connectors, "_drive_fetch_file_sync_token", _fake_drive_sync_token, raising=True)
@@ -1077,11 +1123,13 @@ async def test_execute_drive_files_run_incremental_partial_failure_only_advances
     monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
 
     async def _fake_drive_sync_token(*, file_id: str, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return {"file-a": "token-a-new", "file-b": "token-b"}[file_id]
 
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         url = str(getattr(body, "url", ""))
         ingested_urls.append(url)
         if url.endswith("/file-a"):
@@ -1120,12 +1168,14 @@ async def test_execute_drive_files_run_incremental_prunes_removed_files_and_soft
     monkeypatch.setattr(connectors, "_drive_direct_download_url", lambda file_id: f"https://drive.local/{file_id}", raising=True)
 
     async def _fake_drive_sync_token(*, file_id: str, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return {"file-a": "token-a", "file-b": "token-b"}[file_id]
 
     ingested_urls: list[str] = []
     disabled_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -1184,6 +1234,7 @@ async def test_execute_minio_bucket_run_resumes_from_saved_state_cursor(monkeypa
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -1220,8 +1271,8 @@ async def test_execute_minio_bucket_run_incremental_noop_does_not_reingest(monke
 
     class _MinioClient:
         def list_objects(self, **_kwargs):  # noqa: ANN001
-            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
-            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
+            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
 
         def presigned_get_object(self, *, object_name, **_kwargs):  # noqa: ANN001
             return f"https://minio.local/{object_name}"
@@ -1231,6 +1282,7 @@ async def test_execute_minio_bucket_run_incremental_noop_does_not_reingest(monke
     monkeypatch.setitem(sys.modules, "app.storage.object.minio", minio_module)
 
     async def _fail_if_called(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         raise AssertionError("ingest should not be called for noop incremental run")
 
     monkeypatch.setattr(connectors, "_ingest_url_upload_request", _fail_if_called, raising=True)
@@ -1265,9 +1317,9 @@ async def test_execute_minio_bucket_run_incremental_skips_unchanged_objects(monk
 
     class _MinioClient:
         def list_objects(self, **_kwargs):  # noqa: ANN001
-            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
-            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
-            yield types.SimpleNamespace(object_name="c.md", etag="etag-c", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
+            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
+            yield types.SimpleNamespace(object_name="c.md", etag="etag-c", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
 
         def presigned_get_object(self, *, object_name, **_kwargs):  # noqa: ANN001
             return f"https://minio.local/{object_name}"
@@ -1279,6 +1331,7 @@ async def test_execute_minio_bucket_run_incremental_skips_unchanged_objects(monk
     ingested_urls: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -1322,8 +1375,8 @@ async def test_execute_minio_bucket_run_incremental_prunes_removed_paths_and_sof
 
     class _MinioClient:
         def list_objects(self, **_kwargs):  # noqa: ANN001
-            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
-            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="a.md", etag="etag-a", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
+            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
 
         def presigned_get_object(self, *, object_name, **_kwargs):  # noqa: ANN001
             return f"https://minio.local/{object_name}"
@@ -1336,6 +1389,7 @@ async def test_execute_minio_bucket_run_incremental_prunes_removed_paths_and_sof
     disabled_refs: list[str] = []
 
     async def _fake_ingest_url_upload_request(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 
@@ -1367,8 +1421,8 @@ async def test_execute_minio_bucket_run_incremental_partial_failure_resumed_run_
 
     class _MinioClient:
         def list_objects(self, **_kwargs):  # noqa: ANN001
-            yield types.SimpleNamespace(object_name="a.md", etag="etag-a-new", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
-            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=timezone.utc))
+            yield types.SimpleNamespace(object_name="a.md", etag="etag-a-new", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
+            yield types.SimpleNamespace(object_name="b.md", etag="etag-b", last_modified=datetime(2026, 3, 10, tzinfo=UTC))
 
         def presigned_get_object(self, *, object_name, **_kwargs):  # noqa: ANN001
             return f"https://minio.local/{object_name}"
@@ -1392,6 +1446,7 @@ async def test_execute_minio_bucket_run_incremental_partial_failure_resumed_run_
     ingested_urls_1: list[str] = []
 
     async def _fake_ingest_url_upload_request_1(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         url = str(getattr(body, "url", ""))
         ingested_urls_1.append(url)
         if url.endswith("/a.md"):
@@ -1424,6 +1479,7 @@ async def test_execute_minio_bucket_run_incremental_partial_failure_resumed_run_
     ingested_urls_2: list[str] = []
 
     async def _fake_ingest_url_upload_request_2(*, body, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         ingested_urls_2.append(str(getattr(body, "url", "")))
         return _DummyDoc()
 

@@ -4,21 +4,8 @@
  */
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
-import {
-  FolderTree,
-  Tag,
-  Plus,
-  X,
-  Search,
-  Sparkles,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Folder,
-  FolderOpen,
-  FileText,
-} from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { FolderTree, Tag, Plus, X, Sparkles, Check, Folder, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -32,14 +19,14 @@ interface DataClassifierProps {
 
 // 预设分类
 const PRESET_CATEGORIES = [
-  { id: 'technical', label: '技术文档', icon: FileText, tone: 'info', keywords: ['api', 'sdk', '开发', '代码', '配置'] },
-  { id: 'product', label: '产品文档', icon: FileText, tone: 'success', keywords: ['产品', '功能', '特性', '版本', '发布'] },
-  { id: 'business', label: '业务文档', icon: Folder, tone: 'primary', keywords: ['业务', '流程', '规范', '制度'] },
-  { id: 'legal', label: '法律文档', icon: Folder, tone: 'destructive', keywords: ['合同', '协议', '法律', '条款', '合规'] },
-  { id: 'hr', label: '人事文档', icon: Folder, tone: 'warning', keywords: ['人事', '招聘', '员工', '薪酬', '培训'] },
-  { id: 'finance', label: '财务文档', icon: Folder, tone: 'warning', keywords: ['财务', '报表', '预算', '发票', '费用'] },
-  { id: 'other', label: '其他', icon: Folder, tone: 'neutral', keywords: [] },
-] as const
+    { id: 'technical', label: '技术文档', icon: FileText, tone: 'info', keywords: ['api', 'sdk', '开发', '代码', '配置'] },
+    { id: 'product', label: '产品文档', icon: FileText, tone: 'success', keywords: ['产品', '功能', '特性', '版本', '发布'] },
+    { id: 'business', label: '业务文档', icon: Folder, tone: 'primary', keywords: ['业务', '流程', '规范', '制度'] },
+    { id: 'legal', label: '法律文档', icon: Folder, tone: 'destructive', keywords: ['合同', '协议', '法律', '条款', '合规'] },
+    { id: 'hr', label: '人事文档', icon: Folder, tone: 'warning', keywords: ['人事', '招聘', '员工', '薪酬', '培训'] },
+    { id: 'finance', label: '财务文档', icon: Folder, tone: 'warning', keywords: ['财务', '报表', '预算', '发票', '费用'] },
+    { id: 'other', label: '其他', icon: Folder, tone: 'neutral', keywords: [] },
+]
 
 type CategoryTone = typeof PRESET_CATEGORIES[number]['tone']
 
@@ -97,7 +84,7 @@ const SUGGESTED_TAGS = [
   '紧急', '长期', '临时',
 ]
 
-export function DataClassifier({ content, initialCategory = null, initialTags = [], onClassify }: DataClassifierProps) {
+export function DataClassifier({ content, initialCategory = null, initialTags = [], onClassify }: Readonly<DataClassifierProps>) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory)
   const [tags, setTags] = useState<string[]>(initialTags)
   const [newTag, setNewTag] = useState('')
@@ -314,11 +301,19 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                     disabled={isAdded}
                     className={cn(
                       "inline-flex items-center gap-1 px-2 py-1 text-xs rounded-lg border transition-colors duration-200 motion-reduce:transition-none",
-                      isAdded
-                        ? "bg-primary/15 text-primary border-primary/20 cursor-default"
-                        : isRecommended
-                          ? "bg-info/10 text-info border-info/20 hover:bg-info/15"
-                          : "bg-muted text-muted-foreground border-border hover:bg-accent/40 hover:text-foreground",
+                      (() => {
+    if (isAdded) {
+        return "bg-primary/15 text-primary border-primary/20 cursor-default";
+    }
+    else {
+        if (isRecommended) {
+            return "bg-info/10 text-info border-info/20 hover:bg-info/15";
+        }
+        else {
+            return "bg-muted text-muted-foreground border-border hover:bg-accent/40 hover:text-foreground";
+        }
+    }
+})(),
                       )}
                   >
                     {isRecommended && !isAdded && <Sparkles className="w-3 h-3" />}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_regression_retrieval_metrics_match_by_doc_pipeline_key_and_chunk_index():
     from app.rag.evaluation.regression_sample_builder import build_regression_sample
@@ -34,9 +36,9 @@ def test_regression_retrieval_metrics_match_by_doc_pipeline_key_and_chunk_index(
     }
 
     _sample_kwargs, meta = build_regression_sample(case, item)
-    assert meta["retrieval_recall"] == 1.0
+    assert meta["retrieval_recall"] == pytest.approx(1.0)
     assert meta["retrieval_hit"] is True
-    assert meta["retrieval_mrr"] == 1.0
+    assert meta["retrieval_mrr"] == pytest.approx(1.0)
     assert meta["retrieval_hit_at_1"] is True
 
 
@@ -68,7 +70,7 @@ def test_regression_retrieval_metrics_match_by_quote_signature_when_ids_change()
     }
 
     _sample_kwargs, meta = build_regression_sample(case, item)
-    assert meta["retrieval_recall"] == 1.0
+    assert meta["retrieval_recall"] == pytest.approx(1.0)
     assert meta["retrieval_hit"] is True
-    assert meta["retrieval_mrr"] == 1.0
+    assert meta["retrieval_mrr"] == pytest.approx(1.0)
 

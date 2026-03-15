@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -77,6 +78,7 @@ async def test_rag_engine_uses_kg_entity_query_expansion(monkeypatch: pytest.Mon
     kg_calls = {"n": 0}
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         kg_calls["n"] += 1
         assert query
         assert tenant_id is not None
@@ -170,6 +172,7 @@ async def test_rag_engine_kg_query_expansion_excludes_skill_entities(monkeypatch
     monkeypatch.setattr(engine_mod, "hybrid_retriever", retriever, raising=True)
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         assert query
         assert tenant_id is not None
         assert document_ids
@@ -239,6 +242,7 @@ def test_langgraph_retrieve_node_uses_kg_entity_query_expansion(monkeypatch: pyt
     kg_calls = {"n": 0}
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         kg_calls["n"] += 1
         assert query
         assert tenant_id is not None

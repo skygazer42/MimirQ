@@ -20,7 +20,7 @@ export function normalizeTag(
   if (!s) return null
   if (s.startsWith('#')) s = s.slice(1).trim()
   // Avoid odd whitespace that breaks pill layout while keeping spaces meaningful.
-  s = s.replace(/\s+/g, ' ')
+  s = s.replaceAll(/\s+/g, ' ')
 
   if (!s) return null
   if (s.length > maxLen) return null
@@ -103,13 +103,13 @@ export function getUserTagsFromDocument(doc: Pick<Document, 'metadata'>): string
   if (!meta || typeof meta !== 'object') return []
   const user = (meta as any).user
   if (!user || typeof user !== 'object') return []
-  return normalizeTags((user as any).tags)
+  return normalizeTags((user).tags)
 }
 
 export function buildTagsPatch(nextTags: string[]): { patch: { tags: string[] | null }; replace: false } {
   const tags = normalizeTags(nextTags)
   return {
-    replace: false as const,
+    replace: false,
     patch: {
       // Use `null` to delete the key in merge mode (backend semantics).
       tags: tags.length ? tags : null,

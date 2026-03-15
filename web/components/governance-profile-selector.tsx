@@ -29,7 +29,7 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function GovernanceProfileSelector({ className, compact, onApplyPatch }: Props) {
+export function GovernanceProfileSelector({ className, compact, onApplyPatch }: Readonly<Props>) {
   const [loading, setLoading] = useState(false)
   const [profiles, setProfiles] = useState<GovernanceProfileSummary[]>([])
   const [selectedRef, setSelectedRef] = useState<string>(SELECT_NONE)
@@ -136,7 +136,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
     }
     try {
       const blob = await pipelineApi.exportGovernanceProfile(selectedRef)
-      const safe = (selectedSummary?.name || selectedRef).replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = (selectedSummary?.name || selectedRef).replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.governance-profile.json`)
     } catch (e) {
       console.error('Failed to export governance profile', e)

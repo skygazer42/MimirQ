@@ -79,7 +79,7 @@ def test_db_row_tag_payload_is_deterministic(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(
         chat_tag_service_module,
         "generate_sql_for_table",
-        lambda **kwargs: 'SELECT * FROM "sheet_0" LIMIT 10',
+        lambda **_kwargs: 'SELECT * FROM "sheet_0" LIMIT 10',
         raising=True,
     )
     monkeypatch.setattr(

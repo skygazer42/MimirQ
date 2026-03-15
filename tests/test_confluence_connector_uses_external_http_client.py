@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -15,6 +17,7 @@ async def test_confluence_request_helper_forces_external_http_client():
 
     class _FakePool:
         async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
+            await asyncio.sleep(0)  # Sonar S7503
             seen["use_external_client"] = kwargs.get("use_external_client")
             return httpx.Response(200, request=httpx.Request(method, url))
 

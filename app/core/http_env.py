@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 DEFAULT_PROXY_ENV_KEYS: tuple[str, ...] = (
     "OPENAI_PROXY",
@@ -26,7 +26,7 @@ DEFAULT_PROXY_ENV_KEYS: tuple[str, ...] = (
 def httpx_trust_env(
     *,
     proxy_env_keys: Iterable[str] = DEFAULT_PROXY_ENV_KEYS,
-    logger: Optional[logging.Logger] = None,
+    logger: logging.Logger | None = None,
 ) -> bool:
     """
     Decide whether httpx should trust environment proxy variables.

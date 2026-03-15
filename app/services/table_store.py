@@ -12,7 +12,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 from app.core.config import settings
@@ -35,7 +34,7 @@ def format_table_id(*, document_id: UUID, sheet_index: int) -> str:
     return f"doc:{str(document_id)}:sheet:{idx}"
 
 
-def parse_table_id(raw: str) -> Optional[TableId]:
+def parse_table_id(raw: str) -> TableId | None:
     s = str(raw or "").strip()
     m = _TABLE_ID_RE.match(s)
     if not m:

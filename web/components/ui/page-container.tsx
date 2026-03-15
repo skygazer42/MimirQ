@@ -13,7 +13,7 @@ const MAX_W: Record<NonNullable<PageContainerProps["size"]>, string> = {
   full: "max-w-none",
 }
 
-export function PageContainer({ children, className, size = "6xl" }: PageContainerProps) {
+export function PageContainer({ children, className, size = "6xl" }: Readonly<PageContainerProps>) {
   return <div className={cn("mx-auto w-full", MAX_W[size], className)}>{children}</div>
 }
 

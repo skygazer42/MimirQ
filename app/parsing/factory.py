@@ -5,7 +5,7 @@ Document parser factory
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.documents import Document
 
@@ -103,18 +103,18 @@ class ParserFactory:
     SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling"}
 
     def __init__(self):
-        self._basic_pdf_parser: Optional[PDFParser] = None
-        self._marker_parser: Optional[MarkerParser] = None
-        self._paddle_vl_parser: Optional[PaddleVLParser] = None
-        self._olmocr_parser: Optional[OlmocrParser] = None
-        self._mineru_parser: Optional[MinerUParser] = None
-        self._deepdoc_parser: Optional[DeepDocParser] = None
-        self._deepseek_ocr_parser: Optional[DeepSeekOCRParser] = None
-        self._etl4llm_parser: Optional[Etl4LlmParser] = None
-        self._markitdown_parser: Optional[MarkItDownParser] = None
-        self._pandoc_parser: Optional[PandocParser] = None
-        self._docling_parser: Optional[DoclingParser] = None
-        self._magicpdf_parser: Optional[MagicPDFParser] = None
+        self._basic_pdf_parser: PDFParser | None = None
+        self._marker_parser: MarkerParser | None = None
+        self._paddle_vl_parser: PaddleVLParser | None = None
+        self._olmocr_parser: OlmocrParser | None = None
+        self._mineru_parser: MinerUParser | None = None
+        self._deepdoc_parser: DeepDocParser | None = None
+        self._deepseek_ocr_parser: DeepSeekOCRParser | None = None
+        self._etl4llm_parser: Etl4LlmParser | None = None
+        self._markitdown_parser: MarkItDownParser | None = None
+        self._pandoc_parser: PandocParser | None = None
+        self._docling_parser: DoclingParser | None = None
+        self._magicpdf_parser: MagicPDFParser | None = None
 
         logger.debug("[pdf] Basic PyMuPDF parser available (lazy)")
         if bool(getattr(settings, "MARKER_ENABLED", False)) and bool((getattr(settings, "MARKER_API_URL", "") or "").strip()):
@@ -157,7 +157,7 @@ class ParserFactory:
         for ext in sorted(self.PLAIN_TEXT_EXTENSIONS):
             self.parsers.setdefault(ext, TextParser())
 
-    def resolve_backend(self, file_ext: str, parser_backend: Optional[str]) -> str:
+    def resolve_backend(self, file_ext: str, parser_backend: str | None) -> str:
         """
         Resolve the actual parser to use based on file type and user selection.
         """
@@ -339,13 +339,13 @@ class ParserFactory:
     def parse(
         self,
         file_path: Path,
-        parser_backend: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        document_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        pdf_quality: Optional[dict[str, Any]] = None,
-        html_xpath: Optional[str] = None,
-    ) -> Tuple[List[Document], str]:
+        parser_backend: str | None = None,
+        dataset_id: str | None = None,
+        document_id: str | None = None,
+        tenant_id: str | None = None,
+        pdf_quality: dict[str, Any] | None = None,
+        html_xpath: str | None = None,
+    ) -> tuple[list[Document], str]:
         """
         Automatically select parser based on file type and return Document list and actual parser name
         """
@@ -441,12 +441,12 @@ class ParserFactory:
         self,
         file_path: Path,
         *,
-        parser_backend: Optional[str] = None,
-        dataset_id: Optional[str] = None,
-        document_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,
-        pdf_quality: Optional[dict[str, Any]] = None,
-        html_xpath: Optional[str] = None,
+        parser_backend: str | None = None,
+        dataset_id: str | None = None,
+        document_id: str | None = None,
+        tenant_id: str | None = None,
+        pdf_quality: dict[str, Any] | None = None,
+        html_xpath: str | None = None,
     ) -> tuple[list[Document], str, dict[str, Any]]:
         """
         Parse a file and return a small provenance payload (best-effort).
@@ -591,8 +591,8 @@ class ParserFactory:
         file_ext: str,
         requested_backend: str,
         error: Exception,
-        html_xpath: Optional[str] = None,
-    ) -> tuple[Optional[List[Document]], str]:
+        html_xpath: str | None = None,
+    ) -> tuple[list[Document] | None, str]:
         """
         Best-effort fallback for brittle converter backends.
 
@@ -847,7 +847,7 @@ class ParserFactory:
         return self._pandoc_parser
 
 
-_PARSER_FACTORY: Optional[ParserFactory] = None
+_PARSER_FACTORY: ParserFactory | None = None
 _PARSER_FACTORY_LOCK = threading.Lock()
 
 

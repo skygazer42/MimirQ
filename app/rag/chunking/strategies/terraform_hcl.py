@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -34,7 +34,7 @@ class _Block:
 class _Section:
     start: int
     end: int
-    block: Optional[_Block]
+    block: _Block | None
 
 
 _BLOCK_START_RE = re.compile(
@@ -43,7 +43,7 @@ _BLOCK_START_RE = re.compile(
 _QUOTED_RE = re.compile(r"\"([^\"]{1,120})\"")
 
 
-def _find_matching_brace(text: str, start: int) -> Optional[int]:
+def _find_matching_brace(text: str, start: int) -> int | None:
     brace_pos = text.find("{", start)
     if brace_pos < 0:
         return None
@@ -72,8 +72,8 @@ def _parse_labels(kind: str, rest: str) -> list[str]:
     return []
 
 
-def _iter_blocks(text: str) -> List[_Block]:
-    blocks: List[_Block] = []
+def _iter_blocks(text: str) -> list[_Block]:
+    blocks: list[_Block] = []
     for m in _BLOCK_START_RE.finditer(text or ""):
         end = _find_matching_brace(text, m.start())
         if end is None:
@@ -85,10 +85,10 @@ def _iter_blocks(text: str) -> List[_Block]:
     return blocks
 
 
-def _build_sections(text: str, blocks: List[_Block]) -> List[_Section]:
+def _build_sections(text: str, blocks: list[_Block]) -> list[_Section]:
     if not blocks:
         return [_Section(start=0, end=len(text), block=None)]
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = blocks[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, block=None))
@@ -124,8 +124,8 @@ class TerraformHCLChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -136,7 +136,7 @@ class TerraformHCLChunker(BaseChunker):
             blocks = _iter_blocks(text)
             sections = _build_sections(text, blocks)
 
-            current: Optional[_Block] = None
+            current: _Block | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():

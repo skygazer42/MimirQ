@@ -296,7 +296,7 @@ class TextRecognizer:
     def resize_norm_img_spin(self, img):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         # return padding_im
-        img = cv2.resize(img, tuple([100, 32]), cv2.INTER_CUBIC)
+        img = cv2.resize(img, (100, 32), cv2.INTER_CUBIC)
         img = np.array(img, np.float32)
         img = np.expand_dims(img, -1)
         img = img.transpose((2, 0, 1))

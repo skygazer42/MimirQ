@@ -26,7 +26,7 @@ def test_observability_config_snapshot_redacts_and_fingerprints(monkeypatch):  #
     from app.core.config import settings
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     # Seed a few settings (including secrets) to validate redaction.
     monkeypatch.setattr(settings, "LLM_API_KEY", "sk-test-1234567890abcdef", raising=False)

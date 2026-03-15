@@ -13,7 +13,7 @@ import uuid
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import unquote, urlparse
 from uuid import UUID
 
@@ -85,45 +85,45 @@ class DocumentCancelledError(Exception):
 class ParseResult:
     resolved_backend: str
     resolved_chunk_strategy: str
-    documents: Optional[List[Document]] = None
-    chunks: Optional[List[Document]] = None
+    documents: list[Document] | None = None
+    chunks: list[Document] | None = None
 
 
 @dataclass(frozen=True)
 class InlineAssetResult:
-    documents: List[Document]
-    uploaded_img_ids: List[str]
+    documents: list[Document]
+    uploaded_img_ids: list[str]
     next_asset_index: int
 
 
 @dataclass(frozen=True)
 class GovernanceResult:
-    items: List[Document]
-    stats: Optional[GovernanceStats] = None
+    items: list[Document]
+    stats: GovernanceStats | None = None
 
 
 @dataclass(frozen=True)
 class ChunkingResult:
-    chunks: List[Document]
+    chunks: list[Document]
 
 
 @dataclass(frozen=True)
 class ChunkDedupResult:
-    chunks: List[Document]
+    chunks: list[Document]
     duplicates_dropped: int
 
 
 @dataclass(frozen=True)
 class ChunkAssetResult:
-    chunks: List[Document]
-    img_ids: List[str]
+    chunks: list[Document]
+    img_ids: list[str]
 
 
 @dataclass(frozen=True)
 class IndexResult:
-    chunk_ids: List[UUID]
+    chunk_ids: list[UUID]
     total_characters: int
-    db_chunks: List[DocumentChunk]
+    db_chunks: list[DocumentChunk]
 
 
 def _chunk_has_asset(meta: dict[str, Any]) -> bool:
@@ -145,7 +145,7 @@ def _is_table_segment_metadata(meta: dict[str, Any] | None) -> bool:
     return content_type == "table" or doc_type == "table"
 
 
-def _uniform_sample_indices(indices: List[int], k: int) -> List[int]:
+def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
     if k <= 0:
         return []
     if k >= len(indices):
@@ -156,7 +156,7 @@ def _uniform_sample_indices(indices: List[int], k: int) -> List[int]:
         return [indices[len(indices) // 2]]
 
     n = len(indices)
-    picked: List[int] = []
+    picked: list[int] = []
     seen: set[int] = set()
     for i in range(k):
         pos = round(i * (n - 1) / (k - 1))
@@ -180,18 +180,18 @@ def _uniform_sample_indices(indices: List[int], k: int) -> List[int]:
 
 
 def _truncate_chunks_for_limit(
-    chunks: List[Document],
+    chunks: list[Document],
     *,
     max_chunks: int,
     strategy: str,
-) -> tuple[List[Document], dict[str, Any]]:
+) -> tuple[list[Document], dict[str, Any]]:
     if max_chunks <= 0 or not chunks or len(chunks) <= max_chunks:
         return chunks, {"strategy": (strategy or "head").strip().lower() or "head", "asset_total": 0, "asset_kept": 0}
 
     strategy_norm = (strategy or "head").strip().lower() or "head"
     total = len(chunks)
 
-    asset_indices: List[int] = []
+    asset_indices: list[int] = []
     for idx, chunk in enumerate(chunks):
         meta = chunk.metadata if isinstance(getattr(chunk, "metadata", None), dict) else {}
         if _chunk_has_asset(meta):
@@ -214,7 +214,7 @@ def _truncate_chunks_for_limit(
         }
 
     # asset_uniform: keep first chunk + assets, then uniformly sample remaining text chunks.
-    must_keep: List[int] = [0]
+    must_keep: list[int] = [0]
     for idx in asset_indices:
         if idx not in must_keep:
             must_keep.append(idx)
@@ -242,7 +242,7 @@ def _truncate_chunks_for_limit(
     }
 
 
-def _ensure_ingest_page_indices(documents: List[Document]) -> None:
+def _ensure_ingest_page_indices(documents: list[Document]) -> None:
     """
     Ensure each parsed Document has a stable per-document index for offset rebasing.
 
@@ -260,10 +260,10 @@ def _ensure_ingest_page_indices(documents: List[Document]) -> None:
 
 def _rebase_chunk_offsets_by_page_index(
     *,
-    documents: List[Document],
-    chunks: List[Document],
+    documents: list[Document],
+    chunks: list[Document],
     join_separator: str = "\n\n",
-) -> List[Document]:
+) -> list[Document]:
     """
     Convert chunk start/end offsets from per-Document coordinates to joined-text coordinates.
 
@@ -289,7 +289,7 @@ def _rebase_chunk_offsets_by_page_index(
         if i < total_docs - 1:
             cursor += sep_len
 
-    out: List[Document] = []
+    out: list[Document] = []
     for c in chunks:
         meta = dict(getattr(c, "metadata", None) or {})
         page_index_raw = meta.get("page_index")
@@ -328,11 +328,11 @@ def _rebase_chunk_offsets_by_page_index(
 
 def _merge_small_chunks_by_min_chars(
     *,
-    documents: List[Document],
-    chunks: List[Document],
+    documents: list[Document],
+    chunks: list[Document],
     min_chars: int,
     join_separator: str = "\n\n",
-) -> List[Document]:
+) -> list[Document]:
     """
     Merge very short text chunks with neighbors to reduce over-fragmentation.
 
@@ -439,7 +439,7 @@ def _merge_small_chunks_by_min_chars(
 
         return Document(page_content=merged_text, metadata=ma, id=getattr(a, "id", None))
 
-    out: List[Document] = []
+    out: list[Document] = []
     pending: Document | None = None
     pending_page: int | None = None
 
@@ -509,9 +509,9 @@ class ParsingStage:
         document_id: UUID,
         tenant_id: UUID,
         dataset_id: str,
-        parser_backend: Optional[str],
-        chunk_strategy: Optional[str],
-        html_xpath: Optional[str] = None,
+        parser_backend: str | None,
+        chunk_strategy: str | None,
+        html_xpath: str | None = None,
     ) -> ParseResult:
         # IMPORTANT: resolve strategy first so defaults (e.g. DEFAULT_CHUNK_STRATEGY)
         # are honored consistently (including integrated_* strategies).
@@ -723,7 +723,7 @@ class InlineAssetStage:
     def run(
         self,
         *,
-        documents: List[Document],
+        documents: list[Document],
         tenant_id: UUID,
         dataset_id: str,
         document_id: UUID,
@@ -735,8 +735,8 @@ class InlineAssetStage:
 
         inline_cache: dict[str, str] = {}
         asset_idx = int(start_index or 0)
-        uploaded: List[str] = []
-        processed_docs: List[Document] = []
+        uploaded: list[str] = []
+        processed_docs: list[Document] = []
 
         for doc in documents:
             content = doc.page_content or ""
@@ -772,9 +772,9 @@ class GovernanceStage:
     def run(
         self,
         *,
-        items: List[Document],
+        items: list[Document],
         enabled: bool,
-        kwargs: Dict[str, Any],
+        kwargs: dict[str, Any],
     ) -> GovernanceResult:
         if not enabled:
             return GovernanceResult(items=items, stats=None)
@@ -792,10 +792,10 @@ class NormalizeStage:
     - Repairs common PDF ligatures
     """
 
-    def run(self, *, items: List[Document]) -> List[Document]:
+    def run(self, *, items: list[Document]) -> list[Document]:
         if not items:
             return items
-        out: List[Document] = []
+        out: list[Document] = []
         for doc in items:
             raw = doc.page_content or ""
             normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
@@ -821,11 +821,11 @@ class ChunkingStage:
     def run(
         self,
         *,
-        documents: List[Document],
+        documents: list[Document],
         chunk_strategy: str,
         chunk_size: int,
         chunk_overlap: int,
-        chunk_strategy_params: Dict[str, Any] | None = None,
+        chunk_strategy_params: dict[str, Any] | None = None,
     ) -> ChunkingResult:
         logger.info("Chunking document into smaller pieces...")
         if chunk_overlap >= chunk_size:
@@ -944,7 +944,7 @@ class ChunkingStage:
 
 
 class ChunkDedupStage:
-    def run(self, *, chunks: List[Document], enabled: bool) -> ChunkDedupResult:
+    def run(self, *, chunks: list[Document], enabled: bool) -> ChunkDedupResult:
         """
         Drop exact-duplicate *text* chunks within a single document.
 
@@ -956,7 +956,7 @@ class ChunkDedupStage:
             return ChunkDedupResult(chunks=chunks, duplicates_dropped=0)
 
         seen: set[str] = set()
-        out: List[Document] = []
+        out: list[Document] = []
         dropped = 0
 
         for c in chunks:
@@ -993,7 +993,7 @@ class ChunkAssetStage:
     def run(
         self,
         *,
-        chunks: List[Document],
+        chunks: list[Document],
         tenant_id: UUID,
         dataset_id: str,
         document_id: UUID,
@@ -1022,8 +1022,8 @@ class ChunkAssetStage:
         max_images = max(0, int(image_ocr_max_images or 0))
         ocr_remaining: int | None = (max_images if max_images > 0 else None)
 
-        img_ids: List[str] = []
-        out_chunks: List[Document] = []
+        img_ids: list[str] = []
+        out_chunks: list[Document] = []
         out_idx = 0
         seen_ocr_hashes: set[str] = set()
 
@@ -1241,11 +1241,11 @@ class IndexStage:
         document_id: UUID,
         file_path: Path,
         default_source: str,
-        chunks: List[Document],
+        chunks: list[Document],
         options,
     ) -> IndexResult:
         logger.info("Persisting chunks and indexes...")
-        records: List[IndexRecord] = []
+        records: list[IndexRecord] = []
         for chunk in chunks:
             meta = dict(chunk.metadata or {})
             content = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
@@ -1337,10 +1337,10 @@ class DocumentProcessorService:
         file_path: Path,
         document_id: UUID,
         tenant_id: UUID,
-        parser_backend: Optional[str] = None,
-        chunk_strategy: Optional[str] = None,
-        db: Optional[Session] = None,
-    ) -> Dict[str, Any]:
+        parser_backend: str | None = None,
+        chunk_strategy: str | None = None,
+        db: Session | None = None,
+    ) -> dict[str, Any]:
         """
         Full document processing flow.
 
@@ -1563,7 +1563,7 @@ class DocumentProcessorService:
 
                     # Persist structured table metadata for listing/preview endpoints.
                     try:
-                        now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+                        now_iso = dt.datetime.now(dt.UTC).isoformat()
                         tables_payload: list[dict[str, Any]] = []
                         for a in assets or []:
                             tables_payload.append(
@@ -1645,7 +1645,7 @@ class DocumentProcessorService:
                     try:
                         next_meta = dict(db_document.doc_metadata or {})
                         if assets:
-                            now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+                            now_iso = dt.datetime.now(dt.UTC).isoformat()
                             tables_payload: list[dict[str, Any]] = []
                             for a in assets or []:
                                 tables_payload.append(
@@ -1738,7 +1738,7 @@ class DocumentProcessorService:
 
             parsed_documents_before_governance: list[Document] | None = None
             parsed_documents: list[Document] | None = None
-            governance_stats: Optional[GovernanceStats] = None
+            governance_stats: GovernanceStats | None = None
             governance_audit_patch: dict[str, Any] | None = None
             resumed_from_checkpoint = False
             parsed: ParseResult | None = None
@@ -3295,7 +3295,7 @@ class DocumentProcessorService:
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Failed to enqueue rebuild indexes (fallback to inline): %s", str(exc)[:200])
 
-            tenant_ids: List[UUID] = []
+            tenant_ids: list[UUID] = []
             q = (
                 db.query(DocumentChunk.tenant_id)
                 .distinct()
@@ -3347,7 +3347,7 @@ class DocumentProcessorService:
         *,
         db_document: DBDocument,
         tenant_id: UUID,
-        documents: List[Document],
+        documents: list[Document],
         pipeline_effective: PipelineEffective,
     ) -> int:
         """
@@ -3422,7 +3422,7 @@ class DocumentProcessorService:
         try:
             next_meta = dict(db_document.doc_metadata or {})
             if assets:
-                now_iso = dt.datetime.utcnow().replace(tzinfo=dt.timezone.utc).isoformat()
+                now_iso = dt.datetime.now(dt.UTC).isoformat()
                 tables_payload: list[dict[str, Any]] = []
                 for idx, a in enumerate(assets or []):
                     source_page = None
@@ -3477,10 +3477,10 @@ class DocumentProcessorService:
     def _apply_table_sidecar_exclusive_routing(
         self,
         *,
-        chunks: List[Document],
+        chunks: list[Document],
         enabled: bool,
         sidecar_tables_imported: int,
-    ) -> tuple[List[Document], dict[str, Any]]:
+    ) -> tuple[list[Document], dict[str, Any]]:
         """
         Optional TAG/RAG separation for parser-emitted table segments.
 
@@ -4090,7 +4090,7 @@ class DocumentProcessorService:
         *,
         tenant_id: UUID,
         document_id: UUID,
-        chunks: List[Document],
+        chunks: list[Document],
         short_threshold: int = 120,
     ) -> None:
         """Persist basic chunking stats (length distribution, duplicates) on the document metadata.
@@ -4242,7 +4242,7 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
 
-    def _extract_img_id_from_content(self, content: str) -> Optional[str]:
+    def _extract_img_id_from_content(self, content: str) -> str | None:
         """
         Extract the first image-url/{img_id} from chunk content to backfill chunk metadata.
         """
@@ -4268,8 +4268,8 @@ class DocumentProcessorService:
         document_id: str,
         cache: dict[str, str],
         start_index: int = 0,
-        origin_path: Optional[Path] = None,
-    ) -> tuple[str, List[str], int]:
+        origin_path: Path | None = None,
+    ) -> tuple[str, list[str], int]:
         """
         Upload image references in Markdown/HTML to MinIO and rewrite to /image-url/{img_id}.
 
@@ -4299,7 +4299,7 @@ class DocumentProcessorService:
         )
         html_pat = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
 
-        found: List[str] = []
+        found: list[str] = []
         seen: set[str] = set()
         for pat in (md_pat, html_pat):
             for m in pat.finditer(markdown_text):
@@ -4319,7 +4319,7 @@ class DocumentProcessorService:
         if max_inline_images and len(found) > max_inline_images:
             found = found[:max_inline_images]
 
-        new_ids: List[str] = []
+        new_ids: list[str] = []
         idx = int(start_index or 0)
         replacements: dict[str, str] = {}
 
@@ -4491,12 +4491,12 @@ class DocumentProcessorService:
 
     def _extract_and_upload_image_to_minio(
         self,
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         tenant_id: str,
         dataset_id: str,
         document_id: str,
         chunk_index: int,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Detect image data in chunk metadata, upload to MinIO, and return img_id.
         After upload, original image data is removed from metadata to save memory.
@@ -4654,7 +4654,7 @@ class DocumentProcessorService:
             logger.error("Image upload failed: %s", e)
             return None
 
-    def _extract_and_save_image(self, metadata: Dict[str, Any], tenant_id: UUID) -> Optional[str]:
+    def _extract_and_save_image(self, metadata: dict[str, Any], tenant_id: UUID) -> str | None:
         """
         Fallback: detect image data in chunk metadata and save to local disk.
         Used when MinIO is disabled.

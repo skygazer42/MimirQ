@@ -16,7 +16,8 @@ import hashlib
 import re
 import threading
 import time
-from typing import Any, Protocol, Sequence
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 import numpy as np
 

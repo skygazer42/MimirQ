@@ -7,7 +7,6 @@ This is a thin aggregation layer over existing dataset profile/precheck/ingestio
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Dict
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -17,7 +16,7 @@ from app.api.schemas.dataset_profile import DatasetProfileSummary
 
 class DatasetHealthIngestionSummary(BaseModel):
     total_documents: int = 0
-    by_status: Dict[str, int] = Field(default_factory=dict)
+    by_status: dict[str, int] = Field(default_factory=dict)
 
     pending: int = 0
     processing: int = 0

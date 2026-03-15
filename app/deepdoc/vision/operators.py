@@ -385,7 +385,7 @@ class DetResizeForTest:
         elif self.limit_type == 'resize_long':
             ratio = float(limit_side_len) / max(h, w)
         else:
-            raise Exception('not support limit type, image ')
+            raise RuntimeError('not support limit type, image ')
         resize_h = int(h * ratio)
         resize_w = int(w * ratio)
 

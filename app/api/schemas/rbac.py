@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -12,12 +11,12 @@ from app.core.constants import UserRoles
 class TenantMemberOut(BaseModel):
     id: UUID
     tenant_id: UUID
-    user_id: Optional[str] = None
+    user_id: str | None = None
     role: str = Field(default=UserRoles.VIEWER, description="owner|admin|auditor|editor|dataset_operator|viewer")
     is_active: bool = True
     is_current: bool = False
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -25,7 +24,7 @@ class TenantMemberOut(BaseModel):
 
 class TenantMemberListResponse(BaseModel):
     total: int = 0
-    items: List[TenantMemberOut] = Field(default_factory=list)
+    items: list[TenantMemberOut] = Field(default_factory=list)
 
 
 class TenantMemberUpdateRequest(BaseModel):

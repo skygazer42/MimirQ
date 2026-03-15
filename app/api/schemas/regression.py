@@ -6,7 +6,7 @@ across prompts/models/retrieval strategies, and persist results for iteration.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -22,59 +22,59 @@ class ReferenceSource(BaseModel):
 
     document_id: UUID = Field(..., description="Evidence document id")
     chunk_id: UUID = Field(..., description="Evidence chunk id")
-    chunk_index: Optional[int] = Field(default=None, ge=0, description="0-based chunk index (optional)")
+    chunk_index: int | None = Field(default=None, ge=0, description="0-based chunk index (optional)")
 
     # Optional audit/debug fields (best-effort; do not gate correctness).
-    page_number: Optional[int] = Field(default=None, ge=1, description="1-based page number (optional)")
-    start_char: Optional[int] = Field(default=None, ge=0, description="Start character offset (optional)")
-    end_char: Optional[int] = Field(default=None, ge=0, description="End character offset (optional)")
-    doc_pipeline_key: Optional[str] = Field(
+    page_number: int | None = Field(default=None, ge=1, description="1-based page number (optional)")
+    start_char: int | None = Field(default=None, ge=0, description="Start character offset (optional)")
+    end_char: int | None = Field(default=None, ge=0, description="End character offset (optional)")
+    doc_pipeline_key: str | None = Field(
         default=None,
         max_length=128,
         description="Composite key `${document_id}:${pipeline_hash}` (optional, for audit/debug)",
     )
-    pipeline_hash: Optional[str] = Field(default=None, max_length=64, description="Chunk pipeline hash (optional)")
-    quote: Optional[str] = Field(
+    pipeline_hash: str | None = Field(default=None, max_length=64, description="Chunk pipeline hash (optional)")
+    quote: str | None = Field(
         default=None,
         max_length=2000,
         description="Evidence excerpt (optional; used as fallback when chunk_id becomes stale)",
     )
-    label: Optional[str] = Field(default=None, max_length=100, description="Human label (optional)")
+    label: str | None = Field(default=None, max_length=100, description="Human label (optional)")
 
 
 class RagasRegressionCaseCreateRequest(BaseModel):
     question: str = Field(..., min_length=1, description="Question (user_input for regression case)")
     dataset_id: UUID = Field(..., description="Dataset ID (required; regression suite is per-dataset)")
-    document_ids: List[UUID] = Field(default_factory=list, description="Document scope (optional, takes priority over dataset_id)")
-    expected_answer: Optional[str] = Field(default=None, description="Expected answer (optional, for manual comparison/supervision)")
-    reference_sources: List[ReferenceSource] = Field(
+    document_ids: list[UUID] = Field(default_factory=list, description="Document scope (optional, takes priority over dataset_id)")
+    expected_answer: str | None = Field(default=None, description="Expected answer (optional, for manual comparison/supervision)")
+    reference_sources: list[ReferenceSource] = Field(
         ...,
         min_length=1,
         description="Human-verified evidence sources (required; at least 1). Each source must include document_id + chunk_id.",
     )
-    tags: List[str] = Field(default_factory=list, description="Tags (optional)")
-    reasoning_hops: List[str] = Field(
+    tags: list[str] = Field(default_factory=list, description="Tags (optional)")
+    reasoning_hops: list[str] = Field(
         default_factory=list,
         description="Optional multi-hop reasoning steps (ordered).",
     )
-    evidence_chain: List[ReferenceSource] = Field(
+    evidence_chain: list[ReferenceSource] = Field(
         default_factory=list,
         description="Optional multi-hop evidence chain (ordered reference sources).",
     )
-    extra: Dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
+    extra: dict[str, Any] = Field(default_factory=dict, description="Extension fields (optional)")
 
 
 class RagasRegressionCasePatchRequest(BaseModel):
     """Patch fields for an existing regression case."""
 
-    question: Optional[str] = Field(default=None, min_length=1)
-    document_ids: Optional[List[UUID]] = None
-    expected_answer: Optional[str] = Field(default=None, description="Set to null to clear expected_answer")
-    reference_sources: Optional[List[ReferenceSource]] = Field(default=None, min_length=1)
-    tags: Optional[List[str]] = None
-    reasoning_hops: Optional[List[str]] = None
-    evidence_chain: Optional[List[ReferenceSource]] = Field(default=None, min_length=1)
-    extra: Optional[Dict[str, Any]] = None
+    question: str | None = Field(default=None, min_length=1)
+    document_ids: list[UUID] | None = None
+    expected_answer: str | None = Field(default=None, description="Set to null to clear expected_answer")
+    reference_sources: list[ReferenceSource] | None = Field(default=None, min_length=1)
+    tags: list[str] | None = None
+    reasoning_hops: list[str] | None = None
+    evidence_chain: list[ReferenceSource] | None = Field(default=None, min_length=1)
+    extra: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _non_empty_patch(self):
@@ -87,11 +87,11 @@ class RagasRegressionCaseBundleItem(BaseModel):
     """Portable regression case payload (no internal ids)."""
 
     question: str = Field(..., min_length=1)
-    expected_answer: Optional[str] = None
-    reference_sources: List[ReferenceSource] = Field(..., min_length=1)
-    tags: List[str] = Field(default_factory=list)
-    reasoning_hops: List[str] = Field(default_factory=list)
-    evidence_chain: List[ReferenceSource] = Field(default_factory=list)
+    expected_answer: str | None = None
+    reference_sources: list[ReferenceSource] = Field(..., min_length=1)
+    tags: list[str] = Field(default_factory=list)
+    reasoning_hops: list[str] = Field(default_factory=list)
+    evidence_chain: list[ReferenceSource] = Field(default_factory=list)
 
 
 class RagasRegressionCaseImportRequest(BaseModel):
@@ -100,7 +100,7 @@ class RagasRegressionCaseImportRequest(BaseModel):
     dataset_id: UUID
     overwrite: bool = False
     max_items: int = Field(default=500, ge=1, le=2000)
-    items: List[RagasRegressionCaseBundleItem] = Field(..., min_length=1)
+    items: list[RagasRegressionCaseBundleItem] = Field(..., min_length=1)
 
 
 class SyntheticHardcaseGenerateRequest(BaseModel):
@@ -113,7 +113,7 @@ class SyntheticHardcaseGenerateRequest(BaseModel):
     """
 
     dataset_id: UUID
-    case_ids: List[UUID] = Field(default_factory=list, description="Optional base case ids (else pick by recency)")
+    case_ids: list[UUID] = Field(default_factory=list, description="Optional base case ids (else pick by recency)")
     max_cases: int = Field(default=50, ge=1, le=200, description="Max base cases to use")
     hardcases_per_case: int = Field(default=4, ge=0, le=20, description="Max synthetic hardcases per base case")
     max_created: int = Field(default=500, ge=0, le=5000, description="Global cap on created cases")
@@ -129,36 +129,36 @@ class SyntheticHardcaseGenerateResponse(BaseModel):
     hardcases_generated: int = 0
     created: int = 0
     skipped_duplicates: int = 0
-    created_case_ids: List[UUID] = Field(default_factory=list)
-    errors: List[Dict[str, Any]] = Field(default_factory=list)
+    created_case_ids: list[UUID] = Field(default_factory=list)
+    errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class RagasRegressionCaseOut(OrmModel):
     id: UUID
     tenant_id: UUID
-    dataset_id: Optional[UUID] = None
-    document_ids: List[UUID] = Field(default_factory=list)
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
     question: str
-    expected_answer: Optional[str] = None
-    reference_sources: List[ReferenceSource] = Field(default_factory=list)
-    tags: List[str] = Field(default_factory=list)
-    reasoning_hops: List[str] = Field(default_factory=list)
-    evidence_chain: List[ReferenceSource] = Field(default_factory=list)
-    extra: Dict[str, Any] = Field(default_factory=dict)
-    created_by: Optional[str] = None
+    expected_answer: str | None = None
+    reference_sources: list[ReferenceSource] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    reasoning_hops: list[str] = Field(default_factory=list)
+    evidence_chain: list[ReferenceSource] = Field(default_factory=list)
+    extra: dict[str, Any] = Field(default_factory=dict)
+    created_by: str | None = None
     created_at: datetime
     updated_at: datetime
 
 
 class RagasRegressionCaseList(BaseModel):
     total: int
-    items: List[RagasRegressionCaseOut]
+    items: list[RagasRegressionCaseOut]
 
 
 class RagasRegressionRunCreateRequest(BaseModel):
-    case_ids: List[UUID] = Field(default_factory=list, description="Case IDs to run (if empty, select by filter criteria)")
+    case_ids: list[UUID] = Field(default_factory=list, description="Case IDs to run (if empty, select by filter criteria)")
     dataset_id: UUID = Field(..., description="Run cases under this dataset (required)")
-    metrics: List[str] = Field(
+    metrics: list[str] = Field(
         default_factory=lambda: ["faithfulness", "response_relevancy"],
         description="RAGAS metrics list",
     )
@@ -166,25 +166,25 @@ class RagasRegressionRunCreateRequest(BaseModel):
     max_cases: int = Field(default=50, ge=1, le=500, description="Max cases to run (default: 50)")
 
     # Retrieval config (aligned with chat.rag_config for comparisons).
-    retrieval_profile: Optional[str] = Field(
+    retrieval_profile: str | None = Field(
         default=None,
         description="Optional retrieval preset: recall20 | recall50 | coverage80 | hybrid_ce",
     )
-    enable_query_alias_expansion: Optional[bool] = Field(
+    enable_query_alias_expansion: bool | None = Field(
         default=None,
         description="Enable bounded alias expansion when dataset/query aliases exist",
     )
-    query_alias_max_queries: Optional[int] = Field(default=None, ge=0, le=20)
-    enable_multi_query: Optional[bool] = Field(default=None, description="Enable bounded LLM multi-query expansion")
-    multi_query_count: Optional[int] = Field(default=None, ge=1, le=8)
-    multi_query_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
-    multi_query_max_chars: Optional[int] = Field(default=None, ge=0, le=2000)
-    enable_query_rewrite: Optional[bool] = Field(default=None, description="Enable bounded query rewrite before retrieval")
-    query_rewrite_strategy: Optional[str] = Field(default=None, description="Override query rewrite strategy id")
-    query_rewrite_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
-    query_rewrite_max_chars: Optional[int] = Field(default=None, ge=0, le=2000)
-    sparse_retrieval_enabled: Optional[bool] = Field(default=None, description="Enable sparse retrieval channel")
-    sparse_retrieval_provider: Optional[str] = Field(default=None, description="Sparse provider: deterministic | splade")
+    query_alias_max_queries: int | None = Field(default=None, ge=0, le=20)
+    enable_multi_query: bool | None = Field(default=None, description="Enable bounded LLM multi-query expansion")
+    multi_query_count: int | None = Field(default=None, ge=1, le=8)
+    multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
+    enable_query_rewrite: bool | None = Field(default=None, description="Enable bounded query rewrite before retrieval")
+    query_rewrite_strategy: str | None = Field(default=None, description="Override query rewrite strategy id")
+    query_rewrite_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    query_rewrite_max_chars: int | None = Field(default=None, ge=0, le=2000)
+    sparse_retrieval_enabled: bool | None = Field(default=None, description="Enable sparse retrieval channel")
+    sparse_retrieval_provider: str | None = Field(default=None, description="Sparse provider: deterministic | splade")
     # NOTE: default to 20 so retrieval-only gates can enforce Recall@20/Hit@20 without
     # requiring callers (CI scripts) to pass explicit rag_params.
     top_k: int = Field(default=20, ge=1, le=50)
@@ -193,10 +193,10 @@ class RagasRegressionRunCreateRequest(BaseModel):
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
     retrieval_mode: str = Field(default="hybrid", description="hybrid | vector | keyword | mmr")
     alpha: float = Field(default=0.6, ge=0.0, le=1.0)
-    fusion_strategy: Optional[str] = Field(default=None, description="linear | rrf | budgeted_rrf | weighted")
-    fusion_budgets: Optional[Dict[str, int]] = Field(default=None)
-    fusion_min_scores: Optional[Dict[str, float]] = Field(default=None)
-    fusion_weights: Optional[Dict[str, float]] = Field(default=None)
+    fusion_strategy: str | None = Field(default=None, description="linear | rrf | budgeted_rrf | weighted")
+    fusion_budgets: dict[str, int] | None = Field(default=None)
+    fusion_min_scores: dict[str, float] | None = Field(default=None)
+    fusion_weights: dict[str, float] | None = Field(default=None)
     enable_weight_rerank: bool = Field(default=True)
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
     keyword_weight: float = Field(default=0.4, ge=0.0, le=1.0)
@@ -219,9 +219,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
     )
 
     # PromptTemplate selection (optional; for version/A-B comparison).
-    prompt_template_id: Optional[UUID] = None
-    prompt_template_key: Optional[str] = None
-    prompt_ab_experiment_key: Optional[str] = None
+    prompt_template_id: UUID | None = None
+    prompt_template_key: str | None = None
+    prompt_ab_experiment_key: str | None = None
 
     @field_validator("retrieval_mode", mode="before")
     @classmethod
@@ -230,7 +230,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
 
     @field_validator("fusion_strategy", mode="before")
     @classmethod
-    def _normalize_fusion_strategy(cls, v: Any) -> Optional[str]:
+    def _normalize_fusion_strategy(cls, v: Any) -> str | None:
         raw = str(v or "").strip().lower()
         if not raw:
             return None
@@ -246,13 +246,13 @@ class RagasRegressionRunCreateRequest(BaseModel):
 
     @field_validator("query_rewrite_strategy", mode="before")
     @classmethod
-    def _normalize_query_rewrite_strategy(cls, v: Any) -> Optional[str]:
+    def _normalize_query_rewrite_strategy(cls, v: Any) -> str | None:
         raw = str(v or "").strip()
         return raw or None
 
     @field_validator("sparse_retrieval_provider", mode="before")
     @classmethod
-    def _normalize_sparse_retrieval_provider(cls, v: Any) -> Optional[str]:
+    def _normalize_sparse_retrieval_provider(cls, v: Any) -> str | None:
         raw = str(v or "").strip().lower()
         if not raw:
             return None
@@ -303,16 +303,16 @@ class RagasRegressionRunCreateRequest(BaseModel):
 class RagasRegressionRunSchema(OrmModel):
     id: UUID
     tenant_id: UUID
-    account_id: Optional[str] = None
-    dataset_id: Optional[UUID] = None
+    account_id: str | None = None
+    dataset_id: UUID | None = None
     status: str
-    metrics: List[str] = Field(default_factory=list)
-    params: Dict[str, Any] = Field(default_factory=dict)
-    summary: Dict[str, Any] = Field(default_factory=dict)
-    error_message: Optional[str] = None
+    metrics: list[str] = Field(default_factory=list)
+    params: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class RagasRegressionItemSchema(OrmModel):
@@ -321,43 +321,43 @@ class RagasRegressionItemSchema(OrmModel):
     case_id: UUID
     question: str
     response: str
-    retrieved_contexts: Optional[List[str]] = None
-    citations: List[Dict[str, Any]] = Field(default_factory=list)
-    scores: Dict[str, Any] = Field(default_factory=dict)
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    retrieved_contexts: list[str] | None = None
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    scores: dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
 class RagasRegressionRunDetail(BaseModel):
     run: RagasRegressionRunSchema
-    items: List[RagasRegressionItemSchema] = Field(default_factory=list)
+    items: list[RagasRegressionItemSchema] = Field(default_factory=list)
 
 
 class RagasRegressionRunList(BaseModel):
     total: int
-    items: List[RagasRegressionRunSchema]
+    items: list[RagasRegressionRunSchema]
 
 
 class RagasRegressionRunLeaderboardItem(BaseModel):
     run_id: UUID
     status: str
-    created_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    finished_at: datetime | None = None
     metric_key: str
-    metric_value: Optional[float] = None
-    retrieval_config_hash: Optional[str] = None
+    metric_value: float | None = None
+    retrieval_config_hash: str | None = None
 
 
 class RagasRegressionRunLeaderboardResponse(BaseModel):
     metric_key: str
-    items: List[RagasRegressionRunLeaderboardItem] = Field(default_factory=list)
+    items: list[RagasRegressionRunLeaderboardItem] = Field(default_factory=list)
 
 
 class RegressionRunMetricDiff(BaseModel):
     key: str
     before: Any = None
     after: Any = None
-    delta: Optional[float] = None
+    delta: float | None = None
 
 
 class RegressionRunDiffScore(BaseModel):
@@ -370,36 +370,36 @@ class RegressionRunDiffScore(BaseModel):
     """
 
     version: str = "1"
-    used_metric_keys: List[str] = Field(default_factory=list)
-    weights: Dict[str, float] = Field(default_factory=dict)
+    used_metric_keys: list[str] = Field(default_factory=list)
+    weights: dict[str, float] = Field(default_factory=dict)
 
-    base_score: Optional[float] = None
-    target_score: Optional[float] = None
-    delta: Optional[float] = None
+    base_score: float | None = None
+    target_score: float | None = None
+    delta: float | None = None
 
-    base_metrics: Dict[str, float] = Field(default_factory=dict)
-    target_metrics: Dict[str, float] = Field(default_factory=dict)
+    base_metrics: dict[str, float] = Field(default_factory=dict)
+    target_metrics: dict[str, float] = Field(default_factory=dict)
 
 
 class RegressionRunSliceBucketDiff(BaseModel):
     key: str
     items_before: int = 0
     items_after: int = 0
-    metrics: List[RegressionRunMetricDiff] = Field(default_factory=list)
+    metrics: list[RegressionRunMetricDiff] = Field(default_factory=list)
 
 
 class RegressionRunSliceDiff(BaseModel):
     truncated_before: bool = False
     truncated_after: bool = False
-    buckets: List[RegressionRunSliceBucketDiff] = Field(default_factory=list)
+    buckets: list[RegressionRunSliceBucketDiff] = Field(default_factory=list)
 
 
 class RagasRegressionRunDiffResponse(BaseModel):
     base_run_id: UUID
     target_run_id: UUID
     generated_at: datetime
-    base_params: Dict[str, Any] = Field(default_factory=dict)
-    target_params: Dict[str, Any] = Field(default_factory=dict)
-    metric_diffs: List[RegressionRunMetricDiff] = Field(default_factory=list)
-    diff_score: Optional[RegressionRunDiffScore] = None
-    slice_diffs: Dict[str, RegressionRunSliceDiff] = Field(default_factory=dict)
+    base_params: dict[str, Any] = Field(default_factory=dict)
+    target_params: dict[str, Any] = Field(default_factory=dict)
+    metric_diffs: list[RegressionRunMetricDiff] = Field(default_factory=list)
+    diff_score: RegressionRunDiffScore | None = None
+    slice_diffs: dict[str, RegressionRunSliceDiff] = Field(default_factory=dict)

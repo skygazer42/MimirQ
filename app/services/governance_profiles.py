@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 from pydantic import ValidationError
 
@@ -110,9 +109,9 @@ class BuiltinGovernanceProfile:
 
 def _p(
     *,
-    input_formats: List[str],
-    pipeline_patch: Dict,
-    regex_rules: Optional[List[Dict]] = None,
+    input_formats: list[str],
+    pipeline_patch: dict,
+    regex_rules: list[dict] | None = None,
 ) -> GovernanceProfilePayload:
     return GovernanceProfilePayload(
         version="1",
@@ -122,7 +121,7 @@ def _p(
     )
 
 
-def get_builtin_governance_profiles() -> List[BuiltinGovernanceProfile]:
+def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
     """
     Built-in profiles cover the most common ingestion sources:
     - Web HTML -> Markdown (boilerplate heavy)

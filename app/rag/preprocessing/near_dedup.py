@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator, Optional
 
 from app.rag.preprocessing.simhash import hamming_distance64
 
@@ -30,7 +30,7 @@ class NearDedupMatch:
     distance: int
 
 
-def _safe_int_hex(value: str) -> Optional[int]:
+def _safe_int_hex(value: str) -> int | None:
     try:
         return int(str(value).strip(), 16)
     except Exception:
@@ -124,7 +124,7 @@ def find_near_duplicate(
     simhash64_hex: str,
     hamming_threshold: int,
     max_bucket_size: int,
-) -> Optional[NearDedupMatch]:
+) -> NearDedupMatch | None:
     target_int = _safe_int_hex(simhash64_hex)
     if target_int is None:
         return None

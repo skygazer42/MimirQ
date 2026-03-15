@@ -6,7 +6,7 @@ Switch via VECTOR_BACKEND to keep the retrieval path centralized.
 import logging
 import math
 import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -34,7 +34,6 @@ def _get_faiss_cls():
         # only probe `_get_faiss_cls`). Import `faiss` eagerly so callers can reliably
         # detect availability and skip gracefully when the binary is broken (e.g. numpy ABI mismatch).
         import faiss  # noqa: F401
-
         from langchain_community.vectorstores import FAISS
 
         _FAISS_CLS = FAISS
@@ -80,7 +79,7 @@ def _get_chroma_cls():
             ) from exc2
 
 
-def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
+def _match_metadata_filter(meta: dict[str, Any], filter_spec: dict[str, Any]) -> bool:
     """Metadata filter matcher (supports operators)."""
     return match_metadata_filter(meta, filter_spec)
 
@@ -88,7 +87,7 @@ def _match_metadata_filter(meta: Dict[str, Any], filter_spec: Dict[str, Any]) ->
 class BaseVectorStore:
     """Unified interface for future FAISS/Chroma/Memory extensions."""
 
-    def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
         raise NotImplementedError
 
     def search(
@@ -96,21 +95,21 @@ class BaseVectorStore:
         query: str,
         top_k: int,
         score_threshold: float,
-        document_ids: Optional[List[UUID]],
-        tenant_id: Optional[UUID],
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None,
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         raise NotImplementedError
 
-    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         raise NotImplementedError
 
     def delete_by_document_id_and_filter(
         self,
         *,
         document_id: UUID,
-        tenant_id: Optional[UUID],
-        metadata_filter: Dict[str, Any],
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any],
     ) -> None:
         """
         Best-effort selective delete for a single document.
@@ -124,7 +123,7 @@ class BaseVectorStore:
 class MilvusVectorStore(BaseVectorStore):
     """Milvus backend wrapper."""
 
-    def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
         return milvus_store.add_documents(docs, document_id, tenant_id)
 
     def search(
@@ -132,10 +131,10 @@ class MilvusVectorStore(BaseVectorStore):
         query: str,
         top_k: int,
         score_threshold: float,
-        document_ids: Optional[List[UUID]],
-        tenant_id: Optional[UUID],
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None,
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         return milvus_store.search(
             query=query,
             top_k=top_k,
@@ -145,15 +144,15 @@ class MilvusVectorStore(BaseVectorStore):
             metadata_filter=metadata_filter,
         )
 
-    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         milvus_store.delete_by_document_id(document_id, tenant_id=tenant_id)
 
     def delete_by_document_id_and_filter(
         self,
         *,
         document_id: UUID,
-        tenant_id: Optional[UUID],
-        metadata_filter: Dict[str, Any],
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any],
     ) -> None:
         milvus_store.delete_by_document_id_and_filter(document_id=document_id, tenant_id=tenant_id, metadata_filter=metadata_filter)
 
@@ -161,7 +160,7 @@ class MilvusVectorStore(BaseVectorStore):
 class StubVectorStore(BaseVectorStore):
     """Placeholder implementation for future backends."""
 
-    def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
         raise RuntimeError("Vector backend not implemented")
 
     def search(
@@ -169,21 +168,21 @@ class StubVectorStore(BaseVectorStore):
         query: str,
         top_k: int,
         score_threshold: float,
-        document_ids: Optional[List[UUID]],
-        tenant_id: Optional[UUID],
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None,
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         return []
 
-    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         return
 
     def delete_by_document_id_and_filter(
         self,
         *,
         document_id: UUID,
-        tenant_id: Optional[UUID],
-        metadata_filter: Dict[str, Any],
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any],
     ) -> None:
         raise NotImplementedError("Vector backend not implemented")
 
@@ -208,9 +207,9 @@ class MemoryVectorStore(BaseVectorStore):
             base_url=base_url or "",
             dimension=None,
         )
-        self.storage: List[Tuple[List[float], Dict[str, Any]]] = []
+        self.storage: list[tuple[list[float], dict[str, Any]]] = []
 
-    def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
         texts = [d.get("content", "") for d in docs]
         vectors = self.emb.embed_documents(texts)
         for vec, doc in zip(vectors, docs, strict=False):
@@ -222,7 +221,7 @@ class MemoryVectorStore(BaseVectorStore):
             meta.setdefault("content", doc.get("content", ""))
             self.storage.append((vec, meta))
         # In-memory mode uses placeholder IDs instead of real vector IDs.
-        ids: List[str] = []
+        ids: list[str] = []
         for i, d in enumerate(docs):
             meta = dict(d.get("metadata") or {})
             cid = meta.get("chunk_id")
@@ -234,22 +233,22 @@ class MemoryVectorStore(BaseVectorStore):
         query: str,
         top_k: int,
         score_threshold: float,
-        document_ids: Optional[List[UUID]],
-        tenant_id: Optional[UUID],
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None,
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         if not self.storage:
             return []
         qvec = self.emb.embed_query(query)
         allowed_ids = {str(did) for did in document_ids} if document_ids else None
         allowed_tenant = str(tenant_id) if tenant_id else None
 
-        def cosine(a: List[float], b: List[float]) -> float:
+        def cosine(a: list[float], b: list[float]) -> float:
             num = sum(x * y for x, y in zip(a, b, strict=False))
             denom = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
             return num / denom if denom else 0.0
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for vec, meta in self.storage:
             if allowed_tenant and meta.get("tenant_id") != allowed_tenant:
                 continue
@@ -272,7 +271,7 @@ class MemoryVectorStore(BaseVectorStore):
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:top_k]
 
-    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         doc_id = str(document_id)
         tenant = str(tenant_id) if tenant_id else None
         self.storage = [
@@ -285,8 +284,8 @@ class MemoryVectorStore(BaseVectorStore):
         self,
         *,
         document_id: UUID,
-        tenant_id: Optional[UUID],
-        metadata_filter: Dict[str, Any],
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any],
     ) -> None:
         doc_id = str(document_id)
         tenant = str(tenant_id) if tenant_id else None
@@ -322,14 +321,14 @@ class FAISSVectorStore(BaseVectorStore):
             base_url=base_url or "",
             dimension=None,
         )
-        self.store_by_tenant: Dict[str, Any] = {}
+        self.store_by_tenant: dict[str, Any] = {}
         self.persist_path = settings.FAISS_STORE_PATH
         self.allow_dangerous_deserialization = bool(
             getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False)
         )
         self._warned_dangerous_deserialization = False
 
-    def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Optional[Any]]:
+    def _get_store(self, tenant_id: UUID | None) -> tuple[str, Any | None]:
         key = str(tenant_id or settings.DEFAULT_TENANT_ID)
         store = self.store_by_tenant.get(key)
         # If a persistence path exists and memory isn't loaded, try loading it.
@@ -356,7 +355,7 @@ class FAISSVectorStore(BaseVectorStore):
                 store = None
         return key, store
 
-    def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
         texts = [d.get("content", "") for d in docs]
         metadatas = []
         ids = []
@@ -393,16 +392,16 @@ class FAISSVectorStore(BaseVectorStore):
         query: str,
         top_k: int,
         score_threshold: float,
-        document_ids: Optional[List[UUID]],
-        tenant_id: Optional[UUID],
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None,
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         key, store = self._get_store(tenant_id)
         if store is None:
             return []
         allowed = {str(did) for did in document_ids} if document_ids else None
         results = store.similarity_search_with_score(query, k=top_k * 2)
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for doc, score in results:
             meta = doc.metadata or {}
             if allowed and meta.get("document_id") not in allowed:
@@ -424,7 +423,7 @@ class FAISSVectorStore(BaseVectorStore):
         out.sort(key=lambda x: x["score"], reverse=True)
         return out[:top_k]
 
-    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         key, store = self._get_store(tenant_id)
         if store is None:
             return
@@ -452,8 +451,8 @@ class FAISSVectorStore(BaseVectorStore):
         self,
         *,
         document_id: UUID,
-        tenant_id: Optional[UUID],
-        metadata_filter: Dict[str, Any],
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any],
     ) -> None:
         """
         Best-effort selective delete for FAISS.
@@ -518,21 +517,21 @@ class ChromaVectorStore(BaseVectorStore):
         self.persist_path = str(settings.CHROMA_PERSIST_PATH or "").strip()
         if self.persist_path:
             os.makedirs(self.persist_path, exist_ok=True)
-        self.store_by_tenant: Dict[str, Any] = {}
+        self.store_by_tenant: dict[str, Any] = {}
 
-    def _get_store(self, tenant_id: Optional[UUID]) -> Tuple[str, Any]:
+    def _get_store(self, tenant_id: UUID | None) -> tuple[str, Any]:
         key = str(tenant_id or settings.DEFAULT_TENANT_ID)
         store = self.store_by_tenant.get(key)
         if store is None:
             chroma_cls = _get_chroma_cls()
-            kwargs: Dict[str, Any] = {"collection_name": key, "embedding_function": self.emb}
+            kwargs: dict[str, Any] = {"collection_name": key, "embedding_function": self.emb}
             if self.persist_path:
                 kwargs["persist_directory"] = self.persist_path
             store = chroma_cls(**kwargs)
             self.store_by_tenant[key] = store
         return key, store
 
-    def add_documents(self, docs: List[Dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
         texts = [d.get("content", "") for d in docs]
         metadatas = []
         ids = []
@@ -558,14 +557,14 @@ class ChromaVectorStore(BaseVectorStore):
         query: str,
         top_k: int,
         score_threshold: float,
-        document_ids: Optional[List[UUID]],
-        tenant_id: Optional[UUID],
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None,
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         _, store = self._get_store(tenant_id)
         allowed = {str(did) for did in document_ids} if document_ids else None
         results = store.similarity_search_with_score(query, k=top_k * 2)
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for doc, score in results:
             meta = doc.metadata or {}
             if allowed and meta.get("document_id") not in allowed:
@@ -587,7 +586,7 @@ class ChromaVectorStore(BaseVectorStore):
         out.sort(key=lambda x: x["score"], reverse=True)
         return out[:top_k]
 
-    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         _, store = self._get_store(tenant_id)
         target = str(document_id)
         try:
@@ -601,8 +600,8 @@ class ChromaVectorStore(BaseVectorStore):
         self,
         *,
         document_id: UUID,
-        tenant_id: Optional[UUID],
-        metadata_filter: Dict[str, Any],
+        tenant_id: UUID | None,
+        metadata_filter: dict[str, Any],
     ) -> None:
         if not metadata_filter or not isinstance(metadata_filter, dict):
             return self.delete_by_document_id(document_id, tenant_id=tenant_id)
@@ -632,7 +631,7 @@ class ChromaVectorStore(BaseVectorStore):
             raise NotImplementedError("Selective delete is not supported for Chroma backend") from exc
 
 
-_VECTOR_STORE_SINGLETONS: Dict[str, BaseVectorStore] = {}
+_VECTOR_STORE_SINGLETONS: dict[str, BaseVectorStore] = {}
 
 
 def get_vector_store() -> BaseVectorStore:

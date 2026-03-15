@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -49,7 +49,7 @@ def test_retrieval_governance_policy_prefer_authority_reorders(monkeypatch: pyte
     # Base score prefers `a`, authority should boost `b` above it.
     results = [_mk_result(a, 0.5), _mk_result(b, 0.49)]
 
-    now = datetime(2026, 3, 3, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 3, tzinfo=UTC)
     feature_rows = [
         (a, 10, now - timedelta(days=30), now - timedelta(days=30)),
         (b, 90, now - timedelta(days=30), now - timedelta(days=30)),
@@ -105,7 +105,7 @@ def test_retrieval_governance_policy_prefer_latest_reorders(monkeypatch: pytest.
     # Same base score; latest should prefer `fresh`.
     results = [_mk_result(stale, 0.5), _mk_result(fresh, 0.5)]
 
-    now = datetime(2026, 3, 3, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 3, tzinfo=UTC)
     feature_rows = [
         (fresh, 0, now, now),
         (stale, 0, now - timedelta(days=200), now - timedelta(days=200)),

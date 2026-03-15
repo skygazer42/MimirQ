@@ -13,13 +13,13 @@ export function RouteScrollReset() {
 
   useEffect(() => {
     // Wait a tick so the next page content is mounted.
-    const id = window.requestAnimationFrame(() => {
-      const nodes = document.querySelectorAll<HTMLElement>('[data-page-scroll-container=\"true\"]')
+    const id = globalThis.window.requestAnimationFrame(() => {
+      const nodes = document.querySelectorAll<HTMLElement>('[data-page-scroll-container="true"]')
       for (const el of nodes) {
         el.scrollTo({ top: 0, left: 0, behavior: 'auto' })
       }
     })
-    return () => window.cancelAnimationFrame(id)
+    return () => globalThis.window.cancelAnimationFrame(id)
   }, [pathname])
 
   return null

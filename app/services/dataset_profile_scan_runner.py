@@ -13,9 +13,9 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func
@@ -36,7 +36,7 @@ logger = get_logger("services.dataset_profile_scan")
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _safe_hash_file(path: Path, *, algo: str = "sha256", chunk_size: int = 1024 * 1024) -> str:
@@ -95,7 +95,7 @@ def _ensure_local_path(
     dataset_id: UUID,
     document: DBDocument,
     temp_root: Path,
-) -> tuple[Path, Optional[Path]]:
+) -> tuple[Path, Path | None]:
     """
     Return (local_path, temp_path_if_downloaded).
     """
@@ -139,7 +139,7 @@ def _backfill_parse_quality(meta: dict[str, Any]) -> bool:
     return True
 
 
-def _backfill_page_count(meta: dict[str, Any], parsed: Optional[dict[str, Any]] = None) -> bool:
+def _backfill_page_count(meta: dict[str, Any], parsed: dict[str, Any] | None = None) -> bool:
     """
     Best-effort: persist a stable page_count when missing.
 

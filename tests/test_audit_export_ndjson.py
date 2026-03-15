@@ -4,7 +4,7 @@ import gzip
 import json
 import operator
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -129,7 +129,7 @@ def _parse_ndjson(text: str) -> list[dict]:  # noqa: ANN001
 
 def test_audit_export_ndjson_sanitizes_sensitive_details_by_default(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     item = AuditLog(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -153,7 +153,7 @@ def test_audit_export_ndjson_sanitizes_sensitive_details_by_default(monkeypatch)
 
 def test_audit_export_ndjson_can_include_sensitive_details_when_requested(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     item = AuditLog(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -175,7 +175,7 @@ def test_audit_export_ndjson_can_include_sensitive_details_when_requested(monkey
 
 def test_audit_export_ndjson_supports_cursor(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    t0 = datetime.now(timezone.utc)
+    t0 = datetime.now(UTC)
     t1 = t0 + timedelta(seconds=1)
     t2 = t0 + timedelta(seconds=2)
 
@@ -204,7 +204,7 @@ def test_audit_export_ndjson_supports_cursor(monkeypatch):  # noqa: ANN001
 
 def test_audit_export_ndjson_denies_viewer(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     item = AuditLog(id=uuid.uuid4(), tenant_id=tenant_id, action="test", details={}, created_at=now)
 
     client, _mod = _build_client(monkeypatch=monkeypatch, items=[item], role="viewer")
@@ -215,7 +215,7 @@ def test_audit_export_ndjson_denies_viewer(monkeypatch):  # noqa: ANN001
 
 def test_audit_export_ndjson_supports_gzip(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     item = AuditLog(id=uuid.uuid4(), tenant_id=tenant_id, action="test", details={}, created_at=now)
 
     client, _mod = _build_client(monkeypatch=monkeypatch, items=[item], role="auditor")

@@ -6,8 +6,6 @@ Policies are stored in dataset metadata and enforced server-side on structured r
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -25,20 +23,20 @@ class FlsRule(BaseModel):
     enabled: bool = True
 
     # Where this rule applies.
-    sources: List[str] = Field(default_factory=list, max_length=10)
+    sources: list[str] = Field(default_factory=list, max_length=10)
 
     # Regex applied to the field/column name (case-insensitive by default).
     column_name_regex: str = Field(..., min_length=1, max_length=200)
 
     # Allowlist.
-    allow_roles: List[str] = Field(default_factory=list, max_length=50)
-    allow_account_ids: List[str] = Field(default_factory=list, max_length=200)
+    allow_roles: list[str] = Field(default_factory=list, max_length=50)
+    allow_account_ids: list[str] = Field(default_factory=list, max_length=200)
 
     # Optional override; default is enforced server-side.
-    mask: Optional[str] = Field(default=None, max_length=80)
+    mask: str | None = Field(default=None, max_length=80)
 
 
 class FlsPolicy(BaseModel):
     version: str = Field(default="1", description="Policy schema version")
-    rules: List[FlsRule] = Field(default_factory=list)
+    rules: list[FlsRule] = Field(default_factory=list)
 

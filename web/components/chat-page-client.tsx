@@ -16,7 +16,7 @@ export function ChatPageClient({
   initialChunkId,
   initialHighlightStart,
   initialHighlightEnd,
-}: {
+}: Readonly<{
   initialConversationId?: string
   initialPrompt?: string
   initialOpenRagSettings?: boolean
@@ -24,7 +24,7 @@ export function ChatPageClient({
   initialChunkId?: string
   initialHighlightStart?: string
   initialHighlightEnd?: string
-}) {
+}>) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { openDocument } = useDocumentView()
@@ -54,8 +54,8 @@ export function ChatPageClient({
     const docId = (initialDocumentId || '').trim()
     if (!docId) return
     const chunkId = (initialChunkId || '').trim() || undefined
-    const start = initialHighlightStart != null ? Number.parseInt(String(initialHighlightStart), 10) : NaN
-    const end = initialHighlightEnd != null ? Number.parseInt(String(initialHighlightEnd), 10) : NaN
+    const start = initialHighlightStart == null ? Number.NaN : Number.parseInt(String(initialHighlightStart), 10)
+    const end = initialHighlightEnd == null ? Number.NaN : Number.parseInt(String(initialHighlightEnd), 10)
     const range =
       Number.isFinite(start) && Number.isFinite(end) && end > start ? { start, end } : undefined
     openDocument(docId, chunkId, range)

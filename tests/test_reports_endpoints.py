@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_aggregate_must_recall_summary_from_explicit_counts() -> None:
     from app.services.report_service import _aggregate_must_recall_summary
@@ -13,7 +15,7 @@ def test_aggregate_must_recall_summary_from_explicit_counts() -> None:
         }
     )
     assert out is not None
-    assert out.pass_rate == 0.8
+    assert out.pass_rate == pytest.approx(0.8)
     assert out.cases_total == 10
     assert out.cases_passed == 8
     assert out.cases_failed == 2
@@ -30,7 +32,7 @@ def test_aggregate_must_recall_summary_derives_counts_from_rate_and_total() -> N
         }
     )
     assert out is not None
-    assert out.pass_rate == 1.0
+    assert out.pass_rate == pytest.approx(1.0)
     assert out.cases_total == 5
     assert out.cases_passed == 5
     assert out.cases_failed == 0

@@ -13,13 +13,13 @@ export const MarkdownToc = memo(function MarkdownToc({
   title = '目录',
   maxDepth = 4,
   onNavigate,
-}: {
+}: Readonly<{
   markdown: string
   className?: string
   title?: string
   maxDepth?: number
   onNavigate?: (id: string) => void
-}) {
+}>) {
   const headings = useMemo(
     () => extractMarkdownHeadings(markdown || '', { maxDepth }),
     [markdown, maxDepth]
@@ -33,8 +33,8 @@ export const MarkdownToc = memo(function MarkdownToc({
       onNavigate(id)
       return
     }
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
+    if (typeof globalThis.window !== 'undefined') {
+      globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
     }
     scrollToElementId(id)
     flashElementId(id, FLASH_CLASS)

@@ -25,8 +25,8 @@ export function FluidCursor() {
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
     if (!enabled) return
-    if (typeof window === "undefined") return
-    const mq = window.matchMedia("(pointer: fine)")
+    if (typeof globalThis.window === "undefined") return
+    const mq = globalThis.window.matchMedia("(pointer: fine)")
     const update = () => setIsDesktop(mq.matches)
     update()
 
@@ -77,14 +77,14 @@ export function FluidCursor() {
     const handleMouseLeave = () => setVariant("hidden")
     const handleMouseEnter = () => setVariant("default")
 
-    window.addEventListener("mousemove", moveCursor)
-    window.addEventListener("mouseover", checkHover)
+    globalThis.window.addEventListener("mousemove", moveCursor)
+    globalThis.window.addEventListener("mouseover", checkHover)
     document.addEventListener("mouseleave", handleMouseLeave)
     document.addEventListener("mouseenter", handleMouseEnter)
 
     return () => {
-      window.removeEventListener("mousemove", moveCursor)
-      window.removeEventListener("mouseover", checkHover)
+      globalThis.window.removeEventListener("mousemove", moveCursor)
+      globalThis.window.removeEventListener("mouseover", checkHover)
       document.removeEventListener("mouseleave", handleMouseLeave)
       document.removeEventListener("mouseenter", handleMouseEnter)
       // Ensure specific style cleanups

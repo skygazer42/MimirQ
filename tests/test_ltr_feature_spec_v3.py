@@ -41,12 +41,12 @@ def test_extract_ltr_features_v3_populates_field_aware_and_channel_features() ->
     values = extract_ltr_features(spec=spec, query="kubernetes", candidate=cand)
     f = {name: float(v) for name, v in zip(spec.feature_names, values, strict=False)}
 
-    assert f["field_aware_boost"] == 0.08
-    assert f["field_signal_title"] == 1.0
-    assert f["field_signal_heading"] == 0.0
+    assert f["field_aware_boost"] == pytest.approx(0.08)
+    assert f["field_signal_title"] == pytest.approx(1.0)
+    assert f["field_signal_heading"] == pytest.approx(0.0)
     assert f["keyword_max_score"] == pytest.approx(0.30, abs=1e-9)
     assert f["vector_keyword_gap"] == pytest.approx(0.62, abs=1e-9)
-    assert f["multi_channel_hits"] == 3.0
+    assert f["multi_channel_hits"] == pytest.approx(3.0)
 
 
 def test_ltr_feature_spec_fingerprint_differs_between_v2_and_v3() -> None:

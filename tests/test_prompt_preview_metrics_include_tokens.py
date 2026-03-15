@@ -1,3 +1,5 @@
+import pytest
+
 from app.rag.core.prompt_preview_metrics import compute_prompt_preview_metrics
 
 
@@ -23,7 +25,7 @@ def test_compute_prompt_preview_metrics_includes_token_breakdown():
     assert metrics["context_tokens"] > 0
     assert metrics["history_tokens"] > 0
 
-    assert metrics["elapsed_sec"] == 1.235
-    assert metrics["context_build_elapsed_sec"] == 0.111
-    assert metrics["prompt_render_elapsed_sec"] == 0.222
+    assert metrics["elapsed_sec"] == pytest.approx(1.235)
+    assert metrics["context_build_elapsed_sec"] == pytest.approx(0.111)
+    assert metrics["prompt_render_elapsed_sec"] == pytest.approx(0.222)
 

@@ -11,7 +11,7 @@ Provides the following capabilities:
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Union
 
 from langgraph.graph.state import CompiledStateGraph
 
@@ -24,17 +24,17 @@ class CheckpointInfo:
 
     checkpoint_id: str
     thread_id: str
-    parent_checkpoint_id: Optional[str]
-    created_at: Optional[datetime]
+    parent_checkpoint_id: str | None
+    created_at: datetime | None
 
     # State information
-    values: Dict[str, Any]
-    next_nodes: List[str]
+    values: dict[str, Any]
+    next_nodes: list[str]
 
     # Metadata
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API responses."""
         return {
             "checkpoint_id": self.checkpoint_id,
@@ -54,10 +54,10 @@ class ForkResult:
     new_checkpoint_id: str
     thread_id: str
     original_checkpoint_id: str
-    updates_applied: Dict[str, Any]
-    config: Dict[str, Any]
+    updates_applied: dict[str, Any]
+    config: dict[str, Any]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "new_checkpoint_id": self.new_checkpoint_id,
             "thread_id": self.thread_id,
@@ -95,9 +95,9 @@ class TimeTravel:
         self,
         thread_id: str,
         *,
-        limit: Optional[int] = None,
-        before: Optional[str] = None,
-    ) -> List[CheckpointInfo]:
+        limit: int | None = None,
+        before: str | None = None,
+    ) -> list[CheckpointInfo]:
         """
         Get checkpoint history for a thread.
 
@@ -114,7 +114,7 @@ class TimeTravel:
         if before:
             config["configurable"]["checkpoint_id"] = before
 
-        history: List[CheckpointInfo] = []
+        history: list[CheckpointInfo] = []
 
         try:
             states = self.graph.get_state_history(config, limit=limit)
@@ -151,7 +151,7 @@ class TimeTravel:
         self,
         thread_id: str,
         checkpoint_id: str,
-    ) -> Optional[CheckpointInfo]:
+    ) -> CheckpointInfo | None:
         """
         Get a specific checkpoint.
 
@@ -202,8 +202,8 @@ class TimeTravel:
         thread_id: str,
         checkpoint_id: str,
         *,
-        stream_mode: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        stream_mode: str | None = None,
+    ) -> dict[str, Any]:
         """
         Replay execution from a specific checkpoint.
 
@@ -242,11 +242,11 @@ class TimeTravel:
         self,
         thread_id: str,
         checkpoint_id: str,
-        updates: Dict[str, Any],
+        updates: dict[str, Any],
         *,
         continue_execution: bool = True,
-        stream_mode: Optional[str] = None,
-    ) -> Union[ForkResult, Dict[str, Any]]:
+        stream_mode: str | None = None,
+    ) -> Union[ForkResult, dict[str, Any]]:
         """
         Fork from a checkpoint with modified state.
 
@@ -304,7 +304,7 @@ class TimeTravel:
         thread_id: str,
         checkpoint_id_a: str,
         checkpoint_id_b: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Compare two checkpoints and return differences.
 
@@ -360,8 +360,8 @@ class TimeTravel:
     def get_execution_path(
         self,
         thread_id: str,
-        checkpoint_id: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        checkpoint_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Get the execution path (sequence of nodes executed) for a thread.
 
@@ -406,7 +406,7 @@ class TimeTravel:
 
 
 # Global TimeTravel instance cache
-_time_travel_instances: Dict[int, TimeTravel] = {}
+_time_travel_instances: dict[int, TimeTravel] = {}
 
 
 def get_time_travel(graph: CompiledStateGraph) -> TimeTravel:

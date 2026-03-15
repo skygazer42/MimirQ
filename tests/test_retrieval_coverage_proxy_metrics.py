@@ -117,5 +117,5 @@ def test_orchestrator_emits_citation_coverage_proxy_metrics(monkeypatch: pytest.
     assert cov.get("distinct_documents") == 2
     assert cov.get("distinct_pipeline_keys") == 2
     assert cov.get("distinct_roles") == 2
-    assert cov.get("top_doc_share") == 0.667
+    assert cov.get("top_doc_share") == pytest.approx(0.667)
 

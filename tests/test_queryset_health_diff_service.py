@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.services.queryset_health_diff_service import diff_queryset_health_snapshots
 
 
@@ -48,9 +50,9 @@ def test_queryset_health_diff_service_reports_metric_policy_and_hard_case_drift(
     deltas = out.get("metric_deltas") or {}
     assert deltas.get("hit_at_k_delta") == -0.05
     assert deltas.get("mrr_delta") == -0.05
-    assert deltas.get("p95_latency_ms_delta") == 3.5
-    assert deltas.get("miss_rate_delta") == 0.1
-    assert deltas.get("weak_hit_rate_delta") == 0.05
+    assert deltas.get("p95_latency_ms_delta") == pytest.approx(3.5)
+    assert deltas.get("miss_rate_delta") == pytest.approx(0.1)
+    assert deltas.get("weak_hit_rate_delta") == pytest.approx(0.05)
 
     hard_cases = out.get("hard_case_drift") or {}
     assert hard_cases.get("added_ids") == ["q-3"]

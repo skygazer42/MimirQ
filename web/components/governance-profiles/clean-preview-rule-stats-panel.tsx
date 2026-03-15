@@ -8,10 +8,10 @@ import { cn } from '@/lib/utils'
 export function CleanPreviewRuleStatsPanel({
   ruleStats,
   className,
-}: {
+}: Readonly<{
   ruleStats: CleanPreviewRuleStat[] | null | undefined
   className?: string
-}) {
+}>) {
   const stats = Array.isArray(ruleStats) ? ruleStats : []
   const hitsOnly = stats.filter((it) => (Number(it.hits) || 0) > 0)
   const totalHits = hitsOnly.reduce((acc, it) => acc + (Number(it.hits) || 0), 0)

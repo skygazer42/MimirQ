@@ -4,7 +4,7 @@ import importlib.util
 import json
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -35,7 +35,7 @@ def test_materialize_feedback_case_infers_question_and_trace() -> None:
     feedback_id = uuid.uuid4()
     assistant_message_id = uuid.uuid4()
     request_id = "req-rollout-1"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     conversation = Conversation(
         id=conversation_id,
@@ -121,7 +121,7 @@ def test_build_rollout_regression_bundle_materializes_approved_evidence_and_feed
     suite_id = uuid.uuid4()
     document_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     suite = EvidenceSuite(
         id=suite_id,
@@ -361,14 +361,14 @@ def test_prepare_ltr_rollout_writes_artifacts_without_activation(tmp_path: Path,
     monkeypatch.setattr(
         mod,
         "register_model",
-        lambda *, model_bytes, manifest_bytes, actor_id: type(
+        lambda *, model_bytes, _manifest_bytes, _actor_id: type(
             "RegisteredModel",
             (),
             {"model_id": "candidate-id", "model_sha256": "a" * 64, "size_bytes": len(model_bytes), "feature_spec_version": 1},
         )(),
         raising=True,
     )
-    monkeypatch.setattr(mod, "activate_model", lambda *args, **kwargs: activated.append("activated"), raising=True)
+    monkeypatch.setattr(mod, "activate_model", lambda *_args, **_kwargs: activated.append("activated"), raising=True)
 
     result = mod.prepare_ltr_rollout(
         workflow_dir=tmp_path / "workflow",
@@ -490,7 +490,7 @@ def test_prepare_ltr_rollout_emits_canary_activation_plan_after_gate_pass(
     monkeypatch.setattr(
         mod,
         "register_model",
-        lambda *, model_bytes, manifest_bytes, actor_id: type(
+        lambda *, model_bytes, _manifest_bytes, _actor_id: type(
             "RegisteredModel",
             (),
             {"model_id": "candidate-id", "model_sha256": "a" * 64, "size_bytes": len(model_bytes), "feature_spec_version": 1},

@@ -8,9 +8,10 @@ token count, and other factors.
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 from app.core.config import settings
 
@@ -66,8 +67,8 @@ class ComplexityAnalyzer:
     def analyze(
         self,
         query: str,
-        history: Optional[List[Dict[str, str]]] = None,
-    ) -> Tuple[float, str]:
+        history: list[dict[str, str]] | None = None,
+    ) -> tuple[float, str]:
         """
         Analyze query complexity.
 
@@ -119,9 +120,9 @@ class ModelRouter:
 
     def __init__(
         self,
-        default_model: Optional[str] = None,
-        fast_model: Optional[str] = None,
-        heavy_model: Optional[str] = None,
+        default_model: str | None = None,
+        fast_model: str | None = None,
+        heavy_model: str | None = None,
         complexity_threshold: float = 0.5,
     ):
         self.default_model = default_model or getattr(settings, "LLM_MODEL", "gpt-4-turbo")
@@ -133,10 +134,10 @@ class ModelRouter:
     def route(
         self,
         query: str,
-        history: Optional[List[Dict[str, str]]] = None,
+        history: list[dict[str, str]] | None = None,
         prefer_fast: bool = False,
         require_heavy: bool = False,
-    ) -> Tuple[str, str, str]:
+    ) -> tuple[str, str, str]:
         """
         Route to appropriate model.
 
@@ -169,7 +170,7 @@ class DynamicModelMiddleware:
     def __init__(
         self,
         enabled: bool = True,
-        router: Optional[ModelRouter] = None,
+        router: ModelRouter | None = None,
     ):
         self.enabled = enabled and bool(
             getattr(settings, "ENABLE_DYNAMIC_MODEL_ROUTING", False)
@@ -180,7 +181,7 @@ class DynamicModelMiddleware:
         """Wrap a function with dynamic model selection."""
 
         @wraps(func)
-        def wrapper(state: Dict[str, Any], *args, **kwargs) -> Dict[str, Any]:
+        def wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
             if not self.enabled:
                 return func(state, *args, **kwargs)
 
@@ -227,8 +228,8 @@ class DynamicModelMiddleware:
     def select_model(
         self,
         query: str,
-        history: Optional[List[Dict[str, str]]] = None,
-    ) -> Tuple[str, str, str]:
+        history: list[dict[str, str]] | None = None,
+    ) -> tuple[str, str, str]:
         """
         Select appropriate model for a query.
 
@@ -240,7 +241,7 @@ class DynamicModelMiddleware:
 
 # Convenience function to create the middleware
 def create_dynamic_model_middleware(
-    enabled: Optional[bool] = None,
+    enabled: bool | None = None,
 ) -> DynamicModelMiddleware:
     """Create a dynamic model middleware with settings from config."""
     return DynamicModelMiddleware(

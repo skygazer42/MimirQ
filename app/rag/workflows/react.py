@@ -10,7 +10,8 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.rag.middleware import ToolMiddlewareChain
 from app.rag.workflows.base import (
@@ -56,7 +57,7 @@ class ReActWorkflow(BaseWorkflow):
 
     def __init__(
         self,
-        llm: Optional[Any] = None,
+        llm: Any | None = None,
         max_steps: int = 10,
         **kwargs,
     ):
@@ -70,7 +71,7 @@ class ReActWorkflow(BaseWorkflow):
         """
         super().__init__(**kwargs)
         self._llm = llm
-        self._tools: Dict[str, Tool] = {}
+        self._tools: dict[str, Tool] = {}
         self.max_steps = max_steps
 
     @property
@@ -112,7 +113,7 @@ class ReActWorkflow(BaseWorkflow):
             lines.append(f"- {name}: {tool.description}")
         return "\n".join(lines)
 
-    async def _reason(self, state: Dict[str, Any]) -> Dict[str, str]:
+    async def _reason(self, state: dict[str, Any]) -> dict[str, str]:
         """
         Generate next thought and action.
 
@@ -178,10 +179,10 @@ Your response:"""
 
         return result
 
-    async def _act(self, workflow_state: Dict[str, Any], action: str, action_input: str) -> str:
+    async def _act(self, workflow_state: dict[str, Any], action: str, action_input: str) -> str:
         """Execute an action using a tool (with tool-call middlewares)."""
         chain = ToolMiddlewareChain()
-        tool_state: Dict[str, Any] = {
+        tool_state: dict[str, Any] = {
             "tool_name": action,
             "arguments": {"input_text": action_input},
             "result": None,
@@ -194,7 +195,7 @@ Your response:"""
         }
         tool_state = chain.run_before(tool_state)
 
-        async def _execute(state: Dict[str, Any]) -> Dict[str, Any]:
+        async def _execute(state: dict[str, Any]) -> dict[str, Any]:
             name = str(state.get("tool_name") or "")
             args = state.get("arguments") or {}
             input_text = str(args.get("input_text") or "")
@@ -236,7 +237,7 @@ Your response:"""
 
         return str(tool_state.get("result") or "")
 
-    async def run(self, state: Dict[str, Any]) -> WorkflowResult:
+    async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
         Execute the ReAct workflow.
 
@@ -262,7 +263,7 @@ Your response:"""
 
         current_state = dict(state)
         current_state["reasoning_trace"] = []
-        execution_path: List[str] = []
+        execution_path: list[str] = []
         iterations = 0
 
         for step in range(self.max_steps):
@@ -325,7 +326,7 @@ Your response:"""
 
 
 def create_search_tool(
-    search_func: Callable[[str], Awaitable[List[Dict[str, Any]]]],
+    search_func: Callable[[str], Awaitable[list[dict[str, Any]]]],
 ) -> Tool:
     """Create a search tool wrapper."""
     async def search_wrapper(query: str) -> str:

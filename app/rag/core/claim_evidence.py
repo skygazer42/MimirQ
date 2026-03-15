@@ -14,7 +14,8 @@ Design constraints:
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, Iterable, List, Tuple
+from collections.abc import Iterable
+from typing import Any
 
 from app.rag.core.text import is_claim_supported, split_into_claims
 
@@ -88,7 +89,7 @@ def _find_next_boundary(text: str, *, start: int, end: int) -> int | None:
     return best
 
 
-def _extract_span(text: str, terms: List[str], *, max_chars: int) -> Tuple[int, int, str] | None:
+def _extract_span(text: str, terms: list[str], *, max_chars: int) -> tuple[int, int, str] | None:
     """
     Return (start, end, quote) span in `text` that best matches `terms`.
     """
@@ -178,7 +179,7 @@ def _iter_chunks(evidence_chunks: Iterable[Any]) -> Iterable[dict[str, Any]]:
 def build_claim_evidence_map(
     answer: str,
     *,
-    evidence_chunks: List[Any],
+    evidence_chunks: list[Any],
     max_claims: int = 24,
     max_evidence_per_claim: int = 2,
     max_quote_chars: int = 240,
@@ -188,7 +189,7 @@ def build_claim_evidence_map(
     nli_provider: str | None = None,
     nli_model_name: str | None = None,
     nli_timeout_sec: float | None = None,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Build a JSON-safe list of claim → evidence mappings.
 
@@ -263,7 +264,7 @@ def build_claim_evidence_map(
         evidence_out: list[dict[str, Any]] = []
         for score, _shared_n, ch in selected:
             text = str(ch.get("text") or "")
-            terms = sorted(list(c_tokens), key=len, reverse=True)[:12]
+            terms = sorted(c_tokens, key=len, reverse=True)[:12]
             span = _extract_span(text, terms, max_chars=max_quote_chars)
             if span is not None:
                 local_start, local_end, quote = span
