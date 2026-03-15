@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from types import SimpleNamespace
 from uuid import UUID
@@ -13,6 +12,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.services.dataset_service import DatasetService
+from tests.helpers.async_utils import yield_control
 
 
 class _Member:
@@ -102,7 +102,7 @@ def test_dataset_purge_dry_run_plans_only(monkeypatch: pytest.MonkeyPatch) -> No
     deleted_ids: list[UUID] = []
 
     async def _fake_delete_document(*, document_id: UUID, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         deleted_ids.append(UUID(str(document_id)))
         return None
 
@@ -151,7 +151,7 @@ def test_dataset_purge_executes_delete_document(monkeypatch: pytest.MonkeyPatch)
     deleted_ids: list[UUID] = []
 
     async def _fake_delete_document(*, document_id: UUID, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         deleted_ids.append(UUID(str(document_id)))
         return None
 
@@ -253,7 +253,7 @@ def test_dataset_purge_deletes_even_if_public_delete_is_denied(monkeypatch: pyte
     monkeypatch.setattr(datasets_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
     async def _deny_public_delete(*_a, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise HTTPException(status_code=403, detail="No dataset write permission")
 
     monkeypatch.setattr(docs_mod, "delete_document", _deny_public_delete, raising=True)
@@ -261,7 +261,7 @@ def test_dataset_purge_deletes_even_if_public_delete_is_denied(monkeypatch: pyte
     deleted_ids: list[UUID] = []
 
     async def _force_delete_document(*, document_id: UUID, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         deleted_ids.append(UUID(str(document_id)))
         return None
 

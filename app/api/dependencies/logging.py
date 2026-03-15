@@ -14,6 +14,13 @@ from fastapi import Request
 from app.core.logging_config import set_request_route
 
 
+async def _yield_to_event_loop() -> None:
+    loop = asyncio.get_running_loop()
+    ready = loop.create_future()
+    loop.call_soon(ready.set_result, None)
+    await ready
+
+
 async def bind_route_context(request: Request) -> None:
     """
     Bind the current request's route template (best-effort).
@@ -23,7 +30,7 @@ async def bind_route_context(request: Request) -> None:
     - We prefer route templates (e.g. `/api/v1/rag/retrieve`) over raw paths to avoid
       high-cardinality logs (e.g. `/api/v1/documents/<uuid>`).
     """
-    await asyncio.sleep(0)
+    await _yield_to_event_loop()
     route = request.scope.get("route")
     template = getattr(route, "path", None)
     if template:

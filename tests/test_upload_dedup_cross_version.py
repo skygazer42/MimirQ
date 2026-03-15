@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import uuid
@@ -13,6 +12,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyDB:
@@ -98,7 +98,7 @@ def test_upload_dedup_cross_version_reuses_existing_doc_and_reprocesses(monkeypa
     calls = {"retry": 0}
 
     async def _fake_retry(**kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         calls["retry"] += 1
         dup.status = "pending"
         dup.processing_progress = 0
@@ -115,7 +115,7 @@ def test_upload_dedup_cross_version_reuses_existing_doc_and_reprocesses(monkeypa
     monkeypatch.setattr(documents_module, "retry_document_processing", _fake_retry, raising=True)
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return "task-123"
 
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue, raising=True)

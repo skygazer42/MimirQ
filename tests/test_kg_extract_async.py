@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
 from fastapi import HTTPException, Response
+
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeDoc:
@@ -114,7 +115,7 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
         extract_relations=None,
         extract_skills=None,
     ):
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert requested_by == "u"
         assert job_id and job_id.startswith("kg:")
         assert pipeline_hash == "ph"

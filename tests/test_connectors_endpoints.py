@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import sys
 import types
 import uuid
@@ -9,6 +8,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
+from tests.helpers.async_utils import yield_control
 
 if "app.core.config" not in sys.modules:
     config_mod = types.ModuleType("app.core.config")
@@ -43,7 +44,7 @@ if "app.api.v1.documents" not in sys.modules:
                 setattr(self, key, value)
 
     async def _noop_async(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     documents_mod.LocalHtmlIngestRequest = _DummyRequest
@@ -58,7 +59,7 @@ if "app.services.web_crawler" not in sys.modules:
     web_crawler_mod = types.ModuleType("app.services.web_crawler")
 
     async def _crawl_noop(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     web_crawler_mod.crawl_site = _crawl_noop

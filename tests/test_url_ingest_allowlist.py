@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import socket
 from pathlib import Path
 
@@ -9,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.core.config import settings
+from tests.helpers.async_utils import yield_control
 
 
 def _fake_getaddrinfo_global(host: str, port: int, *args, **kwargs):  # noqa: ANN001
@@ -89,7 +89,7 @@ async def test_download_url_to_path_validates_redirect_hops(monkeypatch: pytest.
 
     class _Pool:
         async def get_external_client(self):  # noqa: ANN202
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return client
 
     monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo_global, raising=True)

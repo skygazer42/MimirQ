@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 class _Query:
@@ -58,13 +59,13 @@ async def test_kg_extract_replace_existing_deletes_relations_when_no_events_extr
     monkeypatch.setattr(extractor_mod.EventExtractor, "_writeback_document_metadata", lambda *_a, **_k: None, raising=True)
 
     async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return object()
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
     async def _extract_no_events(self, sections, batch_index, **_kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)
+        await yield_control()
         return []
 
     monkeypatch.setattr(EventProcessor, "extract_from_sections", _extract_no_events, raising=True)

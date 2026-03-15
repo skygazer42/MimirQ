@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from langchain_core.documents import Document
+
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeChunk:
@@ -70,7 +71,7 @@ def test_orchestrator_kg_chunk_injection_injects_and_caps(monkeypatch) -> None:
     kg_chunk_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert query
         assert tenant_id is not None
         assert document_ids
@@ -156,7 +157,7 @@ def test_orchestrator_kg_chunk_injection_dedupes_existing_docs(monkeypatch) -> N
     monkeypatch.setattr(orch_mod, "hybrid_retriever", _FakeRetriever(docs=retriever_docs), raising=True)
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return {"events": [{"chunk_id": str(cid1), "score": 0.9}, {"chunk_id": str(cid2), "score": 0.8}], "entities": []}
 
     monkeypatch.setattr(orch_mod, "kg_search", _fake_kg_search, raising=True)
@@ -228,7 +229,7 @@ def test_orchestrator_kg_chunk_injection_disabled_does_not_call_kg(monkeypatch) 
     kg_calls = {"n": 0}
 
     async def _fake_kg_search(*_a, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         kg_calls["n"] += 1
         return {"events": []}
 

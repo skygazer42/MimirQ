@@ -1,4 +1,3 @@
-import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -9,6 +8,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.v1.evaluations import run_kg_search_diagnostics as kg_diag_endpoint
 from app.core.config import settings
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class FakeDB:
@@ -36,7 +36,7 @@ def test_kg_search_diagnostics_endpoint_wires_runner(monkeypatch) -> None:
     import app.rag.evaluation.kg_search_diagnostics as impl_mod
 
     async def _stub_run(*_args, **_kwargs):
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         ds_id = _kwargs.get("req").dataset_id
         return {
             "summary": {

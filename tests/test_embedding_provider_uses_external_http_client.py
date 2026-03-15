@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
+from tests.helpers.async_utils import yield_control
 from tests.helpers.outbound_http_assertions import assert_no_internal_context_headers
 
 
@@ -33,7 +32,7 @@ class _DummyAsyncClient:
         self.calls: list[tuple[str, dict]] = []
 
     async def post(self, url: str, *, json: dict, headers: dict, timeout: float | None = None):  # noqa: ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         self.calls.append((url, dict(headers)))
         return _DummyResponse({"data": [{"embedding": [0.1, 0.2]}]})
 
@@ -85,15 +84,15 @@ async def test_openai_embedding_aencode_uses_external_pool_not_new_asyncclient(m
             spy["asyncclient_ctor"] += 1
 
         async def __aenter__(self):  # noqa: ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return False
 
         async def post(self, *_args, **_kwargs):  # noqa: ANN001, ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return _DummyResponse({"data": [{"embedding": [0.0]}]})
 
     monkeypatch.setattr(provider.httpx, "AsyncClient", _SpyAsyncClient)

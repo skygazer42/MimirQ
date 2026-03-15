@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -10,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 def test_connector_run_retry_failed_creates_new_run(monkeypatch):  # noqa: ANN001
@@ -23,7 +23,7 @@ def test_connector_run_retry_failed_creates_new_run(monkeypatch):  # noqa: ANN00
     monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     async def _noop_async(*_a, **_k):  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     monkeypatch.setattr(connectors_module, "_execute_url_batch_run", _noop_async, raising=True)
@@ -123,7 +123,7 @@ def test_connector_run_resume_uses_cursor(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     async def _noop_async(*_a, **_k):  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     monkeypatch.setattr(connectors_module, "_execute_url_batch_run", _noop_async, raising=True)
@@ -221,7 +221,7 @@ def test_connector_run_resume_builds_state_for_web_crawl(monkeypatch):  # noqa: 
     monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     async def _noop_async(*_a, **_k):  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     monkeypatch.setattr(connectors_module, "_execute_web_crawl_run", _noop_async, raising=True)
@@ -322,7 +322,7 @@ def test_connector_run_resume_allows_incremental_github_manifest_even_when_curso
     monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     async def _noop_async(*_a, **_k):  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     monkeypatch.setattr(connectors_module, "_execute_github_repo_run", _noop_async, raising=True)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -10,6 +9,7 @@ from langchain_core.documents import Document
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 def test_documents_preview_includes_analytics_raw_and_cleaned(monkeypatch):  # noqa: ANN001
@@ -33,7 +33,7 @@ def test_documents_preview_includes_analytics_raw_and_cleaned(monkeypatch):  # n
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert payload.get("action") == "parse_documents"
         return {
             "resolved_backend": "basic",

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -27,7 +28,7 @@ async def test_kg_search_includes_query_mode_diagnostics(monkeypatch: pytest.Mon
             query_mode_reason_codes=None,
             query_mode_confidence=None,
         ):
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return {
                 "events": [],
                 "entities": [],

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -11,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyDB:
@@ -75,7 +75,7 @@ def test_connectors_create_run_sets_task_id_when_queue_enabled(monkeypatch):  # 
     )
 
     async def _fake_enqueue(*_a, **_k):  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return "job-123"
 
     monkeypatch.setattr(connectors_module, "enqueue_connector_run", _fake_enqueue, raising=False)
@@ -153,7 +153,7 @@ def test_connector_run_retry_failed_sets_task_id_when_queue_enabled(monkeypatch)
             return _DummyQuery(model)
 
     async def _fake_enqueue(*_a, **_k):  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return "job-456"
 
     monkeypatch.setattr(connectors_module, "enqueue_connector_run", _fake_enqueue, raising=False)
@@ -228,7 +228,7 @@ def test_connector_run_resume_sets_task_id_when_queue_enabled(monkeypatch):  # n
             return _DummyQuery(model)
 
     async def _fake_enqueue(*_a, **_k):  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return "job-789"
 
     monkeypatch.setattr(connectors_module, "enqueue_connector_run", _fake_enqueue, raising=False)
@@ -309,11 +309,11 @@ def test_connector_run_cancel_aborts_task_when_queue_enabled(monkeypatch):  # no
             aborted["queue_name"] = _queue_name
 
         async def abort(self, timeout):  # noqa: ANN001, ANN202
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             aborted["timeout"] = timeout
 
     async def _fake_get_queue_or_none():  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return object()
 
     monkeypatch.setattr(connectors_module, "_load_arq_job_class", lambda: _FakeJob, raising=True)

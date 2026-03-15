@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -18,7 +19,7 @@ async def test_rrf_uses_provided_query_vector(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(rrf_mod, "get_session", lambda: _FakeSession(), raising=True)
 
     async def _boom(self, _text: str):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise AssertionError("generate_embedding should not be called when query_vector is provided")
 
     monkeypatch.setattr(rrf_mod.DocumentProcessor, "generate_embedding", _boom, raising=True)

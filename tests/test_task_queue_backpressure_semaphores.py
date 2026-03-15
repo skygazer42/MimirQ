@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 class _RetryError(Exception):
@@ -17,24 +17,24 @@ class _FakeRedis:
         self._expires: dict[str, int] = {}
 
     async def incr(self, key):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         k = str(key)
         self._counters[k] = int(self._counters.get(k, 0)) + 1
         return self._counters[k]
 
     async def decr(self, key):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         k = str(key)
         self._counters[k] = int(self._counters.get(k, 0)) - 1
         return self._counters[k]
 
     async def expire(self, key, ttl_sec):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         self._expires[str(key)] = int(ttl_sec or 0)
         return True
 
     async def delete(self, key):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         self._counters.pop(str(key), None)
         return True
 

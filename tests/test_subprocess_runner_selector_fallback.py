@@ -1,4 +1,3 @@
-import asyncio
 import json
 from pathlib import Path
 from uuid import uuid4
@@ -6,6 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.parsing.subprocess_runner import run_subprocess_worker
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -15,7 +15,7 @@ async def test_run_subprocess_worker_falls_back_when_asyncio_subprocess_unavaila
     monkeypatch.setattr(runner_mod, "_get_subprocess_workdir", lambda *, _tenant_id: tmp_path, raising=True)
 
     async def _fake_create_subprocess_exec(*_args, **_kwargs):  # noqa: ANN001, ANN002
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise NotImplementedError
 
     monkeypatch.setattr(runner_mod.asyncio, "create_subprocess_exec", _fake_create_subprocess_exec, raising=True)

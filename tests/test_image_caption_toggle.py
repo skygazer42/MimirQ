@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -10,6 +9,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.parsing.enrich.image_caption import add_image_captions
+from tests.helpers.async_utils import yield_control
 
 
 def test_add_image_captions_inserts_caption_for_markdown_image_line() -> None:
@@ -64,7 +64,7 @@ def test_parsing_workspace_image_caption_toggle(monkeypatch, tmp_path):  # noqa:
     monkeypatch.setattr(parsing_module.parser_factory, "resolve_backend", lambda *_a, **_k: "basic", raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return {
             "resolved_backend": "basic",
             "pdf_quality": None,

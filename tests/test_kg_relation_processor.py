@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeLLM:
@@ -10,7 +10,7 @@ class _FakeLLM:
         self._payload = payload
 
     async def chat_with_schema(self, *_a, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return self._payload
 
 

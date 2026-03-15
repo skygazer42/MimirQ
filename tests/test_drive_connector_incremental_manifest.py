@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
+from tests.helpers.async_utils import yield_control
 from tests.test_connector_saved_state_resume import _import_connectors_with_lightweight_stubs
 
 
@@ -22,7 +21,7 @@ async def test_drive_fetch_file_sync_token_prefers_version_modified_time_and_fil
 
     class _FakeClient:
         async def get(self, *_a, **_k):  # noqa: ANN202
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return _FakeResponse(
                 status_code=200,
                 payload={
@@ -48,7 +47,7 @@ async def test_drive_fetch_file_sync_token_falls_back_to_hash_when_metadata_is_u
 
     class _FakeClient:
         async def get(self, *_a, **_k):  # noqa: ANN202
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return _FakeResponse(status_code=403, payload={"error": "forbidden"})
 
     source_url = "https://drive.google.com/file/d/file-404/view"

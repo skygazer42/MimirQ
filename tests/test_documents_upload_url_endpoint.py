@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -12,6 +11,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyDB:
@@ -58,11 +58,11 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
 
     # Avoid SSRF/DNS logic in unit test.
     async def _ok_validate(url: str) -> str:  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return url
 
     async def _fake_download(url: str, destination, **kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         payload = b"hello from url"
         destination.write_bytes(payload)
         return DownloadedURL(
@@ -74,7 +74,7 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
         )
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return "task-123"
 
     class _Dataset:
@@ -136,17 +136,17 @@ def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch,
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path), raising=False)
 
     async def _ok_validate(url: str) -> str:  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return url
 
     async def _fake_download(url: str, destination, **kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         payload = b"hello from url"
         destination.write_bytes(payload)
         return DownloadedURL(size_bytes=len(payload), content_type="text/plain", final_url=url, etag="etag-456")
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return "task-123"
 
     class _Dataset:

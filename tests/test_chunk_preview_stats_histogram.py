@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from pathlib import Path
 
@@ -10,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyDB:
@@ -50,7 +50,7 @@ def _build_client(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(chunker_factory, "get_chunker", lambda *_, **__: _Chunker(), raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert payload.get("action") == "parse_documents"
         file_path = Path(str(payload.get("file_path") or ""))
         text = file_path.read_text(encoding="utf-8")

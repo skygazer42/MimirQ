@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import asyncio
-
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyAsyncClient:
@@ -10,7 +10,7 @@ class _DummyAsyncClient:
         self.http2 = http2
 
     async def aclose(self) -> None:
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
 

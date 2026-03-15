@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeSession:
@@ -48,7 +49,7 @@ async def test_kg_search_diagnostics_persist_run_sets_run_id(monkeypatch: pytest
 
     async def _fake_run_impl(*, db, tenant_id, account_id, req):  # noqa: ANN001
         # Return a minimal-but-valid diagnostics payload.
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         summary = KGSearchDiagnosticsSummary(dataset_id=req.dataset_id, cases_total=0, cases_evaluated=0)
         return KGSearchDiagnosticsResponse(summary=summary, items=[])
 

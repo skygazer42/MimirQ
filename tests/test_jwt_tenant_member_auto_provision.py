@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -14,6 +13,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.core.config import settings
 from app.models.tenant import Tenant, TenantMember
 from app.services.tenant_member_provisioning_service import ensure_tenant_member_for_jwt_user
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeQuery:
@@ -110,7 +110,7 @@ def test_auth_dependency_calls_auto_provision_when_enabled(monkeypatch: pytest.M
 
     @app.get("/state")
     async def state_endpoint(*, request: Request, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return {
             "account_id": account_id,
             "state_user_id": getattr(request.state, "user_id", None),
