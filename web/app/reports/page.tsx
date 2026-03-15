@@ -584,7 +584,7 @@ export default function ReportsCenterPage() {
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie data={dropReasonsData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={90}>
-                                {dropReasonsData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'drop')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
+                                {dropReasonsData.map((entry, idx) => (<Cell key={String(entry.name ?? 'drop')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Pie>
                               <Tooltip />
                             </PieChart>
@@ -602,7 +602,7 @@ export default function ReportsCenterPage() {
                               <YAxis type="category" dataKey="name" width={80}/>
                               <Tooltip />
                               <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                                {rulePacksData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'rule-pack')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
+                                {rulePacksData.map((entry, idx) => (<Cell key={String(entry.name ?? 'rule-pack')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
@@ -651,7 +651,7 @@ export default function ReportsCenterPage() {
                               <YAxis />
                               <Tooltip />
                               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditReductionHistData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'reduction')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
+                                {govAuditReductionHistData.map((entry, idx) => (<Cell key={String(entry.name ?? 'reduction')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
@@ -668,7 +668,7 @@ export default function ReportsCenterPage() {
                               <YAxis type="category" dataKey="name" width={120}/>
                               <Tooltip />
                               <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                                {govAuditEffectsData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'effect')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
+                                {govAuditEffectsData.map((entry, idx) => (<Cell key={String(entry.name ?? 'effect')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
@@ -687,7 +687,7 @@ export default function ReportsCenterPage() {
                               <YAxis />
                               <Tooltip />
                               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditDensityHistData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'density')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
+                                {govAuditDensityHistData.map((entry, idx) => (<Cell key={String(entry.name ?? 'density')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
@@ -704,7 +704,7 @@ export default function ReportsCenterPage() {
                               <YAxis />
                               <Tooltip />
                               <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                                {govAuditHeadingRatioHistData.map((entry, idx) => (<Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'heading')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
+                                {govAuditHeadingRatioHistData.map((entry, idx) => (<Cell key={String(entry.name ?? 'heading')} fill={PIE_COLORS[idx % PIE_COLORS.length]}/>))}
                               </Bar>
                             </BarChart>
                           </ResponsiveContainer>
@@ -735,12 +735,10 @@ export default function ReportsCenterPage() {
                       <span>目录统计计算中...</span>
                     </div>);
                         }
-                        else {
-                            if (flatFolders.length === 0) {
+                        else if (flatFolders.length === 0) {
                                 return (<div className="mt-3 text-sm text-muted-foreground">暂无目录（未上传带路径的文件）</div>);
                             }
-                            else {
-                                if (folderBarData.length === 0) {
+                            else if (folderBarData.length === 0) {
                                     return (<div className="mt-3 text-sm text-muted-foreground">无匹配结果</div>);
                                 }
                                 else {
@@ -767,8 +765,6 @@ export default function ReportsCenterPage() {
                       </div>
                     </div>);
                                 }
-                            }
-                        }
                     }
                     else {
                         return (<div className="mt-3 text-sm text-muted-foreground">后端未提供目录统计</div>);
@@ -806,8 +802,7 @@ export default function ReportsCenterPage() {
                     if (isLoadingCategories) {
                         return (<div className="mt-3 text-sm text-muted-foreground">加载中…</div>);
                     }
-                    else {
-                        if (categoryBarData.length === 0) {
+                    else if (categoryBarData.length === 0) {
                             return (<div className="mt-3 text-sm text-muted-foreground">暂无数据</div>);
                         }
                         else {
@@ -834,7 +829,6 @@ export default function ReportsCenterPage() {
                       </div>
                     </div>);
                         }
-                    }
                 })()}
                 </div>
 

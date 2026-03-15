@@ -135,7 +135,7 @@ export function buildGovernanceProfileCreateFromExisting(profile: GovernanceProf
 
   return {
     name: `${name} (copy)`,
-    description: descriptionRaw ? descriptionRaw : undefined,
+    description: descriptionRaw || undefined,
     // Leave `key` empty by default; the backend will validate and store it as optional.
     payload: (profile?.payload || { version: '1', input_formats: ['markdown'], pipeline_patch: {}, regex_rules: [] }),
   }

@@ -108,8 +108,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
                 加载中…
               </span>);
     }
-    else {
-        if (assignedBadges.shown.length) {
+    else if (assignedBadges.shown.length) {
             return (<>
                 {assignedBadges.shown.map((name) => (<Badge key={name} variant="outline" className="text-xs">
                     {name}
@@ -120,7 +119,6 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
         else {
             return (<span className="text-xs text-muted-foreground">未设置</span>);
         }
-    }
 })()}
           </div>
         </div>

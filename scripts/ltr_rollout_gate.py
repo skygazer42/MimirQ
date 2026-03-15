@@ -134,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         f" failed={gate.get('summary', {}).get('failed')}"
     )
     if gate.get("reasons"):
-        for reason in list(gate.get("reasons") or []):
+        for reason in (gate.get("reasons") or []):
             print(f"[ltr_rollout_gate] reason: {reason}")
     if isinstance(gate_out.get("activation"), dict):
         activation = gate_out.get("activation") or {}

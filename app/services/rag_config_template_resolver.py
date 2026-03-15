@@ -150,7 +150,7 @@ def aggregate_feedback_rewards(
     bucket: dict[str, dict[str, float]] = {}
     total_feedback = 0
 
-    for row in list(feedback_rows or []):
+    for row in (feedback_rows or []):
         if isinstance(row, dict):
             variant_raw = row.get(variant_field)
             rating = _as_float(row.get(rating_field))

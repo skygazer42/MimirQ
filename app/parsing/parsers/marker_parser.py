@@ -120,6 +120,7 @@ class MarkerParser:
         pdf_quality: dict[str, Any] | None = None,  # noqa: ARG002 - reserved for future use
         **_kwargs,
     ) -> list[Document]:
+        _ = (dataset_id, tenant_id, pdf_quality)
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -159,4 +160,3 @@ class MarkerParser:
             metadata["dataset_id"] = str(dataset_id)
 
         return [Document(page_content=markdown_text, metadata=metadata)]
-

@@ -23,7 +23,7 @@ from sqlalchemy.engine.url import make_url
 from app.core.config import settings
 from app.core.database import engine
 
-_TABLE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$")
+_TABLE_RE = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$")
 
 
 def build_postgres_maintenance_commands(

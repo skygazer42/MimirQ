@@ -153,7 +153,7 @@ export default function SettingsGroupDetailPage() {
     try {
       const updated = await groupApi.patchGroup(groupId, {
         name,
-        external_id: externalId ? externalId : null,
+        external_id: externalId || null,
       })
       setGroup(updated)
       setNameDraft(String(updated.name || ''))
@@ -424,4 +424,3 @@ export default function SettingsGroupDetailPage() {
     </AppFrame>
   )
 }
-

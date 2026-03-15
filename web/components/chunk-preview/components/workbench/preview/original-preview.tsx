@@ -162,14 +162,12 @@ export function OriginalPreview() {
     if (previewData?.original_text) {
         return 'server';
     }
-    else {
-        if (localOriginalText) {
+    else if (localOriginalText) {
             return 'local';
         }
         else {
             return null;
         }
-    }
 })()
 
   useEffect(() => {
@@ -459,8 +457,7 @@ export function OriginalPreview() {
                   <PdfPreview />
                 </div>);
             }
-            else {
-                if (previewMode === 'rendered') {
+            else if (previewMode === 'rendered') {
                     return (<div className="mx-auto w-full max-w-6xl flex gap-8">
                   <div className="min-w-0 flex-1">
                     <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-primary prose-code:text-primary prose-code:bg-primary/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted">
@@ -477,8 +474,7 @@ export function OriginalPreview() {
 	                    </aside>)}
 	                </div>);
                 }
-                else {
-                    if (previewMode === 'editor') {
+                else if (previewMode === 'editor') {
                         return (<div className="mx-auto w-full max-w-6xl h-full">
                   <OriginalPreviewMonaco text={effectiveOriginalText} chunks={displayChunks} activeChunkIndex={activeChunkIndex} chunkOverrides={chunkOverrides} onSelectChunkIndex={setSelectedChunkIndex}/>
                   <p className="mt-3 text-[11px] text-muted-foreground">
@@ -524,8 +520,6 @@ export function OriginalPreview() {
                             })()) : (effectiveOriginalText)}
                 </div>);
                     }
-                }
-            }
         })()) : (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
                 <FileText className="w-12 h-12 opacity-10"/>
                 <p className="text-xs">{previewData.original_text_truncated ? '原文已省略' : '原文未返回'}</p>
@@ -562,15 +556,13 @@ export function OriginalPreview() {
                   </Button>) : (<p className="text-[10px] text-muted-foreground">当前文件格式不支持在浏览器侧读取原文。</p>)}
               </div>));
     }
-    else {
-        if (isLoading) {
+    else if (isLoading) {
             return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20"/>
               <p className="text-xs">加载中...</p>
             </div>);
         }
-        else {
-            if (error) {
+        else if (error) {
                 return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <AlertCircle className="w-10 h-10 opacity-20"/>
               <p className="text-xs text-muted-foreground">加载失败</p>
@@ -583,8 +575,6 @@ export function OriginalPreview() {
               <p className="text-xs">等待预览</p>
             </div>);
             }
-        }
-    }
 })()}
         </div>
       </div>

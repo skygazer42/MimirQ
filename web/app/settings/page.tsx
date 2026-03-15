@@ -336,14 +336,12 @@ export default function SettingsPage() {
     if (v >= 100) {
         return 0;
     }
-    else {
-        if (v >= 10) {
+    else if (v >= 10) {
             return 1;
         }
         else {
             return 2;
         }
-    }
 })()
     return `${v.toFixed(precision)} ${units[u]}`
   }
@@ -638,19 +636,15 @@ export default function SettingsPage() {
     if (color === 'green') {
         return 'success';
     }
-    else {
-        if (color === 'orange') {
+    else if (color === 'orange') {
             return 'warning';
         }
-        else {
-            if (color === 'cyan') {
+        else if (color === 'cyan') {
                 return 'primary';
             }
             else {
                 return 'info';
             }
-        }
-    }
 })()
 
     return styles[key] || styles.info

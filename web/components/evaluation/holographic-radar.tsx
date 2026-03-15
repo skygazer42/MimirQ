@@ -10,7 +10,7 @@ interface HolographicRadarProps {
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
+  if (active && payload?.length) {
     return (
       <div className="bg-popover/95 backdrop-blur-md border border-primary/30 p-3 rounded-lg shadow-strong">
         <p className="text-primary font-semibold text-xs uppercase mb-1">{label}</p>

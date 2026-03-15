@@ -19,6 +19,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api-client'
+import { coerceOneOf } from '@/lib/one-of'
 import { detachPromise } from '@/lib/utils'
 
 
@@ -109,6 +110,9 @@ type KnowledgeWebCrawlDialogProps = {
   loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
   onRunCreated?: (run: ConnectorRunOut) => void
 }
+
+const WEB_CRAWL_AUTH_TYPES = ['none', 'cookie', 'bearer', 'basic'] as const
+const DOCUMENT_ACCESS_MODE_VALUES = ['inherit', 'only_me', 'partial_members', 'all_team_members'] as const
 
 export function KnowledgeWebCrawlDialog({
   open,
@@ -436,7 +440,10 @@ export function KnowledgeWebCrawlDialog({
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Auth</div>
-              <Select value={authType} onValueChange={(v) => setAuthType(v as any)}>
+              <Select
+                value={authType}
+                onValueChange={(value) => setAuthType(coerceOneOf(WEB_CRAWL_AUTH_TYPES, value, 'none'))}
+              >
                 <SelectTrigger className="h-10 bg-background">
                   <SelectValue placeholder="Select auth" />
                 </SelectTrigger>
@@ -511,7 +518,10 @@ export function KnowledgeWebCrawlDialog({
 
           <div className="space-y-2">
             <div className="text-sm font-medium text-foreground/80">Document access (optional)</div>
-            <Select value={accessMode} onValueChange={(v) => setAccessMode(v as DocumentAccessMode)}>
+            <Select
+              value={accessMode}
+              onValueChange={(value) => setAccessMode(coerceOneOf(DOCUMENT_ACCESS_MODE_VALUES, value, 'inherit'))}
+            >
               <SelectTrigger className="h-10 bg-background">
                 <SelectValue placeholder="Select access mode" />
               </SelectTrigger>

@@ -71,6 +71,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     416: {"description": "Range Not Satisfiable"},
 }
 
+_DETAIL_SUITE_NOT_FOUND = "Suite not found"
+_DETAIL_ITEM_NOT_FOUND = "Item not found"
+
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
@@ -274,7 +277,7 @@ def _render_training_export_csv(rows: list[dict[str, Any]]) -> str:
     ]
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
-    for row in list(rows or []):
+    for row in (rows or []):
         writer.writerow(
             {
                 "schema": row.get("schema"),
@@ -358,7 +361,7 @@ async def repair_evidence_suite_reference_sources(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     if bool(payload.apply):
@@ -565,7 +568,7 @@ async def get_evidence_suite(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, row.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
@@ -600,7 +603,7 @@ async def get_evidence_suite_dashboard(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
@@ -687,7 +690,7 @@ async def list_evidence_suite_hardcase_candidates(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
     if getattr(suite, "archived_at", None) is not None:
         raise HTTPException(status_code=400, detail="Evidence suite is archived")
 
@@ -837,7 +840,7 @@ async def patch_evidence_suite(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, row.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -884,7 +887,7 @@ async def audit_evidence_suite_reference_sources_drift(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
@@ -984,7 +987,7 @@ async def create_evidence_item(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
     if suite.archived_at is not None:
         raise HTTPException(status_code=400, detail="Suite is archived")
 
@@ -1054,7 +1057,7 @@ async def import_evidence_items(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
     if suite.archived_at is not None:
         raise HTTPException(status_code=400, detail="Suite is archived")
 
@@ -1142,7 +1145,7 @@ async def list_evidence_items(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
@@ -1176,7 +1179,7 @@ async def patch_evidence_item(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
 
     suite = (
         db.query(EvidenceSuite)
@@ -1184,7 +1187,7 @@ async def patch_evidence_item(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -1240,7 +1243,7 @@ async def review_evidence_item(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
 
     suite = (
         db.query(EvidenceSuite)
@@ -1248,7 +1251,7 @@ async def review_evidence_item(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -1283,7 +1286,7 @@ async def approve_evidence_item(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
 
     suite = (
         db.query(EvidenceSuite)
@@ -1291,7 +1294,7 @@ async def approve_evidence_item(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -1326,7 +1329,7 @@ async def archive_evidence_item(
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Item not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_ITEM_NOT_FOUND)
 
     suite = (
         db.query(EvidenceSuite)
@@ -1334,7 +1337,7 @@ async def archive_evidence_item(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -1369,7 +1372,7 @@ async def sync_suite_to_regression_cases(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_writable(db, ds, account_id)
@@ -1497,7 +1500,7 @@ async def export_evidence_suite(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)
@@ -1672,7 +1675,7 @@ async def export_evidence_suite_ltr_training_bundle(
         .first()
     )
     if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
     ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
     DatasetService.assert_dataset_readable(db, ds, account_id)

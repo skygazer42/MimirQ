@@ -33,7 +33,7 @@ function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
   if (!value) return ''
   try {
-    return JSON.parse(`"${value.replaceAll(/"/g, '\\"')}"`)
+    return JSON.parse(`"${value.replaceAll("\"", '\\"')}"`)
   } catch {
     return value
   }
@@ -169,7 +169,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   // Sync selectedChunkIndex -> URL param (best-effort).
   // Important: avoid clobbering inbound deep links before we have applied them.
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
 
     const current = (searchParams.get('chunk') || '').trim()
     const next = selectedChunkIndex == null ? '' : String(selectedChunkIndex + 1)
@@ -196,19 +196,19 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   }, [router, searchParams, selectedChunkIndex])
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const saved = (globalThis.window.localStorage.getItem(STORAGE_DATASET_ID_KEY) || '').trim()
     if (saved) setDatasetIdState(saved)
   }, [])
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     if (datasetId) globalThis.window.localStorage.setItem(STORAGE_DATASET_ID_KEY, datasetId)
     else globalThis.window.localStorage.removeItem(STORAGE_DATASET_ID_KEY)
   }, [datasetId])
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const raw = (globalThis.window.localStorage.getItem(STORAGE_SEPARATOR_SETTINGS_KEY) || '').trim()
     if (!raw) {
       separatorSettingsLoadedRef.current = true
@@ -229,7 +229,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   // Load parent-child strategy settings (best-effort).
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const raw = (globalThis.window.localStorage.getItem(STORAGE_PARENT_CHILD_SETTINGS_KEY) || '').trim()
     if (!raw) {
       parentChildSettingsLoadedRef.current = true
@@ -252,7 +252,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   // Persist parent-child strategy settings.
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     if (!parentChildSettingsLoadedRef.current) return
     const payload = JSON.stringify({
       parentChildRatio,
@@ -262,7 +262,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   }, [parentChildRatio, parentChildMinChildSize])
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     if (!separatorSettingsLoadedRef.current) return
     const payload = JSON.stringify({
       separatorPreset,
@@ -275,7 +275,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   // Load preview perf settings (best-effort).
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const raw = (globalThis.window.localStorage.getItem(STORAGE_PERF_SETTINGS_KEY) || '').trim()
     if (!raw) return
     try {
@@ -295,7 +295,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   // Persist preview perf settings.
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const payload = JSON.stringify({
       includeOriginalText,
       originalTextMaxChars,
@@ -314,7 +314,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     if (fileList.length === 0) {
       setCurrentFileIndex(0)
       focusFileLoadedRef.current = false
-      if (typeof globalThis.window !== 'undefined') {
+      if (globalThis.window !== undefined) {
         globalThis.window.localStorage.removeItem(STORAGE_FOCUS_FILE_ID_KEY)
       }
       return
@@ -326,14 +326,14 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   // Persist the currently focused file (best-effort UX when coming back to the page).
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     if (!currentFileItem?.id) return
     globalThis.window.localStorage.setItem(STORAGE_FOCUS_FILE_ID_KEY, currentFileItem.id)
   }, [currentFileItem?.id])
 
   // Restore focused file after fileList is initialized.
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     if (focusFileLoadedRef.current) return
     if (fileList.length === 0) return
     const saved = (globalThis.window.localStorage.getItem(STORAGE_FOCUS_FILE_ID_KEY) || '').trim()

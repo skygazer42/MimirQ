@@ -99,14 +99,12 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     if (hasHtml) {
         return 'HTML';
     }
-    else {
-        if (hasMarkdown) {
+    else if (hasMarkdown) {
             return 'Markdown';
         }
         else {
             return '纯文本';
         }
-    }
 })(),
       hasHeaders,
       hasLists,
@@ -209,14 +207,12 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     if (it.severity === 'error') {
         return 'error';
     }
-    else {
-        if (it.severity === 'warning') {
+    else if (it.severity === 'warning') {
             return 'warning';
         }
         else {
             return 'info';
         }
-    }
 })(),
             message: `后端检测：${it.message}${typeof it.count === 'number' && it.count > 0 ? `（${it.count}）` : ''}`,
           })

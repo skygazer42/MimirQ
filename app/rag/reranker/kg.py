@@ -44,6 +44,7 @@ class KGReranker(BaseReranker):
         query_vector: list[float] | None = None,
         event_hops: dict[str, int] | None = None,
     ) -> RerankResult:
+        _ = query
         event_ids = [c.id for c in candidates if c.id]
         if not event_ids:
             return RerankResult(ordered_ids=[], score_map={})

@@ -128,18 +128,16 @@ export function Navbar({
     if (typeof readyDetails?.ok === 'boolean') {
         return readyDetails.ok;
     }
-    else {
-        if (backendReady.isError) {
+    else if (backendReady.isError) {
             return false;
         }
         else {
             return null;
         }
-    }
 })()
   const lastReadyAt = Math.max(backendReady.dataUpdatedAt || 0, backendReady.errorUpdatedAt || 0) || null
   const closeSidebarOnMobile = useCallback(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     try {
       if (globalThis.window.matchMedia('(max-width: 768px)').matches) setSidebarOpen(false)
     } catch {
@@ -162,7 +160,7 @@ export function Navbar({
   // Accessibility: close the mobile overlay with Escape.
   useEffect(() => {
     if (!isSidebarOpen) return
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
@@ -183,7 +181,7 @@ export function Navbar({
 
   // Accessibility: restore focus to the toggle on close; move focus into the sidebar on open.
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     if (prevIsSidebarOpenRef.current === null) {
       prevIsSidebarOpenRef.current = isSidebarOpen
       return
@@ -216,7 +214,7 @@ export function Navbar({
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const key = '__mimirq_routes_prefetched__'
     if ((globalThis.window as any)[key]) return
     ;(globalThis.window as any)[key] = true
@@ -465,27 +463,23 @@ export function Navbar({
     if (backendOk === true) {
         return "completed";
     }
-    else {
-        if (backendOk === false) {
+    else if (backendOk === false) {
             return "failed";
         }
         else {
             return "processing";
         }
-    }
 })()}
                     label={`Deps：${(() => {
     if (backendOk === true) {
         return "OK";
     }
-    else {
-        if (backendOk === false) {
+    else if (backendOk === false) {
             return "Down";
         }
         else {
             return "...";
         }
-    }
 })()}`}
                     dense
                   />
@@ -502,14 +496,12 @@ export function Navbar({
     if (backendOk === true) {
         return "text-success";
     }
-    else {
-        if (backendOk === false) {
+    else if (backendOk === false) {
             return "text-destructive";
         }
         else {
             return "text-muted-foreground";
         }
-    }
 })()
                       )}
                     >
@@ -517,14 +509,12 @@ export function Navbar({
     if (backendOk === true) {
         return "OK";
     }
-    else {
-        if (backendOk === false) {
+    else if (backendOk === false) {
             return "Down";
         }
         else {
             return "...";
         }
-    }
 })()}
                     </span>
                   </div>

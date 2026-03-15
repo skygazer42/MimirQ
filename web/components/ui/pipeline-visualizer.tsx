@@ -52,14 +52,12 @@ export function PipelineVisualizer({ progress, stage, className }: Readonly<Pipe
     if (isCompleted) {
         return "bg-primary text-primary-foreground border-primary";
     }
-    else {
-        if (isActive) {
+    else if (isActive) {
             return "bg-background text-primary border-primary ring-4 ring-primary/10";
         }
         else {
             return "bg-secondary text-muted-foreground border-transparent";
         }
-    }
 })()
                       )}
                     >

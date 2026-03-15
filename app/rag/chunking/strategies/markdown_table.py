@@ -127,6 +127,7 @@ def looks_like_markdown_table(text: str) -> bool:
 
 def _iter_table_rows(text: str, *, start: int, end: int, header_end: int) -> list[_Span]:
     # Rows are any non-empty lines after the alignment row.
+    _ = start
     body = text[header_end:end]
     if not body:
         return []
@@ -262,4 +263,3 @@ class MarkdownTableChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

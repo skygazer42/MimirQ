@@ -9,7 +9,7 @@ _QUOTE_CHARS = "\"“”'‘’`"
 _QUOTE_CLASS = re.escape(_QUOTE_CHARS)
 _QUOTED_TERM_RE = re.compile(rf"[{_QUOTE_CLASS}]([^{_QUOTE_CLASS}]{{2,120}})[{_QUOTE_CLASS}]")
 _FILE_LIKE_RE = re.compile(r"\b[A-Za-z0-9_.-]{2,120}\.(?:csv|tsv|xlsx|xls|md|txt|json)\b", re.IGNORECASE)
-_TABLE_LIKE_RE = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]{1,80}\.[A-Za-z_][A-Za-z0-9_]{1,80}\b")
+_TABLE_LIKE_RE = re.compile(r"\b[A-Za-z_]\w{1,80}\.[A-Za-z_]\w{1,80}\b")
 
 
 def _collect_metadata_filter_source_keys(metadata_filter: Any) -> list[str]:

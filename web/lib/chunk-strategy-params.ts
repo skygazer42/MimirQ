@@ -22,17 +22,19 @@ export function validateChunkStrategyParams(value: unknown): ChunkStrategyParams
     if (!key) continue
     if (key.length > 80) return { ok: false, error: '存在过长 key（最长 80 字符）' }
 
-    const t = typeof v
-    if (v == null || t === 'boolean') {
-      cleaned[key] = v as any
+    if (v === undefined) {
       continue
     }
-    if (t === 'number') {
-      if (!Number.isFinite(v as number)) return { ok: false, error: '存在非法 number value（必须为有限数值）' }
-      cleaned[key] = v as number
+    if (v === null || typeof v === 'boolean') {
+      cleaned[key] = v
       continue
     }
-    if (t === 'string') {
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v)) return { ok: false, error: '存在非法 number value（必须为有限数值）' }
+      cleaned[key] = v
+      continue
+    }
+    if (typeof v === 'string') {
       if (v.length > 500) return { ok: false, error: '存在过长 string value（最长 500 字符）' }
       cleaned[key] = v
       continue

@@ -49,6 +49,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
   const [selectedRunId, setSelectedRunId] = useState<string>('')
   const [runDetail, setRunDetail] = useState<RegressionRunDetail | null>(null)
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
+  const [isRunning, setIsRunning] = useState(false)
 
   const visibleRuns = useMemo(() => {
     if (!selectedDatasetId) return runs
@@ -195,8 +196,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
         已完成
       </span>);
     }
-    else {
-        if (runStatus === 'failed') {
+    else if (runStatus === 'failed') {
             return (<span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20">
         <XCircle className="w-3.5 h-3.5"/>
         失败
@@ -208,7 +208,6 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	        运行中
 	      </span>);
         }
-    }
 })()
 	  ) : null
 
@@ -427,8 +426,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 		                  <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
 		                </div>);
     }
-    else {
-        if (visibleRuns.length === 0) {
+    else if (visibleRuns.length === 0) {
             return (<div className="text-center py-8 text-muted-foreground text-sm">
 	                  暂无运行记录
 	                </div>);
@@ -443,14 +441,12 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                     if (run.status === 'completed') {
                         return 'bg-success/10 text-success border-success/20';
                     }
-                    else {
-                        if (run.status === 'failed') {
+                    else if (run.status === 'failed') {
                             return 'bg-destructive/10 text-destructive border-destructive/20';
                         }
                         else {
                             return 'bg-info/10 text-info border-info/20';
                         }
-                    }
                 })())}>
 	                        {run.status}
 	                      </span>
@@ -460,7 +456,6 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	                    </div>
 	                  </button>)));
         }
-    }
 })()}
 	            </div>
 	          </div>

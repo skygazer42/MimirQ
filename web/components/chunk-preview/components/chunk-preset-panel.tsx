@@ -30,7 +30,7 @@ function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
   if (!value) return ''
   try {
-    return JSON.parse(`"${value.replaceAll(/"/g, '\\"')}"`)
+    return JSON.parse(`"${value.replaceAll("\"", '\\"')}"`)
   } catch {
     return value
   }

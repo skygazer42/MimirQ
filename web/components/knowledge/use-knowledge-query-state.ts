@@ -60,10 +60,10 @@ export function parseKnowledgeQueryState(
   }
 
   const dataset = searchParams.get('dataset')
-  if (dataset && dataset.trim()) state.datasetScope = dataset
+  if (dataset?.trim()) state.datasetScope = dataset
 
   const folder = searchParams.get('folder')
-  if (folder && folder.trim() && dataset && dataset.trim() && dataset !== DATASET_ALL) state.folderPath = folder.trim()
+  if (folder?.trim() && dataset?.trim() && dataset !== DATASET_ALL) state.folderPath = folder.trim()
 
   const orderBy = searchParams.get('order_by')
   if (orderBy === 'created_at' || orderBy === 'filename' || orderBy === 'file_size') state.sortKey = orderBy
@@ -72,7 +72,7 @@ export function parseKnowledgeQueryState(
   if (orderDir === 'asc' || orderDir === 'desc') state.sortDir = orderDir
 
   const run = searchParams.get('run')
-  if (run && run.trim()) {
+  if (run?.trim()) {
     state.activeTab = 'settings'
     state.connectorRunId = run.trim()
   }

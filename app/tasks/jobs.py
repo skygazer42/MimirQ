@@ -45,6 +45,12 @@ from app.tasks.locks import (
 )
 
 logger = get_logger("tasks.jobs")
+
+
+def _kg_lock_flag(value: bool | None) -> str:
+    if value is None:
+        return "auto"
+    return "1" if bool(value) else "0"
 TASK_JOB_RESULT_SCHEMA_V1 = "mimirq.task_job_result.v1"
 
 
@@ -1011,10 +1017,10 @@ async def extract_kg_job(
             or None
         )
         selected_ph = explicit_ph or (str(doc_ph).strip() if doc_ph is not None else None) or "unknown"
-        replace_key = "auto" if replace_existing is None else ("1" if bool(replace_existing) else "0")
-        prune_key = "auto" if prune_orphan_entities is None else ("1" if bool(prune_orphan_entities) else "0")
-        rel_key = "auto" if extract_relations is None else ("1" if bool(extract_relations) else "0")
-        skill_key = "auto" if extract_skills is None else ("1" if bool(extract_skills) else "0")
+        replace_key = _kg_lock_flag(replace_existing)
+        prune_key = _kg_lock_flag(prune_orphan_entities)
+        rel_key = _kg_lock_flag(extract_relations)
+        skill_key = _kg_lock_flag(extract_skills)
         lock_key = f"lock:kg:{tenant_id}:{document_id}:{selected_ph}:{replace_key}:{prune_key}:{rel_key}:{skill_key}"
         lock_val = make_lock_value(requested_by)
         lock_ttl = 60 * 40  # 40 min

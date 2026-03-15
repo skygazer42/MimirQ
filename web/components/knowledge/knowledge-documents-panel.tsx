@@ -283,8 +283,7 @@ export function KnowledgeDocumentsPanel({
           <p className="text-sm">正在加载文档库...</p>
         </div>);
     }
-    else {
-        if (documents.length === 0 && hasActiveFilters) {
+    else if (documents.length === 0 && hasActiveFilters) {
             return (<div className="py-10">
           <EmptyState icon={Filter} title="未找到匹配的文档" description={<span className="text-muted-foreground">尝试清空筛选条件，重新查看范围内的全部文档。</span>} className="bg-transparent shadow-none">
             <Button type="button" variant="outline" className="rounded-xl" onClick={onClearFilters}>
@@ -293,13 +292,12 @@ export function KnowledgeDocumentsPanel({
           </EmptyState>
         </div>);
         }
-        else {
-            if (documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets) {
+        else if (documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets) {
                 return (<div className="py-10">
           <EmptyState icon={Database} title="该数据集暂无文档" description={<span className="text-muted-foreground">
                 当前范围为{' '}
                 <span className="font-mono tabular-nums">
-                  {selectedDatasetLabel ? selectedDatasetLabel : selectedDatasetId}
+                  {selectedDatasetLabel || selectedDatasetId}
                 </span>
                 。可切换到全部数据集查看其他文档，或通过顶部“导入/新增”上传/导入。
               </span>} className="bg-transparent shadow-none">
@@ -309,8 +307,7 @@ export function KnowledgeDocumentsPanel({
           </EmptyState>
         </div>);
             }
-            else {
-                if (documents.length === 0) {
+            else if (documents.length === 0) {
                     return (<div className="py-10">
           <EmptyState icon={Upload} title="知识库空空如也" description={<span className="text-muted-foreground">
                 上传您的第一份文档，MimirQ 将自动解析并构建专属知识索引。
@@ -420,8 +417,7 @@ export function KnowledgeDocumentsPanel({
               </EmptyState>
             </div>);
                             }
-                            else {
-                                if (viewMode === 'grid') {
+                            else if (viewMode === 'grid') {
                                     return (<div role="list" aria-label="文档列表" style={{
                                             height: `${docsGridVirtualizer.getTotalSize()}px`,
                                             width: '100%',
@@ -568,13 +564,9 @@ export function KnowledgeDocumentsPanel({
 	              </table>
 	            </Panel>);
                                 }
-                            }
                         })()}
         </>);
                 }
-            }
-        }
-    }
 })()}
     </div>
   )

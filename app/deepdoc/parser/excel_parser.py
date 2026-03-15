@@ -123,7 +123,7 @@ class IntegratedPipelineExcelParser:
                 continue
 
             tb_rows_0 = "<tr>"
-            for t in list(rows[0]):
+            for t in rows[0]:
                 tb_rows_0 += f"<th>{t.value}</th>"
             tb_rows_0 += "</tr>"
 
@@ -131,9 +131,7 @@ class IntegratedPipelineExcelParser:
                 tb = ""
                 tb += f"<table><caption>{sheetname}</caption>"
                 tb += tb_rows_0
-                for r in list(
-                        rows[1 + chunk_i * chunk_rows: 1 + (chunk_i + 1) * chunk_rows]
-                ):
+                for r in rows[1 + chunk_i * chunk_rows: 1 + (chunk_i + 1) * chunk_rows]:
                     tb += "<tr>"
                     for i, c in enumerate(r):
                         if c.value is None:
@@ -157,7 +155,7 @@ class IntegratedPipelineExcelParser:
             if not rows:
                 continue
             ti = list(rows[0])
-            for r in list(rows[1:]):
+            for r in rows[1:]:
                 fields = []
                 for i, c in enumerate(r):
                     if not c.value:

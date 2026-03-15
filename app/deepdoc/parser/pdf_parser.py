@@ -1447,6 +1447,7 @@ class PlainParser:
         return [(line, "") for line in lines], []
 
     def crop(self, ck, need_position):
+        _ = ck
         if need_position:
             return None, None
         return None

@@ -178,7 +178,7 @@ class TextRecognizer:
 
     def resize_norm_img_vl(self, img, image_shape):
 
-        imgC, imgH, imgW = image_shape
+        _imgC, imgH, imgW = image_shape
         img = img[:, :, ::-1]  # bgr2rgb
         resized_image = cv2.resize(
             img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
@@ -187,7 +187,7 @@ class TextRecognizer:
         return resized_image
 
     def resize_norm_img_srn(self, img, image_shape):
-        imgC, imgH, imgW = image_shape
+        _imgC, imgH, imgW = image_shape
 
         img_black = np.zeros((imgH, imgW))
         im_hei = img.shape[0]
@@ -214,7 +214,7 @@ class TextRecognizer:
 
     def srn_other_inputs(self, image_shape, num_heads, max_text_length):
 
-        imgC, imgH, imgW = image_shape
+        _imgC, imgH, imgW = image_shape
         feature_dim = int((imgH / 8) * (imgW / 8))
 
         encoder_word_pos = np.array(range(0, feature_dim)).reshape(
@@ -312,7 +312,7 @@ class TextRecognizer:
 
     def resize_norm_img_svtr(self, img, image_shape):
 
-        imgC, imgH, imgW = image_shape
+        _imgC, imgH, imgW = image_shape
         resized_image = cv2.resize(
             img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
         resized_image = resized_image.astype('float32')
@@ -323,7 +323,7 @@ class TextRecognizer:
 
     def resize_norm_img_abinet(self, img, image_shape):
 
-        imgC, imgH, imgW = image_shape
+        _imgC, imgH, imgW = image_shape
 
         resized_image = cv2.resize(
             img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
@@ -340,6 +340,7 @@ class TextRecognizer:
         return resized_image
 
     def norm_img_can(self, img, image_shape):
+        _ = image_shape
 
         img = cv2.cvtColor(
             img, cv2.COLOR_BGR2GRAY)  # CAN only predict gray scale image
@@ -375,7 +376,7 @@ class TextRecognizer:
         for beg_img_no in range(0, img_num, batch_num):
             end_img_no = min(img_num, beg_img_no + batch_num)
             norm_img_batch = []
-            imgC, imgH, imgW = self.rec_image_shape[:3]
+            _imgC, imgH, imgW = self.rec_image_shape[:3]
             max_wh_ratio = imgW / imgH
             # max_wh_ratio = 0
             for ino in range(beg_img_no, end_img_no):
@@ -652,7 +653,7 @@ class OCR:
 
         img_crop = self.get_rotate_crop_image(ori_im, box)
 
-        rec_res, elapse = self.text_recognizer[device_id]([img_crop])
+        rec_res, _elapse = self.text_recognizer[device_id]([img_crop])
         text, score = rec_res[0]
         if score < self.drop_score:
             return ""
@@ -661,7 +662,7 @@ class OCR:
     def recognize_batch(self, img_list, device_id: int | None = None):
         if device_id is None:
             device_id = 0
-        rec_res, elapse = self.text_recognizer[device_id](img_list)
+        rec_res, _elapse = self.text_recognizer[device_id](img_list)
         texts = []
         for i in range(len(rec_res)):
             text, score = rec_res[i]
@@ -703,7 +704,7 @@ class OCR:
 
         filter_boxes, filter_rec_res = [], []
         for box, rec_result in zip(dt_boxes, rec_res, strict=False):
-            text, score = rec_result
+            _text, score = rec_result
             if score >= self.drop_score:
                 filter_boxes.append(box)
                 filter_rec_res.append(rec_result)

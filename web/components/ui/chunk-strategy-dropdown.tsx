@@ -189,14 +189,12 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
     if (isSelected) {
         return 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300';
     }
-    else {
-        if (option.badge === 'Token') {
+    else if (option.badge === 'Token') {
             return 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300';
         }
         else {
             return 'bg-muted text-muted-foreground';
         }
-    }
 })()
                           )}
                         >

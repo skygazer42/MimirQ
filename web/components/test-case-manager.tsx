@@ -206,7 +206,7 @@ export function TestCaseManager({
     setEvidenceLoading(true)
     try {
       const res = await ragApi.retrieveEvidence({ query: q, dataset_id: datasetId })
-      const citations = Array.isArray(res?.citations) ? res.citations : []
+      const citations = Array.isArray(res?.citations) ? (res.citations as unknown as Citation[]) : []
       if (!citations.length) {
         toast.error('未检索到可用 citations（请检查数据集是否已入库）')
         return
@@ -286,14 +286,12 @@ export function TestCaseManager({
     if (normalizedSelected.length) {
         return new Set(normalizedSelected);
     }
-    else {
-        if (firstChunkId) {
+    else if (firstChunkId) {
             return new Set([firstChunkId]);
         }
         else {
             return new Set();
         }
-    }
 })()
       )
       setEvidenceDialogOpen(true)
@@ -695,8 +693,7 @@ export function TestCaseManager({
 	            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
 	          </div>);
     }
-    else {
-        if (filteredCases.length === 0) {
+    else if (filteredCases.length === 0) {
             return (<div className="text-center py-8 text-muted-foreground">
             {(() => {
                 if (datasetId) {
@@ -797,7 +794,6 @@ export function TestCaseManager({
             </div>
           </>);
         }
-    }
 })()}
       </div>
 

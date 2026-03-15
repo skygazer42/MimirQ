@@ -185,8 +185,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
             <p className="text-sm text-muted-foreground animate-pulse motion-reduce:animate-none">加载中...</p>
           </div>);
     }
-    else {
-        if (results.length === 0) {
+    else if (results.length === 0) {
             return (<div className="flex flex-col items-center justify-center h-64 text-muted-foreground/50 gap-4">
             <LottieAnimation url={LOTTIE_URLS.EMPTY_DOCUMENTS} className="w-40 h-40 opacity-80"/>
             <p className="text-sm font-medium">
@@ -216,7 +215,6 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
                 })}
           </div>);
         }
-    }
 })()}
       </div>
     </aside>

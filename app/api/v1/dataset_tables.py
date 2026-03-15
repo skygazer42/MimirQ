@@ -63,6 +63,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     416: {"description": "Range Not Satisfiable"},
 }
 
+_DETAIL_INVALID_TABLE_ID = "invalid table_id"
+_DETAIL_TABLE_NOT_FOUND = "table not found"
+
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
@@ -444,7 +447,7 @@ def get_dataset_table(
 
     parsed = parse_table_id(table_id)
     if parsed is None:
-        raise HTTPException(status_code=400, detail="invalid table_id")
+        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
 
     # Enforce document-level ACL and dataset binding.
     filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
@@ -455,7 +458,7 @@ def get_dataset_table(
         .first()
     )
     if doc is None:
-        raise HTTPException(status_code=404, detail="table not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_TABLE_NOT_FOUND)
 
     assets = _extract_table_assets(
         doc=doc,
@@ -504,7 +507,7 @@ def get_dataset_table(
                             },
                         )
             return a
-    raise HTTPException(status_code=404, detail="table not found")
+    raise HTTPException(status_code=404, detail=_DETAIL_TABLE_NOT_FOUND)
 
 
 @router.get(
@@ -534,7 +537,7 @@ def preview_dataset_table(
 
     parsed = parse_table_id(table_id)
     if parsed is None:
-        raise HTTPException(status_code=400, detail="invalid table_id")
+        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
 
     filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
 
@@ -552,7 +555,7 @@ def preview_dataset_table(
         payload = dict(payload)
         payload["rows"] = _redact_table_rows(list(payload.get("rows") or []))
     if fls_policy is not None:
-        cols = [str(c) for c in list(payload.get("columns") or [])]
+        cols = [str(c) for c in (payload.get("columns") or [])]
         rows = list(payload.get("rows") or [])
         mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
         masked_cols = [c for c in cols if c in mask_map]
@@ -604,7 +607,7 @@ def query_dataset_table(
 
     parsed = parse_table_id(table_id)
     if parsed is None:
-        raise HTTPException(status_code=400, detail="invalid table_id")
+        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
 
     filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
 
@@ -634,7 +637,7 @@ def query_dataset_table(
     if redact_rows:
         out_payload["rows"] = _redact_table_rows(list(out_payload.get("rows") or []))
     if fls_policy is not None:
-        cols = [str(c) for c in list(out_payload.get("columns") or [])]
+        cols = [str(c) for c in (out_payload.get("columns") or [])]
         rows = list(out_payload.get("rows") or [])
         mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
         masked_cols = [c for c in cols if c in mask_map]
@@ -695,7 +698,7 @@ def ask_dataset_table(
 
     parsed = parse_table_id(table_id)
     if parsed is None:
-        raise HTTPException(status_code=400, detail="invalid table_id")
+        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
 
     filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
 
@@ -705,7 +708,7 @@ def ask_dataset_table(
         .first()
     )
     if doc is None:
-        raise HTTPException(status_code=404, detail="table not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_TABLE_NOT_FOUND)
 
     # Extract schema for the specific table_id.
     meta = getattr(doc, "doc_metadata", None) or {}
@@ -798,7 +801,7 @@ def ask_dataset_table(
     # FLS: redact denied columns before any LLM call.
     data_payload = dict(result)
     if fls_policy is not None:
-        cols = [str(c) for c in list(data_payload.get("columns") or [])]
+        cols = [str(c) for c in (data_payload.get("columns") or [])]
         rows = list(data_payload.get("rows") or [])
         mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
         masked_cols = [c for c in cols if c in mask_map]
@@ -886,7 +889,7 @@ def lotus_sem_filter_dataset_table(
 
     parsed = parse_table_id(table_id)
     if parsed is None:
-        raise HTTPException(status_code=400, detail="invalid table_id")
+        raise HTTPException(status_code=400, detail=_DETAIL_INVALID_TABLE_ID)
 
     filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
 
@@ -896,7 +899,7 @@ def lotus_sem_filter_dataset_table(
         .first()
     )
     if doc is None:
-        raise HTTPException(status_code=404, detail="table not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_TABLE_NOT_FOUND)
 
     sql_table = f"sheet_{int(parsed.sheet_index)}"
     output_rows = int(body.max_rows or getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)
@@ -944,7 +947,7 @@ def lotus_sem_filter_dataset_table(
                 if fls_policy is not None:
                     # Defense-in-depth: avoid sending denied columns to LOTUS/LLM flows.
                     try:
-                        df_cols = [str(c) for c in list(getattr(df, "columns", []) or [])]
+                        df_cols = [str(c) for c in (getattr(df, "columns", []) or [])]
                         mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=df_cols, ctx=fls_ctx)
                         for c, mask in mask_map.items():
                             if c in df.columns:  # type: ignore[operator]
@@ -962,7 +965,7 @@ def lotus_sem_filter_dataset_table(
             # Fall back to NL->SQL below.
             avail = type(avail)(ok=False, reason=f"lotus failed: {str(exc)[:200]}")  # type: ignore[misc]
         else:
-            cols = [str(c) for c in list(getattr(filtered, "columns", []) or [])]
+            cols = [str(c) for c in (getattr(filtered, "columns", []) or [])]
             rows: list[list[Any]] = []
             truncated = False
             for i, row in enumerate(filtered.itertuples(index=False, name=None)):  # type: ignore[attr-defined]
@@ -1022,7 +1025,7 @@ def lotus_sem_filter_dataset_table(
         payload = dict(payload)
         payload["rows"] = _redact_table_rows(list(payload.get("rows") or []))
     if fls_policy is not None:
-        cols = [str(c) for c in list(payload.get("columns") or [])]
+        cols = [str(c) for c in (payload.get("columns") or [])]
         rows = list(payload.get("rows") or [])
         mask_map = build_fls_column_mask_map(fls_policy, source="table_store", columns=cols, ctx=fls_ctx)
         masked_cols = [c for c in cols if c in mask_map]

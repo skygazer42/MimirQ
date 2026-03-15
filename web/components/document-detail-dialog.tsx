@@ -418,8 +418,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
       const payload: any = {
         publication_status: lifecyclePublicationStatusDraft,
-        lifecycle_owner: owner ? owner : null,
-        supersedes_document_id: sup ? sup : null,
+        lifecycle_owner: owner || null,
+        supersedes_document_id: sup || null,
         authority_level: authStr ? Number.parseInt(authStr, 10) : null,
         review_due_at: dueStr ? new Date(dueStr).toISOString() : null,
       }
@@ -483,7 +483,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       const res = await documentApi.listChunks(initialDocument.id, {
         skip,
         limit: CHUNK_PAGE_SIZE,
-        q: q ? q : undefined,
+        q: q || undefined,
         pipeline_hash: pipelineHash,
       })
       return res
@@ -569,14 +569,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     if (Array.isArray(pipeline?.governance_rule_packs)) {
         return pipeline.governance_rule_packs;
     }
-    else {
-        if (Array.isArray(docMeta.governance_rule_packs)) {
+    else if (Array.isArray(docMeta.governance_rule_packs)) {
             return docMeta.governance_rule_packs;
         }
         else {
             return [];
         }
-    }
 })()
 
   const activePipelineHash =
@@ -1112,14 +1110,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     if (tagsEditing) {
         return (<TagInput value={tagsDraft} onValueChange={setTagsDraft} disabled={isSavingTags}/>);
     }
-    else {
-        if (currentTags.length) {
+    else if (currentTags.length) {
             return (<DocumentTags tags={currentTags} max={10}/>);
         }
         else {
             return (<div className="text-xs text-muted-foreground">暂无标签（可用于知识库分组、检索过滤与运维标记）</div>);
         }
-    }
 })()}
 
               {tagsError ? (
@@ -1170,14 +1166,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     if (lifecycleWritable === false) {
         return "只读：需要数据集编辑权限";
     }
-    else {
-        if (lifecycleWritable == null) {
+    else if (lifecycleWritable == null) {
             return "权限确认中";
         }
         else {
             return undefined;
         }
-    }
 })()
                     }
                   >
@@ -1369,7 +1363,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   : `${timelineItems.length}/${timelineTotal}`}
               </span>
 
-              {/* eslint-disable-next-line no-nested-ternary */}
               {activeView === "chunks" ? (
                 chunkQuery ? (
                   <IconButton
@@ -1408,8 +1401,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                     <p className="text-sm">正在加载切片数据...</p>
                   </div>);
             }
-            else {
-                if (loadError && chunks.length === 0) {
+            else if (loadError && chunks.length === 0) {
                     return (<div className="mx-auto max-w-2xl py-10">
                     <Alert variant="destructive">
                       <AlertTitle>加载失败</AlertTitle>
@@ -1429,12 +1421,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                     </div>
                   </div>);
                 }
-                else {
-                    if (chunksTotal === 0 && !isSearching) {
+                else if (chunksTotal === 0 && !isSearching) {
                         return (<EmptyState icon={FileText} title="暂无切片数据" description="该文档暂未生成可用切片，或后端未返回切片内容。" className="min-h-[320px]"/>);
                     }
-                    else {
-                        if (chunksTotal === 0 && isSearching) {
+                    else if (chunksTotal === 0 && isSearching) {
                             return (<EmptyState icon={Search} title="未找到匹配切片" description={<span>尝试更换关键词，或清空筛选条件。</span>} className="min-h-[320px]">
 	                    <Button variant="outline" onClick={() => setChunkQuery("")}>
 	                      清空筛选
@@ -1521,20 +1511,15 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 	                      </div>) : null}
 	                  </div>);
                         }
-                    }
-                }
-            }
         })());
     }
-    else {
-        if (isLoadingTimeline && timelineItems.length === 0) {
+    else if (isLoadingTimeline && timelineItems.length === 0) {
             return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
 	                  <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
                   <p className="text-sm">正在加载时间线...</p>
                 </div>);
         }
-        else {
-            if ((timelineError || docError) && timelineItems.length === 0) {
+        else if ((timelineError || docError) && timelineItems.length === 0) {
                 return (<div className="mx-auto max-w-2xl py-10">
                   <Alert variant="destructive">
                     <AlertTitle>加载失败</AlertTitle>
@@ -1550,8 +1535,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   </div>
                 </div>);
             }
-            else {
-                if (timelineItems.length === 0) {
+            else if (timelineItems.length === 0) {
                     return (<EmptyState icon={Calendar} title="暂无时间线事件" description="该文档暂未产生可回溯的事件记录（或审计未启用）。" className="min-h-[320px]"/>);
                 }
                 else {
@@ -1631,9 +1615,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 	                  </div>
 	                </div>);
                 }
-            }
-        }
-    }
 })()}
             </div>
           </Panel>
@@ -1672,8 +1653,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                         正在加载版本信息...
                       </div>);
     }
-    else {
-        if (versionsError) {
+    else if (versionsError) {
             return (<Alert variant="destructive">
                         <AlertTitle>加载版本失败</AlertTitle>
                         <AlertDescription className="flex items-center justify-between gap-3">
@@ -1687,7 +1667,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         else {
             return null;
         }
-    }
 })()}
 
                     <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
@@ -1709,7 +1688,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                     </div>
 
                     {null}
-                    {/* eslint-disable-next-line no-nested-ternary */}
                     {!isLoadingVersions && !versionsError ? (
                       versions?.items?.length ? (
                         <div className="space-y-2">

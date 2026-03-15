@@ -1428,7 +1428,7 @@ class EventExtractor:
                                     return chunk_id, None, False
 
                             verify_results = await asyncio.gather(
-                                *[_verify_relations_for_chunk(cid) for cid in list(rels_by_chunk.keys())]
+                                *[_verify_relations_for_chunk(cid) for cid in rels_by_chunk.keys()]
                             )
                             for chunk_id, verified, ok in verify_results:
                                 if not ok:

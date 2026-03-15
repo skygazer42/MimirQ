@@ -35,10 +35,10 @@ function clampText(v: unknown, max = 240): string {
 
 function inferEvidenceKind(citation: Citation | null): 'image' | 'table' | 'text' {
   if (!citation) return 'text'
-  const hitType = String((citation as any).hit_type || '').trim().toLowerCase()
-  const chunkRole = String((citation as any).chunk_role || '').trim().toLowerCase()
-  const semanticRole = String((citation as any).chunk_semantic_role || '').trim().toLowerCase()
-  const hasImage = Boolean((citation as any).has_image)
+  const hitType = String(citation.hit_type || '').trim().toLowerCase()
+  const chunkRole = String(citation.chunk_role || '').trim().toLowerCase()
+  const semanticRole = String(citation.chunk_semantic_role || '').trim().toLowerCase()
+  const hasImage = Boolean(citation.has_image)
 
   if (hasImage || hitType === 'image') return 'image'
   if (
@@ -95,13 +95,12 @@ export function EvidenceViewerDialog({
   const { openDocument } = useDocumentView()
 
   const kind = inferEvidenceKind(citation)
-  const imgUrl =
-    kind === 'image' ? resolveSafeCitationImageUrl((citation as any)?.img_url) : null
+  const imgUrl = kind === 'image' ? resolveSafeCitationImageUrl(citation?.img_url) : null
 
   const title = (() => {
     if (!citation) return 'Evidence'
-    const doc = clampText((citation as any).document_name || 'Document', 80)
-    const p = (citation as any).page_number
+    const doc = clampText(citation.document_name || 'Document', 80)
+    const p = citation.page_number
     const pageLabel = typeof p === 'number' && p > 0 ? ` · P.${p}` : ''
     if (kind === 'image') return `Image Evidence · ${doc}${pageLabel}`
     if (kind === 'table') return `Table Evidence · ${doc}${pageLabel}`
@@ -112,34 +111,30 @@ export function EvidenceViewerDialog({
     if (!citation?.document_id) return
     const start =
       (() => {
-    if (typeof (citation as any).evidence_start_char === 'number') {
-        return (citation as any).evidence_start_char;
+    if (typeof citation.evidence_start_char === 'number') {
+        return citation.evidence_start_char;
     }
-    else {
-        if (typeof (citation as any).start_char === 'number') {
-            return (citation as any).start_char;
+    else if (typeof citation.start_char === 'number') {
+            return citation.start_char;
         }
         else {
             return null;
         }
-    }
 })()
     const end =
       (() => {
-    if (typeof (citation as any).evidence_end_char === 'number') {
-        return (citation as any).evidence_end_char;
+    if (typeof citation.evidence_end_char === 'number') {
+        return citation.evidence_end_char;
     }
-    else {
-        if (typeof (citation as any).end_char === 'number') {
-            return (citation as any).end_char;
+    else if (typeof citation.end_char === 'number') {
+            return citation.end_char;
         }
         else {
             return null;
         }
-    }
 })()
     const range = start != null && end != null && end > start ? { start, end } : undefined
-    openDocument(citation.document_id, (citation as any).chunk_id, range)
+    openDocument(citation.document_id, citation.chunk_id, range)
   }, [citation, openDocument])
 
   const onCopyJson = React.useCallback(async () => {
@@ -158,37 +153,37 @@ export function EvidenceViewerDialog({
       rows.push({ k, v: s })
     }
 
-    push('document_id', (citation as any).document_id)
-    push('chunk_id', (citation as any).chunk_id)
-    push('page_number', (citation as any).page_number)
-    push('chunk_index', (citation as any).chunk_index)
+    push('document_id', citation.document_id)
+    push('chunk_id', citation.chunk_id)
+    push('page_number', citation.page_number)
+    push('chunk_index', citation.chunk_index)
     push('span', (() => {
-      const s = (citation as any).start_char
-      const e = (citation as any).end_char
+      const s = citation.start_char
+      const e = citation.end_char
       if (typeof s === 'number' && typeof e === 'number' && e >= s) return `${s}..${e}`
       return ''
     })())
     push('evidence_span', (() => {
-      const s = (citation as any).evidence_start_char
-      const e = (citation as any).evidence_end_char
+      const s = citation.evidence_start_char
+      const e = citation.evidence_end_char
       if (typeof s === 'number' && typeof e === 'number' && e >= s) return `${s}..${e}`
       return ''
     })())
-    push('hit_type', (citation as any).hit_type)
-    push('retrieval_role', (citation as any).retrieval_role)
-    push('neighbor_of', (citation as any).neighbor_of)
-    push('doc_pipeline_key', (citation as any).doc_pipeline_key)
-    push('pipeline_hash', (citation as any).pipeline_hash)
-    push('retrieval_mode', (citation as any).retrieval_mode)
-    push('reranker_provider', (citation as any).reranker_provider)
-    push('relevance_score', (citation as any).relevance_score)
-    push('vector_score', (citation as any).vector_score)
-    push('bm25_score', (citation as any).bm25_score)
-    push('keyword_score', (citation as any).keyword_score)
-    push('rerank_score', (citation as any).rerank_score)
-    push('retrieval_score', (citation as any).retrieval_score)
-    push('retrieval_elapsed_sec', (citation as any).retrieval_elapsed_sec)
-    push('rerank_elapsed_sec', (citation as any).rerank_elapsed_sec)
+    push('hit_type', citation.hit_type)
+    push('retrieval_role', citation.retrieval_role)
+    push('neighbor_of', citation.neighbor_of)
+    push('doc_pipeline_key', citation.doc_pipeline_key)
+    push('pipeline_hash', citation.pipeline_hash)
+    push('retrieval_mode', citation.retrieval_mode)
+    push('reranker_provider', citation.reranker_provider)
+    push('relevance_score', citation.relevance_score)
+    push('vector_score', citation.vector_score)
+    push('bm25_score', citation.bm25_score)
+    push('keyword_score', citation.keyword_score)
+    push('rerank_score', citation.rerank_score)
+    push('retrieval_score', citation.retrieval_score)
+    push('retrieval_elapsed_sec', citation.retrieval_elapsed_sec)
+    push('rerank_elapsed_sec', citation.rerank_elapsed_sec)
 
     return rows
   }, [citation])
@@ -210,8 +205,7 @@ export function EvidenceViewerDialog({
                   image
                 </span>);
     }
-    else {
-        if (kind === 'table') {
+    else if (kind === 'table') {
             return (<span className="inline-flex items-center gap-1">
                   <Table2 className="h-3 w-3"/>
                   table
@@ -223,7 +217,6 @@ export function EvidenceViewerDialog({
                   text
                 </span>);
         }
-    }
 })()}
             </Badge>
             {citation?.document_name ? (
@@ -231,9 +224,9 @@ export function EvidenceViewerDialog({
                 {clampText(citation.document_name, 64)}
               </Badge>
             ) : null}
-            {typeof (citation as any)?.page_number === 'number' ? (
+            {typeof citation?.page_number === 'number' ? (
               <Badge variant="soft" className="text-[10px]">
-                P.{(citation as any).page_number}
+                P.{citation.page_number}
               </Badge>
             ) : null}
           </div>

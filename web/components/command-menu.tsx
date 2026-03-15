@@ -142,8 +142,7 @@ export function CommandMenu() {
                   <span>搜索中…</span>
                 </CommandItem>);
     }
-    else {
-        if (docResults.length) {
+    else if (docResults.length) {
             return (docResults.map((doc) => (<CommandItem key={doc.id} value={doc.filename} onSelect={() => runCommand(() => {
                     openDocument(doc.id);
                     router.push("/");
@@ -158,7 +157,6 @@ export function CommandMenu() {
                   <span>未找到文档</span>
                 </CommandItem>);
         }
-    }
 })()}
             </CommandGroup>
 

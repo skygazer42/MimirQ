@@ -4,13 +4,13 @@ function resolveApiBaseUrl(): string {
 
   // In Docker, the browser should call the host-mapped backend (usually http://localhost:8000),
   // but the Next.js server (SSR) must call the backend via container-to-container DNS.
-  const chosen = typeof globalThis.window === 'undefined' && internalUrl ? internalUrl : publicUrl
+  const chosen = globalThis.window === undefined && internalUrl ? internalUrl : publicUrl
   const trimmed = chosen.replace(/\/+$/, '')
 
   // Browsers cannot call 0.0.0.0. Also, when opening the frontend via a LAN IP,
   // hardcoding the backend as localhost/127.0.0.1 will break. Best-effort rewrite
   // these loopback hosts to the current page hostname.
-  if (typeof globalThis.window !== 'undefined') {
+  if (globalThis.window !== undefined) {
     try {
       const url = new URL(trimmed)
       const apiHost = (url.hostname || '').toLowerCase()

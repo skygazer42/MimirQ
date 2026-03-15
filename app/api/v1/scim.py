@@ -113,7 +113,12 @@ def _extract_client_ip(request: Request) -> ipaddress.IPv4Address | ipaddress.IP
         candidate = (forwarded.split(",")[0] or "").strip()
     else:
         real_ip = request.headers.get("X-Real-IP")
-        candidate = (real_ip or "").strip() if real_ip else (request.client.host if request.client else "")
+        if real_ip:
+            candidate = (real_ip or "").strip()
+        elif request.client:
+            candidate = request.client.host
+        else:
+            candidate = ""
     if not candidate:
         return None
     try:

@@ -21,7 +21,7 @@ const STORAGE_KEY = 'mimirq_parsed_files'
 
 // 从 localStorage 读取
 const loadFromStorage = (): ParsedFileData[] => {
-  if (typeof globalThis.window === 'undefined') return []
+  if (globalThis.window === undefined) return []
   try {
     const data = localStorage.getItem(STORAGE_KEY)
     const parsed = data ? JSON.parse(data) : []
@@ -49,7 +49,7 @@ const loadFromStorage = (): ParsedFileData[] => {
 
 // 保存到 localStorage
 const saveToStorage = (files: ParsedFileData[]) => {
-  if (typeof globalThis.window === 'undefined') return
+  if (globalThis.window === undefined) return
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(files))
   } catch (e) {

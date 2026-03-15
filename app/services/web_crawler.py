@@ -107,11 +107,11 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
     sitemap_urls: list[str] = []
 
     if root_name.endswith("sitemapindex"):
-        for child in list(root):
+        for child in root:
             if tag_name(str(getattr(child, "tag", "") or "")).lower() != "sitemap":
                 continue
             loc_el = None
-            for el in list(child):
+            for el in child:
                 if tag_name(str(getattr(el, "tag", "") or "")).lower() == "loc":
                     loc_el = el
                     break
@@ -121,11 +121,11 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
         return page_urls, sitemap_urls
 
     if root_name.endswith("urlset"):
-        for child in list(root):
+        for child in root:
             if tag_name(str(getattr(child, "tag", "") or "")).lower() != "url":
                 continue
             loc_el = None
-            for el in list(child):
+            for el in child:
                 if tag_name(str(getattr(el, "tag", "") or "")).lower() == "loc":
                     loc_el = el
                     break

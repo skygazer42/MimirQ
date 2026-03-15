@@ -41,7 +41,7 @@ function matchesDocumentListParams(doc: Document, params: DocumentListParams): b
   const sourcePathPrefix = String(params.source_path_prefix || '').trim()
   if (sourcePathPrefix) {
     const sourcePath = String((doc.metadata as any)?.source_path || '').trim()
-    if (!sourcePath || !sourcePath.startsWith(sourcePathPrefix)) return false
+    if (!sourcePath?.startsWith(sourcePathPrefix)) return false
   }
 
   const lifecycle = String(params.lifecycle || '').trim().toLowerCase()

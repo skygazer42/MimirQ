@@ -381,7 +381,7 @@ def build_table_schema_graph(*, tables: list[dict[str, Any]]) -> dict[str, Any]:
         cols = raw.get("columns")
         if not tname or not isinstance(cols, list):
             continue
-        aliases = [str(v) for v in list(raw.get("table_aliases") or []) if str(v).strip()]
+        aliases = [str(v) for v in (raw.get("table_aliases") or []) if str(v).strip()]
         row_count = _safe_positive_int(raw.get("row_count"))
         sample_rows_raw = raw.get("sample_rows")
         sample_rows = [r for r in sample_rows_raw if isinstance(r, dict)] if isinstance(sample_rows_raw, list) else []
@@ -433,7 +433,7 @@ def build_table_schema_graph(*, tables: list[dict[str, Any]]) -> dict[str, Any]:
 
 def infer_schema_relationships_for_tables(*, tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
     graph = build_table_schema_graph(tables=tables)
-    return [dict(e) for e in list(graph.get("edges") or [])]
+    return [dict(e) for e in (graph.get("edges") or [])]
 
 
 def score_join_plan_candidates(
@@ -463,7 +463,7 @@ def score_join_plan_candidates(
                 "penalty_score": round(penalty, 6),
                 "base_penalty_score": round(float(e.get("base_penalty_score") or 0.0), 6),
                 "cost_penalty_score": round(float(e.get("cost_penalty_score") or 0.0), 6),
-                "penalties": [str(v) for v in list(e.get("penalties") or []) if str(v).strip()][:8],
+                "penalties": [str(v) for v in (e.get("penalties") or []) if str(v).strip()][:8],
                 "cost_signals": dict(e.get("cost_signals") or {}),
                 "join": {
                     "left_table": left_table,

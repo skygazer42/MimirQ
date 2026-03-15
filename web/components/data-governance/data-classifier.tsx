@@ -305,14 +305,12 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
     if (isAdded) {
         return "bg-primary/15 text-primary border-primary/20 cursor-default";
     }
-    else {
-        if (isRecommended) {
+    else if (isRecommended) {
             return "bg-info/10 text-info border-info/20 hover:bg-info/15";
         }
         else {
             return "bg-muted text-muted-foreground border-border hover:bg-accent/40 hover:text-foreground";
         }
-    }
 })(),
                       )}
                   >

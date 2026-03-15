@@ -463,6 +463,7 @@ class MinerUParser(IntegratedPipelinePdfParser):
 
     def _read_output(self, output_dir: Path, file_stem: str, method: str = "auto", backend: str = "pipeline") -> list[
         dict[str, Any]]:
+        _ = (method, backend)
         json_file = None
         subdir = None
         attempted = []
@@ -545,6 +546,7 @@ class MinerUParser(IntegratedPipelinePdfParser):
         return sections
 
     def _transfer_to_tables(self, outputs: list[dict[str, Any]]):
+        _ = outputs
         return []
 
     def parse_pdf(

@@ -205,27 +205,23 @@ function EvaluationsPageContent() {
     if (runStatus === 'completed') {
         return 'completed';
     }
-    else {
-        if (runStatus === 'failed') {
+    else if (runStatus === 'failed') {
             return 'failed';
         }
         else {
             return 'processing';
         }
-    }
 })()
     const label = (() => {
     if (runStatus === 'completed') {
         return '已完成';
     }
-    else {
-        if (runStatus === 'failed') {
+    else if (runStatus === 'failed') {
             return '失败';
         }
         else {
             return '运行中';
         }
-    }
 })()
     return <StatusBadge status={status} label={label} dense />
   }, [runStatus])
@@ -401,27 +397,23 @@ function EvaluationsPageContent() {
     if (runStatus === 'completed') {
         return 'completed';
     }
-    else {
-        if (runStatus === 'failed') {
+    else if (runStatus === 'failed') {
             return 'failed';
         }
         else {
             return 'processing';
         }
-    }
 })()
                       const badgeLabel = (() => {
     if (runStatus === 'completed') {
         return '已完成';
     }
-    else {
-        if (runStatus === 'failed') {
+    else if (runStatus === 'failed') {
             return '失败';
         }
         else {
             return '运行中';
         }
-    }
 })()
                       return (
                         <button

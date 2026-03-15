@@ -106,7 +106,7 @@ export function scrollToElementId(
   id: string,
   options: { behavior?: ScrollBehavior; block?: ScrollLogicalPosition } = {}
 ): boolean {
-  if (typeof globalThis.window === 'undefined') return false
+  if (globalThis.window === undefined) return false
   const key = (id || '').replace(/^#/, '').trim()
   if (!key) return false
 
@@ -120,7 +120,7 @@ export function scrollToElementId(
 }
 
 export function flashElementId(id: string, className: string, durationMs = 900): void {
-  if (typeof globalThis.window === 'undefined') return
+  if (globalThis.window === undefined) return
   const key = (id || '').replace(/^#/, '').trim()
   if (!key) return
   const el = globalThis.window.document.getElementById(key)

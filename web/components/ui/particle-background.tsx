@@ -28,7 +28,7 @@ export function ParticleBackground({ className, interactive = true }: Readonly<P
 
   // Disable particles on touch devices and in reduced motion mode.
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return
+    if (globalThis.window === undefined) return
     const mq = globalThis.window.matchMedia("(pointer: fine)")
     const update = () => setIsFinePointer(mq.matches)
     update()
@@ -45,7 +45,7 @@ export function ParticleBackground({ className, interactive = true }: Readonly<P
 
   // Pause/disable when the tab is hidden (keeps background loops from burning CPU).
   useEffect(() => {
-    if (typeof document === "undefined") return
+    if (document === undefined) return
     const update = () => setIsVisible(document.visibilityState === "visible")
     update()
     document.addEventListener("visibilitychange", update)

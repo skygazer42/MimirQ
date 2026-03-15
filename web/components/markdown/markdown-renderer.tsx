@@ -112,7 +112,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
   useEffect(() => {
     if (!autoScrollToHash) return
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
 
     const scrollNow = (behavior: ScrollBehavior) => {
       const raw = globalThis.window.location.hash || ''
@@ -152,7 +152,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               href={`#${encodeURIComponent(id)}`}
               onClick={(e) => {
                 e.preventDefault()
-                if (typeof globalThis.window !== 'undefined') {
+                if (globalThis.window !== undefined) {
                   globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
                 }
                 scrollToElementId(id)
@@ -192,7 +192,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                     e.preventDefault()
                     const decoded = id ? decodeURIComponent(id) : ''
                     if (!decoded) return
-                    if (typeof globalThis.window !== 'undefined') {
+                    if (globalThis.window !== undefined) {
                       globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(decoded)}`)
                     }
                     scrollToElementId(decoded)

@@ -262,8 +262,7 @@ function HistoryPageContent() {
                   <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
                 </div>);
     }
-    else {
-        if (filteredConversations.length === 0) {
+    else if (filteredConversations.length === 0) {
             return (<div className="text-center py-12 px-4 text-muted-foreground text-sm">
                   <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-20"/>
                   <p>{searchQuery ? '没有找到匹配的对话' : '暂无对话记录'}</p>
@@ -283,7 +282,6 @@ function HistoryPageContent() {
                     </div>);
             }));
         }
-    }
 })()}
             </div>
           </div>
@@ -345,8 +343,7 @@ function HistoryPageContent() {
                       <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none text-muted-foreground"/>
                     </div>);
     }
-    else {
-        if (messages.length === 0) {
+    else if (messages.length === 0) {
             return (<div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                       <MessageSquare className="h-12 w-12 mb-4 opacity-10"/>
                       <p>暂无消息记录</p>
@@ -363,7 +360,6 @@ function HistoryPageContent() {
                       <div ref={messagesEndRef} className="h-4"/>
                     </div>);
         }
-    }
 })()}
                 </div>
               </>

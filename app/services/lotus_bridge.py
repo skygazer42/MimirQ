@@ -129,7 +129,7 @@ def _build_row_payload(
     max_cols: int,
     max_cell_chars: int,
 ) -> tuple[list[str], list[dict[str, Any]]]:
-    cols = [str(c) for c in list(getattr(df, "columns", []) or [])]
+    cols = [str(c) for c in (getattr(df, "columns", []) or [])]
     if max_cols > 0 and len(cols) > int(max_cols):
         cols = cols[: int(max_cols)]
     df2 = df.loc[:, cols] if cols else df
@@ -160,6 +160,7 @@ def sem_filter(
     - This is an LLM-backed operator; keep it behind feature flags and row caps.
     - `strategy` is accepted for API compatibility; currently it only toggles prompting style.
     """
+    _ = strategy
     instr = " ".join(str(user_instruction or "").strip().split())
     if not instr:
         raise ValueError("user_instruction is required")

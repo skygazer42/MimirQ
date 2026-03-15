@@ -540,7 +540,7 @@ def evaluate_online_rollback_trigger(
     - A window is degraded when metric_value <= max_allowed_delta.
     - Trigger when trailing degraded windows >= min_consecutive_windows.
     """
-    rows = [w for w in list(windows or []) if isinstance(w, dict)]
+    rows = [w for w in (windows or []) if isinstance(w, dict)]
     required = max(1, int(min_consecutive_windows or 1))
     threshold = float(max_allowed_delta)
     key = str(metric_key or "").strip() or "delta.mrr"

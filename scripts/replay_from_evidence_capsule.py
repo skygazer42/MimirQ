@@ -57,7 +57,7 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
             "retrieval_contract_mode": str(retrieval_contract.get("mode") or ""),
             "must_recall": bool(must_recall.get("enabled")),
         },
-        "expected_citation_hashes": [str(v) for v in list(capsule.get("citation_hashes") or []) if str(v).strip()],
+        "expected_citation_hashes": [str(v) for v in (capsule.get("citation_hashes") or []) if str(v).strip()],
     }
 
     return {

@@ -143,8 +143,7 @@ export function OriginalPreviewMonaco(props: Readonly<{
     if (disabled) {
         return 'rgba(148,163,184,0.35)';
     }
-    else {
-        if (isChild) {
+    else if (isChild) {
             return 'rgba(59,130,246,0.65)' // child highlight
             ;
         }
@@ -152,7 +151,6 @@ export function OriginalPreviewMonaco(props: Readonly<{
             return 'rgba(148,163,184,0.45)' // parent/others
             ;
         }
-    }
 })() // parent/others
 
       return {

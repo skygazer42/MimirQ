@@ -23,7 +23,7 @@ function isNonEmptyString(value: unknown): value is string {
 function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
-  return trimmed ? trimmed : undefined
+  return trimmed || undefined
 }
 
 function safeJson(value: unknown): string | undefined {

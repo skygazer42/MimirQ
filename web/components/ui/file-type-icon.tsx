@@ -14,14 +14,12 @@ export function FileTypeIcon({ type, className }: Readonly<FileTypeIconProps>) {
     if (t === "pdf") {
         return FileSignature;
     }
-    else {
-        if (t === "md" || t === "txt") {
+    else if (t === "md" || t === "txt") {
             return FileText;
         }
         else {
             return File;
         }
-    }
 })()
 
   return <Icon className={cn("h-4 w-4", className)} aria-hidden="true" />

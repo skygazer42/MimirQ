@@ -609,7 +609,7 @@ class Markdown(MarkdownParser):
             with open(filename, "r") as f:
                 txt = f.read()
 
-        remainder, tables = self.extract_tables_and_remainder(f'{txt}\n', separate_tables=separate_tables)
+        _remainder, tables = self.extract_tables_and_remainder(f'{txt}\n', separate_tables=separate_tables)
         # To eliminate duplicate tables in chunking result, uncomment code below and set separate_tables to True in line 410.
         # extractor = MarkdownElementExtractor(remainder)
         image_refs = self.extract_image_urls_with_lines(txt)
@@ -723,7 +723,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
         if parser_config.get("analyze_hyperlink", False) and is_root:
             urls = extract_links_from_docx(binary)
             for index, url in enumerate(urls):
-                html_bytes, metadata = extract_html(url)
+                html_bytes, _metadata = extract_html(url)
                 if not html_bytes:
                     continue
                 try:
@@ -997,7 +997,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
 
     if urls and parser_config.get("analyze_hyperlink", False) and is_root:
         for index, url in enumerate(urls):
-            html_bytes, metadata = extract_html(url)
+            html_bytes, _metadata = extract_html(url)
             if not html_bytes:
                 continue
             try:

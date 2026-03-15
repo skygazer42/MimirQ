@@ -88,10 +88,24 @@ function targetBadgeVariant(status: string): 'secondary' | 'outline' | 'soft' | 
   return 'secondary'
 }
 
+function asDocumentStatus(status: string | null | undefined): Document['status'] {
+  switch (status) {
+    case 'pending':
+    case 'processing':
+    case 'completed':
+    case 'failed':
+    case 'quarantined':
+    case 'cancelled':
+      return status
+    default:
+      return 'pending'
+  }
+}
+
 export default function DatasetProfilePage() {
   const router = useRouter()
   const params = useParams()
-  const datasetId = asDatasetId((params as any)?.id)
+  const datasetId = asDatasetId(params?.id)
 
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [summary, setSummary] = useState<DatasetProfileSummary | null>(null)
@@ -215,7 +229,7 @@ export default function DatasetProfilePage() {
   }, [summary])
 
   const directoryChartData = useMemo(() => {
-    const m = (summary as any)?.by_directory || {}
+    const m = summary?.by_directory || {}
     const entries = Object.entries(m)
       .map(([key, value]) => ({ key: String(key || 'root'), name: String(key || 'root'), value: Number(value || 0) }))
       .filter((x) => x.value > 0)
@@ -247,7 +261,7 @@ export default function DatasetProfilePage() {
   }
 
   const qualityBucketChartData = useMemo(() => {
-    const m = (summary as any)?.by_quality_bucket || {}
+    const m = summary?.by_quality_bucket || {}
     const order = ['high_density', 'mid_density', 'low_density', 'outline_heavy', 'tiny', 'unknown']
     return Object.entries(m)
       .map(([key, value]) => ({
@@ -506,8 +520,8 @@ export default function DatasetProfilePage() {
   const compareDelta = useMemo(() => {
     const a = completedRuns.find((r) => r.id === compareA)
     const b = completedRuns.find((r) => r.id === compareB)
-    const sa = (a?.summary || {}) as any
-    const sb = (b?.summary || {}) as any
+    const sa = a?.summary || {}
+    const sb = b?.summary || {}
     if (!a || !b || !sa || !sb) return null
     const docsA = Number(sa.total_documents || 0)
     const docsB = Number(sb.total_documents || 0)
@@ -607,14 +621,12 @@ export default function DatasetProfilePage() {
     if (summary) {
         return formatFileSize(summary.total_size_bytes || 0);
     }
-    else {
-        if (isLoading) {
+    else if (isLoading) {
             return '…';
         }
         else {
             return '-';
         }
-    }
 })()} color="teal" />
               <StatCard icon={Sparkles} label="P50 长度" value={summary?.length_percentiles?.p50 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
               <StatCard icon={Sparkles} label="P90 长度" value={summary?.length_percentiles?.p90 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
@@ -622,14 +634,12 @@ export default function DatasetProfilePage() {
     if (summary) {
         return `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`;
     }
-    else {
-        if (isLoading) {
+    else if (isLoading) {
             return '…';
         }
         else {
             return '-';
         }
-    }
 })()} color="orange" />
             </StatsGrid>
           </Panel>
@@ -655,7 +665,7 @@ export default function DatasetProfilePage() {
                       paddingAngle={2}
                     >
                       {fileTypeChartData.map((entry, idx) => (
-                        <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        <Cell key={String(entry.name ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                   </PieChart>
@@ -707,7 +717,7 @@ export default function DatasetProfilePage() {
                     <Tooltip />
                     <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
                       {pdfScanData.map((entry, idx) => (
-                        <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'pdf-scan')} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
+                        <Cell key={String(entry.name ?? 'pdf-scan')} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
                       ))}
                     </Pie>
                   </PieChart>
@@ -828,7 +838,7 @@ export default function DatasetProfilePage() {
                 <div className="space-y-3">
                   {chunkTargets.map((t, idx) => (
                     <div
-                      key={String((t as any).key || (t as any).label || idx)}
+                      key={String(t.key || t.label || idx)}
                       className="rounded-xl border border-border/60 bg-card/40 p-4"
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -840,14 +850,14 @@ export default function DatasetProfilePage() {
                             </div>
                           ) : null}
                         </div>
-                        <Badge variant={targetBadgeVariant(String((t as any).status || ''))} className="font-mono text-xs">
-                          {String((t as any).status || '')}
+                        <Badge variant={targetBadgeVariant(String(t.status || ''))} className="font-mono text-xs">
+                          {String(t.status || '')}
                         </Badge>
                       </div>
 
-                      {Array.isArray((t as any).suggestions) && (t as any).suggestions.length ? (
+                      {t.suggestions.length ? (
                         <ul className="mt-2 pl-5 list-disc text-sm text-muted-foreground">
-                          {(t as any).suggestions.slice(0, 6).map((s: any) => (
+                          {t.suggestions.slice(0, 6).map((s) => (
                             <li key={String(s)} className="text-pretty">
                               {String(s)}
                             </li>
@@ -962,7 +972,7 @@ export default function DatasetProfilePage() {
                         paddingAngle={2}
                       >
                         {languageMixChartData.map((entry, idx) => (
-                          <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'language')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                          <Cell key={String(entry.name ?? 'language')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                         ))}
                       </Pie>
                     </PieChart>
@@ -989,7 +999,7 @@ export default function DatasetProfilePage() {
                       <Bar dataKey="value" fill="#94a3b8" radius={[6, 6, 0, 0]}>
                         {directoryChartData.map((entry) => (
                           <Cell
-                            key={String(entry.name ?? entry.key ?? entry.label ?? 'directory')}
+                            key={String(entry.key ?? entry.name ?? 'directory')}
                             cursor={entry.key === '__other__' ? 'default' : 'pointer'}
                             onClick={() => (entry.key === '__other__' ? null : detachPromise(openBucket('directory', String(entry.key || 'root'))))}
                           />
@@ -1019,7 +1029,7 @@ export default function DatasetProfilePage() {
                       <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]}>
                         {qualityBucketChartData.map((entry) => (
                           <Cell
-                            key={String(entry.name ?? entry.key ?? entry.label ?? 'quality')}
+                            key={String(entry.key ?? entry.name ?? 'quality')}
                             cursor="pointer"
                             onClick={() => detachPromise(openBucket('quality_bucket', String(entry.key || 'unknown')))}
                           />
@@ -1185,14 +1195,12 @@ export default function DatasetProfilePage() {
     if (scanRunning) {
         return `${latestRunProgress || 0}%`;
     }
-    else {
-        if (latestRunProgress) {
+    else if (latestRunProgress) {
             return `${latestRunProgress}%`;
         }
         else {
             return '-';
         }
-    }
 })()}
                 {effectiveScanRun.error_message ? <span className="ml-3 text-destructive">错误：{effectiveScanRun.error_message}</span> : null}
               </div>
@@ -1374,8 +1382,7 @@ export default function DatasetProfilePage() {
                   加载中…
                 </div>);
     }
-    else {
-        if (findingRes) {
+    else if (findingRes) {
             return (<div className="space-y-3">
                   <div className="text-xs text-muted-foreground font-mono">
                     showing {findingRes.items.length}/{findingRes.total}
@@ -1399,7 +1406,7 @@ export default function DatasetProfilePage() {
                         filename: d.filename,
                         file_type: d.file_type,
                         file_size: d.file_size,
-                        status: (d.status as any) || 'pending',
+                        status: asDocumentStatus(d.status),
                         processing_progress: 0,
                         chunk_count: d.chunk_count || 0,
                         total_characters: d.total_characters || 0,
@@ -1441,7 +1448,6 @@ export default function DatasetProfilePage() {
                   暂无数据
                 </div>);
         }
-    }
 })()}
             </div>
           </DialogContent>
@@ -1464,24 +1470,18 @@ export default function DatasetProfilePage() {
     if (bucketDim === 'file_type') {
         return '格式';
     }
-    else {
-        if (bucketDim === 'language') {
+    else if (bucketDim === 'language') {
             return '语言';
         }
-        else {
-            if (bucketDim === 'directory') {
+        else if (bucketDim === 'directory') {
                 return '目录';
             }
-            else {
-                if (bucketDim === 'quality_bucket') {
+            else if (bucketDim === 'quality_bucket') {
                     return '质量桶';
                 }
                 else {
                     return '清单';
                 }
-            }
-        }
-    }
 })()
                   return bucketDim ? `${label}: ${bucketKey || ''}` : '清单'
                 })()}
@@ -1504,8 +1504,7 @@ export default function DatasetProfilePage() {
                   加载中…
                 </div>);
     }
-    else {
-        if (bucketRes) {
+    else if (bucketRes) {
             return (<div className="space-y-3">
                   <div className="text-xs text-muted-foreground font-mono">
                     showing {bucketRes.items.length}/{bucketRes.total}
@@ -1530,7 +1529,7 @@ export default function DatasetProfilePage() {
                         filename: d.filename,
                         file_type: d.file_type,
                         file_size: d.file_size,
-                        status: (d.status as any) || 'pending',
+                        status: asDocumentStatus(d.status),
                         processing_progress: 0,
                         chunk_count: d.chunk_count || 0,
                         total_characters: d.total_characters || 0,
@@ -1578,7 +1577,6 @@ export default function DatasetProfilePage() {
                   暂无数据
                 </div>);
         }
-    }
 })()}
             </div>
           </DialogContent>

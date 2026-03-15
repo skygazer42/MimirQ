@@ -102,6 +102,7 @@ class MagicPDFParser:
         document_id: str | None = None,
         **_kwargs,
     ) -> list[Document]:
+        _ = dataset_id
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -198,4 +199,3 @@ class MagicPDFParser:
             metadata["magicpdf_lang"] = lang
 
         return [Document(page_content=markdown_text, metadata=metadata)]
-

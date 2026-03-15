@@ -212,6 +212,7 @@ def create_multi_query_workflow(
     Returns:
         Configured ParallelWorkflow
     """
+    _ = generate_func
     import asyncio
 
     from app.rag.workflows.parallelization import create_multi_query_aggregator

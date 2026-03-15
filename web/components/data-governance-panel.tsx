@@ -864,7 +864,7 @@ export function DataGovernancePanel() {
             variant="outline"
             size="sm"
             onClick={handleReset}
-            disabled={!governanceState || !governanceState.isModified}
+            disabled={!governanceState?.isModified}
             className="gap-1.5 h-8 text-xs"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -1020,14 +1020,12 @@ export function DataGovernancePanel() {
     if (score >= 80) {
         return "bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 border-emerald-500/30";
     }
-    else {
-        if (score >= 60) {
+    else if (score >= 60) {
             return "bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30";
         }
         else {
             return "bg-rose-50 text-rose-700 border-rose-100";
         }
-    }
 })()
                               )}>
                                 {score}鍒?

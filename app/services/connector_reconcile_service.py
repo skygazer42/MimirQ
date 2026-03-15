@@ -107,7 +107,7 @@ def plan_connector_reconcile(
     documents_considered = 0
     documents_without_identity = 0
 
-    for doc in list(documents or []):
+    for doc in (documents or []):
         documents_scanned += 1
         identity = extract_connector_source_identity(doc)
         if identity.get("connector_id") != normalized_connector_id:

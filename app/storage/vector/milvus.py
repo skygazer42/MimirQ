@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 _MILVUS_MAX_VARCHAR_BYTES = 65_535
 _MILVUS_EXPR_MAX_CHARS = 8000
-_MILVUS_FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_MILVUS_FIELD_NAME_RE = re.compile(r"^[A-Za-z_]\w*$")
 _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = False
 _MILVUS_WARNED_SEARCH_EXPR_FALLBACK = False
 

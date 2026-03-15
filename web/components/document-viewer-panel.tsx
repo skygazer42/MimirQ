@@ -325,14 +325,12 @@ export function DocumentViewerPanel() {
     if (chunksLoaded) {
         return chunks;
     }
-    else {
-        if (highlightChunk) {
+    else if (highlightChunk) {
             return [highlightChunk];
         }
         else {
             return [];
         }
-    }
 })()
     return mapDocumentChunksToPreviewItems(base)
   }, [chunks, chunksLoaded, highlightChunk])
@@ -963,8 +961,7 @@ export function DocumentViewerPanel() {
 	                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
 	                  </div>);
     }
-    else {
-        if (canInlinePreview && fileUrl) {
+    else if (canInlinePreview && fileUrl) {
             return (<iframe src={`${fileUrl}#toolbar=0`} className="w-full h-full border-none" title="Document Preview"/>);
         }
         else {
@@ -995,7 +992,6 @@ export function DocumentViewerPanel() {
                     </div>
                   </div>);
         }
-    }
 })()}
             </TabsContent>
 
@@ -1173,11 +1169,10 @@ export function DocumentViewerPanel() {
                        <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
                      </div>);
     }
-    else {
-        if (parsedContent?.available && textValue) {
+    else if (parsedContent?.available && textValue) {
             return (<OriginalPreviewMonaco text={textValue} chunks={textMode === "cleaned" ? textChunkItems : []} activeChunkIndex={textMode === "cleaned" ? textActiveChunkIndex : null} activeRange={textMode === "cleaned" ? (highlightRange ?? null) : null} onSelectChunkIndex={(chunkIndex) => {
                     const target = chunks.find((c) => c.chunk_index === chunkIndex) ||
-                        (highlightChunk && highlightChunk.chunk_index === chunkIndex ? highlightChunk : null);
+                        (highlightChunk?.chunk_index === chunkIndex ? highlightChunk : null);
                     if (target)
                         setHighlightChunk(target.id);
                 }}/>);
@@ -1208,7 +1203,6 @@ export function DocumentViewerPanel() {
                        </div>
                      </div>);
         }
-    }
 })()}
                  </div>
             </TabsContent>
@@ -1239,14 +1233,12 @@ export function DocumentViewerPanel() {
     if (serverMatchLoading) {
         return "搜索中…";
     }
-    else {
-        if (chunksLoaded) {
+    else if (chunksLoaded) {
             return "搜索切片内容…";
         }
         else {
             return "搜索切片内容…（无需加载全部切片）";
         }
-    }
 })()
                        }
                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -1258,8 +1250,7 @@ export function DocumentViewerPanel() {
     if (serverMatchLoading) {
         return (<span>…</span>);
     }
-    else {
-        if (matchChunkIds.length) {
+    else if (matchChunkIds.length) {
             return (<span>
                                {matchCursor + 1}/
                                {chunksLoaded ? matchChunkIds.length : (serverMatchTotal || matchChunkIds.length)}
@@ -1269,7 +1260,6 @@ export function DocumentViewerPanel() {
         else {
             return (<span>0/0</span>);
         }
-    }
 })()
                          ) : (
                            <span>—</span>
@@ -1365,8 +1355,7 @@ export function DocumentViewerPanel() {
                              <span>加载命中切片…</span>
                            </div>);
     }
-    else {
-        if (highlightChunk) {
+    else if (highlightChunk) {
             return (<div className="rounded-xl border border-border bg-background p-4">
                              <div className="flex items-center justify-between mb-2">
                                <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
@@ -1403,7 +1392,6 @@ export function DocumentViewerPanel() {
         else {
             return (<div className="text-xs text-muted-foreground">未找到命中切片（可能已被删除或无权限）</div>);
         }
-    }
 })()}
                        </div>
                      </div>

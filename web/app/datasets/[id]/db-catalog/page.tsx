@@ -200,14 +200,12 @@ export default function DatasetDbCatalogPage() {
     if (Number.isFinite(syncPort)) {
         return Math.trunc(syncPort);
     }
-    else {
-        if (syncConnectorId === 'sqlserver_catalog') {
+    else if (syncConnectorId === 'sqlserver_catalog') {
             return 1433;
         }
         else {
             return 3306;
         }
-    }
 })(),
       database,
       username,
@@ -411,19 +409,15 @@ export default function DatasetDbCatalogPage() {
     if (ageSec === null) {
         return null;
     }
-    else {
-        if (ageSec < 90) {
+    else if (ageSec < 90) {
             return `${Math.round(ageSec)}s`;
         }
-        else {
-            if (ageSec < 3600) {
+        else if (ageSec < 3600) {
                 return `${Math.round(ageSec / 60)}m`;
             }
             else {
                 return `${Math.round(ageSec / 3600)}h`;
             }
-        }
-    }
 })()
 
                       const tables = Number(result.tables ?? schemaDoc.tables ?? 0)
@@ -581,8 +575,7 @@ export default function DatasetDbCatalogPage() {
                     <Skeleton className="h-9 w-full"/>
                   </div>);
     }
-    else {
-        if (items.length) {
+    else if (items.length) {
             return (<div className="space-y-1">
                     {items.map((t) => {
                     const active = t.id === selectedId;
@@ -619,7 +612,6 @@ export default function DatasetDbCatalogPage() {
                       </div>) : null}
                   </div>);
         }
-    }
 })()}
               </div>
             </div>
@@ -643,8 +635,7 @@ export default function DatasetDbCatalogPage() {
                   <Skeleton className="h-10 w-full"/>
                 </div>);
     }
-    else {
-        if (selected) {
+    else if (selected) {
             return (<div className="rounded-xl border border-border overflow-hidden">
                   <div className="grid grid-cols-12 gap-0 bg-muted/40 text-xs font-medium">
                     <div className="col-span-5 px-3 py-2">Column</div>
@@ -662,14 +653,12 @@ export default function DatasetDbCatalogPage() {
                         if (c.nullable === null || c.nullable === undefined) {
                             return '—';
                         }
-                        else {
-                            if (c.nullable) {
+                        else if (c.nullable) {
                                 return 'true';
                             }
                             else {
                                 return 'false';
                             }
-                        }
                     })()}
                           </div>
                         </div>))}
@@ -681,7 +670,6 @@ export default function DatasetDbCatalogPage() {
                   请选择一张表查看结构。
                 </div>);
         }
-    }
 })()}
             </div>
           </Panel>

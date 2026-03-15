@@ -24,7 +24,7 @@ export function Magnetic({ children, strength = 0.5 }: Readonly<MagneticProps>) 
   const enabled = !shouldReduceMotion && isFinePointer
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return
+    if (globalThis.window === undefined) return
 
     const mq = globalThis.window.matchMedia("(pointer: fine)")
     const update = () => setIsFinePointer(mq.matches)

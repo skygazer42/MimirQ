@@ -37,7 +37,7 @@ class _Section:
     block: _Block | None
 
 
-_BLOCK_START_RE = re.compile(r"(?m)^\s*(?P<kind>message|enum|service)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\{")
+_BLOCK_START_RE = re.compile(r"(?m)^\s*(?P<kind>message|enum|service)\s+(?P<name>[A-Za-z_]\w*)\s*\{")
 _PACKAGE_RE = re.compile(r"(?m)^\s*package\s+(?P<name>[A-Za-z0-9_.]+)\s*;")
 
 

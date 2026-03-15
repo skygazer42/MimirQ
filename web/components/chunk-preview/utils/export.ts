@@ -5,7 +5,7 @@ import { computeCoverageSignals, computeDuplicateIndices, computeShortIndices, f
 export function sanitizeFilename(name: string) {
   const trimmed = (name || '').trim()
   const base = trimmed || 'chunks'
-  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
+  return base.replaceAll("[/:*?\"<>|]+", '_')
 }
 
 export function downloadTextFile(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
@@ -82,7 +82,7 @@ function csvEscape(value: unknown) {
     raw = JSON.stringify(value)
   }
   const needsQuote = /[",\n\r]/.test(raw)
-  const escaped = raw.replaceAll(/"/g, '""')
+  const escaped = raw.replaceAll("\"", '""')
   return needsQuote ? `"${escaped}"` : escaped
 }
 
@@ -197,14 +197,12 @@ export function chunkPreviewToReviewReport(
     if (typeof meta.parent_id === 'string') {
         return meta.parent_id;
     }
-    else {
-        if (typeof meta.parent_node_id === 'string') {
+    else if (typeof meta.parent_node_id === 'string') {
             return meta.parent_node_id;
         }
         else {
             return null;
         }
-    }
 })(),
       disabled: isDisabled,
       edited: isEdited,

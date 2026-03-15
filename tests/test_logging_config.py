@@ -5,7 +5,7 @@ import logging
 
 def _restore_root(*, level: int, handlers: list[logging.Handler]) -> None:
     root = logging.getLogger()
-    for h in list(root.handlers):
+    for h in root.handlers:
         root.removeHandler(h)
     for h in handlers:
         root.addHandler(h)

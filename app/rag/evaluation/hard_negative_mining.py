@@ -57,7 +57,7 @@ def _dedupe_chunk_rows(
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     dropped = 0
-    for row in list(rows or []):
+    for row in (rows or []):
         if not isinstance(row, dict):
             continue
         cid = _safe_str(row.get("chunk_id"), max_len=200)
@@ -214,7 +214,7 @@ def merge_hard_negative_records(
     - dedupe by chunk_id
     - bound output by max_hard_negatives
     """
-    rows = [r for r in list(records or []) if isinstance(r, dict)]
+    rows = [r for r in (records or []) if isinstance(r, dict)]
     if not rows:
         return {
             "schema": HARD_NEGATIVES_SCHEMA_V1,

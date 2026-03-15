@@ -205,19 +205,15 @@ export function DatasetFolderTree({
           加载中…
         </div>);
     }
-    else {
-        if (error) {
+    else if (error) {
             return (<div className="text-xs text-destructive">{error}</div>);
         }
-        else {
-            if (tree) {
+        else if (tree) {
                 return (tree.total_with_source_path > 0 ? (<DatasetFolderTreeView root={tree.root} selectedPath={selectedPath} onSelect={onSelect}/>) : (<div className="text-xs text-muted-foreground">暂无可用目录（未上传带路径的文件）。</div>));
             }
             else {
                 return (<div className="text-xs text-muted-foreground">暂无数据</div>);
             }
-        }
-    }
 })()}
     </div>
   )

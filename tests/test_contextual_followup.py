@@ -46,7 +46,7 @@ def test_contextual_followup_builder_adds_terms_from_metadata_and_content() -> N
 
     assert bool(out.get("used")) is True
     assert isinstance(out.get("query"), str) and str(out.get("query")).startswith("oauth login issue")
-    selected_terms = [str(v) for v in list(out.get("selected_terms") or [])]
+    selected_terms = [str(v) for v in (out.get("selected_terms") or [])]
     assert selected_terms
     assert any(term in {"refresh_token", "offline_access", "reuse_detection"} for term in selected_terms)
     assert "selected_terms" in list(out.get("reason_codes") or [])
@@ -76,7 +76,7 @@ def test_contextual_followup_builder_respects_max_terms_and_dedupes() -> None:
         min_term_chars=3,
     )
 
-    terms = [str(v) for v in list(out.get("selected_terms") or [])]
+    terms = [str(v) for v in (out.get("selected_terms") or [])]
     assert len(terms) == 2
     assert len(set(terms)) == 2
     assert "inventory" not in terms
@@ -103,8 +103,8 @@ def test_contextual_followup_builder_prioritizes_gap_terms() -> None:
     )
 
     assert bool(out.get("used")) is True
-    reasons = [str(v) for v in list(out.get("reason_codes") or [])]
+    reasons = [str(v) for v in (out.get("reason_codes") or [])]
     assert "gap_missing_source_keys" in reasons
     assert "gap_missing_anchor_fields" in reasons
-    terms = [str(v) for v in list(out.get("selected_terms") or [])]
+    terms = [str(v) for v in (out.get("selected_terms") or [])]
     assert any("inventory" in t.lower() for t in terms)

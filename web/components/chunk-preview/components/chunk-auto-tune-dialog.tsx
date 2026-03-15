@@ -454,8 +454,7 @@ export function ChunkAutoTuneDialog() {
                         </td>
                       </tr>)));
     }
-    else {
-        if (results.length) {
+    else if (results.length) {
             return (<tr className="border-t border-border/60">
                       <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
                         没有命中约束的组合（可尝试降低 min 覆盖率/提高 max 重叠浪费/放宽 max chunks）。
@@ -469,7 +468,6 @@ export function ChunkAutoTuneDialog() {
                       </td>
                     </tr>);
         }
-    }
 })()}
                 </tbody>
               </table>

@@ -276,14 +276,12 @@ export function KGSnapshotsPage() {
     if (d0 > 0) {
         return 'text-emerald-600';
     }
-    else {
-        if (d0 < 0) {
+    else if (d0 < 0) {
             return 'text-rose-600';
         }
         else {
             return 'text-muted-foreground';
         }
-    }
 })()
                     return (
                       <Card key={key} className="border-muted/60">
@@ -317,14 +315,12 @@ export function KGSnapshotsPage() {
     if (delta > 0) {
         return 'text-emerald-600';
     }
-    else {
-        if (delta < 0) {
+    else if (delta < 0) {
             return 'text-rose-600';
         }
         else {
             return 'text-muted-foreground';
         }
-    }
 })()
                       return (
                         <div key={`${typ}:${delta}`} className="flex items-center justify-between gap-2 text-xs">

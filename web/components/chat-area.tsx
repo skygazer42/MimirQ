@@ -30,10 +30,12 @@ import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
 import { Magnetic } from '@/components/ui/magnetic'
+import { coerceOneOf } from '@/lib/one-of'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
 const LOAD_MORE_STEP = 40
+const METADATA_FILTER_MODE_VALUES = ['all', 'exclude_qa', 'qa_only', 'custom'] as const
 
 export function ChatArea({
   initialConversationId,
@@ -558,7 +560,10 @@ export function ChatArea({
 
                   <div className="space-y-2 pt-2 border-t">
                     <div className="text-xs text-muted-foreground">Metadata filter</div>
-                    <Select value={metadataFilterMode} onValueChange={(v) => applyMetadataFilterPreset(v as any)}>
+                    <Select
+                      value={metadataFilterMode}
+                      onValueChange={(value) => applyMetadataFilterPreset(coerceOneOf(METADATA_FILTER_MODE_VALUES, value, 'all'))}
+                    >
                       <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="Filter" />
                       </SelectTrigger>
@@ -788,24 +793,18 @@ function WelcomeScreen() {
     if (hour < 5) {
         return '夜深了';
     }
-    else {
-        if (hour < 11) {
+    else if (hour < 11) {
             return '早上好';
         }
-        else {
-            if (hour < 13) {
+        else if (hour < 13) {
                 return '中午好';
             }
-            else {
-                if (hour < 18) {
+            else if (hour < 18) {
                     return '下午好';
                 }
                 else {
                     return '晚上好';
                 }
-            }
-        }
-    }
 })()
 
   return (

@@ -454,7 +454,7 @@ export function KnowledgeSettingsPanel({
                 className="font-mono tabular-nums"
                 title={selectedDatasetId ? `dataset ${selectedDatasetId}` : 'all datasets'}
               >
-                {selectedDatasetId ? selectedDatasetId : '全部数据集'}
+                {selectedDatasetId || '全部数据集'}
               </span>
               <span className="text-muted-foreground/40"> · </span>
               上次刷新: <span className="font-mono tabular-nums">{runsUpdatedAtLabel}</span>
@@ -483,14 +483,12 @@ export function KnowledgeSettingsPanel({
                 正在加载导入任务...
               </div>);
     }
-    else {
-        if (connectorRuns.length === 0) {
+    else if (connectorRuns.length === 0) {
             return (<div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
                 暂无导入任务。可通过顶部“导入/新增”创建批量导入/同步任务。
               </div>);
         }
-        else {
-            if (visibleConnectorRuns.length === 0) {
+        else if (visibleConnectorRuns.length === 0) {
                 return (<div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground flex items-center justify-between gap-3">
                 <div>当前筛选条件下暂无任务。</div>
                 <Button type="button" variant="outline" size="sm" onClick={() => setRunStatusFilter('all')}>
@@ -761,8 +759,6 @@ export function KnowledgeSettingsPanel({
                     })}
               </div>);
             }
-        }
-    }
 })()}
           </div>
 

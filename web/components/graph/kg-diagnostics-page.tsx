@@ -14,13 +14,10 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
-import { evaluationApi, type KGHardcaseMode, type KGSearchDiagnosticsRunDetail } from '@/lib/api-client'
+import { evaluationApi, type KGHardcaseMode, type KGSearchDiagnosticsResponse, type KGSearchDiagnosticsRunDetail } from '@/lib/api-client'
+import { coerceOneOf } from '@/lib/one-of'
 
-type KgDiagnosticsRunResponse = {
-  summary?: Record<string, unknown> | null
-  items?: unknown[]
-  [key: string]: unknown
-}
+const KG_EXTRACT_MODE_VALUES = ['auto', 'on', 'off'] as const
 
 function prettyJson(value: unknown): string {
   try {
@@ -74,7 +71,7 @@ function extractBaselineMetrics(item: any): { hit_at_k: boolean; mrr: number; re
 function caseKey(item: any): string | null {
   const id = item?.case_id
   const s = String(id || '').trim()
-  return s ? s : null
+  return s || null
 }
 
 export function KGDiagnosticsPage() {
@@ -92,7 +89,7 @@ export function KGDiagnosticsPage() {
   const [persistRun, setPersistRun] = useState(true)
 
   const [running, setRunning] = useState(false)
-  const [runResp, setRunResp] = useState<KgDiagnosticsRunResponse | null>(null)
+  const [runResp, setRunResp] = useState<KGSearchDiagnosticsResponse | null>(null)
   const runRespJson = useMemo(() => prettyJson(runResp ?? { hint: '运行一次 KG diagnostics 以生成 summary/items' }), [runResp])
 
   const [runsLoading, setRunsLoading] = useState(false)
@@ -375,7 +372,10 @@ export function KGDiagnosticsPage() {
                 </div>
                 <div className="space-y-1">
                   <Label>extract_skills</Label>
-                  <Select value={extractSkills} onValueChange={(v) => setExtractSkills(v as any)}>
+                  <Select
+                    value={extractSkills}
+                    onValueChange={(value) => setExtractSkills(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="auto/on/off" />
                     </SelectTrigger>
@@ -388,7 +388,10 @@ export function KGDiagnosticsPage() {
                 </div>
                 <div className="space-y-1">
                   <Label>extract_relations</Label>
-                  <Select value={extractRelations} onValueChange={(v) => setExtractRelations(v as any)}>
+                  <Select
+                    value={extractRelations}
+                    onValueChange={(value) => setExtractRelations(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="auto/on/off" />
                     </SelectTrigger>

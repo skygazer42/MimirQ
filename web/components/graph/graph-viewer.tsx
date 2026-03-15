@@ -136,11 +136,9 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           console.log('[GraphViewer] currentZoom:', currentZoom)
         }
         fgRef.current.zoom(currentZoom * 1.2, 400)
-      } else {
-        if (isDev) {
+      } else if (isDev) {
           console.warn('[GraphViewer] fgRef.current is null/undefined')
         }
-      }
     },
     zoomOut: () => {
       if (fgRef.current) {

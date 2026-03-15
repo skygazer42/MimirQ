@@ -38,6 +38,7 @@ def chunk(
     """
     Only eml is supported
     """
+    _ = (from_page, to_page)
     eng = lang.lower() == "english"  # is_english(cks)
     parser_config = kwargs.get(
         "parser_config",

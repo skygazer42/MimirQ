@@ -130,9 +130,9 @@ export function IngestionDetailDialog({
     ]
   }, [doc])
 
-  const canCancel = Boolean(doc && (doc.status === 'pending' || doc.status === 'processing'))
-  const canRetry = Boolean(doc && (doc.status === 'failed' || doc.status === 'cancelled' || doc.status === 'quarantined'))
-  const canForceRetry = Boolean(doc && doc.status === 'completed')
+  const canCancel = Boolean(doc?.status === 'pending' || doc?.status === 'processing')
+  const canRetry = Boolean(doc?.status === 'failed' || doc?.status === 'cancelled' || doc?.status === 'quarantined')
+  const canForceRetry = Boolean(doc?.status === 'completed')
 
   const handleDiff = async () => {
     if (!doc || !diffFrom || !diffTo || diffLoading) return
@@ -245,14 +245,12 @@ export function IngestionDetailDialog({
     if (isDone) {
         return CheckCircle2;
     }
-    else {
-        if (isFailed) {
+    else if (isFailed) {
             return AlertCircle;
         }
         else {
             return null;
         }
-    }
 })()
                     return (
                       <div key={s.key} className="flex flex-col items-center gap-3 group">

@@ -263,7 +263,7 @@ export default function KnowledgePage() {
   const filteredDocuments = useMemo(() => documents, [documents])
 
   const [docGridColumns, setDocGridColumns] = useState(() => {
-    if (typeof globalThis.window === 'undefined') return 1
+    if (globalThis.window === undefined) return 1
     return docGridColumnsForViewportWidth(globalThis.window.innerWidth)
   })
 
@@ -363,19 +363,15 @@ export default function KnowledgePage() {
     if (action === 'disable') {
         return documentApi.batchDisable;
     }
-    else {
-        if (action === 'enable') {
+    else if (action === 'enable') {
             return documentApi.batchEnable;
         }
-        else {
-            if (action === 'archive') {
+        else if (action === 'archive') {
                 return documentApi.batchArchive;
             }
             else {
                 return documentApi.batchUnarchive;
             }
-        }
-    }
 })()
 
         const res = await fn(ids)
@@ -387,19 +383,15 @@ export default function KnowledgePage() {
     if (action === 'disable') {
         return `已禁用 ${res.updated} 份文档`;
     }
-    else {
-        if (action === 'enable') {
+    else if (action === 'enable') {
             return `已启用 ${res.updated} 份文档`;
         }
-        else {
-            if (action === 'archive') {
+        else if (action === 'archive') {
                 return `已归档 ${res.updated} 份文档`;
             }
             else {
                 return `已取消归档 ${res.updated} 份文档`;
             }
-        }
-    }
 })()
         )
         setSelectedDocIds([])
@@ -429,7 +421,7 @@ export default function KnowledgePage() {
       const res = await documentApi.batchReingest({
         document_ids: ids,
         patch: pipelineOverridesEnabled ? pipelineOptions : undefined,
-        replace: pipelineOverridesEnabled ? true : false,
+        replace: pipelineOverridesEnabled,
         force: true,
         skip_if_unchanged: false,
       })
@@ -793,24 +785,18 @@ export default function KnowledgePage() {
     if (statusFilter === 'completed') {
         return '已就绪';
     }
-    else {
-        if (statusFilter === 'processing') {
+    else if (statusFilter === 'processing') {
             return '处理中';
         }
-        else {
-            if (statusFilter === 'failed') {
+        else if (statusFilter === 'failed') {
                 return '失败';
             }
-            else {
-                if (statusFilter === 'quarantined') {
+            else if (statusFilter === 'quarantined') {
                     return '隔离';
                 }
                 else {
                     return statusFilter;
                 }
-            }
-        }
-    }
 })()}
                       </span>
                     </span>
@@ -824,19 +810,15 @@ export default function KnowledgePage() {
     if (lifecycleFilter === 'archived') {
         return '已归档';
     }
-    else {
-        if (lifecycleFilter === 'disabled') {
+    else if (lifecycleFilter === 'disabled') {
             return '已禁用';
         }
-        else {
-            if (lifecycleFilter === 'all') {
+        else if (lifecycleFilter === 'all') {
                 return '全部';
             }
             else {
                 return lifecycleFilter;
             }
-        }
-    }
 })()}
                       </span>
                     </span>

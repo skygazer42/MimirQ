@@ -182,14 +182,12 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
           加载中…
         </div>);
     }
-    else {
-        if (items.length) {
+    else if (items.length) {
             return (<DatasetCategoryTreeView items={items} selectedId={selectedId} onSelect={onSelect}/>);
         }
         else {
             return (<div className="text-xs text-muted-foreground">暂无分类</div>);
         }
-    }
 })()}
     </div>
   )

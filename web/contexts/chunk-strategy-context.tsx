@@ -17,7 +17,7 @@ export function ChunkStrategyProvider({ children }: Readonly<{ children: React.R
   const { capabilities, chunkStrategyAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
     if (stored) {
       setChunkStrategyState(stored)
@@ -36,7 +36,7 @@ export function ChunkStrategyProvider({ children }: Readonly<{ children: React.R
   const applyChunkStrategy = (value: string) => {
     const next = (value || '').trim().toLowerCase() || 'langchain_recursive'
     setChunkStrategyState(next)
-    if (typeof globalThis.window !== 'undefined') {
+    if (globalThis.window !== undefined) {
       globalThis.window.localStorage.setItem(STORAGE_KEY, next)
     }
   }

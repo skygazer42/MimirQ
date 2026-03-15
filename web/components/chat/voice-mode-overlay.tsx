@@ -21,7 +21,7 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
     const recognitionRef = useRef<any>(null)
 
     useEffect(() => {
-        if (typeof globalThis.window !== 'undefined' && (globalThis.window as any).webkitSpeechRecognition) {
+        if (globalThis.window !== undefined && (globalThis.window as any).webkitSpeechRecognition) {
             const SpeechRecognition = (globalThis.window as any).webkitSpeechRecognition
             const recognition = new SpeechRecognition()
             recognition.continuous = true

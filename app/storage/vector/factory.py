@@ -396,7 +396,7 @@ class FAISSVectorStore(BaseVectorStore):
         tenant_id: UUID | None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        key, store = self._get_store(tenant_id)
+        _key, store = self._get_store(tenant_id)
         if store is None:
             return []
         allowed = {str(did) for did in document_ids} if document_ids else None
@@ -547,7 +547,7 @@ class ChromaVectorStore(BaseVectorStore):
             meta.setdefault("image_url", meta.get("img_url"))
             metadatas.append(meta)
             ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
-        key, store = self._get_store(tenant_id)
+        _key, store = self._get_store(tenant_id)
         store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
         # Chroma (0.4+) persists automatically; manual persist is deprecated/no-op.
         return ids

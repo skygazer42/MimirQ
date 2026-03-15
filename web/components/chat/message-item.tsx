@@ -463,7 +463,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                             </div>
                           </div>
 
-                          {claimEvidence && claimEvidence.length ? (
+                          {claimEvidence?.length ? (
                             <div className="p-4 space-y-3 overflow-auto max-h-72 custom-scrollbar">
                               {claimEvidence.slice(0, 24).map((item: any, idx: number) => {
                                 const claim = String(item?.claim || '').trim()
@@ -598,8 +598,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     if (isUser) {
         return (<div className="whitespace-pre-wrap font-normal ">{message.content}</div>);
     }
-    else {
-        if (isStreaming) {
+    else if (isStreaming) {
             return (<CinematicTypewriter content={message.content} isStreaming={true}/>);
         }
         else {
@@ -607,7 +606,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               {message.content}
             </ReactMarkdown>);
         }
-    }
 })()}
         </div>
 
@@ -696,8 +694,8 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
 
   const canViewEvidence = Boolean((citation.has_image && imgUrl && !hideImage) || isTableEvidence)
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleClick = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation()
     // Open document viewer panel
     if (citation.document_id) {
       const start =
@@ -705,28 +703,24 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
     if (typeof citation.evidence_start_char === 'number') {
         return citation.evidence_start_char;
     }
-    else {
-        if (typeof citation.start_char === 'number') {
+    else if (typeof citation.start_char === 'number') {
             return citation.start_char;
         }
         else {
             return null;
         }
-    }
 })()
       const end =
         (() => {
     if (typeof citation.evidence_end_char === 'number') {
         return citation.evidence_end_char;
     }
-    else {
-        if (typeof citation.end_char === 'number') {
+    else if (typeof citation.end_char === 'number') {
             return citation.end_char;
         }
         else {
             return null;
         }
-    }
 })()
       const range = start != null && end != null && end > start ? { start, end } : undefined
       openDocument(citation.document_id, citation.chunk_id, range)

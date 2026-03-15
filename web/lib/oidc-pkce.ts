@@ -26,14 +26,14 @@ function base64ToBytes(base64: string): Uint8Array {
 }
 
 export function base64UrlEncode(bytes: Uint8Array): string {
-  return bytesToBase64(bytes).replaceAll(/\+/g, '-').replaceAll(/\//g, '_').replaceAll(/=+$/g, '')
+  return bytesToBase64(bytes).replaceAll("\\+", '-').replaceAll("/", '_').replaceAll("=+$", '')
 }
 
 export function base64UrlDecodeToBytes(base64Url: string): Uint8Array {
   const raw = String(base64Url || '').trim()
   if (!raw) return new Uint8Array()
 
-  let base64 = raw.replaceAll(/-/g, '+').replaceAll(/_/g, '/')
+  let base64 = raw.replaceAll("-", '+').replaceAll("_", '/')
   const pad = base64.length % 4
   if (pad) base64 += '='.repeat(4 - pad)
 
