@@ -361,8 +361,7 @@ export default function PromptsPage() {
     if (loading) {
         return (<div className="text-center py-12">加载中...</div>);
     }
-    else {
-        if (filteredTemplates.length === 0) {
+    else if (filteredTemplates.length === 0) {
             return (<Card>
           <CardContent className="py-12 text-center text-muted-foreground">
             {templates.length === 0 ? (<>
@@ -513,7 +512,6 @@ export default function PromptsPage() {
           </div>
         </div>);
         }
-    }
 })()}
 
       {/* Preview Dialog */}

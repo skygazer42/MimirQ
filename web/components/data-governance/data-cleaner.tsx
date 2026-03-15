@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { pipelineApi, promptTemplateApi, PromptTemplate } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import type { CleanPreviewRequest, CleanPreviewResponse, LLMCleanPreviewRequest } from '@/types'
+import { coerceOneOf } from '@/lib/one-of'
+import type { CleanPreviewRequest, CleanPreviewResponse, DocumentPipelineOptions, LLMCleanPreviewRequest } from '@/types'
 import {
   Select,
   SelectContent,
@@ -22,6 +23,7 @@ import { CleanPreviewRuleStatsPanel } from '@/components/governance-profiles/cle
 import { computeCleanPreviewImpact } from '@/lib/clean-preview-impact'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
+const DATA_CLEANER_INPUT_FORMAT_VALUES = ['markdown', 'html'] as const
 
 interface DataCleanerProps {
   content: string
@@ -206,10 +208,12 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
     }
   }, [content, options, onClean, llmEnabled, promptTemplateId, inputFormat])
 
-  const applyPipelinePatch = useCallback((patch: Record<string, any>) => {
+  const applyPipelinePatch = useCallback((patch: Partial<DocumentPipelineOptions>) => {
     setEnabled(true)
-    for (const [key, value] of Object.entries(patch || {})) {
-      updateOption(key as any, value)
+    for (const key of Object.keys(patch) as Array<keyof DocumentPipelineOptions>) {
+      const value = patch[key]
+      if (value === undefined) continue
+      updateOption(key, value)
     }
   }, [setEnabled, updateOption])
 
@@ -228,7 +232,10 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">输入格式</span>
-          <Select value={inputFormat} onValueChange={(v) => setInputFormat(v as any)}>
+          <Select
+            value={inputFormat}
+            onValueChange={(value) => setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))}
+          >
             <SelectTrigger className="h-8 text-xs w-[120px]">
               <SelectValue />
             </SelectTrigger>
@@ -411,14 +418,12 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
     if (it.severity === 'error') {
         return 'bg-destructive/10 text-destructive';
     }
-    else {
-        if (it.severity === 'warning') {
+    else if (it.severity === 'warning') {
             return 'bg-warning/10 text-warning';
         }
         else {
             return 'bg-info/10 text-info';
         }
-    }
 })()
                         )}>
                           {it.severity.toUpperCase()}

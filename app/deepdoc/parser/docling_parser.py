@@ -246,6 +246,7 @@ class DoclingParser(IntegratedPipelinePdfParser):
         return sections
 
     def cropout_docling_table(self, page_no: int, bbox: tuple[float, float, float, float], zoomin: int = 1):
+        _ = zoomin
         if not getattr(self, "page_images", None):
             return None, ""
 
@@ -327,6 +328,7 @@ class DoclingParser(IntegratedPipelinePdfParser):
         delete_output: bool = True,
         parse_method: str = "raw"
     ):
+        _ = (lang, method)
 
         if not self.check_installation():
             raise RuntimeError("Docling not available, please install `docling`")

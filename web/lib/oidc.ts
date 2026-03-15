@@ -64,7 +64,7 @@ function resolveRedirectUri(): string {
   const override = readEnv('NEXT_PUBLIC_OIDC_REDIRECT_URI')
   if (override) return override
 
-  if (typeof globalThis.window === 'undefined') {
+  if (globalThis.window === undefined) {
     // Only used client-side; keep a stable placeholder for type safety.
     return '/auth/oidc/callback'
   }
@@ -108,7 +108,7 @@ let cachedDiscovery: { issuer: string; value: OidcDiscovery } | null = null
 
 async function discover(issuer: string): Promise<OidcDiscovery> {
   const cached = cachedDiscovery
-  if (cached && cached.issuer === issuer) return cached.value
+  if (cached?.issuer === issuer) return cached.value
 
   const url = `${issuer}/.well-known/openid-configuration`
   const res = await fetch(url, { method: 'GET' })
@@ -167,7 +167,7 @@ export function isOidcEnabled(): boolean {
 }
 
 export async function startOidcLogin(params: { providerId?: string; returnTo?: string } = {}): Promise<void> {
-  if (typeof globalThis.window === 'undefined') {
+  if (globalThis.window === undefined) {
     throw new Error('oidc_browser_only')
   }
 
@@ -233,7 +233,7 @@ export async function startOidcLogin(params: { providerId?: string; returnTo?: s
 }
 
 export async function completeOidcLogin(params: { code: string; state: string }): Promise<{ session: AuthResponse; returnTo: string }> {
-  if (typeof globalThis.window === 'undefined') {
+  if (globalThis.window === undefined) {
     throw new Error('oidc_browser_only')
   }
 

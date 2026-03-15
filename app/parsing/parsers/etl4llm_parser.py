@@ -284,6 +284,7 @@ class Etl4LlmParser:
         tenant_id: str | None = None,  # kept for interface parity
         **_kwargs,
     ) -> list[Document]:
+        _ = (dataset_id, tenant_id)
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")

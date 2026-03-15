@@ -28,6 +28,7 @@ from app.rag.reranker.types import RerankCandidate, RerankResult
 
 _MANIFEST_SCHEMA_V1 = "mimirq.ltr_model_manifest.v1"
 _FEATURE_SPEC_FINGERPRINT_SCHEMA_V1 = "mimirq.ltr_feature_spec.v1"
+_BINARY_LOGISTIC_OBJECTIVE = "binary:logistic"
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,7 @@ def extract_ltr_features(*, spec: LTRFeatureSpec, query: str, candidate: RerankC
     - candidate.metadata: scalar scores and retrieval_role
     - query: reserved for future query-dependent features (kept for API stability)
     """
+    _ = query
     meta = candidate.metadata or {}
     role = meta.get("retrieval_role")
     role_oh = _role_one_hot(str(role) if role is not None else None)
@@ -249,7 +251,7 @@ def train_ltr_xgboost_model(
     spec: LTRFeatureSpec,
     num_boost_round: int = 50,
     seed: int = 42,
-    objective: str = "binary:logistic",
+    objective: str = _BINARY_LOGISTIC_OBJECTIVE,
     group_sizes: Sequence[int] | None = None,
 ) -> bytes:
     """
@@ -286,7 +288,7 @@ def train_ltr_xgboost_model(
         # Grouped ranking objective support.
         dtrain.set_group(sizes)
 
-    obj = str(objective or "binary:logistic")
+    obj = str(objective or _BINARY_LOGISTIC_OBJECTIVE)
     params = {
         "objective": obj,
         "max_depth": 3,
@@ -305,7 +307,7 @@ def train_ltr_xgboost_model(
     # Newer xgboost versions infer base_score from training labels. For tiny
     # datasets it can become exactly 0/1 (e.g., all-positive labels), which is
     # invalid for logistic loss.
-    if obj in {"binary:logistic", "reg:logistic"}:
+    if obj in {_BINARY_LOGISTIC_OBJECTIVE, "reg:logistic"}:
         eps = 1e-6
         mean_label = float(y_arr.mean()) if y_arr.size else 0.5
         params["base_score"] = min(max(mean_label, eps), 1.0 - eps)

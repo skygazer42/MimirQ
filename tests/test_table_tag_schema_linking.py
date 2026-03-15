@@ -18,7 +18,7 @@ def test_score_schema_link_diagnostics_matches_columns_values_and_tables() -> No
     assert "amount" in list(diag.get("matched_columns") or [])
     assert "region" in list(diag.get("matched_columns") or [])
     assert "US" in list(diag.get("matched_values") or [])
-    assert any(str(x).lower() == "sales" for x in list(diag.get("matched_tables") or []))
+    assert any(str(x).lower() == "sales" for x in (diag.get("matched_tables") or []))
     assert str(diag.get("strategy") or "")
     assert str(diag.get("reason") or "")
 

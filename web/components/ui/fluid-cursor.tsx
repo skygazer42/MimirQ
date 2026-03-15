@@ -25,7 +25,7 @@ export function FluidCursor() {
   const [isDesktop, setIsDesktop] = useState(false)
   useEffect(() => {
     if (!enabled) return
-    if (typeof globalThis.window === "undefined") return
+    if (globalThis.window === undefined) return
     const mq = globalThis.window.matchMedia("(pointer: fine)")
     const update = () => setIsDesktop(mq.matches)
     update()

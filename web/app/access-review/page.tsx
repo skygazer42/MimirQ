@@ -17,6 +17,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { auditApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { coerceOneOf } from '@/lib/one-of'
 import { cn, detachPromise } from '@/lib/utils'
 
 type AccessGraphSummary = {
@@ -56,6 +57,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 const SUMMARY_SKELETON_KEYS = ['summary-1', 'summary-2', 'summary-3', 'summary-4', 'summary-5', 'summary-6', 'summary-7', 'summary-8', 'summary-9', 'summary-10']
+const EXPORT_FORMAT_VALUES = ['ndjson', 'json'] as const
 
 export default function AccessReviewPage() {
   const [summary, setSummary] = useState<AccessGraphSummary | null>(null)
@@ -240,8 +242,7 @@ export default function AccessReviewPage() {
                   {SUMMARY_SKELETON_KEYS.map((key) => (<Skeleton key={key} className="h-[68px] rounded-xl"/>))}
                 </div>);
     }
-    else {
-        if (summary) {
+    else if (summary) {
             return (<>
                   <StatsGrid className="mt-1">
                     <StatCard icon={ShieldCheck} label="Groups" value={summaryStats.group_count} color="cyan"/>
@@ -290,7 +291,6 @@ export default function AccessReviewPage() {
                   无法加载访问审查汇总。请确认你是 owner/admin，并且后端已更新到包含 `/api/v1/audit/access-graph/summary` 的版本。
                 </div>);
         }
-    }
 })()}
             </div>
           </Panel>
@@ -304,7 +304,10 @@ export default function AccessReviewPage() {
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label>格式</Label>
-                <Select value={exportFormat} onValueChange={(v) => setExportFormat(v as any)}>
+                <Select
+                  value={exportFormat}
+                  onValueChange={(value) => setExportFormat(coerceOneOf(EXPORT_FORMAT_VALUES, value, 'ndjson'))}
+                >
                   <SelectTrigger className="h-10 rounded-xl">
                     <SelectValue placeholder="选择格式" />
                   </SelectTrigger>

@@ -200,6 +200,27 @@ export default function GraphPage() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const deferredSearchTerm = useDeferredValue(searchTerm)
 
+  const resetConnectMode = useCallback(() => {
+    setIsConnectMode(false)
+    setConnectSourceNode(null)
+  }, [])
+
+  const resetExplainMode = useCallback(() => {
+    setIsExplainMode(false)
+    setExplainSteps([])
+    setCurrentStepIndex(-1)
+    setHighlightedNodeIds(new Set())
+    setHighlightedLinkIds(new Set())
+  }, [])
+
+  const resetPathMode = useCallback(() => {
+    setIsPathMode(false)
+    setPathStartNode(null)
+    setPathEndNode(null)
+    setHighlightedNodeIds(new Set())
+    setHighlightedLinkIds(new Set())
+  }, [])
+
   const availableEntityTypes = useMemo(() => {
     const counts = new Map<string, number>()
     for (const node of graphData.nodes) {
@@ -330,7 +351,7 @@ export default function GraphPage() {
   const linksWithIds = useMemo(() => {
     return displayGraphData.links.map((link, index) => ({
       ...link,
-      id: (link as any).id || `link-${index}`,
+      id: link.id || `link-${index}`,
     }))
   }, [displayGraphData.links])
 
@@ -456,7 +477,7 @@ export default function GraphPage() {
   }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind])
 
   // Initialize with real (mock) data from service
-  const loadInitialData = async (
+  const loadInitialData = useCallback(async (
     source: 'live' | 'mock' = 'live',
     opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
   ) => {
@@ -500,7 +521,7 @@ export default function GraphPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [includeEntityLinks, includeRelationLinks, maxEntityLinks, minSharedEvents, resetConnectMode, resetExplainMode, resetPathMode])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -676,7 +697,7 @@ export default function GraphPage() {
         const existingNodeIds = new Set(prev.nodes.map(n => n.id))
         const uniqueNewNodes = newData.nodes.filter(n => !existingNodeIds.has(n.id))
         
-        const existingLinks = new Set(prev.links.map(l => `${(l.source as any).id || l.source}-${(l.target as any).id || l.target}`))
+        const existingLinks = new Set(prev.links.map((l) => `${getGraphLinkEndpointId(l.source)}-${getGraphLinkEndpointId(l.target)}`))
         const uniqueNewLinks = newData.links.filter(l => !existingLinks.has(`${l.source}-${l.target}`))
 
         return {
@@ -707,8 +728,8 @@ export default function GraphPage() {
     setGraphData((prev) => ({
       nodes: prev.nodes.filter((n) => String(n.id) !== nodeId),
       links: prev.links.filter((l) => {
-        const s = (l.source as any).id || l.source
-        const t = (l.target as any).id || l.target
+        const s = getGraphLinkEndpointId(l.source)
+        const t = getGraphLinkEndpointId(l.target)
         return String(s) !== nodeId && String(t) !== nodeId
       }),
     }))
@@ -980,7 +1001,18 @@ export default function GraphPage() {
 
     globalThis.window.addEventListener('keydown', handleKeyDown)
     return () => globalThis.window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedNode, isDetailOpen, isPathMode, isConnectMode, isExplainMode, handleDeleteNode, handleExpandNode])
+  }, [
+    selectedNode,
+    isDetailOpen,
+    isPathMode,
+    isConnectMode,
+    isExplainMode,
+    handleDeleteNode,
+    handleExpandNode,
+    resetPathMode,
+    resetConnectMode,
+    resetExplainMode,
+  ])
 
   const startConnectMode = () => {
     if (!selectedNode) return
@@ -1026,11 +1058,6 @@ export default function GraphPage() {
     setConnectLabelOpen(false)
     setConnectTargetNode(null)
     resetConnectMode()
-  }
-
-  const resetConnectMode = () => {
-    setIsConnectMode(false)
-    setConnectSourceNode(null)
   }
 
   // --- Explainability Logic ---
@@ -1089,14 +1116,14 @@ export default function GraphPage() {
         visited.add(current.id)
         
         const link = displayGraphData.links.find(l => {
-            const s = (l.source as any).id || l.source
-            const t = (l.target as any).id || l.target
+            const s = getGraphLinkEndpointId(l.source)
+            const t = getGraphLinkEndpointId(l.target)
             return (s === current.id && !visited.has(t)) || (t === current.id && !visited.has(s))
         })
         
         if (link) {
-            const s = (link.source as any).id || link.source
-            const t = (link.target as any).id || link.target
+            const s = getGraphLinkEndpointId(link.source)
+            const t = getGraphLinkEndpointId(link.target)
             const nextId = s === current.id ? t : s
             current = displayGraphData.nodes.find(n => n.id === nextId) || displayGraphData.nodes[i+1]
         } else {
@@ -1110,14 +1137,12 @@ export default function GraphPage() {
     if (i === 0) {
         return "初始查询匹配到的实体";
     }
-    else {
-        if (i === trace.length - 1) {
+    else if (i === trace.length - 1) {
             return "最终推理得出的答案";
         }
         else {
             return "通过关系链召回的相关节点";
         }
-    }
 })()
     }))
 
@@ -1145,14 +1170,14 @@ export default function GraphPage() {
             const prevNode = steps[i-1].node
             const currNode = step.node
             const link = g.links.find(l => {
-                const s = (l.source as any).id || l.source
-                const t = (l.target as any).id || l.target
+                const s = getGraphLinkEndpointId(l.source)
+                const t = getGraphLinkEndpointId(l.target)
                 return (s === prevNode && t === currNode) || (s === currNode && t === prevNode)
             })
             if (link) {
-                const rawId = (link as any).id
-                const idx = (g.links as any[]).indexOf(link as any)
-                const linkIndex = (link as any).index
+                const rawId = link.id
+                const idx = g.links.indexOf(link)
+                const linkIndex = link.index
                 let linkId = rawId
                 if (!linkId) {
                   if (linkIndex !== undefined) {
@@ -1171,14 +1196,6 @@ export default function GraphPage() {
 
         await new Promise(r => setTimeout(r, 1500))
     }
-  }
-
-  const resetExplainMode = () => {
-    setIsExplainMode(false)
-    setExplainSteps([])
-    setCurrentStepIndex(-1)
-    setHighlightedNodeIds(new Set())
-    setHighlightedLinkIds(new Set())
   }
 
   const handleNodeClick = (node: any) => {
@@ -1229,14 +1246,6 @@ export default function GraphPage() {
     },
     [displayGraphData.nodes, linksWithIds]
   )
-
-  const resetPathMode = () => {
-    setIsPathMode(false)
-    setPathStartNode(null)
-    setPathEndNode(null)
-    setHighlightedNodeIds(new Set())
-    setHighlightedLinkIds(new Set())
-  }
 
   const togglePathMode = () => {
     if (isPathMode) {
@@ -1801,7 +1810,7 @@ export default function GraphPage() {
              backgroundSize: '24px 24px'
           }}></div>
 
-          {/* eslint-disable-next-line no-nested-ternary */}
+          { }
           {displayGraphData.nodes.length > 0 ? (
             viewMode === '3d' ? (
                 <KnowledgeGraph3D 
@@ -2038,8 +2047,7 @@ export default function GraphPage() {
                           Loading...
                         </div>);
     }
-    else {
-        if (kgNodeDetail) {
+    else if (kgNodeDetail) {
             if (selectedNode?.meta?.kind === 'entity') {
                 return (<div className="space-y-3">
                           <div className="bg-muted rounded-xl p-3 border border-border">
@@ -2067,8 +2075,7 @@ export default function GraphPage() {
                         if (entityAliasesLoading) {
                             return (<div className="text-xs text-muted-foreground">Loading...</div>);
                         }
-                        else {
-                            if (entityAliases.length === 0) {
+                        else if (entityAliases.length === 0) {
                                 return (<div className="text-xs text-muted-foreground">No aliases</div>);
                             }
                             else {
@@ -2083,7 +2090,6 @@ export default function GraphPage() {
                                   </div>))}
                               </div>);
                             }
-                        }
                     })()}
 
                             <div className="mt-3 flex items-center gap-2">
@@ -2100,8 +2106,7 @@ export default function GraphPage() {
                         if (aliasSuggestionsLoading) {
                             return (<div className="text-xs text-muted-foreground">Loading...</div>);
                         }
-                        else {
-                            if (aliasSuggestions.length === 0) {
+                        else if (aliasSuggestions.length === 0) {
                                 return (<div className="text-xs text-muted-foreground">No suggestions</div>);
                             }
                             else {
@@ -2123,7 +2128,6 @@ export default function GraphPage() {
                                   </div>))}
                               </div>);
                             }
-                        }
                     })()}
                           </div>
                         </div>);
@@ -2147,7 +2151,6 @@ export default function GraphPage() {
                           No KG detail available
                         </div>);
         }
-    }
 })()}
                     </div>
                   )}
@@ -2332,8 +2335,7 @@ export default function GraphPage() {
     if (mergeSearchLoading) {
         return (<div className="text-xs text-muted-foreground">Searching…</div>);
     }
-    else {
-        if (mergeSearchResults.length === 0) {
+    else if (mergeSearchResults.length === 0) {
             return (<div className="text-xs text-muted-foreground">输入至少 2 个字符开始搜索</div>);
         }
         else {
@@ -2346,7 +2348,6 @@ export default function GraphPage() {
                       </button>))}
                   </div>);
         }
-    }
 })()}
               </div>
 
@@ -2360,8 +2361,7 @@ export default function GraphPage() {
     if (mergePreviewLoading) {
         return (<div className="text-xs text-muted-foreground">Loading preview…</div>);
     }
-    else {
-        if (mergePreview) {
+    else if (mergePreview) {
             return (<div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
                       <div>source edges: {String(mergePreview.stats?.source_event_entity_edges ?? '—')}</div>
                       <div>overlap: {String(mergePreview.stats?.overlap_events ?? '—')}</div>
@@ -2372,7 +2372,6 @@ export default function GraphPage() {
         else {
             return (<div className="text-xs text-muted-foreground">No preview available</div>);
         }
-    }
 })()}
                 </div>
               )}

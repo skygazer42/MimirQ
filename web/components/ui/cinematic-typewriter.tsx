@@ -79,7 +79,7 @@ export function CinematicTypewriter({
   }), [])
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const media = globalThis.window.matchMedia('(prefers-reduced-motion: reduce)')
     const update = () => setReduceMotion(Boolean(media.matches))
     update()

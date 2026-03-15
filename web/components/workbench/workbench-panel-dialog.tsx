@@ -44,8 +44,7 @@ export function WorkbenchPanelDialog({
     if (trigger) {
         return (<DialogTrigger asChild>{trigger}</DialogTrigger>);
     }
-    else {
-        if (TriggerIcon && triggerLabel) {
+    else if (TriggerIcon && triggerLabel) {
             return (<DialogTrigger asChild>
           <IconButton label={triggerLabel} variant="ghost">
             <TriggerIcon className="size-4"/>
@@ -55,7 +54,6 @@ export function WorkbenchPanelDialog({
         else {
             return null;
         }
-    }
 })()}
 
       <DialogContent

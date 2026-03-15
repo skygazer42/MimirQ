@@ -118,7 +118,7 @@ apiClient.interceptors.response.use(
           // so the UI doesn't stay in a broken "logged-in" state.
           const token = getAccessToken()
           const canAttemptRefresh =
-            !!token && typeof globalThis.window !== 'undefined' && !!error?.config && !(error.config).__mimirqOidcRetried
+            !!token && globalThis.window !== undefined && !!error?.config && !(error.config).__mimirqOidcRetried
           if (canAttemptRefresh) {
             ;(error.config).__mimirqOidcRetried = true
 
@@ -133,7 +133,7 @@ apiClient.interceptors.response.use(
 
           if (token) {
             clearAuthSession()
-            if (typeof globalThis.window !== 'undefined') {
+            if (globalThis.window !== undefined) {
               const path = String(globalThis.window.location?.pathname || '')
               if (!path.startsWith('/auth')) {
                 globalThis.window.location.href = '/auth'
@@ -160,19 +160,15 @@ apiClient.interceptors.response.use(
     if (typeof retryAfterBody === 'number') {
         return retryAfterBody;
     }
-    else {
-        if (typeof retryAfterBody === 'string') {
+    else if (typeof retryAfterBody === 'string') {
             return Number(retryAfterBody);
         }
-        else {
-            if (retryAfterHeader) {
+        else if (retryAfterHeader) {
                 return Number(retryAfterHeader);
             }
             else {
                 return undefined;
             }
-        }
-    }
 })()
           const scope = typeof detailObj?.scope === 'string' ? detailObj.scope : undefined
           const limit = typeof detailObj?.limit === 'number' ? detailObj.limit : undefined
@@ -1425,10 +1421,12 @@ export const pipelineApi = {
   },
 
   async cleanPreview(params: CleanPreviewRequest): Promise<CleanPreviewResponse> {
-    const remove_images: 'none' | 'decorative' | 'all' = (() => {
-      const v = params.remove_images
-      return v === 'decorative' || v === 'all' ? v : 'none'
-    })()
+    let remove_images: 'none' | 'decorative' | 'all' = 'none'
+    if (params.remove_images === 'decorative') {
+      remove_images = 'decorative'
+    } else if (params.remove_images === 'all') {
+      remove_images = 'all'
+    }
     const pii_mode: 'mask' | 'token' = params.pii_mode === 'token' ? 'token' : 'mask'
     const secrets_mode: 'mask' | 'token' = params.secrets_mode === 'token' ? 'token' : 'mask'
 

@@ -33,6 +33,7 @@ _NUMERIC_LITERAL_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
 _NON_IDENT_RE = re.compile(r"[^a-z0-9]+")
 _TABLE_PICK_SUM_INTENT_RE = re.compile(r"(?i)\b(sum|total|amount|gmv|revenue)\b|合计|总和|求和|金额|销售额")
 _TABLE_PICK_COUNT_INTENT_RE = re.compile(r"(?i)\b(count|how many)\b|多少|几条|几行|总数|数量")
+_QUESTION_REQUIRED = "question is required"
 _GENERIC_NON_KEY_COLUMNS = {
     "name",
     "title",
@@ -607,7 +608,7 @@ def plan_join_query_for_tables(
         valid_tables.append(
             {
                 "table_name": tname,
-                "table_aliases": [str(v) for v in list(raw.get("table_aliases") or []) if str(v).strip()],
+                "table_aliases": [str(v) for v in (raw.get("table_aliases") or []) if str(v).strip()],
                 "columns": [c for c in cols if isinstance(c, dict)],
                 "row_count": max(0, int(row_count)),
                 "sample_rows": sample_rows[:50],
@@ -632,7 +633,7 @@ def plan_join_query_for_tables(
         ambiguity_score_gap=ambiguity_gap,
         max_states=max(8, max_join_tables * 8),
     )
-    candidate_rows = [c for c in list(plan_candidates.get("candidates") or []) if isinstance(c, dict)]
+    candidate_rows = [c for c in (plan_candidates.get("candidates") or []) if isinstance(c, dict)]
     multi_candidate_rows = [
         c for c in (multi_plan_candidates.get("candidates") or []) if isinstance(c, dict)
     ]
@@ -949,7 +950,7 @@ def _pick_group_column(question: str, columns: list[dict[str, Any]], *, exclude:
     q_fold = q.casefold()
 
     explicit_terms: list[str] = []
-    m_en = re.search(r"(?i)\bgroup\s+by\s+([A-Za-z0-9_]+)", q)
+    m_en = re.search(r"(?i)\bgroup\s+by\s+(\w+)", q)
     if m_en:
         explicit_terms.append(str(m_en.group(1) or "").strip())
     m_zh = re.search(r"按\s*([A-Za-z0-9_\u4e00-\u9fff]+)\s*分组", q)
@@ -1067,7 +1068,7 @@ def _generate_deterministic_sql_with_diagnostics(
 ) -> tuple[str, dict[str, Any]]:
     q = " ".join((question or "").strip().split())
     if not q:
-        raise ValueError("question is required")
+        raise ValueError(_QUESTION_REQUIRED)
 
     q_fold = q.casefold()
     max_rows_i = max(1, int(max_rows or 0))
@@ -1210,7 +1211,7 @@ def _generate_sql_with_llm(
     """
     q = " ".join((question or "").strip().split())
     if not q:
-        raise ValueError("question is required")
+        raise ValueError(_QUESTION_REQUIRED)
 
     max_rows_i = max(1, int(max_rows or 0))
     cols_str = "\n".join(
@@ -1410,7 +1411,7 @@ def generate_answer_from_result(
 
     q = " ".join((question or "").strip().split())
     if not q:
-        raise ValueError("question is required")
+        raise ValueError(_QUESTION_REQUIRED)
 
     cols = result.get("columns") if isinstance(result, dict) else None
     rows = result.get("rows") if isinstance(result, dict) else None

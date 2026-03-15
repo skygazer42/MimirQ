@@ -132,7 +132,7 @@ export function TopBar() {
 
   const escapeForAnsiC = (value: string) => {
     // Used for bash $'...' strings in generated cURL.
-    return value.replaceAll(/\\/g, '\\\\').replaceAll(/'/g, "\\\\'")
+    return value.replaceAll("\\", '\\\\').replaceAll("'", "\\\\'")
   }
 
   const copyText = async (value: string, okMessage: string) => {
@@ -304,14 +304,12 @@ export function TopBar() {
     if (previewData.quality_gate.grade === 'pass') {
         return 'bg-success/10 text-success border-success/30';
     }
-    else {
-        if (previewData.quality_gate.grade === 'fail') {
+    else if (previewData.quality_gate.grade === 'fail') {
             return 'bg-destructive/10 text-destructive border-destructive/30';
         }
         else {
             return 'bg-warning/10 text-warning border-warning/30';
         }
-    }
 })()
                   )}
                   title={(previewData.quality_gate.reasons || []).join('\\n')}
@@ -740,14 +738,12 @@ export function TopBar() {
     if (isSubmitting) {
         return (<Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2"/>);
     }
-    else {
-        if (submitSuccess) {
+    else if (submitSuccess) {
             return (<Check className="w-3.5 h-3.5 mr-2"/>);
         }
         else {
             return (<Save className="w-3.5 h-3.5 mr-2"/>);
         }
-    }
 })()}
           {submitSuccess ? '已完成' : '确认入库'}
 	        </Button>

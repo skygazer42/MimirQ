@@ -278,14 +278,12 @@ export default function DatasetHealthPage() {
     if (profile) {
         return formatFileSize(profile.total_size_bytes || 0);
     }
-    else {
-        if (isLoading) {
+    else if (isLoading) {
             return '…';
         }
         else {
             return '-';
         }
-    }
 })()} color="teal" />
               <StatCard icon={ShieldAlert} label="失败" value={ingestion?.failed ?? (isLoading ? '…' : 0)} color="rose" />
               <StatCard icon={ShieldAlert} label="隔离" value={ingestion?.quarantined ?? (isLoading ? '…' : 0)} color="amber" />
@@ -296,14 +294,12 @@ export default function DatasetHealthPage() {
     if (profile) {
         return `${profile.pdf_scan?.scanned ?? 0}/${pdfScanTotal || 0}`;
     }
-    else {
-        if (isLoading) {
+    else if (isLoading) {
             return '…';
         }
         else {
             return '-';
         }
-    }
 })()}
                 color="orange"
               />
@@ -311,27 +307,23 @@ export default function DatasetHealthPage() {
     if (profile) {
         return piiTotal;
     }
-    else {
-        if (isLoading) {
+    else if (isLoading) {
             return '…';
         }
         else {
             return 0;
         }
-    }
 })()} color="sky" />
               <StatCard icon={ShieldAlert} label="Secrets" value={(() => {
     if (profile) {
         return secretsTotal;
     }
-    else {
-        if (isLoading) {
+    else if (isLoading) {
             return '…';
         }
         else {
             return 0;
         }
-    }
 })()} color="sky" />
             </StatsGrid>
           </Panel>
@@ -354,7 +346,7 @@ export default function DatasetHealthPage() {
                       <Tooltip />
                       <Bar dataKey="value" radius={[8, 8, 0, 0]}>
                         {statusChartData.map((entry, idx) => (
-                          <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'status')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                          <Cell key={String(entry.name ?? 'status')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -378,7 +370,7 @@ export default function DatasetHealthPage() {
                     <PieChart>
                       <Pie data={fileTypeChartData} dataKey="value" nameKey="name" outerRadius={110} label>
                         {fileTypeChartData.map((entry, idx) => (
-                          <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                          <Cell key={String(entry.name ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip />

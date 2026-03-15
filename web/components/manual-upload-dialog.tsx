@@ -331,8 +331,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
                     <p className="text-sm text-primary font-medium">正在解析结构...</p>
                   </div>);
     }
-    else {
-        if (file) {
+    else if (file) {
             return (<div className="flex flex-col items-center gap-1">
                     <div className="p-2 bg-primary/10 rounded-lg mb-1">
                       <FileText className="h-6 w-6 text-primary"/>
@@ -354,7 +353,6 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
                     <p className="text-sm text-muted-foreground">点击上传 PDF, TXT, MD</p>
                   </div>);
         }
-    }
 })()}
               </button>
             </div>

@@ -1,9 +1,28 @@
+_MISSING_CLI = "missing cli"
+
+
 def _check_import(module: str) -> tuple[bool, str]:
     try:
         __import__(module)
         return True, "ok"
     except Exception as exc:
         return False, str(exc)[:160]
+
+
+def _configured_status(enabled: bool, configured: bool, missing_message: str) -> str:
+    if enabled and configured:
+        return "configured"
+    if enabled:
+        return missing_message
+    return "disabled"
+
+
+def _configured_cli_status(enabled: bool, cli_path: str | None) -> str:
+    if enabled and cli_path:
+        return f"configured ({cli_path})"
+    if enabled:
+        return _MISSING_CLI
+    return "disabled"
 
 
 def main() -> int:
@@ -23,7 +42,7 @@ def main() -> int:
         (
             "deepseek_ocr",
             "on" if deepseek_enabled else "off",
-            "configured" if deepseek_enabled and deepseek_configured else ("missing SILICONFLOW_API_KEY" if deepseek_enabled else "disabled"),
+            _configured_status(deepseek_enabled, deepseek_configured, "missing SILICONFLOW_API_KEY"),
         )
     )
 
@@ -33,7 +52,7 @@ def main() -> int:
         (
             "etl4llm",
             "on" if etl4llm_enabled else "off",
-            "configured" if etl4llm_enabled and etl4llm_configured else ("missing ETL4LLM_API_URL" if etl4llm_enabled else "disabled"),
+            _configured_status(etl4llm_enabled, etl4llm_configured, "missing ETL4LLM_API_URL"),
         )
     )
 
@@ -43,7 +62,7 @@ def main() -> int:
         (
             "marker",
             "on" if marker_enabled else "off",
-            "configured" if marker_enabled and marker_configured else ("missing MARKER_API_URL" if marker_enabled else "disabled"),
+            _configured_status(marker_enabled, marker_configured, "missing MARKER_API_URL"),
         )
     )
 
@@ -53,9 +72,7 @@ def main() -> int:
         (
             "paddle_vl",
             "on" if paddlevl_enabled else "off",
-            "configured"
-            if paddlevl_enabled and paddlevl_configured
-            else ("missing PADDLE_VL_API_URL" if paddlevl_enabled else "disabled"),
+            _configured_status(paddlevl_enabled, paddlevl_configured, "missing PADDLE_VL_API_URL"),
         )
     )
 
@@ -65,7 +82,7 @@ def main() -> int:
         (
             "olmocr",
             "on" if olmocr_enabled else "off",
-            "configured" if olmocr_enabled and olmocr_configured else ("missing OLMOCR_API_URL" if olmocr_enabled else "disabled"),
+            _configured_status(olmocr_enabled, olmocr_configured, "missing OLMOCR_API_URL"),
         )
     )
 
@@ -79,7 +96,7 @@ def main() -> int:
         (
             "pandoc",
             "on" if pandoc_enabled else "off",
-            f"configured ({pandoc_path})" if pandoc_enabled and pandoc_path else ("missing cli" if pandoc_enabled else "disabled"),
+            _configured_cli_status(pandoc_enabled, pandoc_path),
         )
     )
 
@@ -90,7 +107,7 @@ def main() -> int:
         (
             "libreoffice",
             "on" if lo_enabled else "off",
-            f"configured ({lo_path})" if lo_enabled and lo_path else ("missing cli" if lo_enabled else "disabled"),
+            _configured_cli_status(lo_enabled, lo_path),
         )
     )
 
@@ -109,7 +126,13 @@ def main() -> int:
     cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
     cli_ok = bool(resolve_cli_command(cli))
     magicpdf_configured = bool(getattr(settings, "MAGIC_PDF_ENABLED", False) and cli_ok)
-    rows.append(("magicpdf", "on" if getattr(settings, "MAGIC_PDF_ENABLED", False) else "off", "configured" if magicpdf_configured else ("missing cli" if getattr(settings, "MAGIC_PDF_ENABLED", False) else "disabled")))
+    rows.append(
+        (
+            "magicpdf",
+            "on" if getattr(settings, "MAGIC_PDF_ENABLED", False) else "off",
+            _configured_status(bool(getattr(settings, "MAGIC_PDF_ENABLED", False)), magicpdf_configured, _MISSING_CLI),
+        )
+    )
 
     col1 = max(len(r[0]) for r in rows)
     col2 = max(len(r[1]) for r in rows)

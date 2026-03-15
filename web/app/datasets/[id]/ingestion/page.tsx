@@ -796,14 +796,12 @@ export default function DatasetIngestionPolicyPage() {
     if (mode === 'replace') {
         return newRules;
     }
-    else {
-        if (mode === 'append') {
+    else if (mode === 'append') {
             return [...existing, ...newRules];
         }
         else {
             return [...newRules, ...existing];
         }
-    }
 })()
 
     setPolicy({ version: '1', rules: merged })
@@ -1256,7 +1254,7 @@ export default function DatasetIngestionPolicyPage() {
                     <SelectContent>
                       <SelectItem value={NONE}>不使用预设</SelectItem>
                       {profiles.map((p) => (
-                        <SelectItem key={p.key || p.id || p.name} value={p.key || (p.id as any)}>
+                        <SelectItem key={p.key || p.id || p.name} value={p.key || p.id || p.name}>
                           {p.is_system ? '内置' : '自定义'} · {p.name}
                         </SelectItem>
                       ))}
@@ -1379,15 +1377,14 @@ export default function DatasetIngestionPolicyPage() {
     if (versionsLoading) {
         return (<div className="text-sm text-muted-foreground">加载中…</div>);
     }
-    else {
-        if ((versions?.items || []).length) {
+    else if ((versions?.items || []).length) {
             return ((versions?.items || []).map((v, idx) => {
-                const id = String((v as any)?.id || '').trim();
+                const id = String(v?.id || '').trim();
                 const isCurrent = Boolean(id && versions?.current_version_id && id === versions.current_version_id);
-                const createdAt = String((v as any)?.created_at || '').trim();
-                const source = String((v as any)?.source || '').trim() || 'put';
-                const createdBy = String((v as any)?.created_by || '').trim();
-                const policyJson = (v as any)?.policy;
+                const createdAt = String(v?.created_at || '').trim();
+                const source = String(v?.source || '').trim() || 'put';
+                const createdBy = String(v?.created_by || '').trim();
+                const policyJson = v?.policy;
                 return (<div key={id || String(idx)} className="rounded-xl border border-border/60 bg-card p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
@@ -1424,7 +1421,6 @@ export default function DatasetIngestionPolicyPage() {
         else {
             return (<div className="text-sm text-muted-foreground">暂无版本（保存/导入后会自动生成）</div>);
         }
-    }
 })()}
               </div>
             </div>

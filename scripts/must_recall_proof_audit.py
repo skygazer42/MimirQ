@@ -90,7 +90,7 @@ def _validate_proof(label: str, proof: dict[str, Any]) -> list[str]:
     status = str(proof.get("status") or "")
     missing_source_keys = list(proof.get("missing_source_keys") or [])
     anchor_missing_any = int(proof.get("anchor_missing_any") or 0)
-    fail_reasons = [str(v) for v in list(proof.get("fail_reasons") or []) if str(v).strip()]
+    fail_reasons = [str(v) for v in (proof.get("fail_reasons") or []) if str(v).strip()]
 
     if enabled and passed:
         if missing_source_keys:

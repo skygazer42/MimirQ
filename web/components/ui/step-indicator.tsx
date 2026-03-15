@@ -38,14 +38,12 @@ export function StepIndicator({
     if (isCompleted) {
         return 'bg-primary text-primary-foreground';
     }
-    else {
-        if (isCurrent) {
+    else if (isCurrent) {
             return 'bg-primary/10 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background';
         }
         else {
             return 'bg-muted text-muted-foreground';
         }
-    }
 })()
                   )}
                 >
@@ -62,14 +60,12 @@ export function StepIndicator({
     if (isCurrent) {
         return 'text-primary';
     }
-    else {
-        if (isCompleted) {
+    else if (isCompleted) {
             return 'text-foreground';
         }
         else {
             return 'text-muted-foreground';
         }
-    }
 })()
                   )}
                 >

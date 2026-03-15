@@ -88,6 +88,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     416: {"description": "Range Not Satisfiable"},
 }
 
+_DETAIL_RUN_NOT_FOUND = "Run not found"
+_DETAIL_KG_DISABLED = "KG is disabled (KG_ENABLED=false)"
+
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = logging.getLogger(__name__)
 
@@ -447,7 +450,7 @@ async def get_ragas_run(
         .first()
     )
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_RUN_NOT_FOUND)
 
     items_out = []
     if include_items:
@@ -768,7 +771,7 @@ async def generate_synthetic_hardcases(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     if not bool(getattr(settings, "KG_ENABLED", False)):
-        raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
+        raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
     if bool(payload.dry_run):
@@ -1194,7 +1197,7 @@ async def get_ragas_regression_run(
         .first()
     )
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_RUN_NOT_FOUND)
 
     items_out = []
     if include_items:
@@ -1238,7 +1241,7 @@ async def export_ragas_regression_run_bundle_api(
         .first()
     )
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        raise HTTPException(status_code=404, detail=_DETAIL_RUN_NOT_FOUND)
 
     ds_id = getattr(run, "dataset_id", None)
     if ds_id is not None:
@@ -1535,7 +1538,7 @@ async def run_kg_search_diagnostics(
     Seed source: RAGAS regression cases (human-verified evidence pointers).
     """
     if not bool(getattr(settings, "KG_ENABLED", False)):
-        raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
+        raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     DatasetService.ensure_member(db, tenant_id, account_id)
     ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
@@ -1585,7 +1588,7 @@ async def run_kg_search_diagnostics(
 
             # Compact per-case records to keep the persisted payload small.
             items_compact: list[dict[str, Any]] = []
-            for item in list(getattr(resp, "items", []) or []):
+            for item in (getattr(resp, "items", []) or []):
                 baseline = getattr(item, "baseline", None)
                 baseline_metrics_obj = getattr(baseline, "metrics", None)
                 baseline_metrics = (
@@ -1593,7 +1596,7 @@ async def run_kg_search_diagnostics(
                 )
 
                 hardcases_compact: list[dict[str, Any]] = []
-                for hc in list(getattr(item, "hardcases", []) or []):
+                for hc in (getattr(item, "hardcases", []) or []):
                     run = getattr(hc, "run", None)
                     m_obj = getattr(run, "metrics", None)
                     hardcases_compact.append(
@@ -1665,7 +1668,7 @@ async def list_kg_search_diagnostics_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "KG_ENABLED", False)):
-        raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
+        raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     DatasetService.ensure_member(db, tenant_id, account_id)
     ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
@@ -1689,7 +1692,7 @@ async def get_kg_search_diagnostics_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     if not bool(getattr(settings, "KG_ENABLED", False)):
-        raise HTTPException(status_code=503, detail="KG is disabled (KG_ENABLED=false)")
+        raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
 
     run = (
         db.query(KGSearchDiagnosticsRun)

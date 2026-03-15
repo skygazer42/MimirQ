@@ -16,7 +16,7 @@ class _Session:
         self.added.append(obj)
 
     def add_all(self, objs) -> None:  # noqa: ANN001
-        for obj in list(objs or []):
+        for obj in (objs or []):
             self.add(obj)
 
     def commit(self) -> None:

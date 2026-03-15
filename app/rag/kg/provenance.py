@@ -40,6 +40,14 @@ def _safe_str(value: Any, *, max_len: int) -> str | None:
     return s[: max(0, int(max_len or 0))]
 
 
+def _iter_items(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if hasattr(value, "__iter__"):
+        return list(value)
+    return []
+
+
 _ALLOWED_REF_INT_KEYS = frozenset(
     {
         "chunk_index",
@@ -140,7 +148,7 @@ def build_kg_path_provenance(
         return (ent_id_s or None), (ent_type_s or None)
 
     dedup: dict[str, str] = {}
-    items = entities if isinstance(entities, list) else list(entities) if hasattr(entities, "__iter__") else []
+    items = _iter_items(entities)
     for ent in items:
         ent_id_s, ent_type_s = _entity_id_and_type(ent)
         if not ent_id_s:
@@ -234,7 +242,7 @@ def build_kg_shortest_path_provenance(
         cleaned = {str(x).strip() for x in key_entity_ids if str(x).strip()}
         key_set = cleaned if cleaned else None
 
-    ent_items = entities if isinstance(entities, list) else list(entities) if hasattr(entities, "__iter__") else []
+    ent_items = _iter_items(entities)
     ents: list[tuple[str, str]] = []
     for e in ent_items:
         ent_id_s, ent_type_s = _entity_id_and_type(e)
@@ -253,7 +261,7 @@ def build_kg_shortest_path_provenance(
     b_id, b_type = ents[1]
 
     rel_map: dict[frozenset[str], dict[str, Any]] = {}
-    rel_items = relations if isinstance(relations, list) else list(relations) if hasattr(relations, "__iter__") else []
+    rel_items = _iter_items(relations)
     for r in rel_items:
         if r is None:
             continue

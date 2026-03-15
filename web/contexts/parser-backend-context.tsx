@@ -17,7 +17,7 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
   const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
     if (stored) {
       setParserBackendState(stored)
@@ -34,14 +34,14 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
 
   const applyParserBackend = (value: string) => {
     const raw = (value || '').toLowerCase().trim()
-    const normalized = raw.replaceAll(/_/g, '-')
+    const normalized = raw.replaceAll("_", '-')
     let next = normalized
     if (next === 'magic-pdf') next = 'magicpdf'
     if (next === 'etl-4llm') next = 'etl4llm'
     if (next === 'bisheng-unstructured' || next === 'bishengunstructured' || next === 'bisheng') next = 'etl4llm'
     next = next || 'auto'
     setParserBackendState(next)
-    if (typeof globalThis.window !== 'undefined') {
+    if (globalThis.window !== undefined) {
       globalThis.window.localStorage.setItem(STORAGE_KEY, next)
     }
   }

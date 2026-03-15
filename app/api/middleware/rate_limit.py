@@ -246,7 +246,12 @@ async def get_client_key(request: Request) -> str:
         client_ip = (forwarded.split(",")[0] or "").strip() or "unknown"
     else:
         real_ip = request.headers.get("X-Real-IP")
-        client_ip = (real_ip or "").strip() if real_ip else (request.client.host if request.client else "unknown")
+        if real_ip:
+            client_ip = (real_ip or "").strip()
+        elif request.client:
+            client_ip = request.client.host
+        else:
+            client_ip = "unknown"
 
     tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
     tenant_id = (request.headers.get(tenant_header) or "").strip()

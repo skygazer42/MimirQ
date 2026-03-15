@@ -81,14 +81,12 @@ export function IngestionWorkflowStepper({
     if (isActive) {
         return 'bg-primary/10 text-primary border-primary/25';
     }
-    else {
-        if (isDone) {
+    else if (isDone) {
             return 'bg-card/70 text-foreground border-border/60 hover:bg-primary/5 hover:border-primary/20';
         }
         else {
             return 'bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted hover:text-foreground';
         }
-    }
 })()
               )}
               title={step.label}
@@ -97,14 +95,12 @@ export function IngestionWorkflowStepper({
     if (isActive) {
         return 'text-primary';
     }
-    else {
-        if (isDone) {
+    else if (isDone) {
             return 'text-foreground/80';
         }
         else {
             return 'text-muted-foreground';
         }
-    }
 })())} />
               <span className="whitespace-nowrap">{step.label}</span>
             </Link>

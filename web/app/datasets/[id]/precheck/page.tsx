@@ -721,14 +721,12 @@ export default function DatasetPrecheckPage() {
     if (scanRunning) {
         return `${latestRunProgress || 0}%`;
     }
-    else {
-        if (latestRunProgress) {
+    else if (latestRunProgress) {
             return `${latestRunProgress}%`;
         }
         else {
             return '-';
         }
-    }
 })()}
                 {selectedRun?.error_message ? <span className="ml-3 text-destructive">错误：{selectedRun.error_message}</span> : null}
               </div>
@@ -796,14 +794,12 @@ export default function DatasetPrecheckPage() {
     if (it.delta > 0) {
         return 'text-warning';
     }
-    else {
-        if (it.delta < 0) {
+    else if (it.delta < 0) {
             return 'text-teal-400';
         }
         else {
             return '';
         }
-    }
 })())}>
                               {it.delta}
                             </td>
@@ -826,14 +822,12 @@ export default function DatasetPrecheckPage() {
     if (summary) {
         return formatFileSize(summary.total_size_bytes || 0);
     }
-    else {
-        if (loading) {
+    else if (loading) {
             return '…';
         }
         else {
             return '-';
         }
-    }
 })()} color="teal" />
               <StatCard icon={Sparkles} label="P50 长度" value={summary?.length_percentiles?.p50 ?? (loading ? '…' : 0)} subValue="chars" color="blue" />
               <StatCard icon={Sparkles} label="P90 长度" value={summary?.length_percentiles?.p90 ?? (loading ? '…' : 0)} subValue="chars" color="blue" />
@@ -841,14 +835,12 @@ export default function DatasetPrecheckPage() {
     if (summary) {
         return `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`;
     }
-    else {
-        if (loading) {
+    else if (loading) {
             return '…';
         }
         else {
             return '-';
         }
-    }
 })()} color="orange" />
             </StatsGrid>
           </Panel>
@@ -865,7 +857,7 @@ export default function DatasetPrecheckPage() {
                     <Tooltip />
                     <Pie data={fileTypeChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
                       {fileTypeChartData.map((entry, idx) => (
-                        <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        <Cell key={String(entry.name ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                   </PieChart>
@@ -900,7 +892,7 @@ export default function DatasetPrecheckPage() {
                     <Tooltip />
                     <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
                       {pdfScanData.map((entry, idx) => (
-                        <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'pdf-scan')} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
+                        <Cell key={String(entry.name ?? 'pdf-scan')} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
                       ))}
                     </Pie>
                   </PieChart>
@@ -1139,8 +1131,7 @@ export default function DatasetPrecheckPage() {
                   加载中…
                 </div>);
     }
-    else {
-        if (findingRes) {
+    else if (findingRes) {
             return (<div className="space-y-3">
                   <div className="text-xs text-muted-foreground font-mono">
                     showing {findingRes.items.length}/{findingRes.total}
@@ -1172,14 +1163,12 @@ export default function DatasetPrecheckPage() {
                     if (d.pdf_scanned === true) {
                         return 'scan';
                     }
-                    else {
-                        if (d.pdf_scanned === false) {
+                    else if (d.pdf_scanned === false) {
                             return 'text';
                         }
                         else {
                             return 'unknown';
                         }
-                    }
                 })()) : ''}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">
@@ -1205,7 +1194,6 @@ export default function DatasetPrecheckPage() {
         else {
             return (<div className="py-10 text-center text-muted-foreground">暂无数据</div>);
         }
-    }
 })()}
             </div>
           </DialogContent>
@@ -1387,8 +1375,7 @@ export default function DatasetPrecheckPage() {
                 生成中…
               </div>);
     }
-    else {
-        if (policyRes) {
+    else if (policyRes) {
             return (<div className="space-y-4">
                 {policyRes.notes?.length ? (<div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground space-y-1">
                     {policyRes.notes.map((n) => (<div key={n}>- {n}</div>))}
@@ -1440,7 +1427,6 @@ export default function DatasetPrecheckPage() {
         else {
             return (<div className="py-10 text-center text-muted-foreground">暂无数据</div>);
         }
-    }
 })()}
           </DialogContent>
         </Dialog>

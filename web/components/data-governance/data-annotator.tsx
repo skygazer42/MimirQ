@@ -4,7 +4,7 @@
  */
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Tag,
   Plus,
@@ -102,8 +102,8 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
   const [customLabel, setCustomLabel] = useState('')
   const [isSelecting, setIsSelecting] = useState(false)
   const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null)
-  const [localAnnotations] = useState<Annotation[]>(annotations)
-  const [expandedTypes] = useState<Set<AnnotationTypeId>>(new Set())
+  const [localAnnotations, setLocalAnnotations] = useState<Annotation[]>(annotations)
+  const [expandedTypes, setExpandedTypes] = useState<Set<AnnotationTypeId>>(new Set())
 
 
   // 鎸夌被鍨嬪垎缁勭粺璁?
@@ -122,6 +122,54 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
 
 
   const typeConfig = ANNOTATION_TYPES.find(t => t.id === selectedType)!
+
+  useEffect(() => {
+    setLocalAnnotations(annotations)
+  }, [annotations])
+
+  const handleAddAnnotation = () => {
+    if (!selection) return
+
+    const label = selectedType === 'custom' ? customLabel.trim() : typeConfig.label
+    if (!label) return
+
+    const nextAnnotation: Annotation = {
+      id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${selection.start}-${selection.end}`,
+      text: selection.text,
+      type: selectedType,
+      label,
+      start: selection.start,
+      end: selection.end,
+    }
+
+    setLocalAnnotations((prev) => {
+      const next = [...prev, nextAnnotation]
+      onAnnotate(next)
+      return next
+    })
+    setSelection(null)
+    setIsSelecting(false)
+    if (selectedType === 'custom') {
+      setCustomLabel('')
+    }
+  }
+
+  const toggleExpandedType = (typeId: AnnotationTypeId) => {
+    setExpandedTypes((prev) => {
+      const next = new Set(prev)
+      if (next.has(typeId)) next.delete(typeId)
+      else next.add(typeId)
+      return next
+    })
+  }
+
+  const handleDeleteAnnotation = (annotationId: string) => {
+    setLocalAnnotations((prev) => {
+      const next = prev.filter((annotation) => annotation.id !== annotationId)
+      onAnnotate(next)
+      return next
+    })
+  }
 
   return (
     <div className="p-6 space-y-6">

@@ -185,7 +185,7 @@ def predict_learned_router_hint(
         weight = min(2.0, max(0.0, _coerce_float(rule.get("weight"), default=1.0)))
         score = float(token_ratio * confidence * weight)
 
-        best_score, best_rule, best_matched = best
+        best_score, _best_rule, best_matched = best
         if score > best_score or (score == best_score and matched > best_matched):
             best = (score, rule, matched)
 

@@ -234,7 +234,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     if (!raw) return '\n\n'
     try {
       // Same trick as context.decodeSeparatorInput: support \n, \t, \uXXXX etc.
-      return JSON.parse(`"${raw.replaceAll(/"/g, '\\"')}"`)
+      return JSON.parse(`"${raw.replaceAll("\"", '\\"')}"`)
     } catch {
       return raw
     }
@@ -587,8 +587,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     if (datasetsLoading) {
         return (<div className="text-[10px] text-muted-foreground">正在加载数据集...</div>);
     }
-    else {
-        if (datasetsError) {
+    else if (datasetsError) {
             return (<div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
                 {datasetsError}
               </div>);
@@ -596,7 +595,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         else {
             return null;
         }
-    }
 })()}
 
             {selectedDataset?.pipeline ? (
@@ -1234,14 +1232,12 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     if (isLoading) {
         return '取消';
     }
-    else {
-        if (cacheHit) {
+    else if (cacheHit) {
             return '忽略缓存';
         }
         else {
             return '强制刷新';
         }
-    }
 })()}
             </Button>
           </div>

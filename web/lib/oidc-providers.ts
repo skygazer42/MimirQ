@@ -154,14 +154,12 @@ export function getOidcServerProvidersFromEnv(): OidcProviderServer[] {
     if (rawMethod === 'post') {
         return 'post';
     }
-    else {
-        if (rawMethod === 'basic') {
+    else if (rawMethod === 'basic') {
             return 'basic';
         }
         else {
             return undefined;
         }
-    }
 })()
 
     seen.add(id)

@@ -40,6 +40,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 
 _ENV_UPDATE_LOCK = threading.Lock()
+_MISSING_API_URL_MESSAGE = "missing api_url"
 
 
 @contextlib.contextmanager
@@ -1302,6 +1303,13 @@ async def get_system_status(
 
     from app.parsing.utils.cli import resolve_cli_command
 
+    def _configured_message(enabled: bool, configured: bool, missing_message: str) -> str:
+        if enabled and configured:
+            return "configured"
+        if enabled:
+            return missing_message
+        return "disabled"
+
     parsers: dict[str, dict] = {
         "basic": {"enabled": True, "available": True, "message": "built-in"},
     }
@@ -1319,7 +1327,7 @@ async def get_system_status(
     parsers["pandoc"] = {
         "enabled": pandoc_enabled,
         "available": bool(pandoc_enabled and pandoc_cli_ok),
-        "message": "configured" if (pandoc_enabled and pandoc_cli_ok) else ("disabled" if not pandoc_enabled else f"missing cli: {pandoc_cli}"),
+        "message": _configured_message(pandoc_enabled, pandoc_cli_ok, f"missing cli: {pandoc_cli}"),
     }
 
     lo_enabled = bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
@@ -1328,7 +1336,7 @@ async def get_system_status(
     parsers["libreoffice"] = {
         "enabled": lo_enabled,
         "available": bool(lo_enabled and lo_cli_ok),
-        "message": "configured" if (lo_enabled and lo_cli_ok) else ("disabled" if not lo_enabled else f"missing cli: {lo_cli}"),
+        "message": _configured_message(lo_enabled, lo_cli_ok, f"missing cli: {lo_cli}"),
     }
 
     ok, msg = _check_import("app.deepdoc.parser")
@@ -1343,7 +1351,7 @@ async def get_system_status(
     parsers["deepseek_ocr"] = {
         "enabled": deepseek_enabled,
         "available": bool(deepseek_enabled and deepseek_key),
-        "message": "configured" if (deepseek_enabled and deepseek_key) else ("disabled" if not deepseek_enabled else "missing api_key"),
+        "message": _configured_message(deepseek_enabled, deepseek_key, "missing api_key"),
     }
 
     etl_enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
@@ -1351,7 +1359,7 @@ async def get_system_status(
     parsers["etl4llm"] = {
         "enabled": etl_enabled,
         "available": bool(etl_enabled and etl_url),
-        "message": "configured" if (etl_enabled and etl_url) else ("disabled" if not etl_enabled else "missing api_url"),
+        "message": _configured_message(etl_enabled, etl_url, _MISSING_API_URL_MESSAGE),
     }
 
     marker_enabled = bool(getattr(settings, "MARKER_ENABLED", False))
@@ -1359,7 +1367,7 @@ async def get_system_status(
     parsers["marker"] = {
         "enabled": marker_enabled,
         "available": bool(marker_enabled and marker_url),
-        "message": "configured" if (marker_enabled and marker_url) else ("disabled" if not marker_enabled else "missing api_url"),
+        "message": _configured_message(marker_enabled, marker_url, _MISSING_API_URL_MESSAGE),
     }
 
     paddlevl_enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
@@ -1368,7 +1376,7 @@ async def get_system_status(
     paddlevl_entry: dict[str, object] = {
         "enabled": paddlevl_enabled,
         "available": bool(paddlevl_enabled and paddlevl_url),
-        "message": "configured" if (paddlevl_enabled and paddlevl_url) else ("disabled" if not paddlevl_enabled else "missing api_url"),
+        "message": _configured_message(paddlevl_enabled, paddlevl_url, _MISSING_API_URL_MESSAGE),
     }
     if paddlevl_enabled and paddlevl_url:
         health_url = _convert_service_url_to_health_url(paddlevl_api_url)
@@ -1423,7 +1431,7 @@ async def get_system_status(
     parsers["magicpdf"] = {
         "enabled": magicpdf_enabled,
         "available": bool(magicpdf_enabled and magicpdf_cli_ok),
-        "message": "configured" if (magicpdf_enabled and magicpdf_cli_ok) else ("disabled" if not magicpdf_enabled else f"missing cli: {magicpdf_cli}"),
+        "message": _configured_message(magicpdf_enabled, magicpdf_cli_ok, f"missing cli: {magicpdf_cli}"),
     }
 
     status["parsers"] = parsers

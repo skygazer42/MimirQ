@@ -125,14 +125,12 @@ export function ConversationSummaryDialog(props: Readonly<{
     if (loading) {
         return '加载中…';
     }
-    else {
-        if (available) {
+    else if (available) {
             return '可用';
         }
         else {
             return '暂无';
         }
-    }
 })()}
               </div>
               <div className="flex items-center gap-2">

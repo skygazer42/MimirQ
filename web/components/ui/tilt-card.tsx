@@ -34,7 +34,7 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   const enabled = !shouldReduceMotion && isFinePointer
 
   useEffect(() => {
-    if (typeof globalThis.window === "undefined") return
+    if (globalThis.window === undefined) return
 
     const mq = globalThis.window.matchMedia("(pointer: fine)")
     const update = () => setIsFinePointer(mq.matches)

@@ -2,11 +2,11 @@ import { toTrimmedPrimitiveString } from './primitive-text'
 
 function escapeHtml(raw: string): string {
   return String(raw)
-    .replaceAll(/&/g, '&amp;')
-    .replaceAll(/</g, '&lt;')
-    .replaceAll(/>/g, '&gt;')
-    .replaceAll(/"/g, '&quot;')
-    .replaceAll(/'/g, '&#39;')
+    .replaceAll("&", '&amp;')
+    .replaceAll("<", '&lt;')
+    .replaceAll(">", '&gt;')
+    .replaceAll("\"", '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 function coerceTrimmedString(value: unknown): string {
@@ -69,24 +69,18 @@ export function buildGraphLinkProvenanceTooltipHtml(link: any): string {
     if (kind === 'entity_relation') {
         return 'Relation (triple)';
     }
-    else {
-        if (kind === 'event_entity') {
+    else if (kind === 'event_entity') {
             return 'Evidence (event → entity)';
         }
-        else {
-            if (kind === 'entity_entity') {
+        else if (kind === 'entity_entity') {
                 return 'Co-occurrence (entity ↔ entity)';
             }
-            else {
-                if (kind) {
+            else if (kind) {
                     return `Link (${kind})`;
                 }
                 else {
                     return 'Link';
                 }
-            }
-        }
-    }
 })()
 
   const bodyLines = [

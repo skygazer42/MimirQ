@@ -315,18 +315,14 @@ export function ChunkList() {
           // pass
         } else if (pageFilter === PAGE_UNKNOWN_VALUE) {
           if (typeof chunk.page_number === 'number') return false
-        } else {
-          if (String(chunk.page_number ?? '') !== pageFilter) return false
-        }
+        } else if (String(chunk.page_number ?? '') !== pageFilter) return false
 
         const sectionPath = getChunkSectionPath(chunk)
         if (sectionFilter === SECTION_ALL_VALUE) {
           // pass
         } else if (sectionFilter === SECTION_NONE_VALUE) {
           if (sectionPath) return false
-        } else {
-          if (!sectionPath || sectionPath !== sectionFilter) return false
-        }
+        } else if (!sectionPath || sectionPath !== sectionFilter) return false
 
         const contentOk = q ? (chunk.content || '').toLowerCase().includes(q) : true
         if (!contentOk) return false
@@ -1294,7 +1290,6 @@ export function ChunkList() {
           }
         }}
         className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 focus-ring"
-        aria-label="切片列表（可键盘导航）"
       >
         <div
           className="min-h-full rounded-2xl border border-border/60 bg-card p-3 shadow-sm ring-1 ring-border/40"
@@ -1376,14 +1371,12 @@ export function ChunkList() {
                             {isCollapsed ? (<ChevronRight className="h-4 w-4"/>) : (<ChevronDown className="h-4 w-4"/>)}
                           </button>);
                         }
-                        else {
-                            if (indent === 1) {
+                        else if (indent === 1) {
                                 return (<div className="mt-1 h-2 w-2 rounded-full bg-muted-foreground/40"/>);
                             }
                             else {
                                 return null;
                             }
-                        }
                     })()}
                       </div>) : null}
                     <div className={[
@@ -1407,15 +1400,13 @@ export function ChunkList() {
                 <p className="text-xs text-muted-foreground">未找到匹配切片</p>
               </div>));
     }
-    else {
-        if (isLoading) {
+    else if (isLoading) {
             return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
               <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20"/>
               <p className="text-xs">生成中...</p>
             </div>);
         }
-        else {
-            if (error) {
+        else if (error) {
                 return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
               <AlertCircle className="w-10 h-10 opacity-20"/>
               <p className="text-xs text-muted-foreground">生成预览失败</p>
@@ -1431,8 +1422,6 @@ export function ChunkList() {
               <p className="text-xs">等待生成预览</p>
             </div>);
             }
-        }
-    }
 })()}
         </div>
       </div>

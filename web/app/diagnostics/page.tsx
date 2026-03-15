@@ -341,33 +341,27 @@ export default function DiagnosticsPage() {
     if (health.isPending) {
         return 'processing';
     }
-    else {
-        if (health.data?.payload?.ok) {
+    else if (health.data?.payload?.ok) {
             return 'completed';
         }
         else {
             return 'failed';
         }
-    }
 })()}
                 label={
                   (() => {
     if (health.isPending) {
         return '检查中';
     }
-    else {
-        if (health.data?.payload?.ok) {
+    else if (health.data?.payload?.ok) {
             return 'OK';
         }
-        else {
-            if (health.error) {
+        else if (health.error) {
                 return '网络/服务异常';
             }
             else {
                 return '异常';
             }
-        }
-    }
 })()
                 }
                 dense

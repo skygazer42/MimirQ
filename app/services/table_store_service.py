@@ -36,8 +36,9 @@ _WS_RE = re.compile(r"\s+")
 _BOM_RE = re.compile(r"^\ufeff+")
 _NUMERIC_ONLY_RE = re.compile(r"^\s*[-+]?(?:\d+(?:\.\d+)?|\.\d+)\s*$")
 _MD_TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{3,}:?\s*$")
-_SQL_TABLE_REF_RE = re.compile(r'(?i)\b(?:from|join)\s+(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))')
+_SQL_TABLE_REF_RE = re.compile(r'(?i)\b(?:from|join)\s+(?:"([^"]+)"|([A-Za-z_]\w*))')
 _SQL_DISALLOWED_JOIN_RE = re.compile(r"(?i)\b(?:cross|natural)\s+join\b")
+_SQL_LIST_SHEET_TABLES = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'"
 
 
 @dataclass(frozen=True)
@@ -134,7 +135,7 @@ def _df_columns(df: "pd.DataFrame") -> list[dict[str, Any]]:
         dtypes = getattr(df, "dtypes", None)
     except Exception:
         dtypes = None
-    for c in list(df.columns):
+    for c in df.columns:
         name = str(c)
         dtype = None
         try:
@@ -247,7 +248,7 @@ def import_table_document(
         try:
             conn = _connect_rw(out_path)
             try:
-                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'")
+                cur = conn.execute(_SQL_LIST_SHEET_TABLES)
                 for row in cur.fetchall():
                     name = str(row[0] or "")
                     if not name:
@@ -504,7 +505,7 @@ def import_docx_tables(
         try:
             conn = _connect_rw(out_path)
             try:
-                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'")
+                cur = conn.execute(_SQL_LIST_SHEET_TABLES)
                 for row in cur.fetchall():
                     name = str(row[0] or "")
                     if name:
@@ -535,8 +536,8 @@ def import_docx_tables(
 
     # Capture a small lookback window of previous non-empty paragraphs to infer captions.
     caption_re = re.compile(
-        r"(?i)^\s*(?:table|tab\.?|appendix\s+table|表)\s*[\dIVXLC一二三四五六七八九十]+"
-        r"(?:\s*[:：.\-])?\s*.+$"
+        r"(?i)^\s*(?:table|tab\.?|appendix\s+table|鐞?\s*[\dIVXLC娑撯偓娴滃奔绗侀崶娑楃安閸忣厺绔烽崗顐＄瘈閸椾箽+"
+        r"(?:\s*[:閿?\-])?\s*.+$"
     )
 
     prev_paras: list[str] = []
@@ -742,7 +743,7 @@ def import_markdown_tables(
         try:
             conn = _connect_rw(out_path)
             try:
-                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'")
+                cur = conn.execute(_SQL_LIST_SHEET_TABLES)
                 for row in cur.fetchall():
                     name = str(row[0] or "")
                     if name:
@@ -842,7 +843,7 @@ def import_db_row_snapshots(
         try:
             conn = _connect_rw(out_path)
             try:
-                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'")
+                cur = conn.execute(_SQL_LIST_SHEET_TABLES)
                 for row in cur.fetchall():
                     name = str(row[0] or "")
                     if name:
@@ -1018,7 +1019,7 @@ def evaluate_planner_execution_mismatch(
 
     expected_tables = [
         str(v).strip()
-        for v in list(planner.get("selected_tables") or [])
+        for v in (planner.get("selected_tables") or [])
         if str(v).strip()
     ]
     actual_tables = _extract_sql_table_refs(str(executed_sql or ""))
@@ -1113,7 +1114,7 @@ def run_table_query(
         raise ValueError("join_type_not_allowed")
 
     allowed_tables = {sql_table}
-    for t in list(allowed_sql_tables or []):
+    for t in (allowed_sql_tables or []):
         name = str(t or "").strip()
         if name:
             allowed_tables.add(name)

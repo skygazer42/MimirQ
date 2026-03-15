@@ -39,7 +39,7 @@ export function AppFrame({
   // prevent focus/interaction with the rest of the app.
   React.useEffect(() => {
     if (!showNavbar) return
-    if (typeof globalThis.window === "undefined") return
+    if (globalThis.window === undefined) return
 
     let isMobile = false
     try {

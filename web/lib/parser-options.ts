@@ -101,7 +101,7 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
 
 function normalizeParserValue(value?: string) {
   const raw = (value || '').toLowerCase().trim()
-  const normalized = raw.replaceAll(/_/g, '-')
+  const normalized = raw.replaceAll("_", '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
   if (normalized === 'marker-pdf') return 'marker'
   if (normalized === 'paddle-vl') return 'paddle_vl'

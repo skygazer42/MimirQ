@@ -390,7 +390,7 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
 
     node_count = 0
 
-    def _bump(node: ast.AST) -> None:
+    def _bump(_node: ast.AST) -> None:
         nonlocal node_count
         node_count += 1
         if node_count > _MAX_MATH_AST_NODES:

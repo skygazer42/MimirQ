@@ -141,14 +141,12 @@ export function ChunkCompareDialog(props: Readonly<{
     if (diff.deltaCount === 0) {
         return 'text-muted-foreground';
     }
-    else {
-        if (diff.deltaCount > 0) {
+    else if (diff.deltaCount > 0) {
             return 'text-info';
         }
         else {
             return 'text-warning';
         }
-    }
 })())}>
                         {formatDelta(diff.deltaCount)}
                       </div>

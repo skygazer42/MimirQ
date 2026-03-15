@@ -68,6 +68,8 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 # - Workspace uploads are persisted by UUID (local/MinIO), so we don't need a strict allowlist.
 # - Still reject path separators / control characters to prevent path traversal and header issues.
 
+_DETAIL_SOURCE_FILE_NOT_FOUND = "Source file not found"
+
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
 
@@ -136,7 +138,12 @@ def _grade_max(a: str, b: str) -> str:
     order = {"pass": 0, "warn": 1, "fail": 2}
     ra = order.get(str(a), 0)
     rb = order.get(str(b), 0)
-    return "fail" if max(ra, rb) >= 2 else "warn" if max(ra, rb) >= 1 else "pass"
+    max_rank = max(ra, rb)
+    if max_rank >= 2:
+        return "fail"
+    if max_rank >= 1:
+        return "warn"
+    return "pass"
 
 
 def _compute_parsing_quality_gate(
@@ -471,7 +478,7 @@ async def parse_workspace_document(
         try:
             ref = parse_minio_uri(raw_path)
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail="Source file not found") from exc
+            raise HTTPException(status_code=404, detail=_DETAIL_SOURCE_FILE_NOT_FOUND) from exc
         if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
             raise HTTPException(status_code=403, detail="Source file access denied")
 
@@ -488,7 +495,7 @@ async def parse_workspace_document(
         try:
             minio_service.stat_object(object_name=ref.object_name)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=404, detail="Source file not found") from exc
+            raise HTTPException(status_code=404, detail=_DETAIL_SOURCE_FILE_NOT_FOUND) from exc
 
         temp_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
         suffix = f".{(doc.file_type or '').lower()}"
@@ -504,7 +511,7 @@ async def parse_workspace_document(
         source_path = Path(raw_path).resolve(strict=False)
         _assert_path_under_tenant_root(tenant_id=tenant_id, path=source_path)
         if not source_path.exists() or not source_path.is_file():
-            raise HTTPException(status_code=404, detail="Source file not found")
+            raise HTTPException(status_code=404, detail=_DETAIL_SOURCE_FILE_NOT_FOUND)
 
     doc.status = "processing"
     doc.processing_progress = 0

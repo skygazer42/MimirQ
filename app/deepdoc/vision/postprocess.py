@@ -239,7 +239,7 @@ class DBPostProcess:
 
         boxes_batch = []
         for batch_index in range(pred.shape[0]):
-            src_h, src_w, ratio_h, ratio_w = shape_list[batch_index]
+            src_h, src_w, _ratio_h, _ratio_w = shape_list[batch_index]
             if self.dilation_kernel is not None:
                 mask = cv2.dilate(
                     np.array(segmentation[batch_index]).astype(np.uint8),
@@ -247,10 +247,10 @@ class DBPostProcess:
             else:
                 mask = segmentation[batch_index]
             if self.box_type == 'poly':
-                boxes, scores = self.polygons_from_bitmap(pred[batch_index],
-                                                          mask, src_w, src_h)
+                boxes, _scores = self.polygons_from_bitmap(pred[batch_index],
+                                                           mask, src_w, src_h)
             elif self.box_type == 'quad':
-                boxes, scores = self.boxes_from_bitmap(pred[batch_index], mask,
+                boxes, _scores = self.boxes_from_bitmap(pred[batch_index], mask,
                                                        src_w, src_h)
             else:
                 raise ValueError(

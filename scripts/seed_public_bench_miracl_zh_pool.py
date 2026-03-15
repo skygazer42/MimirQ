@@ -225,6 +225,7 @@ def export_regression_cases_bundle(
     case_items: list[CaseItem],
     out_path: Path,
 ) -> None:
+    _ = tenant_id
     bundle = {
         "schema": "mimirq.regression_cases.v1",
         "dataset_id": str(dataset_id),

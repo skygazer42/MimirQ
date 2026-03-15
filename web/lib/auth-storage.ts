@@ -7,18 +7,18 @@ const TENANT_ID_KEY = 'mimirq_tenant_id'
 const TOKEN_EXPIRES_AT_KEY = 'mimirq_token_expires_at'
 
 export function getAccessToken(): string | null {
-  if (typeof globalThis.window === 'undefined') return null
+  if (globalThis.window === undefined) return null
   return globalThis.window.localStorage.getItem(ACCESS_TOKEN_KEY)
 }
 
 export function getTenantId(): string | null {
   const envTenantId = process.env.NEXT_PUBLIC_TENANT_ID
-  if (typeof globalThis.window === 'undefined') return envTenantId || null
+  if (globalThis.window === undefined) return envTenantId || null
   return globalThis.window.localStorage.getItem(TENANT_ID_KEY) || envTenantId || null
 }
 
 export function getStoredUser(): UserProfile | null {
-  if (typeof globalThis.window === 'undefined') return null
+  if (globalThis.window === undefined) return null
   const raw = globalThis.window.localStorage.getItem(USER_KEY)
   if (!raw) return null
   try {
@@ -29,7 +29,7 @@ export function getStoredUser(): UserProfile | null {
 }
 
 export function setAuthSession(params: { token: AuthToken; user: UserProfile }) {
-  if (typeof globalThis.window === 'undefined') return
+  if (globalThis.window === undefined) return
   const { token, user } = params
   globalThis.window.localStorage.setItem(ACCESS_TOKEN_KEY, token.access_token)
   globalThis.window.localStorage.setItem(USER_KEY, JSON.stringify(user))
@@ -39,20 +39,20 @@ export function setAuthSession(params: { token: AuthToken; user: UserProfile }) 
 }
 
 export function setAccessToken(token: AuthToken) {
-  if (typeof globalThis.window === 'undefined') return
+  if (globalThis.window === undefined) return
   globalThis.window.localStorage.setItem(ACCESS_TOKEN_KEY, token.access_token)
   const expiresAt = Date.now() + token.expires_in * 1000
   globalThis.window.localStorage.setItem(TOKEN_EXPIRES_AT_KEY, String(expiresAt))
 }
 
 export function setStoredUser(user: UserProfile) {
-  if (typeof globalThis.window === 'undefined') return
+  if (globalThis.window === undefined) return
   globalThis.window.localStorage.setItem(USER_KEY, JSON.stringify(user))
   globalThis.window.localStorage.setItem(USER_ID_KEY, user.id)
 }
 
 export function clearAuthSession() {
-  if (typeof globalThis.window === 'undefined') return
+  if (globalThis.window === undefined) return
   globalThis.window.localStorage.removeItem(ACCESS_TOKEN_KEY)
   globalThis.window.localStorage.removeItem(USER_KEY)
   globalThis.window.localStorage.removeItem(USER_ID_KEY)

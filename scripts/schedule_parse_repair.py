@@ -216,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compact", action="store_true")
     args = parser.parse_args(argv)
 
-    inputs = [Path(p).expanduser().resolve() for p in list(args.input or []) if str(p or "").strip()]
+    inputs = [Path(p).expanduser().resolve() for p in (args.input or []) if str(p or "").strip()]
     if not inputs:
         raise SystemExit("--input is required at least once")
     missing = [str(p) for p in inputs if not p.exists()]

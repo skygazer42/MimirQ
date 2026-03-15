@@ -306,6 +306,7 @@ def is_chinese(text):
 
 def tokenize(d, txt, eng):
     from . import rag_tokenizer
+    _ = eng
     d["content_with_weight"] = txt
     t = re.sub(r"</?(table|td|caption|tr|th)( [^<>]{0,12})?>", " ", txt)
     d["content_ltks"] = rag_tokenizer.tokenize(t)
@@ -640,7 +641,7 @@ def make_colon_as_title(sections):
         return sections
     i = 0
     while i < len(sections):
-        txt, layout = sections[i]
+        txt, _layout = sections[i]
         i += 1
         txt = txt.split("@")[0].strip()
         if not txt:

@@ -62,8 +62,7 @@ export default function OidcCallbackPage() {
               </div>
             </div>);
     }
-    else {
-        if (status === 'success') {
+    else if (status === 'success') {
             return (<div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" aria-hidden="true"/>
               <div className="min-w-0 flex-1">
@@ -88,7 +87,6 @@ export default function OidcCallbackPage() {
               </div>
             </div>);
         }
-    }
 })()}
         </div>
       </div>

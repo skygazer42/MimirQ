@@ -19,6 +19,7 @@ import { datasetApi, evidenceApi, feedbackApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { buildWhyMissedReport } from '@/lib/evidence-why-missed'
 import { extractEvidenceNeedles, rankEvidenceCitations } from '@/lib/evidence-suggestions'
+import { coerceOneOf } from '@/lib/one-of'
 import { cn, detachPromise } from '@/lib/utils'
 
 import { Badge } from '@/components/ui/badge'
@@ -65,6 +66,9 @@ type EvidenceImportPack = {
   [key: string]: unknown
 }
 
+const RETRIEVAL_PROFILE_VALUES = ['recall50', 'coverage80', 'recall20'] as const
+const CREATE_ITEM_TAB_VALUES = ['retrieve', 'import'] as const
+
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
   return null
@@ -103,7 +107,7 @@ function evidenceStatusBadgeVariant(st: EvidenceItemStatus): 'outline' | 'second
 }
 
 function citationScoreLabel(c: Citation): string {
-  const raw = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0) as any
+  const raw = c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0
   const n = Number(raw)
   if (Number.isFinite(n)) return n.toFixed(4)
   return '0.0000'
@@ -400,7 +404,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
 
   useEffect(() => {
     detachPromise(loadDataset())
-  }, [datasetId])
+  }, [loadDataset])
 
   useEffect(() => {
     detachPromise(loadSuites())
@@ -497,7 +501,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
           visible_evidence_only: false,
         },
       })
-      setRetrieveRes(res || null)
+      const normalizedCitations = Array.isArray(res?.citations) ? (res.citations as unknown as Citation[]) : EMPTY_CITATIONS
+      setRetrieveRes(res ? { ...res, citations: normalizedCitations } : null)
       if (res?.has_evidence) toast.success('找到证据')
       else if (res?.abstain_triggered) toast.warning(`已触发 abstain：${res?.abstain_reason || 'unknown'}`)
       else toast.message('未找到证据')
@@ -740,11 +745,11 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     const c = selectedSuite?.item_counts || null
     if (!c) return null
     return {
-      total: Number((c as any)?.total || 0),
-      draft: Number((c as any)?.draft || 0),
-      reviewed: Number((c as any)?.reviewed || 0),
-      approved: Number((c as any)?.approved || 0),
-      archived: Number((c as any)?.archived || 0),
+      total: Number(c.total || 0),
+      draft: Number(c.draft || 0),
+      reviewed: Number(c.reviewed || 0),
+      approved: Number(c.approved || 0),
+      archived: Number(c.archived || 0),
     }
   }, [selectedSuite?.item_counts])
 
@@ -784,12 +789,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     setWhyMissedDriftError(null)
     setWhyMissedDriftedRefs([])
 
-    const snapProfile = String((selectedItem as any)?.rag_config_snapshot?.retrieval_profile || '').trim()
-    if (snapProfile === 'recall50' || snapProfile === 'coverage80' || snapProfile === 'recall20') {
-      setWhyMissedProfile(snapProfile as RetrievalProfile)
-    } else {
-      setWhyMissedProfile('recall50')
-    }
+    const snapProfile = String(selectedItem?.rag_config_snapshot?.retrieval_profile || '').trim()
+    setWhyMissedProfile(coerceOneOf(RETRIEVAL_PROFILE_VALUES, snapProfile, 'recall50'))
 
     setWhyMissedOpen(true)
   }, [selectedItem])
@@ -807,7 +808,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
         details_limit: 2000,
         slice_top_n: 20,
       })
-      const details = Array.isArray((audit as any)?.drifted_references) ? ((audit as any).drifted_references as any[]) : []
+      const details = audit.drifted_references ?? []
       const itemId = String(selectedItem.id)
       setWhyMissedDriftedRefs(details.filter((d) => String(d?.item_id || '') === itemId))
     } catch (e: any) {
@@ -875,7 +876,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
   const whyMissedRefDocIds = useMemo(() => {
     const ids = new Set<string>()
     for (const r of selectedItem?.reference_sources || []) {
-      const did = String((r as any)?.document_id || '').trim()
+      const did = String(r.document_id || '').trim()
       if (did) ids.add(did)
     }
     return ids
@@ -884,7 +885,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
   const whyMissedRefChunkIds = useMemo(() => {
     const ids = new Set<string>()
     for (const r of selectedItem?.reference_sources || []) {
-      const cid = String((r as any)?.chunk_id || '').trim()
+      const cid = String(r.chunk_id || '').trim()
       if (cid) ids.add(cid)
     }
     return ids
@@ -979,11 +980,10 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     if (suitesLoading) {
         return (<div className="text-xs text-muted-foreground">加载中…</div>);
     }
-    else {
-        if (filteredSuites.length) {
+    else if (filteredSuites.length) {
             return (filteredSuites.map((s) => {
                 const active = s.id === selectedSuiteId;
-                const counts = (s as any)?.item_counts || {};
+                const counts = s.item_counts || {};
                 const total = Number(counts?.total || 0);
                 const approved = Number(counts?.approved || 0);
                 return (<button key={s.id} type="button" className={cn('w-full text-left rounded-lg border px-3 py-2 transition-colors', active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30')} onClick={() => {
@@ -1020,7 +1020,6 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                     暂无 Suite。点击「新建」创建一个 Evidence Suite。
                   </div>);
         }
-    }
 })()}
               </div>
             </ScrollArea>
@@ -1092,8 +1091,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
         if (itemsLoading) {
             return (<div className="text-xs text-muted-foreground">加载中…</div>);
         }
-        else {
-            if (filteredItems.length) {
+        else if (filteredItems.length) {
                 return (filteredItems.map((it) => {
                     const active = it.id === selectedItemId;
                     return (<button key={it.id} type="button" className={cn('w-full text-left rounded-lg border px-3 py-2 transition-colors', active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30')} onClick={() => setSelectedItemId(String(it.id))}>
@@ -1118,7 +1116,6 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
             else {
                 return (<div className="text-xs text-muted-foreground text-pretty">暂无 Items。点击「新建 Item」创建。</div>);
             }
-        }
     }
     else {
         return (<div className="text-xs text-muted-foreground text-pretty">选择一个 Suite 后即可查看/创建 Items。</div>);
@@ -1330,11 +1327,11 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                 </div>
               ) : null}
 
-              {Array.isArray((selectedItem as any).tags) && (selectedItem as any).tags.length ? (
+              {selectedItem?.tags?.length ? (
                 <div>
                   <div className="text-xs font-medium text-muted-foreground mb-1">Tags</div>
                   <div className="flex flex-wrap gap-2">
-                    {((selectedItem as any).tags as string[]).map((t) => (
+                    {selectedItem.tags.map((t) => (
                       <Badge key={t} variant="outline" className="font-mono text-[10px]">
                         {t}
                       </Badge>
@@ -1500,8 +1497,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                 loading…
               </div>);
     }
-    else {
-        if (hardcaseRes) {
+    else if (hardcaseRes) {
             return (<div className="space-y-3 py-1">
                 {(() => {
                     if (hardcaseRes.enabled) {
@@ -1628,7 +1624,6 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
         else {
             return (<div className="text-sm text-muted-foreground py-4">点击 refresh 加载候选。</div>);
         }
-    }
 })()}
           </ScrollArea>
         </DialogContent>
@@ -1699,8 +1694,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                   loading…
                 </div>);
     }
-    else {
-        if (dashboard) {
+    else if (dashboard) {
             return (<>
                   {dashboardThroughput ? (<div>
                       <div className="text-xs font-medium text-muted-foreground mb-2">
@@ -1851,24 +1845,18 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                                             if (v === 0) {
                                                 return 'bg-muted/20';
                                             }
-                                            else {
-                                                if (ratio >= 0.75) {
+                                            else if (ratio >= 0.75) {
                                                     return 'bg-primary/30';
                                                 }
-                                                else {
-                                                    if (ratio >= 0.5) {
+                                                else if (ratio >= 0.5) {
                                                         return 'bg-primary/20';
                                                     }
-                                                    else {
-                                                        if (ratio >= 0.25) {
+                                                    else if (ratio >= 0.25) {
                                                             return 'bg-primary/10';
                                                         }
                                                         else {
                                                             return 'bg-primary/5';
                                                         }
-                                                    }
-                                                }
-                                            }
                                         })();
                                         return (<div key={`hm-cell:${lang}:${ft}`} className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}>
                                             {v}
@@ -1885,7 +1873,6 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
         else {
             return (<div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>);
         }
-    }
 })()}
             </div>
           </ScrollArea>
@@ -1987,7 +1974,10 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
               />
             </div>
 
-            <Tabs value={createItemTab} onValueChange={(v) => setCreateItemTab(v as any)}>
+            <Tabs
+              value={createItemTab}
+              onValueChange={(value) => setCreateItemTab(coerceOneOf(CREATE_ITEM_TAB_VALUES, value, 'retrieve'))}
+            >
               <TabsList>
                 <TabsTrigger value="retrieve">检索选择</TabsTrigger>
                 <TabsTrigger value="import">导入 Evidence Pack</TabsTrigger>
@@ -1997,7 +1987,10 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                 <div className="flex flex-col md:flex-row gap-3 md:items-end">
                   <div className="w-full md:w-[220px]">
                     <div className="text-xs text-muted-foreground mb-1">Retrieval Profile</div>
-                    <Select value={profile} onValueChange={(v) => setProfile(v as RetrievalProfile)}>
+                    <Select
+                      value={profile}
+                      onValueChange={(value) => setProfile(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))}
+                    >
                       <SelectTrigger className="h-9">
                         <SelectValue placeholder="选择 profile" />
                       </SelectTrigger>
@@ -2044,7 +2037,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                 <Panel className="p-3">
                   <ScrollArea className="h-[320px] pr-2">
                     <div className="space-y-2">
-                      {/* eslint-disable-next-line no-nested-ternary */}
+                      { }
                       {retrieveRes ? (
                         retrieveRanked.length ? (
                           retrieveRanked.map((r) => {
@@ -2157,7 +2150,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                 <Panel className="p-3">
                   <ScrollArea className="h-[320px] pr-2">
                     <div className="space-y-2">
-                      {/* eslint-disable-next-line no-nested-ternary */}
+                      { }
                       {importPack ? (
                         importCitations.length ? (
                           importCitations.map((c) => {
@@ -2256,7 +2249,10 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
             <div className="flex flex-col md:flex-row md:items-end gap-3">
               <div className="w-full md:w-[220px]">
                 <div className="text-xs text-muted-foreground mb-1">Retrieval Profile</div>
-                <Select value={whyMissedProfile} onValueChange={(v) => setWhyMissedProfile(v as RetrievalProfile)}>
+                <Select
+                  value={whyMissedProfile}
+                  onValueChange={(value) => setWhyMissedProfile(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))}
+                >
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="选择 profile" />
                   </SelectTrigger>
@@ -2349,43 +2345,35 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                     if (status === 'retrieved') {
                         return `hit #${r.retrieval?.rank ?? '?'}`;
                     }
-                    else {
-                        if (status === 'drifted') {
+                    else if (status === 'drifted') {
                             return `drift:${String(r.drift?.reason || 'unknown')}`;
                         }
-                        else {
-                            if (status === 'missing') {
+                        else if (status === 'missing') {
                                 return 'missed';
                             }
                             else {
                                 return 'unknown';
                             }
-                        }
-                    }
                 })();
-                const statusVariant = (() => {
+                const statusVariant: 'outline' | 'secondary' | 'soft' | 'destructive' = (() => {
                     if (status === 'retrieved') {
                         return 'soft';
                     }
-                    else {
-                        if (status === 'missing') {
+                    else if (status === 'missing') {
                             return 'destructive';
                         }
-                        else {
-                            if (status === 'drifted') {
+                        else if (status === 'drifted') {
                                 return 'secondary';
                             }
                             else {
                                 return 'outline';
                             }
-                        }
-                    }
                 })();
                 return (<div key={r.chunk_id} className="rounded-lg border border-border/60 p-2">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <Badge variant={statusVariant as any} className="font-mono text-[10px]">
+                                  <Badge variant={statusVariant} className="font-mono text-[10px]">
                                     {statusLabel}
                                   </Badge>
                                   <div className="text-xs font-mono text-foreground truncate">
@@ -2433,23 +2421,21 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     if (whyMissedRanRetrieve) {
         if (whyMissedCitations.length) {
             return (whyMissedCitations.slice(0, 80).map((c, idx) => {
-                const docId = String((c as any)?.document_id || '').trim();
-                const chunkId = String((c as any)?.chunk_id || '').trim();
+                const docId = String(c.document_id || '').trim();
+                const chunkId = String(c.chunk_id || '').trim();
                 const isRefDoc = !!docId && whyMissedRefDocIds.has(docId);
                 const isRefChunk = !!chunkId && whyMissedRefChunkIds.has(chunkId);
-                const score = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score) as any;
+                const score = c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score;
                 return (<div key={chunkId || `${docId}:${idx}`} className={cn('rounded-lg border p-2', (() => {
                         if (isRefChunk) {
                             return 'border-primary/50 bg-primary/5';
                         }
-                        else {
-                            if (isRefDoc) {
+                        else if (isRefDoc) {
                                 return 'border-border/60 bg-muted/20';
                             }
                             else {
                                 return 'border-border/60';
                             }
-                        }
                     })())}>
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
@@ -2465,9 +2451,9 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                                     </Badge>) : null}
                                 </div>
                                 <div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
-                                  {String((c as any)?.hit_type || 'hit')} · score {Number(score || 0).toFixed(4)}
-                                  {typeof (c as any)?.page_number === 'number' ? ` · P.${(c as any).page_number}` : null}
-                                  {typeof (c as any)?.chunk_index === 'number' ? ` · #${(c as any).chunk_index}` : null}
+                                  {String(c.hit_type || 'hit')} · score {Number(score || 0).toFixed(4)}
+                                  {typeof c.page_number === 'number' ? ` · P.${c.page_number}` : null}
+                                  {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
                                 </div>
                               </div>
                               {chunkId ? (<Badge variant="outline" className="font-mono text-[10px]">

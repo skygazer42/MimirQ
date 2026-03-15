@@ -313,6 +313,7 @@ def search_clip_images(
     """
     Search image chunks by text query using CLIP (text->image embedding space).
     """
+    _ = db
     if not bool(getattr(settings, "IMAGE_EMBEDDING_ENABLED", False)):
         return []
 

@@ -136,14 +136,12 @@ export function ChunkCard({
     if (isSelected) {
         return 'border-primary/45 shadow-lg shadow-primary/10 ring-1 ring-primary/20';
     }
-    else {
-        if (isHovered) {
+    else if (isHovered) {
             return 'border-primary/30 shadow-sm shadow-primary/10 ring-1 ring-ring/10 z-10';
         }
         else {
             return 'border-border hover:border-primary/25 hover:shadow-sm hover:shadow-primary/10';
         }
-    }
 })(),
         isDisabled && !isSelected && !isHovered ? 'opacity-60' : ''
       )}
@@ -213,8 +211,7 @@ export function ChunkCard({
               PARENT
             </span>);
     }
-    else {
-        if (chunkRole === 'child') {
+    else if (chunkRole === 'child') {
             return (<span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
               CHILD
             </span>);
@@ -222,7 +219,6 @@ export function ChunkCard({
         else {
             return null;
         }
-    }
 })()}
           {sectionLabel ? (
             <span

@@ -751,14 +751,12 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     if (isRecord(dbg.enrich_pass2)) {
         return dbg.enrich_pass2;
     }
-    else {
-        if (isRecord(dbg.enrich_pass1)) {
+    else if (isRecord(dbg.enrich_pass1)) {
             return dbg.enrich_pass1;
         }
         else {
             return null;
         }
-    }
 })()
                       const trimKeys: Array<[string, string]> = [
                         ['filtered_metadata_filter', 'metadata_filter'],

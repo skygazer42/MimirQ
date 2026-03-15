@@ -311,7 +311,7 @@ def summarize_channel_attribution(items: list[dict[str, Any]] | None) -> dict[st
         "total_citations": 0,
     }
     cases_with_citations = 0
-    for item in list(items or []):
+    for item in (items or []):
         if not isinstance(item, dict):
             continue
         citations = item.get("citations")
@@ -352,7 +352,7 @@ def summarize_multihop_diagnostics(items: list[dict[str, Any]] | None) -> dict[s
     order_scores: list[float] = []
     hit_flags: list[float] = []
     cases_with_expectation = 0
-    for item in list(items or []):
+    for item in (items or []):
         if not isinstance(item, dict):
             continue
         meta = item.get("meta")

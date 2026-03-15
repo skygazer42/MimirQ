@@ -272,14 +272,12 @@ export default function DatasetWorkflowPage() {
     if (selectedMeta?.configured === false) {
         return (<span>Not configured (inherits defaults)</span>);
     }
-    else {
-        if (selectedMeta?.configured === true) {
+    else if (selectedMeta?.configured === true) {
             return (<span>Configured</span>);
         }
         else {
             return (<span>Click a node to inspect summary + JSON</span>);
         }
-    }
 })()}
                 </div>
               </div>

@@ -48,7 +48,7 @@ export interface WhyMissedReport {
 function asNonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const s = value.trim()
-  return s ? s : null
+  return s || null
 }
 
 function asOptionalInt(value: unknown): number | undefined {
@@ -174,37 +174,29 @@ export function buildWhyMissedReport(args: {
     if (a.status === 'drifted') {
         return 0;
     }
-    else {
-        if (a.status === 'missing') {
+    else if (a.status === 'missing') {
             return 1;
         }
-        else {
-            if (a.status === 'retrieved') {
+        else if (a.status === 'retrieved') {
                 return 2;
             }
             else {
                 return 3;
             }
-        }
-    }
 })()
     const bw = (() => {
     if (b.status === 'drifted') {
         return 0;
     }
-    else {
-        if (b.status === 'missing') {
+    else if (b.status === 'missing') {
             return 1;
         }
-        else {
-            if (b.status === 'retrieved') {
+        else if (b.status === 'retrieved') {
                 return 2;
             }
             else {
                 return 3;
             }
-        }
-    }
 })()
     if (aw !== bw) return aw - bw
     const ar = a.retrieval?.rank ?? 1_000_000
@@ -224,4 +216,3 @@ export function buildWhyMissedReport(args: {
     references: rows,
   }
 }
-

@@ -41,6 +41,9 @@ def activate_model(*_args, **_kwargs):  # pragma: no cover
     raise RuntimeError("activation remains manual; prepare_ltr_rollout must not activate models")
 
 
+_DEFAULT_LTR_OBJECTIVE = "rank:pairwise"
+
+
 def _load_script_module(*, name: str, filename: str):
     path = Path(__file__).resolve().with_name(filename)
     spec = importlib.util.spec_from_file_location(name, str(path))
@@ -102,7 +105,7 @@ def _run_train(
         "--seed",
         str(int(seed or 0)),
         "--objective",
-        str(objective or "rank:pairwise"),
+        str(objective or _DEFAULT_LTR_OBJECTIVE),
     ]
     if bearer:
         argv.extend(["--bearer", str(bearer)])
@@ -195,7 +198,7 @@ def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request
         )
     except Exception:
         return None
-    for item in list(getattr(traces, "items", []) or []):
+    for item in (getattr(traces, "items", []) or []):
         if str(getattr(item, "request_id", "") or "") != rid:
             continue
         if hasattr(item, "model_dump"):
@@ -239,7 +242,7 @@ def _collect_feedback_cases(
     feedback_ids: Sequence[UUID],
 ) -> list[FeedbackCaseMaterialization]:
     out: list[FeedbackCaseMaterialization] = []
-    for feedback_id in list(feedback_ids or []):
+    for feedback_id in (feedback_ids or []):
         feedback = (
             db.query(MessageFeedback)
             .filter(MessageFeedback.id == feedback_id, MessageFeedback.tenant_id == tenant_id)
@@ -315,7 +318,7 @@ def prepare_ltr_rollout(
     alpha: float = 0.6,
     num_boost_round: int = 50,
     seed: int = 42,
-    objective: str = "rank:pairwise",
+    objective: str = _DEFAULT_LTR_OBJECTIVE,
     eval_k: int = 20,
     rerank_top_n: int = 30,
     gate_thresholds: dict[str, Any] | None = None,
@@ -329,7 +332,7 @@ def prepare_ltr_rollout(
 
     dataset_id = str(suite.dataset_id) if suite is not None else ""
     if not dataset_id:
-        for case in list(feedback_cases or []):
+        for case in (feedback_cases or []):
             if case.dataset_id:
                 dataset_id = str(case.dataset_id)
                 break
@@ -508,7 +511,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--alpha", type=float, default=0.6, help="Fusion alpha for train/eval")
     parser.add_argument("--num-boost-round", type=int, default=50, help="LTR training rounds")
     parser.add_argument("--seed", type=int, default=42, help="Training seed")
-    parser.add_argument("--objective", default="rank:pairwise", help="LTR training objective")
+    parser.add_argument("--objective", default=_DEFAULT_LTR_OBJECTIVE, help="LTR training objective")
     parser.add_argument("--eval-k", type=int, default=20, help="Metric cutoff for offline eval")
     parser.add_argument("--rerank-top-n", type=int, default=30, help="Local rerank prefix for offline eval")
     parser.add_argument("--gate-thresholds", default="", help="Optional path to gate thresholds JSON")
@@ -531,7 +534,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     suite_id = str(args.suite_id or "").strip()
-    feedback_ids = [str(value or "").strip() for value in list(args.feedback_id or []) if str(value or "").strip()]
+    feedback_ids = [str(value or "").strip() for value in (args.feedback_id or []) if str(value or "").strip()]
     if not suite_id and not feedback_ids:
         print("[prepare_ltr_rollout] ERROR: provide --suite-id and/or at least one --feedback-id", file=sys.stderr)
         return 2

@@ -35,7 +35,7 @@ class SecretMatch:
 # NOTE: Patterns are intentionally conservative to reduce false positives.
 _OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9]{16,}\b")
 _BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+([A-Za-z0-9\-_.]{12,})\b")
-_GITHUB_TOKEN_RE = re.compile(r"\b(?:ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})\b")
+_GITHUB_TOKEN_RE = re.compile(r"\b(?:ghp_[A-Za-z0-9]{30,}|github_pat_\w{20,})\b")
 _AWS_ACCESS_KEY_RE = re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")
 _SLACK_TOKEN_RE = re.compile(r"\bxox[baprs]-[0-9A-Za-z-]{10,}\b")
 

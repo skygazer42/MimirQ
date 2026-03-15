@@ -37,17 +37,17 @@ function sumCounts(value: unknown) {
 export function computeCleanPreviewImpact(preview: CleanPreviewResponse | null | undefined): CleanPreviewImpact | null {
   if (!preview) return null
 
-  const inputChars = asInt((preview as any).input_chars)
-  const outputChars = asInt((preview as any).output_chars)
+  const inputChars = asInt(preview.input_chars)
+  const outputChars = asInt(preview.output_chars)
   const deltaChars = outputChars - inputChars
   const deltaCharsPct = inputChars > 0 ? deltaChars / inputChars : null
 
-  const inputLines = asInt((preview as any).input_lines)
-  const outputLines = asInt((preview as any).output_lines)
+  const inputLines = asInt(preview.input_lines)
+  const outputLines = asInt(preview.output_lines)
   const deltaLines = outputLines - inputLines
 
-  const piiHitsTotal = sumCounts((preview as any).pii_hits)
-  const secretsHitsTotal = sumCounts((preview as any).secrets_hits)
+  const piiHitsTotal = sumCounts(preview.pii_hits)
+  const secretsHitsTotal = sumCounts(preview.secrets_hits)
 
   return {
     inputChars,
@@ -57,12 +57,12 @@ export function computeCleanPreviewImpact(preview: CleanPreviewResponse | null |
     inputLines,
     outputLines,
     deltaLines,
-    addedLines: asInt((preview as any).added_lines),
-    removedLines: asInt((preview as any).removed_lines),
-    changedLines: asInt((preview as any).changed_lines),
-    urlsChanged: asInt((preview as any).urls_changed),
-    paragraphsDropped: asInt((preview as any).paragraphs_dropped),
-    referencesRemovedLines: asInt((preview as any).references_removed_lines),
+    addedLines: asInt(preview.added_lines),
+    removedLines: asInt(preview.removed_lines),
+    changedLines: asInt(preview.changed_lines),
+    urlsChanged: asInt(preview.urls_changed),
+    paragraphsDropped: asInt(preview.paragraphs_dropped),
+    referencesRemovedLines: asInt(preview.references_removed_lines),
     piiHitsTotal,
     secretsHitsTotal,
   }

@@ -212,14 +212,12 @@ export function RagvizSimilarityWorkbench() {
     if (Array.isArray(raw)) {
         return raw;
     }
-    else {
-        if (Array.isArray(raw.entries)) {
+    else if (Array.isArray(raw.entries)) {
             return raw.entries;
         }
         else {
             return [raw];
         }
-    }
 })()
     const out: SimilarityMatrixEntry[] = []
     for (const e of entries) {
@@ -230,7 +228,7 @@ export function RagvizSimilarityWorkbench() {
       const xCollectionLabel = String(e?.xCollectionLabel || xCollectionId || 'X')
       const yCollectionLabel = String(e?.yCollectionLabel || yCollectionId || 'Y')
       const visualConfig: VisualConfig =
-        e?.visualConfig && e.visualConfig.displayFields
+        e?.visualConfig?.displayFields
           ? e.visualConfig
           : createDefaultVisualConfig(result.x_available_fields || [], result.y_available_fields || [])
 
@@ -541,7 +539,7 @@ export function RagvizSimilarityWorkbench() {
 
       // Replace subtract.
       setSubtractIndex(index)
-      return next.map((s, i) => ({ ...s, applyData: i === primaryIndex || i === index ? true : false }))
+      return next.map((s, i) => ({ ...s, applyData: i === primaryIndex || i === index }))
     })
   }
 
@@ -984,8 +982,7 @@ export function RagvizSimilarityWorkbench() {
     if (!primaryEntry || !effectiveMask) {
         return (<p className="text-xs text-muted-foreground">请先选择一个主图矩阵。</p>);
     }
-    else {
-        if (isDifferenceMode && differenceStats) {
+    else if (isDifferenceMode && differenceStats) {
             return (<StatsGrid>
                       <StatsItem label="True Positive" value={differenceStats.truePositive} tone="success"/>
                       <StatsItem label="True Negative" value={differenceStats.trueNegative} tone="muted"/>
@@ -995,8 +992,7 @@ export function RagvizSimilarityWorkbench() {
                       <StatsItem label="上下文精度" value={`${(differenceStats.contextPrecision * 100).toFixed(2)}%`} tone="info"/>
                     </StatsGrid>);
         }
-        else {
-            if (normalStats) {
+        else if (normalStats) {
                 return (<StatsGrid>
                       <StatsItem label="当前显示对比数" value={`${normalStats.currentDisplayCount} / ${normalStats.totalCount}`}/>
                       <StatsItem label="斜对角线对比数" value={`${normalStats.diagonalTrueCount} / ${normalStats.diagonalTotalCount}`}/>
@@ -1006,8 +1002,6 @@ export function RagvizSimilarityWorkbench() {
             else {
                 return (<p className="text-xs text-muted-foreground">暂无统计数据</p>);
             }
-        }
-    }
 })()}
                 </Panel>
               ) : (
@@ -1160,14 +1154,12 @@ export function RagvizSimilarityWorkbench() {
     if (uiTopK.value === 0) {
         return '显示全部';
     }
-    else {
-        if (uiTopK.axis === 'x') {
+    else if (uiTopK.axis === 'x') {
             return '按行取 Top-K';
         }
         else {
             return '按列取 Top-K';
         }
-    }
 })()}）
                         </p>
                       </div>
@@ -1455,7 +1447,7 @@ function PlotlyHeatmap({
     if (!plotly || !containerRef.current) return
 
     const zmin = isDifference ? -1 : 0
-    const zmax = isDifference ? 1 : 1
+    const zmax = 1
     const colorscale = isDifference ? 'RdBu' : toPlotlyColorScale(colorScheme)
 
     const trace: any = {
@@ -1697,29 +1689,21 @@ function StatsItem({
     if (tone === 'success') {
         return 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-900/15 dark:text-emerald-200 dark:border-emerald-900/30';
     }
-    else {
-        if (tone === 'warning') {
+    else if (tone === 'warning') {
             return 'bg-amber-50 text-amber-800 border-amber-100 dark:bg-amber-900/15 dark:text-amber-200 dark:border-amber-900/30';
         }
-        else {
-            if (tone === 'danger') {
+        else if (tone === 'danger') {
                 return 'bg-rose-50 text-rose-700 border-rose-100 dark:bg-rose-900/15 dark:text-rose-200 dark:border-rose-900/30';
             }
-            else {
-                if (tone === 'info') {
+            else if (tone === 'info') {
                     return 'bg-sky-50 text-sky-700 border-sky-100 dark:bg-sky-900/15 dark:text-sky-200 dark:border-sky-900/30';
                 }
-                else {
-                    if (tone === 'muted') {
+                else if (tone === 'muted') {
                         return 'bg-muted text-muted-foreground border-border';
                     }
                     else {
                         return 'bg-card text-foreground border-border';
                     }
-                }
-            }
-        }
-    }
 })()
 
   return (

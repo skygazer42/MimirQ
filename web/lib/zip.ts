@@ -16,7 +16,7 @@ export async function extractZipFiles(zipFile: File): Promise<ExtractedZipFile[]
   const extracted: ExtractedZipFile[] = []
   for (const entry of entries) {
     if (!entry || entry.dir) continue
-    const path = entry.name.replaceAll(/\\/g, '/')
+    const path = entry.name.replaceAll("\\", '/')
     if (!path || path.startsWith('__MACOSX/')) continue
     if (path.endsWith('.DS_Store')) continue
 

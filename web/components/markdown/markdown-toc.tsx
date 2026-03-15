@@ -33,7 +33,7 @@ export const MarkdownToc = memo(function MarkdownToc({
       onNavigate(id)
       return
     }
-    if (typeof globalThis.window !== 'undefined') {
+    if (globalThis.window !== undefined) {
       globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
     }
     scrollToElementId(id)

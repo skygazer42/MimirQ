@@ -79,7 +79,7 @@ export default function SettingsGroupsPage() {
       const externalId = String(externalIdDraft || '').trim()
       const created = await groupApi.createGroup({
         name,
-        external_id: externalId ? externalId : undefined,
+        external_id: externalId || undefined,
       })
       toast.success(`已创建组：${created.name}`)
       setCreateOpen(false)

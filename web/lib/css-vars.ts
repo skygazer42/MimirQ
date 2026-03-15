@@ -1,8 +1,8 @@
 export function getCssVarValue(varName: string): string | null {
-  if (typeof globalThis.window === "undefined") return null
+  if (globalThis.window === undefined) return null
   const raw = getComputedStyle(document.documentElement).getPropertyValue(varName)
   const value = (raw || "").trim()
-  return value ? value : null
+  return value || null
 }
 
 function parseHslTriplet(raw: string): { h: string; s: string; l: string } | null {

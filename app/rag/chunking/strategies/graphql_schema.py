@@ -39,8 +39,8 @@ _DEF_RE = re.compile(
     r"(?m)^\s*(?:extend\s+)?(?P<kind>type|input|enum|interface|union|scalar|directive|schema)\b\s*(?P<rest>.*)$",
     re.IGNORECASE,
 )
-_NAME_RE = re.compile(r"^(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b")
-_DIRECTIVE_NAME_RE = re.compile(r"^@(?P<name>[A-Za-z_][A-Za-z0-9_]*)\b")
+_NAME_RE = re.compile(r"^(?P<name>[A-Za-z_]\w*)\b")
+_DIRECTIVE_NAME_RE = re.compile(r"^@(?P<name>[A-Za-z_]\w*)\b")
 
 
 def _iter_defs(text: str) -> list[_Def]:

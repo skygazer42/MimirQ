@@ -84,8 +84,7 @@ export function KnowledgeInspector({ selectedDocs, children, className }: Readon
             </div>
           </div>);
     }
-    else {
-        if (selectedDocs.length > 1) {
+    else if (selectedDocs.length > 1) {
             return (<div className="text-xs text-muted-foreground">
             已选择 <span className="font-mono tabular-nums">{selectedDocs.length}</span> 份文档。
           </div>);
@@ -93,7 +92,6 @@ export function KnowledgeInspector({ selectedDocs, children, className }: Readon
         else {
             return (<div className="text-xs text-muted-foreground">选择一个文档以查看详情。</div>);
         }
-    }
 })()}
 
         {children ? (

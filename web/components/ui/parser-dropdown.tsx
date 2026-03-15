@@ -66,7 +66,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
 
   const normalizeBackendName = (backend?: string) => {
     const raw = (backend || '').toLowerCase().trim()
-    const normalized = raw.replaceAll(/_/g, '-')
+    const normalized = raw.replaceAll("_", '-')
     if (normalized === 'magic-pdf') return 'magicpdf'
     if (normalized === 'olm-ocr') return 'olmocr'
     if (normalized === 'olmocr-pdf') return 'olmocr'

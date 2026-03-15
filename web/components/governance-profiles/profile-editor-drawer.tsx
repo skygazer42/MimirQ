@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { governanceApi, pipelineApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { coerceOneOf } from '@/lib/one-of'
 import { cn, detachPromise } from '@/lib/utils'
 import type {
   CleanPreviewResponse,
@@ -38,6 +39,9 @@ type Props = {
   onSaved?: (profile: GovernanceProfileOut) => void
   onCreated?: (profile: GovernanceProfileOut) => void
 }
+
+const PROFILE_EDITOR_TABS = ['edit', 'test'] as const
+const PROFILE_INPUT_FORMAT_VALUES = ['markdown', 'html'] as const
 
 function defaultPayload(): GovernanceProfilePayload {
   return {
@@ -97,8 +101,8 @@ function validateRegexRuleBestEffort(pattern: string, flags: number): string | n
   const stripped = stripLeadingInlineFlags(raw)
   const jsFlags = Array.from(new Set((pythonReFlagsToJs(flags) + stripped.inlineJsFlags).split(''))).join('')
   const jsPattern = stripped.pattern
-    .replaceAll(/\\A/g, '^')
-    .replaceAll(/\\Z/g, '$')
+    .replaceAll("\\A", '^')
+    .replaceAll("\\Z", '$')
 
   try {
     new RegExp(jsPattern, jsFlags)
@@ -184,7 +188,7 @@ export function ProfileEditorDrawer({
 
     if (isCreate) {
       const seeded = seedCreate
-      const p = (seeded?.payload as any) || defaultPayload()
+      const p = seeded?.payload || defaultPayload()
       setLoadedProfile(null)
       setName(seeded ? String(seeded.name || '') : '')
       setKey(seeded && typeof seeded.key === 'string' ? String(seeded.key || '') : '')
@@ -213,9 +217,9 @@ export function ProfileEditorDrawer({
         setName(String(prof.name || ''))
         setKey(String(prof.key || ''))
         setDescription(String(prof.description || ''))
-        setInputFormats((prof.payload?.input_formats as any) || ['markdown'])
-        setPipelinePatch((prof.payload?.pipeline_patch as any) || {})
-        setRegexRules((prof.payload?.regex_rules as any) || [])
+        setInputFormats(prof.payload?.input_formats || ['markdown'])
+        setPipelinePatch(prof.payload?.pipeline_patch || {})
+        setRegexRules(prof.payload?.regex_rules || [])
         setPatchJson(JSON.stringify(prof.payload?.pipeline_patch || {}, null, 2))
         setPatchJsonError(null)
         setPatchJsonDirty(false)
@@ -242,7 +246,7 @@ export function ProfileEditorDrawer({
       try {
         const resp = await governanceApi.listRulePacks()
         if (cancelled) return
-        setAvailableRulePacks(Array.isArray((resp as any)?.items) ? (resp as any).items : [])
+        setAvailableRulePacks(Array.isArray(resp.items) ? resp.items : [])
       } catch (err) {
         console.warn('Load governance rule packs failed:', err)
         if (!cancelled) setAvailableRulePacks([])
@@ -301,14 +305,14 @@ export function ProfileEditorDrawer({
   }
 
   const applyPatchJson = () => {
-    const parsed = safeParseJson<Record<string, any>>(patchJson)
+    const parsed = safeParseJson<DocumentPipelineOptions>(patchJson)
     if (!parsed.ok) {
       setPatchJsonError(parsed.error)
       return
     }
     setPatchJsonError(null)
     setPatchJsonDirty(false)
-    setPipelinePatch(parsed.value as any)
+    setPipelinePatch(parsed.value)
   }
 
   const addRule = () => {
@@ -418,14 +422,12 @@ export function ProfileEditorDrawer({
     if (isCreate) {
         return '新建治理 Profile';
     }
-    else {
-        if (isReadOnly) {
+    else if (isReadOnly) {
             return '查看治理 Profile';
         }
         else {
             return '编辑治理 Profile';
         }
-    }
 })()}
             </DialogTitle>
             <DialogDescription className="text-xs">
@@ -433,20 +435,21 @@ export function ProfileEditorDrawer({
     if (isCreate) {
         return '创建后可用于入库策略（ingestion policy）或手动选择应用。';
     }
-    else {
-        if (loadedProfile?.is_system) {
+    else if (loadedProfile?.is_system) {
             return '内置 Profile 只读；如需调整请复制为自定义 Profile。';
         }
         else {
             return '修改后仅影响后续入库/重跑（不会自动回写历史版本）。';
         }
-    }
 })()}
             </DialogDescription>
           </DialogHeader>
 
           <div className="mt-4 flex items-center justify-between gap-3">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(coerceOneOf(PROFILE_EDITOR_TABS, value, 'edit'))}
+            >
               <TabsList className="rounded-xl">
                 <TabsTrigger value="edit" className="rounded-lg px-3">
                   编辑
@@ -500,7 +503,10 @@ export function ProfileEditorDrawer({
               加载中…
             </div>
           ) : (
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(coerceOneOf(PROFILE_EDITOR_TABS, value, 'edit'))}
+            >
               <TabsContent value="edit" className="mt-0">
                 <div className="space-y-4">
                   <Panel padding="lg" className="rounded-2xl">
@@ -846,7 +852,10 @@ export function ProfileEditorDrawer({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <Label>input_format</Label>
-                        <Select value={testInputFormat} onValueChange={(v) => setTestInputFormat(v as any)}>
+                        <Select
+                          value={testInputFormat}
+                          onValueChange={(value) => setTestInputFormat(coerceOneOf(PROFILE_INPUT_FORMAT_VALUES, value, 'markdown'))}
+                        >
                           <SelectTrigger className="h-10 rounded-xl">
                             <SelectValue placeholder="markdown" />
                           </SelectTrigger>

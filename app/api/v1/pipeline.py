@@ -212,7 +212,12 @@ def _collect_common_lines_texts(
     texts: list[str] = []
     for doc_id in allowed_ordered:
         original, cleaned = by_id.get(doc_id, ("", ""))
-        text = original if use_original and original.strip() else cleaned if cleaned.strip() else original
+        if use_original and original.strip():
+            text = original
+        elif cleaned.strip():
+            text = cleaned
+        else:
+            text = original
         if not text.strip():
             continue
         texts.append(text)
@@ -1506,7 +1511,7 @@ async def clean_preview(
             pack = GOVERNANCE_RULE_PACKS.get(key)
             if not pack:
                 continue
-            for r in list(pack):
+            for r in pack:
                 rules.append(r)
                 rule_meta.append({"source": "pack", "pack": key})
 

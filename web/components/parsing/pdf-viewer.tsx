@@ -261,7 +261,7 @@ export function PdfViewer({
     if (pageIndex == null) return
     const el = pageRefs.current.get(pageIndex)
     const reduceMotion =
-      typeof globalThis.window !== 'undefined' &&
+      globalThis.window !== undefined &&
       typeof globalThis.window.matchMedia === 'function' &&
       globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
     el?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })

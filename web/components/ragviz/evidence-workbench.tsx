@@ -208,14 +208,12 @@ export function EvidenceWorkbench() {
     if (datasetsLoading) {
         return (<div className="mt-1 text-[11px] text-muted-foreground">加载数据集中…</div>);
     }
-    else {
-        if (datasetsError) {
+    else if (datasetsError) {
             return (<div className="mt-1 text-[11px] text-destructive">{datasetsError}</div>);
         }
         else {
             return null;
         }
-    }
 })()}
             </div>
 
@@ -299,14 +297,12 @@ export function EvidenceWorkbench() {
     if (result.has_evidence) {
         return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300';
     }
-    else {
-        if (result.abstain_triggered) {
+    else if (result.abstain_triggered) {
             return 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300';
         }
         else {
             return 'bg-muted border-border text-muted-foreground';
         }
-    }
 })()
                 )}
                 title="has_evidence / abstain"

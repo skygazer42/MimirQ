@@ -188,6 +188,7 @@ class WeightedReranker(DocumentReranker):
         self, query: str, documents: list[Document], vector_setting: VectorSetting
     ) -> list[float]:
         """Compute cosine similarity scores using embeddings."""
+        _ = vector_setting
         query_vector_scores = []
 
         # Get the query vector.

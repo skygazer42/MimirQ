@@ -140,7 +140,7 @@ def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request
         )
     except Exception:
         return None
-    for item in list(getattr(traces, "items", []) or []):
+    for item in (getattr(traces, "items", []) or []):
         if str(getattr(item, "request_id", "") or "") != rid:
             continue
         if hasattr(item, "model_dump"):

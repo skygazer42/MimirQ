@@ -87,7 +87,7 @@ def main() -> int:
             if _matches(obj, args):
                 out.append(obj)
 
-    for rec in list(out):
+    for rec in out:
         payload = rec if bool(args.include_text) else _strip_text_fields(rec)
         if args.compact:
             print(json.dumps(payload, ensure_ascii=False))

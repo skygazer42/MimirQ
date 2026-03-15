@@ -478,7 +478,7 @@ def build_chat_tag_context_docs(
 
                 selected_sql_tables = [
                     str(t).strip()
-                    for t in list(planner_diagnostics.get("selected_tables") or [])
+                    for t in (planner_diagnostics.get("selected_tables") or [])
                     if str(t).strip()
                 ]
                 if not selected_sql_tables:
@@ -501,15 +501,15 @@ def build_chat_tag_context_docs(
                         sample_rows=c.sample_rows,
                         table_aliases=[c.table_id, c.filename, str(c.sheet_name or "")],
                     )
-                    for v in list(diag.get("matched_columns") or []):
+                    for v in (diag.get("matched_columns") or []):
                         s = str(v or "").strip()
                         if s and s not in merged_cols:
                             merged_cols.append(s)
-                    for v in list(diag.get("matched_values") or []):
+                    for v in (diag.get("matched_values") or []):
                         s = str(v or "").strip()
                         if s and s not in merged_vals:
                             merged_vals.append(s)
-                    for v in list(diag.get("matched_tables") or []):
+                    for v in (diag.get("matched_tables") or []):
                         s = str(v or "").strip()
                         if s and s not in merged_tables:
                             merged_tables.append(s)

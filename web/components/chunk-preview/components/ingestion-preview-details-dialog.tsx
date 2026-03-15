@@ -287,14 +287,12 @@ export function IngestionPreviewDetailsDialog({
     if (cleanSummary.dropped) {
         return 'bg-destructive/10 text-destructive border-destructive/25';
     }
-    else {
-        if (cleanSummary.changed) {
+    else if (cleanSummary.changed) {
             return 'bg-warning/10 text-warning border-warning/25';
         }
         else {
             return 'bg-success/10 text-success border-success/25';
         }
-    }
 })()
                       )}
                     >
@@ -302,14 +300,12 @@ export function IngestionPreviewDetailsDialog({
     if (cleanSummary.dropped) {
         return 'dropped';
     }
-    else {
-        if (cleanSummary.changed) {
+    else if (cleanSummary.changed) {
             return 'changed';
         }
         else {
             return 'no change';
         }
-    }
 })()}
                     </span>
                   </div>
@@ -484,14 +480,12 @@ export function IngestionPreviewDetailsDialog({
     if (severity === 'error') {
         return 'bg-destructive/10 text-destructive border-destructive/25';
     }
-    else {
-        if (severity === 'warning') {
+    else if (severity === 'warning') {
             return 'bg-warning/10 text-warning border-warning/25';
         }
         else {
             return 'bg-muted text-muted-foreground border-border/60';
         }
-    }
 })()
                       return (
                         <div key={`${code}-${message}`} className="rounded-xl border border-border/60 bg-background p-3">

@@ -17,7 +17,7 @@ function withSummary(summary: Array<string>) {
 
 function formatInherit(value: unknown) {
   const s = toTrimmedPrimitiveString(value)
-  return s ? s : '(inherit)'
+  return s || '(inherit)'
 }
 
 type NodeMeta = {

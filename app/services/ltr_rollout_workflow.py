@@ -217,7 +217,7 @@ def build_rollout_regression_bundle(
     approved_evidence_items = 0
     selected_feedback_cases = 0
 
-    for item in list(evidence_items or []):
+    for item in (evidence_items or []):
         if str(getattr(item, "status", "") or "").strip().lower() != "approved":
             continue
         if str(getattr(item, "dataset_id", "") or "") != dataset_text:
@@ -247,7 +247,7 @@ def build_rollout_regression_bundle(
             }
         )
 
-    for case in list(feedback_cases or []):
+    for case in (feedback_cases or []):
         if case.dataset_id and case.dataset_id != dataset_text:
             raise ValueError("dataset_id mismatch for feedback case")
         refs = normalize_reference_sources(case.reference_sources)

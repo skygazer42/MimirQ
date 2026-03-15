@@ -839,7 +839,7 @@ def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None
 
     document_ids_raw = state.get("document_ids") or []
     document_ids: list[UUID] = []
-    for raw in list(document_ids_raw):
+    for raw in document_ids_raw:
         try:
             document_ids.append(UUID(str(raw)))
         except Exception:

@@ -206,7 +206,7 @@ class ExcelParser:
         # Render as a Markdown table (best-effort), similar to the .xlsx path.
         cols: list[str] = []
         try:
-            cols = [str(c) for c in list(df.columns)]
+            cols = [str(c) for c in df.columns]
         except Exception:
             cols = []
 
@@ -228,7 +228,7 @@ class ExcelParser:
 
         cols: list[str] | None = None
         try:
-            cols = [str(c) for c in list(df.columns)]
+            cols = [str(c) for c in df.columns]
         except Exception:
             cols = None
 

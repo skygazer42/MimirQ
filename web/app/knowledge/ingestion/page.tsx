@@ -251,7 +251,7 @@ export default function IngestionMonitorPage() {
               { label: '已完成', value: stats.completed, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'group-hover:border-emerald-200 dark:group-hover:border-emerald-800' },
               { label: '失败/隔离', value: stats.failed + stats.quarantined, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'group-hover:border-red-200 dark:group-hover:border-red-800' },
               { label: '总存储量', value: formatFileSize(stats.totalSize), icon: Search, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'group-hover:border-indigo-200 dark:group-hover:border-indigo-800' },
-            ].map((stat) => (
+            ].map((stat, idx) => (
 	              <div
 	                key={stat.label}
 	                className={cn(
@@ -416,14 +416,12 @@ export default function IngestionMonitorPage() {
     if (ingestionDashboardQuery.isFetching) {
         return '加载中...';
     }
-    else {
-        if (ingestionDashboardQuery.error) {
+    else if (ingestionDashboardQuery.error) {
             return formatApiError(ingestionDashboardQuery.error as any, '无权限或暂不可用');
         }
         else {
             return '尚无数据';
         }
-    }
 })()}
                 </div>
               )}
@@ -451,24 +449,18 @@ export default function IngestionMonitorPage() {
     if (doc.status === 'processing') {
         return "bg-sky-500";
     }
-    else {
-        if (doc.status === 'completed') {
+    else if (doc.status === 'completed') {
             return "bg-emerald-500";
         }
-        else {
-            if (doc.status === 'failed') {
+        else if (doc.status === 'failed') {
                 return "bg-red-500";
             }
-            else {
-                if (doc.status === 'quarantined') {
+            else if (doc.status === 'quarantined') {
                     return "bg-amber-500";
                 }
                 else {
                     return "bg-border";
                 }
-            }
-        }
-    }
 })()
                 )} />
 
@@ -574,19 +566,15 @@ export default function IngestionMonitorPage() {
     if (doc.status === 'failed') {
         return "bg-red-400";
     }
-    else {
-        if (doc.status === 'quarantined') {
+    else if (doc.status === 'quarantined') {
             return "bg-amber-400";
         }
-        else {
-            if (doc.status === 'completed') {
+        else if (doc.status === 'completed') {
                 return "bg-emerald-400";
             }
             else {
                 return "bg-sky-500";
             }
-        }
-    }
 })()
 	                          )}
 	                          style={{

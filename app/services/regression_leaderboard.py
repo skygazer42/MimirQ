@@ -154,7 +154,7 @@ def build_regression_run_leaderboard(
     limit = max(1, min(int(limit or 0), 500))
 
     items: list[dict[str, Any]] = []
-    for r in list(runs or []):
+    for r in (runs or []):
         summary = _safe_dict(getattr(r, "summary", None))
         params = _safe_dict(getattr(r, "params", None))
         rag_params = _safe_dict(params.get("rag_params"))

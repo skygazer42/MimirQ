@@ -338,8 +338,7 @@ export function TestGenerationDialog({
                           <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
                         </div>);
     }
-    else {
-        if (documents.length === 0) {
+    else if (documents.length === 0) {
             return (<div className="text-center py-8 text-muted-foreground text-sm">
                           暂无可用文档
                         </div>);
@@ -356,7 +355,6 @@ export function TestGenerationDialog({
                             </span>
                           </label>)));
         }
-    }
 })()}
                     </div>
                   </div>
@@ -376,8 +374,7 @@ export function TestGenerationDialog({
                         <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
                       </div>);
     }
-    else {
-        if (conversations.length === 0) {
+    else if (conversations.length === 0) {
             return (<div className="text-center py-8 text-muted-foreground text-sm">
                         暂无对话记录
                       </div>);
@@ -394,7 +391,6 @@ export function TestGenerationDialog({
                           </span>
                         </label>)));
         }
-    }
 })()}
                   </div>
                 </div>

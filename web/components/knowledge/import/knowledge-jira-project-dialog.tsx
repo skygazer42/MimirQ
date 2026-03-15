@@ -20,6 +20,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api-client'
+import { coerceOneOf } from '@/lib/one-of'
 import { buildJiraProjectRunPayload } from './knowledge-jira-project-dialog.payload'
 import { detachPromise } from '@/lib/utils'
 
@@ -37,6 +38,11 @@ type KnowledgeJiraProjectDialogProps = {
   loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
   onRunCreated?: (run: ConnectorRunOut) => void
 }
+
+const JIRA_SYNC_MODE_VALUES = ['auto', 'full', 'incremental'] as const
+const JIRA_AUTH_TYPE_VALUES = ['none', 'cookie', 'bearer', 'basic'] as const
+const SOURCE_ACL_FALLBACK_MODE_VALUES = ['only_me', 'partial_members'] as const
+const DOCUMENT_ACCESS_MODE_VALUES = ['inherit', 'only_me', 'partial_members', 'all_team_members'] as const
 
 export function KnowledgeJiraProjectDialog({
   open,
@@ -251,7 +257,10 @@ export function KnowledgeJiraProjectDialog({
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Sync mode</div>
-              <Select value={syncMode} onValueChange={(v) => setSyncMode(v as 'auto' | 'full' | 'incremental')}>
+              <Select
+                value={syncMode}
+                onValueChange={(value) => setSyncMode(coerceOneOf(JIRA_SYNC_MODE_VALUES, value, 'auto'))}
+              >
                 <SelectTrigger className="h-10 bg-background">
                   <SelectValue placeholder="选择同步模式" />
                 </SelectTrigger>
@@ -307,7 +316,10 @@ export function KnowledgeJiraProjectDialog({
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Auth</div>
-              <Select value={authType} onValueChange={(v) => setAuthType(v as WebCrawlAuthConfig['type'])}>
+              <Select
+                value={authType}
+                onValueChange={(value) => setAuthType(coerceOneOf(JIRA_AUTH_TYPE_VALUES, value, 'none'))}
+              >
                 <SelectTrigger className="h-10 bg-background">
                   <SelectValue placeholder="选择鉴权方式" />
                 </SelectTrigger>
@@ -372,7 +384,7 @@ export function KnowledgeJiraProjectDialog({
                 <div className="text-sm font-medium text-foreground/80">未映射 Jira ACL 时</div>
                 <Select
                   value={sourceAclFallbackMode}
-                  onValueChange={(v) => setSourceAclFallbackMode(v as 'only_me' | 'partial_members')}
+                  onValueChange={(value) => setSourceAclFallbackMode(coerceOneOf(SOURCE_ACL_FALLBACK_MODE_VALUES, value, 'partial_members'))}
                   disabled={!sourceAclEnabled || hasManualAccessOverride}
                 >
                   <SelectTrigger className="h-10 bg-background">
@@ -445,7 +457,10 @@ export function KnowledgeJiraProjectDialog({
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">文档访问控制（可选）</div>
-              <Select value={accessMode} onValueChange={(v) => setAccessMode(v as DocumentAccessMode)}>
+              <Select
+                value={accessMode}
+                onValueChange={(value) => setAccessMode(coerceOneOf(DOCUMENT_ACCESS_MODE_VALUES, value, 'inherit'))}
+              >
                 <SelectTrigger className="h-10 bg-background">
                   <SelectValue placeholder="选择访问模式" />
                 </SelectTrigger>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles, ChevronDown } from 'lucide-react'
+import { CheckCircle2, Layers, Network, ShieldCheck, Sparkles, ChevronDown, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toPrimitiveString } from '@/lib/primitive-text'
+import { coerceOneOf } from '@/lib/one-of'
 import { cn } from '@/lib/utils'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { parseChunkStrategyParamsJson } from '@/lib/chunk-strategy-params'
@@ -26,6 +27,40 @@ type PipelineOptionsPanelProps = {
 }
 
 type PipelineIndexPreset = 'custom' | 'economical' | 'high_quality'
+
+type BooleanOptionKey = keyof DocumentPipelineOptions
+
+type NumberOptionKey = keyof DocumentPipelineOptions
+
+type ToggleOptionItem = {
+  key: BooleanOptionKey
+  label: string
+  hint: string
+  dependsOn?: BooleanOptionKey
+}
+
+type NumberOptionItem = {
+  key: NumberOptionKey
+  label: string
+  hint: string
+  min: number
+  max: number
+  step: number
+  dependsOn?: BooleanOptionKey
+}
+
+type OptionGroup = {
+  title: string
+  icon: LucideIcon
+  color: string
+  bgColor: string
+  items: ToggleOptionItem[]
+}
+
+const PIPELINE_INDEX_PRESET_VALUES = ['custom', 'economical', 'high_quality'] as const
+const GOVERNANCE_REMOVE_IMAGE_VALUES = ['none', 'decorative', 'all'] as const
+const GOVERNANCE_REDACTION_MODE_VALUES = ['mask', 'token'] as const
+const GOVERNANCE_KEYWORD_PROVIDER_VALUES = ['auto', 'jieba', 'jieba_textrank', 'hanlp', 'simple'] as const
 
 const PIPELINE_INDEX_PRESETS: Record<
   PipelineIndexPreset,
@@ -103,7 +138,7 @@ function formatPipelineOptionValue(value: unknown): string {
   if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'symbol') return toPrimitiveString(value)
   if (typeof value === 'string') return value
   if (value === null) return 'null'
-  if (typeof value === 'undefined') return 'unset'
+  if (value === undefined) return 'unset'
   try {
     return JSON.stringify(value)
   } catch {
@@ -116,10 +151,10 @@ function detectPipelineIndexPreset(options: DocumentPipelineOptions): PipelineIn
   for (const id of ids) {
     const patch = PIPELINE_INDEX_PRESETS[id].patch
     let match = true
-    for (const [rawKey, expected] of Object.entries(patch)) {
-      const key = rawKey as keyof DocumentPipelineOptions
-      if (typeof expected === 'undefined') continue
-      if ((options as any)?.[key] !== expected) {
+    for (const key of Object.keys(patch) as Array<keyof DocumentPipelineOptions>) {
+      const expected = patch[key]
+      if (expected === undefined) continue
+      if (options[key] !== expected) {
         match = false
         break
       }
@@ -175,10 +210,10 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     if (!pendingIndexPreset) return []
     const patch = PIPELINE_INDEX_PRESETS[pendingIndexPreset].patch
     const diffs: PipelinePresetDiffItem[] = []
-    for (const [rawKey, target] of Object.entries(patch)) {
-      if (typeof target === 'undefined') continue
-      const key = rawKey as keyof DocumentPipelineOptions
-      const current = (options as any)?.[key]
+    for (const key of Object.keys(patch) as Array<keyof DocumentPipelineOptions>) {
+      const target = patch[key]
+      if (target === undefined) continue
+      const current = options[key]
       if (current === target) continue
       diffs.push({ key, from: current, to: target })
     }
@@ -186,7 +221,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   }, [options, pendingIndexPreset])
   const presetSelectValue = indexPresetDraft ?? activeIndexPreset
 
-  const optionGroups = useMemo(() => ([
+  const optionGroups = useMemo<OptionGroup[]>(() => ([
     {
       title: '数据治理',
       icon: ShieldCheck,
@@ -259,7 +294,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     },
   ]), [])
 
-  const governanceToggles = [
+  const governanceToggles: ToggleOptionItem[] = [
     {
         key: 'governance_extract_frontmatter',
         label: '提取 Frontmatter',
@@ -358,7 +393,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     },
 ]
 
-  const governanceNumbers = [
+  const governanceNumbers: NumberOptionItem[] = [
     {
         key: 'governance_language_min_chars',
         label: '语言最小字符',
@@ -469,7 +504,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     },
 ]
 
-  const pipelineToggles = [
+  const pipelineToggles: ToggleOptionItem[] = [
     {
         key: 'parse_fallback_enabled',
         label: '解析回退',
@@ -487,7 +522,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     },
 ]
 
-  const pipelineNumbers = [
+  const pipelineNumbers: NumberOptionItem[] = [
     {
         key: 'chunk_merge_small_min_chars',
         label: '短块合并阈值',
@@ -595,9 +630,10 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     if (!enabled) setEnabled(true)
 
     const patch = PIPELINE_INDEX_PRESETS[preset].patch
-    for (const [rawKey, value] of Object.entries(patch)) {
-      if (typeof value === 'undefined') continue
-      updateOption(rawKey as keyof DocumentPipelineOptions, value as any)
+    for (const key of Object.keys(patch) as Array<keyof DocumentPipelineOptions>) {
+      const value = patch[key]
+      if (value === undefined) continue
+      updateOption(key, value)
     }
     toast.success(`已应用索引模式：${PIPELINE_INDEX_PRESETS[preset].label}`)
   }
@@ -631,8 +667,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
           </div>
           <Select
             value={presetSelectValue}
-            onValueChange={(v) => {
-              const next = v as PipelineIndexPreset
+            onValueChange={(value) => {
+              const next = coerceOneOf(PIPELINE_INDEX_PRESET_VALUES, value, activeIndexPreset)
               if (next === 'custom') {
                 setIndexPresetDraft(null)
                 return
@@ -794,7 +830,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 {group.items.map((item) => {
                   const depends = item.dependsOn === 'kg_enabled'
                   const disabled = !enabled || (depends && !kgEnabled)
-                  const checked = !!options[item.key as keyof typeof options]
+                  const checked = !!options[item.key]
                   return (
                     <div key={item.key} className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
@@ -805,12 +841,12 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           {item.hint}
                         </p>
                       </div>
-                      <Switch
-                        checked={checked}
-                        onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
-                        disabled={disabled}
-                        className="scale-90 origin-right"
-                      />
+                                <Switch
+                                  checked={checked}
+                                  onCheckedChange={(value) => handleChecked(item.key, value)}
+                                  disabled={disabled}
+                                  className="scale-90 origin-right"
+                                />
                     </div>
                   )
                 })}
@@ -830,8 +866,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                         </div>
                         <div className="space-y-3">
                           {governanceToggles.map((item) => {
-                            const checked = !!options[item.key as keyof typeof options]
-                            const dependsOn = (item as any).dependsOn as (keyof typeof options) | undefined
+                            const checked = !!options[item.key]
+                            const dependsOn = item.dependsOn
                             const disabled = governanceDisabled || (dependsOn ? !options[dependsOn] : false)
                             return (
                               <div key={item.key} className="flex items-center justify-between gap-3">
@@ -845,7 +881,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                                 </div>
                                 <Switch
                                   checked={checked}
-                                  onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
+                                  onCheckedChange={(value) => handleChecked(item.key, value)}
                                   disabled={disabled}
                                   className="scale-75 origin-right"
                                 />
@@ -859,8 +895,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                       <div className="space-y-1.5">
                         <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>图片处理</div>
                         <Select
-                          value={(options.governance_remove_images as string) || 'none'}
-                          onValueChange={(v) => updateOption('governance_remove_images', v as any)}
+                          value={options.governance_remove_images || 'none'}
+                          onValueChange={(value) => updateOption('governance_remove_images', coerceOneOf(GOVERNANCE_REMOVE_IMAGE_VALUES, value, 'none'))}
                           disabled={governanceDisabled}
                         >
                           <SelectTrigger className={cn("h-8 text-xs bg-card", compact && "h-7")}>
@@ -887,7 +923,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           </div>
                           <Switch
                             checked={!!options.governance_normalize_urls_strip_tracking}
-                            onCheckedChange={(value) => handleChecked('governance_normalize_urls_strip_tracking' as any, value)}
+                            onCheckedChange={(value) => handleChecked('governance_normalize_urls_strip_tracking', value)}
                             disabled={governanceDisabled}
                             className="scale-75 origin-right"
                           />
@@ -900,8 +936,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>隐私脱敏配置</div>
                           <div className="grid grid-cols-2 gap-2">
                             <Select
-                              value={(options.governance_pii_mode as string) || 'mask'}
-                              onValueChange={(v) => updateOption('governance_pii_mode', v as any)}
+                              value={options.governance_pii_mode || 'mask'}
+                              onValueChange={(value) => updateOption('governance_pii_mode', coerceOneOf(GOVERNANCE_REDACTION_MODE_VALUES, value, 'mask'))}
                               disabled={governanceDisabled}
                             >
                               <SelectTrigger className={cn("h-8 text-xs bg-card", compact && "h-7")}>
@@ -914,8 +950,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             </Select>
                             <Input
                               value={options.governance_pii_mask || ''}
-                              disabled={governanceDisabled || (options.governance_pii_mode as string) === 'token'}
-                              onChange={(e) => updateOption('governance_pii_mask', e.currentTarget.value as any)}
+                              disabled={governanceDisabled || options.governance_pii_mode === 'token'}
+                              onChange={(e) => updateOption('governance_pii_mask', e.currentTarget.value)}
                               placeholder="[REDACTED]"
                               className={cn("h-8 text-xs bg-card", compact && "h-7")}
                             />
@@ -929,8 +965,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>密钥脱敏配置</div>
                           <div className="grid grid-cols-2 gap-2">
                             <Select
-                              value={(options.governance_secrets_mode as string) || 'mask'}
-                              onValueChange={(v) => updateOption('governance_secrets_mode', v as any)}
+                              value={options.governance_secrets_mode || 'mask'}
+                              onValueChange={(value) => updateOption('governance_secrets_mode', coerceOneOf(GOVERNANCE_REDACTION_MODE_VALUES, value, 'mask'))}
                               disabled={governanceDisabled}
                             >
                               <SelectTrigger className={cn("h-8 text-xs bg-card", compact && "h-7")}>
@@ -943,8 +979,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             </Select>
                             <Input
                               value={options.governance_secrets_mask || ''}
-                              disabled={governanceDisabled || (options.governance_secrets_mode as string) === 'token'}
-                              onChange={(e) => updateOption('governance_secrets_mask', e.currentTarget.value as any)}
+                              disabled={governanceDisabled || options.governance_secrets_mode === 'token'}
+                              onChange={(e) => updateOption('governance_secrets_mask', e.currentTarget.value)}
                               placeholder="[SECRET]"
                               className={cn("h-8 text-xs bg-card", compact && "h-7")}
                             />
@@ -958,8 +994,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           <div className={cn("text-xs font-medium text-muted-foreground block", compact && "text-[10px]")}>关键词抽取配置</div>
                           <div className="grid grid-cols-2 gap-2">
                             <Select
-                              value={(options.governance_keywords_provider as string) || 'auto'}
-                              onValueChange={(v) => updateOption('governance_keywords_provider', v as any)}
+                              value={options.governance_keywords_provider || 'auto'}
+                              onValueChange={(value) => updateOption('governance_keywords_provider', coerceOneOf(GOVERNANCE_KEYWORD_PROVIDER_VALUES, value, 'auto'))}
                               disabled={governanceDisabled}
                             >
                               <SelectTrigger className={cn("h-8 text-xs bg-card", compact && "h-7")}>
@@ -980,7 +1016,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                               max={100}
                               step={1}
                               disabled={governanceDisabled}
-                              onChange={(e) => handleNumberChange('governance_keywords_top_k' as any, e.currentTarget.valueAsNumber)}
+                              onChange={(e) => handleNumberChange('governance_keywords_top_k', e.currentTarget.valueAsNumber)}
                               className={cn("h-8 text-xs bg-card", compact && "h-7")}
                               placeholder="Top K"
                             />
@@ -992,7 +1028,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                             max={2000000}
                             step={1000}
                             disabled={governanceDisabled}
-                            onChange={(e) => handleNumberChange('governance_keywords_max_chars' as any, e.currentTarget.valueAsNumber)}
+                            onChange={(e) => handleNumberChange('governance_keywords_max_chars', e.currentTarget.valueAsNumber)}
                             className={cn("h-8 text-xs bg-card", compact && "h-7")}
                             placeholder="关键词抽取最大字符"
                           />
@@ -1007,7 +1043,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                         <Input
                           value={options.governance_html_xpath || ''}
                           disabled={governanceDisabled}
-                          onChange={(e) => updateOption('governance_html_xpath', e.currentTarget.value as any)}
+                          onChange={(e) => updateOption('governance_html_xpath', e.currentTarget.value)}
                           placeholder="//article | //main"
                           className={cn("h-8 text-xs bg-card font-mono", compact && "h-7")}
                         />
@@ -1015,8 +1051,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
 
                       <div className="grid gap-3 pt-1">
                         {governanceNumbers.map((item) => {
-                          const value = options[item.key as keyof typeof options]
-                          const dependsOn = (item as any).dependsOn as (keyof typeof options) | undefined
+                          const value = options[item.key]
+                          const dependsOn = item.dependsOn
                           const shouldHide =
                             (item.key === 'governance_drop_outline_min_content_chars' || item.key === 'governance_drop_outline_max_heading_ratio') &&
                             !options.governance_drop_outline_only
@@ -1033,7 +1069,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                                 max={item.max}
                                 step={item.step}
                                 disabled={governanceDisabled}
-                                onChange={(e) => handleNumberChange(item.key as keyof typeof options, e.currentTarget.valueAsNumber)}
+                                onChange={(e) => handleNumberChange(item.key, e.currentTarget.valueAsNumber)}
                                 className={cn(
                                   "h-7 w-16 text-right text-xs bg-card px-1",
                                   compact && "h-6"
@@ -1050,7 +1086,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                         </div>
                         <div className="space-y-3">
                           {pipelineToggles.map((item) => {
-                            const checked = !!options[item.key as keyof typeof options]
+                            const checked = !!options[item.key]
                             return (
                               <div key={item.key} className="flex items-center justify-between gap-3">
                                 <div className="flex-1 min-w-0">
@@ -1063,7 +1099,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                                 </div>
                                 <Switch
                                   checked={checked}
-                                  onCheckedChange={(value) => handleChecked(item.key as keyof typeof options, value)}
+                                  onCheckedChange={(value) => handleChecked(item.key, value)}
                                   disabled={pipelineDisabled}
                                   className="scale-75 origin-right"
                                 />
@@ -1074,8 +1110,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
 
                         <div className="grid gap-3 pt-1">
                           {pipelineNumbers.map((item) => {
-                            const value = options[item.key as keyof typeof options]
-                            const dependsOn = (item as any).dependsOn as (keyof typeof options) | undefined
+                            const value = options[item.key]
+                            const dependsOn = item.dependsOn
                             const shouldHide = dependsOn ? !options[dependsOn] : false
                             if (shouldHide) return null
                             return (
@@ -1084,11 +1120,11 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                                 <Input
                                   type="number"
                                   value={typeof value === 'number' ? value : ''}
-                                  min={(item as any).min}
-                                  max={(item as any).max}
-                                  step={(item as any).step}
+                                  min={item.min}
+                                  max={item.max}
+                                  step={item.step}
                                   disabled={pipelineDisabled}
-                                  onChange={(e) => handleNumberChange(item.key as keyof typeof options, e.currentTarget.valueAsNumber)}
+                                  onChange={(e) => handleNumberChange(item.key, e.currentTarget.valueAsNumber)}
                                   className={cn(
                                     "h-7 w-16 text-right text-xs bg-card px-1",
                                     compact && "h-6"

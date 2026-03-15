@@ -18,7 +18,7 @@ const PipelineCapabilitiesContext = createContext<PipelineCapabilitiesContextVal
 
 function normalizeParserBackendName(value?: string) {
   const raw = (value || '').toLowerCase().trim()
-  const normalized = raw.replaceAll(/_/g, '-')
+  const normalized = raw.replaceAll("_", '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
   if (normalized === 'olm-ocr') return 'olmocr'
   if (normalized === 'olmocr-pdf') return 'olmocr'

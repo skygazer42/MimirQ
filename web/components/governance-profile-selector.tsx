@@ -95,9 +95,9 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
     const normalizedRegexRules = Array.isArray(effective.regex_rules)
       ? effective.regex_rules
           .map((r) => ({
-            pattern: String((r as any)?.pattern || '').trim(),
-            repl: String((r as any)?.repl ?? ''),
-            flags: Number((r as any)?.flags ?? 0),
+            pattern: String(r?.pattern || '').trim(),
+            repl: String(r?.repl ?? ''),
+            flags: Number(r?.flags ?? 0),
           }))
           .filter((r) => r.pattern.length > 0)
       : []
@@ -163,7 +163,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
             <SelectContent>
               <SelectItem value={SELECT_NONE}>不使用预设</SelectItem>
               {profiles.map((p) => (
-                <SelectItem key={p.key || p.id || p.name} value={p.key || (p.id as any)}>
+                <SelectItem key={p.key || p.id || p.name} value={p.key || p.id || p.name}>
                   {p.is_system ? '内置' : '自定义'} · {p.name}
                 </SelectItem>
               ))}

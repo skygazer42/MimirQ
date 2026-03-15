@@ -234,7 +234,7 @@ export function PipelineOptionsProvider({ children }: Readonly<{ children: React
   })
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
     if (!stored) return
     try {
@@ -246,12 +246,12 @@ export function PipelineOptionsProvider({ children }: Readonly<{ children: React
   }, [])
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     globalThis.window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const onStorage = (event: StorageEvent) => {
       if (event.key !== STORAGE_KEY || !event.newValue) return
       try {

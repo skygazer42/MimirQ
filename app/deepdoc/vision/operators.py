@@ -363,7 +363,7 @@ class DetResizeForTest:
             img, (ratio_h, ratio_w)
         """
         limit_side_len = self.limit_side_len
-        h, w, c = img.shape
+        h, w, _c = img.shape
 
         # limit the max side
         if self.limit_type == 'max':
@@ -504,8 +504,8 @@ class KieResize:
     def __call__(self, data):
         img = data['image']
         points = data['points']
-        src_h, src_w, _ = img.shape
-        im_resized, scale_factor, [ratio_h, ratio_w
+        _src_h, _src_w, _ = img.shape
+        im_resized, scale_factor, [_ratio_h, _ratio_w
                                    ], [new_h, new_w] = self.resize_image(img)
         resize_points = self.resize_boxes(img, points, scale_factor)
         data['ori_image'] = img

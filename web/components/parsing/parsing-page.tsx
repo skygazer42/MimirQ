@@ -131,6 +131,7 @@ export default function ParsingPage() {
   const [activeLibrarySourceStatus, setActiveLibrarySourceStatus] = useState<'unknown' | 'available' | 'missing'>(
     'unknown'
   )
+  const [, setIsLgUp] = useState(false)
 
   const cancelParse = useCallback((fileId: string) => {
     const controller = parseControllersRef.current.get(fileId)
@@ -195,13 +196,13 @@ export default function ParsingPage() {
   const [imageCaptionEnabled, setImageCaptionEnabled] = useState(false)
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     const stored = globalThis.window.localStorage.getItem('mimirq_parsing_image_caption_enabled')
     if (stored === 'true') setImageCaptionEnabled(true)
   }, [])
 
   useEffect(() => {
-    if (typeof globalThis.window === 'undefined') return
+    if (globalThis.window === undefined) return
     globalThis.window.localStorage.setItem(
       'mimirq_parsing_image_caption_enabled',
       imageCaptionEnabled ? 'true' : 'false'
@@ -1258,14 +1259,12 @@ export default function ParsingPage() {
     if (typeof apiStats?.table_count === 'number') {
         return apiStats.table_count;
     }
-    else {
-        if ((markdownContent.match(/\|.*\|/g) || []).length > 0) {
+    else if ((markdownContent.match(/\|.*\|/g) || []).length > 0) {
             return (markdownContent.match(/^\|/gm) || []).length / 2;
         }
         else {
             return 0;
         }
-    }
 })(),
         imageCount:
           typeof apiStats?.image_count === 'number'
@@ -1948,7 +1947,7 @@ export default function ParsingPage() {
                               </Button>
                             )}
 
-                            {/* eslint-disable-next-line no-nested-ternary */}
+                            { }
                             {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
 	                              activeLibrarySourceStatus === 'available' ? (
 	                                <Button
@@ -2107,14 +2106,12 @@ export default function ParsingPage() {
     if (activeQualityGate.grade === 'fail') {
         return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20';
     }
-    else {
-        if (activeQualityGate.grade === 'warn') {
+    else if (activeQualityGate.grade === 'warn') {
             return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20';
         }
         else {
             return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
         }
-    }
 })()
                                   )}
                                   title="解析质量门禁（best-effort）"
@@ -2794,8 +2791,7 @@ export default function ParsingPage() {
                   </div>
                 </div>);
     }
-    else {
-        if (rightPanelMode === 'markdown') {
+    else if (rightPanelMode === 'markdown') {
             return (<div className="space-y-2">
                   <div className="text-xs font-semibold text-muted-foreground">目录</div>
                   <div className="rounded-2xl border border-border/60 bg-card p-3">
@@ -2806,7 +2802,6 @@ export default function ParsingPage() {
         else {
             return null;
         }
-    }
 })()}
 
               <div className="space-y-2">
