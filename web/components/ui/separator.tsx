@@ -3,9 +3,15 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
+type SeparatorProps = Readonly<
+  React.HTMLAttributes<HTMLDivElement> & {
+    orientation?: "horizontal" | "vertical"
+  }
+>
+
 const Separator = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { orientation?: "horizontal" | "vertical" }
+  SeparatorProps
 >(({ className, orientation = "horizontal", ...props }, ref) => (
   <div
     ref={ref}

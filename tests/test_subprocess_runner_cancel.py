@@ -13,6 +13,7 @@ async def test_run_subprocess_worker_can_be_cancelled_via_cancel_check():
     start = time.monotonic()
 
     async def cancel_check() -> bool:
+        await asyncio.sleep(0)  # Sonar S7503
         return (time.monotonic() - start) > 0.5
 
     with pytest.raises(SubprocessCancelled):

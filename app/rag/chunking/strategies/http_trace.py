@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -33,11 +33,11 @@ _REQ_RE = re.compile(
 _RESP_RE = re.compile(r"(?m)^(?:<\s*)?HTTP/(?P<ver>\d(?:\.\d)?)\s+(?P<status>\d{3})\b.*$")
 
 
-def _build_request_blocks(text: str) -> List[_RequestBlock]:
+def _build_request_blocks(text: str) -> list[_RequestBlock]:
     matches = list(_REQ_RE.finditer(text or ""))
     if not matches:
         return []
-    blocks: List[_RequestBlock] = []
+    blocks: list[_RequestBlock] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -47,7 +47,7 @@ def _build_request_blocks(text: str) -> List[_RequestBlock]:
     return blocks
 
 
-def _extract_status(block_text: str) -> Optional[int]:
+def _extract_status(block_text: str) -> int | None:
     m = _RESP_RE.search((block_text or "")[:20000])
     if not m:
         return None
@@ -86,8 +86,8 @@ class HTTPTraceChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

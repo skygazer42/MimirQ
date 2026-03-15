@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Mapping, MutableMapping, Sequence
 from pathlib import Path
-from typing import Any, Mapping, MutableMapping, Sequence, Set
+from typing import Any
 
 from app.rag.core.hashing import stable_hash
 
@@ -238,8 +239,8 @@ def plan_feedback_hardcase_candidates(
     *,
     feedback_rows: Sequence[Mapping[str, Any]],
     trace_index: Mapping[str, Mapping[str, Any]],
-    existing_feedback_ids: Set[str],
-    existing_question_hashes: Set[str],
+    existing_feedback_ids: set[str],
+    existing_question_hashes: set[str],
     max_candidates: int,
     include_existing: bool,
 ) -> list[dict[str, Any]]:

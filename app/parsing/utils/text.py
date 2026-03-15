@@ -12,10 +12,10 @@ small decoder that:
 """
 
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
 
 from app.core.optional_deps import optional_import
 

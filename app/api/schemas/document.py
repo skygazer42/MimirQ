@@ -3,7 +3,7 @@ Document-related Pydantic schemas.
 """
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator, model_validator
@@ -42,158 +42,158 @@ class GovernanceRegexRule(BaseModel):
 
 class DocumentPipelineOptions(BaseModel):
     """Per-document pipeline options."""
-    governance_enabled: Optional[bool] = None
-    governance_remove_toc_lines: Optional[bool] = None
-    governance_remove_noise_lines: Optional[bool] = None
-    governance_unwrap_lines: Optional[bool] = None
-    governance_remove_common_lines: Optional[bool] = None
-    governance_remove_boilerplate: Optional[bool] = None
-    governance_remove_images: Optional[str] = Field(
+    governance_enabled: bool | None = None
+    governance_remove_toc_lines: bool | None = None
+    governance_remove_noise_lines: bool | None = None
+    governance_unwrap_lines: bool | None = None
+    governance_remove_common_lines: bool | None = None
+    governance_remove_boilerplate: bool | None = None
+    governance_remove_images: str | None = Field(
         default=None,
         description="Image removal mode: none | decorative | all",
     )
-    governance_rule_packs: Optional[List[str]] = Field(
+    governance_rule_packs: list[str] | None = Field(
         default=None,
         description="Optional named governance rule packs (server-defined presets). Default off.",
         max_length=20,
     )
-    governance_regex_rules: Optional[List[GovernanceRegexRule]] = Field(
+    governance_regex_rules: list[GovernanceRegexRule] | None = Field(
         default=None,
         description="Additional regex cleanup rules (stored in metadata.pipeline.governance.regex_rules).",
         max_length=60,
     )
-    governance_extract_frontmatter: Optional[bool] = Field(default=None, description="Extract Markdown YAML frontmatter for metadata enrichment")
-    governance_strip_frontmatter: Optional[bool] = Field(default=None, description="Strip Markdown YAML frontmatter from content after extraction")
-    governance_detect_language: Optional[bool] = Field(default=None, description="Detect primary language/script (zh/en/mixed) for metadata enrichment")
-    governance_language_min_chars: Optional[int] = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars before language detection triggers")
-    governance_normalize_urls: Optional[bool] = Field(default=None, description="Normalize URLs (e.g., strip tracking parameters) for consistency/dedup")
-    governance_normalize_urls_strip_tracking: Optional[bool] = Field(default=None, description="When normalizing URLs, strip common tracking parameters (utm_*, gclid, fbclid, etc.)")
-    governance_drop_duplicate_paragraphs: Optional[bool] = Field(default=None, description="Drop paragraphs repeated many times within a document (best-effort)")
-    governance_drop_duplicate_paragraphs_min_occurrences: Optional[int] = Field(default=None, ge=2, le=100, description="Min repeat occurrences to drop a paragraph")
-    governance_drop_duplicate_paragraphs_min_chars: Optional[int] = Field(default=None, ge=0, le=50_000, description="Min paragraph chars to consider for dedup")
-    governance_drop_duplicate_paragraphs_max_chars: Optional[int] = Field(default=None, ge=0, le=200_000, description="Max paragraph chars to consider for dedup (0 disables cap)")
-    governance_trim_references: Optional[bool] = Field(default=None, description="Trim trailing reference/bibliography sections (best-effort)")
-    governance_extract_keywords: Optional[bool] = Field(default=None, description="Extract document-level keywords for metadata enrichment (best-effort)")
-    governance_keywords_provider: Optional[str] = Field(default=None, description="Keyword provider: auto / jieba / jieba_textrank / hanlp / simple")
-    governance_keywords_top_k: Optional[int] = Field(default=None, ge=1, le=100, description="Max keywords to extract")
-    governance_keywords_max_chars: Optional[int] = Field(default=None, ge=0, le=2_000_000, description="Max chars used for keyword extraction (truncate when exceeded)")
-    governance_normalize_tables: Optional[bool] = Field(default=None, description="Normalize markdown tables (whitespace/column alignment)")
-    governance_strip_code_line_numbers: Optional[bool] = Field(default=None, description="Strip leading line numbers inside fenced code blocks")
-    governance_pii_anonymize: Optional[bool] = None
-    governance_pii_mode: Optional[str] = Field(
+    governance_extract_frontmatter: bool | None = Field(default=None, description="Extract Markdown YAML frontmatter for metadata enrichment")
+    governance_strip_frontmatter: bool | None = Field(default=None, description="Strip Markdown YAML frontmatter from content after extraction")
+    governance_detect_language: bool | None = Field(default=None, description="Detect primary language/script (zh/en/mixed) for metadata enrichment")
+    governance_language_min_chars: int | None = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars before language detection triggers")
+    governance_normalize_urls: bool | None = Field(default=None, description="Normalize URLs (e.g., strip tracking parameters) for consistency/dedup")
+    governance_normalize_urls_strip_tracking: bool | None = Field(default=None, description="When normalizing URLs, strip common tracking parameters (utm_*, gclid, fbclid, etc.)")
+    governance_drop_duplicate_paragraphs: bool | None = Field(default=None, description="Drop paragraphs repeated many times within a document (best-effort)")
+    governance_drop_duplicate_paragraphs_min_occurrences: int | None = Field(default=None, ge=2, le=100, description="Min repeat occurrences to drop a paragraph")
+    governance_drop_duplicate_paragraphs_min_chars: int | None = Field(default=None, ge=0, le=50_000, description="Min paragraph chars to consider for dedup")
+    governance_drop_duplicate_paragraphs_max_chars: int | None = Field(default=None, ge=0, le=200_000, description="Max paragraph chars to consider for dedup (0 disables cap)")
+    governance_trim_references: bool | None = Field(default=None, description="Trim trailing reference/bibliography sections (best-effort)")
+    governance_extract_keywords: bool | None = Field(default=None, description="Extract document-level keywords for metadata enrichment (best-effort)")
+    governance_keywords_provider: str | None = Field(default=None, description="Keyword provider: auto / jieba / jieba_textrank / hanlp / simple")
+    governance_keywords_top_k: int | None = Field(default=None, ge=1, le=100, description="Max keywords to extract")
+    governance_keywords_max_chars: int | None = Field(default=None, ge=0, le=2_000_000, description="Max chars used for keyword extraction (truncate when exceeded)")
+    governance_normalize_tables: bool | None = Field(default=None, description="Normalize markdown tables (whitespace/column alignment)")
+    governance_strip_code_line_numbers: bool | None = Field(default=None, description="Strip leading line numbers inside fenced code blocks")
+    governance_pii_anonymize: bool | None = None
+    governance_pii_mode: str | None = Field(
         default=None,
         description="PII anonymization mode: mask | token",
     )
-    governance_pii_mask: Optional[str] = Field(default=None, description="PII replacement string (mask mode)")
-    governance_pii_max_hits: Optional[int] = Field(
+    governance_pii_mask: str | None = Field(default=None, description="PII replacement string (mask mode)")
+    governance_pii_max_hits: int | None = Field(
         default=None,
         ge=0,
         le=1_000_000,
         description="Max allowed PII matches per document before drop/quarantine (sum across kinds). None disables gate.",
     )
-    governance_secrets_redact: Optional[bool] = Field(default=None, description="Redact common secrets/tokens (API keys, private keys, bearer tokens)")
-    governance_secrets_mode: Optional[str] = Field(default=None, description="Secrets redaction mode: mask | token")
-    governance_secrets_mask: Optional[str] = Field(default=None, description="Secrets replacement string (mask mode)")
-    governance_secrets_max_hits: Optional[int] = Field(
+    governance_secrets_redact: bool | None = Field(default=None, description="Redact common secrets/tokens (API keys, private keys, bearer tokens)")
+    governance_secrets_mode: str | None = Field(default=None, description="Secrets redaction mode: mask | token")
+    governance_secrets_mask: str | None = Field(default=None, description="Secrets replacement string (mask mode)")
+    governance_secrets_max_hits: int | None = Field(
         default=None,
         ge=0,
         le=1_000_000,
         description="Max allowed secrets matches per document before drop/quarantine (sum across kinds). None disables gate.",
     )
-    governance_max_blank_lines: Optional[int] = Field(default=None, ge=0, le=10, description="Max consecutive blank lines")
-    governance_html_xpath: Optional[str] = Field(default=None, description="XPath for HTML extraction (HTML/HTM)")
-    governance_drop_outline_only: Optional[bool] = None
-    governance_drop_outline_min_content_chars: Optional[int] = Field(default=None, ge=0, le=200_000, description="Min content chars before outline filter triggers")
-    governance_drop_outline_max_heading_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Heading-like paragraph ratio threshold")
-    governance_drop_low_density: Optional[bool] = None
-    governance_drop_low_density_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Alnum/CJK density threshold")
-    governance_quarantine_on_drop: Optional[bool] = Field(
+    governance_max_blank_lines: int | None = Field(default=None, ge=0, le=10, description="Max consecutive blank lines")
+    governance_html_xpath: str | None = Field(default=None, description="XPath for HTML extraction (HTML/HTM)")
+    governance_drop_outline_only: bool | None = None
+    governance_drop_outline_min_content_chars: int | None = Field(default=None, ge=0, le=200_000, description="Min content chars before outline filter triggers")
+    governance_drop_outline_max_heading_ratio: float | None = Field(default=None, ge=0.0, le=1.0, description="Heading-like paragraph ratio threshold")
+    governance_drop_low_density: bool | None = None
+    governance_drop_low_density_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="Alnum/CJK density threshold")
+    governance_quarantine_on_drop: bool | None = Field(
         default=None,
         description="When governance drop filters trigger, mark document as quarantined instead of failed",
     )
-    governance_unwrap_max_line_length: Optional[int] = Field(default=None, ge=40, le=400, description="max line length")
-    governance_noise_min_chars: Optional[int] = Field(default=None, ge=1, le=20, description="noise min chars")
-    governance_noise_ratio_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="noise ratio threshold")
-    governance_common_lines_min_docs: Optional[int] = Field(default=None, ge=2, le=50, description="common line min docs")
-    governance_common_lines_min_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="common line ratio")
-    parse_fallback_enabled: Optional[bool] = Field(default=None, description="Retry parsing with an alternative backend when output quality is low (PDF only)")
-    parse_fallback_min_content_chars: Optional[int] = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars to consider parse successful")
-    parse_fallback_max_retries: Optional[int] = Field(default=None, ge=0, le=3, description="Max parse fallback retries")
-    persist_parsed_content: Optional[bool] = Field(default=None, description="Persist parsed markdown (raw+clean) into document_parsed_contents")
-    persist_parsed_content_max_chars: Optional[int] = Field(default=None, ge=0, le=2_000_000, description="Max chars to persist (truncate when exceeded)")
-    near_dedup_enabled: Optional[bool] = Field(default=None, description="Enable cross-document near-duplicate chunk dropping (SimHash)")
-    near_dedup_hamming_threshold: Optional[int] = Field(default=None, ge=0, le=64, description="Near-dup Hamming distance threshold")
-    near_dedup_max_bucket_size: Optional[int] = Field(default=None, ge=8, le=100_000, description="Max bucket size for near-dup index")
-    chunk_size: Optional[int] = Field(default=None, ge=100, le=4000, description="Chunk size")
-    chunk_overlap: Optional[int] = Field(default=None, ge=0, le=1000, description="Overlap size")
-    chunk_merge_small_min_chars: Optional[int] = Field(
+    governance_unwrap_max_line_length: int | None = Field(default=None, ge=40, le=400, description="max line length")
+    governance_noise_min_chars: int | None = Field(default=None, ge=1, le=20, description="noise min chars")
+    governance_noise_ratio_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="noise ratio threshold")
+    governance_common_lines_min_docs: int | None = Field(default=None, ge=2, le=50, description="common line min docs")
+    governance_common_lines_min_ratio: float | None = Field(default=None, ge=0.0, le=1.0, description="common line ratio")
+    parse_fallback_enabled: bool | None = Field(default=None, description="Retry parsing with an alternative backend when output quality is low (PDF only)")
+    parse_fallback_min_content_chars: int | None = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars to consider parse successful")
+    parse_fallback_max_retries: int | None = Field(default=None, ge=0, le=3, description="Max parse fallback retries")
+    persist_parsed_content: bool | None = Field(default=None, description="Persist parsed markdown (raw+clean) into document_parsed_contents")
+    persist_parsed_content_max_chars: int | None = Field(default=None, ge=0, le=2_000_000, description="Max chars to persist (truncate when exceeded)")
+    near_dedup_enabled: bool | None = Field(default=None, description="Enable cross-document near-duplicate chunk dropping (SimHash)")
+    near_dedup_hamming_threshold: int | None = Field(default=None, ge=0, le=64, description="Near-dup Hamming distance threshold")
+    near_dedup_max_bucket_size: int | None = Field(default=None, ge=8, le=100_000, description="Max bucket size for near-dup index")
+    chunk_size: int | None = Field(default=None, ge=100, le=4000, description="Chunk size")
+    chunk_overlap: int | None = Field(default=None, ge=0, le=1000, description="Overlap size")
+    chunk_merge_small_min_chars: int | None = Field(
         default=None,
         ge=0,
         le=10_000,
         description="Optional: merge chunks shorter than this threshold with neighbors (0 disables).",
     )
-    chunk_strategy_params: Optional[Dict[str, Any]] = Field(
+    chunk_strategy_params: dict[str, Any] | None = Field(
         default=None,
         description=(
             "Chunking strategy parameters (best-effort, strategy-specific). "
             "Only small JSON objects are allowed (primitive values only)."
         ),
     )
-    embedding_context_prefix_enabled: Optional[bool] = Field(
+    embedding_context_prefix_enabled: bool | None = Field(
         default=None,
         description="Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).",
     )
-    embedding_field_aware_enabled: Optional[bool] = Field(
+    embedding_field_aware_enabled: bool | None = Field(
         default=None,
         description=(
             "When enabled, store extra field-aware embeddings (title/heading) alongside body embeddings "
             "to improve recall. Backwards compatible but increases vector write volume."
         ),
     )
-    chunk_vector_enabled: Optional[bool] = None
-    bm25_index_enabled: Optional[bool] = None
-    kg_enabled: Optional[bool] = None
-    event_vector_enabled: Optional[bool] = None
-    entity_vector_enabled: Optional[bool] = None
+    chunk_vector_enabled: bool | None = None
+    bm25_index_enabled: bool | None = None
+    kg_enabled: bool | None = None
+    event_vector_enabled: bool | None = None
+    entity_vector_enabled: bool | None = None
     # Structured/table ingestion (TAG - Table Augmented Generation).
     # When enabled, supported table-like documents (.csv/.xls/.xlsx) are imported into a per-document
     # SQLite table store and can be queried via SQL / NL-to-SQL (separate endpoints).
-    table_store_enabled: Optional[bool] = Field(default=None, description="Enable structured table store import for .csv/.xls/.xlsx (TAG)")
-    table_store_max_rows: Optional[int] = Field(default=None, ge=0, le=5_000_000, description="Max rows to import per table (0 disables cap)")
-    table_store_max_cols: Optional[int] = Field(default=None, ge=0, le=10_000, description="Max columns to import per table (0 disables cap)")
-    table_store_sample_rows: Optional[int] = Field(default=None, ge=0, le=200, description="Rows to keep for metadata preview/sample (0 disables)")
+    table_store_enabled: bool | None = Field(default=None, description="Enable structured table store import for .csv/.xls/.xlsx (TAG)")
+    table_store_max_rows: int | None = Field(default=None, ge=0, le=5_000_000, description="Max rows to import per table (0 disables cap)")
+    table_store_max_cols: int | None = Field(default=None, ge=0, le=10_000, description="Max columns to import per table (0 disables cap)")
+    table_store_sample_rows: int | None = Field(default=None, ge=0, le=200, description="Rows to keep for metadata preview/sample (0 disables)")
     # Auto routing (optional): when enabled, decide per-file whether to use TAG (table_store) or
     # normal parsing+RAG based on size/complexity signals.
-    table_store_auto_route: Optional[bool] = Field(
+    table_store_auto_route: bool | None = Field(
         default=None,
         description="When table_store_enabled=true, auto-route small tables to RAG and large/complex tables to TAG",
     )
-    table_store_sidecar_exclusive_routing: Optional[bool] = Field(
+    table_store_sidecar_exclusive_routing: bool | None = Field(
         default=None,
         description=(
             "When true, parser-emitted table segments are TAG-sidecar only "
             "(excluded from vector/BM25 indexing)."
         ),
     )
-    table_store_auto_row_threshold: Optional[int] = Field(
+    table_store_auto_row_threshold: int | None = Field(
         default=None,
         ge=0,
         le=50_000_000,
         description="In auto-route mode, route to TAG when estimated rows >= threshold (0 disables)",
     )
-    table_store_auto_col_threshold: Optional[int] = Field(
+    table_store_auto_col_threshold: int | None = Field(
         default=None,
         ge=0,
         le=200_000,
         description="In auto-route mode, route to TAG when estimated columns >= threshold (0 disables)",
     )
-    table_store_auto_sheet_threshold: Optional[int] = Field(
+    table_store_auto_sheet_threshold: int | None = Field(
         default=None,
         ge=0,
         le=200_000,
         description="In auto-route mode, route to TAG when sheet_count >= threshold (0 disables)",
     )
-    table_store_auto_file_bytes_threshold: Optional[int] = Field(
+    table_store_auto_file_bytes_threshold: int | None = Field(
         default=None,
         ge=0,
         le=5_000_000_000,
@@ -249,17 +249,17 @@ class DocumentAccessInfo(BaseModel):
     """Document-level ACL (additional restriction on top of dataset permissions)."""
 
     mode: DocumentAccessMode = "inherit"
-    owner_id: Optional[str] = Field(default=None, max_length=255)
-    partial_member_list: Optional[List[str]] = Field(default=None, max_length=200)
-    partial_group_list: Optional[List[UUID]] = Field(default=None, max_length=200)
+    owner_id: str | None = Field(default=None, max_length=255)
+    partial_member_list: list[str] | None = Field(default=None, max_length=200)
+    partial_group_list: list[UUID] | None = Field(default=None, max_length=200)
 
 
 class DocumentAccessUpdateRequest(BaseModel):
     """Update a document's access mode and optional allowlist."""
 
     mode: DocumentAccessMode = Field(default="inherit")
-    partial_member_list: Optional[List[str]] = Field(default=None, max_length=200)
-    partial_group_list: Optional[List[UUID]] = Field(default=None, max_length=200)
+    partial_member_list: list[str] | None = Field(default=None, max_length=200)
+    partial_group_list: list[UUID] | None = Field(default=None, max_length=200)
 
     @model_validator(mode="after")
     def _normalize(self) -> "DocumentAccessUpdateRequest":
@@ -327,15 +327,15 @@ class DocumentUserMetadataPatchRequest(BaseModel):
     - Any key with value `null` will be removed (merge mode only).
     """
 
-    patch: Dict[str, Any] = Field(default_factory=dict, description="User metadata patch; null values remove keys.")
+    patch: dict[str, Any] = Field(default_factory=dict, description="User metadata patch; null values remove keys.")
     replace: bool = Field(default=False, description="Replace entire metadata.user instead of merging")
 
 
 class DocumentBatchUserMetadataPatchRequest(BaseModel):
     """Batch patch for `documents.metadata.user`."""
 
-    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
-    patch: Dict[str, Any] = Field(default_factory=dict)
+    document_ids: list[UUID] = Field(..., min_length=1, max_length=200)
+    patch: dict[str, Any] = Field(default_factory=dict)
     replace: bool = False
 
 
@@ -343,8 +343,8 @@ class DocumentBatchUserMetadataPatchResponse(BaseModel):
     """Batch patch result."""
 
     updated: int
-    not_found: List[UUID] = Field(default_factory=list)
-    denied: List[UUID] = Field(default_factory=list)
+    not_found: list[UUID] = Field(default_factory=list)
+    denied: list[UUID] = Field(default_factory=list)
 
 
 class DocumentLifecycleMetadata(BaseModel):
@@ -356,10 +356,10 @@ class DocumentLifecycleMetadata(BaseModel):
     - Keep fields small and PII-minimal (no content).
     """
 
-    lifecycle_owner: Optional[str] = Field(default=None, max_length=255)
-    review_due_at: Optional[datetime] = None
-    authority_level: Optional[int] = Field(default=None, ge=0, le=100)
-    supersedes_document_id: Optional[UUID] = None
+    lifecycle_owner: str | None = Field(default=None, max_length=255)
+    review_due_at: datetime | None = None
+    authority_level: int | None = Field(default=None, ge=0, le=100)
+    supersedes_document_id: UUID | None = None
     publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
 
     @field_validator("publication_status", mode="before")
@@ -377,46 +377,46 @@ class DocumentLifecycleMetadataUpdateRequest(BaseModel):
     - Fields present with value `null` are cleared.
     """
 
-    lifecycle_owner: Optional[str] = Field(default=None, max_length=255)
-    review_due_at: Optional[datetime] = None
-    authority_level: Optional[int] = Field(default=None, ge=0, le=100)
-    supersedes_document_id: Optional[UUID] = None
+    lifecycle_owner: str | None = Field(default=None, max_length=255)
+    review_due_at: datetime | None = None
+    authority_level: int | None = Field(default=None, ge=0, le=100)
+    supersedes_document_id: UUID | None = None
     publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
 
 
 class DocumentBatchLifecycleRequest(BaseModel):
     """Batch document lifecycle update (enable/disable/archive/unarchive)."""
 
-    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    document_ids: list[UUID] = Field(..., min_length=1, max_length=200)
 
 
 class DocumentBatchLifecycleResponse(BaseModel):
     """Batch lifecycle update result."""
 
     updated: int
-    not_found: List[UUID] = Field(default_factory=list)
-    denied: List[UUID] = Field(default_factory=list)
-    conflicts: List[UUID] = Field(default_factory=list)
+    not_found: list[UUID] = Field(default_factory=list)
+    denied: list[UUID] = Field(default_factory=list)
+    conflicts: list[UUID] = Field(default_factory=list)
 
 
 class DocumentBatchDeleteRequest(BaseModel):
     """Batch delete documents."""
 
-    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    document_ids: list[UUID] = Field(..., min_length=1, max_length=200)
 
 
 class DocumentBatchDeleteResponse(BaseModel):
     """Batch delete result."""
 
     deleted: int
-    not_found: List[UUID] = Field(default_factory=list)
-    denied: List[UUID] = Field(default_factory=list)
+    not_found: list[UUID] = Field(default_factory=list)
+    denied: list[UUID] = Field(default_factory=list)
 
 
 class DocumentBatchRetryRequest(BaseModel):
     """Batch retry document ingestion (reprocess)."""
 
-    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    document_ids: list[UUID] = Field(..., min_length=1, max_length=200)
     force: bool = False
     skip_if_unchanged: bool = False
 
@@ -430,7 +430,7 @@ class DocumentBatchReingestRequest(BaseModel):
     - trigger `/documents/{id}/retry` with `force` (default true)
     """
 
-    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    document_ids: list[UUID] = Field(..., min_length=1, max_length=200)
     patch: DocumentPipelineOptions = Field(default_factory=DocumentPipelineOptions)
     replace: bool = False
     force: bool = True
@@ -442,31 +442,31 @@ class DocumentBatchRetryResponse(BaseModel):
 
     queued: int
     skipped: int
-    not_found: List[UUID] = Field(default_factory=list)
-    denied: List[UUID] = Field(default_factory=list)
-    conflicts: List[UUID] = Field(default_factory=list)
+    not_found: list[UUID] = Field(default_factory=list)
+    denied: list[UUID] = Field(default_factory=list)
+    conflicts: list[UUID] = Field(default_factory=list)
 
 
 class DocumentBatchMoveRequest(BaseModel):
     """Batch move documents between datasets (best-effort)."""
 
-    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
-    target_dataset_id: Optional[UUID] = None
+    document_ids: list[UUID] = Field(..., min_length=1, max_length=200)
+    target_dataset_id: UUID | None = None
 
 
 class DocumentBatchMoveResponse(BaseModel):
     """Batch move result."""
 
     moved: int
-    not_found: List[UUID] = Field(default_factory=list)
-    denied: List[UUID] = Field(default_factory=list)
-    conflicts: List[UUID] = Field(default_factory=list)
+    not_found: list[UUID] = Field(default_factory=list)
+    denied: list[UUID] = Field(default_factory=list)
+    conflicts: list[UUID] = Field(default_factory=list)
 
 
 class DocumentBatchAccessUpdateRequest(BaseModel):
     """Batch update document-level ACL."""
 
-    document_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    document_ids: list[UUID] = Field(..., min_length=1, max_length=200)
     access: DocumentAccessUpdateRequest
 
 
@@ -474,8 +474,8 @@ class DocumentBatchAccessUpdateResponse(BaseModel):
     """Batch ACL update result."""
 
     updated: int
-    not_found: List[UUID] = Field(default_factory=list)
-    denied: List[UUID] = Field(default_factory=list)
+    not_found: list[UUID] = Field(default_factory=list)
+    denied: list[UUID] = Field(default_factory=list)
 
 
 class DuplicateDocumentItem(BaseModel):
@@ -484,37 +484,37 @@ class DuplicateDocumentItem(BaseModel):
     id: UUID
     filename: str
     status: str
-    dataset_id: Optional[UUID] = None
+    dataset_id: UUID | None = None
     created_at: datetime
 
 
 class DocumentDuplicateGroup(BaseModel):
     file_sha256: str
     count: int
-    documents: List[DuplicateDocumentItem] = Field(default_factory=list)
+    documents: list[DuplicateDocumentItem] = Field(default_factory=list)
 
 
 class DocumentDuplicateList(BaseModel):
     total: int
-    items: List[DocumentDuplicateGroup] = Field(default_factory=list)
+    items: list[DocumentDuplicateGroup] = Field(default_factory=list)
 
 
 class DocumentChunkSchema(OrmModel):
     """Document chunk."""
     id: UUID
     content: str
-    page_number: Optional[int] = None
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
+    page_number: int | None = None
+    start_char: int | None = None
+    end_char: int | None = None
     chunk_index: int
-    disabled_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = Field(
+    disabled_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         validation_alias=AliasChoices("doc_metadata", "metadata"),
     )
-    index_operation: Optional[Dict[str, Any]] = None
+    index_operation: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _populate_index_operation(self) -> "DocumentChunkSchema":
@@ -536,27 +536,27 @@ class DocumentChunkUpdateRequest(BaseModel):
     - metadata is a patch dict: keys with null values are removed.
     """
 
-    content: Optional[str] = Field(default=None, max_length=200_000)
-    page_number: Optional[int] = Field(default=None, ge=0, le=100_000)
-    start_char: Optional[int] = Field(default=None, ge=0, le=10_000_000)
-    end_char: Optional[int] = Field(default=None, ge=0, le=10_000_000)
-    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Chunk metadata patch (null values delete keys)")
+    content: str | None = Field(default=None, max_length=200_000)
+    page_number: int | None = Field(default=None, ge=0, le=100_000)
+    start_char: int | None = Field(default=None, ge=0, le=10_000_000)
+    end_char: int | None = Field(default=None, ge=0, le=10_000_000)
+    metadata: dict[str, Any] | None = Field(default=None, description="Chunk metadata patch (null values delete keys)")
 
 
 class DocumentChunkCreateRequest(BaseModel):
     """Create a new chunk (appends to the active pipeline version)."""
 
     content: str = Field(..., min_length=1, max_length=200_000)
-    page_number: Optional[int] = Field(default=None, ge=0, le=100_000)
-    start_char: Optional[int] = Field(default=None, ge=0, le=10_000_000)
-    end_char: Optional[int] = Field(default=None, ge=0, le=10_000_000)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    page_number: int | None = Field(default=None, ge=0, le=100_000)
+    start_char: int | None = Field(default=None, ge=0, le=10_000_000)
+    end_char: int | None = Field(default=None, ge=0, le=10_000_000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentChunkReembedRequest(BaseModel):
     """Re-embed (re-index) selected chunks for a document."""
 
-    chunk_ids: List[UUID] = Field(..., min_length=1, max_length=200)
+    chunk_ids: list[UUID] = Field(..., min_length=1, max_length=200)
     include_disabled: bool = False
 
 
@@ -564,9 +564,9 @@ class DocumentChunkReembedResponse(BaseModel):
     """Re-embed result."""
 
     reembedded: int
-    not_found: List[UUID] = Field(default_factory=list)
-    denied: List[UUID] = Field(default_factory=list)
-    conflicts: List[UUID] = Field(default_factory=list)
+    not_found: list[UUID] = Field(default_factory=list)
+    denied: list[UUID] = Field(default_factory=list)
+    conflicts: list[UUID] = Field(default_factory=list)
 
 
 class GovernanceInfo(BaseModel):
@@ -575,7 +575,7 @@ class GovernanceInfo(BaseModel):
     changed_documents: int = 0
     rules_applied: int = 0
     dropped_documents: int = 0
-    drop_reasons: Dict[str, int] = Field(default_factory=dict)
+    drop_reasons: dict[str, int] = Field(default_factory=dict)
 
 
 class DocumentDetail(OrmModel):
@@ -586,24 +586,24 @@ class DocumentDetail(OrmModel):
     file_size: int
     status: DocumentStatusEnum
     processing_progress: int
-    current_stage: Optional[str] = None
+    current_stage: str | None = None
     chunk_count: int
     total_characters: int
-    owner_id: Optional[str] = None
-    access_mode: Optional[DocumentAccessMode] = None
+    owner_id: str | None = None
+    access_mode: DocumentAccessMode | None = None
     publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
-    lifecycle_owner: Optional[str] = None
-    review_due_at: Optional[datetime] = None
-    authority_level: Optional[int] = None
-    supersedes_document_id: Optional[UUID] = None
-    archived_at: Optional[datetime] = None
-    disabled_at: Optional[datetime] = None
+    lifecycle_owner: str | None = None
+    review_due_at: datetime | None = None
+    authority_level: int | None = None
+    supersedes_document_id: UUID | None = None
+    archived_at: datetime | None = None
+    disabled_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
-    processed_at: Optional[datetime] = None
-    error_message: Optional[str] = None
-    dataset_id: Optional[UUID] = None
-    metadata: Dict[str, Any] = Field(
+    processed_at: datetime | None = None
+    error_message: str | None = None
+    dataset_id: UUID | None = None
+    metadata: dict[str, Any] = Field(
         default_factory=dict,
         validation_alias=AliasChoices("doc_metadata", "metadata"),
     )
@@ -612,7 +612,7 @@ class DocumentDetail(OrmModel):
     pipeline: Optional["DocumentPipelineProvenance"] = None
     # Avoid accidental lazy-loading on list endpoints: only include chunks when
     # the API handler explicitly sets `chunks_loaded` on the ORM instance.
-    chunks: Optional[List[DocumentChunkSchema]] = Field(default=None, validation_alias="chunks_loaded")
+    chunks: list[DocumentChunkSchema] | None = Field(default=None, validation_alias="chunks_loaded")
 
     @model_validator(mode="after")
     def _populate_governance(self) -> "DocumentDetail":
@@ -643,8 +643,8 @@ class ParsedSegment(BaseModel):
     """Document parse preview segment."""
     index: int
     content: str
-    page_number: Optional[int] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    page_number: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentAnalyticsSchema(BaseModel):
@@ -657,10 +657,10 @@ class DocumentAnalyticsSchema(BaseModel):
     table_count: int = 0
     image_count: int = 0
     block_count: int = 0
-    language: Optional[str] = None
-    language_confidence: Optional[float] = None
-    cjk_chars: Optional[int] = None
-    latin_chars: Optional[int] = None
+    language: str | None = None
+    language_confidence: float | None = None
+    cjk_chars: int | None = None
+    latin_chars: int | None = None
 
 
 class DocumentAnalyticsBundle(BaseModel):
@@ -686,7 +686,7 @@ class PipelineEffectiveSnapshot(BaseModel):
     chunk_size: int = 0
     chunk_overlap: int = 0
     chunk_merge_small_min_chars: int = 0
-    chunk_strategy_params: Dict[str, Any] = Field(default_factory=dict)
+    chunk_strategy_params: dict[str, Any] = Field(default_factory=dict)
     chunk_vector_enabled: bool = False
     bm25_index_enabled: bool = False
     kg_enabled: bool = False
@@ -697,20 +697,20 @@ class PipelineEffectiveSnapshot(BaseModel):
 class DocumentPipelineProvenance(BaseModel):
     """Stable, UI-facing pipeline provenance snapshot for a document."""
 
-    active_pipeline_hash: Optional[str] = None
-    pipeline_hash: Optional[str] = None
-    parser_backend: Optional[str] = None
-    parser_backend_requested: Optional[str] = None
-    chunk_strategy: Optional[str] = None
-    chunk_strategy_requested: Optional[str] = None
+    active_pipeline_hash: str | None = None
+    pipeline_hash: str | None = None
+    parser_backend: str | None = None
+    parser_backend_requested: str | None = None
+    chunk_strategy: str | None = None
+    chunk_strategy_requested: str | None = None
     governance_enabled: bool = False
-    governance_rule_packs: List[str] = Field(default_factory=list)
+    governance_rule_packs: list[str] = Field(default_factory=list)
     pipeline_effective: PipelineEffectiveSnapshot = Field(default_factory=PipelineEffectiveSnapshot)
     analytics_raw: DocumentAnalyticsSchema = Field(default_factory=DocumentAnalyticsSchema)
-    parsed_text_quality: Dict[str, Any] = Field(default_factory=dict)
+    parsed_text_quality: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_metadata(cls, meta: Dict[str, Any] | None) -> "DocumentPipelineProvenance":
+    def from_metadata(cls, meta: dict[str, Any] | None) -> "DocumentPipelineProvenance":
         m = meta if isinstance(meta, dict) else {}
 
         try:
@@ -788,7 +788,7 @@ class DocumentParsePreview(BaseModel):
     filename: str
     file_type: str
     file_size: int
-    segments: List[ParsedSegment]
+    segments: list[ParsedSegment]
     parser_backend: str
     analytics: DocumentAnalyticsBundle = Field(default_factory=DocumentAnalyticsBundle)
 
@@ -807,7 +807,7 @@ class DocumentParsedContentResponse(BaseModel):
     markdown_content: str = Field(default="")
     original_markdown_content: str = Field(default="")
     # Best-effort metadata copied from `document.metadata.parsed_content_persisted`.
-    persisted_meta: Dict[str, Any] = Field(default_factory=dict)
+    persisted_meta: dict[str, Any] = Field(default_factory=dict)
     markdown_truncated: bool = False
     original_markdown_truncated: bool = False
     max_chars: int = Field(default=200_000, ge=0, le=2_000_000)
@@ -816,34 +816,34 @@ class DocumentParsedContentResponse(BaseModel):
 class ManualChunkCreate(BaseModel):
     """Single chunk entry in a manual chunking request."""
     content: str
-    page_number: Optional[int] = None
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    page_number: int | None = None
+    start_char: int | None = None
+    end_char: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ManualDocumentCreate(BaseModel):
     """Request to create a document from manual chunks."""
-    dataset_id: Optional[UUID] = None
+    dataset_id: UUID | None = None
     filename: str
     file_type: str
     file_size: int
-    chunks: List[ManualChunkCreate]
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    pipeline: Optional[DocumentPipelineOptions] = None
+    chunks: list[ManualChunkCreate]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    pipeline: DocumentPipelineOptions | None = None
 
 
 class DocumentList(BaseModel):
     """Document list."""
     total: int
-    items: List[DocumentDetail]
+    items: list[DocumentDetail]
 
 
 class DocumentStats(BaseModel):
     """Document stats for knowledge-base dashboards."""
 
     total: int
-    by_status: Dict[str, int] = Field(default_factory=dict)
+    by_status: dict[str, int] = Field(default_factory=dict)
     total_chunks: int = 0
     total_size: int = 0
 
@@ -853,7 +853,7 @@ class DocumentChunkMatch(BaseModel):
 
     id: UUID
     chunk_index: int
-    page_number: Optional[int] = None
+    page_number: int | None = None
 
 
 class DocumentChunkMatchList(BaseModel):
@@ -861,13 +861,13 @@ class DocumentChunkMatchList(BaseModel):
 
     total: int
     truncated: bool = False
-    items: List[DocumentChunkMatch] = Field(default_factory=list)
+    items: list[DocumentChunkMatch] = Field(default_factory=list)
 
 
 class DocumentChunkList(BaseModel):
     """Paged document chunks."""
     total: int
-    items: List[DocumentChunkSchema]
+    items: list[DocumentChunkSchema]
 
 
 class DocumentVersionInfo(BaseModel):
@@ -876,8 +876,8 @@ class DocumentVersionInfo(BaseModel):
     pipeline_hash: str
     doc_pipeline_key: str
     chunk_count: int = 0
-    first_chunk_at: Optional[datetime] = None
-    last_chunk_at: Optional[datetime] = None
+    first_chunk_at: datetime | None = None
+    last_chunk_at: datetime | None = None
     active: bool = False
 
 
@@ -885,9 +885,9 @@ class DocumentVersionList(BaseModel):
     """List document versions (pipeline history)."""
 
     document_id: UUID
-    active_pipeline_hash: Optional[str] = None
-    pipeline_hash: Optional[str] = None
-    items: List[DocumentVersionInfo] = Field(default_factory=list)
+    active_pipeline_hash: str | None = None
+    pipeline_hash: str | None = None
+    items: list[DocumentVersionInfo] = Field(default_factory=list)
 
 
 class DocumentVersionDiff(BaseModel):
@@ -904,13 +904,13 @@ class DocumentVersionDiff(BaseModel):
     removed_chunks: int = 0
 
     # Best-effort hash samples for UI/debug (bounded by `sample_limit` in the API).
-    added_hashes: List[str] = Field(default_factory=list)
-    removed_hashes: List[str] = Field(default_factory=list)
+    added_hashes: list[str] = Field(default_factory=list)
+    removed_hashes: list[str] = Field(default_factory=list)
 
     # Best-effort per-version provenance snapshots (when recorded during ingest).
-    from_provenance: Optional[Dict[str, Any]] = None
-    to_provenance: Optional[Dict[str, Any]] = None
-    changed_transforms: List[str] = Field(
+    from_provenance: dict[str, Any] | None = None
+    to_provenance: dict[str, Any] | None = None
+    changed_transforms: list[str] = Field(
         default_factory=list,
         description="Transform step ids whose transform hash differs between from/to.",
     )
@@ -921,8 +921,8 @@ class DocumentStatus(OrmModel):
     id: UUID
     status: DocumentStatusEnum
     processing_progress: int
-    current_stage: Optional[str] = None
-    error_message: Optional[str] = None
+    current_stage: str | None = None
+    error_message: str | None = None
 
 
 # ============ Chunk preview schemas ============
@@ -933,7 +933,7 @@ class ChunkPreviewParams(BaseModel):
     chunk_size: int = Field(default=1000, ge=50, le=4000, description="Chunk size")
     chunk_overlap: int = Field(default=200, ge=0, le=1000, description="Overlap size")
     unit: str = Field(default="chars", description="chunk_size/chunk_overlap unit: chars | tokens")
-    strategy_params: Dict[str, Any] = Field(
+    strategy_params: dict[str, Any] = Field(
         default_factory=dict,
         description="Best-effort strategy-specific params for reproducibility (e.g. separator/parent_child).",
     )
@@ -945,11 +945,11 @@ class ChunkPreviewItem(BaseModel):
     content: str
     length: int
     # Approximate token count for UI display/stats (token-mode uses tiktoken when available).
-    tokens_est: Optional[int] = None
+    tokens_est: int | None = None
     start_index: int  # Start position in original text.
     end_index: int    # End position in original text.
-    page_number: Optional[int] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    page_number: int | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkPreviewHistogramBin(BaseModel):
@@ -961,8 +961,8 @@ class ChunkPreviewHistogramBin(BaseModel):
     """
 
     label: str
-    min: Optional[int] = None
-    max: Optional[int] = None
+    min: int | None = None
+    max: int | None = None
     count: int = 0
 
 
@@ -988,7 +988,7 @@ class ChunkPreviewStats(BaseModel):
     overlap_waste_ratio: float = 0.0
     gap_count: int = 0
     largest_gap: int = 0
-    histogram: List[ChunkPreviewHistogramBin] = Field(default_factory=list)
+    histogram: list[ChunkPreviewHistogramBin] = Field(default_factory=list)
 
 
 class ChunkPreviewQualityReason(BaseModel):
@@ -997,15 +997,15 @@ class ChunkPreviewQualityReason(BaseModel):
     code: str = Field(..., min_length=1, max_length=80)
     severity: Literal["info", "warning", "error"] = "warning"
     message: str = Field(..., min_length=1, max_length=200)
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkPreviewQualityGate(BaseModel):
     """Best-effort quality gate for enterprise tuning (heuristics)."""
 
     grade: Literal["pass", "warn", "fail"] = "pass"
-    reasons: List[str] = Field(default_factory=list)
-    reason_items: List[ChunkPreviewQualityReason] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    reason_items: list[ChunkPreviewQualityReason] = Field(default_factory=list)
 
 
 class ChunkPreviewRecommendationPatch(BaseModel):
@@ -1015,20 +1015,20 @@ class ChunkPreviewRecommendationPatch(BaseModel):
     id: str = Field(..., min_length=1, max_length=80)
     title: str = Field(..., min_length=1, max_length=120)
     description: str = Field(default="", max_length=400)
-    patch: Dict[str, Any] = Field(default_factory=dict, description="Patch object; shape depends on target.")
+    patch: dict[str, Any] = Field(default_factory=dict, description="Patch object; shape depends on target.")
 
 
 class ChunkPreviewReviewSignals(BaseModel):
     """Optional per-chunk review signals for enterprise tuning/auditing."""
 
     basis: Literal["all", "child"] = "all"
-    short_indices: List[int] = Field(default_factory=list)
-    duplicate_indices: List[int] = Field(default_factory=list)
-    gap_indices: List[int] = Field(default_factory=list)
-    overlap_indices: List[int] = Field(default_factory=list)
+    short_indices: list[int] = Field(default_factory=list)
+    duplicate_indices: list[int] = Field(default_factory=list)
+    gap_indices: list[int] = Field(default_factory=list)
+    overlap_indices: list[int] = Field(default_factory=list)
     # Optional details (best-effort; keys are chunk indices).
-    gap_before_by_index: Dict[int, int] = Field(default_factory=dict)
-    overlap_prev_by_index: Dict[int, int] = Field(default_factory=dict)
+    gap_before_by_index: dict[int, int] = Field(default_factory=dict)
+    overlap_prev_by_index: dict[int, int] = Field(default_factory=dict)
 
 
 class ChunkPreviewResponse(BaseModel):
@@ -1037,18 +1037,18 @@ class ChunkPreviewResponse(BaseModel):
     file_type: str
     file_size: int
     # SHA256 of the uploaded file content (for client-side correlation / caching).
-    file_sha256: Optional[str] = None
+    file_sha256: str | None = None
     # Best-effort parse cache signals (server-side, per-process).
     parse_cache_hit: bool = False
-    parse_cache_age_ms: Optional[int] = None
+    parse_cache_age_ms: int | None = None
     # Server-side elapsed time (best-effort; excludes network).
-    preview_duration_ms: Optional[int] = None
+    preview_duration_ms: int | None = None
     # Optional stage timings (best-effort; excludes network).
-    upload_duration_ms: Optional[int] = None
-    parse_duration_ms: Optional[int] = None
-    governance_duration_ms: Optional[int] = None
-    chunking_duration_ms: Optional[int] = None
-    stats_duration_ms: Optional[int] = None
+    upload_duration_ms: int | None = None
+    parse_duration_ms: int | None = None
+    governance_duration_ms: int | None = None
+    chunking_duration_ms: int | None = None
+    stats_duration_ms: int | None = None
     total_chunks: int
     # When max_chunks is used, the API may truncate returned chunks; this keeps the original count.
     total_chunks_full: int = 0
@@ -1056,26 +1056,26 @@ class ChunkPreviewResponse(BaseModel):
     chunks_max_count: int = 0
     total_characters: int
     params: ChunkPreviewParams
-    chunks: List[ChunkPreviewItem]
-    stats: Optional[ChunkPreviewStats] = None
+    chunks: list[ChunkPreviewItem]
+    stats: ChunkPreviewStats | None = None
     # Optional token-based stats derived from `tokens_est` per chunk.
     # This mirrors ingest-time documents.metadata["chunking_stats_tokens"] shape and is
     # useful for auto-tune tooling without returning full chunks.
-    chunking_stats_tokens: Optional[Dict[str, Any]] = None
+    chunking_stats_tokens: dict[str, Any] | None = None
     # When using chunk_strategy=auto, return the most common selected strategy (best-effort).
-    auto_selected_strategy: Optional[str] = None
+    auto_selected_strategy: str | None = None
     # Non-fatal warnings for UI (e.g. ignored overlap for separator strategy).
-    warnings: List[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     # Optional per-chunk review signals (gated by include_review_signals).
-    review_signals: Optional[ChunkPreviewReviewSignals] = None
+    review_signals: ChunkPreviewReviewSignals | None = None
     # Best-effort quality gate and actionable recommendations.
-    quality_gate: Optional[ChunkPreviewQualityGate] = None
-    recommendations: List[str] = Field(default_factory=list)
-    recommendation_patches: List[ChunkPreviewRecommendationPatch] = Field(default_factory=list)
+    quality_gate: ChunkPreviewQualityGate | None = None
+    recommendations: list[str] = Field(default_factory=list)
+    recommendation_patches: list[ChunkPreviewRecommendationPatch] = Field(default_factory=list)
     # Original text for frontend highlighting.
-    original_text: Optional[str] = None
+    original_text: str | None = None
     # If original_text contains PDF position tags (e.g. @@page\tl\tr\tt\tb##), provide a cleaned version for UI display.
-    original_text_cleaned: Optional[str] = None
+    original_text_cleaned: str | None = None
     # Best-effort metadata for UI (whether original_text was omitted due to size limit).
     original_text_included: bool = False
     original_text_truncated: bool = False
@@ -1094,14 +1094,14 @@ class BatchFileInfo(BaseModel):
 
 class BatchUploadRequest(BaseModel):
     """Batch request for upload URLs."""
-    files: List[BatchFileInfo] = Field(..., max_length=200, description="File list, max 200 files")
+    files: list[BatchFileInfo] = Field(..., max_length=200, description="File list, max 200 files")
 
 
 class BatchUploadResponse(BaseModel):
     """Batch response for upload URLs."""
     batch_id: str = Field(..., description="Batch ID")
-    file_urls: List[str] = Field(..., description="Upload URL list")
-    files: List[BatchFileInfo] = Field(..., description="File info list")
+    file_urls: list[str] = Field(..., description="Upload URL list")
+    files: list[BatchFileInfo] = Field(..., description="File info list")
     message: str = Field(default="Upload URLs generated. Please upload files within 24 hours.")
 
 
@@ -1113,8 +1113,8 @@ class BatchTaskStatus(BaseModel):
     completed_files: int
     failed_files: int
     progress: int = Field(..., ge=0, le=100, description="Progress percentage")
-    result_url: Optional[str] = None
-    error: Optional[str] = None
+    result_url: str | None = None
+    error: str | None = None
 
 
 # ============ Batch file upload (multiple files per request) schemas ============
@@ -1141,8 +1141,8 @@ class DocumentBatchUploadResponse(BaseModel):
     total: int
     successful_count: int
     failed_count: int
-    successful: List[DocumentBatchUploadSuccess] = Field(default_factory=list)
-    failed: List[DocumentBatchUploadFailure] = Field(default_factory=list)
+    successful: list[DocumentBatchUploadSuccess] = Field(default_factory=list)
+    failed: list[DocumentBatchUploadFailure] = Field(default_factory=list)
 
 
 # Resolve forward references (DocumentDetail.pipeline -> DocumentPipelineProvenance).

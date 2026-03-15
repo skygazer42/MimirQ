@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -46,12 +46,12 @@ def _strip_quotes(s: str) -> str:
     return t
 
 
-def _iter_file_blocks(text: str) -> List[_FileBlock]:
+def _iter_file_blocks(text: str) -> list[_FileBlock]:
     matches = list(_DIFF_HEADER_RE.finditer(text or ""))
     if not matches:
         return []
 
-    blocks: List[_FileBlock] = []
+    blocks: list[_FileBlock] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -61,12 +61,12 @@ def _iter_file_blocks(text: str) -> List[_FileBlock]:
     return blocks
 
 
-def _iter_hunks(text: str, *, start: int, end: int) -> List[_Span]:
+def _iter_hunks(text: str, *, start: int, end: int) -> list[_Span]:
     window = text[start:end]
     matches = list(_HUNK_RE.finditer(window))
     if not matches:
         return []
-    hunks: List[_Span] = []
+    hunks: list[_Span] = []
     for i, m in enumerate(matches):
         hs = start + m.start()
         he = start + (matches[i + 1].start() if i + 1 < len(matches) else len(window))
@@ -100,8 +100,8 @@ class DiffPatchChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

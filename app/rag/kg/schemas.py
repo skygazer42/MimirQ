@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -24,16 +24,16 @@ class KGSearchRequest(BaseModel):
     """KG search request."""
 
     query: str = Field(..., min_length=1, max_length=2048, description="Natural language query")
-    tenant_id: Optional[UUID] = None
-    dataset_id: Optional[UUID] = None
+    tenant_id: UUID | None = None
+    dataset_id: UUID | None = None
     # Note: document_ids limit is enforced server-side via settings.KG_API_MAX_DOCUMENT_IDS.
-    document_ids: Optional[List[UUID]] = Field(default=None)
+    document_ids: list[UUID] | None = Field(default=None)
 
 
 class KGSearchResponse(BaseModel):
     """KG search raw result passthrough."""
 
-    result: Dict[str, Any]
+    result: dict[str, Any]
     query: str
 
 
@@ -44,7 +44,7 @@ class KGGraphNode(BaseModel):
     label: str
     group: int = 0
     val: int = 1
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGGraphLink(BaseModel):
@@ -54,15 +54,15 @@ class KGGraphLink(BaseModel):
     target: str
     label: str = ""
     weight: float = 1.0
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    meta: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGGraphResponse(BaseModel):
     """KG graph response."""
 
-    nodes: List[KGGraphNode]
-    links: List[KGGraphLink]
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    nodes: list[KGGraphNode]
+    links: list[KGGraphLink]
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGEntityItem(KGBaseModel):
@@ -72,14 +72,14 @@ class KGEntityItem(KGBaseModel):
     name: str
     type: str
     normalized_name: str
-    description: Optional[str] = None
-    extra_data: Dict[str, Any] = Field(default_factory=dict)
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    description: str | None = None
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @field_validator("extra_data", mode="before")
     @classmethod
-    def _coerce_extra_data(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+    def _coerce_extra_data(cls, v: Any) -> dict[str, Any]:  # noqa: ANN401
         return v or {}
 
 
@@ -90,16 +90,16 @@ class KGEventItem(KGBaseModel):
     title: str
     summary: str
     content: str
-    document_id: Optional[UUID] = None
-    chunk_id: Optional[UUID] = None
-    references: Dict[str, Any] = Field(default_factory=dict)
-    extra_data: Dict[str, Any] = Field(default_factory=dict)
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    document_id: UUID | None = None
+    chunk_id: UUID | None = None
+    references: dict[str, Any] = Field(default_factory=dict)
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @field_validator("references", "extra_data", mode="before")
     @classmethod
-    def _coerce_dict_fields(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+    def _coerce_dict_fields(cls, v: Any) -> dict[str, Any]:  # noqa: ANN401
         return v or {}
 
 
@@ -108,18 +108,18 @@ class KGEventEntityItem(KGBaseModel):
 
     entity: KGEntityItem
     weight: float = 1.0
-    role: Optional[str] = None
-    extra_data: Dict[str, Any] = Field(default_factory=dict)
+    role: str | None = None
+    extra_data: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("extra_data", mode="before")
     @classmethod
-    def _coerce_extra_data(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+    def _coerce_extra_data(cls, v: Any) -> dict[str, Any]:  # noqa: ANN401
         return v or {}
 
 
 class KGEventDetailResponse(BaseModel):
     event: KGEventItem
-    entities: List[KGEventEntityItem] = Field(default_factory=list)
+    entities: list[KGEventEntityItem] = Field(default_factory=list)
 
 
 class KGEntityNeighbor(BaseModel):
@@ -131,9 +131,9 @@ class KGEntityNeighbor(BaseModel):
 
 class KGEntityDetailResponse(BaseModel):
     entity: KGEntityItem
-    events: List[KGEventItem] = Field(default_factory=list)
-    neighbors: List[KGEntityNeighbor] = Field(default_factory=list)
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    events: list[KGEventItem] = Field(default_factory=list)
+    neighbors: list[KGEntityNeighbor] = Field(default_factory=list)
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGEntityTypeCount(BaseModel):
@@ -145,8 +145,8 @@ class KGStatsResponse(BaseModel):
     events: int
     entities: int
     links: int
-    entity_types: List[KGEntityTypeCount] = Field(default_factory=list)
-    updated_at: Optional[datetime] = None
+    entity_types: list[KGEntityTypeCount] = Field(default_factory=list)
+    updated_at: datetime | None = None
 
 
 class KGDeleteResponse(BaseModel):
@@ -168,13 +168,13 @@ class KGEntityMergeResponse(BaseModel):
     action_id: UUID
     source_entity_id: UUID
     target_entity_id: UUID
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGEntityMergePreviewResponse(BaseModel):
     source_entity_id: UUID
     target_entity_id: UUID
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGEntityResolutionUndoResponse(BaseModel):
@@ -182,7 +182,7 @@ class KGEntityResolutionUndoResponse(BaseModel):
 
     action_id: UUID
     status: str
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGEntitySplitRequest(BaseModel):
@@ -190,7 +190,7 @@ class KGEntitySplitRequest(BaseModel):
 
     entity_id: UUID
     new_entity_name: str = Field(..., min_length=1, max_length=500)
-    event_ids: List[UUID] = Field(default_factory=list, description="Event ids whose entity edges should be moved")
+    event_ids: list[UUID] = Field(default_factory=list, description="Event ids whose entity edges should be moved")
 
 
 class KGEntitySplitResponse(BaseModel):
@@ -199,7 +199,7 @@ class KGEntitySplitResponse(BaseModel):
     action_id: UUID
     original_entity_id: UUID
     new_entity_id: UUID
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGEntityAliasCreateRequest(BaseModel):
@@ -211,21 +211,21 @@ class KGEntityAliasItem(KGBaseModel):
     canonical_entity_id: UUID
     alias: str
     normalized_alias: str
-    created_by: Optional[str] = None
-    extra_data: Dict[str, Any] = Field(default_factory=dict)
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_by: str | None = None
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @field_validator("extra_data", mode="before")
     @classmethod
-    def _coerce_alias_extra_data(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+    def _coerce_alias_extra_data(cls, v: Any) -> dict[str, Any]:  # noqa: ANN401
         return v or {}
 
 
 class KGEntityAliasesResponse(BaseModel):
     entity_id: UUID
     resolved_entity_id: UUID
-    aliases: List[KGEntityAliasItem] = Field(default_factory=list)
+    aliases: list[KGEntityAliasItem] = Field(default_factory=list)
 
 
 class KGEntityAliasSuggestionItem(BaseModel):
@@ -238,40 +238,40 @@ class KGEntityAliasSuggestionItem(BaseModel):
 
 class KGEntityAliasSuggestionsResponse(BaseModel):
     entity_id: UUID
-    suggestions: List[KGEntityAliasSuggestionItem] = Field(default_factory=list)
+    suggestions: list[KGEntityAliasSuggestionItem] = Field(default_factory=list)
     mode: str = "offline"
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGPredicateOntologyItem(KGBaseModel):
     id: UUID
     tenant_id: UUID
     predicate: str
-    display_name: Optional[str] = None
-    description: Optional[str] = None
+    display_name: str | None = None
+    description: str | None = None
     is_enabled: bool = True
-    extra_data: Dict[str, Any] = Field(default_factory=dict)
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @field_validator("extra_data", mode="before")
     @classmethod
-    def _coerce_onto_extra(cls, v: Any) -> Dict[str, Any]:  # noqa: ANN401
+    def _coerce_onto_extra(cls, v: Any) -> dict[str, Any]:  # noqa: ANN401
         return v or {}
 
 
 class KGPredicateOntologyCreateRequest(BaseModel):
     predicate: str = Field(..., min_length=1, max_length=200)
-    display_name: Optional[str] = Field(default=None, max_length=200)
-    description: Optional[str] = None
+    display_name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
     is_enabled: bool = True
 
 
 class KGPredicateOntologyUpdateRequest(BaseModel):
-    display_name: Optional[str] = Field(default=None, max_length=200)
-    description: Optional[str] = None
-    is_enabled: Optional[bool] = None
+    display_name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    is_enabled: bool | None = None
 
 
 class KGPredicateOntologyListResponse(BaseModel):
-    predicates: List[KGPredicateOntologyItem] = Field(default_factory=list)
+    predicates: list[KGPredicateOntologyItem] = Field(default_factory=list)

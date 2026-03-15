@@ -5,7 +5,8 @@ import io
 import json
 import os
 import re
-from typing import Any, Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from typing import Any
 
 _QUERY_KEYS = ("query", "question", "q")
 _EXPECTED_ANSWER_KEYS = ("expected_answer", "expected", "answer", "expectedAnswer", "expected_answer_text")

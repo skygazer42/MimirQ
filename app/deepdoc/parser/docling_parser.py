@@ -17,12 +17,13 @@
 import contextlib
 import logging
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import Any
 
 import pdfplumber
 from docling.document_converter import DocumentConverter
@@ -195,7 +196,7 @@ class DoclingParser(IntegratedPipelinePdfParser):
 
         return (pic, positions) if need_position else pic
 
-    def _iter_doc_items(self, doc) -> Iterable[tuple[str, Any, Optional[_BBox]]]:
+    def _iter_doc_items(self, doc) -> Iterable[tuple[str, Any, _BBox | None]]:
         for t in getattr(doc, "texts", []):
             parent=getattr(t, "parent", "")
             ref=getattr(parent,"cref","")
@@ -318,10 +319,10 @@ class DoclingParser(IntegratedPipelinePdfParser):
         self,
         filepath: str | PathLike[str],
         binary: BytesIO | bytes | None = None,
-        callback: Optional[Callable] = None,
+        callback: Callable | None = None,
         *,
-        output_dir: Optional[str] = None,
-        lang: Optional[str] = None,
+        output_dir: str | None = None,
+        lang: str | None = None,
         method: str = "auto",
         delete_output: bool = True,
         parse_method: str = "raw"

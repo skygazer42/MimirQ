@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator, Dict, List, Optional
+from collections.abc import AsyncIterator
+from typing import Any
 
 from app.rag.core.logging import get_logger
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
@@ -13,9 +14,9 @@ class BaseLLMClient(ABC):
     @abstractmethod
     async def chat(
         self,
-        messages: List[LLMMessage],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[LLMMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         ...
@@ -23,22 +24,22 @@ class BaseLLMClient(ABC):
     @abstractmethod
     def chat_stream(
         self,
-        messages: List[LLMMessage],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[LLMMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         include_reasoning: bool = False,
         **kwargs: Any,
-    ) -> AsyncIterator[tuple[str, Optional[str]]]:
+    ) -> AsyncIterator[tuple[str, str | None]]:
         ...
 
     async def chat_with_schema(
         self,
-        messages: List[LLMMessage],
-        response_schema: Optional[Dict[str, Any]] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        messages: list[LLMMessage],
+        response_schema: dict[str, Any] | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Ask the LLM to return JSON and parse it. If schema is provided,
         it is appended as a system message hint (no strict validation).
@@ -46,7 +47,7 @@ class BaseLLMClient(ABC):
         import json
         import re
 
-        enhanced_messages: List[LLMMessage] = []
+        enhanced_messages: list[LLMMessage] = []
         if response_schema:
             schema_prompt = (
                 "Return JSON that follows the schema. If a field is missing, use null.\n"

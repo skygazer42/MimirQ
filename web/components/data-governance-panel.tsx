@@ -1,55 +1,11 @@
-/**
- * 数据治理工作台组件
- * 功能：质量检测、智能清洗、数据标注、分类归档
+﻿/**
+ * 鏁版嵁娌荤悊宸ヤ綔鍙扮粍浠?
+ * 鍔熻兘锛氳川閲忔娴嬨€佹櫤鑳芥竻娲椼€佹暟鎹爣娉ㄣ€佸垎绫诲綊妗?
  */
 'use client'
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import {
-  ShieldCheck,
-  Sparkles,
-  Tag,
-  FolderTree,
-  FileText,
-  Upload,
-  ChevronRight,
-  ChevronLeft,
-  Download,
-  Save,
-  RotateCcw,
-  Check,
-  AlertCircle,
-  Trash2,
-  Eye,
-  EyeOff,
-  Search,
-  Filter,
-  MoreHorizontal,
-  Wrench,
-  ScanLine,
-  FileSearch,
-  Replace,
-  Eraser,
-  Hash,
-  Layers,
-  ArrowRight,
-  ArrowLeft,
-  X,
-  Info,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Zap,
-  Copy,
-  Undo,
-  Redo,
-  PanelRightOpen,
-  PanelRightClose,
-  Maximize2,
-  Minimize2,
-  Layout,
-  LayoutTemplate
-} from 'lucide-react'
+import { ShieldCheck, Sparkles, Tag, FolderTree, FileText, Upload, Save, RotateCcw, Trash2, Eye, Search, Wrench, ScanLine, FileSearch, Hash, Layers, X, Info, AlertTriangle, Copy, PanelRightOpen, PanelRightClose } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
@@ -73,7 +29,7 @@ import { PipelineRail, WorkbenchScaffold } from '@/components/workbench'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
-import { cn, formatFileSize } from '@/lib/utils'
+import { cn, formatFileSize, detachPromise } from '@/lib/utils'
 import { getDocContentFromCache } from '@/lib/doc-content-cache'
 import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
@@ -82,23 +38,22 @@ import { DataClassifier } from '@/components/data-governance/data-classifier'
 import { documentApi, parsingApi } from '@/lib/api-client'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
-import { MarkdownToc } from '@/components/markdown/markdown-toc'
+
 import { DocumentFolderTree, getFileIcon } from '@/components/document-library/folder-tree'
-import { extractMarkdownHeadings } from '@/lib/markdown'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 
-// 治理标签页
+// 娌荤悊鏍囩椤?
 const GOVERNANCE_TABS = [
   { id: 'quality', label: '质量检测', icon: ScanLine, color: 'blue', desc: '检测文档质量与格式问题' },
   { id: 'clean', label: '智能清洗', icon: Wrench, color: 'green', desc: '修复格式错误与乱码' },
   { id: 'annotate', label: '数据标注', icon: Tag, color: 'purple', desc: '标记关键实体与敏感信息' },
   { id: 'classify', label: '分类归档', icon: FolderTree, color: 'orange', desc: '设置文档分类与标签' },
-] as const
+]
 
 type GovernanceTab = typeof GOVERNANCE_TABS[number]['id']
 
-// 文件治理状态
+// 鏂囦欢娌荤悊鐘舵€?
 interface FileGovernanceState {
   id: string
   originalContent: string
@@ -137,13 +92,12 @@ export function DataGovernancePanel() {
   const removeFile = useParsedFiles((state) => state.removeFile)
   const { parserBackend } = useParserBackendPreference()
 
-  // UI 状态
+  // UI 鐘舵€?
   const [activeTab, setActiveTab] = useState<GovernanceTab>('quality')
   const [inboundBannerDismissed, setInboundBannerDismissed] = useState(false)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<'edit' | 'preview' | 'original'>('preview')
   const [previewFormat, setPreviewFormat] = useState<'rendered' | 'markdown'>('rendered')
-  const [isProcessing, setIsProcessing] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [deleteFileOpen, setDeleteFileOpen] = useState(false)
@@ -161,7 +115,7 @@ export function DataGovernancePanel() {
     const raw = (searchParams.get('tab') || '').trim()
     if (!raw) return
     if (GOVERNANCE_TABS.some((t) => t.id === raw)) {
-      setActiveTab(raw as GovernanceTab)
+      setActiveTab(raw)
     }
   }, [searchParams])
 
@@ -201,7 +155,7 @@ export function DataGovernancePanel() {
             ) : null}
           </div>
           <div className="mt-2 text-[11px] text-muted-foreground">
-            提示：该页当前仅做引导展示；如需精确复现清洗效果，请在入库配置/规则中应用对应的 pipeline/governance 配置。
+            鎻愮ず锛氳椤靛綋鍓嶄粎鍋氬紩瀵煎睍绀猴紱濡傞渶绮剧‘澶嶇幇娓呮礂鏁堟灉锛岃鍦ㄥ叆搴撻厤缃?瑙勫垯涓簲鐢ㄥ搴旂殑 pipeline/governance 閰嶇疆銆?
           </div>
         </div>
         <Button
@@ -209,7 +163,7 @@ export function DataGovernancePanel() {
           variant="ghost"
           size="sm"
           className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-foreground"
-          aria-label="关闭提示"
+          aria-label="鍏抽棴鎻愮ず"
           onClick={() => setInboundBannerDismissed(true)}
         >
           <X className="w-4 h-4" />
@@ -225,16 +179,16 @@ export function DataGovernancePanel() {
     toast.info('已取消解析')
   }, [])
 
-  // 文件治理状态
+  // 鏂囦欢娌荤悊鐘舵€?
   const [governanceStates, setGovernanceStates] = useState<Record<string, FileGovernanceState>>({})
 
-  // 侧边栏状态
+  // 渚ц竟鏍忕姸鎬?
   const [sidebarWidth, setSidebarWidth] = useState(280)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
-  // 治理面板状态 (右侧)
+  // 娌荤悊闈㈡澘鐘舵€?(鍙充晶)
   const [panelWidth, setPanelWidth] = useState(400)
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false)
   const [isPanelResizing, setIsPanelResizing] = useState(false)
@@ -244,10 +198,10 @@ export function DataGovernancePanel() {
   // When switching the selected file, reset the main preview pane so it doesn't look "half scrolled".
   useEffect(() => {
     if (!selectedFileId) return
-    const raf = window.requestAnimationFrame(() => {
+    const raf = globalThis.window.requestAnimationFrame(() => {
       contentScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
     })
-    return () => window.cancelAnimationFrame(raf)
+    return () => globalThis.window.cancelAnimationFrame(raf)
   }, [selectedFileId])
 
   const startResizing = useCallback((e: React.MouseEvent) => {
@@ -268,19 +222,19 @@ export function DataGovernancePanel() {
   const resize = useCallback(
     (mouseMoveEvent: MouseEvent) => {
       if (isResizing && sidebarRef.current) {
-        // 计算相对于视口的位置
+        // 璁＄畻鐩稿浜庤鍙ｇ殑浣嶇疆
         const sidebarLeft = sidebarRef.current.getBoundingClientRect().left
         const newWidth = mouseMoveEvent.clientX - sidebarLeft
 
-        // 限制最小和最大宽度
+        // 闄愬埗鏈€灏忓拰鏈€澶у搴?
         if (newWidth > 200 && newWidth < 500) {
           setSidebarWidth(newWidth)
         }
       }
 
       if (isPanelResizing && panelRef.current) {
-        // 右侧面板宽度 = 视口宽度 - 鼠标X
-        const newWidth = window.innerWidth - mouseMoveEvent.clientX
+        // 鍙充晶闈㈡澘瀹藉害 = 瑙嗗彛瀹藉害 - 榧犳爣X
+        const newWidth = globalThis.window.innerWidth - mouseMoveEvent.clientX
 
         if (newWidth > 300 && newWidth < 800) {
           setPanelWidth(newWidth)
@@ -292,16 +246,16 @@ export function DataGovernancePanel() {
 
   useEffect(() => {
     if (isResizing || isPanelResizing) {
-      window.addEventListener('mousemove', resize)
-      window.addEventListener('mouseup', stopResizing)
+      globalThis.window.addEventListener('mousemove', resize)
+      globalThis.window.addEventListener('mouseup', stopResizing)
     }
     return () => {
-      window.removeEventListener('mousemove', resize)
-      window.removeEventListener('mouseup', stopResizing)
+      globalThis.window.removeEventListener('mousemove', resize)
+      globalThis.window.removeEventListener('mouseup', stopResizing)
     }
   }, [isResizing, isPanelResizing, resize, stopResizing])
 
-  // 选中的文件
+  // 閫変腑鐨勬枃浠?
   const selectedFile = files.find((f) => f.id === selectedFileId) || null
   const governanceState = selectedFileId ? governanceStates[selectedFileId] : null
 
@@ -330,7 +284,7 @@ export function DataGovernancePanel() {
     return files.filter((f) => allowedFolderIds.has(f.folderId || ROOT_FOLDER_ID))
   }, [files, activeFolderId, libraryFolders])
 
-  // 初始化文件治理状态
+  // 鍒濆鍖栨枃浠舵不鐞嗙姸鎬?
   const initializeGovernanceState = useCallback((file: { id: string; markdownContent: string; originalMarkdownContent?: string }) => {
     const originalContent = file.originalMarkdownContent ?? file.markdownContent
     const cleanedContent = file.markdownContent
@@ -421,13 +375,13 @@ export function DataGovernancePanel() {
       const target = files.find((f) => f.id === fileId)
       if (!target) return
 
-      void (async () => {
+      detachPromise((async () => {
         try {
           await parsingApi.delete(fileId)
         } catch {
           // ignore: some entries may be local-only or already deleted on the backend
         }
-      })()
+      })())
 
       removeFile(fileId)
       setGovernanceStates((prev) => {
@@ -444,7 +398,7 @@ export function DataGovernancePanel() {
     [files, removeFile, selectedFileId]
   )
 
-  // 初始化：自动选择第一个文件
+  // 鍒濆鍖栵細鑷姩閫夋嫨绗竴涓枃浠?
   useEffect(() => {
     if (!isLoaded) return
 
@@ -460,7 +414,7 @@ export function DataGovernancePanel() {
     }
   }, [isLoaded, visibleFiles, selectedFileId, initializeGovernanceState])
 
-  // 拖放处理
+  // 鎷栨斁澶勭悊
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(true)
@@ -471,7 +425,7 @@ export function DataGovernancePanel() {
     setIsDragging(false)
   }, [])
 
-  // 上传并解析逻辑（支持 .zip 批量解压）
+  // 涓婁紶骞惰В鏋愰€昏緫锛堟敮鎸?.zip 鎵归噺瑙ｅ帇锛?
   const handleUploadAndParse = useCallback(async (incomingFiles: File[]) => {
     uploadAbortRef.current?.abort()
     const controller = new AbortController()
@@ -567,12 +521,12 @@ export function DataGovernancePanel() {
       }
 
       for (const { file, folderId } of expanded) {
-        // 使用 preview 接口快速获取 Markdown
+        // 浣跨敤 preview 鎺ュ彛蹇€熻幏鍙?Markdown
         if (controller.signal.aborted || uploadAbortRef.current !== controller) return
         const data = await documentApi.preview(file, parserBackend, undefined, { signal: controller.signal })
         if (controller.signal.aborted || uploadAbortRef.current !== controller) return
 
-        // 拼接 segments 获取全文
+        // 鎷兼帴 segments 鑾峰彇鍏ㄦ枃
         const markdownContent = data.segments.map((s) => s.content).join('\n\n')
 
         const newId = addParsedFile({
@@ -584,13 +538,13 @@ export function DataGovernancePanel() {
           folderId,
         })
 
-        // 如果是第一个文件，自动选中
+        // 濡傛灉鏄涓€涓枃浠讹紝鑷姩閫変腑
         initializeGovernanceState({ id: newId, markdownContent })
         setSelectedFileId((prev) => prev ?? newId)
       }
 
-      if (added > 0) toast.success(`已解析并加入：${added} 个文件`)
-      if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
+      if (added > 0) toast.success('已解析并加入：' + added + ' 个文件')
+      if (skipped > 0) toast.warning('已跳过 ' + skipped + ' 个不支持的文件')
     } catch (error) {
       if (controller.signal.aborted || uploadAbortRef.current !== controller) return
       console.error('Failed to parse file:', error)
@@ -620,18 +574,15 @@ export function DataGovernancePanel() {
     e.target.value = ''
   }, [handleUploadAndParse])
 
-  // 获取当前显示内容
+  // 鑾峰彇褰撳墠鏄剧ず鍐呭
   const displayContent = useMemo(() => {
     if (!governanceState) return ''
     return viewMode === 'original' ? governanceState.originalContent : governanceState.cleanedContent
   }, [governanceState, viewMode])
+  const libraryOnlyNotice = '该条目来自文档库（未保留本地 PDF 原文件）'
 
-  const tocEnabled = useMemo(
-    () => extractMarkdownHeadings(displayContent || '', { maxDepth: 4 }).length > 0,
-    [displayContent]
-  )
 
-  // 文件选择
+  // 鏂囦欢閫夋嫨
   const handleSelectFile = useCallback((fileId: string) => {
     const file = files.find((f) => f.id === fileId)
     if (file) {
@@ -640,7 +591,7 @@ export function DataGovernancePanel() {
     }
   }, [files, initializeGovernanceState])
 
-  // 手动编辑回调
+  // 鎵嬪姩缂栬緫鍥炶皟
   const handleManualEdit = useCallback((newContent: string) => {
     if (!selectedFileId) return
     setGovernanceStates((prev) => ({
@@ -648,12 +599,12 @@ export function DataGovernancePanel() {
       [selectedFileId]: {
         ...prev[selectedFileId],
         cleanedContent: newContent,
-        isModified: true, // 手动修改也被视为已修改
+        isModified: true, // 鎵嬪姩淇敼涔熻瑙嗕负宸蹭慨鏀?
       },
     }))
   }, [selectedFileId])
 
-  // 质量检测完成回调
+  // 璐ㄩ噺妫€娴嬪畬鎴愬洖璋?
   const handleQualityCheck = useCallback((result: { score: number; issues: FileGovernanceState['issues'] }) => {
     if (!selectedFileId) return
     setGovernanceStates((prev) => ({
@@ -666,7 +617,7 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId])
 
-  // 清洗完成回调
+  // 娓呮礂瀹屾垚鍥炶皟
   const handleClean = useCallback((cleanedContent: string) => {
     if (!selectedFileId) return
     setGovernanceStates((prev) => ({
@@ -679,7 +630,7 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId])
 
-  // 标注完成回调
+  // 鏍囨敞瀹屾垚鍥炶皟
   const handleAnnotate = useCallback((annotations: FileGovernanceState['annotations']) => {
     if (!selectedFileId) return
     setGovernanceStates((prev) => ({
@@ -692,7 +643,7 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId])
 
-  // 分类完成回调
+  // 鍒嗙被瀹屾垚鍥炶皟
   const handleClassify = useCallback((category: string, tags: string[]) => {
     if (!selectedFileId) return
     setGovernanceStates((prev) => ({
@@ -706,7 +657,7 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId])
 
-  // 重置文件状态
+  // 閲嶇疆鏂囦欢鐘舵€?
   const handleReset = useCallback(() => {
     if (!selectedFileId || !governanceState) return
     setGovernanceStates((prev) => ({
@@ -724,13 +675,13 @@ export function DataGovernancePanel() {
     }))
   }, [selectedFileId, governanceState])
 
-  // 将治理后的内容回写到共享存储（localStorage），以便 /chunk-preview 使用最新版本
+  // 灏嗘不鐞嗗悗鐨勫唴瀹瑰洖鍐欏埌鍏变韩瀛樺偍锛坙ocalStorage锛夛紝浠ヤ究 /chunk-preview 浣跨敤鏈€鏂扮増鏈?
   const persistGovernanceEdits = useCallback(() => {
     for (const f of files) {
       const state = governanceStates[f.id]
       if (!state) continue
 
-      // 如果历史数据没有保存 originalMarkdownContent，先用当前内容补齐，避免被后续保存覆盖掉。
+      // 濡傛灉鍘嗗彶鏁版嵁娌℃湁淇濆瓨 originalMarkdownContent锛屽厛鐢ㄥ綋鍓嶅唴瀹硅ˉ榻愶紝閬垮厤琚悗缁繚瀛樿鐩栨帀銆?
       const originalMarkdownContent =
         typeof f.originalMarkdownContent === 'string' ? f.originalMarkdownContent : f.markdownContent
 
@@ -751,34 +702,14 @@ export function DataGovernancePanel() {
     toast.success('已保存治理结果')
   }, [persistGovernanceEdits])
 
-  // 保存并下一份（留在治理页面）
-  const handleSaveAndNextFile = useCallback(() => {
-    persistGovernanceEdits()
-    toast.success('已保存治理结果')
-
-    // “继续”含义：继续处理下一份文件，而不是跳转回解析流程。
-    if (!selectedFileId || files.length === 0) return
-    const currentIndex = files.findIndex((f) => f.id === selectedFileId)
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % files.length : 0
-    const nextFile = files[nextIndex]
-    if (nextFile) {
-      setSelectedFileId(nextFile.id)
-      setViewMode('edit')
-      initializeGovernanceState(nextFile)
-    }
-  }, [persistGovernanceEdits, selectedFileId, files, initializeGovernanceState])
 
   const handlePushToChunkPreview = useCallback(() => {
     persistGovernanceEdits()
     router.push('/chunk-preview')
   }, [persistGovernanceEdits, router])
 
-  // 返回解析页面
-  const handleBackToParsing = useCallback(() => {
-    router.push('/parsing')
-  }, [router])
 
-  // 统计数据
+  // 缁熻鏁版嵁
   const stats = useMemo(() => {
     const totalFiles = files.length
     const completedFiles = Object.values(governanceStates).filter((s) => s.qualityScore > 0).length
@@ -790,7 +721,7 @@ export function DataGovernancePanel() {
     return { totalFiles, completedFiles, modifiedFiles, avgScore }
   }, [files, governanceStates])
 
-  // 空状态 - 改为上传引导
+  // 绌虹姸鎬?- 鏀逛负涓婁紶寮曞
   if (isLoaded && files.length === 0) {
     return (
       <WorkbenchScaffold
@@ -801,7 +732,7 @@ export function DataGovernancePanel() {
         description={
           <span className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-primary/20" />
-            智能文档清洗、标注与结构化处理中心
+            智能文档清洗、标注与结构化处理中枢
           </span>
         }
         size="full"
@@ -818,6 +749,15 @@ export function DataGovernancePanel() {
                 ? "border-primary/50 bg-primary/10"
                 : "border-border/50 bg-card/5 hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md"
             )}
+            role="button"
+            tabIndex={0}
+            onClick={() => globalThis.document.getElementById('file-upload')?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                globalThis.document.getElementById('file-upload')?.click()
+              }
+            }}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -845,7 +785,7 @@ export function DataGovernancePanel() {
               </p>
 
               <div className="relative z-20 mx-auto mb-10 w-full max-w-md text-left">
-                <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">文档结构</div>
+                  <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">文档结构</div>
                 <div className="max-h-48 overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/30 p-5 shadow-sm">
                   <DocumentFolderTree />
                 </div>
@@ -928,7 +868,7 @@ export function DataGovernancePanel() {
             className="gap-1.5 h-8 text-xs"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            重置
+            閲嶇疆
           </Button>
           <Button
             variant="info"
@@ -938,7 +878,7 @@ export function DataGovernancePanel() {
             className="gap-2 h-8 text-xs"
           >
             <Save className="w-3.5 h-3.5" />
-            保存
+            淇濆瓨
           </Button>
           <div className="w-px h-4 bg-border dark:bg-card/10 mx-1" />
           <Button
@@ -949,7 +889,7 @@ export function DataGovernancePanel() {
             className="gap-2 h-8 text-xs"
           >
             <Layers className="w-3.5 h-3.5" />
-            推送切块预览
+            鎺ㄩ€佸垏鍧楅瑙?
           </Button>
         </div>
       }
@@ -960,7 +900,7 @@ export function DataGovernancePanel() {
       mainPanel={
         <div className="flex-1 flex flex-col bg-background text-foreground min-h-0">
           <div className="flex-1 flex overflow-hidden min-h-0 relative bg-background">
-        {/* 左侧文件列表 */}
+        {/* 宸︿晶鏂囦欢鍒楄〃 */}
 	        <aside
 	          ref={sidebarRef}
 	          className={cn(
@@ -969,7 +909,7 @@ export function DataGovernancePanel() {
 	          )}
 	          style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
 	        >
-          {/* 折叠/展开按钮 */}
+          {/* 鎶樺彔/灞曞紑鎸夐挳 */}
 	          <Button
 	            variant="ghost"
 	            size="icon"
@@ -978,20 +918,20 @@ export function DataGovernancePanel() {
               isSidebarCollapsed && "opacity-100 -right-8 translate-x-2"
             )}
 	            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-	            title={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
-	            aria-label={isSidebarCollapsed ? "展开侧边栏" : "收起侧边栏"}
+	            title={isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+	            aria-label={isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
 	          >
             {isSidebarCollapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
           </Button>
 
           <div className={cn("flex-1 flex flex-col min-h-0 w-full overflow-hidden", isSidebarCollapsed && "invisible")}>
-            {/* 目录切换 & 搜索 */}
+            {/* 鐩綍鍒囨崲 & 鎼滅储 */}
             <div className="p-3 border-b border-border space-y-3">
               <Select value={activeFolderId || ROOT_FOLDER_ID} onValueChange={setActiveFolderId}>
                 <SelectTrigger className="h-9 text-xs bg-muted border-border text-foreground/80 focus:bg-card focus-ring transition-colors duration-200 motion-reduce:transition-none">
                   <div className="flex items-center gap-2 truncate">
                     <FolderTree className="w-3.5 h-3.5 text-primary" />
-                    <SelectValue placeholder="切换目录" />
+                    <SelectValue placeholder="鍒囨崲鐩綍" />
                   </div>
                 </SelectTrigger>
                 <SelectContent className="bg-card border-border text-foreground/80">
@@ -1008,13 +948,13 @@ export function DataGovernancePanel() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="搜索当前目录文件..."
+                  placeholder="鎼滅储褰撳墠鐩綍鏂囦欢..."
                   className="w-full rounded-lg border border-border bg-muted py-1.5 pl-9 pr-3 text-xs text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:border-primary/30 focus-ring transition-colors duration-200 motion-reduce:transition-none"
                 />
               </div>
             </div>
 
-            {/* 文件目录树 - 可折叠区域 */}
+            {/* 鏂囦欢鐩綍鏍?- 鍙姌鍙犲尯鍩?*/}
             <div className="px-3 pt-2 pb-1 border-b border-border bg-muted/50">
               <div className="max-h-48 overflow-y-auto overscroll-contain no-scrollbar p-1">
                 <DocumentFolderTree />
@@ -1039,7 +979,15 @@ export function DataGovernancePanel() {
                   return (
                     <div
                       key={file.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleSelectFile(file.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleSelectFile(file.id)
+                        }
+                      }}
                       className={cn(
                         "w-full text-left p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer group relative",
                         selectedFileId === file.id
@@ -1068,11 +1016,21 @@ export function DataGovernancePanel() {
                             {score > 0 ? (
                               <span className={cn(
                                 "flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm border",
-                                score >= 80 ? "bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 border-emerald-500/30" :
-                                  score >= 60 ? "bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30" :
-                                    "bg-rose-50 text-rose-700 border-rose-100"
+                                (() => {
+    if (score >= 80) {
+        return "bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-700 border-emerald-500/30";
+    }
+    else {
+        if (score >= 60) {
+            return "bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30";
+        }
+        else {
+            return "bg-rose-50 text-rose-700 border-rose-100";
+        }
+    }
+})()
                               )}>
-                                {score}分
+                                {score}鍒?
                               </span>
                             ) : (
                               <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border font-medium">未检测</span>
@@ -1129,7 +1087,7 @@ export function DataGovernancePanel() {
               )}
             </div>
 
-            {/* 底部统计栏 */}
+            {/* 搴曢儴缁熻鏍?*/}
             <div className="mt-auto border-t border-border bg-muted/50 p-3 space-y-2 backdrop-blur-sm">
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-card p-2 rounded-lg border border-border hover:border-sky-500/30 transition-colors">
@@ -1148,26 +1106,28 @@ export function DataGovernancePanel() {
             </div>
           </div>
 
-          {/* 拖拽手柄 */}
-          <div
+          {/* 鎷栨嫿鎵嬫焺 */}
+          <button
+            type="button"
             className={cn(
-              "absolute right-0 top-0 w-1 h-full cursor-col-resize z-20 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
+              "absolute right-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
               isResizing && "bg-primary opacity-100"
             )}
+            aria-label="调整侧边栏宽度"
             onMouseDown={startResizing}
           />
         </aside>
 
-        {/* 主内容区 (中间 + 右侧面板) */}
+        {/* 涓诲唴瀹瑰尯 (涓棿 + 鍙充晶闈㈡澘) */}
         <main className="flex-1 flex overflow-hidden min-h-0 relative">
 
           {selectedFile && governanceState ? (
             <>
-              {/* 中间：预览画布 */}
+              {/* 涓棿锛氶瑙堢敾甯?*/}
               <div className="flex-1 flex flex-col overflow-hidden relative z-0">
-                {/* 画布工具栏 (悬浮或集成) */}
+                {/* 鐢诲竷宸ュ叿鏍?(鎮诞鎴栭泦鎴? */}
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center bg-card/80 backdrop-blur-md border border-border shadow-sm rounded-full px-2 py-1 gap-1 transition-colors duration-150 motion-reduce:transition-none hover:bg-card hover:border-border">
-                  {/* 视图切换 */}
+                  {/* 瑙嗗浘鍒囨崲 */}
                   <div className="flex items-center bg-muted rounded-full p-0.5 border border-border">
                     <button
                       onClick={() => setViewMode('preview')}
@@ -1176,7 +1136,7 @@ export function DataGovernancePanel() {
                         viewMode === 'preview' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
-                      预览
+                      棰勮
                     </button>
                     <button
                       onClick={() => setViewMode('edit')}
@@ -1185,7 +1145,7 @@ export function DataGovernancePanel() {
                         viewMode === 'edit' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
-                      编辑
+                      缂栬緫
                     </button>
                     <button
                       onClick={() => setViewMode('original')}
@@ -1194,7 +1154,7 @@ export function DataGovernancePanel() {
                         viewMode === 'original' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
-                      对比
+                      瀵规瘮
                     </button>
                   </div>
 
@@ -1205,14 +1165,14 @@ export function DataGovernancePanel() {
 	                    size="icon"
 	                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground/80 hover:bg-muted"
 	                    onClick={() => setPreviewFormat(prev => prev === 'rendered' ? 'markdown' : 'rendered')}
-	                    title={previewFormat === 'rendered' ? "查看源码" : "查看渲染"}
-	                    aria-label={previewFormat === 'rendered' ? "查看源码" : "查看渲染"}
+	                    title={previewFormat === 'rendered' ? '查看源码' : '查看渲染'}
+	                    aria-label={previewFormat === 'rendered' ? '查看源码' : '查看渲染'}
 	                  >
 	                    {previewFormat === 'rendered' ? <Hash className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
 	                  </Button>
                 </div>
 
-                {/* 左侧收起按钮 (如果左侧收起) */}
+                {/* 宸︿晶鏀惰捣鎸夐挳 (濡傛灉宸︿晶鏀惰捣) */}
                 {isSidebarCollapsed && (
 	                  <Button
 	                    variant="ghost"
@@ -1239,18 +1199,18 @@ export function DataGovernancePanel() {
 	                  </Button>
                 )}
 
-                {/* 内容区域 */}
+                {/* 鍐呭鍖哄煙 */}
                 <div ref={contentScrollRef} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 md:p-8">
                   <div className={cn(
                     "mx-auto",
                     viewMode === 'edit' ? 'max-w-full' : 'max-w-4xl'
                   )}>
-                    {/* 纸张效果容器 */}
+                    {/* 绾稿紶鏁堟灉瀹瑰櫒 */}
                     <div className={cn(
                       "bg-card min-h-[800px] shadow-sm border border-border/60 rounded-xl overflow-hidden relative",
                       viewMode === 'edit' ? "h-[calc(100vh-140px)] border-0 shadow-none bg-transparent" : "p-10 md:p-14"
                     )}>
-                      {/* 治理状态水印/徽章 */}
+                      {/* 娌荤悊鐘舵€佹按鍗?寰界珷 */}
                       {viewMode !== 'edit' && governanceState.isModified && (
                         <div className="absolute top-0 right-0 p-4">
                           <span className="bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-xs px-2 py-1 rounded-md font-medium shadow-sm">
@@ -1259,115 +1219,124 @@ export function DataGovernancePanel() {
                         </div>
                       )}
 
-                      {viewMode === 'edit' ? (
-                        <div className="grid grid-cols-2 gap-4 h-full">
-                          {/* 编辑模式：左侧预览 */}
-                          <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
-                            <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
-                              实时预览
+                      {(() => {
+                        if (viewMode === 'edit') {
+                          return (
+                            <div className="grid grid-cols-2 gap-4 h-full">
+                              {/* 缂栬緫妯″紡锛氬乏渚ч瑙?*/}
+                              <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
+                                <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
+                                  瀹炴椂棰勮
+                                </div>
+                                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
+                                  <MarkdownRenderer markdown={displayContent || ''} />
+                                </div>
+                              </div>
+                              {/* 缂栬緫妯″紡锛氬彸渚ф簮鐮?*/}
+                              <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
+                                <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
+                                  婧愮爜缂栬緫
+                                </div>
+                                <textarea
+                                  value={displayContent}
+                                  onChange={(e) => handleManualEdit(e.target.value)}
+                                  className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-foreground"
+                                  spellCheck={false}
+                                />
+                              </div>
                             </div>
-                            <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
-                              <MarkdownRenderer markdown={displayContent || ''} />
-                            </div>
-                          </div>
-                          {/* 编辑模式：右侧源码 */}
-                          <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
-                            <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
-                              源码编辑
-                            </div>
-                            <textarea
-                              value={displayContent}
-                              onChange={(e) => handleManualEdit(e.target.value)}
-                              className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-foreground"
-                              spellCheck={false}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        // 预览模式
-                        displayContent?.includes('该条目来自文档库（未保留本地 PDF 原文件）') ? (
-                          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-                            <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-6 border border-border shadow-sm">
-                              <FileText className="w-8 h-8 text-muted-foreground" />
-                            </div>
-                            <h3 className="text-lg font-bold text-foreground mb-2 truncate max-w-lg">
-                              {selectedFile?.filename || '未知文件'}
-                            </h3>
-                            <div className="flex items-center gap-2 mb-8">
-                              <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
-                                文档库
-                              </span>
-                              <span className="px-2.5 py-1 rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/30 flex items-center gap-1">
-                                <div className="w-1.5 h-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/20" />
-                                Pending
-                              </span>
-                            </div>
+                          )
+                        }
 
-                            <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
-                              <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
-                                <Info className="w-5 h-5 text-sky-500 flex-shrink-0 mt-0.5" />
-                                该条目来自文档库（未保留本地 PDF 原文件）。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
-                              </p>
-                            </div>
+                        if (displayContent?.includes(libraryOnlyNotice)) {
+                          return (
+                            <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                              <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-6 border border-border shadow-sm">
+                                <FileText className="w-8 h-8 text-muted-foreground" />
+                              </div>
+                              <h3 className="text-lg font-bold text-foreground mb-2 truncate max-w-lg">
+                                {selectedFile?.filename || '未知文件'}
+                              </h3>
+                              <div className="flex items-center gap-2 mb-8">
+                                <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
+                                  文档库
+                                </span>
+                                <span className="px-2.5 py-1 rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/30 flex items-center gap-1">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/20" />
+                                  Pending
+                                </span>
+                              </div>
 
-                            <div className="flex items-center gap-3">
-                              <Button
-                                variant="outline"
-                                className="gap-2 bg-card hover:bg-muted text-foreground/80 border-border"
-                                onClick={() => {
-                                  if (selectedFile?.filename) {
-                                    navigator.clipboard.writeText(selectedFile.filename)
-                                    toast.success('文件名已复制')
-                                  }
-                                }}
-                              >
-                                <Copy className="w-4 h-4" />
-                                复制名称
-                              </Button>
-                              <ConfirmDialog
-                                title="移除该文件？"
-                                description="将从文档库中移除该文件记录。此操作不可恢复。"
-                                confirmLabel="移除"
-                                cancelLabel="返回"
-                                confirmVariant="destructive"
-                                confirmDisabled={!selectedFileId}
-                                onConfirm={() => {
-                                  if (!selectedFileId) return
-                                  const { removeFile } = useParsedFiles.getState()
-                                  removeFile(selectedFileId)
-                                  setSelectedFileId(null)
-                                  toast.success('文件已移除')
-                                }}
-                              >
+                              <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
+                                <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
+                                  <Info className="w-5 h-5 text-sky-500 flex-shrink-0 mt-0.5" />
+                                  {libraryOnlyNotice}。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-3">
                                 <Button
                                   variant="outline"
-                                  className="gap-2 bg-card hover:bg-red-500/10 dark:bg-red-500/20 text-foreground/80 hover:text-red-600 dark:text-red-300 border-border hover:border-red-500/30"
-                                  disabled={!selectedFileId}
+                                  className="gap-2 bg-card hover:bg-muted text-foreground/80 border-border"
+                                  onClick={() => {
+                                    if (selectedFile?.filename) {
+                                      navigator.clipboard.writeText(selectedFile.filename)
+                                      toast.success('文件名已复制')
+                                    }
+                                  }}
                                 >
-                                  <Trash2 className="w-4 h-4" />
-                                  移除文件
+                                  <Copy className="w-4 h-4" />
+                                  复制名称
                                 </Button>
-                              </ConfirmDialog>
+                                <ConfirmDialog
+                                  title="移除该文件？"
+                                  description="将从文档库中移除该文件记录。此操作不可恢复。"
+                                  confirmLabel="移除"
+                                  cancelLabel="返回"
+                                  confirmVariant="destructive"
+                                  confirmDisabled={!selectedFileId}
+                                  onConfirm={() => {
+                                    if (!selectedFileId) return
+                                    const { removeFile } = useParsedFiles.getState()
+                                    removeFile(selectedFileId)
+                                    setSelectedFileId(null)
+                                    toast.success('文件已移除')
+                                  }}
+                                >
+                                  <Button
+                                    variant="outline"
+                                    className="gap-2 bg-card hover:bg-red-500/10 dark:bg-red-500/20 text-foreground/80 hover:text-red-600 dark:text-red-300 border-border hover:border-red-500/30"
+                                    disabled={!selectedFileId}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                    移除文件
+                                  </Button>
+                                </ConfirmDialog>
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          previewFormat === 'rendered' ? (
+                          )
+                        }
+
+                        if (previewFormat === 'rendered') {
+                          return (
                             <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-sky-600 dark:prose-a:text-sky-300">
                               <MarkdownRenderer markdown={displayContent || ''} />
                             </div>
-                          ) : (
-                            <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
-                              {displayContent || ''}
-                            </pre>
                           )
+                        }
+
+                        return (
+                          <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
+                            {displayContent || ''}
+                          </pre>
                         )
-                      )}
+                      })()}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* 右侧：治理工具面板 (整合了 Tabs) */}
+              {/* 鍙充晶锛氭不鐞嗗伐鍏烽潰鏉?(鏁村悎浜?Tabs) */}
                 <div
                   ref={panelRef}
                   className={cn(
@@ -1376,12 +1345,12 @@ export function DataGovernancePanel() {
                 )}
                   style={{ width: isPanelCollapsed ? 0 : panelWidth }}
                 >
-                {/* 工具面板头部：治理阶段选择 */}
+                {/* 宸ュ叿闈㈡澘澶撮儴锛氭不鐞嗛樁娈甸€夋嫨 */}
                 <div className="flex-shrink-0 p-4 border-b border-border bg-card">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-sky-600 dark:text-sky-300" />
-                      治理工具箱
+                      娌荤悊宸ュ叿绠?
                     </h2>
                     <Button
                       variant="ghost"
@@ -1393,7 +1362,7 @@ export function DataGovernancePanel() {
                     </Button>
                   </div>
 
-                  {/* 新的 Tab 选择器 */}
+                  {/* 鏂扮殑 Tab 閫夋嫨鍣?*/}
                   <div className="grid grid-cols-4 gap-1 p-1 bg-muted rounded-lg border border-border">
                     {GOVERNANCE_TABS.map((tab) => {
                       const Icon = tab.icon
@@ -1412,7 +1381,7 @@ export function DataGovernancePanel() {
                         >
                           <Icon className={cn("w-4 h-4 mb-1", isActive ? "text-sky-600 dark:text-sky-300" : "")} />
                           <span className="text-[10px] font-medium scale-90">{tab.label}</span>
-                          {/* 状态点 */}
+                          {/* 鐘舵€佺偣 */}
                           {tab.id === 'clean' && governanceState.isModified && (
                             <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-purple-500/10 dark:bg-purple-500/20 rounded-full ring-1 ring-white shadow-sm" />
                           )}
@@ -1421,14 +1390,14 @@ export function DataGovernancePanel() {
                     })}
                   </div>
 
-                  {/* 当前工具描述 */}
+                  {/* 褰撳墠宸ュ叿鎻忚堪 */}
                   <div className="mt-3 text-xs text-muted-foreground bg-sky-500/10 dark:bg-sky-500/20 p-2 rounded border border-sky-500/30 flex items-start gap-2">
                     <Info className="w-3.5 h-3.5 text-sky-500 mt-0.5 flex-shrink-0" />
                     {GOVERNANCE_TABS.find(t => t.id === activeTab)?.desc}
                   </div>
                 </div>
 
-                {/* 工具内容区 */}
+                {/* 宸ュ叿鍐呭鍖?*/}
                 <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-muted/30">
                   {activeTab === 'quality' && (
                     <QualityChecker
@@ -1462,18 +1431,20 @@ export function DataGovernancePanel() {
                   )}
                 </div>
 
-                {/* 拖拽手柄 */}
-                <div
+                {/* 鎷栨嫿鎵嬫焺 */}
+                <button
+                  type="button"
                   className={cn(
-                    "absolute left-0 top-0 w-1 h-full cursor-col-resize z-20 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
+                    "absolute left-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
                     isPanelResizing && "bg-primary opacity-100"
                   )}
+                  aria-label="调整右侧面板宽度"
                   onMouseDown={startPanelResizing}
                 />
               </div>
             </>
           ) : (
-            // 空状态占位
+            // 绌虹姸鎬佸崰浣?
             <div className="flex-1 flex flex-col items-center justify-center bg-muted">
               <div className="w-24 h-24 bg-card rounded-full border border-border flex items-center justify-center mb-6 shadow-sm">
                 <FileSearch className="w-10 h-10 text-muted-foreground" />
@@ -1520,3 +1491,4 @@ export function DataGovernancePanel() {
     />
   )
 }
+

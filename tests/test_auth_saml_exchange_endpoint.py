@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
@@ -40,7 +40,7 @@ def test_saml_exchange_endpoint_returns_auth_session(monkeypatch) -> None:
                 email="alice@example.com",
                 username="alice",
                 is_active=True,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
                 last_login_at=None,
             ),
             token=TokenResponse(access_token="jwt-token", expires_in=3600),

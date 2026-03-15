@@ -223,6 +223,12 @@ const DEFAULT_PADDLE_VL: PaddleVLConfig = {
   timeout_sec: 600,
 }
 
+function trimmedPrimitiveString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value).trim()
+  return ''
+}
+
 export default function SettingsPage() {
   const [providers, setProviders] = useState<ModelProvider[]>(MODEL_PROVIDERS)
   const [selectedProvider, setSelectedProvider] = useState<ModelProvider | null>(null)
@@ -243,7 +249,6 @@ export default function SettingsPage() {
 
   // 编辑状态
   const [editedSettings, setEditedSettings] = useState<Partial<SystemSettings>>({})
-  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
 
   // LTR 模型注册表（best-effort；依赖 settings 权限）
   const [ltrModels, setLtrModels] = useState<LTRModelInfo[]>([])
@@ -327,19 +332,31 @@ export default function SettingsPage() {
       v /= 1024
       u += 1
     }
-    const precision = v >= 100 ? 0 : v >= 10 ? 1 : 2
+    const precision = (() => {
+    if (v >= 100) {
+        return 0;
+    }
+    else {
+        if (v >= 10) {
+            return 1;
+        }
+        else {
+            return 2;
+        }
+    }
+})()
     return `${v.toFixed(precision)} ${units[u]}`
   }
 
   const formatTime = (value: unknown): string => {
-    const raw = String(value || '').trim()
+    const raw = trimmedPrimitiveString(value)
     if (!raw) return '-'
     // Best-effort render: keep stable, avoid locale/timezone surprises.
-    return raw.replace('T', ' ').replace('Z', '').slice(0, 19)
+    return raw.replaceAll('T', ' ').replaceAll('Z', '').slice(0, 19)
   }
 
   const shortId = (value: unknown, keep: number = 8): string => {
-    const s = String(value || '').trim()
+    const s = trimmedPrimitiveString(value)
     if (!s) return '-'
     const k = Math.max(4, Math.min(32, keep))
     return s.length <= k ? s : `${s.slice(0, k)}…`
@@ -445,55 +462,55 @@ export default function SettingsPage() {
   }
 
   const updateObservability = (patch: Partial<ObservabilityConfig>) => {
-    const current = (editedSettings.observability || settings?.observability || DEFAULT_OBSERVABILITY) as ObservabilityConfig
+    const current = (editedSettings.observability || settings?.observability || DEFAULT_OBSERVABILITY)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, observability: next }))
   }
 
   const updateSafety = (patch: Partial<SafetyConfig>) => {
-    const current = (editedSettings.safety || settings?.safety || DEFAULT_SAFETY) as SafetyConfig
+    const current = (editedSettings.safety || settings?.safety || DEFAULT_SAFETY)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, safety: next }))
   }
 
   const updateLangGraph = (patch: Partial<LangGraphConfig>) => {
-    const current = (editedSettings.langgraph || settings?.langgraph || DEFAULT_LANGGRAPH) as LangGraphConfig
+    const current = (editedSettings.langgraph || settings?.langgraph || DEFAULT_LANGGRAPH)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, langgraph: next }))
   }
 
   const updateChat = (patch: Partial<ChatConfig>) => {
-    const current = (editedSettings.chat || settings?.chat || DEFAULT_CHAT) as ChatConfig
+    const current = (editedSettings.chat || settings?.chat || DEFAULT_CHAT)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, chat: next }))
   }
 
   const updateCache = (patch: Partial<CacheConfig>) => {
-    const current = (editedSettings.cache || settings?.cache || DEFAULT_CACHE) as CacheConfig
+    const current = (editedSettings.cache || settings?.cache || DEFAULT_CACHE)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, cache: next }))
   }
 
   const updateMagicPDF = (patch: Partial<MagicPDFConfig>) => {
-    const current = (editedSettings.magicpdf || settings?.magicpdf || DEFAULT_MAGICPDF) as MagicPDFConfig
+    const current = (editedSettings.magicpdf || settings?.magicpdf || DEFAULT_MAGICPDF)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, magicpdf: next }))
   }
 
   const updateEtl4Llm = (patch: Partial<Etl4LlmConfig>) => {
-    const current = (editedSettings.etl4llm || settings?.etl4llm || DEFAULT_ETL4LLM) as Etl4LlmConfig
+    const current = (editedSettings.etl4llm || settings?.etl4llm || DEFAULT_ETL4LLM)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, etl4llm: next }))
   }
 
   const updateMarker = (patch: Partial<MarkerConfig>) => {
-    const current = (editedSettings.marker || settings?.marker || DEFAULT_MARKER) as MarkerConfig
+    const current = (editedSettings.marker || settings?.marker || DEFAULT_MARKER)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, marker: next }))
   }
 
   const updatePaddleVL = (patch: Partial<PaddleVLConfig>) => {
-    const current = (editedSettings.paddle_vl || settings?.paddle_vl || DEFAULT_PADDLE_VL) as PaddleVLConfig
+    const current = (editedSettings.paddle_vl || settings?.paddle_vl || DEFAULT_PADDLE_VL)
     const next = { ...current, ...patch }
     setEditedSettings((prev) => ({ ...prev, paddle_vl: next }))
   }
@@ -527,8 +544,8 @@ export default function SettingsPage() {
       e.returnValue = ''
       return ''
     }
-    window.addEventListener('beforeunload', handler)
-    return () => window.removeEventListener('beforeunload', handler)
+    globalThis.window.addEventListener('beforeunload', handler)
+    return () => globalThis.window.removeEventListener('beforeunload', handler)
   }, [hasChanges])
 
   const handleConfigure = (provider: ModelProvider) => {
@@ -617,10 +634,24 @@ export default function SettingsPage() {
     }
 
     const key =
-      color === 'green' ? 'success' :
-      color === 'orange' ? 'warning' :
-      color === 'cyan' ? 'primary' :
-      'info'
+      (() => {
+    if (color === 'green') {
+        return 'success';
+    }
+    else {
+        if (color === 'orange') {
+            return 'warning';
+        }
+        else {
+            if (color === 'cyan') {
+                return 'primary';
+            }
+            else {
+                return 'info';
+            }
+        }
+    }
+})()
 
     return styles[key] || styles.info
   }
@@ -823,7 +854,7 @@ export default function SettingsPage() {
                 <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2 lg:col-span-2">
-                      <label className="text-sm font-medium text-foreground/80">API URL</label>
+                      <div className="text-sm font-medium text-foreground/80">API URL</div>
                       <Input
                         value={editedSettings.etl4llm?.api_url ?? settings?.etl4llm?.api_url ?? DEFAULT_ETL4LLM.api_url}
                         onChange={(e) => updateEtl4Llm({ api_url: e.target.value })}
@@ -835,7 +866,7 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground/80">模式</label>
+                      <div className="text-sm font-medium text-foreground/80">模式</div>
                       <select
                         value={editedSettings.etl4llm?.mode ?? settings?.etl4llm?.mode ?? DEFAULT_ETL4LLM.mode}
                         onChange={(e) => updateEtl4Llm({ mode: e.target.value })}
@@ -847,12 +878,12 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground/80">超时（秒）</label>
+                      <div className="text-sm font-medium text-foreground/80">超时（秒）</div>
                       <Input
                         type="number"
                         min={10}
                         value={editedSettings.etl4llm?.timeout_sec ?? settings?.etl4llm?.timeout_sec ?? DEFAULT_ETL4LLM.timeout_sec}
-                        onChange={(e) => updateEtl4Llm({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_ETL4LLM.timeout_sec })}
+                        onChange={(e) => updateEtl4Llm({ timeout_sec: Number.parseInt(e.target.value || '0', 10) || DEFAULT_ETL4LLM.timeout_sec })}
                       />
                     </div>
                   </div>
@@ -945,7 +976,7 @@ export default function SettingsPage() {
                 <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2 lg:col-span-2">
-                      <label className="text-sm font-medium text-foreground/80">API URL</label>
+                      <div className="text-sm font-medium text-foreground/80">API URL</div>
                       <Input
                         value={editedSettings.marker?.api_url ?? settings?.marker?.api_url ?? DEFAULT_MARKER.api_url}
                         onChange={(e) => updateMarker({ api_url: e.target.value })}
@@ -957,12 +988,12 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground/80">超时（秒）</label>
+                      <div className="text-sm font-medium text-foreground/80">超时（秒）</div>
                       <Input
                         type="number"
                         min={30}
                         value={editedSettings.marker?.timeout_sec ?? settings?.marker?.timeout_sec ?? DEFAULT_MARKER.timeout_sec}
-                        onChange={(e) => updateMarker({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_MARKER.timeout_sec })}
+                        onChange={(e) => updateMarker({ timeout_sec: Number.parseInt(e.target.value || '0', 10) || DEFAULT_MARKER.timeout_sec })}
                       />
                       <div className="text-xs text-muted-foreground">
                         大文件/复杂 PDF 建议调大
@@ -982,7 +1013,7 @@ export default function SettingsPage() {
                 <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2 lg:col-span-2">
-                      <label className="text-sm font-medium text-foreground/80">API URL</label>
+                      <div className="text-sm font-medium text-foreground/80">API URL</div>
                       <Input
                         value={editedSettings.paddle_vl?.api_url ?? settings?.paddle_vl?.api_url ?? DEFAULT_PADDLE_VL.api_url}
                         onChange={(e) => updatePaddleVL({ api_url: e.target.value })}
@@ -994,12 +1025,12 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground/80">超时（秒）</label>
+                      <div className="text-sm font-medium text-foreground/80">超时（秒）</div>
                       <Input
                         type="number"
                         min={30}
                         value={editedSettings.paddle_vl?.timeout_sec ?? settings?.paddle_vl?.timeout_sec ?? DEFAULT_PADDLE_VL.timeout_sec}
-                        onChange={(e) => updatePaddleVL({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_PADDLE_VL.timeout_sec })}
+                        onChange={(e) => updatePaddleVL({ timeout_sec: Number.parseInt(e.target.value || '0', 10) || DEFAULT_PADDLE_VL.timeout_sec })}
                       />
                       <div className="text-xs text-muted-foreground">
                         扫描件/OCR 场景建议调大
@@ -1019,7 +1050,7 @@ export default function SettingsPage() {
                 <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground/80">解析方法</label>
+                      <div className="text-sm font-medium text-foreground/80">解析方法</div>
                       <select
                         value={editedSettings.magicpdf?.method ?? settings?.magicpdf?.method ?? DEFAULT_MAGICPDF.method}
                         onChange={(e) => updateMagicPDF({ method: e.target.value })}
@@ -1032,7 +1063,7 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground/80">语言（可选）</label>
+                      <div className="text-sm font-medium text-foreground/80">语言（可选）</div>
                       <Input
                         value={editedSettings.magicpdf?.lang ?? settings?.magicpdf?.lang ?? DEFAULT_MAGICPDF.lang}
                         onChange={(e) => updateMagicPDF({ lang: e.target.value })}
@@ -1041,12 +1072,12 @@ export default function SettingsPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-foreground/80">超时（秒）</label>
+                      <div className="text-sm font-medium text-foreground/80">超时（秒）</div>
                       <Input
                         type="number"
                         min={30}
                         value={editedSettings.magicpdf?.timeout_sec ?? settings?.magicpdf?.timeout_sec ?? DEFAULT_MAGICPDF.timeout_sec}
-                        onChange={(e) => updateMagicPDF({ timeout_sec: parseInt(e.target.value || '0', 10) || DEFAULT_MAGICPDF.timeout_sec })}
+                        onChange={(e) => updateMagicPDF({ timeout_sec: Number.parseInt(e.target.value || '0', 10) || DEFAULT_MAGICPDF.timeout_sec })}
                       />
                     </div>
                   </div>
@@ -1260,7 +1291,7 @@ export default function SettingsPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground/80">模型文件（JSON）</label>
+                        <div className="text-sm font-medium text-foreground/80">模型文件（JSON）</div>
                         <Input
                           key={`ltr-model-${ltrUploadResetKey}`}
                           type="file"
@@ -1269,7 +1300,7 @@ export default function SettingsPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground/80">Manifest（JSON）</label>
+                        <div className="text-sm font-medium text-foreground/80">Manifest（JSON）</div>
                         <Input
                           key={`ltr-manifest-${ltrUploadResetKey}`}
                           type="file"
@@ -1451,7 +1482,7 @@ export default function SettingsPage() {
 	                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 	                    <div>
 	                      <div className="flex justify-between items-center mb-2">
-	                        <label className="text-sm font-medium text-foreground/80">Top K</label>
+	                        <div className="text-sm font-medium text-foreground/80">Top K</div>
 	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
 	                          {ragMerged.retrieval_top_k ?? 5}
 	                        </span>
@@ -1461,7 +1492,7 @@ export default function SettingsPage() {
 	                        min="1"
 	                        max="20"
 	                        value={ragMerged.retrieval_top_k ?? 5}
-	                        onChange={(e) => updateRag({ retrieval_top_k: parseInt(e.target.value, 10) })}
+	                        onChange={(e) => updateRag({ retrieval_top_k: Number.parseInt(e.target.value, 10) })}
 	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
 	                      />
 	                      <p className="text-xs text-muted-foreground mt-2">
@@ -1471,7 +1502,7 @@ export default function SettingsPage() {
 
 	                    <div>
 	                      <div className="flex justify-between items-center mb-2">
-	                        <label className="text-sm font-medium text-foreground/80">相似度阈值</label>
+	                        <div className="text-sm font-medium text-foreground/80">相似度阈值</div>
 	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
 	                          {(ragMerged.similarity_threshold ?? 0.7).toFixed(1)}
 	                        </span>
@@ -1544,7 +1575,7 @@ export default function SettingsPage() {
 
 	                    <div>
 	                      <div className="flex justify-between items-center mb-2">
-	                        <label className="text-sm font-medium text-foreground/80">分块大小</label>
+	                        <div className="text-sm font-medium text-foreground/80">分块大小</div>
 	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
 	                          {ragMerged.chunk_size ?? 1000}
 	                        </span>
@@ -1555,7 +1586,7 @@ export default function SettingsPage() {
 	                        max="4000"
 	                        step="100"
 	                        value={ragMerged.chunk_size ?? 1000}
-	                        onChange={(e) => updateRag({ chunk_size: parseInt(e.target.value, 10) })}
+	                        onChange={(e) => updateRag({ chunk_size: Number.parseInt(e.target.value, 10) })}
 	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
 	                      />
 	                      <p className="text-xs text-muted-foreground mt-2">
@@ -1565,7 +1596,7 @@ export default function SettingsPage() {
 
 	                    <div>
 	                      <div className="flex justify-between items-center mb-2">
-	                        <label className="text-sm font-medium text-foreground/80">分块重叠</label>
+	                        <div className="text-sm font-medium text-foreground/80">分块重叠</div>
 	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
 	                          {ragMerged.chunk_overlap ?? 200}
 	                        </span>
@@ -1576,7 +1607,7 @@ export default function SettingsPage() {
 	                        max="1000"
 	                        step="50"
 	                        value={ragMerged.chunk_overlap ?? 200}
-	                        onChange={(e) => updateRag({ chunk_overlap: parseInt(e.target.value, 10) })}
+	                        onChange={(e) => updateRag({ chunk_overlap: Number.parseInt(e.target.value, 10) })}
 	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
 	                      />
 	                      <p className="text-xs text-muted-foreground mt-2">
@@ -1586,7 +1617,7 @@ export default function SettingsPage() {
 
 	                    <div>
 	                      <div className="flex justify-between items-center mb-2">
-	                        <label className="text-sm font-medium text-foreground/80">最小分块长度</label>
+	                        <div className="text-sm font-medium text-foreground/80">最小分块长度</div>
 	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
 	                          {ragMerged.chunk_min_chars ?? 30}
 	                        </span>
@@ -1596,7 +1627,7 @@ export default function SettingsPage() {
 	                        min={0}
 	                        max={5000}
 	                        value={ragMerged.chunk_min_chars ?? 30}
-	                        onChange={(e) => updateRag({ chunk_min_chars: Math.max(0, parseInt(e.target.value || "0", 10)) })}
+	                        onChange={(e) => updateRag({ chunk_min_chars: Math.max(0, Number.parseInt(e.target.value || "0", 10)) })}
 	                      />
 	                      <p className="text-xs text-muted-foreground mt-2">
 	                        入库时丢弃过短 chunk（0 表示关闭；图片/表格 chunk 会尽量保留）
@@ -1675,7 +1706,7 @@ export default function SettingsPage() {
 	                        type="number"
 	                        min={0}
 	                        value={urlIngestMerged.max_bytes ?? 50_000_000}
-	                        onChange={(e) => updateUrlIngest({ max_bytes: Math.max(0, parseInt(e.target.value || '0', 10)) })}
+	                        onChange={(e) => updateUrlIngest({ max_bytes: Math.max(0, Number.parseInt(e.target.value || '0', 10)) })}
 	                      />
 	                    </div>
 	                    <div>
@@ -1943,7 +1974,7 @@ export default function SettingsPage() {
                             min={0}
                             max={5000}
                             value={((editedSettings.observability?.tool_call_log_max_preview_chars ?? settings?.observability?.tool_call_log_max_preview_chars) ?? DEFAULT_OBSERVABILITY.tool_call_log_max_preview_chars)}
-                            onChange={(e) => updateObservability({ tool_call_log_max_preview_chars: parseInt(e.target.value || '0', 10) })}
+                            onChange={(e) => updateObservability({ tool_call_log_max_preview_chars: Number.parseInt(e.target.value || '0', 10) })}
                           />
                         </div>
                       </div>
@@ -1997,7 +2028,7 @@ export default function SettingsPage() {
                             min={0}
                             max={5000}
                             value={((editedSettings.observability?.agent_log_max_preview_chars ?? settings?.observability?.agent_log_max_preview_chars) ?? DEFAULT_OBSERVABILITY.agent_log_max_preview_chars)}
-                            onChange={(e) => updateObservability({ agent_log_max_preview_chars: parseInt(e.target.value || '0', 10) })}
+                            onChange={(e) => updateObservability({ agent_log_max_preview_chars: Number.parseInt(e.target.value || '0', 10) })}
                           />
                         </div>
                       </div>
@@ -2170,7 +2201,7 @@ export default function SettingsPage() {
                             min={0}
                             max={86400}
                             value={editedSettings.cache?.chat_response_cache_ttl_sec ?? settings?.cache?.chat_response_cache_ttl_sec ?? DEFAULT_CACHE.chat_response_cache_ttl_sec}
-                            onChange={(e) => updateCache({ chat_response_cache_ttl_sec: parseInt(e.target.value || '0', 10) })}
+                            onChange={(e) => updateCache({ chat_response_cache_ttl_sec: Number.parseInt(e.target.value || '0', 10) })}
                           />
                         </div>
                         <div>
@@ -2180,7 +2211,7 @@ export default function SettingsPage() {
                             min={0}
                             max={5000000}
                             value={editedSettings.cache?.chat_response_cache_max_value_bytes ?? settings?.cache?.chat_response_cache_max_value_bytes ?? DEFAULT_CACHE.chat_response_cache_max_value_bytes}
-                            onChange={(e) => updateCache({ chat_response_cache_max_value_bytes: parseInt(e.target.value || '0', 10) })}
+                            onChange={(e) => updateCache({ chat_response_cache_max_value_bytes: Number.parseInt(e.target.value || '0', 10) })}
                           />
                         </div>
                         <div className="flex items-center gap-2 pt-5">
@@ -2241,7 +2272,7 @@ export default function SettingsPage() {
                             min={0}
                             max={2048}
                             value={editedSettings.safety?.pii_stream_holdback_chars ?? settings?.safety?.pii_stream_holdback_chars ?? DEFAULT_SAFETY.pii_stream_holdback_chars}
-                            onChange={(e) => updateSafety({ pii_stream_holdback_chars: parseInt(e.target.value || '0', 10) })}
+                            onChange={(e) => updateSafety({ pii_stream_holdback_chars: Number.parseInt(e.target.value || '0', 10) })}
                           />
                         </div>
                       </div>
@@ -2295,7 +2326,7 @@ export default function SettingsPage() {
 }
 
 // 状态卡片组件
-function StatusCard({ label, connected, message }: { label: string; connected: boolean; message: string }) {
+function StatusCard({ label, connected, message }: Readonly<{ label: string; connected: boolean; message: string }>) {
   return (
     <div className={cn(
       "bg-card rounded-xl p-4 border transition-colors",

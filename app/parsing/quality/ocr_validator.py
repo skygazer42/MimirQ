@@ -7,7 +7,7 @@ the first few pages.
 
 import tempfile
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import fitz  # PyMuPDF
 from PIL import Image
@@ -21,7 +21,7 @@ class RapidOCRService:
     """RapidOCR service (lazy init)."""
 
     def __init__(self, det_box_thresh: float = 0.3):
-        self._ocr: Optional[Any] = None
+        self._ocr: Any | None = None
         self.det_box_thresh = det_box_thresh
 
     def _load_model(self):
@@ -48,7 +48,7 @@ class RapidOCRService:
         max_pages: int = 3,
         zoom_x: float = 2.0,
         zoom_y: float = 2.0
-    ) -> Tuple[str, int]:
+    ) -> tuple[str, int]:
         """
         Run OCR on the first few PDF pages and return text + total chars.
 

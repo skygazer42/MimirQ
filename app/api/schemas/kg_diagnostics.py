@@ -11,7 +11,7 @@ to support metric diffs over time.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -24,14 +24,14 @@ HardcaseKind = Literal["knowledge_pressure", "reasoning_pressure"]
 
 class KGSearchDiagnosticsRequest(BaseModel):
     dataset_id: UUID
-    case_ids: List[UUID] = Field(default_factory=list, description="Optional explicit case id list (else select by dataset)")
+    case_ids: list[UUID] = Field(default_factory=list, description="Optional explicit case id list (else select by dataset)")
     max_cases: int = Field(default=50, ge=1, le=200, description="Max cases to evaluate (default: 50)")
 
     k: int = Field(default=10, ge=1, le=50, description="Hit@K and evaluation cutoff (default: 10)")
 
     auto_extract_kg: bool = Field(default=True, description="If true, ensure evidence documents have KG extracted")
-    extract_skills: Optional[bool] = Field(default=None, description="Override KG skill extraction toggle")
-    extract_relations: Optional[bool] = Field(default=None, description="Override KG relation extraction toggle")
+    extract_skills: bool | None = Field(default=None, description="Override KG skill extraction toggle")
+    extract_relations: bool | None = Field(default=None, description="Override KG relation extraction toggle")
 
     hardcase_mode: HardcaseMode = Field(default="llm", description="Hardcase generation strategy")
     hardcases_per_failed_case: int = Field(default=4, ge=0, le=20)
@@ -48,8 +48,8 @@ class KGSearchEventOut(BaseModel):
     title: str = ""
     summary: str = ""
     content: str = ""
-    document_id: Optional[str] = None
-    chunk_id: Optional[str] = None
+    document_id: str | None = None
+    chunk_id: str | None = None
     score: float = 0.0
 
 
@@ -71,36 +71,36 @@ class KGSearchRunMetrics(BaseModel):
 
 class KGSearchRunResult(BaseModel):
     query: str
-    events: List[KGSearchEventOut] = Field(default_factory=list)
-    entities: List[KGSearchEntityOut] = Field(default_factory=list)
-    clues: List[Dict[str, Any]] = Field(default_factory=list)
-    stats: Dict[str, Any] = Field(default_factory=dict)
+    events: list[KGSearchEventOut] = Field(default_factory=list)
+    entities: list[KGSearchEntityOut] = Field(default_factory=list)
+    clues: list[dict[str, Any]] = Field(default_factory=list)
+    stats: dict[str, Any] = Field(default_factory=dict)
     metrics: KGSearchRunMetrics = Field(default_factory=KGSearchRunMetrics)
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class KGHardcaseOut(BaseModel):
     kind: HardcaseKind
     question: str
-    rationale: Optional[str] = None
-    run: Optional[KGSearchRunResult] = None
+    rationale: str | None = None
+    run: KGSearchRunResult | None = None
 
 
 class KGEvalAttribution(BaseModel):
     primary_cause: str = "other"
-    signals: Dict[str, Any] = Field(default_factory=dict)
+    signals: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGSearchDiagnosticsItem(BaseModel):
     case_id: UUID
     question: str
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
-    evidence_chunk_ids: List[str] = Field(default_factory=list)
-    ground_truth_event_ids: List[str] = Field(default_factory=list)
+    evidence_chunk_ids: list[str] = Field(default_factory=list)
+    ground_truth_event_ids: list[str] = Field(default_factory=list)
 
     baseline: KGSearchRunResult
-    hardcases: List[KGHardcaseOut] = Field(default_factory=list)
+    hardcases: list[KGHardcaseOut] = Field(default_factory=list)
     attribution: KGEvalAttribution = Field(default_factory=KGEvalAttribution)
 
 
@@ -114,36 +114,36 @@ class KGSearchDiagnosticsSummary(BaseModel):
     baseline_mrr: float = 0.0
     baseline_recall: float = 0.0
 
-    hardcase_hit_rate: Optional[float] = None
-    hardcase_mrr: Optional[float] = None
-    hardcase_recall: Optional[float] = None
+    hardcase_hit_rate: float | None = None
+    hardcase_mrr: float | None = None
+    hardcase_recall: float | None = None
 
-    failure_breakdown: Dict[str, int] = Field(default_factory=dict)
-    preflight: Dict[str, Any] = Field(default_factory=dict)
+    failure_breakdown: dict[str, int] = Field(default_factory=dict)
+    preflight: dict[str, Any] = Field(default_factory=dict)
 
 
 class KGSearchDiagnosticsResponse(BaseModel):
-    run_id: Optional[UUID] = Field(default=None, description="Run ID when persist_run=true (else null)")
+    run_id: UUID | None = Field(default=None, description="Run ID when persist_run=true (else null)")
     summary: KGSearchDiagnosticsSummary
-    items: List[KGSearchDiagnosticsItem] = Field(default_factory=list)
+    items: list[KGSearchDiagnosticsItem] = Field(default_factory=list)
 
 
 class KGSearchDiagnosticsRunOut(OrmModel):
     id: UUID
     tenant_id: UUID
-    account_id: Optional[str] = None
+    account_id: str | None = None
     dataset_id: UUID
     status: str
-    params: Dict[str, Any] = Field(default_factory=dict)
-    summary: Dict[str, Any] = Field(default_factory=dict)
+    params: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
 class KGSearchDiagnosticsRunDetail(BaseModel):
     run: KGSearchDiagnosticsRunOut
-    items: List[Dict[str, Any]] = Field(default_factory=list)
+    items: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class KGSearchDiagnosticsRunList(BaseModel):
     total: int
-    items: List[KGSearchDiagnosticsRunOut] = Field(default_factory=list)
+    items: list[KGSearchDiagnosticsRunOut] = Field(default_factory=list)

@@ -3,7 +3,6 @@ MarkItDown PDF/Document parser adapter.
 """
 
 from pathlib import Path
-from typing import List, Optional
 
 from langchain_core.documents import Document
 
@@ -42,7 +41,7 @@ class MarkItDownParser:
 
         self._converter = MarkItDown(**converter_kwargs)
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         try:
             result = self._converter.convert(str(file_path))
         except Exception as exc:  # pragma: no cover - surfaced to caller
@@ -55,7 +54,7 @@ class MarkItDownParser:
             "parser_backend": "markitdown",
         }
 
-        title: Optional[str] = getattr(result, "title", None)
+        title: str | None = getattr(result, "title", None)
         if title:
             metadata["title"] = title
 

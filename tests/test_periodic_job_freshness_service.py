@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 def test_periodic_job_freshness_service_marks_missing_as_stale(monkeypatch):  # noqa: ANN001
     import app.services.periodic_job_freshness_service as svc
 
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 5, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 5, 0, 0, 0, tzinfo=UTC)
 
     def _fake_latest_event(*_args, **_kwargs):  # noqa: ANN202
         return None
@@ -29,7 +29,7 @@ def test_periodic_job_freshness_service_marks_recent_as_not_stale(monkeypatch): 
     import app.services.periodic_job_freshness_service as svc
 
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 5, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 5, 0, 0, 0, tzinfo=UTC)
     recent = now - timedelta(hours=2)
 
     def _fake_latest_event(*_args, **_kwargs):  # noqa: ANN202

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -31,8 +31,8 @@ _FRONTMATTER_KEY_RE = re.compile(r"(?m)^\s*[A-Za-z0-9_.-]{1,80}\s*:\s*.+$")
 _TITLE_RE = re.compile(r"(?m)^\s*title\s*:\s*(?P<val>.+?)\s*$")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -44,7 +44,7 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _find_frontmatter(text: str) -> Optional[Tuple[int, int]]:
+def _find_frontmatter(text: str) -> tuple[int, int] | None:
     if not text:
         return None
     lines = _iter_lines(text)
@@ -62,7 +62,7 @@ def _find_frontmatter(text: str) -> Optional[Tuple[int, int]]:
     return None
 
 
-def _extract_title(frontmatter: str) -> Optional[str]:
+def _extract_title(frontmatter: str) -> str | None:
     m = _TITLE_RE.search(frontmatter or "")
     if not m:
         return None
@@ -107,8 +107,8 @@ class MarkdownFrontmatterChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

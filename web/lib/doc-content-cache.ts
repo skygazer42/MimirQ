@@ -59,7 +59,7 @@ function withStore<T>(
 }
 
 export async function saveDocContentToCache(record: Omit<DocContentCacheRecord, 'updatedAt'> & { updatedAt?: number }) {
-  if (typeof window === 'undefined') return
+  if (typeof globalThis.window === 'undefined') return
   if (!record?.id) return
   await withStore(CONTENT_STORE, 'readwrite', (store) =>
     store.put({
@@ -72,20 +72,20 @@ export async function saveDocContentToCache(record: Omit<DocContentCacheRecord, 
 }
 
 export async function getDocContentFromCache(id: string): Promise<DocContentCacheRecord | null> {
-  if (typeof window === 'undefined') return null
+  if (typeof globalThis.window === 'undefined') return null
   if (!id) return null
   const res = await withStore(CONTENT_STORE, 'readonly', (store) => store.get(id))
   return res ? (res as DocContentCacheRecord) : null
 }
 
 export async function deleteDocContentFromCache(id: string) {
-  if (typeof window === 'undefined') return
+  if (typeof globalThis.window === 'undefined') return
   if (!id) return
   await withStore(CONTENT_STORE, 'readwrite', (store) => store.delete(id))
 }
 
 export async function saveDocSourceToCache(record: { id: string; file: File; updatedAt?: number }) {
-  if (typeof window === 'undefined') return
+  if (typeof globalThis.window === 'undefined') return
   if (!record?.id) return
   if (!record.file) return
 
@@ -103,14 +103,14 @@ export async function saveDocSourceToCache(record: { id: string; file: File; upd
 }
 
 export async function getDocSourceFromCache(id: string): Promise<DocSourceCacheRecord | null> {
-  if (typeof window === 'undefined') return null
+  if (typeof globalThis.window === 'undefined') return null
   if (!id) return null
   const res = await withStore(SOURCE_STORE, 'readonly', (store) => store.get(id))
   return res ? (res as DocSourceCacheRecord) : null
 }
 
 export async function deleteDocSourceFromCache(id: string) {
-  if (typeof window === 'undefined') return
+  if (typeof globalThis.window === 'undefined') return
   if (!id) return
   await withStore(SOURCE_STORE, 'readwrite', (store) => store.delete(id))
 }

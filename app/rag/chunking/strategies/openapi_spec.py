@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -40,8 +40,8 @@ _PATH_KEY_RE = re.compile(r"^\s*/[^:]{1,200}:\s*(?:#.*)?$")
 _METHOD_RE = re.compile(r"^\s*(get|post|put|delete|patch|options|head|trace)\s*:\s*(?:#.*)?$", re.IGNORECASE)
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -53,7 +53,7 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _find_paths_anchor(text: str) -> Optional[tuple[int, int]]:
+def _find_paths_anchor(text: str) -> tuple[int, int] | None:
     m = _PATHS_RE.search(text or "")
     if not m:
         return None
@@ -61,7 +61,7 @@ def _find_paths_anchor(text: str) -> Optional[tuple[int, int]]:
     return m.start(), indent
 
 
-def _extract_version(text: str) -> Optional[str]:
+def _extract_version(text: str) -> str | None:
     head = (text or "")[:8000]
     m = _OPENAPI_RE.search(head)
     if m:
@@ -72,7 +72,7 @@ def _extract_version(text: str) -> Optional[str]:
     return None
 
 
-def _build_path_blocks(text: str) -> List[_PathBlock]:
+def _build_path_blocks(text: str) -> list[_PathBlock]:
     anchor = _find_paths_anchor(text)
     if not anchor:
         return []
@@ -87,8 +87,8 @@ def _build_path_blocks(text: str) -> List[_PathBlock]:
             break
 
     # Collect path keys inside the `paths:` block.
-    path_idxs: List[int] = []
-    paths: List[str] = []
+    path_idxs: list[int] = []
+    paths: list[str] = []
     for i in range(anchor_idx + 1, len(lines)):
         plain = lines[i].plain
         if not plain.strip() or plain.lstrip().startswith("#"):
@@ -107,7 +107,7 @@ def _build_path_blocks(text: str) -> List[_PathBlock]:
     if not path_idxs:
         return []
 
-    blocks: List[_PathBlock] = []
+    blocks: list[_PathBlock] = []
     for idx, i in enumerate(path_idxs):
         start = lines[i].start
         end = lines[path_idxs[idx + 1]].start if idx + 1 < len(path_idxs) else len(text)
@@ -158,8 +158,8 @@ class OpenAPISpecChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

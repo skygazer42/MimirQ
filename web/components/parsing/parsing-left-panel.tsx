@@ -17,7 +17,7 @@ export function ParsingLeftPanel({
   onToggleCollapsed,
   children,
   className,
-}: ParsingLeftPanelProps) {
+}: Readonly<ParsingLeftPanelProps>) {
   return (
     <aside
       className={cn(

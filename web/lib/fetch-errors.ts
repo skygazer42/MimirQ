@@ -10,10 +10,10 @@ export async function buildFetchError(response: Response, fallbackMessage: strin
     const token = getAccessToken()
     if (token) {
       clearAuthSession()
-      if (typeof window !== 'undefined') {
-        const path = String(window.location?.pathname || '')
+      if (typeof globalThis.window !== 'undefined') {
+        const path = String(globalThis.window.location?.pathname || '')
         if (!path.startsWith('/auth')) {
-          window.location.href = '/auth'
+          globalThis.window.location.href = '/auth'
         }
       }
     }

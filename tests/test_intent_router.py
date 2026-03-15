@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest
 
@@ -51,7 +51,7 @@ def test_route_retrieval_preset_log_overrides_are_bounded_and_pii_safe() -> None
     assert overrides.get("enable_multi_query") is False
     assert overrides.get("enable_query_alias_expansion") is False
     assert int(overrides.get("top_k") or 0) >= 20
-    assert float(overrides.get("score_threshold", 1.0)) == 0.0
+    assert float(overrides.get("score_threshold", 1.0)) == pytest.approx(0.0)
 
     assert meta.get("enabled") is True
     assert meta.get("used") is True
@@ -222,10 +222,10 @@ def test_adaptive_router_policy_normalization_and_routing() -> None:
 def test_orchestrator_applies_adaptive_router_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch
 
-    captured_updates: List[Dict[str, Any]] = []
+    captured_updates: list[dict[str, Any]] = []
 
     class _CapturingRetriever:
-        _last_debug_metrics: Dict[str, Any] = {}
+        _last_debug_metrics: dict[str, Any] = {}
 
         def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
             captured_updates.append(dict((kwargs or {}).get("update") or {}))
@@ -303,10 +303,10 @@ def test_orchestrator_applies_intent_router_to_log_queries(monkeypatch: pytest.M
 
     import app.rag.retrieval.orchestrator as orch
 
-    captured_updates: List[Dict[str, Any]] = []
+    captured_updates: list[dict[str, Any]] = []
 
     class _CapturingRetriever:
-        _last_debug_metrics: Dict[str, Any] = {}
+        _last_debug_metrics: dict[str, Any] = {}
 
         def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
             captured_updates.append(dict((kwargs or {}).get("update") or {}))
@@ -350,7 +350,7 @@ def test_orchestrator_applies_intent_router_to_log_queries(monkeypatch: pytest.M
     assert base_update.get("enable_reranker") is False
     assert base_update.get("enable_weight_rerank") is False
     assert int(base_update.get("k") or 0) >= 20
-    assert float(base_update.get("score_threshold", 1.0)) == 0.0
+    assert float(base_update.get("score_threshold", 1.0)) == pytest.approx(0.0)
 
     qd = out.get("query_debug") if isinstance(out, dict) else None
     assert isinstance(qd, dict)
@@ -363,10 +363,10 @@ def test_orchestrator_applies_intent_router_to_log_queries(monkeypatch: pytest.M
 def test_orchestrator_applies_intent_router_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch
 
-    captured_updates: List[Dict[str, Any]] = []
+    captured_updates: list[dict[str, Any]] = []
 
     class _CapturingRetriever:
-        _last_debug_metrics: Dict[str, Any] = {}
+        _last_debug_metrics: dict[str, Any] = {}
 
         def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
             captured_updates.append(dict((kwargs or {}).get("update") or {}))
@@ -434,10 +434,10 @@ def test_orchestrator_applies_intent_router_policy(monkeypatch: pytest.MonkeyPat
 def test_orchestrator_applies_learned_intent_router_hint(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.retrieval.orchestrator as orch
 
-    captured_updates: List[Dict[str, Any]] = []
+    captured_updates: list[dict[str, Any]] = []
 
     class _CapturingRetriever:
-        _last_debug_metrics: Dict[str, Any] = {}
+        _last_debug_metrics: dict[str, Any] = {}
 
         def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
             captured_updates.append(dict((kwargs or {}).get("update") or {}))
@@ -525,10 +525,10 @@ async def test_rag_engine_applies_intent_router_to_log_queries(monkeypatch: pyte
     monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "OK", raising=False)
 
-    captured_updates: List[Dict[str, Any]] = []
+    captured_updates: list[dict[str, Any]] = []
 
     class _CapturingRetriever:
-        _last_debug_metrics: Dict[str, Any] = {}
+        _last_debug_metrics: dict[str, Any] = {}
 
         def model_copy(self, **kwargs):  # noqa: ANN001, ANN002, ANN003
             captured_updates.append(dict((kwargs or {}).get("update") or {}))
@@ -569,7 +569,7 @@ async def test_rag_engine_applies_intent_router_to_log_queries(monkeypatch: pyte
     assert base_update.get("enable_reranker") is False
     assert base_update.get("enable_weight_rerank") is False
     assert int(base_update.get("k") or 0) >= 20
-    assert float(base_update.get("score_threshold", 1.0)) == 0.0
+    assert float(base_update.get("score_threshold", 1.0)) == pytest.approx(0.0)
 
     assert isinstance(done_metrics, dict)
     assert done_metrics.get("intent_router_enabled") is True

@@ -6,8 +6,7 @@ This is used as a compact, durable memory layer that can be injected into prompt
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -24,7 +23,7 @@ def get_conversation_summary(
     *,
     tenant_id: UUID,
     conversation_id: UUID,
-) -> Optional[str]:
+) -> str | None:
     row = (
         db.query(ConversationSummary)
         .filter(
@@ -64,8 +63,8 @@ async def update_conversation_summary(
     *,
     tenant_id: UUID,
     conversation_id: UUID,
-    max_summary_tokens: Optional[int] = None,
-    lookback_messages: Optional[int] = None,
+    max_summary_tokens: int | None = None,
+    lookback_messages: int | None = None,
 ) -> str:
     """
     Recompute and persist the conversation summary from the latest messages.
@@ -130,7 +129,7 @@ async def update_conversation_summary(
 
     # Best-effort timestamps for non-Postgres backends.
     try:
-        row.updated_at = datetime.now(timezone.utc)
+        row.updated_at = datetime.now(UTC)
     except Exception:
         pass
 

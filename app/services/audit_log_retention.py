@@ -12,8 +12,8 @@ Notes:
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Sequence
 from uuid import UUID
 
 from sqlalchemy.orm import Session

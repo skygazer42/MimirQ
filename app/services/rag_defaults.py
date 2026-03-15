@@ -8,7 +8,8 @@ We treat dataset defaults as *fallbacks*:
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Tuple
+from collections.abc import Iterable
+from typing import Any
 
 from app.api.schemas.chat import ChatRAGConfig
 from app.api.schemas.dataset import DatasetRAGDefaults
@@ -19,7 +20,7 @@ def merge_rag_config_with_dataset_defaults(
     rag_config: ChatRAGConfig,
     request_fields_set: Iterable[str] | None,
     raw_dataset_defaults: Any,
-) -> Tuple[ChatRAGConfig, list[str]]:
+) -> tuple[ChatRAGConfig, list[str]]:
     """
     Merge dataset-level defaults into an existing ChatRAGConfig.
 

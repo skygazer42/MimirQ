@@ -327,10 +327,10 @@ export default function DatasetTablesPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(queryRes.rows || []).map((r, idx) => (
-                            <tr key={idx} className="border-b border-border/40">
+                          {(queryRes.rows || []).map((r) => (
+                            <tr key={JSON.stringify(r)} className="border-b border-border/40">
                               {(r || []).map((v, j) => (
-                                <td key={j} className="py-1.5 pr-3 font-mono whitespace-nowrap">
+                                <td key={String(queryRes.columns?.[j] ?? v)} className="py-1.5 pr-3 font-mono whitespace-nowrap">
                                   {renderValue(v)}
                                 </td>
                               ))}
@@ -408,10 +408,10 @@ export default function DatasetTablesPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(semFilterRes.rows || []).map((r, idx) => (
-                            <tr key={idx} className="border-b border-border/40">
+                          {(semFilterRes.rows || []).map((r) => (
+                            <tr key={JSON.stringify(r)} className="border-b border-border/40">
                               {(r || []).map((v, j) => (
-                                <td key={j} className="py-1.5 pr-3 font-mono whitespace-nowrap">
+                                <td key={String(semFilterRes.columns?.[j] ?? v)} className="py-1.5 pr-3 font-mono whitespace-nowrap">
                                   {renderValue(v)}
                                 </td>
                               ))}
@@ -430,4 +430,3 @@ export default function DatasetTablesPage() {
     </AppFrame>
   )
 }
-

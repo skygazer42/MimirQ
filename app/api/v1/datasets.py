@@ -9,8 +9,9 @@ import json
 import re
 import uuid
 import zipfile
-from datetime import datetime, timezone
-from typing import Annotated, Any, Iterator
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile
@@ -994,7 +995,7 @@ def export_dataset_config(
         version="1",
         dataset_id=ds.id,
         name=str(ds.name or ""),
-        exported_at=datetime.now(timezone.utc),
+        exported_at=datetime.now(UTC),
         config=_build_dataset_config_bundle(ds),
     )
 
@@ -1539,7 +1540,7 @@ def _append_ingestion_policy_version(
     version_id = uuid.uuid4().hex
     item: dict[str, object] = {
         "id": version_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "created_by": str(account_id or "").strip() or None,
         "source": str(source or "put"),
         "policy": policy.model_dump(),
@@ -1874,7 +1875,7 @@ def get_dataset_health(
 
     return DatasetHealthResponse(
         dataset_id=dataset_id,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         profile=profile,
         ingestion=ingestion,
     )
@@ -2450,7 +2451,7 @@ def export_dataset_bundle_zip(
         .all()
     )
 
-    exported_at = datetime.now(timezone.utc)
+    exported_at = datetime.now(UTC)
 
     # Best-effort audit log (PII-safe).
     try:

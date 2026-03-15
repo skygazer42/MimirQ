@@ -13,7 +13,8 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import aiohttp
 import httpx

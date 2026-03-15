@@ -4,6 +4,8 @@ import json
 import time
 import uuid
 
+import pytest
+
 
 def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa: ANN001
     """
@@ -202,8 +204,8 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
     assert item.retrieval.per_query[0].retriever_debug.get("requested_k") == 5
     channels = item.retrieval.per_query[0].retriever_debug.get("channels")
     assert isinstance(channels, dict)
-    assert (channels.get("timing") or {}).get("vector_ms") == 12.3
-    assert (channels.get("timing") or {}).get("colbert_ms") == 8.7
+    assert (channels.get("timing") or {}).get("vector_ms") == pytest.approx(12.3)
+    assert (channels.get("timing") or {}).get("colbert_ms") == pytest.approx(8.7)
     assert (channels.get("counts") or {}).get("colbert_candidates") == 4
     assert (channels.get("counts") or {}).get("bm25_candidates") == 8
     colbert = channels.get("colbert_ann") or {}
@@ -219,11 +221,11 @@ def test_list_rag_traces_filters_and_normalizes(monkeypatch, tmp_path):  # noqa:
 
     assert item.citations and item.citations[0].retrieval_role == "main"
     assert item.citations and item.citations[0].neighbor_of == "chunk-0"
-    assert item.citations and item.citations[0].vector_score == 0.123
-    assert item.citations and item.citations[0].bm25_score == 0.456
-    assert item.citations and item.citations[0].lexical_score == 0.789
-    assert item.citations and item.citations[0].sparse_score == 0.314
-    assert item.citations and item.citations[0].colbert_score == 0.271
+    assert item.citations and item.citations[0].vector_score == pytest.approx(0.123)
+    assert item.citations and item.citations[0].bm25_score == pytest.approx(0.456)
+    assert item.citations and item.citations[0].lexical_score == pytest.approx(0.789)
+    assert item.citations and item.citations[0].sparse_score == pytest.approx(0.314)
+    assert item.citations and item.citations[0].colbert_score == pytest.approx(0.271)
     prov = (item.citations[0] or {}).kg_path_provenance
     assert isinstance(prov, dict)
     assert prov.get("schema") == "mimirq.kg_path_provenance.v1"

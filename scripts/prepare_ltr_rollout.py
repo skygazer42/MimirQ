@@ -6,8 +6,9 @@ import importlib.util
 import json
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 from uuid import UUID
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]

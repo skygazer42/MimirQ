@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -40,8 +40,8 @@ class _Stage:
     start: int
     end: int
     index: int
-    from_image: Optional[str]
-    from_alias: Optional[str]
+    from_image: str | None
+    from_alias: str | None
 
 
 _INSTR_RE = re.compile(
@@ -51,8 +51,8 @@ _INSTR_RE = re.compile(
 _FROM_RE = re.compile(r"(?i)^\s*from\s+(?P<img>\S+)(?:\s+as\s+(?P<as>\S+))?\s*$")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -64,10 +64,10 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _iter_instructions(text: str, *, start: int, end: int) -> List[_Instr]:
+def _iter_instructions(text: str, *, start: int, end: int) -> list[_Instr]:
     lines = _iter_lines(text[start:end])
-    instr_idx: List[int] = []
-    kws: List[str] = []
+    instr_idx: list[int] = []
+    kws: list[str] = []
 
     for i, ln in enumerate(lines):
         plain = ln.plain
@@ -80,7 +80,7 @@ def _iter_instructions(text: str, *, start: int, end: int) -> List[_Instr]:
         instr_idx.append(i)
         kws.append(kw)
 
-    instrs: List[_Instr] = []
+    instrs: list[_Instr] = []
     for idx, i in enumerate(instr_idx):
         ln = lines[i]
         instr_start = start + ln.start
@@ -89,16 +89,16 @@ def _iter_instructions(text: str, *, start: int, end: int) -> List[_Instr]:
     return instrs
 
 
-def _build_stages(text: str) -> List[_Stage]:
+def _build_stages(text: str) -> list[_Stage]:
     lines = _iter_lines(text)
-    from_lines: List[int] = []
+    from_lines: list[int] = []
     for i, ln in enumerate(lines):
         if _FROM_RE.match(ln.plain):
             from_lines.append(i)
     if not from_lines:
         return [_Stage(start=0, end=len(text), index=0, from_image=None, from_alias=None)]
 
-    stages: List[_Stage] = []
+    stages: list[_Stage] = []
     for idx, i in enumerate(from_lines):
         start = lines[i].start
         end = lines[from_lines[idx + 1]].start if idx + 1 < len(from_lines) else len(text)
@@ -134,8 +134,8 @@ class DockerfileChunker(BaseChunker):
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

@@ -9,7 +9,6 @@ Groups are tenant-scoped and are intended to support enterprise directory needs:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -21,17 +20,17 @@ class TenantGroupOut(OrmTimestampModel):
     id: UUID
     tenant_id: UUID
     name: str
-    external_id: Optional[str] = None
+    external_id: str | None = None
 
 
 class TenantGroupListResponse(BaseModel):
     total: int
-    items: List[TenantGroupOut]
+    items: list[TenantGroupOut]
 
 
 class TenantGroupCreateRequest(BaseModel):
     name: str = Field(..., max_length=255)
-    external_id: Optional[str] = Field(default=None, max_length=255)
+    external_id: str | None = Field(default=None, max_length=255)
 
     @model_validator(mode="after")
     def _normalize(self) -> "TenantGroupCreateRequest":
@@ -45,8 +44,8 @@ class TenantGroupCreateRequest(BaseModel):
 
 
 class TenantGroupUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=255)
-    external_id: Optional[str] = Field(default=None, max_length=255)
+    name: str | None = Field(default=None, max_length=255)
+    external_id: str | None = Field(default=None, max_length=255)
 
     @model_validator(mode="after")
     def _normalize(self) -> "TenantGroupUpdateRequest":
@@ -66,11 +65,11 @@ class TenantGroupMemberOut(BaseModel):
 
 class TenantGroupMemberListResponse(BaseModel):
     total: int
-    items: List[TenantGroupMemberOut]
+    items: list[TenantGroupMemberOut]
 
 
 class TenantGroupMembersUpdateRequest(BaseModel):
-    member_ids: List[str] = Field(default_factory=list, max_length=200)
+    member_ids: list[str] = Field(default_factory=list, max_length=200)
 
     @model_validator(mode="after")
     def _normalize(self) -> "TenantGroupMembersUpdateRequest":

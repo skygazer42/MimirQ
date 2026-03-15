@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -41,8 +41,8 @@ _TIMECODE_RE = re.compile(
 )
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -54,12 +54,12 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _iter_cues(text: str) -> List[_Cue]:
+def _iter_cues(text: str) -> list[_Cue]:
     lines = _iter_lines(text)
     if not lines:
         return []
 
-    cue_starts: List[tuple[int, str, str]] = []
+    cue_starts: list[tuple[int, str, str]] = []
     for i, line in enumerate(lines):
         m = _TIMECODE_RE.match(line.text.strip())
         if not m:
@@ -76,7 +76,7 @@ def _iter_cues(text: str) -> List[_Cue]:
 
     cue_starts = sorted(cue_starts, key=lambda x: x[0])
 
-    cues: List[_Cue] = []
+    cues: list[_Cue] = []
     for idx, (start, start_ts, end_ts) in enumerate(cue_starts):
         end = cue_starts[idx + 1][0] if idx + 1 < len(cue_starts) else len(text)
         if end <= start:
@@ -105,8 +105,8 @@ class SubtitlesChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

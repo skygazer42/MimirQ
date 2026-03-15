@@ -15,7 +15,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
@@ -163,7 +163,7 @@ class _RobotsCache:
         self,
         *,
         base_url: str,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         timeout_sec: float,
         follow_redirects: bool,
     ) -> RobotFileParser | None:
@@ -217,7 +217,7 @@ class _RobotsCache:
         url: str,
         *,
         user_agent: str,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         timeout_sec: float,
         follow_redirects: bool,
     ) -> bool:
@@ -257,8 +257,8 @@ def _normalize_url(raw: str) -> str:
     return normalize_url_for_dedup(str(raw or "").strip())
 
 
-def _compile_patterns(patterns: List[str]) -> List[re.Pattern[str]]:
-    compiled: List[re.Pattern[str]] = []
+def _compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
+    compiled: list[re.Pattern[str]] = []
     for raw in patterns or []:
         pat = str(raw or "").strip()
         if not pat:
@@ -270,18 +270,18 @@ def _compile_patterns(patterns: List[str]) -> List[re.Pattern[str]]:
     return compiled
 
 
-def _match_any(url: str, patterns: List[re.Pattern[str]]) -> bool:
+def _match_any(url: str, patterns: list[re.Pattern[str]]) -> bool:
     return any(p.search(url) for p in patterns)
 
 
 async def _fetch_page_text(
     url: str,
     *,
-    headers: Dict[str, str],
+    headers: dict[str, str],
     timeout_sec: float,
     max_bytes: int,
     follow_redirects: bool,
-) -> Tuple[str, str, str]:
+) -> tuple[str, str, str]:
     """
     Fetch a URL as text (best-effort), returning (text, final_url, content_type).
 
@@ -322,7 +322,7 @@ async def _fetch_page_text(
 
             content_type = (resp.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
 
-            chunks: List[bytes] = []
+            chunks: list[bytes] = []
             size = 0
             async for chunk in resp.aiter_bytes():
                 if not chunk:
@@ -336,7 +336,7 @@ async def _fetch_page_text(
             return text, str(resp.url), content_type
 
 
-def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[List[str], Dict[str, Any] | None]:
+def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str], dict[str, Any] | None]:
     lxml_html = _get_lxml_html()
     if lxml_html is None:
         return (
@@ -364,7 +364,7 @@ def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[List[str
     except Exception:
         pass
 
-    out: List[str] = []
+    out: list[str] = []
     for _el, _attr, link, _pos in doc.iterlinks():
         if not link:
             continue
@@ -381,30 +381,30 @@ def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[List[str
 
 @dataclass(frozen=True)
 class WebCrawlResult:
-    urls: List[str]
+    urls: list[str]
     visited: int
     queued: int
-    errors: List[Dict[str, Any]]
-    sync_tokens: Dict[str, str] = field(default_factory=dict)
+    errors: list[dict[str, Any]]
+    sync_tokens: dict[str, str] = field(default_factory=dict)
 
 
 async def crawl_site(
     *,
-    start_urls: List[str],
+    start_urls: list[str],
     max_pages: int,
     max_depth: int,
     same_host_only: bool,
-    include_patterns: List[str],
-    exclude_patterns: List[str],
+    include_patterns: list[str],
+    exclude_patterns: list[str],
     use_sitemaps: bool = False,
-    sitemap_urls: Optional[List[str]] = None,
+    sitemap_urls: list[str] | None = None,
     respect_robots: bool = False,
     dedup_canonical: bool = True,
-    headers: Optional[Dict[str, str]] = None,
-    user_agent: Optional[str] = None,
-    timeout_sec: Optional[float] = None,
-    max_bytes: Optional[int] = None,
-    follow_redirects: Optional[bool] = None,
+    headers: dict[str, str] | None = None,
+    user_agent: str | None = None,
+    timeout_sec: float | None = None,
+    max_bytes: int | None = None,
+    follow_redirects: bool | None = None,
 ) -> WebCrawlResult:
     """
     Crawl a website starting from one or more seed URLs.
@@ -426,7 +426,7 @@ async def crawl_site(
             continue
 
     # Headers for fetch.
-    h: Dict[str, str] = {"Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"}
+    h: dict[str, str] = {"Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"}
     ua = (user_agent or "").strip() or "MimirQ/1.0 (+web-crawl)"
     h["User-Agent"] = ua
     if headers:
@@ -480,7 +480,7 @@ async def crawl_site(
             sitemap_queue.append(nu)
 
         discovered_pages: list[str] = []
-        sitemap_errors: list[Dict[str, Any]] = []
+        sitemap_errors: list[dict[str, Any]] = []
 
         # Attempt to pull sitemap URLs from robots.txt (best-effort) to cover common setups.
         if robots_cache is not None:
@@ -582,15 +582,15 @@ async def crawl_site(
                     continue
             return WebCrawlResult(urls=safe_out, visited=0, queued=0, errors=sitemap_errors)
 
-    q: deque[Tuple[str, int]] = deque()
+    q: deque[tuple[str, int]] = deque()
     for u in seeds:
         q.append((_normalize_url(u), 0))
 
     visited: set[str] = set()
-    out: List[str] = []
+    out: list[str] = []
     out_keys: set[str] = set()
-    sync_tokens: Dict[str, str] = {}
-    errors: List[Dict[str, Any]] = []
+    sync_tokens: dict[str, str] = {}
+    errors: list[dict[str, Any]] = []
     degraded_seen: set[tuple[str, str]] = set()
 
     while q and len(out) < int(max_pages):

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
@@ -89,7 +89,7 @@ def run_postgres_maintenance(
     - VACUUM cannot run inside a transaction; we use an AUTOCOMMIT connection.
     - When the configured DB isn't Postgres, this is a no-op with `skipped=true`.
     """
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
     commands = build_postgres_maintenance_commands(vacuum=vacuum, analyze=analyze, verbose=verbose, tables=tables)
 
     url = make_url(settings.DATABASE_URL)

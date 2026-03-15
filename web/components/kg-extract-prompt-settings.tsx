@@ -31,7 +31,7 @@ const DEFAULT_KG_CONFIG: KGConfig = {
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 
-export function KgExtractPromptSettings({ templates }: { templates: PromptTemplate[] }) {
+export function KgExtractPromptSettings({ templates }: Readonly<{ templates: PromptTemplate[] }>) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)

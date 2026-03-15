@@ -33,7 +33,7 @@ def test_observability_trace_bundle_export(monkeypatch, tmp_path):  # noqa: ANN0
     from app.core.config import settings
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     request_id = "req-123"
@@ -131,7 +131,7 @@ def test_observability_trace_bundle_404(monkeypatch, tmp_path):  # noqa: ANN001
     from app.api.v1.observability import get_rag_trace_bundle
     from app.core.config import settings
 
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     metrics_path = tmp_path / "rag_metrics.jsonl"

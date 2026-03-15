@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -28,7 +29,7 @@ class _DummyDB:
             obj.chunk_count = 0
         if getattr(obj, "total_characters", None) is None:
             obj.total_characters = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -41,15 +42,18 @@ class _FakeRedis:
         self._store: dict[str, str] = {}
 
     async def set(self, key, value, ex=None, nx=False):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         if nx and key in self._store:
             return False
         self._store[str(key)] = str(value)
         return True
 
     async def get(self, key):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return self._store.get(str(key))
 
     async def delete(self, key):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         self._store.pop(str(key), None)
 
 
@@ -71,13 +75,14 @@ def test_concurrent_uploads_are_idempotent_via_lock(monkeypatch, tmp_path):  # n
     monkeypatch.setattr(
         documents_module,
         "_resolve_writable_dataset",
-        lambda *args, **kwargs: _Dataset(dataset_id),
+        lambda *_args, **_kwargs: _Dataset(dataset_id),
         raising=True,
     )
 
     redis = _FakeRedis()
 
     async def _fake_get_queue():  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return redis
 
     monkeypatch.setattr("app.tasks.queue.get_queue", _fake_get_queue, raising=True)
@@ -85,6 +90,7 @@ def test_concurrent_uploads_are_idempotent_via_lock(monkeypatch, tmp_path):  # n
     calls = {"enqueue": 0}
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         calls["enqueue"] += 1
         return "task-123"
 

@@ -2,7 +2,6 @@
 RAG retrieval helpers (tenant aware).
 """
 from contextvars import ContextVar
-from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -11,7 +10,7 @@ from app.core.config import settings
 from app.rag.retriever import hybrid_retriever
 
 # Current tenant context, set by rag_agent before tool execution
-current_tenant_id: ContextVar[Optional[UUID]] = ContextVar("tenant_id", default=None)
+current_tenant_id: ContextVar[UUID | None] = ContextVar("tenant_id", default=None)
 
 
 class RetrievalInput(BaseModel):
@@ -23,11 +22,11 @@ class RetrievalInput(BaseModel):
         ge=1,
         le=20
     )
-    document_ids: Optional[List[str]] = Field(
+    document_ids: list[str] | None = Field(
         default=None,
         description="List of document IDs to limit search scope (optional)"
     )
-    tenant_id: Optional[str] = Field(
+    tenant_id: str | None = Field(
         default=None,
         description="Tenant ID (optional)"
     )
@@ -36,8 +35,8 @@ class RetrievalInput(BaseModel):
 def search_knowledge_base(
     query: str,
     top_k: int = 5,
-    document_ids: Optional[List[str]] = None,
-    tenant_id: Optional[str] = None
+    document_ids: list[str] | None = None,
+    tenant_id: str | None = None
 ) -> str:
     """
     Search for relevant document chunks in the knowledge base.

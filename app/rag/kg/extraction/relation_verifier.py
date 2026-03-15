@@ -9,8 +9,9 @@ This is an optional second LLM pass designed to:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Sequence
+from typing import Any
 
 from app.rag.kg.extraction.relation_processor import normalize_predicate
 from app.rag.kg.utils import get_logger
@@ -52,7 +53,7 @@ class RelationVerifier:
         text: str,
         candidates: Sequence[RelationCandidate],
         max_keep: int = 20,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         clean_text = (text or "").strip()
         if not clean_text:
             return {"kept": []}
@@ -65,7 +66,7 @@ class RelationVerifier:
         if lim <= 0:
             return {"kept": []}
 
-        lines: List[str] = []
+        lines: list[str] = []
         for c in cand_list:
             rid = str(c.rid).strip()
             subj = str(c.subject_id).strip()
@@ -86,7 +87,7 @@ class RelationVerifier:
         allowlist = sorted(self.allowed_predicates) if self.allowed_predicates else []
         allow_hint = ", ".join(allowlist[:200]) if allowlist else ""
 
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "type": "object",
             "properties": {
                 "kept": {

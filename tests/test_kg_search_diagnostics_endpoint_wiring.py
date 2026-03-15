@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -35,6 +36,7 @@ def test_kg_search_diagnostics_endpoint_wires_runner(monkeypatch) -> None:
     import app.rag.evaluation.kg_search_diagnostics as impl_mod
 
     async def _stub_run(*_args, **_kwargs):
+        await asyncio.sleep(0)  # Sonar S7503
         ds_id = _kwargs.get("req").dataset_id
         return {
             "summary": {

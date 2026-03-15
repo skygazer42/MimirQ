@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -19,7 +21,7 @@ class _DummyDB:
         if getattr(obj, "id", None) is None:
             obj.id = uuid.uuid4()
         if getattr(obj, "created_at", None) is None:
-            obj.created_at = datetime.now(timezone.utc)
+            obj.created_at = datetime.now(UTC)
         if getattr(obj, "documents", None) is None:
             obj.documents = []
         self.added.append(obj)
@@ -73,6 +75,7 @@ def test_connectors_create_run_sets_task_id_when_queue_enabled(monkeypatch):  # 
     )
 
     async def _fake_enqueue(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return "job-123"
 
     monkeypatch.setattr(connectors_module, "enqueue_connector_run", _fake_enqueue, raising=False)
@@ -126,9 +129,9 @@ def test_connector_run_retry_failed_sets_task_id_when_queue_enabled(monkeypatch)
             self.stats = {"failed_urls": ["https://example.com/b.txt"], "created": 1, "failed": 1}
             self.error_message = None
             self.task_id = None
-            self.created_at = datetime.now(timezone.utc)
-            self.started_at = datetime.now(timezone.utc)
-            self.finished_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.started_at = datetime.now(UTC)
+            self.finished_at = datetime.now(UTC)
             self.documents = []
 
     dummy_run = _DummyRun()
@@ -150,6 +153,7 @@ def test_connector_run_retry_failed_sets_task_id_when_queue_enabled(monkeypatch)
             return _DummyQuery(model)
 
     async def _fake_enqueue(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return "job-456"
 
     monkeypatch.setattr(connectors_module, "enqueue_connector_run", _fake_enqueue, raising=False)
@@ -200,9 +204,9 @@ def test_connector_run_resume_sets_task_id_when_queue_enabled(monkeypatch):  # n
             self.stats = {"cursor": 1, "processed_urls": 1}
             self.error_message = None
             self.task_id = None
-            self.created_at = datetime.now(timezone.utc)
-            self.started_at = datetime.now(timezone.utc)
-            self.finished_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.started_at = datetime.now(UTC)
+            self.finished_at = datetime.now(UTC)
             self.documents = []
 
     dummy_run = _DummyRun()
@@ -224,6 +228,7 @@ def test_connector_run_resume_sets_task_id_when_queue_enabled(monkeypatch):  # n
             return _DummyQuery(model)
 
     async def _fake_enqueue(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return "job-789"
 
     monkeypatch.setattr(connectors_module, "enqueue_connector_run", _fake_enqueue, raising=False)
@@ -272,8 +277,8 @@ def test_connector_run_cancel_aborts_task_when_queue_enabled(monkeypatch):  # no
             self.stats = {}
             self.error_message = None
             self.task_id = "job-cancel-1"
-            self.created_at = datetime.now(timezone.utc)
-            self.started_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.started_at = datetime.now(UTC)
             self.finished_at = None
             self.documents = []
 
@@ -304,9 +309,11 @@ def test_connector_run_cancel_aborts_task_when_queue_enabled(monkeypatch):  # no
             aborted["queue_name"] = _queue_name
 
         async def abort(self, timeout):  # noqa: ANN001, ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             aborted["timeout"] = timeout
 
     async def _fake_get_queue_or_none():  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return object()
 
     monkeypatch.setattr(connectors_module, "_load_arq_job_class", lambda: _FakeJob, raising=True)
@@ -330,4 +337,4 @@ def test_connector_run_cancel_aborts_task_when_queue_enabled(monkeypatch):  # no
     assert body.get("status") == "cancelled"
     assert aborted["job_id"] == "job-cancel-1"
     assert aborted["queue_name"] == "mimirq"
-    assert aborted["timeout"] == 0.2
+    assert aborted["timeout"] == pytest.approx(0.2)

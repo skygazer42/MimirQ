@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
@@ -79,9 +79,9 @@ class _FakeDB:
         if getattr(obj, "id", None) is None:
             obj.id = uuid.uuid4()
         if getattr(obj, "created_at", None) is None:
-            obj.created_at = datetime.now(timezone.utc)
+            obj.created_at = datetime.now(UTC)
         if getattr(obj, "updated_at", None) is None:
-            obj.updated_at = datetime.now(timezone.utc)
+            obj.updated_at = datetime.now(UTC)
         self._rows.setdefault(type(obj), []).append(obj)
 
     def commit(self) -> None:
@@ -99,7 +99,7 @@ async def test_upsert_message_feedback_persists_trace_and_rag_config_snapshots(m
     dataset_id = uuid.uuid4()
     conversation_id = uuid.uuid4()
     request_id = "req-feedback-export-1"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     assistant_msg = Message(
         id=uuid.uuid4(),
         tenant_id=tenant_id,

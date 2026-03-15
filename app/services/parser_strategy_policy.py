@@ -4,7 +4,8 @@ Deterministic parser strategy recommendation policy.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:

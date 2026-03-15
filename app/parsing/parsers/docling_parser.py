@@ -14,9 +14,10 @@ Supports:
 
 import html as _html
 import re
+from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -131,10 +132,10 @@ class DoclingParser(BaseAdvancedParser):
 
     def __init__(
         self,
-        ocr_enabled: Optional[bool] = None,
-        table_mode: Optional[str] = None,
-        extract_images: Optional[bool] = None,
-        max_pages: Optional[int] = None,
+        ocr_enabled: bool | None = None,
+        table_mode: str | None = None,
+        extract_images: bool | None = None,
+        max_pages: int | None = None,
     ):
         """
         Initialize Docling parser.
@@ -158,7 +159,7 @@ class DoclingParser(BaseAdvancedParser):
 
         return DeepDocDoclingParser()
 
-    def _check_parser_installation(self, parser: Any) -> Tuple[bool, str]:
+    def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
         ok = parser.check_installation()
         return (ok, "" if ok else "Docling not installed")
 
@@ -169,7 +170,7 @@ class DoclingParser(BaseAdvancedParser):
         binary: bytes | None,
         callback: Callable[[float, str], None],
         **kwargs
-    ) -> Tuple[List, List]:
+    ) -> tuple[list, list]:
         return parser.parse_pdf(
             filepath=str(file_path),
             binary=binary,
@@ -178,7 +179,7 @@ class DoclingParser(BaseAdvancedParser):
             **kwargs
         )
 
-    def parse(self, file_path: Path, **kwargs) -> List[Document]:
+    def parse(self, file_path: Path, **kwargs) -> list[Document]:
         documents = super().parse(file_path, **kwargs)
 
         processed: list[Document] = []

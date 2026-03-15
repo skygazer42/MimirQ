@@ -5,7 +5,7 @@ Defines data models for document parsing, chunking, and other pipeline operation
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -36,9 +36,9 @@ class PDFQualityScore(BaseModel):
 
 class ParsePreviewResponse(BaseModel):
     backend: str
-    pdf_quality: Optional[PDFQualityScore] = None
+    pdf_quality: PDFQualityScore | None = None
     markdown: str
-    images: List[ImageInfo] = Field(default_factory=list)
+    images: list[ImageInfo] = Field(default_factory=list)
 
 
 class PreprocessStepLog(BaseModel):
@@ -55,16 +55,16 @@ class PreprocessSummary(BaseModel):
     changed: bool = False
     size_before: int = 0
     size_after: int = 0
-    steps: List[PreprocessStepLog] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
+    steps: list[PreprocessStepLog] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class IngestionPreviewRule(BaseModel):
     matched: bool = False
-    rule_id: Optional[str] = None
-    rule_name: Optional[str] = None
-    governance_profile_ref: Optional[str] = None
-    preprocess_steps: List[Dict[str, Any]] = Field(default_factory=list)
+    rule_id: str | None = None
+    rule_name: str | None = None
+    governance_profile_ref: str | None = None
+    preprocess_steps: list[dict[str, Any]] = Field(default_factory=list)
     parser_backend: str = "auto"
     chunk_strategy: str = ""
 
@@ -75,7 +75,7 @@ class IngestionPreviewResponse(BaseModel):
     parse: ParsePreviewResponse
     clean: CleanPreviewResponse
     # Explain payload for UI export/auditing (best-effort; does not affect ingestion).
-    explain: Dict[str, Any] = Field(default_factory=dict)
+    explain: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChunkItem(BaseModel):
@@ -86,7 +86,7 @@ class ChunkItem(BaseModel):
     start: int
     end: int
     tokens_est: int
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
 
 
 class PipelineChunkPreviewRequest(BaseModel):
@@ -94,8 +94,8 @@ class PipelineChunkPreviewRequest(BaseModel):
 
 
 class PipelineChunkPreviewResponse(BaseModel):
-    paragraphs: List[ChunkItem]
-    sentences: List[ChunkItem]
+    paragraphs: list[ChunkItem]
+    sentences: list[ChunkItem]
 
 
 class CleanRegexRuleModel(BaseModel):
@@ -110,8 +110,8 @@ class CleanPreviewRuleStat(BaseModel):
     repl: str = ""
     flags: int = 0
     hits: int = Field(default=0, ge=0, le=10_000_000)
-    source: Optional[str] = Field(default=None, description="Rule source: default | pack | custom", max_length=32)
-    pack: Optional[str] = Field(default=None, description="When source=pack, the pack key", max_length=64)
+    source: str | None = Field(default=None, description="Rule source: default | pack | custom", max_length=32)
+    pack: str | None = Field(default=None, description="When source=pack, the pack key", max_length=64)
 
 
 class GovernanceIssue(BaseModel):
@@ -119,8 +119,8 @@ class GovernanceIssue(BaseModel):
     severity: Literal["info", "warning", "error"] = "info"
     message: str = Field(..., min_length=1, max_length=400)
     count: int = Field(default=0, ge=0, le=10_000_000)
-    samples: List[str] = Field(default_factory=list, description="Best-effort samples (may be truncated)")
-    suggested_pipeline_patch: Dict[str, Any] = Field(
+    samples: list[str] = Field(default_factory=list, description="Best-effort samples (may be truncated)")
+    suggested_pipeline_patch: dict[str, Any] = Field(
         default_factory=dict,
         description="Best-effort suggested pipeline patch (DocumentPipelineOptions shape).",
     )
@@ -150,13 +150,13 @@ class GovernanceCommonLinesLearnResponse(BaseModel):
     dataset_id: UUID
     total_documents: int = 0
     used_documents: int = 0
-    candidates: List[GovernanceCommonLineCandidate] = Field(default_factory=list)
+    candidates: list[GovernanceCommonLineCandidate] = Field(default_factory=list)
 
 
 class CleanPreviewRequest(BaseModel):
     markdown: str
-    rules: List[CleanRegexRuleModel] = Field(default_factory=list)
-    rule_packs: List[str] = Field(
+    rules: list[CleanRegexRuleModel] = Field(default_factory=list)
+    rule_packs: list[str] = Field(
         default_factory=list,
         description="Optional named governance rule packs (server-defined presets). Default off.",
         max_length=20,
@@ -168,7 +168,7 @@ class CleanPreviewRequest(BaseModel):
     # How to interpret `markdown` input (some governance steps can operate on raw HTML).
     input_format: Literal["markdown", "html"] = "markdown"
     # When input_format=html, optionally extract specific nodes via XPath before converting to text.
-    html_xpath: Optional[str] = None
+    html_xpath: str | None = None
     normalize_line_endings: bool = True
     trim_trailing_spaces: bool = True
     collapse_blank_lines: bool = True
@@ -235,18 +235,18 @@ class CleanPreviewResponse(BaseModel):
     markdown: str
     applied_rules: int
     changed: bool
-    rule_stats: List[CleanPreviewRuleStat] = Field(default_factory=list)
+    rule_stats: list[CleanPreviewRuleStat] = Field(default_factory=list)
     dropped: bool = False
-    drop_reason: Optional[str] = None
-    pii_hits: Optional[dict[str, int]] = None
-    secrets_hits: Optional[dict[str, int]] = None
+    drop_reason: str | None = None
+    pii_hits: dict[str, int] | None = None
+    secrets_hits: dict[str, int] | None = None
     # Optional extracted metadata (preview only; not persisted).
-    frontmatter: Optional[dict[str, Any]] = None
-    title: Optional[str] = None
-    tags: Optional[List[str]] = None
-    language: Optional[str] = None
-    language_confidence: Optional[float] = None
-    keywords: Optional[List[str]] = None
+    frontmatter: dict[str, Any] | None = None
+    title: str | None = None
+    tags: list[str] | None = None
+    language: str | None = None
+    language_confidence: float | None = None
+    keywords: list[str] | None = None
     urls_changed: int = 0
     paragraphs_dropped: int = 0
     references_removed_lines: int = 0
@@ -258,14 +258,14 @@ class CleanPreviewResponse(BaseModel):
     added_lines: int = 0
     removed_lines: int = 0
     changed_lines: int = 0
-    diff_unified: Optional[str] = None
+    diff_unified: str | None = None
     diff_truncated: bool = False
-    issues: List[GovernanceIssue] = Field(default_factory=list)
-    suggested_pipeline_patch: Dict[str, Any] = Field(default_factory=dict)
+    issues: list[GovernanceIssue] = Field(default_factory=list)
+    suggested_pipeline_patch: dict[str, Any] = Field(default_factory=dict)
 
 
 class CleanRulesResponse(BaseModel):
-    rules: List[CleanRegexRuleModel]
+    rules: list[CleanRegexRuleModel]
 
 
 class KeywordExtractRequest(BaseModel):
@@ -276,55 +276,55 @@ class KeywordExtractRequest(BaseModel):
 
 class KeywordExtractResponse(BaseModel):
     provider: str
-    keywords: List[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
 
 
 class LLMCleanPreviewRequest(BaseModel):
     markdown: str
-    prompt_template_id: Optional[UUID] = None
-    template_key: Optional[str] = None
-    ab_experiment_key: Optional[str] = None
-    ab_user_key: Optional[str] = None
-    model: Optional[str] = None
-    temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
-    max_tokens: Optional[int] = Field(default=None, ge=16, le=32768)
+    prompt_template_id: UUID | None = None
+    template_key: str | None = None
+    ab_experiment_key: str | None = None
+    ab_user_key: str | None = None
+    model: str | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    max_tokens: int | None = Field(default=None, ge=16, le=32768)
     max_chars: int = Field(default=15000, ge=1000, le=200000)
 
 
 class LLMCleanPreviewResponse(BaseModel):
     markdown: str
     changed: bool
-    model_used: Optional[str] = None
-    prompt_template_id: Optional[str] = None
-    template_key: Optional[str] = None
-    ab_experiment_key: Optional[str] = None
-    ab_variant: Optional[str] = None
-    warnings: List[str] = Field(default_factory=list)
+    model_used: str | None = None
+    prompt_template_id: str | None = None
+    template_key: str | None = None
+    ab_experiment_key: str | None = None
+    ab_variant: str | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ParserBackendInfo(BaseModel):
     name: str
     available: bool
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class ChunkStrategyInfo(BaseModel):
     name: str
     available: bool
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class PipelineCapabilitiesResponse(BaseModel):
     default_parser_backend: str
     default_chunk_strategy: str
-    pdf_backends: List[ParserBackendInfo] = Field(default_factory=list)
-    chunk_strategies: List[ChunkStrategyInfo] = Field(default_factory=list)
+    pdf_backends: list[ParserBackendInfo] = Field(default_factory=list)
+    chunk_strategies: list[ChunkStrategyInfo] = Field(default_factory=list)
 
 
 class GovernanceAnalyzeRequest(BaseModel):
     markdown: str
     input_format: Literal["markdown", "html"] = "markdown"
-    html_xpath: Optional[str] = None
+    html_xpath: str | None = None
     remove_images: Literal["none", "decorative", "all"] = "none"
 
     # Current (or intended) governance toggles; used to generate non-redundant suggestions.
@@ -345,8 +345,8 @@ class GovernanceAnalyzeRequest(BaseModel):
 class GovernanceAnalyzeResponse(BaseModel):
     input_chars: int = 0
     input_lines: int = 0
-    issues: List[GovernanceIssue] = Field(default_factory=list)
-    suggested_pipeline_patch: Dict[str, Any] = Field(default_factory=dict)
+    issues: list[GovernanceIssue] = Field(default_factory=list)
+    suggested_pipeline_patch: dict[str, Any] = Field(default_factory=dict)
 
 
 class ZipImageInfo(BaseModel):
@@ -357,7 +357,7 @@ class ZipImageInfo(BaseModel):
 
 class ZipWithImagesResponse(BaseModel):
     markdown: str
-    images: List[ZipImageInfo] = Field(default_factory=list)
+    images: list[ZipImageInfo] = Field(default_factory=list)
     image_count: int
     dataset_id: str
     document_id: str

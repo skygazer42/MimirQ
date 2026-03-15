@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -38,8 +38,8 @@ class _Target:
 _TARGET_RE = re.compile(r"^(?P<name>[A-Za-z0-9_./%:@+-]{1,80})\s*:(?![=])\s*(?P<deps>.*)$")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -51,10 +51,10 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _iter_targets(text: str) -> List[_Target]:
+def _iter_targets(text: str) -> list[_Target]:
     lines = _iter_lines(text)
-    idxs: List[int] = []
-    names: List[str] = []
+    idxs: list[int] = []
+    names: list[str] = []
     for i, ln in enumerate(lines):
         p = ln.plain
         if not p.strip() or p.lstrip().startswith("#"):
@@ -70,7 +70,7 @@ def _iter_targets(text: str) -> List[_Target]:
         idxs.append(i)
         names.append(name)
 
-    targets: List[_Target] = []
+    targets: list[_Target] = []
     for k, i in enumerate(idxs):
         start = lines[i].start
         end = lines[idxs[k + 1]].start if k + 1 < len(idxs) else len(text)
@@ -107,8 +107,8 @@ class MakefileChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

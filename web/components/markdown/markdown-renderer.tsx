@@ -92,12 +92,12 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   className,
   enableTocAnchors = true,
   autoScrollToHash = false,
-}: {
+}: Readonly<{
   markdown: string
   className?: string
   enableTocAnchors?: boolean
   autoScrollToHash?: boolean
-}) {
+}>) {
   const text = markdown || ''
 
   const headings = useMemo(
@@ -112,14 +112,14 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
   useEffect(() => {
     if (!autoScrollToHash) return
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
 
     const scrollNow = (behavior: ScrollBehavior) => {
-      const raw = window.location.hash || ''
+      const raw = globalThis.window.location.hash || ''
       const id = raw.startsWith('#') ? raw.slice(1) : raw
       const decoded = id ? decodeURIComponent(id) : ''
       if (!decoded) return
-      window.requestAnimationFrame(() => {
+      globalThis.window.requestAnimationFrame(() => {
         const ok = scrollToElementId(decoded, { behavior })
         if (ok) flashElementId(decoded, FLASH_CLASS)
       })
@@ -128,8 +128,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     const onHashChange = () => scrollNow('smooth')
 
     scrollNow('auto')
-    window.addEventListener('hashchange', onHashChange)
-    return () => window.removeEventListener('hashchange', onHashChange)
+    globalThis.window.addEventListener('hashchange', onHashChange)
+    return () => globalThis.window.removeEventListener('hashchange', onHashChange)
   }, [autoScrollToHash, text])
 
   const headingComponent = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
@@ -152,8 +152,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               href={`#${encodeURIComponent(id)}`}
               onClick={(e) => {
                 e.preventDefault()
-                if (typeof window !== 'undefined') {
-                  window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
+                if (typeof globalThis.window !== 'undefined') {
+                  globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
                 }
                 scrollToElementId(id)
                 flashElementId(id, FLASH_CLASS)
@@ -192,8 +192,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                     e.preventDefault()
                     const decoded = id ? decodeURIComponent(id) : ''
                     if (!decoded) return
-                    if (typeof window !== 'undefined') {
-                      window.history.replaceState(null, '', `#${encodeURIComponent(decoded)}`)
+                    if (typeof globalThis.window !== 'undefined') {
+                      globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(decoded)}`)
                     }
                     scrollToElementId(decoded)
                     flashElementId(decoded, FLASH_CLASS)
@@ -218,11 +218,19 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           },
           img: ({ src, alt }) => {
             const raw = typeof src === 'string' ? src : ''
-            const resolved = raw
-              ? /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)
-                ? raw
-                : toAbsoluteBackendUrl(raw)
-              : ''
+            const resolved = (() => {
+    if (raw) {
+        if (/^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)) {
+            return raw;
+        }
+        else {
+            return toAbsoluteBackendUrl(raw);
+        }
+    }
+    else {
+        return '';
+    }
+})()
             if (!resolved) return null
             const finalSrc = maybeAttachImageAuthToken(resolved)
             return (

@@ -11,12 +11,12 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
 
-def percentile_ms(values_ms: List[int], p: int) -> int:
+def percentile_ms(values_ms: list[int], p: int) -> int:
     """
     Nearest-rank percentile.
 
@@ -38,7 +38,7 @@ def percentile_ms(values_ms: List[int], p: int) -> int:
     return int(vals[idx] or 0)
 
 
-def summarize_latencies_ms(values_ms: List[int]) -> Dict[str, Any]:
+def summarize_latencies_ms(values_ms: list[int]) -> dict[str, Any]:
     vals = [int(v or 0) for v in (values_ms or [])]
     if not vals:
         return {
@@ -103,7 +103,7 @@ class E2ELoadTestConfig:
     filename: str
     parser_backend: str = "auto"
 
-    dataset_id: Optional[str] = None
+    dataset_id: str | None = None
     dataset_name: str = ""
 
     ingest_count: int = 1

@@ -30,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import type { Dataset, PermissionEnum, DocumentPipelineOptions } from '@/types'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { GovernanceProfileSelector } from '@/components/governance-profile-selector'
@@ -122,7 +122,7 @@ export default function DatasetsPage() {
   }, [selectedCategoryId])
 
   useEffect(() => {
-    void load()
+    detachPromise(load())
   }, [load])
 
   const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name])
@@ -481,10 +481,10 @@ export default function DatasetsPage() {
 function DatasetForm({
   form,
   setForm,
-}: {
+}: Readonly<{
   form: DatasetFormState
   setForm: Dispatch<SetStateAction<DatasetFormState>>
-}) {
+}>) {
   return (
     <div className="grid gap-5">
       <div className="grid gap-2">

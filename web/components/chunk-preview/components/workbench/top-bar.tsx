@@ -33,7 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { cn, formatFileSize } from '@/lib/utils'
+import { cn, formatFileSize, detachPromise } from '@/lib/utils'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
@@ -132,7 +132,7 @@ export function TopBar() {
 
   const escapeForAnsiC = (value: string) => {
     // Used for bash $'...' strings in generated cURL.
-    return value.replace(/\\/g, '\\\\').replace(/'/g, "\\\\'")
+    return value.replaceAll(/\\/g, '\\\\').replaceAll(/'/g, "\\\\'")
   }
 
   const copyText = async (value: string, okMessage: string) => {
@@ -155,19 +155,19 @@ export function TopBar() {
       return
     }
 
-    if (typeof (parsed as any).dataset_id === 'string') {
-      setDatasetId(String((parsed as any).dataset_id))
-    } else if ((parsed as any).dataset_id == null) {
+    if (typeof (parsed).dataset_id === 'string') {
+      setDatasetId(String((parsed).dataset_id))
+    } else if ((parsed).dataset_id == null) {
       setDatasetId('')
     }
 
-    if (typeof (parsed as any).parser_backend === 'string') {
-      setParserBackend(String((parsed as any).parser_backend))
+    if (typeof (parsed).parser_backend === 'string') {
+      setParserBackend(String((parsed).parser_backend))
     }
 
-    const nextStrategy = typeof (parsed as any).chunk_strategy === 'string' ? String((parsed as any).chunk_strategy) : undefined
-    const nextSize = Number((parsed as any).chunk_size)
-    const nextOverlap = Number((parsed as any).chunk_overlap)
+    const nextStrategy = typeof (parsed).chunk_strategy === 'string' ? String((parsed).chunk_strategy) : undefined
+    const nextSize = Number((parsed).chunk_size)
+    const nextOverlap = Number((parsed).chunk_overlap)
 
     updateSettings({
       ...(nextStrategy ? { strategy: nextStrategy } : {}),
@@ -175,22 +175,22 @@ export function TopBar() {
       ...(Number.isFinite(nextOverlap) ? { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) } : {}),
     })
 
-    if (typeof (parsed as any).separator_preset === 'string') {
-      updateSeparatorSettings({ separatorPreset: String((parsed as any).separator_preset) })
+    if (typeof (parsed).separator_preset === 'string') {
+      updateSeparatorSettings({ separatorPreset: String((parsed).separator_preset) })
     }
-    if (typeof (parsed as any).separator === 'string') {
-      updateSeparatorSettings({ separatorCustom: String((parsed as any).separator) })
+    if (typeof (parsed).separator === 'string') {
+      updateSeparatorSettings({ separatorCustom: String((parsed).separator) })
     }
-    if (typeof (parsed as any).keep_separator === 'boolean') {
-      updateSeparatorSettings({ keepSeparator: Boolean((parsed as any).keep_separator) })
+    if (typeof (parsed).keep_separator === 'boolean') {
+      updateSeparatorSettings({ keepSeparator: Boolean((parsed).keep_separator) })
     }
-    if (Number.isFinite(Number((parsed as any).separator_max_chunk_size))) {
+    if (Number.isFinite(Number((parsed).separator_max_chunk_size))) {
       updateSeparatorSettings({
-        separatorMaxChunkSize: Math.max(0, Math.min(20000, Math.trunc(Number((parsed as any).separator_max_chunk_size)))),
+        separatorMaxChunkSize: Math.max(0, Math.min(20000, Math.trunc(Number((parsed).separator_max_chunk_size)))),
       })
     }
 
-    const pipeline = (parsed as any).pipeline
+    const pipeline = (parsed).pipeline
     if (pipeline && typeof pipeline === 'object') {
       pipelineCtx.setEnabled(true)
       for (const [k, v] of Object.entries(pipeline)) {
@@ -300,11 +300,19 @@ export function TopBar() {
                 <span
                   className={cn(
                     'text-[10px] px-1.5 py-0.5 rounded border font-medium',
-                    previewData.quality_gate.grade === 'pass'
-                      ? 'bg-success/10 text-success border-success/30'
-                      : previewData.quality_gate.grade === 'fail'
-                        ? 'bg-destructive/10 text-destructive border-destructive/30'
-                        : 'bg-warning/10 text-warning border-warning/30'
+                    (() => {
+    if (previewData.quality_gate.grade === 'pass') {
+        return 'bg-success/10 text-success border-success/30';
+    }
+    else {
+        if (previewData.quality_gate.grade === 'fail') {
+            return 'bg-destructive/10 text-destructive border-destructive/30';
+        }
+        else {
+            return 'bg-warning/10 text-warning border-warning/30';
+        }
+    }
+})()
                   )}
                   title={(previewData.quality_gate.reasons || []).join('\\n')}
                 >
@@ -442,7 +450,7 @@ export function TopBar() {
                       }
                     : {}),
                 }
-                void copyText(JSON.stringify(config, null, 2), '已复制预览配置')
+                detachPromise(copyText(JSON.stringify(config, null, 2), '已复制预览配置'))
               }}
             >
               <Copy className="mr-2 h-4 w-4" />
@@ -615,7 +623,7 @@ export function TopBar() {
                       }
                     : undefined,
                 }
-                void copyText(JSON.stringify(payload, null, 2), '已复制手动入库 payload')
+                detachPromise(copyText(JSON.stringify(payload, null, 2), '已复制手动入库 payload'))
               }}
             >
               <Copy className="mr-2 h-4 w-4" />
@@ -638,27 +646,26 @@ export function TopBar() {
                 )}&chunk_overlap=${encodeURIComponent(String(chunkOverlap))}`
                 const pipeline = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : null
                 const lines = [
-                  `curl -X POST \"${url}\" \\`,
-                  `  -H \"X-User-ID: demo\" \\`,
-                  `  -F \"file=@/path/to/your-file\" \\`,
-                  `  -F \"parser_backend=${effectiveParserBackend}\" \\`,
-                  `  -F \"chunk_strategy=${effectiveChunkStrategy}\"`,
+                  `curl -X POST "${url}" \\`,
+                  `  -H "X-User-ID: demo" \\`,
+                  `  -F "file=@/path/to/your-file" \\`,
+                  `  -F "parser_backend=${effectiveParserBackend}" \\`,
+                  `  -F "chunk_strategy=${effectiveChunkStrategy}"`,
                 ]
                 if (datasetId) {
-                  lines.push(`  -F \"dataset_id=${datasetId}\"`)
+                  lines.push(`  -F "dataset_id=${datasetId}"`)
                 }
                 if (shouldIncludeParentChildSettings) {
-                  lines.push(`  -F "child_ratio=${parentChildRatio}"`)
-                  lines.push(`  -F "min_child_size=${parentChildMinChildSize}"`)
+                                    lines.push(`  -F "child_ratio=${parentChildRatio}"`, `  -F "min_child_size=${parentChildMinChildSize}"`)
                 }
                 if (shouldIncludeSeparatorSettings) {
-                  lines.push(`  -F \"separator_preset=${separatorPreset}\"`)
+                  lines.push(`  -F "separator_preset=${separatorPreset}"`)
                   if (separatorPreset === 'custom') {
                     lines.push(`  -F $'separator=${escapeForAnsiC(separatorCustom)}'`)
                   }
-                  lines.push(`  -F \"keep_separator=${keepSeparator ? 'true' : 'false'}\"`)
+                  lines.push(`  -F "keep_separator=${keepSeparator ? 'true' : 'false'}"`)
                   if (typeof separatorMaxChunkSize === 'number' && separatorMaxChunkSize > 0) {
-                    lines.push(`  -F \"separator_max_chunk_size=${separatorMaxChunkSize}\"`)
+                    lines.push(`  -F "separator_max_chunk_size=${separatorMaxChunkSize}"`)
                   }
                 }
                 if (pipeline) {
@@ -666,7 +673,7 @@ export function TopBar() {
                   lines.push(`  -F 'pipeline=${pipeline}'`)
                 }
                 const curl = lines.join('\n')
-                void copyText(curl, '已复制 cURL')
+                detachPromise(copyText(curl, '已复制 cURL'))
               }}
             >
               <Copy className="mr-2 h-4 w-4" />
@@ -677,7 +684,7 @@ export function TopBar() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => {
-                    void copyText(createdDocumentId, '已复制文档 ID')
+                    detachPromise(copyText(createdDocumentId, '已复制文档 ID'))
                   }}
                 >
                   <Copy className="mr-2 h-4 w-4" />
@@ -729,13 +736,19 @@ export function TopBar() {
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
           )}
         >
-          {isSubmitting ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2" />
-          ) : submitSuccess ? (
-            <Check className="w-3.5 h-3.5 mr-2" />
-          ) : (
-            <Save className="w-3.5 h-3.5 mr-2" />
-          )}
+          {(() => {
+    if (isSubmitting) {
+        return (<Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2"/>);
+    }
+    else {
+        if (submitSuccess) {
+            return (<Check className="w-3.5 h-3.5 mr-2"/>);
+        }
+        else {
+            return (<Save className="w-3.5 h-3.5 mr-2"/>);
+        }
+    }
+})()}
           {submitSuccess ? '已完成' : '确认入库'}
 	        </Button>
 	      </div>

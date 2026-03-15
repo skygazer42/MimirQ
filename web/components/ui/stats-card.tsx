@@ -45,16 +45,16 @@ export function StatCard({
   subValue,
   color = 'sky',
   className,
-}: StatCardProps) {
+}: Readonly<StatCardProps>) {
   return (
     <div
       className={cn(
         'flex items-center gap-3 px-4 py-3 rounded-xl border transition-shadow duration-200 motion-reduce:transition-none hover:shadow-md',
-        colorStyles[color as keyof typeof colorStyles] || colorStyles.sky,
+        colorStyles[color] || colorStyles.sky,
         className
       )}
     >
-      <div className={cn('p-2 rounded-lg flex-shrink-0', iconBgStyles[color as keyof typeof iconBgStyles] || iconBgStyles.sky)}>
+      <div className={cn('p-2 rounded-lg flex-shrink-0', iconBgStyles[color] || iconBgStyles.sky)}>
         <Icon className="w-4 h-4" />
       </div>
       <div className="min-w-0 flex-1">
@@ -73,7 +73,7 @@ interface StatsGridProps {
   className?: string
 }
 
-export function StatsGrid({ children, className }: StatsGridProps) {
+export function StatsGrid({ children, className }: Readonly<StatsGridProps>) {
   return (
     <div
       className={cn(

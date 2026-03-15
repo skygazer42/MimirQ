@@ -6,7 +6,7 @@ querying, and results.
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -1261,7 +1261,7 @@ async def export_ragas_regression_run_bundle_api(
         redact_ids=bool(redact_ids),
         max_items=int(max_items),
         max_citations=int(max_citations),
-        now=datetime.now(timezone.utc),
+        now=datetime.now(UTC),
     )
 
     headers = {
@@ -1299,7 +1299,7 @@ def purge_ragas_regression_runs(
         detail="No permission to manage evaluation retention",
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=int(retention_days or 0))
 
     eligible = int(

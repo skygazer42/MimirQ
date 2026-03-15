@@ -9,7 +9,7 @@ pipelines.
 import json
 import re
 import uuid
-from typing import Any, Dict, List
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -313,13 +313,13 @@ def _format_tag_table_store_summary(doc: Document, *, meta: dict[str, Any]) -> s
 
 
 def build_citations_from_docs(
-    docs: List[Document],
+    docs: list[Document],
     *,
     retrieval_elapsed_sec: float,
     retrieval_mode: str,
     query: str | None = None,
-) -> List[Dict[str, Any]]:
-    citations: List[Dict[str, Any]] = []
+) -> list[dict[str, Any]]:
+    citations: list[dict[str, Any]] = []
     for doc in docs:
         meta = doc.metadata or {}
 
@@ -461,7 +461,7 @@ def build_citations_from_docs(
         except Exception:
             chunk_index = None
 
-        citation: Dict[str, Any] = {
+        citation: dict[str, Any] = {
             "chunk_id": chunk_id,
             "document_id": meta.get("document_id"),
             "document_name": meta.get("source", "Unknown"),

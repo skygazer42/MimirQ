@@ -93,13 +93,13 @@ def test_regression_eval_supports_deterministic_answer_gate_mode(monkeypatch: py
     fake_db = _FakeDB(run=run, cases=[case_ok, case_refuse])
 
     monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
-    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: None)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
 
     dataset_id = uuid4()
-    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **_kwargs: ([], dataset_id))
 
     # Keep context deterministic and compatible with the claim-support heuristic.
-    monkeypatch.setattr(mod, "_extract_contexts", lambda **kwargs: ["The sky is blue."])
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **_kwargs: ["The sky is blue."])
 
     # Deterministic graph runner stub (no external LLM dependency).
     import app.rag.pipelines.langgraph as langgraph
@@ -152,5 +152,5 @@ def test_regression_eval_supports_deterministic_answer_gate_mode(monkeypatch: py
 
     assert run.status == "completed"
     assert (run.params or {}).get("mode") == "deterministic_gate"
-    assert run.summary.get("faithfulness_det") == 1.0
-    assert run.summary.get("refusal_correctness") == 1.0
+    assert run.summary.get("faithfulness_det") == pytest.approx(1.0)
+    assert run.summary.get("refusal_correctness") == pytest.approx(1.0)

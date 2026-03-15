@@ -11,7 +11,7 @@ import logging
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Dict, Tuple
+from typing import Any
 
 from app.core.config import settings
 
@@ -57,9 +57,9 @@ def _luhn_ok(digits: str) -> bool:
 class PIIRedactor:
     mask: str = "[REDACTED]"
 
-    def redact_text(self, text: str) -> Tuple[str, Dict[str, Any]]:
+    def redact_text(self, text: str) -> tuple[str, dict[str, Any]]:
         raw = str(text or "")
-        meta: Dict[str, Any] = {"redacted": False, "hits": {}}
+        meta: dict[str, Any] = {"redacted": False, "hits": {}}
 
         def _mark(kind: str, n: int = 1) -> None:
             meta["redacted"] = True

@@ -13,7 +13,7 @@ based on the query "shape" (faq/howto/api/log) when enabled.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from app.rag.core.retrieval_profiles import PRODUCTION_RETRIEVAL_PROFILE
 from app.rag.core.text import normalize_retrieval_mode
@@ -74,8 +74,8 @@ _POLICY_ALLOWED_OVERRIDES = {
 }
 
 
-def _bounded_reason_codes(reasons: List[str], *, max_items: int = 6) -> List[str]:
-    out: List[str] = []
+def _bounded_reason_codes(reasons: list[str], *, max_items: int = 6) -> list[str]:
+    out: list[str] = []
     seen: set[str] = set()
     for r in reasons:
         s = str(r or "").strip().lower()
@@ -90,10 +90,10 @@ def _bounded_reason_codes(reasons: List[str], *, max_items: int = 6) -> List[str
     return out
 
 
-def _normalize_match_terms(raw: Any, *, max_items: int = 8) -> List[str]:
+def _normalize_match_terms(raw: Any, *, max_items: int = 8) -> list[str]:
     if not isinstance(raw, list):
         return []
-    out: List[str] = []
+    out: list[str] = []
     seen: set[str] = set()
     for item in raw:
         term = " ".join(str(item or "").strip().split())
@@ -142,9 +142,9 @@ def _coerce_policy_float(value: Any, *, minimum: float, maximum: float) -> float
     return max(minimum, min(maximum, fv))
 
 
-def _sanitize_policy_overrides(raw: Any) -> Dict[str, Any]:
+def _sanitize_policy_overrides(raw: Any) -> dict[str, Any]:
     payload = raw if isinstance(raw, dict) else {}
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for key, value in payload.items():
         name = str(key or "").strip()
         if not name or name not in _POLICY_ALLOWED_OVERRIDES:
@@ -199,7 +199,7 @@ def _sanitize_policy_overrides(raw: Any) -> Dict[str, Any]:
     return out
 
 
-def normalize_intent_router_policy(policy: Any) -> Dict[str, Any] | None:
+def normalize_intent_router_policy(policy: Any) -> dict[str, Any] | None:
     payload = policy if isinstance(policy, dict) else {}
     schema = str(payload.get("schema") or "").strip()
     if schema != _INTENT_ROUTER_POLICY_SCHEMA_V1:
@@ -209,7 +209,7 @@ def normalize_intent_router_policy(policy: Any) -> Dict[str, Any] | None:
     if not isinstance(rules_raw, list):
         return None
 
-    rules: List[Dict[str, Any]] = []
+    rules: list[dict[str, Any]] = []
     for item in rules_raw[:20]:
         if not isinstance(item, dict):
             continue
@@ -238,7 +238,7 @@ def normalize_intent_router_policy(policy: Any) -> Dict[str, Any] | None:
     return {"schema": _INTENT_ROUTER_POLICY_SCHEMA_V1, "rules": rules}
 
 
-def _query_matches_policy_rule(query: str, rule: Dict[str, Any]) -> bool:
+def _query_matches_policy_rule(query: str, rule: dict[str, Any]) -> bool:
     q = str(query or "").casefold()
     if not q:
         return False
@@ -251,7 +251,7 @@ def _query_matches_policy_rule(query: str, rule: Dict[str, Any]) -> bool:
     return bool(any_ok and all_ok)
 
 
-def classify_query_intent(query: str) -> Tuple[str, List[str]]:
+def classify_query_intent(query: str) -> tuple[str, list[str]]:
     """
     Classify a query into one of:
     - log | api | howto | faq | general
@@ -262,7 +262,7 @@ def classify_query_intent(query: str) -> Tuple[str, List[str]]:
     if not q:
         return "general", ["empty"]
 
-    reasons: List[str] = []
+    reasons: list[str] = []
 
     # "log" is the most specific (should win over "api" when both match).
     if _INTENT_LOG_RE.search(q):
@@ -293,7 +293,7 @@ def classify_query_intent(query: str) -> Tuple[str, List[str]]:
     return "general", _bounded_reason_codes(reasons)
 
 
-def _apply_profile_contract(*, profile: str, top_k: int, score_threshold: float) -> Tuple[int, float]:
+def _apply_profile_contract(*, profile: str, top_k: int, score_threshold: float) -> tuple[int, float]:
     """
     Enforce the preset's top_k/threshold contract without relying on ChatRAGConfig validation.
     """
@@ -313,18 +313,18 @@ def route_retrieval_preset(
     *,
     query: str,
     retrieval_mode: str,
-    retrieval_profile: Optional[str],
+    retrieval_profile: str | None,
     top_k: int,
     score_threshold: float,
     enable_reranker: bool,
     enable_weight_rerank: bool,
-    enable_multi_query: Optional[bool],
-    enable_query_alias_expansion: Optional[bool],
-    intent_router_policy: Optional[Dict[str, Any]] = None,
-    learned_router_model: Optional[Dict[str, Any]] = None,
-    learned_router_model_path: Optional[str] = None,
+    enable_multi_query: bool | None,
+    enable_query_alias_expansion: bool | None,
+    intent_router_policy: dict[str, Any] | None = None,
+    learned_router_model: dict[str, Any] | None = None,
+    learned_router_model_path: str | None = None,
     learned_router_confidence_min: float = 0.0,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Return (overrides, meta) for intent-based retrieval routing.
 
@@ -333,7 +333,7 @@ def route_retrieval_preset(
     """
     intent, reasons = classify_query_intent(query)
 
-    overrides: Dict[str, Any] = {}
+    overrides: dict[str, Any] = {}
 
     mode_norm = normalize_retrieval_mode(retrieval_mode or "hybrid")
     profile_norm = str(retrieval_profile or "").strip().lower() or None
@@ -361,7 +361,7 @@ def route_retrieval_preset(
         if not profile_norm:
             overrides["retrieval_profile"] = "recall50"
 
-    policy_rule_ids: List[str] = []
+    policy_rule_ids: list[str] = []
     policy = normalize_intent_router_policy(intent_router_policy)
     for rule in (policy or {}).get("rules", []):
         if not isinstance(rule, dict):
@@ -372,7 +372,7 @@ def route_retrieval_preset(
         for key, value in dict(rule.get("overrides") or {}).items():
             overrides[str(key)] = value
 
-    learned_meta: Dict[str, Any] = {
+    learned_meta: dict[str, Any] = {
         "enabled": False,
         "used": False,
         "rule_id": None,
@@ -432,15 +432,15 @@ def route_retrieval_preset(
         "policy_used": bool(policy_rule_ids),
         "policy_rule_ids": policy_rule_ids,
         "learned_router": learned_meta,
-        "overrides": sorted(list(overrides.keys())),
+        "overrides": sorted(overrides.keys()),
     }
     return overrides, meta
 
 
-def _normalize_bucket_terms(raw: Any, *, allowed: set[str], max_items: int = 8) -> List[str]:
+def _normalize_bucket_terms(raw: Any, *, allowed: set[str], max_items: int = 8) -> list[str]:
     if not isinstance(raw, list):
         return []
-    out: List[str] = []
+    out: list[str] = []
     seen: set[str] = set()
     for item in raw:
         s = str(item or "").strip().lower()
@@ -453,7 +453,7 @@ def _normalize_bucket_terms(raw: Any, *, allowed: set[str], max_items: int = 8) 
     return out
 
 
-def normalize_adaptive_router_policy(policy: Any) -> Dict[str, Any] | None:
+def normalize_adaptive_router_policy(policy: Any) -> dict[str, Any] | None:
     payload = policy if isinstance(policy, dict) else {}
     schema = str(payload.get("schema") or "").strip()
     if schema != _ADAPTIVE_ROUTER_POLICY_SCHEMA_V1:
@@ -585,9 +585,9 @@ def route_adaptive_retrieval_overrides(
     *,
     query: str,
     retrieval_mode: str,
-    intent_meta: Dict[str, Any] | None = None,
-    adaptive_router_policy: Dict[str, Any] | None = None,
-) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    intent_meta: dict[str, Any] | None = None,
+    adaptive_router_policy: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     Evaluate optional adaptive routing policy and return (overrides, meta).
 
@@ -634,7 +634,7 @@ def route_adaptive_retrieval_overrides(
             "has_quotes": bool(any(ch in str(query or "") for ch in ("'", '"', "“", "”", "‘", "’", "`"))),
             "has_digits": bool(any(ch.isdigit() for ch in str(query or ""))),
         },
-        "overrides": sorted(list(overrides.keys())),
+        "overrides": sorted(overrides.keys()),
     }
     return overrides, meta
 

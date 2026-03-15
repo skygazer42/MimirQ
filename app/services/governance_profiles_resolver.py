@@ -13,8 +13,8 @@ pipeline services without pulling in FastAPI-specific code.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, List
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -35,7 +35,7 @@ class ResolvedGovernanceProfile:
     """Resolved governance profile data for applying to pipeline options."""
 
     profile: GovernanceProfileOut
-    chain: List[GovernanceProfileSummary]
+    chain: list[GovernanceProfileSummary]
     effective: GovernanceProfilePayload
 
 

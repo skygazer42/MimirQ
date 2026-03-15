@@ -10,8 +10,8 @@ from __future__ import annotations
 import base64
 import binascii
 import json
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 def _base64url_decode(data: str) -> bytes:
@@ -19,7 +19,7 @@ def _base64url_decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(padded.encode("utf-8"))
 
 
-def try_get_jwt_claims(token: str) -> Optional[dict[str, Any]]:
+def try_get_jwt_claims(token: str) -> dict[str, Any] | None:
     """
     Parse JWT payload claims without validating the signature.
 
@@ -39,7 +39,7 @@ def try_get_jwt_claims(token: str) -> Optional[dict[str, Any]]:
     return obj if isinstance(obj, dict) else None
 
 
-def try_get_jwt_exp(token: str) -> Optional[int]:
+def try_get_jwt_exp(token: str) -> int | None:
     """Return the `exp` claim as unix seconds if present, else None."""
     claims = try_get_jwt_claims(token)
     if not claims:
@@ -57,4 +57,4 @@ def try_get_jwt_exp(token: str) -> Optional[int]:
 
 def format_unix_ts_utc(ts: int) -> str:
     """Format unix seconds as an ISO-8601 UTC string."""
-    return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.fromtimestamp(int(ts), tz=UTC).isoformat().replace("+00:00", "Z")

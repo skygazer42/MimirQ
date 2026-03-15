@@ -84,7 +84,7 @@ class IntegratedPipelineExcelParser:
                 return IntegratedPipelineExcelParser._dataframe_to_workbook(df)
 
             except Exception as e_csv:
-                raise Exception(f"****wxy: Failed to parse CSV and convert to Excel Workbook: {e_csv}")
+                raise RuntimeError(f"****wxy: Failed to parse CSV and convert to Excel Workbook: {e_csv}")
 
         try:
             return load_workbook(file_like_object, data_only=True)
@@ -95,7 +95,7 @@ class IntegratedPipelineExcelParser:
                 df = pd.read_excel(file_like_object)
                 return IntegratedPipelineExcelParser._dataframe_to_workbook(df)
             except Exception as e_pandas:
-                raise Exception(f"****wxy: pandas.read_excel error: {e_pandas}, original openpyxl error: {e}")
+                raise RuntimeError(f"****wxy: pandas.read_excel error: {e_pandas}, original openpyxl error: {e}")
 
     @staticmethod
     def _dataframe_to_workbook(df):

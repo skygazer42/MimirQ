@@ -14,7 +14,7 @@ interface ModelProviderCardProps {
   onConfigure: (provider: ModelProvider) => void
 }
 
-export function ModelProviderCard({ provider, onConfigure }: ModelProviderCardProps) {
+export function ModelProviderCard({ provider, onConfigure }: Readonly<ModelProviderCardProps>) {
   return (
     <button
       type="button"

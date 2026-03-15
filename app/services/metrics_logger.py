@@ -17,10 +17,11 @@ import queue
 import socket
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -29,13 +30,13 @@ from app.core.pii_redaction import redact_obj
 _METRICS_SCHEMA_VERSION = 1
 _HOSTNAME = socket.gethostname()
 
-_ctx_request_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("metrics.request_id", default=None)
-_ctx_tenant_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("metrics.tenant_id", default=None)
-_ctx_conversation_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+_ctx_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("metrics.request_id", default=None)
+_ctx_tenant_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("metrics.tenant_id", default=None)
+_ctx_conversation_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "metrics.conversation_id", default=None
 )
-_ctx_account_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("metrics.account_id", default=None)
-_ctx_extra: contextvars.ContextVar[Dict[str, Any] | None] = contextvars.ContextVar("metrics.extra", default=None)
+_ctx_account_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("metrics.account_id", default=None)
+_ctx_extra: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar("metrics.extra", default=None)
 
 
 def _now_ts_ms() -> int:
@@ -43,11 +44,11 @@ def _now_ts_ms() -> int:
 
 
 def _ts_ms_to_iso(ts_ms: int) -> str:
-    return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(ts_ms / 1000, tz=UTC).isoformat()
 
 
-def get_metrics_context() -> Dict[str, Any]:
-    ctx: Dict[str, Any] = {}
+def get_metrics_context() -> dict[str, Any]:
+    ctx: dict[str, Any] = {}
     request_id = _ctx_request_id.get()
     tenant_id = _ctx_tenant_id.get()
     conversation_id = _ctx_conversation_id.get()
@@ -116,7 +117,7 @@ def metrics_context(
     Useful to correlate tool/workflow metrics without plumbing request_id everywhere.
     """
 
-    tokens: list[Tuple[contextvars.ContextVar[Any], contextvars.Token[Any]]] = []
+    tokens: list[tuple[contextvars.ContextVar[Any], contextvars.Token[Any]]] = []
 
     def _set(var: contextvars.ContextVar[Any], value: Any) -> None:
         tokens.append((var, var.set(value)))
@@ -311,7 +312,7 @@ def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     return out or None
 
 
-def _strip_text_fields_for_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
+def _strip_text_fields_for_metrics(record: dict[str, Any]) -> dict[str, Any]:
     """
     When enabled, strip raw text fields from metrics records to reduce PII leakage.
 
@@ -362,7 +363,7 @@ def _strip_text_fields_for_metrics(record: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def _build_record(payload: Mapping[str, Any]) -> Dict[str, Any]:
+def _build_record(payload: Mapping[str, Any]) -> dict[str, Any]:
     record = dict(payload or {})
     record.setdefault("_v", _METRICS_SCHEMA_VERSION)
     record.setdefault("event", "metric")
@@ -398,7 +399,7 @@ class _MetricsWriter:
             self._started = True
             atexit.register(self.shutdown)
 
-    def emit(self, record: Dict[str, Any]) -> None:
+    def emit(self, record: dict[str, Any]) -> None:
         if not self._started:
             self.start()
         try:
@@ -429,7 +430,7 @@ class _MetricsWriter:
             return
 
     def _run(self) -> None:
-        batch: list[Dict[str, Any]] = []
+        batch: list[dict[str, Any]] = []
         last_flush = time.time()
         while True:
             if self._stop.is_set() and self._queue.empty():
@@ -457,7 +458,7 @@ class _MetricsWriter:
         if batch:
             self._flush(batch)
 
-    def _flush(self, batch: list[Dict[str, Any]]) -> None:
+    def _flush(self, batch: list[dict[str, Any]]) -> None:
         try:
             to_write: list[str] = []
             dropped = int(self._dropped or 0)
@@ -480,7 +481,7 @@ class _MetricsWriter:
             return
 
 
-_writer: Optional[_MetricsWriter] = None
+_writer: _MetricsWriter | None = None
 _writer_lock = threading.Lock()
 
 
@@ -493,7 +494,7 @@ def _get_writer() -> _MetricsWriter:
     return _writer
 
 
-def log_metrics(payload: Dict[str, Any]) -> None:
+def log_metrics(payload: dict[str, Any]) -> None:
     """
     Append a metrics record to JSONL (best-effort).
 

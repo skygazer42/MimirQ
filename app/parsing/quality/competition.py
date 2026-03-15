@@ -6,7 +6,8 @@ This module stays pure so it can be unit-tested without running parsers.
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 
 def _grade_rank(value: Any) -> int:

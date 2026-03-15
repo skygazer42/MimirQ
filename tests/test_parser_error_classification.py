@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import uuid4
 
 import pytest
@@ -36,12 +37,14 @@ async def test_run_parser_subprocess_retries_internal_errors(monkeypatch):  # no
     calls = {"count": 0}
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, **kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         calls["count"] += 1
         if calls["count"] == 1:
             raise SubprocessWorkerError("boom", details={"type": "RuntimeError"})
         return {"ok": True}
 
     async def _fake_sleep(_sec):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     monkeypatch.setattr(runner_mod, "run_subprocess_worker", _fake_run_subprocess_worker, raising=True)
@@ -62,6 +65,7 @@ async def test_run_parser_subprocess_retries_internal_errors(monkeypatch):  # no
     calls["count"] = 0
 
     async def _always_fail(*, tenant_id, payload, **kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         calls["count"] += 1
         raise SubprocessWorkerError("boom", details={"type": "RuntimeError"})
 
@@ -84,10 +88,12 @@ async def test_run_parser_subprocess_does_not_retry_unsupported(monkeypatch):  #
     calls = {"count": 0}
 
     async def _fail_unsupported(*, tenant_id, payload, **kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         calls["count"] += 1
         raise SubprocessWorkerError("Unsupported file type: .zip", details={"type": "ValueError"})
 
     async def _sleep_should_not_be_called(_sec):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         raise AssertionError("should not sleep for unsupported errors")
 
     monkeypatch.setattr(runner_mod, "run_subprocess_worker", _fail_unsupported, raising=True)

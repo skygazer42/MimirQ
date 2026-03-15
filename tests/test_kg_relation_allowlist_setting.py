@@ -50,6 +50,7 @@ async def test_relation_allowlist_can_be_overridden_via_settings(monkeypatch: py
     monkeypatch.setattr(extractor_mod.EventExtractor, "_writeback_document_metadata", lambda *_a, **_k: None, raising=True)
 
     async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
+        await asyncio.sleep(0)  # Sonar S7503
         return object()
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
@@ -83,6 +84,7 @@ async def test_relation_allowlist_can_be_overridden_via_settings(monkeypatch: py
             captured["allowed_predicates"] = list(allowed_predicates or [])
 
         async def extract_relations(self, **_kwargs):  # noqa: ANN003
+            await asyncio.sleep(0)  # Sonar S7503
             return []
 
     monkeypatch.setattr(extractor_mod, "RelationProcessor", _FakeRelationProcessor, raising=True)

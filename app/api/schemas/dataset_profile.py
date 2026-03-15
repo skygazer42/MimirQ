@@ -9,7 +9,7 @@ These schemas are used to:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field
 
 class DatasetProfileHistogramBin(BaseModel):
     label: str
-    min: Optional[int] = None
-    max: Optional[int] = None
+    min: int | None = None
+    max: int | None = None
     count: int = 0
 
 
@@ -44,7 +44,7 @@ class DatasetProfileParsingProvenanceStats(BaseModel):
     """
 
     docs_with_provenance: int = 0
-    by_resolved_backend: Dict[str, int] = Field(default_factory=dict)
+    by_resolved_backend: dict[str, int] = Field(default_factory=dict)
     fallback_docs: int = 0
     elapsed_ms_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
 
@@ -61,10 +61,10 @@ class DatasetProfileTargetCheck(BaseModel):
     key: str
     label: str
     status: Literal["pass", "warn", "fail"] = "pass"
-    observed: Dict[str, Any] = Field(default_factory=dict)
-    target: Dict[str, Any] = Field(default_factory=dict)
-    message: Optional[str] = None
-    suggestions: List[str] = Field(default_factory=list)
+    observed: dict[str, Any] = Field(default_factory=dict)
+    target: dict[str, Any] = Field(default_factory=dict)
+    message: str | None = None
+    suggestions: list[str] = Field(default_factory=list)
 
 
 class DatasetProfileFindingSummary(BaseModel):
@@ -72,7 +72,7 @@ class DatasetProfileFindingSummary(BaseModel):
     label: str
     severity: Literal["info", "warning", "error"] = "info"
     count: int = 0
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class DatasetProfileRecallRiskHint(BaseModel):
@@ -85,10 +85,10 @@ class DatasetProfileRecallRiskHint(BaseModel):
     key: str
     label: str
     severity: Literal["info", "warning", "error"] = "warning"
-    observed: Dict[str, Any] = Field(default_factory=dict)
-    target: Dict[str, Any] = Field(default_factory=dict)
-    message: Optional[str] = None
-    suggestions: List[str] = Field(default_factory=list)
+    observed: dict[str, Any] = Field(default_factory=dict)
+    target: dict[str, Any] = Field(default_factory=dict)
+    message: str | None = None
+    suggestions: list[str] = Field(default_factory=list)
 
 
 class DatasetProfileScanRunSummary(BaseModel):
@@ -96,11 +96,11 @@ class DatasetProfileScanRunSummary(BaseModel):
     kind: str = "deep"
     status: str = "pending"
     progress: int = 0
-    requested_by: Optional[str] = None
-    created_at: Optional[datetime] = None
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    error_message: Optional[str] = None
+    requested_by: str | None = None
+    created_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error_message: str | None = None
 
 
 class DatasetProfileSummary(BaseModel):
@@ -109,88 +109,88 @@ class DatasetProfileSummary(BaseModel):
 
     total_documents: int = 0
     total_size_bytes: int = 0
-    by_status: Dict[str, int] = Field(default_factory=dict)
-    by_file_type: Dict[str, int] = Field(default_factory=dict)
+    by_status: dict[str, int] = Field(default_factory=dict)
+    by_file_type: dict[str, int] = Field(default_factory=dict)
     # Stable "slice" distributions (align with eval slicing).
-    by_directory: Dict[str, int] = Field(default_factory=dict)
-    by_quality_bucket: Dict[str, int] = Field(default_factory=dict)
+    by_directory: dict[str, int] = Field(default_factory=dict)
+    by_quality_bucket: dict[str, int] = Field(default_factory=dict)
 
-    file_size_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    file_size_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Text length based on `total_characters` (best-effort).
     length_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    length_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    length_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Chunking proxies derived from persisted per-document stats (cheap, best-effort).
     # Note: these are document-level distributions, NOT per-chunk distributions.
     chunk_count_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    chunk_count_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    chunk_count_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
     avg_chunk_chars_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    avg_chunk_chars_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    avg_chunk_chars_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Chunk length distribution (per-chunk; best-effort).
     # This is derived from persisted per-document `chunking_stats.histogram` (ingest-time or deep-scan backfill).
     chunk_length_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    chunk_length_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    chunk_length_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Token-based chunk stats (best-effort; derived from per-document `chunking_stats_tokens`).
     chunk_token_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    chunk_token_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    chunk_token_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
     avg_chunk_tokens_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    avg_chunk_tokens_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    avg_chunk_tokens_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Chunk coverage / overlap waste (best-effort; derived from per-document `chunk_coverage`).
     # Note: Percentiles/histograms are expressed in percentage points (0-100).
     chunk_coverage_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    chunk_coverage_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    chunk_coverage_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
     chunk_overlap_waste_percentiles: DatasetProfilePercentiles = Field(default_factory=DatasetProfilePercentiles)
-    chunk_overlap_waste_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
+    chunk_overlap_waste_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
 
     # Additional distributions (best-effort; may be empty if metadata missing).
-    page_number_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
-    parse_quality_histogram: List[DatasetProfileHistogramBin] = Field(default_factory=list)
-    language_mix: Dict[str, int] = Field(default_factory=dict)
+    page_number_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
+    parse_quality_histogram: list[DatasetProfileHistogramBin] = Field(default_factory=list)
+    language_mix: dict[str, int] = Field(default_factory=dict)
 
     pdf_scan: DatasetProfilePdfScanStats = Field(default_factory=DatasetProfilePdfScanStats)
     parsing_provenance: DatasetProfileParsingProvenanceStats = Field(default_factory=DatasetProfileParsingProvenanceStats)
 
-    pii_hits_total: Dict[str, int] = Field(default_factory=dict)
-    secrets_hits_total: Dict[str, int] = Field(default_factory=dict)
+    pii_hits_total: dict[str, int] = Field(default_factory=dict)
+    secrets_hits_total: dict[str, int] = Field(default_factory=dict)
 
     # Actionable buckets.
-    findings: List[DatasetProfileFindingSummary] = Field(default_factory=list)
+    findings: list[DatasetProfileFindingSummary] = Field(default_factory=list)
 
     # Retrieval recall-risk hints (best-effort; non-blocking).
-    recall_risk_hints: List[DatasetProfileRecallRiskHint] = Field(default_factory=list)
+    recall_risk_hints: list[DatasetProfileRecallRiskHint] = Field(default_factory=list)
 
     # Target checks for chunk tuning (best-effort; may be empty when stats missing).
-    chunk_targets: List[DatasetProfileTargetCheck] = Field(default_factory=list)
+    chunk_targets: list[DatasetProfileTargetCheck] = Field(default_factory=list)
 
     # Best-effort last deep scan run metadata (may be None).
-    latest_scan_run: Optional[DatasetProfileScanRunSummary] = None
+    latest_scan_run: DatasetProfileScanRunSummary | None = None
 
 
 class DatasetProfileDocumentOut(BaseModel):
     id: UUID
-    dataset_id: Optional[UUID] = None
+    dataset_id: UUID | None = None
     filename: str
     file_type: str
     file_size: int
     status: str
     chunk_count: int = 0
     total_characters: int = 0
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    error_message: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    error_message: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     # Optional PII-safe preview snippet (used by bucket drilldowns / reports).
-    preview: Optional[str] = None
+    preview: str | None = None
     preview_truncated: bool = False
 
 
 class DatasetProfileFindingListResponse(BaseModel):
     total: int
-    items: List[DatasetProfileDocumentOut] = Field(default_factory=list)
+    items: list[DatasetProfileDocumentOut] = Field(default_factory=list)
 
 
 class DatasetProfileDocumentListResponse(BaseModel):
@@ -199,7 +199,7 @@ class DatasetProfileDocumentListResponse(BaseModel):
     """
 
     total: int
-    items: List[DatasetProfileDocumentOut] = Field(default_factory=list)
+    items: list[DatasetProfileDocumentOut] = Field(default_factory=list)
 
 
 class DatasetProfileScanRunCreateRequest(BaseModel):
@@ -212,26 +212,26 @@ class DatasetProfileScanRunCreateRequest(BaseModel):
     backfill_chunk_quality_gate: bool = False
     compute_file_hash: bool = False
     # Hard cap for safety; 0/None means no cap.
-    max_documents: Optional[int] = Field(default=None, ge=0, le=1_000_000)
+    max_documents: int | None = Field(default=None, ge=0, le=1_000_000)
 
 
 class DatasetProfileScanRunOut(BaseModel):
     id: UUID
     tenant_id: UUID
     dataset_id: UUID
-    requested_by: Optional[str] = None
+    requested_by: str | None = None
     kind: str
     status: str
     progress: int
-    config: Dict[str, Any] = Field(default_factory=dict)
-    summary: Dict[str, Any] = Field(default_factory=dict)
-    error_message: Optional[str] = None
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    config: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class DatasetProfileScanRunListResponse(BaseModel):
     total: int
-    items: List[DatasetProfileScanRunOut] = Field(default_factory=list)
+    items: list[DatasetProfileScanRunOut] = Field(default_factory=list)

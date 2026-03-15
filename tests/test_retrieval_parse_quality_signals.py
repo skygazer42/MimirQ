@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from langchain_core.documents import Document
 
 
@@ -90,5 +91,5 @@ def test_orchestrator_parse_risk_signal_level_unknown_without_metadata(monkeypat
     metrics = out.get("metrics") or {}
 
     assert metrics.get("parse_risk_level") == "unknown"
-    assert float(metrics.get("parse_risk_score") or 0.0) == 0.0
+    assert float(metrics.get("parse_risk_score") or 0.0) == pytest.approx(0.0)
     assert str(metrics.get("parse_risk_reason") or "") == "no_parse_quality_metadata"

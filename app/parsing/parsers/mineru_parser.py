@@ -11,8 +11,9 @@ Supports:
 - Complex layout analysis
 """
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, List, Tuple
+from typing import Any
 
 from app.core.config import settings
 from app.deepdoc.parser.mineru_parser import MinerUParser as DeepDocMinerUParser
@@ -53,7 +54,7 @@ class MinerUParser(BaseAdvancedParser):
             mineru_server_url=self._server_url
         )
 
-    def _check_parser_installation(self, parser: Any) -> Tuple[bool, str]:
+    def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
         return parser.check_installation()
 
     def _call_parse_method(
@@ -63,7 +64,7 @@ class MinerUParser(BaseAdvancedParser):
         binary: bytes | None,
         callback: Callable[[float, str], None],
         **kwargs
-    ) -> Tuple[List, List]:
+    ) -> tuple[list, list]:
         return parser.parse_pdf(
             filepath=str(file_path),
             binary=binary,
@@ -74,7 +75,7 @@ class MinerUParser(BaseAdvancedParser):
             **kwargs
         )
 
-    def parse(self, file_path: Path, **kwargs) -> List:
+    def parse(self, file_path: Path, **kwargs) -> list:
         """
         Prefer the project's MinerU integrations when configured:
         - Local ZIP mode: MINERU_LOCAL_SERVER_URL (+ optional MINERU_VL_SERVER). When dataset/document ids

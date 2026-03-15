@@ -11,7 +11,7 @@ Important: Do NOT read or emit chunk content. Ids + counters only.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -41,7 +41,7 @@ def audit_reference_sources_drift(
 
     PII-safe: do NOT include quote/chunk content; ids + counters only.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Flatten pointers.
     pointers: list[dict[str, Any]] = []

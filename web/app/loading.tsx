@@ -1,6 +1,9 @@
 import { Skeleton } from "@/components/ui/skeleton"
 import { AppBackground } from "@/components/ui/app-background"
 
+const NAV_SKELETON_KEYS = ["nav-1", "nav-2", "nav-3", "nav-4", "nav-5", "nav-6", "nav-7", "nav-8", "nav-9"]
+const CARD_SKELETON_KEYS = ["card-1", "card-2", "card-3", "card-4", "card-5", "card-6"]
+
 export default function Loading() {
   return (
     <div className="relative flex h-dvh overflow-hidden bg-background" role="status" aria-live="polite">
@@ -20,8 +23,8 @@ export default function Loading() {
           <Skeleton className="h-11 rounded-2xl" />
 
           <div className="mt-5 space-y-2">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <Skeleton key={i} className="h-9 rounded-lg" />
+            {NAV_SKELETON_KEYS.map((key) => (
+              <Skeleton key={key} className="h-9 rounded-lg" />
             ))}
           </div>
 
@@ -39,8 +42,8 @@ export default function Loading() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-28 rounded-xl" />
+              {CARD_SKELETON_KEYS.map((key) => (
+                <Skeleton key={key} className="h-28 rounded-xl" />
               ))}
             </div>
 

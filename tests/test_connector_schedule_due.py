@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -19,7 +19,7 @@ import pytest
 def test_schedule_due(schedule: str, elapsed_sec: int, expected: bool) -> None:
     from app.api.v1.connectors import _schedule_due
 
-    now = datetime(2026, 1, 31, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 31, 12, 0, 0, tzinfo=UTC)
     last = now - timedelta(seconds=int(elapsed_sec))
     assert _schedule_due(schedule=schedule, now=now, last_run_at=last) is expected
 

@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { groupApi } from '@/lib/api-client'
 import type { TenantGroupOut } from '@/types/backend'
@@ -109,7 +109,7 @@ export default function SettingsGroupsPage() {
   }
 
   useEffect(() => {
-    void refresh()
+    detachPromise(refresh())
   }, [])
 
   return (
@@ -127,7 +127,7 @@ export default function SettingsGroupsPage() {
               size="sm"
               className="gap-2 rounded-xl"
               disabled={loading}
-              onClick={() => void refresh()}
+              onClick={() => detachPromise(refresh())}
             >
               <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
@@ -187,7 +187,7 @@ export default function SettingsGroupsPage() {
                   <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
                     取消
                   </Button>
-                  <Button onClick={() => void createGroup()} disabled={!canCreate || creating}>
+                  <Button onClick={() => detachPromise(createGroup())} disabled={!canCreate || creating}>
                     {creating ? '创建中…' : '创建'}
                   </Button>
                 </DialogFooter>
@@ -270,7 +270,7 @@ export default function SettingsGroupsPage() {
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => void deleteGroup(gid)} disabled={deleting}>
+                                <AlertDialogAction onClick={() => detachPromise(deleteGroup(gid))} disabled={deleting}>
                                   {deleting ? '删除中…' : '删除'}
                                 </AlertDialogAction>
                               </AlertDialogFooter>

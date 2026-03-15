@@ -7,7 +7,6 @@ sentences into chunks of the target size.
 
 import re
 from dataclasses import dataclass
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -206,8 +205,8 @@ class SemanticSentenceChunker(BaseChunker):
 
         return units
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        chunks: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        chunks: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

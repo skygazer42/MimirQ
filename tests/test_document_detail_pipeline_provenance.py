@@ -7,7 +7,7 @@ from app.api.schemas.document import DocumentDetail
 
 
 def test_document_detail_includes_pipeline_provenance():  # noqa: ANN001
-    now = dt.datetime(2026, 2, 1, 0, 0, 0, tzinfo=dt.timezone.utc)
+    now = dt.datetime(2026, 2, 1, 0, 0, 0, tzinfo=dt.UTC)
 
     doc_id = uuid.uuid4()
     payload = {

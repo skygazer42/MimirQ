@@ -11,14 +11,13 @@ This module never performs any network access.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
 class HtmlXPathExtractResult:
     text: str
     matched_nodes: int
-    xpath_error: Optional[str] = None
+    xpath_error: str | None = None
 
 
 def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathExtractResult:

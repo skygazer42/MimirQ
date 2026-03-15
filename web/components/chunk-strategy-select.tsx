@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { CHUNK_STRATEGY_OPTIONS, getChunkStrategyOption, getStrategiesByGroup } from '@/lib/chunk-strategies'
+import { getChunkStrategyOption, getStrategiesByGroup } from '@/lib/chunk-strategies'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { Layers } from 'lucide-react'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
@@ -20,7 +20,7 @@ export function ChunkStrategySelect({
   compact = false,
   value,
   onChange,
-}: ChunkStrategySelectProps) {
+}: Readonly<ChunkStrategySelectProps>) {
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const { chunkStrategyAvailable } = usePipelineCapabilities()
   

@@ -58,7 +58,7 @@ def test_summarize_latencies_ms() -> None:
 def test_throughput_per_sec() -> None:
     mod = _load_module()
     assert math.isclose(mod.throughput_per_sec(count=100, elapsed_ms=10_000), 10.0, rel_tol=0.0, abs_tol=1e-9)
-    assert mod.throughput_per_sec(count=100, elapsed_ms=0) == 0.0
+    assert mod.throughput_per_sec(count=100, elapsed_ms=0) == pytest.approx(0.0)
 
 
 def test_main_dry_run(tmp_path: Path) -> None:

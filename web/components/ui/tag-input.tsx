@@ -16,7 +16,7 @@ export function TagInput({
   maxTagLen = 64,
   className,
   inputClassName,
-}: {
+}: Readonly<{
   value: string[]
   onValueChange: (next: string[]) => void
   placeholder?: string
@@ -25,7 +25,7 @@ export function TagInput({
   maxTagLen?: number
   className?: string
   inputClassName?: string
-  }) {
+  }>) {
     const [draft, setDraft] = React.useState('')
 
     const tags = React.useMemo(() => (Array.isArray(value) ? value : []), [value])

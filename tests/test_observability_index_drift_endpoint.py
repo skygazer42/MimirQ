@@ -23,7 +23,7 @@ def test_observability_index_drift_list_endpoint_calls_service(monkeypatch):  # 
     import app.api.v1.observability as obs_mod
     import app.services.index_audit_service as audit_svc
 
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
@@ -88,7 +88,7 @@ def test_observability_index_drift_resolve_endpoint_calls_service(monkeypatch): 
     import app.api.v1.observability as obs_mod
     import app.services.index_audit_service as audit_svc
 
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     item_id = uuid.uuid4()

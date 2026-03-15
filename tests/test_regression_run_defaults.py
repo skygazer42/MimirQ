@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
+
 
 def test_regression_run_defaults_are_recall_friendly() -> None:
     """
@@ -14,7 +16,7 @@ def test_regression_run_defaults_are_recall_friendly() -> None:
 
     req = RagasRegressionRunCreateRequest(dataset_id=uuid4())
     assert req.top_k == 20
-    assert req.score_threshold == 0.0
+    assert req.score_threshold == pytest.approx(0.0)
 
 
 def test_regression_run_defaults_follow_runtime_rerank_settings(monkeypatch) -> None:  # noqa: ANN001
@@ -59,7 +61,7 @@ def test_regression_run_request_accepts_extended_runtime_knobs() -> None:
     assert req.multi_query_count == 3
     assert req.enable_query_rewrite is True
     assert req.query_rewrite_strategy == "kb_followup.v2"
-    assert req.query_rewrite_temperature == 0.3
+    assert req.query_rewrite_temperature == pytest.approx(0.3)
     assert req.query_rewrite_max_chars == 180
     assert req.sparse_retrieval_enabled is True
     assert req.sparse_retrieval_provider == "splade"

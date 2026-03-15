@@ -4,8 +4,9 @@ import argparse
 import json
 import os
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -24,23 +25,23 @@ def _join_url(base: str, path: str) -> str:
     return f"{b}{p}"
 
 
-def _chunks(items: List[str], n: int) -> Iterable[List[str]]:
+def _chunks(items: list[str], n: int) -> Iterable[list[str]]:
     step = max(1, int(n or 1))
     for i in range(0, len(items), step):
         yield items[i : i + step]
 
 
-def _coerce_str_list(value: Any) -> List[str]:
+def _coerce_str_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
-    out: List[str] = []
+    out: list[str] = []
     for v in value:
         if isinstance(v, str) and v.strip():
             out.append(v.strip())
     return out
 
 
-def _doc_image_count(meta: Dict[str, Any]) -> int:
+def _doc_image_count(meta: dict[str, Any]) -> int:
     try:
         raw = meta.get("document_analytics_raw")
         if isinstance(raw, dict):
@@ -50,7 +51,7 @@ def _doc_image_count(meta: Dict[str, Any]) -> int:
     return 0
 
 
-def _doc_has_minio_images(meta: Dict[str, Any]) -> bool:
+def _doc_has_minio_images(meta: dict[str, Any]) -> bool:
     img_ids = _coerce_str_list(meta.get("img_ids"))
     return bool(img_ids)
 
@@ -67,7 +68,7 @@ def _request_json(
     url: str,
     *,
     method: str,
-    headers: Dict[str, str],
+    headers: dict[str, str],
     payload: Any | None = None,
     timeout_sec: float = 30.0,
 ) -> HttpResult:
@@ -105,9 +106,9 @@ def _request_json(
         return HttpResult(status_code=None, elapsed_ms=elapsed_ms, data=None, error=f"URLError: {exc}")
 
 
-def _build_auth_headers(*, auth_mode: str, tenant_id: str, user_id: str | None, token: str | None) -> Dict[str, str]:
+def _build_auth_headers(*, auth_mode: str, tenant_id: str, user_id: str | None, token: str | None) -> dict[str, str]:
     mode = (auth_mode or "header").strip().lower()
-    headers: Dict[str, str] = {"Accept": "application/json", "X-Tenant-ID": str(tenant_id)}
+    headers: dict[str, str] = {"Accept": "application/json", "X-Tenant-ID": str(tenant_id)}
 
     if mode == "header":
         if not user_id:
@@ -129,12 +130,12 @@ def _iter_dataset_document_ids(
     *,
     base_url: str,
     dataset_id: str,
-    headers: Dict[str, str],
+    headers: dict[str, str],
     only_missing_img_ids: bool,
     require_image_count: bool,
     timeout_sec: float,
-) -> List[str]:
-    out: List[str] = []
+) -> list[str]:
+    out: list[str] = []
     skip = 0
     limit = 200
 

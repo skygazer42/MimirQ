@@ -8,7 +8,7 @@ Provides specialized splitters for JSON data and programming code.
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -39,7 +39,7 @@ class JSONChunker(BaseChunker):
         chunk_size: int = 1000,
         chunk_overlap: int = 0,  # Usually 0 for JSON
         min_chunk_size: int = 200,
-        max_depth: Optional[int] = None,
+        max_depth: int | None = None,
     ):
         """
         Initialize the JSON chunker.
@@ -55,9 +55,9 @@ class JSONChunker(BaseChunker):
         self.min_chunk_size = min_chunk_size
         self.max_depth = max_depth
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         """Split documents containing JSON data."""
-        all_chunks: List[Document] = []
+        all_chunks: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -86,10 +86,10 @@ class JSONChunker(BaseChunker):
     def _split_json(
         self,
         data: Any,
-        base_metadata: Dict[str, Any],
+        base_metadata: dict[str, Any],
         path: str = "$",
         depth: int = 0,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Recursively split JSON data."""
         if self.max_depth is not None and depth > self.max_depth:
             # Max depth reached, serialize as single chunk
@@ -105,13 +105,13 @@ class JSONChunker(BaseChunker):
 
     def _split_array(
         self,
-        arr: List[Any],
-        base_metadata: Dict[str, Any],
+        arr: list[Any],
+        base_metadata: dict[str, Any],
         path: str,
         depth: int,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Split a JSON array."""
-        chunks: List[Document] = []
+        chunks: list[Document] = []
 
         # Check if entire array fits in one chunk
         arr_str = json.dumps(arr, ensure_ascii=False, indent=2)
@@ -119,7 +119,7 @@ class JSONChunker(BaseChunker):
             return [self._create_chunk(arr, base_metadata, path)]
 
         # Split into individual elements
-        current_batch: List[Any] = []
+        current_batch: list[Any] = []
         current_size = 2  # For "[]"
 
         for idx, item in enumerate(arr):
@@ -160,18 +160,18 @@ class JSONChunker(BaseChunker):
 
     def _split_object(
         self,
-        obj: Dict[str, Any],
-        base_metadata: Dict[str, Any],
+        obj: dict[str, Any],
+        base_metadata: dict[str, Any],
         path: str,
         depth: int,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Split a JSON object."""
         # Check if entire object fits in one chunk
         obj_str = json.dumps(obj, ensure_ascii=False, indent=2)
         if len(obj_str) <= self.chunk_size:
             return [self._create_chunk(obj, base_metadata, path)]
 
-        chunks: List[Document] = []
+        chunks: list[Document] = []
 
         # Split by keys
         for key, value in obj.items():
@@ -199,7 +199,7 @@ class JSONChunker(BaseChunker):
     def _create_chunk(
         self,
         data: Any,
-        base_metadata: Dict[str, Any],
+        base_metadata: dict[str, Any],
         json_path: str,
     ) -> Document:
         """Create a Document chunk from JSON data."""
@@ -214,7 +214,7 @@ class JSONChunker(BaseChunker):
 
         return Document(page_content=content, metadata=metadata)
 
-    def _fallback_split(self, doc: Document) -> List[Document]:
+    def _fallback_split(self, doc: Document) -> list[Document]:
         """Fall back to recursive text splitting."""
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
@@ -349,7 +349,7 @@ class CodeChunker(BaseChunker):
         self,
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
-        language: Optional[str] = None,
+        language: str | None = None,
         preserve_functions: bool = True,
     ):
         """
@@ -366,9 +366,9 @@ class CodeChunker(BaseChunker):
         self.language = language
         self.preserve_functions = preserve_functions
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         """Split code documents."""
-        all_chunks: List[Document] = []
+        all_chunks: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -472,7 +472,7 @@ class CodeChunker(BaseChunker):
 
         return "default"
 
-    def _extract_code_context(self, text: str, language: str) -> Optional[str]:
+    def _extract_code_context(self, text: str, language: str) -> str | None:
         """Extract context (function/class name) from code chunk."""
         patterns = {
             "python": [
@@ -534,13 +534,13 @@ class SmartCodeChunker(BaseChunker):
             language=target_language,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         """Split documents with smart code awareness."""
         if self.target_language != "python":
             # Fall back to regular code chunker for other languages
             return self._base_chunker.split_documents(documents)
 
-        all_chunks: List[Document] = []
+        all_chunks: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -597,7 +597,7 @@ class SmartCodeChunker(BaseChunker):
 
         return all_chunks
 
-    def _split_python_units(self, text: str) -> List[tuple]:
+    def _split_python_units(self, text: str) -> list[tuple]:
         """Split Python code into logical units (functions, classes)."""
         units = []
         lines = text.split('\n')

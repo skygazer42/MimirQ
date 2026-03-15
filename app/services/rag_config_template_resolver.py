@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Sequence
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -259,16 +259,16 @@ def resolve_rag_config_template(
     *,
     db: Session,
     tenant_id: UUID,
-    rag_config_template_id: Optional[UUID] = None,
-    template_key: Optional[str] = None,
-    ab_experiment_key: Optional[str] = None,
-    ab_user_key: Optional[str] = None,
+    rag_config_template_id: UUID | None = None,
+    template_key: str | None = None,
+    ab_experiment_key: str | None = None,
+    ab_user_key: str | None = None,
     routing_mode: str = "weighted",
     adaptive_epsilon: float = 0.1,
     feedback_reward_snapshot: dict[str, Any] | None = None,
     feedback_reward_hook: FeedbackRewardHook | None = None,
     return_debug_metadata: bool = False,
-) -> Optional[RagConfigTemplate] | tuple[Optional[RagConfigTemplate], dict[str, Any] | None]:
+) -> RagConfigTemplate | None | tuple[RagConfigTemplate | None, dict[str, Any] | None]:
     """
     Resolve the final RagConfigTemplate to use (returns ORM object).
 

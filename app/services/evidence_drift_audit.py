@@ -12,7 +12,7 @@ Notes:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 from uuid import UUID
 
 from app.services.dataset_profile_service import (
@@ -39,7 +39,7 @@ class DriftSliceKeys:
     directory: str
 
 
-def _as_uuid(value: Any) -> Optional[UUID]:
+def _as_uuid(value: Any) -> UUID | None:
     if value is None:
         return None
     if isinstance(value, UUID):
@@ -67,11 +67,11 @@ def build_drift_slice_keys(*, document_file_type: object, document_metadata: obj
 
 def classify_reference_source_drift(
     *,
-    reference_source: Dict[str, Any],
-    document_row: Optional[Dict[str, Any]],
-    chunk_row: Optional[Dict[str, Any]],
-    suite_dataset_id: Optional[UUID],
-) -> Tuple[bool, str, Dict[str, Any], Dict[str, Any]]:
+    reference_source: dict[str, Any],
+    document_row: dict[str, Any] | None,
+    chunk_row: dict[str, Any] | None,
+    suite_dataset_id: UUID | None,
+) -> tuple[bool, str, dict[str, Any], dict[str, Any]]:
     """
     Classify a single reference source pointer as ok/drift with a primary drift reason.
 

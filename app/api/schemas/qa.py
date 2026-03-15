@@ -4,7 +4,6 @@ Q&A generation/indexing API schemas.
 
 from __future__ import annotations
 
-from typing import List
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -28,6 +27,6 @@ class DocumentQAGenerateResponse(BaseModel):
     mode: str = Field(default="none", description="llm | extract | none")
     deleted: int = 0
     created: int = 0
-    chunk_ids: List[UUID] = Field(default_factory=list)
-    preview: List[QAPairPreview] = Field(default_factory=list)
+    chunk_ids: list[UUID] = Field(default_factory=list)
+    preview: list[QAPairPreview] = Field(default_factory=list)
 

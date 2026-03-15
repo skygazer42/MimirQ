@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -95,8 +97,8 @@ def test_run_queryset_health_diagnostics_writes_snapshot_and_history(tmp_path: P
     assert cron_payload.get("policy_source") == "default"
     assert len(str(cron_payload.get("policy_hash") or "")) == 24
     assert cron_payload.get("policy_changed") is False
-    assert cron_payload.get("miss_rate") == 0.5
-    assert cron_payload.get("weak_hit_rate") == 0.5
+    assert cron_payload.get("miss_rate") == pytest.approx(0.5)
+    assert cron_payload.get("weak_hit_rate") == pytest.approx(0.5)
     assert cron_payload.get("hard_case_ids") == ["q-1", "q-2"]
 
 
@@ -235,7 +237,7 @@ def test_run_queryset_health_diagnostics_applies_cli_risk_threshold_overrides(tm
     assert payload.get("policy_source") == "policy_json+cli_overrides"
     assert len(str(payload.get("policy_hash") or "")) == 24
     assert payload.get("trend", {}).get("policy_changed") is True
-    assert payload.get("risk", {}).get("miss_rate") == 0.5
+    assert payload.get("risk", {}).get("miss_rate") == pytest.approx(0.5)
     # Policy file lowered weak-hit threshold to 0.15, so rr=0.2 is not weak.
     assert payload.get("risk", {}).get("weak_hit_count") == 0
     # CLI override disables miss-rate regression for this run.

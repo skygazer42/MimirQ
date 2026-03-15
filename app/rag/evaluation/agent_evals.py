@@ -24,9 +24,9 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.config import settings
 
@@ -55,7 +55,7 @@ class EvaluationScore:
     metric: MetricType
     score: float  # 0.0 to 1.0
     explanation: str = ""
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -68,20 +68,20 @@ class EvaluationResult:
     """Complete evaluation result."""
     question: str
     answer: str
-    scores: List[EvaluationScore] = field(default_factory=list)
+    scores: list[EvaluationScore] = field(default_factory=list)
     overall_score: float = 0.0
     passed: bool = False
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None).isoformat())
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def get_score(self, metric: MetricType) -> Optional[EvaluationScore]:
+    def get_score(self, metric: MetricType) -> EvaluationScore | None:
         """Get score for a specific metric."""
         for score in self.scores:
             if score.metric == metric:
                 return score
         return None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "question": self.question,
@@ -121,8 +121,8 @@ class BaseEvaluator(ABC):
         self,
         question: str,
         answer: str,
-        contexts: Optional[List[str]] = None,
-        ground_truth: Optional[str] = None,
+        contexts: list[str] | None = None,
+        ground_truth: str | None = None,
         **kwargs,
     ) -> EvaluationScore:
         """
@@ -164,8 +164,8 @@ class FaithfulnessEvaluator(BaseEvaluator):
         self,
         question: str,
         answer: str,
-        contexts: Optional[List[str]] = None,
-        ground_truth: Optional[str] = None,
+        contexts: list[str] | None = None,
+        ground_truth: str | None = None,
         **kwargs,
     ) -> EvaluationScore:
         if not contexts:
@@ -184,7 +184,7 @@ class FaithfulnessEvaluator(BaseEvaluator):
     def _heuristic_evaluate(
         self,
         answer: str,
-        contexts: List[str],
+        contexts: list[str],
     ) -> EvaluationScore:
         """Simple heuristic-based faithfulness check."""
         combined_context = " ".join(contexts).lower()
@@ -211,7 +211,7 @@ class FaithfulnessEvaluator(BaseEvaluator):
         self,
         question: str,
         answer: str,
-        contexts: List[str],
+        contexts: list[str],
     ) -> EvaluationScore:
         """LLM-based faithfulness evaluation."""
         prompt = f"""Evaluate if the following answer is faithful to the provided contexts.
@@ -267,8 +267,8 @@ class RelevanceEvaluator(BaseEvaluator):
         self,
         question: str,
         answer: str,
-        contexts: Optional[List[str]] = None,
-        ground_truth: Optional[str] = None,
+        contexts: list[str] | None = None,
+        ground_truth: str | None = None,
         **kwargs,
     ) -> EvaluationScore:
         if self.llm is None:
@@ -358,8 +358,8 @@ class ContextPrecisionEvaluator(BaseEvaluator):
         self,
         question: str,
         answer: str,
-        contexts: Optional[List[str]] = None,
-        ground_truth: Optional[str] = None,
+        contexts: list[str] | None = None,
+        ground_truth: str | None = None,
         **kwargs,
     ) -> EvaluationScore:
         if not contexts:
@@ -416,8 +416,8 @@ class AnswerCorrectnessEvaluator(BaseEvaluator):
         self,
         question: str,
         answer: str,
-        contexts: Optional[List[str]] = None,
-        ground_truth: Optional[str] = None,
+        contexts: list[str] | None = None,
+        ground_truth: str | None = None,
         **kwargs,
     ) -> EvaluationScore:
         if not ground_truth:
@@ -501,7 +501,7 @@ class TrajectoryStep:
     action: str
     observation: str
     timestamp: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class TrajectoryEvaluator(BaseEvaluator):
@@ -517,9 +517,9 @@ class TrajectoryEvaluator(BaseEvaluator):
         self,
         question: str,
         answer: str,
-        contexts: Optional[List[str]] = None,
-        ground_truth: Optional[str] = None,
-        trajectory: Optional[List[TrajectoryStep]] = None,
+        contexts: list[str] | None = None,
+        ground_truth: str | None = None,
+        trajectory: list[TrajectoryStep] | None = None,
         **kwargs,
     ) -> EvaluationScore:
         if not trajectory:
@@ -548,7 +548,7 @@ class TrajectoryEvaluator(BaseEvaluator):
             },
         )
 
-    def _evaluate_efficiency(self, trajectory: List[TrajectoryStep]) -> float:
+    def _evaluate_efficiency(self, trajectory: list[TrajectoryStep]) -> float:
         """Evaluate trajectory efficiency (fewer steps = better)."""
         step_count = len(trajectory)
         if step_count <= 3:
@@ -562,7 +562,7 @@ class TrajectoryEvaluator(BaseEvaluator):
         else:
             return 0.2
 
-    def _evaluate_coherence(self, trajectory: List[TrajectoryStep]) -> float:
+    def _evaluate_coherence(self, trajectory: list[TrajectoryStep]) -> float:
         """Evaluate if steps are logically connected."""
         if len(trajectory) <= 1:
             return 1.0
@@ -577,7 +577,7 @@ class TrajectoryEvaluator(BaseEvaluator):
 
     def _evaluate_completeness(
         self,
-        trajectory: List[TrajectoryStep],
+        trajectory: list[TrajectoryStep],
         question: str,
     ) -> float:
         """Evaluate if trajectory addresses the question."""
@@ -606,7 +606,7 @@ class RAGEvaluator:
     def __init__(
         self,
         llm: Any = None,
-        metrics: Optional[List[MetricType]] = None,
+        metrics: list[MetricType] | None = None,
     ):
         """
         Initialize the evaluator.
@@ -622,7 +622,7 @@ class RAGEvaluator:
             MetricType.CONTEXT_PRECISION,
         ]
 
-        self._evaluators: Dict[MetricType, BaseEvaluator] = {
+        self._evaluators: dict[MetricType, BaseEvaluator] = {
             MetricType.FAITHFULNESS: FaithfulnessEvaluator(llm),
             MetricType.RELEVANCE: RelevanceEvaluator(llm),
             MetricType.CONTEXT_PRECISION: ContextPrecisionEvaluator(llm),
@@ -645,9 +645,9 @@ class RAGEvaluator:
         self,
         question: str,
         answer: str,
-        contexts: Optional[List[str]] = None,
-        ground_truth: Optional[str] = None,
-        trajectory: Optional[List[TrajectoryStep]] = None,
+        contexts: list[str] | None = None,
+        ground_truth: str | None = None,
+        trajectory: list[TrajectoryStep] | None = None,
         **kwargs,
     ) -> EvaluationResult:
         """
@@ -707,8 +707,8 @@ class RAGEvaluator:
 
     async def evaluate_batch(
         self,
-        samples: List[Dict[str, Any]],
-    ) -> List[EvaluationResult]:
+        samples: list[dict[str, Any]],
+    ) -> list[EvaluationResult]:
         """
         Evaluate multiple samples.
 
@@ -738,7 +738,7 @@ class RAGEvaluator:
 # ============================================================================
 
 
-_default_evaluator: Optional[RAGEvaluator] = None
+_default_evaluator: RAGEvaluator | None = None
 
 
 def get_evaluator(llm: Any = None) -> RAGEvaluator:
@@ -752,8 +752,8 @@ def get_evaluator(llm: Any = None) -> RAGEvaluator:
 async def evaluate_response(
     question: str,
     answer: str,
-    contexts: Optional[List[str]] = None,
-    ground_truth: Optional[str] = None,
+    contexts: list[str] | None = None,
+    ground_truth: str | None = None,
 ) -> EvaluationResult:
     """Quick evaluation of a single response."""
     evaluator = get_evaluator()

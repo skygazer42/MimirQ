@@ -15,9 +15,10 @@ Usage:
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
@@ -64,10 +65,10 @@ class ToolParameter:
     description: str = ""
     required: bool = False
     default: Any = None
-    enum: Optional[List[str]] = None
+    enum: list[str] | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ToolParameter":
+    def from_dict(cls, data: dict[str, Any]) -> "ToolParameter":
         return cls(
             name=data.get("name", ""),
             type=data.get("type", "string"),
@@ -84,12 +85,12 @@ class MCPTool:
     name: str
     description: str
     type: ToolType = ToolType.FUNCTION
-    parameters: List[ToolParameter] = field(default_factory=list)
-    returns: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    parameters: list[ToolParameter] = field(default_factory=list)
+    returns: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MCPTool":
+    def from_dict(cls, data: dict[str, Any]) -> "MCPTool":
         params = [
             ToolParameter.from_dict(p)
             for p in data.get("parameters", [])
@@ -103,7 +104,7 @@ class MCPTool:
             metadata=data.get("metadata", {}),
         )
 
-    def to_langchain_schema(self) -> Dict[str, Any]:
+    def to_langchain_schema(self) -> dict[str, Any]:
         """Convert to LangChain tool schema format."""
         properties = {}
         required = []
@@ -135,8 +136,8 @@ class ToolResult:
     """Result from MCP tool execution."""
     success: bool
     data: Any = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class MCPClient:
@@ -149,10 +150,10 @@ class MCPClient:
 
     def __init__(
         self,
-        server_url: Optional[str] = None,
+        server_url: str | None = None,
         timeout: int = 30,
         max_retries: int = 3,
-        headers: Optional[Dict[str, str]] = None,
+        headers: dict[str, str] | None = None,
     ):
         """
         Initialize the MCP client.
@@ -167,8 +168,8 @@ class MCPClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.headers = headers or {}
-        self._tools_cache: Optional[List[MCPTool]] = None
-        self._client: Optional[httpx.AsyncClient] = None
+        self._tools_cache: list[MCPTool] | None = None
+        self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -189,8 +190,8 @@ class MCPClient:
         self,
         method: str,
         endpoint: str,
-        data: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Make HTTP request to MCP server."""
         if not self.server_url:
             raise MCPConnectionError("MCP server URL not configured")
@@ -225,7 +226,7 @@ class MCPClient:
     async def list_tools(
         self,
         refresh: bool = False,
-    ) -> List[MCPTool]:
+    ) -> list[MCPTool]:
         """
         List available tools from MCP server.
 
@@ -248,7 +249,7 @@ class MCPClient:
             logger.error("Failed to list MCP tools: %s", e)
             return []
 
-    async def get_tool(self, name: str) -> Optional[MCPTool]:
+    async def get_tool(self, name: str) -> MCPTool | None:
         """
         Get a specific tool by name.
 
@@ -267,7 +268,7 @@ class MCPClient:
     async def call_tool(
         self,
         name: str,
-        arguments: Optional[Dict[str, Any]] = None,
+        arguments: dict[str, Any] | None = None,
     ) -> ToolResult:
         """
         Execute a tool on the MCP server.
@@ -302,7 +303,7 @@ class MCPClient:
                 error=str(e),
             )
 
-    async def list_resources(self) -> List[Dict[str, Any]]:
+    async def list_resources(self) -> list[dict[str, Any]]:
         """List available resources from MCP server."""
         try:
             response = await self._request("GET", "/resources")
@@ -314,7 +315,7 @@ class MCPClient:
     async def read_resource(
         self,
         uri: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Read a resource from MCP server.
 
@@ -335,7 +336,7 @@ class MCPClient:
             logger.error("Failed to read MCP resource: %s", e)
             return None
 
-    async def list_prompts(self) -> List[Dict[str, Any]]:
+    async def list_prompts(self) -> list[dict[str, Any]]:
         """List available prompts from MCP server."""
         try:
             response = await self._request("GET", "/prompts")
@@ -347,8 +348,8 @@ class MCPClient:
     async def get_prompt(
         self,
         name: str,
-        arguments: Optional[Dict[str, Any]] = None,
-    ) -> Optional[str]:
+        arguments: dict[str, Any] | None = None,
+    ) -> str | None:
         """
         Get a prompt from MCP server.
 
@@ -373,7 +374,7 @@ class MCPClient:
             logger.error("Failed to get MCP prompt: %s", e)
             return None
 
-    def to_langchain_tools(self, tools: List[MCPTool]) -> List[Dict[str, Any]]:
+    def to_langchain_tools(self, tools: list[MCPTool]) -> list[dict[str, Any]]:
         """
         Convert MCP tools to LangChain tool format.
 
@@ -398,7 +399,7 @@ class MCPToolRegistry:
     Manages both remote MCP tools and local tool implementations.
     """
 
-    def __init__(self, mcp_client: Optional[MCPClient] = None):
+    def __init__(self, mcp_client: MCPClient | None = None):
         """
         Initialize the registry.
 
@@ -406,15 +407,15 @@ class MCPToolRegistry:
             mcp_client: MCP client instance
         """
         self.mcp_client = mcp_client
-        self._local_tools: Dict[str, Callable] = {}
-        self._tool_schemas: Dict[str, MCPTool] = {}
+        self._local_tools: dict[str, Callable] = {}
+        self._tool_schemas: dict[str, MCPTool] = {}
 
     def register(
         self,
         name: str,
         func: Callable,
         description: str = "",
-        parameters: Optional[List[ToolParameter]] = None,
+        parameters: list[ToolParameter] | None = None,
     ) -> "MCPToolRegistry":
         """
         Register a local tool.
@@ -444,7 +445,7 @@ class MCPToolRegistry:
             return True
         return False
 
-    async def list_tools(self) -> List[MCPTool]:
+    async def list_tools(self) -> list[MCPTool]:
         """List all available tools (local + remote)."""
         tools = list(self._tool_schemas.values())
 
@@ -460,7 +461,7 @@ class MCPToolRegistry:
     async def call_tool(
         self,
         name: str,
-        arguments: Optional[Dict[str, Any]] = None,
+        arguments: dict[str, Any] | None = None,
     ) -> ToolResult:
         """
         Call a tool by name.
@@ -479,7 +480,7 @@ class MCPToolRegistry:
             from app.rag.middleware import ToolMiddlewareChain
 
             chain = ToolMiddlewareChain()
-        tool_state: Dict[str, Any] = {
+        tool_state: dict[str, Any] = {
             "tool_name": name,
             "arguments": arguments,
             "result": None,
@@ -491,7 +492,7 @@ class MCPToolRegistry:
         if chain:
             tool_state = chain.run_before(tool_state)
 
-        async def _execute(state: Dict[str, Any]) -> Dict[str, Any]:
+        async def _execute(state: dict[str, Any]) -> dict[str, Any]:
             tool_name = str(state.get("tool_name") or "")
             tool_args = state.get("arguments") or {}
 
@@ -544,8 +545,8 @@ class MCPToolRegistry:
 # ============================================================================
 
 
-_default_client: Optional[MCPClient] = None
-_default_registry: Optional[MCPToolRegistry] = None
+_default_client: MCPClient | None = None
+_default_registry: MCPToolRegistry | None = None
 
 
 def get_mcp_client() -> MCPClient:
@@ -566,7 +567,7 @@ def get_mcp_registry() -> MCPToolRegistry:
 
 async def call_mcp_tool(
     name: str,
-    arguments: Optional[Dict[str, Any]] = None,
+    arguments: dict[str, Any] | None = None,
 ) -> ToolResult:
     """Call an MCP tool using the default registry."""
     registry = get_mcp_registry()

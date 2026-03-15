@@ -2,8 +2,8 @@
 Markdown governance processor shared by parsing and indexing pipelines.
 """
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Sequence
 
 from langchain_core.documents import Document
 
@@ -69,14 +69,14 @@ class GovernanceStats:
 class GovernanceProcessor:
     """Apply conservative markdown cleanup rules before chunking."""
 
-    def __init__(self, rules: Optional[Iterable[RegexRule]] = None) -> None:
+    def __init__(self, rules: Iterable[RegexRule] | None = None) -> None:
         self._rules = list(rules) if rules is not None else list(DEFAULT_MARKDOWN_RULES)
 
     def clean_documents(
         self,
         documents: Sequence[Document],
         *,
-        rules: Optional[Iterable[RegexRule]] = None,
+        rules: Iterable[RegexRule] | None = None,
         extract_frontmatter: bool = False,
         strip_frontmatter: bool = False,
         detect_language: bool = False,
@@ -120,7 +120,7 @@ class GovernanceProcessor:
         noise_ratio_threshold: float = 0.2,
         common_lines_min_docs: int = 3,
         common_lines_min_ratio: float = 0.35,
-    ) -> tuple[List[Document], GovernanceStats]:
+    ) -> tuple[list[Document], GovernanceStats]:
         if not documents:
             return [], GovernanceStats(documents=0, changed=0, applied_rules=0, dropped=0, drop_reasons={})
 
@@ -141,7 +141,7 @@ class GovernanceProcessor:
             if remove_common_lines and min_docs_eff >= 2
             else set()
         )
-        cleaned: List[Document] = []
+        cleaned: list[Document] = []
         changed = 0
         applied_total = 0
         dropped = 0

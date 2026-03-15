@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -22,10 +22,10 @@ def test_observability_periodic_job_freshness_endpoint(monkeypatch):  # noqa: AN
     import app.api.v1.observability as obs_mod
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 5, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 5, 0, 0, 0, tzinfo=UTC)
 
     expected = {
         "schema": "mimirq.periodic_job_freshness.v1",

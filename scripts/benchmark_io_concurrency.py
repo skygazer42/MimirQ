@@ -19,7 +19,7 @@ import statistics
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 # Add project root to Python path.
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -34,13 +34,13 @@ class BenchmarkResults:
     
     def __init__(self, name: str):
         self.name = name
-        self.times: List[float] = []
+        self.times: list[float] = []
     
     def add_time(self, elapsed: float):
         """Add a single run time."""
         self.times.append(elapsed)
     
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get summary stats."""
         if not self.times:
             return {"error": "No data"}

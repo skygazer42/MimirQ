@@ -103,7 +103,7 @@ def test_get_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPatch) -
     assert rel_links[0].label == "works_with"
     assert rel_links[0].source == str(UUID(int=20))
     assert rel_links[0].target == str(UUID(int=21))
-    assert rel_links[0].meta.get("confidence") == 0.8
+    assert rel_links[0].meta.get("confidence") == pytest.approx(0.8)
     assert rel_links[0].meta.get("chunk_id") == str(UUID(int=3))
 
 
@@ -167,5 +167,5 @@ def test_expand_kg_graph_includes_relation_links(monkeypatch: pytest.MonkeyPatch
     assert rel_links[0].label == "works_with"
     assert rel_links[0].source == str(UUID(int=20))
     assert rel_links[0].target == str(UUID(int=21))
-    assert rel_links[0].meta.get("confidence") == 0.8
+    assert rel_links[0].meta.get("confidence") == pytest.approx(0.8)
     assert rel_links[0].meta.get("chunk_id") == str(UUID(int=3))

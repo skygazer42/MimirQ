@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _FakeDB:
@@ -21,7 +21,7 @@ def test_run_daily_index_audit_report_dry_run_is_bounded(monkeypatch):  # noqa: 
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
 
     dataset_ids = [uuid.uuid4(), uuid.uuid4(), uuid.uuid4()]
     monkeypatch.setattr(
@@ -78,7 +78,7 @@ def test_run_daily_evidence_drift_audit_execute_writes_audit(monkeypatch):  # no
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
 
     dataset_id = uuid.uuid4()
 
@@ -142,7 +142,7 @@ def test_run_daily_index_audit_report_execute_dedupes(monkeypatch):  # noqa: ANN
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
 
     monkeypatch.setattr(periodic_audit_jobs, "_audit_already_written", lambda *_a, **_k: True, raising=True)
 
@@ -205,7 +205,7 @@ def test_run_daily_access_review_summary_dry_run_is_pii_safe_and_bounded(monkeyp
     from app.services import periodic_audit_jobs
 
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
 
     counts = {
         (periodic_audit_jobs.TenantGroup, (("tenant_id", tenant_id),), False): 3,
@@ -262,7 +262,7 @@ def test_run_daily_access_review_summary_execute_writes_audit(monkeypatch):  # n
     from app.services import periodic_audit_jobs
 
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
 
     counts = {
         (periodic_audit_jobs.TenantGroup, (("tenant_id", tenant_id),), False): 1,
@@ -316,7 +316,7 @@ def test_run_daily_access_review_summary_execute_dedupes(monkeypatch):  # noqa: 
 
     db = _FakeCountDB(counts={})
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
 
     monkeypatch.setattr(periodic_audit_jobs, "_audit_already_written", lambda *_a, **_k: True, raising=True)
 

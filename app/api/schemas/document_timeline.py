@@ -8,7 +8,7 @@ Keep it PII-minimal by default.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -20,17 +20,17 @@ class DocumentTimelineItem(BaseModel):
 
     source: Literal["audit", "synthetic"] = "audit"
 
-    actor_id: Optional[str] = None
-    request_id: Optional[str] = None
+    actor_id: str | None = None
+    request_id: str | None = None
 
-    stage: Optional[str] = None
-    status: Optional[str] = None
-    progress: Optional[int] = None
+    stage: str | None = None
+    status: str | None = None
+    progress: int | None = None
 
-    details: Dict[str, Any] = Field(default_factory=dict)
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentTimelineResponse(BaseModel):
     total: int = 0
-    items: List[DocumentTimelineItem] = Field(default_factory=list)
+    items: list[DocumentTimelineItem] = Field(default_factory=list)
 

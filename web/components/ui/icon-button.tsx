@@ -3,10 +3,10 @@ import * as React from "react"
 import { Button, type ButtonProps } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-type IconButtonProps = Omit<ButtonProps, "children" | "size"> & {
+type IconButtonProps = Readonly<Omit<ButtonProps, "children" | "size"> & {
   label: string
   children: React.ReactNode
-}
+}>
 
 export function IconButton({
   label,

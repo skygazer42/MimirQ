@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -102,7 +102,7 @@ async def test_delete_document_lifecycle_touches_dataset_updated_at(monkeypatch:
     ds = _FakeDataset(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        updated_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2020, 1, 1, tzinfo=UTC),
     )
     initial_updated_at = ds.updated_at
 

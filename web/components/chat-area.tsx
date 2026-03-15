@@ -9,7 +9,7 @@ import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { promptTemplateApi, settingsApi, type PromptTemplate } from '@/lib/api-client'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import {
@@ -40,12 +40,12 @@ export function ChatArea({
   initialPrompt,
   initialOpenRagSettings,
   onConversationId,
-}: {
+}: Readonly<{
   initialConversationId?: string
   initialPrompt?: string
   initialOpenRagSettings?: boolean
   onConversationId?: (conversationId: string) => void
-} = {}) {
+}> = {}) {
   const summaryMemoryId = 'chat-enable-summary-memory'
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
@@ -84,8 +84,6 @@ export function ChatArea({
   const scrollRafRef = useRef<number | null>(null)
   const scrollEventRafRef = useRef<number | null>(null)
   const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
-  const ragSettingsId = 'rag-settings-panel'
-
   // Slash Menu State
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 })
@@ -116,7 +114,7 @@ export function ChatArea({
         // best-effort only
       }
     }
-    void loadRagDefaults()
+    detachPromise(loadRagDefaults())
     return () => {
       cancelled = true
     }
@@ -280,7 +278,7 @@ export function ChatArea({
 
   const handleScroll = useCallback(() => {
     if (scrollEventRafRef.current != null) return
-    scrollEventRafRef.current = window.requestAnimationFrame(() => {
+    scrollEventRafRef.current = globalThis.window.requestAnimationFrame(() => {
       scrollEventRafRef.current = null
       updateAutoScroll()
     })
@@ -289,7 +287,7 @@ export function ChatArea({
   const scheduleScrollToBottom = useCallback((behavior: ScrollBehavior) => {
     if (!autoScrollRef.current) return
     if (scrollRafRef.current != null) return
-    scrollRafRef.current = window.requestAnimationFrame(() => {
+    scrollRafRef.current = globalThis.window.requestAnimationFrame(() => {
       scrollRafRef.current = null
       messagesEndRef.current?.scrollIntoView({ behavior })
     })
@@ -338,11 +336,11 @@ export function ChatArea({
     updateAutoScroll()
     return () => {
       if (scrollRafRef.current != null) {
-        window.cancelAnimationFrame(scrollRafRef.current)
+        globalThis.window.cancelAnimationFrame(scrollRafRef.current)
         scrollRafRef.current = null
       }
       if (scrollEventRafRef.current != null) {
-        window.cancelAnimationFrame(scrollEventRafRef.current)
+        globalThis.window.cancelAnimationFrame(scrollEventRafRef.current)
         scrollEventRafRef.current = null
       }
     }
@@ -482,21 +480,23 @@ export function ChatArea({
                   <PopoverContent className="w-64 p-2" align="start">
                     <div className="text-xs font-medium text-muted-foreground mb-2 px-2">选择 Prompt 模板</div>
                     <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
-                      <div
+                      <button
+                        type="button"
                         className={cn("px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors", !promptTemplateId && "bg-secondary/50 font-medium text-primary")}
                         onClick={() => setPromptTemplateId('')}
                       >
                         默认模板
-                      </div>
+                      </button>
                       {promptTemplates.map(t => (
-                        <div
+                        <button
+                          type="button"
                           key={t.id}
                           className={cn("px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors flex flex-col gap-0.5", promptTemplateId === t.id && "bg-secondary/50 font-medium text-primary")}
                           onClick={() => setPromptTemplateId(t.id)}
                         >
                           <span>{t.name}</span>
                           {t.description && <span className="text-[10px] text-muted-foreground/70 truncate">{t.description}</span>}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </PopoverContent>
@@ -520,7 +520,7 @@ export function ChatArea({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-xs text-muted-foreground">检索模式</label>
+                      <div className="text-xs text-muted-foreground">检索模式</div>
 	                      <Select
 	                        value={ragConfig.retrieval_mode}
 	                        onValueChange={(v) => {
@@ -541,7 +541,7 @@ export function ChatArea({
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs text-muted-foreground">Top K</label>
+                      <div className="text-xs text-muted-foreground">Top K</div>
 	                      <input
 	                        type="number"
 	                        min={1}
@@ -557,7 +557,7 @@ export function ChatArea({
                   </div>
 
                   <div className="space-y-2 pt-2 border-t">
-                    <label className="text-xs text-muted-foreground">Metadata filter</label>
+                    <div className="text-xs text-muted-foreground">Metadata filter</div>
                     <Select value={metadataFilterMode} onValueChange={(v) => applyMetadataFilterPreset(v as any)}>
                       <SelectTrigger className="h-8 text-xs">
                         <SelectValue placeholder="Filter" />
@@ -636,7 +636,7 @@ export function ChatArea({
                           className="h-7 px-2 text-[11px] rounded-lg"
                           onClick={() => setSummaryDialogOpen(true)}
                           disabled={!conversationId}
-                          title={!conversationId ? '请先发送一条消息生成会话' : '查看/更新摘要'}
+                          title={conversationId ? '查看/更新摘要' : '请先发送一条消息生成会话'}
                         >
                           查看
                         </Button>
@@ -784,7 +784,29 @@ export function ChatArea({
 
 function WelcomeScreen() {
   const hour = new Date().getHours()
-  const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
+  const greeting = (() => {
+    if (hour < 5) {
+        return '夜深了';
+    }
+    else {
+        if (hour < 11) {
+            return '早上好';
+        }
+        else {
+            if (hour < 13) {
+                return '中午好';
+            }
+            else {
+                if (hour < 18) {
+                    return '下午好';
+                }
+                else {
+                    return '晚上好';
+                }
+            }
+        }
+    }
+})()
 
   return (
     <div className="flex flex-col items-center justify-center text-center space-y-8 px-4 py-10 relative z-10">
@@ -811,7 +833,7 @@ function WelcomeScreen() {
   )
 }
 
-function FeatureCard({ icon: Icon, title, desc }: { icon: any, title: string, desc: string }) {
+function FeatureCard({ icon: Icon, title, desc }: Readonly<{ icon: any, title: string, desc: string }>) {
   return (
     <div className="p-5 rounded-2xl border border-border bg-card shadow-soft cursor-default text-left">
       <Icon className="h-6 w-6 text-primary/80 mb-3" aria-hidden="true" />

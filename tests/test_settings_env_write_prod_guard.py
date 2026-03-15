@@ -38,7 +38,7 @@ def test_settings_put_rejected_when_env_write_disabled(monkeypatch, tmp_path):  
     from app.api.v1.settings import update_settings
     from app.core.config import settings
 
-    monkeypatch.setattr(settings_module, "_ensure_settings_writable", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(settings_module, "_ensure_settings_writable", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(settings_module, "ENV_FILE", tmp_path / "test.env", raising=True)
     monkeypatch.setattr(settings, "SETTINGS_ENV_WRITE_ENABLED", False, raising=False)
 

@@ -43,14 +43,14 @@ function formatDeltaPct(deltaRatio: number | null) {
   return v > 0 ? `+${v}%` : `${v}%`
 }
 
-export function ChunkCompareDialog(props: {
+export function ChunkCompareDialog(props: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   current: ChunkPreviewResponse
   currentFileName: string
   runHistory: RunHistoryItem[]
   getCachedPreview: (cacheKey: string) => ChunkPreviewResponse | null
-}) {
+}>) {
   const { open, onOpenChange, current, currentFileName, runHistory, getCachedPreview } = props
 
   const candidates = useMemo(() => {
@@ -137,7 +137,19 @@ export function ChunkCompareDialog(props: {
                     <div className="text-[10px] text-muted-foreground uppercase  font-medium">Chunks</div>
                     <div className="mt-2 flex items-end justify-between">
                       <div className="text-sm font-mono text-foreground/90">{diff.bCount}</div>
-                      <div className={cn('text-xs font-mono', diff.deltaCount === 0 ? 'text-muted-foreground' : diff.deltaCount > 0 ? 'text-info' : 'text-warning')}>
+                      <div className={cn('text-xs font-mono', (() => {
+    if (diff.deltaCount === 0) {
+        return 'text-muted-foreground';
+    }
+    else {
+        if (diff.deltaCount > 0) {
+            return 'text-info';
+        }
+        else {
+            return 'text-warning';
+        }
+    }
+})())}>
                         {formatDelta(diff.deltaCount)}
                       </div>
                     </div>

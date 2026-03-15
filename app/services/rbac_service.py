@@ -6,7 +6,6 @@ Centralizes role/permission checks so API endpoints avoid ad-hoc role sets.
 
 from __future__ import annotations
 
-from typing import FrozenSet
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -34,10 +33,10 @@ def _normalize_role(role: object) -> str:
     return str(role or "").strip().lower()
 
 
-_AUDITOR_ROLES: FrozenSet[str] = frozenset({UserRoles.OWNER, UserRoles.ADMIN, UserRoles.AUDITOR})
-_ADMIN_ROLES: FrozenSet[str] = frozenset(UserRoles.ADMIN_ROLES)
+_AUDITOR_ROLES: frozenset[str] = frozenset({UserRoles.OWNER, UserRoles.ADMIN, UserRoles.AUDITOR})
+_ADMIN_ROLES: frozenset[str] = frozenset(UserRoles.ADMIN_ROLES)
 
-_PERMISSION_ROLES: dict[str, FrozenSet[str]] = {
+_PERMISSION_ROLES: dict[str, frozenset[str]] = {
     TenantPermissions.SETTINGS_READ: _ADMIN_ROLES,
     TenantPermissions.SETTINGS_WRITE: _ADMIN_ROLES,
     TenantPermissions.OBSERVABILITY_READ: _ADMIN_ROLES,
@@ -49,7 +48,7 @@ _PERMISSION_ROLES: dict[str, FrozenSet[str]] = {
 }
 
 
-def allowed_roles_for_permission(permission: str) -> FrozenSet[str]:
+def allowed_roles_for_permission(permission: str) -> frozenset[str]:
     return _PERMISSION_ROLES.get(str(permission or "").strip(), frozenset())
 
 

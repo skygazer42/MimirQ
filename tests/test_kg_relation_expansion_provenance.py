@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -35,6 +36,7 @@ async def test_kg_recall_relation_expansion_clues_include_provenance_and_confide
     monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeSession(), raising=True)
 
     async def _fake_generate_embedding(self, _text: str):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return [0.0]
 
     monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _fake_generate_embedding, raising=True)
@@ -167,8 +169,8 @@ async def test_kg_recall_relation_expansion_clues_include_provenance_and_confide
 
     dbg = result.relation_debug or {}
     assert dbg.get("enabled") is True
-    assert dbg.get("conf_bucket_low_max") == 0.2
-    assert dbg.get("conf_bucket_mid_max") == 0.85
+    assert dbg.get("conf_bucket_low_max") == pytest.approx(0.2)
+    assert dbg.get("conf_bucket_mid_max") == pytest.approx(0.85)
     assert (dbg.get("confidence_bucket_hist") or {}).get("mid") == 1
 
 

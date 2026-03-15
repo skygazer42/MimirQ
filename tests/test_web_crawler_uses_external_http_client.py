@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi import HTTPException
 
@@ -12,10 +14,12 @@ async def test_web_crawler_fetch_uses_external_http_client(monkeypatch):
 
     class _FakePool:
         async def get_client(self):  # noqa: ANN201
+            await asyncio.sleep(0)  # Sonar S7503
             calls["internal"] += 1
             return object()
 
         async def get_external_client(self):  # noqa: ANN201
+            await asyncio.sleep(0)  # Sonar S7503
             calls["external"] += 1
             return object()
 

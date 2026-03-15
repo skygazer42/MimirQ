@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -46,7 +48,7 @@ def _build_client(  # noqa: ANN001
     from app.rag.chunking.factory import chunker_factory
     from app.services.dataset_service import DatasetService
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: None, raising=True)
     monkeypatch.setattr(chunker_factory, "resolve_strategy", lambda s: s, raising=True)
 
     class _Chunker:
@@ -54,9 +56,10 @@ def _build_client(  # noqa: ANN001
             # Keep test deterministic: treat parsed "pages" as chunks.
             return list(documents or [])
 
-    monkeypatch.setattr(chunker_factory, "get_chunker", lambda strategy, chunk_size, chunk_overlap, **_: _Chunker(), raising=True)
+    monkeypatch.setattr(chunker_factory, "get_chunker", lambda _strategy, _chunk_size, _chunk_overlap, **_: _Chunker(), raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         assert payload.get("action") == "parse_documents"
         file_path = Path(str(payload.get("file_path") or ""))
         text = file_path.read_text(encoding="utf-8")
@@ -518,12 +521,12 @@ def test_documents_chunk_preview_strategy_params_for_parent_child(monkeypatch): 
     )
     assert res.status_code == 200
     assert captured.get("strategy") == "parent_child"
-    assert captured.get("kwargs", {}).get("child_ratio") == 0.25
+    assert captured.get("kwargs", {}).get("child_ratio") == pytest.approx(0.25)
     assert captured.get("kwargs", {}).get("min_child_size") == 300
 
     body = res.json()
     sp = body["params"]["strategy_params"]
-    assert sp.get("child_ratio") == 0.25
+    assert sp.get("child_ratio") == pytest.approx(0.25)
     assert sp.get("min_child_size") == 300
     assert sp.get("child_size") == 300
     assert sp.get("child_overlap") == 0
@@ -567,12 +570,12 @@ def test_documents_chunk_preview_strategy_params_from_pipeline_parent_child(monk
     )
     assert res.status_code == 200
     assert captured.get("strategy") == "parent_child"
-    assert captured.get("kwargs", {}).get("child_ratio") == 0.25
+    assert captured.get("kwargs", {}).get("child_ratio") == pytest.approx(0.25)
     assert captured.get("kwargs", {}).get("min_child_size") == 300
 
     body = res.json()
     sp = body["params"]["strategy_params"]
-    assert sp.get("child_ratio") == 0.25
+    assert sp.get("child_ratio") == pytest.approx(0.25)
     assert sp.get("min_child_size") == 300
 
 
@@ -616,12 +619,12 @@ def test_documents_chunk_preview_strategy_params_explicit_overrides_pipeline_par
     )
     assert res.status_code == 200
     assert captured.get("strategy") == "parent_child"
-    assert captured.get("kwargs", {}).get("child_ratio") == 0.25
+    assert captured.get("kwargs", {}).get("child_ratio") == pytest.approx(0.25)
     assert captured.get("kwargs", {}).get("min_child_size") == 300
 
     body = res.json()
     sp = body["params"]["strategy_params"]
-    assert sp.get("child_ratio") == 0.25
+    assert sp.get("child_ratio") == pytest.approx(0.25)
     assert sp.get("min_child_size") == 300
 
 

@@ -6,6 +6,7 @@ import { Copy, ExternalLink, FileText, Image as ImageIcon, Table2 } from 'lucide
 import { toast } from 'sonner'
 
 import type { Citation } from '@/types'
+import { toPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
 import { useDocumentView } from '@/store/document-view'
@@ -18,11 +19,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 function asText(v: unknown): string {
   if (v == null) return ''
   if (typeof v === 'string') return v
-  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint' || typeof v === 'symbol') return toPrimitiveString(v)
   try {
     return JSON.stringify(v)
   } catch {
-    return String(v)
+    return ''
   }
 }
 
@@ -86,11 +87,11 @@ export function EvidenceViewerDialog({
   open,
   onOpenChange,
   citation,
-}: {
+}: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   citation: Citation | null
-}) {
+}>) {
   const { openDocument } = useDocumentView()
 
   const kind = inferEvidenceKind(citation)
@@ -110,17 +111,33 @@ export function EvidenceViewerDialog({
   const onOpenInDoc = React.useCallback(() => {
     if (!citation?.document_id) return
     const start =
-      typeof (citation as any).evidence_start_char === 'number'
-        ? (citation as any).evidence_start_char
-        : typeof (citation as any).start_char === 'number'
-          ? (citation as any).start_char
-          : null
+      (() => {
+    if (typeof (citation as any).evidence_start_char === 'number') {
+        return (citation as any).evidence_start_char;
+    }
+    else {
+        if (typeof (citation as any).start_char === 'number') {
+            return (citation as any).start_char;
+        }
+        else {
+            return null;
+        }
+    }
+})()
     const end =
-      typeof (citation as any).evidence_end_char === 'number'
-        ? (citation as any).evidence_end_char
-        : typeof (citation as any).end_char === 'number'
-          ? (citation as any).end_char
-          : null
+      (() => {
+    if (typeof (citation as any).evidence_end_char === 'number') {
+        return (citation as any).evidence_end_char;
+    }
+    else {
+        if (typeof (citation as any).end_char === 'number') {
+            return (citation as any).end_char;
+        }
+        else {
+            return null;
+        }
+    }
+})()
     const range = start != null && end != null && end > start ? { start, end } : undefined
     openDocument(citation.document_id, (citation as any).chunk_id, range)
   }, [citation, openDocument])
@@ -186,22 +203,28 @@ export function EvidenceViewerDialog({
         <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/40">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="soft" className="text-[10px]">
-              {kind === 'image' ? (
-                <span className="inline-flex items-center gap-1">
-                  <ImageIcon className="h-3 w-3" />
+              {(() => {
+    if (kind === 'image') {
+        return (<span className="inline-flex items-center gap-1">
+                  <ImageIcon className="h-3 w-3"/>
                   image
-                </span>
-              ) : kind === 'table' ? (
-                <span className="inline-flex items-center gap-1">
-                  <Table2 className="h-3 w-3" />
+                </span>);
+    }
+    else {
+        if (kind === 'table') {
+            return (<span className="inline-flex items-center gap-1">
+                  <Table2 className="h-3 w-3"/>
                   table
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1">
-                  <FileText className="h-3 w-3" />
+                </span>);
+        }
+        else {
+            return (<span className="inline-flex items-center gap-1">
+                  <FileText className="h-3 w-3"/>
                   text
-                </span>
-              )}
+                </span>);
+        }
+    }
+})()}
             </Badge>
             {citation?.document_name ? (
               <Badge variant="soft" className="text-[10px]" title={String(citation.document_name)}>
@@ -267,7 +290,7 @@ export function EvidenceViewerDialog({
                       variant="outline"
                       size="sm"
                       className="rounded-xl gap-2"
-                      onClick={() => window.open(imgUrl, '_blank', 'noopener,noreferrer')}
+                      onClick={() => globalThis.window.open(imgUrl, '_blank', 'noopener,noreferrer')}
                     >
                       <ExternalLink className="h-4 w-4" />
                       新窗口打开

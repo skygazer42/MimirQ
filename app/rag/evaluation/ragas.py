@@ -7,8 +7,9 @@ RAGAS evaluation service.
 
 
 import math
-from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -47,13 +48,13 @@ def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     return httpx.Client(trust_env=trust_env), httpx.AsyncClient(trust_env=trust_env)
 
 
-def _pair_turns(messages: List[Message]) -> List[Tuple[Message, Message]]:
+def _pair_turns(messages: list[Message]) -> list[tuple[Message, Message]]:
     """
     Pair user -> assistant messages in order.
     Keeps the latest user message before an assistant reply.
     """
-    turns: List[Tuple[Message, Message]] = []
-    pending_user: Optional[Message] = None
+    turns: list[tuple[Message, Message]] = []
+    pending_user: Message | None = None
     for msg in messages:
         if msg.role == "user":
             pending_user = msg
@@ -72,10 +73,10 @@ def _extract_contexts(
     tenant_id: UUID,
     account_id: str,
     citations: Any,
-    allowed_document_ids: List[UUID] | None = None,
+    allowed_document_ids: list[UUID] | None = None,
     dataset_id: UUID | None = None,
     max_context_chars: int = 4000,
-) -> List[str]:
+) -> list[str]:
     """
     Resolve full chunk contents from stored citations.
     """
@@ -86,7 +87,7 @@ def _extract_contexts(
     # non-chunk-backed citations (e.g. TAG/table injected docs).
     citation_items: list[dict[str, Any]] = []
 
-    chunk_ids: List[UUID] = []
+    chunk_ids: list[UUID] = []
     seen_chunk_ids: set[UUID] = set()
     for item in citations:
         if item is None:
@@ -133,7 +134,7 @@ def _extract_contexts(
             )
             .all()
         )
-    chunk_map: Dict[UUID, DocumentChunk] = {c.id: c for c in (chunks or [])}
+    chunk_map: dict[UUID, DocumentChunk] = {c.id: c for c in (chunks or [])}
 
     # Defense-in-depth: only materialize contexts for documents the account can read.
     allowed_set: set[UUID] | None = None
@@ -163,7 +164,7 @@ def _extract_contexts(
         )
         allowed_set = {doc_id for doc_id, ds_id in ds_rows if ds_id is not None and str(ds_id) == str(dataset_id)}
 
-    contexts: List[str] = []
+    contexts: list[str] = []
     seen_context_keys: set[str] = set()
     for it in citation_items:
         cid: UUID | None = it.get("chunk_id")
@@ -193,7 +194,7 @@ def _extract_contexts(
     return contexts
 
 
-def _mean(values: Iterable[float]) -> Optional[float]:
+def _mean(values: Iterable[float]) -> float | None:
     vals = []
     for v in values:
         if v is None:
@@ -210,7 +211,7 @@ def _mean(values: Iterable[float]) -> Optional[float]:
     return sum(vals) / len(vals)
 
 
-def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str, Any]:
+def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Compute non-LLM regression gate metrics from per-item meta.
 
@@ -233,15 +234,15 @@ def _build_regression_gate_summary(eval_items: list[dict[str, Any]]) -> Dict[str
     return out
 
 
-def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> Dict[str, Any]:
+def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Compute deterministic answer-quality summary metrics from regression item metadata.
 
     These are lightweight/no-LLM and designed to feed answer_quality_gate artifacts.
     """
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
 
-    def _mean_float(key: str) -> Optional[float]:
+    def _mean_float(key: str) -> float | None:
         vals: list[float] = []
         for m in metas:
             v = m.get(key)
@@ -295,14 +296,14 @@ def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> Dict[s
     return out
 
 
-def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> Dict[str, Any]:
+def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> dict[str, Any]:
     """
     Compute retrieval-only metrics from a list of item_meta dicts.
 
     These stay cheap/deterministic (usable when RAGAS metrics are missing/partial).
     """
 
-    def _mean_bool(key: str) -> Optional[float]:
+    def _mean_bool(key: str) -> float | None:
         vals: list[float] = []
         for m in metas:
             v = m.get(key)
@@ -380,10 +381,10 @@ def _build_regression_slice_summaries(
 
 
 def _merge_summary_with_regression_gate(
-    summary: Dict[str, Any],
+    summary: dict[str, Any],
     *,
     eval_items: list[dict[str, Any]],
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     out = dict(summary or {})
     gate = _build_regression_gate_summary(eval_items)
     # Do not override existing summary keys (e.g. RAGAS metrics like "faithfulness").
@@ -395,8 +396,8 @@ def _merge_summary_with_regression_gate(
     return out
 
 
-def _parse_uuid_list(raw_list: Any) -> List[UUID]:
-    out: List[UUID] = []
+def _parse_uuid_list(raw_list: Any) -> list[UUID]:
+    out: list[UUID] = []
     if not raw_list:
         return out
     for item in raw_list:
@@ -426,7 +427,7 @@ def _resolve_case_scope(
     tenant_id: UUID,
     account_id: str,
     case: RagasRegressionCase,
-) -> tuple[List[UUID] | None, UUID | None]:
+) -> tuple[list[UUID] | None, UUID | None]:
     """
     Resolve retrieval scope for regression case:
     1) case.document_ids (priority)
@@ -445,7 +446,7 @@ def _resolve_case_scope(
     return None, None
 
 
-def _resolve_metrics(metric_names: List[str]):
+def _resolve_metrics(metric_names: list[str]):
     """
     Map user-friendly names to RAGAS metric objects.
     Returns: list[Metric]
@@ -551,7 +552,7 @@ def run_conversation_ragas_evaluation(
     tenant_id: UUID,
     account_id: str,
     conversation_id: UUID,
-    metric_names: List[str],
+    metric_names: list[str],
     max_turns: int,
     skip_empty_contexts: bool,
 ) -> None:
@@ -572,7 +573,7 @@ def run_conversation_ragas_evaluation(
             return
 
         run.status = "running"
-        run.started_at = datetime.utcnow()
+        run.started_at = datetime.now(UTC).replace(tzinfo=None)
         run.error_message = None
         db.commit()
 
@@ -590,7 +591,7 @@ def run_conversation_ragas_evaluation(
         if not conversation:
             run.status = "failed"
             run.error_message = "Conversation not found"
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return
 
@@ -613,7 +614,7 @@ def run_conversation_ragas_evaluation(
             turns = turns[-max_turns:]
 
         # Build evaluation items + ragas samples
-        eval_items: List[Dict[str, Any]] = []
+        eval_items: list[dict[str, Any]] = []
         for idx, (user_msg, assistant_msg) in enumerate(turns, 1):
             contexts = _extract_contexts(
                 db=db,
@@ -639,7 +640,7 @@ def run_conversation_ragas_evaluation(
         if not eval_items:
             run.status = "failed"
             run.error_message = "No evaluatable turns (missing contexts/citations)"
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return
 
@@ -651,13 +652,13 @@ def run_conversation_ragas_evaluation(
         except ImportError as exc:  # pragma: no cover
             run.status = "failed"
             run.error_message = f"RAGAS is not installed: {exc} (hint: pip install ragas)"
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return
         except Exception as exc:  # pragma: no cover
             run.status = "failed"
             run.error_message = f"RAGAS import failed: {type(exc).__name__}: {exc}"
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             raise
 
@@ -714,7 +715,7 @@ def run_conversation_ragas_evaluation(
                 )
             )
 
-        summary: Dict[str, Any] = {"items": len(eval_items)}
+        summary: dict[str, Any] = {"items": len(eval_items)}
         for key in metric_keys:
             summary[key] = _mean(row.get(key) for row in result.scores)
         summary["total_tokens"] = getattr(result, "total_tokens", None)
@@ -729,7 +730,7 @@ def run_conversation_ragas_evaluation(
             "skip_empty_contexts": skip_empty_contexts,
         }
         run.summary = summary
-        run.finished_at = datetime.utcnow()
+        run.finished_at = datetime.now(UTC).replace(tzinfo=None)
         db.commit()
 
     except Exception as exc:
@@ -745,7 +746,7 @@ def run_conversation_ragas_evaluation(
             if run:
                 run.status = "failed"
                 run.error_message = str(exc)
-                run.finished_at = datetime.utcnow()
+                run.finished_at = datetime.now(UTC).replace(tzinfo=None)
                 db.commit()
         except Exception:
             pass
@@ -758,12 +759,12 @@ def run_regression_ragas_evaluation(
     run_id: UUID,
     tenant_id: UUID,
     account_id: str,
-    case_ids: List[UUID],
+    case_ids: list[UUID],
     dataset_id: UUID | None,
-    metric_names: List[str],
+    metric_names: list[str],
     skip_empty_contexts: bool,
     max_cases: int,
-    rag_params: Dict[str, Any],
+    rag_params: dict[str, Any],
 ) -> None:
     """
     Background task entry: run RAGAS regression evaluation (case-based) and persist results.
@@ -779,7 +780,7 @@ def run_regression_ragas_evaluation(
             return
 
         run.status = "running"
-        run.started_at = datetime.utcnow()
+        run.started_at = datetime.now(UTC).replace(tzinfo=None)
         db.commit()
 
         DatasetService.ensure_member(db, tenant_id, account_id)
@@ -806,7 +807,7 @@ def run_regression_ragas_evaluation(
             if missing:
                 run.status = "failed"
                 run.error_message = f"Missing regression cases: {len(missing)}"
-                run.finished_at = datetime.utcnow()
+                run.finished_at = datetime.now(UTC).replace(tzinfo=None)
                 db.commit()
                 return
 
@@ -816,7 +817,7 @@ def run_regression_ragas_evaluation(
         if not cases:
             run.status = "failed"
             run.error_message = "No regression cases found"
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return
 
@@ -926,7 +927,7 @@ def run_regression_ragas_evaluation(
                 "slice_quality_bucket": _stable_bucket(quals, default="unknown"),
             }
 
-        eval_items: List[Dict[str, Any]] = []
+        eval_items: list[dict[str, Any]] = []
         normalized_metric_names = [str(m or "").strip().lower() for m in (metric_names or []) if str(m or "").strip()]
         retrieval_only = not bool(normalized_metric_names)
         # Deterministic (no-RAGAS) answer-level gate mode:
@@ -1137,7 +1138,7 @@ def run_regression_ragas_evaluation(
             if skip_empty_contexts and not contexts:
                 continue
             meta = (graph_result or {}).get("metrics") or {}
-            eval_item: Dict[str, Any] = {
+            eval_item: dict[str, Any] = {
                 "case_id": case.id,
                 "question": case.question,
                 "response": response,
@@ -1174,7 +1175,7 @@ def run_regression_ragas_evaluation(
         if not eval_items:
             run.status = "failed"
             run.error_message = "No evaluatable cases (missing contexts/citations)"
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return
 
@@ -1203,7 +1204,7 @@ def run_regression_ragas_evaluation(
                     )
                 )
 
-            summary: Dict[str, Any] = {"items": len(eval_items)}
+            summary: dict[str, Any] = {"items": len(eval_items)}
             summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
 
             run.status = "completed"
@@ -1217,7 +1218,7 @@ def run_regression_ragas_evaluation(
                 "mode": "retrieval_only",
             }
             run.summary = summary
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return
 
@@ -1270,7 +1271,7 @@ def run_regression_ragas_evaluation(
                 "mode": "deterministic_gate",
             }
             run.summary = summary
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return
 
@@ -1281,13 +1282,13 @@ def run_regression_ragas_evaluation(
         except ImportError as exc:  # pragma: no cover
             run.status = "failed"
             run.error_message = f"RAGAS is not installed: {exc} (hint: pip install ragas)"
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             return
         except Exception as exc:  # pragma: no cover
             run.status = "failed"
             run.error_message = f"RAGAS import failed: {type(exc).__name__}: {exc}"
-            run.finished_at = datetime.utcnow()
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
             db.commit()
             raise
 
@@ -1336,7 +1337,7 @@ def run_regression_ragas_evaluation(
                 )
             )
 
-        summary: Dict[str, Any] = {"items": len(eval_items)}
+        summary: dict[str, Any] = {"items": len(eval_items)}
         for key in metric_keys:
             summary[key] = _mean(row.get(key) for row in result.scores)
         summary["total_tokens"] = getattr(result, "total_tokens", None)
@@ -1353,7 +1354,7 @@ def run_regression_ragas_evaluation(
             "rag_params": _json_safe(rag_params),
         }
         run.summary = summary
-        run.finished_at = datetime.utcnow()
+        run.finished_at = datetime.now(UTC).replace(tzinfo=None)
         db.commit()
 
     except Exception as exc:
@@ -1366,7 +1367,7 @@ def run_regression_ragas_evaluation(
             if run:
                 run.status = "failed"
                 run.error_message = str(exc)
-                run.finished_at = datetime.utcnow()
+                run.finished_at = datetime.now(UTC).replace(tzinfo=None)
                 db.commit()
         except Exception:
             pass

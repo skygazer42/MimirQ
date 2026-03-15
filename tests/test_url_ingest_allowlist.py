@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import socket
 from pathlib import Path
 
@@ -88,6 +89,7 @@ async def test_download_url_to_path_validates_redirect_hops(monkeypatch: pytest.
 
     class _Pool:
         async def get_external_client(self):  # noqa: ANN202
+            await asyncio.sleep(0)  # Sonar S7503
             return client
 
     monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo_global, raising=True)

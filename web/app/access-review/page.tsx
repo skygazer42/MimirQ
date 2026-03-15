@@ -17,7 +17,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { auditApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 
 type AccessGraphSummary = {
   schema?: string
@@ -52,8 +52,10 @@ function downloadBlob(blob: Blob, filename: string) {
   a.href = url
   a.download = filename
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
+
+const SUMMARY_SKELETON_KEYS = ['summary-1', 'summary-2', 'summary-3', 'summary-4', 'summary-5', 'summary-6', 'summary-7', 'summary-8', 'summary-9', 'summary-10']
 
 export default function AccessReviewPage() {
   const [summary, setSummary] = useState<AccessGraphSummary | null>(null)
@@ -102,7 +104,7 @@ export default function AccessReviewPage() {
   }, [])
 
   useEffect(() => {
-    void loadSummary()
+    detachPromise(loadSummary())
   }, [loadSummary])
 
   const handleDownload = useCallback(async () => {
@@ -200,7 +202,7 @@ export default function AccessReviewPage() {
                 size="sm"
                 variant="outline"
                 className="gap-2 rounded-xl"
-                onClick={() => void loadSummary()}
+                onClick={() => detachPromise(loadSummary())}
                 disabled={loadingSummary}
               >
                 <RefreshCw className={cn('w-4 h-4', loadingSummary && 'animate-spin motion-reduce:animate-none')} />
@@ -209,7 +211,7 @@ export default function AccessReviewPage() {
               <Button
                 size="sm"
                 className="gap-2 rounded-xl"
-                onClick={() => void handleDownload()}
+                onClick={() => detachPromise(handleDownload())}
                 disabled={exporting}
               >
                 <Download className="w-4 h-4" />
@@ -232,47 +234,24 @@ export default function AccessReviewPage() {
             </div>
 
             <div className="mt-4">
-              {loadingSummary ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                  {Array.from({ length: 10 }).map((_, i) => (
-                    <Skeleton key={i} className="h-[68px] rounded-xl" />
-                  ))}
-                </div>
-              ) : !summary ? (
-                <div className="text-sm text-muted-foreground">
-                  无法加载访问审查汇总。请确认你是 owner/admin，并且后端已更新到包含 `/api/v1/audit/access-graph/summary` 的版本。
-                </div>
-              ) : (
-                <>
+              {(() => {
+    if (loadingSummary) {
+        return (<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {SUMMARY_SKELETON_KEYS.map((key) => (<Skeleton key={key} className="h-[68px] rounded-xl"/>))}
+                </div>);
+    }
+    else {
+        if (summary) {
+            return (<>
                   <StatsGrid className="mt-1">
-                    <StatCard icon={ShieldCheck} label="Groups" value={summaryStats.group_count} color="cyan" />
-                    <StatCard icon={ShieldCheck} label="Group Members" value={summaryStats.group_member_count} color="gray" />
-                    <StatCard icon={ShieldCheck} label="Datasets" value={summaryStats.dataset_count} color="sky" />
-                    <StatCard icon={ShieldCheck} label="Documents" value={summaryStats.document_count} color="sky" />
-                    <StatCard
-                      icon={ShieldCheck}
-                      label="Dataset Member Allowlist"
-                      value={summaryStats.dataset_member_allowlist_count}
-                      color="gray"
-                    />
-                    <StatCard
-                      icon={ShieldCheck}
-                      label="Dataset Group Allowlist"
-                      value={summaryStats.dataset_group_allowlist_count}
-                      color="gray"
-                    />
-                    <StatCard
-                      icon={ShieldCheck}
-                      label="Document Member Allowlist"
-                      value={summaryStats.document_member_allowlist_count}
-                      color="gray"
-                    />
-                    <StatCard
-                      icon={ShieldCheck}
-                      label="Document Group Allowlist"
-                      value={summaryStats.document_group_allowlist_count}
-                      color="gray"
-                    />
+                    <StatCard icon={ShieldCheck} label="Groups" value={summaryStats.group_count} color="cyan"/>
+                    <StatCard icon={ShieldCheck} label="Group Members" value={summaryStats.group_member_count} color="gray"/>
+                    <StatCard icon={ShieldCheck} label="Datasets" value={summaryStats.dataset_count} color="sky"/>
+                    <StatCard icon={ShieldCheck} label="Documents" value={summaryStats.document_count} color="sky"/>
+                    <StatCard icon={ShieldCheck} label="Dataset Member Allowlist" value={summaryStats.dataset_member_allowlist_count} color="gray"/>
+                    <StatCard icon={ShieldCheck} label="Dataset Group Allowlist" value={summaryStats.dataset_group_allowlist_count} color="gray"/>
+                    <StatCard icon={ShieldCheck} label="Document Member Allowlist" value={summaryStats.document_member_allowlist_count} color="gray"/>
+                    <StatCard icon={ShieldCheck} label="Document Group Allowlist" value={summaryStats.document_group_allowlist_count} color="gray"/>
                   </StatsGrid>
 
                   <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -297,17 +276,22 @@ export default function AccessReviewPage() {
                     <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
                       <div className="text-sm font-semibold">Document 访问模式分布</div>
                       <div className="mt-2 text-xs text-muted-foreground font-mono tabular-nums space-y-1">
-                        {Object.entries(accessModeCounts).map(([k, v]) => (
-                          <div key={k} className="flex items-center justify-between gap-2">
+                        {Object.entries(accessModeCounts).map(([k, v]) => (<div key={k} className="flex items-center justify-between gap-2">
                             <span>{k}</span>
                             <span>{v}</span>
-                          </div>
-                        ))}
+                          </div>))}
                       </div>
                     </div>
                   </div>
-                </>
-              )}
+                </>);
+        }
+        else {
+            return (<div className="text-sm text-muted-foreground">
+                  无法加载访问审查汇总。请确认你是 owner/admin，并且后端已更新到包含 `/api/v1/audit/access-graph/summary` 的版本。
+                </div>);
+        }
+    }
+})()}
             </div>
           </Panel>
 

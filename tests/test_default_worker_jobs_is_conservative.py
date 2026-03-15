@@ -7,7 +7,7 @@ from pathlib import Path
 def _extract_compose_default_max_jobs(path: Path) -> int:
     text = path.read_text(encoding="utf-8")
     m = re.search(
-        r"^\s*TASK_WORKER_MAX_JOBS:\s*\$\{TASK_WORKER_MAX_JOBS_DOCKER:-([0-9]+)\}\s*$",
+        r"^\s*TASK_WORKER_MAX_JOBS:\s*\$\{TASK_WORKER_MAX_JOBS_DOCKER:-(\d+)\}\s*$",
         text,
         flags=re.MULTILINE,
     )

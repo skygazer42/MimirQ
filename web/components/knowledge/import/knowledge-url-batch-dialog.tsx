@@ -19,6 +19,8 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api-client'
+import { detachPromise } from '@/lib/utils'
+
 
 function parseUrlBatchUrls(raw: string): string[] {
   const parts = (raw || '')
@@ -81,7 +83,7 @@ export function KnowledgeUrlBatchDialog({
   loadDocuments,
   loadConnectorRuns,
   onRunCreated,
-}: KnowledgeUrlBatchDialogProps) {
+}: Readonly<KnowledgeUrlBatchDialogProps>) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
@@ -145,8 +147,8 @@ export function KnowledgeUrlBatchDialog({
       setAccessMode('inherit')
       setAccessMembers('')
       setAccessGroupIds([])
-      void loadConnectorRuns({ datasetId: selectedDatasetId })
-      void loadDocuments()
+      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
+      detachPromise(loadDocuments())
     } catch (err: any) {
       toast.error(formatApiError(err, '创建 URL 批量导入失败'))
     } finally {

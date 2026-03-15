@@ -24,10 +24,11 @@ import functools
 import logging
 import os
 import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from datetime import UTC, datetime
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from app.core.config import settings
@@ -59,19 +60,19 @@ F = TypeVar("F", bound=Callable)
 class SpanContext:
     """Context for a trace span."""
     run_id: str = field(default_factory=lambda: str(uuid4()))
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     name: str = ""
     run_type: str = "chain"
-    inputs: Dict[str, Any] = field(default_factory=dict)
-    outputs: Dict[str, Any] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    tags: List[str] = field(default_factory=list)
+    inputs: dict[str, Any] = field(default_factory=dict)
+    outputs: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
     start_time: float = field(default_factory=time.time)
-    end_time: Optional[float] = None
-    error: Optional[str] = None
+    end_time: float | None = None
+    error: str | None = None
 
     @property
-    def duration_ms(self) -> Optional[float]:
+    def duration_ms(self) -> float | None:
         """Calculate duration in milliseconds."""
         if self.end_time is None:
             return None
@@ -87,9 +88,9 @@ class TracingClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        project: Optional[str] = None,
-        endpoint: Optional[str] = None,
+        api_key: str | None = None,
+        project: str | None = None,
+        endpoint: str | None = None,
     ):
         """
         Initialize the tracing client.
@@ -104,7 +105,7 @@ class TracingClient:
         self.endpoint = endpoint or LANGSMITH_ENDPOINT
         self._enabled = bool(self.api_key) and LANGSMITH_TRACING_ENABLED and LangSmithClient is not None
         self._client = None
-        self._current_spans: Dict[str, SpanContext] = {}
+        self._current_spans: dict[str, SpanContext] = {}
 
     @property
     def enabled(self) -> bool:
@@ -133,10 +134,10 @@ class TracingClient:
         self,
         name: str,
         run_type: str = "chain",
-        inputs: Optional[Dict[str, Any]] = None,
-        parent_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None,
+        inputs: dict[str, Any] | None = None,
+        parent_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
     ) -> SpanContext:
         """
         Start a new trace span.
@@ -171,8 +172,8 @@ class TracingClient:
     def end_span(
         self,
         span: SpanContext,
-        outputs: Optional[Dict[str, Any]] = None,
-        error: Optional[str] = None,
+        outputs: dict[str, Any] | None = None,
+        error: str | None = None,
     ) -> None:
         """
         End a trace span.
@@ -222,7 +223,7 @@ class TracingClient:
                 run_id=span.run_id,
                 outputs=span.outputs,
                 error=span.error,
-                end_time=datetime.utcnow(),
+                end_time=datetime.now(UTC).replace(tzinfo=None),
             )
         except Exception as e:
             logger.debug("Failed to submit span end: %s", e)
@@ -232,9 +233,9 @@ class TracingClient:
         self,
         name: str,
         run_type: str = "chain",
-        inputs: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None,
+        inputs: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
     ):
         """
         Context manager for tracing.
@@ -269,9 +270,9 @@ class TracingClient:
         self,
         name: str,
         run_type: str = "chain",
-        inputs: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        tags: Optional[List[str]] = None,
+        inputs: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+        tags: list[str] | None = None,
     ):
         """
         Async context manager for tracing.
@@ -307,7 +308,7 @@ class TracingClient:
 # ============================================================================
 
 
-_tracing_client: Optional[TracingClient] = None
+_tracing_client: TracingClient | None = None
 
 
 def get_tracing_client() -> TracingClient:
@@ -319,8 +320,8 @@ def get_tracing_client() -> TracingClient:
 
 
 def setup_tracing(
-    api_key: Optional[str] = None,
-    project: Optional[str] = None,
+    api_key: str | None = None,
+    project: str | None = None,
 ) -> None:
     """
     Setup LangSmith tracing.
@@ -365,9 +366,9 @@ def setup_tracing(
 
 
 def trace_function(
-    name: Optional[str] = None,
+    name: str | None = None,
     run_type: str = "chain",
-    tags: Optional[List[str]] = None,
+    tags: list[str] | None = None,
 ) -> Callable[[F], F]:
     """
     Decorator for tracing synchronous functions.
@@ -402,9 +403,9 @@ def trace_function(
 
 
 def trace_async_function(
-    name: Optional[str] = None,
+    name: str | None = None,
     run_type: str = "chain",
-    tags: Optional[List[str]] = None,
+    tags: list[str] | None = None,
 ) -> Callable[[F], F]:
     """
     Decorator for tracing async functions.
@@ -573,7 +574,7 @@ def add_feedback(
     run_id: str,
     score: float,
     key: str = "user_feedback",
-    comment: Optional[str] = None,
+    comment: str | None = None,
 ) -> bool:
     """
     Add feedback to a trace run.
@@ -608,7 +609,7 @@ def add_feedback(
         return False
 
 
-def get_run_url(run_id: str) -> Optional[str]:
+def get_run_url(run_id: str) -> str | None:
     """
     Get the LangSmith URL for a run.
 

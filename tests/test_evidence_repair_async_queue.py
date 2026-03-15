@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -108,6 +109,7 @@ async def test_evidence_repair_async_enqueues_and_returns_202(monkeypatch):
         max_refs_per_item=None,
         max_changes=None,
     ):
+        await asyncio.sleep(0)  # Sonar S7503
         assert requested_by == "u"
         assert job_id and job_id.startswith("evidence_repair:")
         assert apply is True

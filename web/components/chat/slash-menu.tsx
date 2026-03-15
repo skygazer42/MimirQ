@@ -29,7 +29,7 @@ const COMMANDS = [
   { id: "config", label: "调整参数", icon: Settings2 },
 ]
 
-export function SlashMenu({ open, onOpenChange, onSelect, position }: SlashMenuProps) {
+export function SlashMenu({ open, onOpenChange, onSelect, position }: Readonly<SlashMenuProps>) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>

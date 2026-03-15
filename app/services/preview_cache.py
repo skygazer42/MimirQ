@@ -12,7 +12,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ class PreviewParseCache:
         for key in expired:
             self._entries.pop(key, None)
 
-    def get(self, key: str, *, ttl_sec: int) -> tuple[Optional[ParseCacheEntry], Optional[int]]:
+    def get(self, key: str, *, ttl_sec: int) -> tuple[ParseCacheEntry | None, int | None]:
         now = time.monotonic()
         with self._lock:
             self._purge_expired_locked(now=now, ttl_sec=ttl_sec)
@@ -92,7 +92,7 @@ class PreviewParseLocks:
         self._locks: "OrderedDict[str, asyncio.Lock]" = OrderedDict()
         self._max_locks = int(max_locks or 0) or 128
 
-    def get(self, key: str) -> Optional[asyncio.Lock]:
+    def get(self, key: str) -> asyncio.Lock | None:
         if not key:
             return None
         with self._lock:

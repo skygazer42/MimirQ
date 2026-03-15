@@ -10,7 +10,7 @@ This complements event/entity extraction by capturing process knowledge:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
 from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
@@ -19,7 +19,7 @@ from app.rag.llm.models import LLMMessage, LLMRole
 logger = get_logger("kg.extract.skills")
 
 
-def _coerce_str_list(value: object, *, max_items: int = 50) -> List[str]:
+def _coerce_str_list(value: object, *, max_items: int = 50) -> list[str]:
     lim = max(0, int(max_items or 0))
     if lim <= 0:
         return []
@@ -38,7 +38,7 @@ def _coerce_str_list(value: object, *, max_items: int = 50) -> List[str]:
         return out[:lim]
 
     if isinstance(value, list):
-        out: List[str] = []
+        out: list[str] = []
         for item in value:
             s = str(item or "").strip()
             if not s:
@@ -74,7 +74,7 @@ class SkillProcessor:
         *,
         text: str,
         max_skills: int = 3,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         clean_text = (text or "").strip()
         if not clean_text:
             return []
@@ -83,7 +83,7 @@ class SkillProcessor:
         if max_items <= 0:
             return []
 
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "type": "object",
             "properties": {
                 "skills": {
@@ -131,7 +131,7 @@ class SkillProcessor:
         if not isinstance(raw_skills, list) or not raw_skills:
             return []
 
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for raw in raw_skills:
             if not isinstance(raw, dict):
                 continue

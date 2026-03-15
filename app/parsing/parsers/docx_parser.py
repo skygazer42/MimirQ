@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List
 
 from langchain_core.documents import Document
 
@@ -104,7 +103,7 @@ def _iter_docx_blocks(doc):  # noqa: ANN001
 class DocxParser:
     """Parse DOCX into a chunk-friendly plain text representation."""
 
-    def parse(self, file_path: Path) -> List[Document]:
+    def parse(self, file_path: Path) -> list[Document]:
         from docx import Document as DocxDocument  # type: ignore
 
         doc = DocxDocument(str(file_path))

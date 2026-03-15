@@ -34,7 +34,7 @@ def test_dataset_create_persists_and_normalizes_ingestion_defaults(monkeypatch):
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "create_dataset", lambda **kwargs: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "create_dataset", lambda **_kwargs: ds, raising=True)
 
     out = create_dataset(
         payload=DatasetCreate(
@@ -72,7 +72,7 @@ def test_dataset_create_rejects_unknown_parser_backend(monkeypatch):  # noqa: AN
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "create_dataset", lambda **kwargs: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "create_dataset", lambda **_kwargs: ds, raising=True)
 
     with pytest.raises(HTTPException) as exc:
         create_dataset(
@@ -107,9 +107,9 @@ def test_dataset_update_rejects_unknown_chunk_strategy(monkeypatch):  # noqa: AN
 
     ds = _Dataset()
 
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tid, did: ds, raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda db, dataset, account_id: None, raising=True)
-    monkeypatch.setattr(DatasetService, "update_dataset", lambda **kwargs: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tid, _did: ds, raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_writable", lambda _db, _dataset, _account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "update_dataset", lambda **_kwargs: ds, raising=True)
 
     with pytest.raises(HTTPException) as exc:
         update_dataset(

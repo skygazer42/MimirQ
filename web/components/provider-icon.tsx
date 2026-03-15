@@ -91,9 +91,9 @@ const PROVIDER_ICONS: Record<string, { file: string; format: 'svg' | 'png' }> = 
 }
 
 // 默认图标
-const DEFAULT_ICON = { file: 'default', format: 'png' as const }
+const DEFAULT_ICON = { file: 'default', format: 'png' }
 
-export function ProviderIcon({ providerId, className = 'w-8 h-8' }: ProviderIconProps) {
+export function ProviderIcon({ providerId, className = 'w-8 h-8' }: Readonly<ProviderIconProps>) {
   const pid = normalizeProviderId(providerId)
   const lobehubIconName = LOBEHUB_ICON_BY_PROVIDER_ID[pid]
 

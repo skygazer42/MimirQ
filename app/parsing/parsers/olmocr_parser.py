@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 from langchain_core.documents import Document
@@ -56,7 +56,7 @@ class OlmocrParser:
 
         self._session = requests.Session()
 
-    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+    def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
         run_id = _sanitize_run_id(document_id or file_path.stem or "olmocr")
         return (file_path.parent / ".olmocr" / run_id).absolute()
 
@@ -81,12 +81,12 @@ class OlmocrParser:
         self,
         file_path: Path,
         *,
-        dataset_id: Optional[str] = None,
-        document_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,  # noqa: ARG002 - reserved for future use
-        pdf_quality: Optional[dict[str, Any]] = None,  # noqa: ARG002 - reserved for future use
+        dataset_id: str | None = None,
+        document_id: str | None = None,
+        tenant_id: str | None = None,  # noqa: ARG002 - reserved for future use
+        pdf_quality: dict[str, Any] | None = None,  # noqa: ARG002 - reserved for future use
         **_kwargs,
-    ) -> List[Document]:
+    ) -> list[Document]:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -116,7 +116,7 @@ class OlmocrParser:
             # Best-effort only; do not block parsing.
             pass
 
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "source": str(file_path.name),
             "file_type": "pdf",
             "parser_backend": "olmocr",

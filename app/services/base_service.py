@@ -4,7 +4,7 @@ Service layer base class.
 Provides common CRUD operations to reduce service duplication.
 """
 
-from typing import Generic, List, Optional, Type, TypeVar
+from typing import Generic, TypeVar
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -36,7 +36,7 @@ class BaseService(Generic[ModelType]):
                 return db.query(cls.model).filter(cls.model.dataset_id == dataset_id).all()
     """
 
-    model: Type[ModelType] = None  # Subclasses must set.
+    model: type[ModelType] = None  # Subclasses must set.
 
     @classmethod
     def get_by_id(
@@ -44,7 +44,7 @@ class BaseService(Generic[ModelType]):
         db: Session,
         id: UUID,
         raise_404: bool = True
-    ) -> Optional[ModelType]:
+    ) -> ModelType | None:
         """
         Get resource by ID.
 
@@ -71,7 +71,7 @@ class BaseService(Generic[ModelType]):
         tenant_id: UUID,
         id: UUID,
         raise_404: bool = True
-    ) -> Optional[ModelType]:
+    ) -> ModelType | None:
         """
         Get resource by tenant ID and resource ID.
 
@@ -103,7 +103,7 @@ class BaseService(Generic[ModelType]):
         skip: int = 0,
         limit: int = 50,
         **filters
-    ) -> List[ModelType]:
+    ) -> list[ModelType]:
         """
         List resources under a tenant.
 

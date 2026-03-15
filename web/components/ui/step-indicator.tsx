@@ -18,7 +18,7 @@ export function StepIndicator({
   steps,
   currentStep,
   className,
-}: StepIndicatorProps) {
+}: Readonly<StepIndicatorProps>) {
   return (
     <div className={cn('w-full', className)}>
       <div className="flex items-center justify-between">
@@ -28,17 +28,25 @@ export function StepIndicator({
           const isLast = index === steps.length - 1
 
           return (
-            <div key={index} className="flex items-center flex-1">
+            <div key={`${step.label}-${step.description || ''}`} className="flex items-center flex-1">
               {/* Step circle */}
               <div className="flex flex-col items-center">
                 <div
                   className={cn(
                     'size-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors duration-200 motion-reduce:transition-none',
-                    isCompleted
-                      ? 'bg-primary text-primary-foreground'
-                      : isCurrent
-                      ? 'bg-primary/10 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background'
-                      : 'bg-muted text-muted-foreground'
+                    (() => {
+    if (isCompleted) {
+        return 'bg-primary text-primary-foreground';
+    }
+    else {
+        if (isCurrent) {
+            return 'bg-primary/10 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background';
+        }
+        else {
+            return 'bg-muted text-muted-foreground';
+        }
+    }
+})()
                   )}
                 >
                   {isCompleted ? (
@@ -50,11 +58,19 @@ export function StepIndicator({
                 <span
                   className={cn(
                     'mt-2 text-xs font-medium whitespace-nowrap transition-colors motion-reduce:transition-none',
-                    isCurrent
-                      ? 'text-primary'
-                      : isCompleted
-                      ? 'text-foreground'
-                      : 'text-muted-foreground'
+                    (() => {
+    if (isCurrent) {
+        return 'text-primary';
+    }
+    else {
+        if (isCompleted) {
+            return 'text-foreground';
+        }
+        else {
+            return 'text-muted-foreground';
+        }
+    }
+})()
                   )}
                 >
                   {step.label}

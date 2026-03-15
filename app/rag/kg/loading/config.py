@@ -1,4 +1,3 @@
-from typing import List, Optional
 from uuid import UUID
 
 from app.rag.kg.schemas import KGBaseModel
@@ -16,11 +15,11 @@ class LoadResult(KGBaseModel):
 
 class DocumentLoadConfig(LoadBaseConfig):
     """Document load config (placeholder)."""
-    path: Optional[str] = None
-    tenant_id: Optional[UUID] = None
+    path: str | None = None
+    tenant_id: UUID | None = None
 
 
 class ConversationLoadConfig(LoadBaseConfig):
     """Conversation load config (placeholder)."""
-    conversation_ids: List[str] = []
-    tenant_id: Optional[UUID] = None
+    conversation_ids: list[str] = []
+    tenant_id: UUID | None = None

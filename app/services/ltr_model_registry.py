@@ -15,9 +15,9 @@ import json
 import os
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, List, Tuple
+from typing import Any
 
 from app.core.config import settings
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
@@ -32,7 +32,7 @@ _LOCK = threading.RLock()
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _sha256(data: bytes) -> str:
@@ -114,7 +114,7 @@ def _write_json(path: Path, obj: dict[str, Any]) -> None:
     _atomic_write_text(path, json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
 
 
-def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> Tuple[int, dict[str, Any]]:
+def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> tuple[int, dict[str, Any]]:
     schema = str(manifest.get("schema") or "").strip()
     if schema != _MANIFEST_SCHEMA_V1:
         raise ValueError(f"manifest schema mismatch: {schema or '<missing>'}")
@@ -361,7 +361,7 @@ def register_model(
         )
 
 
-def list_models() -> List[LTRRegisteredModel]:
+def list_models() -> list[LTRRegisteredModel]:
     """List registered LTR models (best-effort)."""
     root = _models_root()
     if not root.exists():
@@ -500,7 +500,7 @@ def apply_canary_activation(
         return active
 
 
-def resolve_active_model_paths() -> Tuple[str | None, str | None, int | None, str | None]:
+def resolve_active_model_paths() -> tuple[str | None, str | None, int | None, str | None]:
     """
     Resolve (model_path, manifest_path, feature_spec_version, model_id) from active.json.
 

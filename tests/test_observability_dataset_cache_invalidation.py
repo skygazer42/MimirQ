@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -15,7 +15,7 @@ def test_invalidate_dataset_cache_namespace_endpoint_returns_service_payload(mon
         "dataset_id": str(dataset_id),
         "previous_corpus_cache_token": "corp-a",
         "current_corpus_cache_token": "corp-b",
-        "invalidated_at": datetime(2026, 3, 10, 12, 0, tzinfo=timezone.utc),
+        "invalidated_at": datetime(2026, 3, 10, 12, 0, tzinfo=UTC),
         "evidence_post_rerank_memory_cleared": True,
         "note": "rotated",
     }

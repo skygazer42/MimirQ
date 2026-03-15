@@ -5,7 +5,6 @@ Preserves start/end character positions for highlighting.
 """
 
 import re
-from typing import List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -24,7 +23,7 @@ class LangChainRecursiveChunker(BaseChunker):
         self,
         chunk_size: int,
         chunk_overlap: int,
-        separators: List[str] = None,
+        separators: list[str] = None,
     ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -37,8 +36,8 @@ class LangChainRecursiveChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        chunks: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        chunks: list[Document] = []
         for doc in documents:
             text = doc.page_content or ""
             if not text.strip():

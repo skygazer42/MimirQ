@@ -39,6 +39,7 @@ async def test_event_extractor_enforces_per_chunk_timeout(monkeypatch):
     monkeypatch.setattr(extractor_mod, "SessionLocal", lambda: _Session(), raising=True)
 
     async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
+        await asyncio.sleep(0)  # Sonar S7503
         return object()
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)

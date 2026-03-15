@@ -1,10 +1,12 @@
+import pytest
+
 from app.rag.preprocessing.language import detect_language
 
 
 def test_detect_language_unknown_for_empty():
     res = detect_language("", min_chars=1)
     assert res.language == "unknown"
-    assert res.confidence == 0.0
+    assert res.confidence == pytest.approx(0.0)
 
 
 def test_detect_language_zh_for_cjk_text():

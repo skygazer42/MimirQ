@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -23,7 +23,7 @@ class _Entry:
     end: int
     kind: str
     index: int
-    loc: Optional[str]
+    loc: str | None
 
 
 _URL_START_RE = re.compile(r"(?is)<url\b[^>]*>")
@@ -33,7 +33,7 @@ _SITEMAP_END_RE = re.compile(r"(?is)</sitemap\s*>")
 _LOC_RE = re.compile(r"(?is)<loc\b[^>]*>(?P<body>.*?)</loc\s*>")
 
 
-def _extract_loc(block_text: str) -> Optional[str]:
+def _extract_loc(block_text: str) -> str | None:
     m = _LOC_RE.search(block_text or "")
     if not m:
         return None
@@ -42,7 +42,7 @@ def _extract_loc(block_text: str) -> Optional[str]:
     return loc[:300] or None
 
 
-def _iter_entries(text: str, *, kind: str) -> List[_Entry]:
+def _iter_entries(text: str, *, kind: str) -> list[_Entry]:
     if not text:
         return []
     if kind == "url":
@@ -50,7 +50,7 @@ def _iter_entries(text: str, *, kind: str) -> List[_Entry]:
     else:
         start_re, end_re = _SITEMAP_START_RE, _SITEMAP_END_RE
 
-    entries: List[_Entry] = []
+    entries: list[_Entry] = []
     for sm in start_re.finditer(text):
         em = end_re.search(text, pos=sm.end())
         if not em:
@@ -96,8 +96,8 @@ class SitemapXMLChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

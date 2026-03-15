@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
@@ -68,7 +69,7 @@ def test_rate_limit_middleware_returns_standard_429_body_and_header() -> None:
     assert payload.get("error") == "RATE_LIMIT_EXCEEDED"
     assert payload.get("message") == "Too many requests. Please try again later."
     assert detail.get("scope") == "rate_limit:api"
-    assert detail.get("limit") == 1.0
+    assert detail.get("limit") == pytest.approx(1.0)
     assert isinstance(detail.get("retry_after_sec"), int)
     assert second.headers.get("Retry-After") == str(detail.get("retry_after_sec"))
 
@@ -109,6 +110,6 @@ def test_tenant_qps_quota_429_has_standard_shape_and_retry_after_header(monkeypa
 
     assert payload.get("error") == "RATE_LIMIT_EXCEEDED"
     assert detail.get("scope") == "tenant_qps:retrieval"
-    assert detail.get("limit") == 1.0
+    assert detail.get("limit") == pytest.approx(1.0)
     assert isinstance(detail.get("retry_after_sec"), int)
     assert second.headers.get("Retry-After") == str(detail.get("retry_after_sec"))

@@ -6,8 +6,9 @@ import subprocess
 import sys
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -21,7 +22,7 @@ CancelCheck = Callable[[], Awaitable[bool]]
 
 
 class SubprocessWorkerError(RuntimeError):
-    def __init__(self, message: str, *, details: Optional[dict[str, Any]] = None, log_tail: str = "") -> None:
+    def __init__(self, message: str, *, details: dict[str, Any] | None = None, log_tail: str = "") -> None:
         super().__init__(message)
         self.details = details or {}
         self.log_tail = log_tail

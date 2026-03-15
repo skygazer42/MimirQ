@@ -111,14 +111,14 @@ QUESTION_PATTERN = [
     r"第([零一二三四五六七八九十百0-9]+)问",
     r"第([零一二三四五六七八九十百0-9]+)条",
     r"[\(（]([零一二三四五六七八九十百]+)[\)）]",
-    r"第([0-9]+)问",
-    r"第([0-9]+)条",
-    r"([0-9]{1,2})[\. 、]",
+    r"第(\d+)问",
+    r"第(\d+)条",
+    r"(\d{1,2})[\. 、]",
     r"([零一二三四五六七八九十百]+)[ 、]",
-    r"[\(（]([0-9]{1,2})[\)）]",
+    r"[\(（](\d{1,2})[\)）]",
     r"QUESTION (ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)",
     r"QUESTION (I+V?|VI*|XI|IX|X)",
-    r"QUESTION ([0-9]+)",
+    r"QUESTION (\d+)",
 ]
 
 
@@ -212,23 +212,23 @@ BULLET_PATTERN = [[
     r"第[零一二三四五六七八九十百0-9]+条",
     r"[\(（][零一二三四五六七八九十百]+[\)）]",
 ], [
-    r"第[0-9]+章",
-    r"第[0-9]+节",
-    r"[0-9]{,2}[\. 、]",
-    r"[0-9]{,2}\.[0-9]{,2}[^a-zA-Z/%~-]",
-    r"[0-9]{,2}\.[0-9]{,2}\.[0-9]{,2}",
-    r"[0-9]{,2}\.[0-9]{,2}\.[0-9]{,2}\.[0-9]{,2}",
+    r"第\d+章",
+    r"第\d+节",
+    r"\d{,2}[\. 、]",
+    r"\d{,2}\.\d{,2}[^a-zA-Z/%~-]",
+    r"\d{,2}\.\d{,2}\.\d{,2}",
+    r"\d{,2}\.\d{,2}\.\d{,2}\.\d{,2}",
 ], [
     r"第[零一二三四五六七八九十百0-9]+章",
     r"第[零一二三四五六七八九十百0-9]+节",
     r"[零一二三四五六七八九十百]+[ 、]",
     r"[\(（][零一二三四五六七八九十百]+[\)）]",
-    r"[\(（][0-9]{,2}[\)）]",
+    r"[\(（]\d{,2}[\)）]",
 ], [
     r"PART (ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|TEN)",
     r"Chapter (I+V?|VI*|XI|IX|X)",
-    r"Section [0-9]+",
-    r"Article [0-9]+"
+    r"Section \d+",
+    r"Article \d+"
 ], [
     r"^#[^#]",
     r"^##[^#]",
@@ -247,9 +247,9 @@ def random_choices(arr, k):
 
 def not_bullet(line):
     patt = [
-        r"0", r"[0-9]+ +[0-9~个只-]", r"[0-9]+\.{2,}"
+        r"0", r"\d+ +[0-9~个只-]", r"\d+\.{2,}"
     ]
-    return any([re.match(r, line) for r in patt])
+    return any(re.match(r, line) for r in patt)
 
 
 def bullets_category(sections):
@@ -693,7 +693,7 @@ def tree_merge(bull, sections, depth):
 
     # filter out position information in pdf sections
     sections = [(t, o) for t, o in sections if
-                t and len(t.split("@")[0].strip()) > 1 and not re.match(r"[0-9]+$", t.split("@")[0].strip())]
+                t and len(t.split("@")[0].strip()) > 1 and not re.match(r"\d+$", t.split("@")[0].strip())]
 
     def get_level(bull, section):
         text, layout = section
@@ -717,7 +717,7 @@ def tree_merge(bull, sections, depth):
         lines.append((level, text))
         level_set.add(level)
 
-    sorted_levels = sorted(list(level_set))
+    sorted_levels = sorted(level_set)
 
     if depth <= len(sorted_levels):
         target_level = sorted_levels[depth - 1]
@@ -739,7 +739,7 @@ def hierarchical_merge(bull, sections, depth):
     if isinstance(sections[0], type("")):
         sections = [(s, "") for s in sections]
     sections = [(t, o) for t, o in sections if
-                t and len(t.split("@")[0].strip()) > 1 and not re.match(r"[0-9]+$", t.split("@")[0].strip())]
+                t and len(t.split("@")[0].strip()) > 1 and not re.match(r"\d+$", t.split("@")[0].strip())]
     bullets_size = len(BULLET_PATTERN[bull])
     levels = [[] for _ in range(bullets_size + 2)]
 
@@ -809,7 +809,7 @@ def hierarchical_merge(bull, sections, depth):
     num = [0]
     for ck in cks:
         if len(ck) == 1:
-            n = num_tokens_from_string(re.sub(r"@@[0-9]+.*", "", ck[0]))
+            n = num_tokens_from_string(re.sub(r"@@\d+.*", "", ck[0]))
             if n + num[-1] < 218:
                 res[-1].append(ck[0])
                 num[-1] += n

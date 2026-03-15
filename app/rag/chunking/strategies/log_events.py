@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -25,8 +25,8 @@ from app.rag.chunking.base import BaseChunker
 class _Entry:
     start: int
     end: int
-    ts: Optional[str]
-    level: Optional[str]
+    ts: str | None
+    level: str | None
 
 
 _LEVELS = r"TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|CRITICAL"
@@ -49,7 +49,7 @@ _SYSLOG_START_RE = re.compile(
 )
 
 
-def _iter_entries(text: str) -> List[_Entry]:
+def _iter_entries(text: str) -> list[_Entry]:
     if not text:
         return []
 
@@ -70,7 +70,7 @@ def _iter_entries(text: str) -> List[_Entry]:
         last_start = m.start()
     matches = dedup
 
-    entries: List[_Entry] = []
+    entries: list[_Entry] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -109,8 +109,8 @@ class LogEventsChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

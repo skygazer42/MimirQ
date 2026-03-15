@@ -15,7 +15,7 @@ Principles:
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -122,7 +122,7 @@ def run_audit_log_retention(
 
     Returns a small PII-safe summary dict (counts and timestamps).
     """
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
     try:
         retention_days_i = max(1, int(retention_days or 0))
     except Exception:
@@ -194,7 +194,7 @@ def run_regression_run_retention(
 
     Returns a small PII-safe summary dict (counts and timestamps).
     """
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
     try:
         retention_days_i = max(1, int(retention_days or 0))
     except Exception:
@@ -288,7 +288,7 @@ async def run_knowledge_asset_retention(
     Deletion is delegated to the existing document delete lifecycle so document
     rows, chunks, KG artifacts, vectors, and object assets stay aligned.
     """
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
     try:
         retention_days_i = max(1, int(retention_days or 0))
     except Exception:

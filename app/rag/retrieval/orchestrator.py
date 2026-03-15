@@ -17,7 +17,7 @@ import concurrent.futures
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -61,8 +61,8 @@ from app.rag.policy.must_recall_auto import (
     infer_expected_source_keys,
     infer_required_anchor_fields,
 )
-from app.rag.policy.recall_obligation import build_must_recall_proof
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
+from app.rag.policy.recall_obligation import build_must_recall_proof
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.rerank_result_cache import (
     build_evidence_post_rerank_cache_key,
@@ -87,12 +87,12 @@ from app.services.hardcase_discovery_service import (
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
 
 
-def _build_history_text(history: Optional[List[Dict[str, str]]]) -> str:
+def _build_history_text(history: list[dict[str, str]] | None) -> str:
     """Compress history to readable text, keep only within window."""
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
 
-def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | None:
+def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | None:
     """
     Shrink retriever debug payloads for API responses / metrics.
 
@@ -103,7 +103,7 @@ def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | No
     if not isinstance(dbg, dict) or not dbg:
         return None
 
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for k in (
         "requested_k",
         "search_k",
@@ -132,7 +132,7 @@ def _sanitize_retriever_debug(dbg: Dict[str, Any] | None) -> Dict[str, Any] | No
     # Doc/page diversity caps (PII-safe): expose only bounded numeric counters/settings.
     div = dbg.get("diversity")
     if isinstance(div, dict):
-        div_out: Dict[str, int] = {}
+        div_out: dict[str, int] = {}
         for k in (
             "max_chunks_per_doc",
             "max_chunks_per_page",
@@ -819,7 +819,7 @@ def _fetch_document_chunks_for_kg_injection(
         return []
 
 
-def _resolve_post_rerank_corpus_cache_token(state: Dict[str, Any]) -> str | None:
+def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None:
     db = state.get("db")
     tenant_id = state.get("tenant_id")
     if db is None or tenant_id is None:
@@ -856,7 +856,7 @@ def _resolve_post_rerank_corpus_cache_token(state: Dict[str, Any]) -> str | None
         return None
 
 
-def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
+def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     """
     Execute retrieval only and return an updated RAG-like state dict.
 
@@ -900,9 +900,9 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
     kg_result_cached: dict[str, Any] | None = None
-    intent_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
-    adaptive_router_meta: Dict[str, Any] = {"enabled": False, "used": False}
-    channel_budget_policy_meta: Dict[str, Any] = {"enabled": False, "used": False}
+    intent_router_meta: dict[str, Any] = {"enabled": False, "used": False}
+    adaptive_router_meta: dict[str, Any] = {"enabled": False, "used": False}
+    channel_budget_policy_meta: dict[str, Any] = {"enabled": False, "used": False}
 
     rewrite_enabled_req = state.get("enable_query_rewrite")
     rewrite_enabled = bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
@@ -1316,7 +1316,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             if overrides:
                 for k, v in overrides.items():
                     state[k] = v
-    retriever_update: Dict[str, Any] = {
+    retriever_update: dict[str, Any] = {
         "k": int(profile_applied.get("top_k") or settings.RETRIEVAL_TOP_K),
         "score_threshold": float(profile_applied.get("score_threshold") or 0.0),
         "alpha": state.get("alpha", 0.6),
@@ -1395,8 +1395,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     # Controlled query expansion (deterministic).
     alias_elapsed = 0.0
     alias_used = False
-    alias_meta: Dict[str, Any] = {"enabled": False, "used": False}
-    alias_queries: List[str] = []
+    alias_meta: dict[str, Any] = {"enabled": False, "used": False}
+    alias_queries: list[str] = []
 
     alias_enabled = state.get("enable_query_alias_expansion")
     aliases = state.get("query_aliases")
@@ -1415,8 +1415,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     # Deterministic dictionary expansion (bounded, auditable).
     dict_elapsed = 0.0
     dict_used = False
-    dict_meta: Dict[str, Any] = {"enabled": False, "used": False}
-    dict_expansions: List[Dict[str, Any]] = []
+    dict_meta: dict[str, Any] = {"enabled": False, "used": False}
+    dict_expansions: list[dict[str, Any]] = []
     try:
         from app.query.expand import generate_dictionary_expansions, load_base_dictionary_rules
 
@@ -1555,8 +1555,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     multi_query_elapsed = 0.0
     multi_query_used = False
     multi_query_model_used = None
-    multi_query_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
-    multi_queries: List[str] = []
+    multi_query_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+    multi_queries: list[str] = []
 
     mq_enabled = bool(settings.ENABLE_MULTI_QUERY) if state.get("enable_multi_query") is None else bool(state.get("enable_multi_query"))
     mq_n = settings.MULTI_QUERY_COUNT if state.get("multi_query_count") is None else int(state.get("multi_query_count") or 0)
@@ -1637,8 +1637,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     decompose_elapsed = 0.0
     decompose_used = False
     decompose_model_used = None
-    decompose_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
-    sub_questions: List[str] = []
+    decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+    sub_questions: list[str] = []
 
     dq_n = max(0, min(int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS or 0), 8))
     dq_min_chars = max(0, int(settings.QUERY_DECOMPOSITION_MIN_CHARS or 0))
@@ -1705,7 +1705,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
 
     decompose_used = bool(sub_questions)
 
-    retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
+    retrieval_queries: list[tuple[str, str]] = [("main", query_for_retrieval)]
     for q in alias_queries:
         retrieval_queries.append(("alias", q))
     for e in dict_expansions:
@@ -1726,7 +1726,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # Deduplicate query variants (avoid redundant retrieval calls).
     seen_queries: set[str] = set()
-    deduped_queries: List[tuple[str, str]] = []
+    deduped_queries: list[tuple[str, str]] = []
     for kind, q in retrieval_queries:
         norm = " ".join((q or "").strip().split())
         if not norm:
@@ -1738,13 +1738,13 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         deduped_queries.append((kind, norm))
     retrieval_queries = deduped_queries
 
-    docs_by_query: List[List[Document]] = []
-    docs_by_query_kinds: List[str] = []
-    retrieval_errors: List[str] = []
-    retrieval_per_query: List[Dict[str, Any]] = []
+    docs_by_query: list[list[Document]] = []
+    docs_by_query_kinds: list[str] = []
+    retrieval_errors: list[str] = []
+    retrieval_per_query: list[dict[str, Any]] = []
     start = time.time()
     retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
-    retrieval_plan: List[tuple[str, str, Any]] = []
+    retrieval_plan: list[tuple[str, str, Any]] = []
     for kind, q in retrieval_queries:
         r = retriever
         if kind != "main":
@@ -1754,7 +1754,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 r = retriever.model_copy(update={"enable_reranker": False})
         retrieval_plan.append((kind, q, r))
 
-    def _invoke_with_timing(kind: str, q: str, r: Any) -> tuple[str, List[Document], str | None, float, Dict[str, Any] | None]:
+    def _invoke_with_timing(kind: str, q: str, r: Any) -> tuple[str, list[Document], str | None, float, dict[str, Any] | None]:
         t0 = time.time()
         try:
             docs_i = r.invoke(q)
@@ -2162,7 +2162,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
 
     # Optional: TAG injection (table_store results) passed in by the API layer.
     injected = state.get("tag_docs")
-    tag_docs: List[Document] = []
+    tag_docs: list[Document] = []
     if isinstance(injected, list) and injected:
         for obj in injected[:10]:
             if isinstance(obj, Document):
@@ -2275,7 +2275,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         "used": False,
     }
 
-    def _calibrate_post_rerank_prefix(prefix_docs: List[Document]) -> List[Document]:
+    def _calibrate_post_rerank_prefix(prefix_docs: list[Document]) -> list[Document]:
         nonlocal post_rerank_score_calibration_used
         if not post_rerank_score_calibration_enabled:
             return prefix_docs
@@ -2410,7 +2410,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                 # Pipeline mode: sequential stages with per-stage top_n budgets.
                 if post_rerank_pipeline:
                     post_rerank_pipeline_used = True
-                    docs_work: List[Document] = list(docs or [])
+                    docs_work: list[Document] = list(docs or [])
                     total_elapsed = 0.0
                     prev_n: int | None = None
                     final_provider: str | None = None
@@ -2435,8 +2435,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                         if st_n <= 0:
                             continue
 
-                        candidates: List[RerankCandidate] = []
-                        id_to_doc: Dict[str, Document] = {}
+                        candidates: list[RerankCandidate] = []
+                        id_to_doc: dict[str, Document] = {}
                         for doc in docs_work[:st_n]:
                             rid = _doc_key(doc)
                             text = (doc.page_content or "").strip()
@@ -2495,7 +2495,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                             final_model_used = rr.model_used
                             final_n = int(st_n)
 
-                        ordered_prefix: List[Document] = []
+                        ordered_prefix: list[Document] = []
                         used: set[str] = set()
                         for rid in rr.ordered_ids:
                             doc = id_to_doc.get(rid)
@@ -2584,8 +2584,8 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                     governed_n = min(governed_n, len(docs or []))
                     post_rerank_candidates_n = int(governed_n)
 
-                    candidates: List[RerankCandidate] = []
-                    id_to_doc: Dict[str, Document] = {}
+                    candidates: list[RerankCandidate] = []
+                    id_to_doc: dict[str, Document] = {}
                     for doc in (docs or [])[:post_rerank_candidates_n]:
                         rid = _doc_key(doc)
                         text = (doc.page_content or "").strip()
@@ -2641,7 +2641,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
                         post_rerank_model_used = rr.model_used
                         reranker_provider = rr.provider or provider
 
-                        ordered: List[Document] = []
+                        ordered: list[Document] = []
                         used: set[str] = set()
                         for rid in rr.ordered_ids:
                             doc = id_to_doc.get(rid)
@@ -2689,14 +2689,14 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     hard_fallback_elapsed = 0.0
     hard_fallback_added_docs = 0
     hard_fallback_added_citations = 0
-    hard_fallback_retriever_debug: Dict[str, Any] | None = None
+    hard_fallback_retriever_debug: dict[str, Any] | None = None
     contextual_followup_attempted = False
     contextual_followup_used = False
     contextual_followup_error: str | None = None
     contextual_followup_elapsed = 0.0
     contextual_followup_added_docs = 0
     contextual_followup_added_citations = 0
-    contextual_followup_retriever_debug: Dict[str, Any] | None = None
+    contextual_followup_retriever_debug: dict[str, Any] | None = None
     contextual_followup_reason_codes: list[str] = []
     contextual_followup_selected_terms: list[str] = []
     contextual_followup_followup_query: str | None = None
@@ -3588,7 +3588,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
             metrics["hardcase_candidate"] = parse_risk_candidate
 
     # Best-effort query_debug payload (bounded, structured).
-    query_debug: Dict[str, Any] = {"original": question, "normalized": None, "applied_rules": [], "expansions": [], "contributions": [], "channels": None}
+    query_debug: dict[str, Any] = {"original": question, "normalized": None, "applied_rules": [], "expansions": [], "contributions": [], "channels": None}
     try:
         norm_text: str | None = None
         applied_rules: list[str] = []
@@ -3618,7 +3618,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         query_debug["normalized"] = query_for_retrieval
         query_debug["applied_rules"] = []
 
-    expansions_dbg: List[Dict[str, Any]] = []
+    expansions_dbg: list[dict[str, Any]] = []
     for q in alias_queries:
         expansions_dbg.append({"kind": "alias", "expanded_text": q, "source_rule_id": "alias", "weight": 1.0})
     for e in dict_expansions:
@@ -3642,7 +3642,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         query_debug["kg_entities"] = kg_query_expansion_entity_names[:10]
 
     try:
-        by_role: Dict[str, int] = {}
+        by_role: dict[str, int] = {}
         for c in citations:
             if not isinstance(c, dict):
                 continue
@@ -3746,19 +3746,19 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     #
     # Keep this separate from `metrics` (free-form counters) and `query_debug` (best-effort text payloads).
     try:
-        variants: Dict[str, int] = {}
+        variants: dict[str, int] = {}
         for kind, _q, _r in retrieval_plan:
             k = str(kind or "").strip() or "main"
             variants[k] = int(variants.get(k, 0) or 0) + 1
     except Exception:
         variants = {}
 
-    def _trace_per_query_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    def _trace_per_query_item(item: dict[str, Any]) -> dict[str, Any]:
         kind = str(item.get("kind") or "").strip() or "main"
         q_chars = int(item.get("query_chars") or 0)
         ok = bool(item.get("ok"))
         elapsed = float(item.get("elapsed_sec") or 0.0)
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "kind": kind,
             "query_chars": q_chars,
             "ok": ok,
@@ -3784,7 +3784,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         per_query_trace = []
 
-    citations_by_role: Dict[str, int] = {}
+    citations_by_role: dict[str, int] = {}
     try:
         for c in citations:
             if not isinstance(c, dict):
@@ -3804,7 +3804,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         chunk_quality_summary = None
 
-    retrieval_trace: Dict[str, Any] = {
+    retrieval_trace: dict[str, Any] = {
         "schema": "mimirq.retrieval_trace_pass.v1",
         "query_for_retrieval_hash": stable_hash(query_for_retrieval),
         "requested_retrieval_mode": str(requested_retrieval_mode or ""),
@@ -4055,7 +4055,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
     #   without relying on brittle field-by-field comparisons.
     # - Must not include raw query text, doc ids, dataset ids, or metadata filter contents.
     try:
-        retrieval_cfg: Dict[str, Any] = {
+        retrieval_cfg: dict[str, Any] = {
             "requested_retrieval_mode": str(requested_retrieval_mode or ""),
             "retrieval_mode": str(request_retrieval_mode or ""),
             "retrieval_mode_auto_routed": bool(retrieval_mode_routed),
@@ -4163,7 +4163,7 @@ def run_retrieval(state: Dict[str, Any]) -> Dict[str, Any]:
         # Keep stable keys only (no UUIDs) so retrieval_config_hash is comparable across environments.
         tmpl_raw = state.get("rag_config_template")
         if isinstance(tmpl_raw, dict) and tmpl_raw:
-            tmpl_fp: Dict[str, Any] = {}
+            tmpl_fp: dict[str, Any] = {}
 
             key = str(tmpl_raw.get("template_key") or "").strip()
             if key:

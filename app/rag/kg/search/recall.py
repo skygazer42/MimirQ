@@ -2,7 +2,7 @@
 Recall stage: 8-step pipeline (query -> keys -> events -> weights).
 """
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any
 
 from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
@@ -17,15 +17,15 @@ from app.rag.kg.search.utils import confidence_bucket, cosine_similarity
 
 @dataclass
 class RecallResult:
-    query_vector: List[float]
-    key_final: List[Dict[str, Any]]
-    event_ids: List[str]
-    clues: List[Dict[str, Any]]
-    key_weights: Dict[str, float]
-    event_scores: Dict[str, float]
+    query_vector: list[float]
+    key_final: list[dict[str, Any]]
+    event_ids: list[str]
+    clues: list[dict[str, Any]]
+    key_weights: dict[str, float]
+    event_scores: dict[str, float]
     # Stable per-event hop/path-length estimates for downstream ranking signals.
-    event_hops: Dict[str, int] = field(default_factory=dict)
-    relation_debug: Dict[str, Any] = field(default_factory=dict)
+    event_hops: dict[str, int] = field(default_factory=dict)
+    relation_debug: dict[str, Any] = field(default_factory=dict)
 
 
 class RecallSearcher:
@@ -102,8 +102,8 @@ class RecallSearcher:
                         break
 
             # === Step1: query -> keys (vector) ===
-            query_vec: List[float] = []
-            raw_entities: List[dict] = []
+            query_vec: list[float] = []
+            raw_entities: list[dict] = []
             vector_recall_enabled = (
                 bool(config.vector_recall_enabled)
                 if getattr(config, "vector_recall_enabled", None) is not None
@@ -201,7 +201,7 @@ class RecallSearcher:
                         event_id_strs = [str(eid) for eid in (event_ids or []) if eid is not None]
                         assoc_map = event_repo.get_event_entities(event_ids or [], tenant_id=tenant_uuid)
 
-                        entity_counts: Dict[str, int] = {}
+                        entity_counts: dict[str, int] = {}
                         for links in (assoc_map or {}).values():
                             for link in links or []:
                                 ent_id = str(getattr(link, "entity_id", "") or "").strip()
@@ -252,7 +252,7 @@ class RecallSearcher:
                                 rel_rows = []
                             # Deterministic ordering independent of updated_at.
                             rel_rows = sorted(
-                                list(rel_rows or []),
+                                rel_rows or [],
                                 key=lambda r: (
                                     str(getattr(r, "subject_entity_id", "") or ""),
                                     str(getattr(r, "predicate", "") or ""),
@@ -381,7 +381,7 @@ class RecallSearcher:
                     )
 
                 if allowed_entity_ids is not None:
-                    filtered_entities: List[dict] = []
+                    filtered_entities: list[dict] = []
                     for ent in raw_entities:
                         ent_id = ent.get("entity_id") or ent.get("id")
                         if ent_id is None:
@@ -409,7 +409,7 @@ class RecallSearcher:
                 )
 
             # normalize key weights
-            key_weights: Dict[str, float] = {}
+            key_weights: dict[str, float] = {}
             if key_query_related:
                 sims = [e.get("similarity", 0.0) for e in key_query_related]
                 mx = max(sims) or 1.0
@@ -417,8 +417,8 @@ class RecallSearcher:
                     key_weights[ent["entity_id"]] = ent.get("similarity", 0.0) / mx
 
             # === Optional Step1.5: keys -> neighbor entities (relations) ===
-            relation_neighbor_ids: List[str] = []
-            relation_debug: Dict[str, Any] = {
+            relation_neighbor_ids: list[str] = []
+            relation_debug: dict[str, Any] = {
                 "enabled": False,
                 "query_mode": str(mode_norm),
                 "query_mode_reason_codes": [
@@ -482,9 +482,9 @@ class RecallSearcher:
                         relation_debug["edges_fetched"] = int(len(rel_rows))
 
                         key_entity_map = {e.get("entity_id"): e for e in key_query_related if e.get("entity_id")}
-                        neighbor_weights: Dict[str, float] = {}
-                        predicate_hist: Dict[str, int] = {}
-                        conf_bucket_hist: Dict[str, int] = {"low": 0, "mid": 0, "high": 0}
+                        neighbor_weights: dict[str, float] = {}
+                        predicate_hist: dict[str, int] = {}
+                        conf_bucket_hist: dict[str, int] = {"low": 0, "mid": 0, "high": 0}
                         edges_used = 0
                         for rel in rel_rows:
                             subj = str(getattr(rel, "subject_entity_id", "") or "")
@@ -608,7 +608,7 @@ class RecallSearcher:
             )
             event_ids_from_entities = list(event_ids_from_entities)[: config.rerank.max_key_recall_results]
 
-            event_ids_from_relation_entities: List[str] = []
+            event_ids_from_relation_entities: list[str] = []
             if relation_neighbor_ids:
                 rel_event_ids = event_repo.search_events_by_entities(
                     relation_neighbor_ids,
@@ -621,7 +621,7 @@ class RecallSearcher:
                 event_ids_from_relation_entities = list(rel_event_ids)[: config.rerank.max_key_recall_results]
 
             # === Step3: query -> events (vector) ===
-            content_results: List[dict] = []
+            content_results: list[dict] = []
             if vector_recall_enabled and query_vec:
                 try:
                     content_results = event_repo.search_similar_by_content(
@@ -652,7 +652,7 @@ class RecallSearcher:
                 )
 
             # === Step4: merge events ===
-            event_hops: Dict[str, int] = {}
+            event_hops: dict[str, int] = {}
             for eid in event_ids_from_entities:
                 key = str(eid)
                 prev = event_hops.get(key)
@@ -690,7 +690,7 @@ class RecallSearcher:
             event_hops = {eid: int(event_hops.get(eid, 1) or 1) for eid in merged_event_ids}
             assoc_map = event_repo.get_event_entities(merged_event_ids, tenant_id=tenant_id)
 
-            event_scores: Dict[str, float] = {}
+            event_scores: dict[str, float] = {}
             for ev in events_detail:
                 ev_id = str(ev.id)
                 sim = 0.0
@@ -709,7 +709,7 @@ class RecallSearcher:
             event_hops = {eid: int(event_hops.get(eid, 1) or 1) for eid in merged_event_ids}
 
             # === Step7: backprop key weights from events ===
-            key_event_weights: Dict[str, float] = {}
+            key_event_weights: dict[str, float] = {}
             for ev_id in merged_event_ids:
                 ev_weight = event_scores.get(str(ev_id), 0.0)
                 for link in assoc_map.get(str(ev_id), []):

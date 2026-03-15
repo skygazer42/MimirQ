@@ -39,7 +39,7 @@ export function KnowledgeUrlImportDialog({
   datasetDefaultValue,
   uploadDocumentFromUrl,
   onAfterImport,
-}: KnowledgeUrlImportDialogProps) {
+}: Readonly<KnowledgeUrlImportDialogProps>) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
 

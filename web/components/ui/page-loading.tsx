@@ -7,15 +7,15 @@ interface PageLoadingProps {
   /**
    * 中文提示文字，默认 "正在加载..."
    */
-  message?: string
+  readonly message?: string
   /**
    * 屏幕阅读器提示，默认 "Loading"
    */
-  srMessage?: string
+  readonly srMessage?: string
   /**
    * 额外的容器样式
    */
-  className?: string
+  readonly className?: string
 }
 
 const PageLoading = ({

@@ -1,6 +1,6 @@
 import re
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, Optional, Sequence
 
 from app.core.regex_runtime import RegexSubstitutionTimeoutError
 from app.core.regex_runtime import safe_subn as safe_regex_subn
@@ -69,7 +69,7 @@ _PDF_BULLETS: tuple[str, ...] = (
 def clean_markdown(
     markdown: str,
     *,
-    rules: Optional[Iterable[RegexRule]] = None,
+    rules: Iterable[RegexRule] | None = None,
     regex_timeout_ms: int | None = None,
     normalize_line_endings: bool = True,
     trim_trailing_spaces: bool = True,
@@ -80,7 +80,7 @@ def clean_markdown(
     remove_noise_lines: bool = True,
     unwrap_lines: bool = True,
     remove_common_lines: bool = True,
-    common_lines: Optional[set[str]] = None,
+    common_lines: set[str] | None = None,
     unwrap_max_line_length: int = 120,
     noise_min_chars: int = 2,
     noise_ratio_threshold: float = 0.2,
@@ -339,7 +339,7 @@ def _filter_lines(
     remove_toc_lines: bool,
     remove_noise_lines: bool,
     remove_common_lines: bool,
-    common_lines: Optional[set[str]],
+    common_lines: set[str] | None,
     noise_min_chars: int,
     noise_ratio_threshold: float,
 ) -> list[str]:

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -34,7 +34,7 @@ class ResumeHeading:
 class _Section:
     start: int
     end: int
-    heading: Optional[ResumeHeading]
+    heading: ResumeHeading | None
 
 
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
@@ -106,7 +106,7 @@ def _normalize_title(raw: str) -> str:
     return t
 
 
-def _section_key(title: str) -> Optional[str]:
+def _section_key(title: str) -> str | None:
     if not title:
         return None
     if title in _CN_SECTIONS:
@@ -115,8 +115,8 @@ def _section_key(title: str) -> Optional[str]:
     return _EN_CANON.get(lower)
 
 
-def _iter_headings(text: str) -> List[ResumeHeading]:
-    headings: List[ResumeHeading] = []
+def _iter_headings(text: str) -> list[ResumeHeading]:
+    headings: list[ResumeHeading] = []
     if not text:
         return headings
 
@@ -145,7 +145,7 @@ def _iter_headings(text: str) -> List[ResumeHeading]:
             )
         )
 
-    deduped: List[ResumeHeading] = []
+    deduped: list[ResumeHeading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -155,11 +155,11 @@ def _iter_headings(text: str) -> List[ResumeHeading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[ResumeHeading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[ResumeHeading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = headings[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -195,8 +195,8 @@ class ResumeStructuredChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -207,7 +207,7 @@ class ResumeStructuredChunker(BaseChunker):
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            current_section: Optional[ResumeHeading] = None
+            current_section: ResumeHeading | None = None
 
             for section in sections:
                 sec_text = text[section.start : section.end]

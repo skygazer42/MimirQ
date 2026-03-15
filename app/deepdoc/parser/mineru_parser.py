@@ -21,11 +21,12 @@ import sys
 import tempfile
 import threading
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import numpy as np
 import pdfplumber
@@ -126,9 +127,9 @@ class MinerUParseOptions:
     """Options for MinerU PDF parsing."""
 
     backend: MinerUBackend = MinerUBackend.PIPELINE
-    lang: Optional[MinerULanguage] = None  # language for OCR (pipeline backend only)
+    lang: MinerULanguage | None = None  # language for OCR (pipeline backend only)
     method: MinerUParseMethod = MinerUParseMethod.AUTO
-    server_url: Optional[str] = None
+    server_url: str | None = None
     delete_output: bool = True
     parse_method: str = "raw"
     formula_enable: bool = True
@@ -182,7 +183,7 @@ class MinerUParser(IntegratedPipelinePdfParser):
         except (requests.RequestException, ValueError):
             return False
 
-    def check_installation(self, backend: str = "pipeline", server_url: Optional[str] = None) -> tuple[bool, str]:
+    def check_installation(self, backend: str = "pipeline", server_url: str | None = None) -> tuple[bool, str]:
         reason = ""
 
         valid_backends = ["pipeline", "vlm-http-client", "vlm-transformers", "vlm-vllm-engine", "vlm-mlx-engine", "vlm-vllm-async-engine", "vlm-lmdeploy-engine"]
@@ -223,12 +224,12 @@ class MinerUParser(IntegratedPipelinePdfParser):
         return True, reason
 
     def _run_mineru(
-        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None
+        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Callable | None = None
     ) -> Path:
         return self._run_mineru_api(input_path, output_dir, options, callback)
 
     def _run_mineru_api(
-        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Optional[Callable] = None
+        self, input_path: Path, output_dir: Path, options: MinerUParseOptions, callback: Callable | None = None
     ) -> Path:
         pdf_file_path = str(input_path)
 
@@ -550,11 +551,11 @@ class MinerUParser(IntegratedPipelinePdfParser):
             self,
             filepath: str | PathLike[str],
             binary: BytesIO | bytes,
-            callback: Optional[Callable] = None,
+            callback: Callable | None = None,
             *,
-            output_dir: Optional[str] = None,
+            output_dir: str | None = None,
             backend: str = "pipeline",
-            server_url: Optional[str] = None,
+            server_url: str | None = None,
             delete_output: bool = True,
             parse_method: str = "raw",
             **kwargs,

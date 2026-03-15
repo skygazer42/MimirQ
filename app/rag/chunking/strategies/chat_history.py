@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -26,21 +26,21 @@ class _Msg:
     start: int
     end: int
     speaker: str
-    ts: Optional[str]
+    ts: str | None
 
 
 _TS_BRACKET_RE = re.compile(
-    r"(?m)^\s*\[(?P<ts>[0-9]{4}[-/][0-9]{1,2}[-/][0-9]{1,2}[^\]]{0,20})\]\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
+    r"(?m)^\s*\[(?P<ts>\d{4}[-/]\d{1,2}[-/]\d{1,2}[^\]]{0,20})\]\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
 )
 _TS_DATE_RE = re.compile(
-    r"(?m)^\s*(?P<date>[0-9]{4}[-/][0-9]{1,2}[-/][0-9]{1,2})\s*(?:,|\s)\s*(?P<time>[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)\s*(?:-|–|—)?\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
+    r"(?m)^\s*(?P<date>\d{4}[-/]\d{1,2}[-/]\d{1,2})\s*(?:,|\s)\s*(?P<time>\d{1,2}:\d{2}(?::\d{2})?)\s*(?:-|–|—)?\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
 )
 _TS_TIME_RE = re.compile(
-    r"(?m)^\s*(?P<time>[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
+    r"(?m)^\s*(?P<time>\d{1,2}:\d{2}(?::\d{2})?)\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
 )
 
 
-def _iter_messages(text: str) -> List[_Msg]:
+def _iter_messages(text: str) -> list[_Msg]:
     if not text:
         return []
 
@@ -62,7 +62,7 @@ def _iter_messages(text: str) -> List[_Msg]:
         last_start = m.start()
     matches = dedup
 
-    msgs: List[_Msg] = []
+    msgs: list[_Msg] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -105,8 +105,8 @@ class ChatHistoryChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

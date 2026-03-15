@@ -5,7 +5,7 @@ This module provides REST API endpoints for managing prompt templates,
 including CRUD operations and template duplication functionality.
 All operations respect tenant boundaries and access control.
 """
-from typing import Annotated, Optional
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -119,8 +119,8 @@ async def create_prompt_template(
 async def list_prompt_templates(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    category: Optional[str] = None,
-    is_active: Optional[bool] = None,
+    category: str | None = None,
+    is_active: bool | None = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

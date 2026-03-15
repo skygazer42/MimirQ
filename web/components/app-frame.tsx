@@ -25,7 +25,7 @@ export function AppFrame({
   showBackground = true,
   showNavbar = true,
   withDocumentViewerPadding = false,
-}: AppFrameProps) {
+}: Readonly<AppFrameProps>) {
   const [isSidebarOpen, setSidebarOpen] = React.useState(true)
   const skipLinkRef = React.useRef<HTMLAnchorElement | null>(null)
   const appContentRef = React.useRef<HTMLDivElement | null>(null)
@@ -39,11 +39,11 @@ export function AppFrame({
   // prevent focus/interaction with the rest of the app.
   React.useEffect(() => {
     if (!showNavbar) return
-    if (typeof window === "undefined") return
+    if (typeof globalThis.window === "undefined") return
 
     let isMobile = false
     try {
-      isMobile = window.matchMedia("(max-width: 768px)").matches
+      isMobile = globalThis.window.matchMedia("(max-width: 768px)").matches
     } catch {
       isMobile = false
     }

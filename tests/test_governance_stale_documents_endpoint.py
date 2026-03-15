@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def _run(*, monkeypatch, mode: str, order_by: str, order_dir: str):  # noqa: ANN001
@@ -54,7 +54,7 @@ def _run(*, monkeypatch, mode: str, order_by: str, order_dir: str):  # noqa: ANN
         mode=mode,  # type: ignore[arg-type]
         due_within_days=7,
         due_before=None,
-        as_of=datetime(2026, 3, 3, 0, 0, tzinfo=timezone.utc),
+        as_of=datetime(2026, 3, 3, 0, 0, tzinfo=UTC),
         include_inactive=False,
         skip=5,
         limit=10,

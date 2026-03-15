@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 
@@ -8,6 +10,7 @@ class _FakeLLM:
         self._payload = payload
 
     async def chat_with_schema(self, *_a, **_k):  # noqa: ANN001, ANN002, ANN003
+        await asyncio.sleep(0)  # Sonar S7503
         return self._payload
 
 

@@ -6,9 +6,9 @@ import { cn } from "@/lib/utils"
 
 export interface SwitchProps
   extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onChange"> {
-  checked?: boolean
-  defaultChecked?: boolean
-  onCheckedChange?: (checked: boolean) => void
+  readonly checked?: boolean
+  readonly defaultChecked?: boolean
+  readonly onCheckedChange?: (checked: boolean) => void
 }
 
 const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
@@ -72,4 +72,3 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
 Switch.displayName = "Switch"
 
 export { Switch }
-

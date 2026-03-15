@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 
@@ -6,6 +8,7 @@ async def test_web_crawl_records_missing_dependency_in_errors(monkeypatch):
     import app.services.web_crawler as mod
 
     async def fake_validate_url_for_ingest(url: str) -> str:
+        await asyncio.sleep(0)  # Sonar S7503
         return url
 
     async def fake_fetch_page_text(  # noqa: ANN202
@@ -16,6 +19,7 @@ async def test_web_crawl_records_missing_dependency_in_errors(monkeypatch):
         max_bytes,
         follow_redirects,
     ):
+        await asyncio.sleep(0)  # Sonar S7503
         return "<html><a href='http://example.com/a'>a</a></html>", url, "text/html"
 
     monkeypatch.setattr(mod, "validate_url_for_ingest", fake_validate_url_for_ingest)

@@ -10,7 +10,8 @@ This module is intentionally dependency-light so it can be used from:
 from __future__ import annotations
 
 import hashlib
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
+from typing import Any
 
 from app.core.token_utils import estimate_tokens
 from app.services.dataset_profile_utils import CHUNK_LENGTH_BINS, CHUNK_TOKEN_BINS, HistogramBinSpec, histogram
@@ -32,7 +33,7 @@ def compute_chunking_stats_from_lengths(
     duplicate_count: int = 0,
     unit: str = "chars",
     bins: list[HistogramBinSpec] | None = None,
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Compute lightweight chunking stats.
 
@@ -81,7 +82,7 @@ def compute_chunking_stats_from_texts(
     *,
     short_threshold: int = 120,
     unit: str = "chars",
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Compute chunking stats from raw chunk texts (best-effort).
 
@@ -115,7 +116,7 @@ def compute_chunking_stats_from_texts_tokens(
     texts: Iterable[str],
     *,
     short_threshold: int = 40,
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """
     Compute token-based chunking stats from raw chunk texts (best-effort).
 

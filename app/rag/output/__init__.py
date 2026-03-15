@@ -18,7 +18,7 @@ Usage:
 import json
 import logging
 from enum import Enum
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Union
 
 from pydantic import BaseModel, Field
 
@@ -48,8 +48,8 @@ class FAQOutput(BaseModel):
     question: str = Field(description="The original question")
     answer: str = Field(description="Direct answer to the question")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence score")
-    related_questions: List[str] = Field(default_factory=list, description="Related questions")
-    sources: List[str] = Field(default_factory=list, description="Source references")
+    related_questions: list[str] = Field(default_factory=list, description="Related questions")
+    sources: list[str] = Field(default_factory=list, description="Source references")
 
 
 class SummaryOutput(BaseModel):
@@ -57,17 +57,17 @@ class SummaryOutput(BaseModel):
     mode: str = Field(default="summary", description="Output mode identifier")
     title: str = Field(description="Summary title")
     summary: str = Field(description="Main summary text")
-    key_points: List[str] = Field(default_factory=list, description="Key points")
+    key_points: list[str] = Field(default_factory=list, description="Key points")
     word_count: int = Field(default=0, description="Original content word count")
-    sources: List[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description="Source references")
 
 
 class ActionItem(BaseModel):
     """Single action item."""
     task: str = Field(description="Task description")
     priority: str = Field(default="medium", description="Priority level")
-    assignee: Optional[str] = Field(default=None, description="Assigned person")
-    deadline: Optional[str] = Field(default=None, description="Deadline")
+    assignee: str | None = Field(default=None, description="Assigned person")
+    deadline: str | None = Field(default=None, description="Deadline")
     status: str = Field(default="pending", description="Status")
 
 
@@ -75,9 +75,9 @@ class ActionItemsOutput(BaseModel):
     """Action items extracted from content."""
     mode: str = Field(default="action_items", description="Output mode identifier")
     title: str = Field(description="Action items title")
-    items: List[ActionItem] = Field(default_factory=list, description="List of action items")
+    items: list[ActionItem] = Field(default_factory=list, description="List of action items")
     total_count: int = Field(default=0, description="Total action items")
-    sources: List[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description="Source references")
 
 
 class ComparisonItem(BaseModel):
@@ -85,7 +85,7 @@ class ComparisonItem(BaseModel):
     aspect: str = Field(description="Comparison aspect")
     option_a: str = Field(description="First option value")
     option_b: str = Field(description="Second option value")
-    winner: Optional[str] = Field(default=None, description="Winner if applicable")
+    winner: str | None = Field(default=None, description="Winner if applicable")
 
 
 class ComparisonOutput(BaseModel):
@@ -94,9 +94,9 @@ class ComparisonOutput(BaseModel):
     title: str = Field(description="Comparison title")
     option_a_name: str = Field(description="First option name")
     option_b_name: str = Field(description="Second option name")
-    comparisons: List[ComparisonItem] = Field(default_factory=list, description="Comparison items")
+    comparisons: list[ComparisonItem] = Field(default_factory=list, description="Comparison items")
     conclusion: str = Field(description="Overall conclusion")
-    sources: List[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description="Source references")
 
 
 class Step(BaseModel):
@@ -104,7 +104,7 @@ class Step(BaseModel):
     number: int = Field(description="Step number")
     title: str = Field(description="Step title")
     description: str = Field(description="Step description")
-    tips: List[str] = Field(default_factory=list, description="Tips for this step")
+    tips: list[str] = Field(default_factory=list, description="Tips for this step")
 
 
 class StepByStepOutput(BaseModel):
@@ -112,16 +112,16 @@ class StepByStepOutput(BaseModel):
     mode: str = Field(default="step_by_step", description="Output mode identifier")
     title: str = Field(description="Guide title")
     introduction: str = Field(default="", description="Introduction text")
-    steps: List[Step] = Field(default_factory=list, description="List of steps")
+    steps: list[Step] = Field(default_factory=list, description="List of steps")
     conclusion: str = Field(default="", description="Conclusion text")
-    sources: List[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description="Source references")
 
 
 class AnalysisSection(BaseModel):
     """Analysis section."""
     title: str = Field(description="Section title")
     content: str = Field(description="Section content")
-    findings: List[str] = Field(default_factory=list, description="Key findings")
+    findings: list[str] = Field(default_factory=list, description="Key findings")
 
 
 class AnalysisOutput(BaseModel):
@@ -129,17 +129,17 @@ class AnalysisOutput(BaseModel):
     mode: str = Field(default="analysis", description="Output mode identifier")
     title: str = Field(description="Analysis title")
     overview: str = Field(description="Overview text")
-    sections: List[AnalysisSection] = Field(default_factory=list, description="Analysis sections")
-    conclusions: List[str] = Field(default_factory=list, description="Conclusions")
-    recommendations: List[str] = Field(default_factory=list, description="Recommendations")
-    sources: List[str] = Field(default_factory=list, description="Source references")
+    sections: list[AnalysisSection] = Field(default_factory=list, description="Analysis sections")
+    conclusions: list[str] = Field(default_factory=list, description="Conclusions")
+    recommendations: list[str] = Field(default_factory=list, description="Recommendations")
+    sources: list[str] = Field(default_factory=list, description="Source references")
 
 
 class PlainOutput(BaseModel):
     """Plain text output."""
     mode: str = Field(default="plain", description="Output mode identifier")
     content: str = Field(description="Plain text content")
-    sources: List[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description="Source references")
 
 
 # Union type for all outputs
@@ -159,7 +159,7 @@ StructuredOutput = Union[
 # ============================================================================
 
 
-OUTPUT_SCHEMAS: Dict[OutputMode, Type[BaseModel]] = {
+OUTPUT_SCHEMAS: dict[OutputMode, type[BaseModel]] = {
     OutputMode.FAQ: FAQOutput,
     OutputMode.SUMMARY: SummaryOutput,
     OutputMode.ACTION_ITEMS: ActionItemsOutput,
@@ -170,7 +170,7 @@ OUTPUT_SCHEMAS: Dict[OutputMode, Type[BaseModel]] = {
 }
 
 
-def get_schema_for_mode(mode: OutputMode) -> Type[BaseModel]:
+def get_schema_for_mode(mode: OutputMode) -> type[BaseModel]:
     """Get the schema class for a given mode."""
     return OUTPUT_SCHEMAS.get(mode, PlainOutput)
 
@@ -191,7 +191,7 @@ def get_all_schemas_description() -> str:
 # ============================================================================
 
 
-MODE_KEYWORDS: Dict[OutputMode, List[str]] = {
+MODE_KEYWORDS: dict[OutputMode, list[str]] = {
     OutputMode.FAQ: ["什么是", "如何", "为什么", "怎么", "what is", "how to", "why", "explain"],
     OutputMode.SUMMARY: ["总结", "概括", "摘要", "summarize", "summary", "overview"],
     OutputMode.ACTION_ITEMS: ["待办", "任务", "行动项", "action items", "todo", "tasks"],
@@ -213,7 +213,7 @@ def detect_output_mode(query: str) -> OutputMode:
     """
     query_lower = query.lower()
 
-    scores: Dict[OutputMode, int] = {mode: 0 for mode in OutputMode}
+    scores: dict[OutputMode, int] = dict.fromkeys(OutputMode, 0)
 
     for mode, keywords in MODE_KEYWORDS.items():
         for keyword in keywords:
@@ -262,7 +262,7 @@ class StructuredOutputGenerator:
         """Detect the best output mode for a query."""
         return detect_output_mode(query)
 
-    def get_schema(self, mode: OutputMode) -> Type[BaseModel]:
+    def get_schema(self, mode: OutputMode) -> type[BaseModel]:
         """Get the schema for a mode."""
         return get_schema_for_mode(mode)
 
@@ -270,8 +270,8 @@ class StructuredOutputGenerator:
         self,
         query: str,
         context: str,
-        mode: Optional[OutputMode] = None,
-        sources: Optional[List[str]] = None,
+        mode: OutputMode | None = None,
+        sources: list[str] | None = None,
     ) -> StructuredOutput:
         """
         Generate structured output.
@@ -327,7 +327,7 @@ class StructuredOutputGenerator:
         query: str,
         context: str,
         mode: OutputMode,
-        schema: Type[BaseModel],
+        schema: type[BaseModel],
     ) -> str:
         """Build the prompt for structured output generation."""
         schema_json = schema.model_json_schema()
@@ -352,8 +352,8 @@ JSON Response:"""
     def _parse_response(
         self,
         content: str,
-        schema: Type[BaseModel],
-        sources: List[str],
+        schema: type[BaseModel],
+        sources: list[str],
     ) -> StructuredOutput:
         """Parse LLM response into structured output."""
         # Try to extract JSON from response
@@ -388,8 +388,8 @@ async def get_structured_output(
     llm: Any,
     query: str,
     context: str,
-    mode: Optional[OutputMode] = None,
-    sources: Optional[List[str]] = None,
+    mode: OutputMode | None = None,
+    sources: list[str] | None = None,
 ) -> StructuredOutput:
     """
     Generate structured output from query and context.
@@ -410,7 +410,7 @@ async def get_structured_output(
 
 def parse_structured_output(
     content: str,
-    mode: Optional[OutputMode] = None,
+    mode: OutputMode | None = None,
 ) -> StructuredOutput:
     """
     Parse a string into structured output.

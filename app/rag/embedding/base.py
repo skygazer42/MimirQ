@@ -4,7 +4,6 @@ Base embedding model abstract class.
 import asyncio
 import os
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from app.rag.embedding.utils import get_docker_safe_url, hashstr, logger
 
@@ -25,13 +24,13 @@ class BaseEmbeddingModel(ABC):
 
     def __init__(
         self,
-        model: Optional[str] = None,
-        name: Optional[str] = None,
-        dimension: Optional[int] = None,
-        url: Optional[str] = None,
-        base_url: Optional[str] = None,
-        api_key: Optional[str] = None,
-        model_id: Optional[str] = None,
+        model: str | None = None,
+        name: str | None = None,
+        dimension: int | None = None,
+        url: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model_id: str | None = None,
     ):
         """Initialize embedding model.
 

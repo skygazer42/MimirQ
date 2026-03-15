@@ -9,9 +9,9 @@ Token bucket algorithm based FastAPI request rate limiting:
 import logging
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Callable, Dict, Optional, Tuple
 
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -34,7 +34,7 @@ class TokenBucket:
         if self.tokens is None:
             self.tokens = self.capacity
 
-    def consume(self, tokens: float = 1) -> Tuple[bool, float]:
+    def consume(self, tokens: float = 1) -> tuple[bool, float]:
         with self.lock:
             now = time.monotonic()
             elapsed = now - self.last_refill
@@ -54,13 +54,13 @@ class RateLimiter:
     def __init__(
         self,
         requests_per_second: float = 10.0,
-        burst_size: Optional[int] = None,
+        burst_size: int | None = None,
         cleanup_interval: float = 60.0,
     ) -> None:
         self.requests_per_second = float(requests_per_second)
         self.burst_size = int(burst_size or int(self.requests_per_second * 2))
         self.cleanup_interval = float(cleanup_interval)
-        self._buckets: Dict[str, TokenBucket] = {}
+        self._buckets: dict[str, TokenBucket] = {}
         self._global_lock = Lock()
         self._last_cleanup = time.monotonic()
 
@@ -90,11 +90,11 @@ class RateLimiter:
         if stale_keys:
             logger.debug("Cleaned up %d stale rate limit buckets", len(stale_keys))
 
-    def check(self, key: str) -> Tuple[bool, float]:
+    def check(self, key: str) -> tuple[bool, float]:
         bucket = self._get_bucket(key)
         return bucket.consume(1)
 
-    async def acheck(self, key: str) -> Tuple[bool, float]:
+    async def acheck(self, key: str) -> tuple[bool, float]:
         return self.check(key)
 
 
@@ -152,7 +152,7 @@ class RedisRateLimiter:
         redis_url: str,
         namespace: str,
         requests_per_second: float = 10.0,
-        burst_size: Optional[int] = None,
+        burst_size: int | None = None,
         key_prefix: str = "rl",
         key_ttl_sec: int = 600,
     ) -> None:
@@ -180,7 +180,7 @@ class RedisRateLimiter:
     def _redis_key(self, key: str) -> str:
         return f"{self.key_prefix}:{self.namespace}:{key}"
 
-    def check(self, key: str) -> Tuple[bool, float]:
+    def check(self, key: str) -> tuple[bool, float]:
         if not self.redis_url:
             return True, 0.0
 
@@ -209,11 +209,11 @@ class RedisRateLimiter:
                 logger.warning("Redis rate limiter error (fail-open): %s", str(exc)[:200])
             return True, 0.0
 
-    async def acheck(self, key: str) -> Tuple[bool, float]:
+    async def acheck(self, key: str) -> tuple[bool, float]:
         return self.check(key)
 
 
-_default_limiter: Optional[RateLimiter | RedisRateLimiter] = None
+_default_limiter: RateLimiter | RedisRateLimiter | None = None
 
 
 def get_default_limiter() -> RateLimiter | RedisRateLimiter:
@@ -291,12 +291,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self,
         app,
         requests_per_second: float = 10.0,
-        burst_size: Optional[int] = None,
-        chat_requests_per_second: Optional[float] = None,
-        chat_burst_size: Optional[int] = None,
-        chat_prefixes: Optional[list[str]] = None,
-        exclude_paths: Optional[list] = None,
-        exclude_prefixes: Optional[list[str]] = None,
+        burst_size: int | None = None,
+        chat_requests_per_second: float | None = None,
+        chat_burst_size: int | None = None,
+        chat_prefixes: list[str] | None = None,
+        exclude_paths: list | None = None,
+        exclude_prefixes: list[str] | None = None,
     ) -> None:
         super().__init__(app)
         from app.core.config import settings
@@ -317,7 +317,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 burst_size=burst_size,
             )
 
-        self.chat_limiter: Optional[RateLimiter | RedisRateLimiter] = None
+        self.chat_limiter: RateLimiter | RedisRateLimiter | None = None
         if chat_requests_per_second is not None:
             if use_redis:
                 self.chat_limiter = RedisRateLimiter(
@@ -413,7 +413,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 async def rate_limit_dependency(
     request: Request,
-    limiter: Optional[RateLimiter | RedisRateLimiter] = None,
+    limiter: RateLimiter | RedisRateLimiter | None = None,
 ) -> None:
     if limiter is None:
         limiter = get_default_limiter()

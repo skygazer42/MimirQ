@@ -13,18 +13,20 @@ const MAX_TYPE_SPEED = 15
 const PUNCTUATION_DELAY = 150 // 遇到标点符号时的额外停顿
 
 interface CinematicTypewriterProps {
-  content: string
-  onComplete?: () => void
-  isStreaming?: boolean
-  className?: string
+  readonly content: string
+  readonly onComplete?: () => void
+  readonly isStreaming?: boolean
+  readonly className?: string
 }
+
+type MarkdownChildrenProps = Readonly<{ children?: React.ReactNode }>
 
 export function CinematicTypewriter({
   content,
   onComplete,
   isStreaming = false,
   className,
-}: CinematicTypewriterProps) {
+}: Readonly<CinematicTypewriterProps>) {
   const [reduceMotion, setReduceMotion] = useState(false)
   const [displayedContent, setDisplayedContent] = useState("")
   const [isTyping, setIsTyping] = useState(false)
@@ -33,11 +35,11 @@ export function CinematicTypewriter({
 
   // Markdown 组件配置
   const markdownComponents = useMemo(() => ({
-    p: ({ children }: { children?: React.ReactNode }) => <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">{children}</p>,
-    ul: ({ children }: { children?: React.ReactNode }) => (
+    p: ({ children }: MarkdownChildrenProps) => <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">{children}</p>,
+    ul: ({ children }: MarkdownChildrenProps) => (
       <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">{children}</ul>
     ),
-    ol: ({ children }: { children?: React.ReactNode }) => (
+    ol: ({ children }: MarkdownChildrenProps) => (
       <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">{children}</ol>
     ),
     code: ({ className, children, ...props }: any) => {
@@ -77,8 +79,8 @@ export function CinematicTypewriter({
   }), [])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    if (typeof globalThis.window === 'undefined') return
+    const media = globalThis.window.matchMedia('(prefers-reduced-motion: reduce)')
     const update = () => setReduceMotion(Boolean(media.matches))
     update()
     if (typeof media.addEventListener === 'function') {
@@ -132,13 +134,13 @@ export function CinematicTypewriter({
 
     const typeNextChar = () => {
       if (indexRef.current >= content.length) {
-        if (!isStreaming) {
+        if (isStreaming) {
+          // Wait for more content from stream
+          timeoutRef.current = setTimeout(typeNextChar, 50)
+        } else {
           setIsTyping(false)
           timeoutRef.current = null
           onComplete?.()
-        } else {
-          // Wait for more content from stream
-          timeoutRef.current = setTimeout(typeNextChar, 50)
         }
         return
       }

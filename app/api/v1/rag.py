@@ -8,7 +8,7 @@ For debugging and validating:
 
 
 import time
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -41,19 +41,19 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 class RetrievePreviewRequest(BaseModel):
     query: str = Field(min_length=1)
-    history: List[HistoryMessage] = Field(default_factory=list)
-    dataset_id: Optional[UUID] = None
-    document_ids: List[UUID] = Field(default_factory=list)
-    rag_config_template_id: Optional[UUID] = None  # Optional: explicit RAG config template selection.
-    rag_config_template_key: Optional[str] = None  # Optional: select latest active template by key.
-    rag_config_ab_experiment_key: Optional[str] = None  # Optional: stable A/B split for templates.
+    history: list[HistoryMessage] = Field(default_factory=list)
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
+    rag_config_template_id: UUID | None = None  # Optional: explicit RAG config template selection.
+    rag_config_template_key: str | None = None  # Optional: select latest active template by key.
+    rag_config_ab_experiment_key: str | None = None  # Optional: stable A/B split for templates.
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
 
 class RetrievePreviewResponse(BaseModel):
     query_for_retrieval: str
-    citations: List[Dict[str, Any]]
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    citations: list[dict[str, Any]]
+    metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 class ImageIndexRequest(BaseModel):
@@ -67,7 +67,7 @@ class ImageIndexResponse(BaseModel):
     skipped: int = 0
     failed: int = 0
     dim: int = 0
-    errors: List[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class ImageSearchRequest(BaseModel):
@@ -78,8 +78,8 @@ class ImageSearchRequest(BaseModel):
 
 
 class ImageSearchResponse(BaseModel):
-    citations: List[Dict[str, Any]] = Field(default_factory=list)
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post("/retrieve-preview", response_model=RetrievePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -421,29 +421,29 @@ class EvidenceRetrieveRequest(BaseModel):
     """
 
     query: str = Field(min_length=1)
-    history: List[HistoryMessage] = Field(default_factory=list)
-    dataset_id: Optional[UUID] = None
-    document_ids: List[UUID] = Field(default_factory=list)
+    history: list[HistoryMessage] = Field(default_factory=list)
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
     # Optional deterministic seed for offline replay/regression.
     # PII-safe by construction (numeric only) and ignored by default.
-    seed: Optional[int] = None
+    seed: int | None = None
 
 
 class EvidenceRetrieveResponse(BaseModel):
     schema: str = Field(default="mimirq.evidence.v1", description="Response schema identifier")
     query_for_retrieval: str
-    citations: List[Dict[str, Any]]
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    citations: list[dict[str, Any]]
+    metrics: dict[str, Any] = Field(default_factory=dict)
     has_evidence: bool = False
     abstain_triggered: bool = False
-    abstain_reason: Optional[str] = None
+    abstain_reason: str | None = None
     # Stable, versioned trace for downstream provenance parsing (separate from metrics/query_debug).
-    retrieval_trace: Optional[Dict[str, Any]] = None
+    retrieval_trace: dict[str, Any] | None = None
     # Immutable replay capsule (best-effort, optional).
-    evidence_capsule: Optional[Dict[str, Any]] = None
+    evidence_capsule: dict[str, Any] | None = None
     # Optional: debug payload for query normalization/expansion (best-effort).
-    query_debug: Optional[Dict[str, Any]] = None
+    query_debug: dict[str, Any] | None = None
 
 
 @router.post("/retrieve", response_model=EvidenceRetrieveResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -875,28 +875,28 @@ async def retrieve_evidence(
 
 class PromptPreviewRequest(BaseModel):
     query: str = Field(min_length=1)
-    history: List[HistoryMessage] = Field(default_factory=list)
-    dataset_id: Optional[UUID] = None
-    document_ids: List[UUID] = Field(default_factory=list)
+    history: list[HistoryMessage] = Field(default_factory=list)
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
     structured_output: bool = False
-    structured_preset: Optional[str] = None
-    prompt_template_id: Optional[UUID] = None
-    prompt_template_key: Optional[str] = None
-    prompt_ab_experiment_key: Optional[str] = None
+    structured_preset: str | None = None
+    prompt_template_id: UUID | None = None
+    prompt_template_key: str | None = None
+    prompt_ab_experiment_key: str | None = None
 
 
 class PromptPreviewResponse(BaseModel):
     query_for_retrieval: str
-    prompt_messages: List[Dict[str, Any]]
+    prompt_messages: list[dict[str, Any]]
     prompt_text: str
-    variables: Dict[str, Any]
-    citations: List[Dict[str, Any]] = Field(default_factory=list)
-    metrics: Dict[str, Any] = Field(default_factory=dict)
-    prompt_template_id: Optional[str] = None
-    prompt_template_key: Optional[str] = None
-    prompt_ab_experiment_key: Optional[str] = None
-    prompt_ab_variant: Optional[str] = None
+    variables: dict[str, Any]
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    prompt_template_id: str | None = None
+    prompt_template_key: str | None = None
+    prompt_ab_experiment_key: str | None = None
+    prompt_ab_variant: str | None = None
 
 
 @router.post("/prompt-preview", response_model=PromptPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -1056,7 +1056,7 @@ async def prompt_preview(
         except Exception:
             prompt_obj = engine.prompt_template
 
-    variables: Dict[str, Any] = {
+    variables: dict[str, Any] = {
         "context": ctx,
         "history": hist_text,
         "question": body.query,

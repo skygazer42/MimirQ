@@ -10,9 +10,10 @@ Goal:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from app.rag.core.hashing import stable_hash
 
@@ -48,13 +49,13 @@ def _as_float(value: Any, default: float = 0.0) -> float:
 
 
 def _iso_utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def _normalize_ts(generated_at: str | datetime | None) -> str:
     if isinstance(generated_at, datetime):
         if generated_at.tzinfo is None:
-            generated_at = generated_at.replace(tzinfo=timezone.utc)
+            generated_at = generated_at.replace(tzinfo=UTC)
         return generated_at.replace(microsecond=0).isoformat()
     ts = str(generated_at or "").strip()
     return ts or _iso_utc_now()

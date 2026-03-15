@@ -10,7 +10,7 @@ All operations are tenant-isolated and admin-gated (settings.write / settings.re
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -118,9 +118,9 @@ async def create_rag_config_template(
 async def list_rag_config_templates(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    template_key: Optional[str] = None,
-    ab_experiment_key: Optional[str] = None,
-    is_active: Optional[bool] = None,
+    template_key: str | None = None,
+    ab_experiment_key: str | None = None,
+    is_active: bool | None = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],

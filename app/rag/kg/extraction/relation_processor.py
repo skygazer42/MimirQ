@@ -10,8 +10,9 @@ Key goals:
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Sequence
+from typing import Any
 
 from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
@@ -131,7 +132,7 @@ class RelationProcessor:
         text: str,
         candidates: Sequence[CandidateEntity],
         max_relations: int = 20,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Return normalized relation dicts:
         - subject_id (candidate cid)
@@ -154,7 +155,7 @@ class RelationProcessor:
             return []
 
         # Build candidate table for the prompt. Keep it compact.
-        cand_lines: List[str] = []
+        cand_lines: list[str] = []
         for c in cand_list:
             cid = str(getattr(c, "cid", "") or "").strip()
             if not cid:
@@ -171,7 +172,7 @@ class RelationProcessor:
         allowlist = sorted(self.allowed_predicates) if self.allowed_predicates else []
         allow_hint = ", ".join(allowlist[:200]) if allowlist else ""
 
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "type": "object",
             "properties": {
                 "relations": {
@@ -222,7 +223,7 @@ class RelationProcessor:
 
         valid_ids = {c.cid for c in cand_list if str(getattr(c, "cid", "") or "").strip()}
 
-        out: List[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for raw in rels_raw:
             if not isinstance(raw, dict):
                 continue

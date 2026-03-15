@@ -6,7 +6,7 @@ Provides factory functions and configuration-based workflow selection.
 
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.rag.workflows.base import BaseWorkflow, WorkflowMode
@@ -24,7 +24,7 @@ WORKFLOW_MODE = getattr(settings, "WORKFLOW_MODE", "chain")
 
 
 # Registry of workflow classes
-WORKFLOW_REGISTRY: Dict[WorkflowMode, type] = {
+WORKFLOW_REGISTRY: dict[WorkflowMode, type] = {
     WorkflowMode.CHAIN: ChainWorkflow,
     WorkflowMode.ROUTING: RoutingWorkflow,
     WorkflowMode.PARALLEL: ParallelWorkflow,
@@ -34,7 +34,7 @@ WORKFLOW_REGISTRY: Dict[WorkflowMode, type] = {
 }
 
 # String aliases for modes
-MODE_ALIASES: Dict[str, WorkflowMode] = {
+MODE_ALIASES: dict[str, WorkflowMode] = {
     "chain": WorkflowMode.CHAIN,
     "sequential": WorkflowMode.CHAIN,
     "routing": WorkflowMode.ROUTING,
@@ -114,7 +114,7 @@ def create_workflow(
 
 
 def get_workflow(
-    mode: Optional[str | WorkflowMode] = None,
+    mode: str | WorkflowMode | None = None,
     **kwargs,
 ) -> BaseWorkflow:
     """
@@ -138,7 +138,7 @@ def get_default_mode() -> WorkflowMode:
     return resolve_mode(WORKFLOW_MODE)
 
 
-def list_available_modes() -> Dict[str, str]:
+def list_available_modes() -> dict[str, str]:
     """
     List all available workflow modes with descriptions.
 
@@ -217,7 +217,7 @@ def create_multi_query_workflow(
     from app.rag.workflows.parallelization import create_multi_query_aggregator
 
     async def create_query_task(query_id: int):
-        async def task(state: Dict[str, Any]) -> Dict[str, Any]:
+        async def task(state: dict[str, Any]) -> dict[str, Any]:
             question = state.get("question") or state.get("query") or ""
             # Rewrite query
             rewritten = await query_rewrite_func(question, query_id)

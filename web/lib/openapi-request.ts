@@ -26,13 +26,16 @@ function stripApiV1Prefix(rawPath: string): string {
 
 function renderPathTemplate(pathTemplate: string, params?: Record<string, unknown>): string {
   const base = stripApiV1Prefix(pathTemplate)
-  return base.replace(/\{([^}]+)\}/g, (_m, keyRaw) => {
+  return base.replaceAll(/\{([^}]+)\}/g, (_m, keyRaw) => {
     const key = String(keyRaw || '').trim()
     const value = params?.[key]
     if (value === undefined || value === null || key === '') {
       throw new Error(`[openapi-request] missing path param: ${key || '(empty)'}`)
     }
-    return encodeURIComponent(String(value))
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+      return encodeURIComponent(String(value))
+    }
+    throw new Error(`[openapi-request] invalid path param: ${key}`)
   })
 }
 
@@ -56,6 +59,8 @@ function toFormData(body: Record<string, unknown>): FormData {
         if (v === undefined || v === null) continue
         if (hasBlob && v instanceof Blob) {
           fd.append(k, v)
+        } else if (typeof v === 'object') {
+          fd.append(k, JSON.stringify(v))
         } else {
           fd.append(k, String(v))
         }
@@ -73,7 +78,12 @@ function toFormData(body: Record<string, unknown>): FormData {
       continue
     }
 
-    fd.append(k, String(raw))
+    if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean' || typeof raw === 'bigint') {
+      fd.append(k, String(raw))
+      continue
+    }
+
+    throw new Error(`[openapi-request] unsupported form-data field: ${k}`)
   }
 
   return fd
@@ -122,7 +132,7 @@ export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
     let data = (args as any).body
 
     if (contentType === 'multipart/form-data' && data && !isFormData(data)) {
-      data = toFormData(data as any)
+      data = toFormData(data)
     }
 
     const res = await apiClient.request({
@@ -136,6 +146,6 @@ export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
       ...args.axios,
     })
 
-    return res.data as any
+    return res.data
   }
 }

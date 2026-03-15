@@ -2,7 +2,7 @@
 Expand stage: multi-hop entity -> event expansion.
 """
 from dataclasses import dataclass
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from app.core.config import settings
 from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
@@ -15,11 +15,11 @@ from app.rag.kg.search.utils import confidence_bucket
 
 @dataclass
 class ExpandResult:
-    key_final: List[Dict[str, Any]]
-    event_ids: List[str]
-    clues: List[Dict[str, Any]]
-    event_scores: Dict[str, float]
-    event_hops: Dict[str, int]
+    key_final: list[dict[str, Any]]
+    event_ids: list[str]
+    clues: list[dict[str, Any]]
+    event_scores: dict[str, float]
+    event_hops: dict[str, int]
 
 
 class ExpandSearcher:
@@ -58,7 +58,7 @@ class ExpandSearcher:
             include_skills = bool(getattr(config, "include_skill_entities", True))
             skill_types = {"Skill", "SkillTag", "SkillCategory"}
 
-            known_entities: Set[str] = {e["entity_id"] for e in recall_result.key_final if e.get("entity_id")}
+            known_entities: set[str] = {e["entity_id"] for e in recall_result.key_final if e.get("entity_id")}
             if not include_skills:
                 known_entities = {
                     e["entity_id"]
@@ -66,9 +66,9 @@ class ExpandSearcher:
                     if e.get("entity_id") and str(e.get("type") or "").strip() not in skill_types
                 }
             entity_weights = dict(recall_result.key_weights)
-            discovered_events: List[str] = list(recall_result.event_ids or [])
-            discovered_event_ids: Set[str] = set(discovered_events)
-            event_hops: Dict[str, int] = dict(getattr(recall_result, "event_hops", {}) or {})
+            discovered_events: list[str] = list(recall_result.event_ids or [])
+            discovered_event_ids: set[str] = set(discovered_events)
+            event_hops: dict[str, int] = dict(getattr(recall_result, "event_hops", {}) or {})
             for eid in discovered_events:
                 key = str(eid)
                 if key and key not in event_hops:
@@ -135,7 +135,7 @@ class ExpandSearcher:
                             )
 
                             seed_set = set(seed_entities)
-                            neighbor_weights: Dict[str, float] = {}
+                            neighbor_weights: dict[str, float] = {}
                             for rel in rel_rows:
                                 subj = str(getattr(rel, "subject_entity_id", "") or "")
                                 obj = str(getattr(rel, "object_entity_id", "") or "")
@@ -245,7 +245,7 @@ class ExpandSearcher:
                     dataset_id=config.dataset_id,
                     account_id=config.account_id,
                 )
-                new_event_ids: List[str] = []
+                new_event_ids: list[str] = []
                 for ev in events:
                     ev_id = str(ev.id)
                     if ev_id in discovered_event_ids:
@@ -273,7 +273,7 @@ class ExpandSearcher:
                     recall_result.event_scores[ev_id] = base * 0.5 + boost * 0.5
 
                 # collect new entities from these events
-                new_entities: Dict[str, float] = {}
+                new_entities: dict[str, float] = {}
                 events_by_id = {str(ev.id): ev for ev in events}
                 for ev_id, ents in assoc_map.items():
                     for ent in ents:
@@ -315,7 +315,7 @@ class ExpandSearcher:
                     break
 
             # build key_final list
-            key_final: List[Dict[str, Any]] = []
+            key_final: list[dict[str, Any]] = []
             ent_objects = entity_repo.get_entities_by_ids(list(known_entities), tenant_id=tenant_id)
             for ent in ent_objects:
                 if not include_skills and str(getattr(ent, "type", "") or "") in skill_types:

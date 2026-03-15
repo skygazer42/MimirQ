@@ -16,12 +16,18 @@ import { formatApiError } from '@/lib/api-errors'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 const STAGES = [
-  { key: 'queued', label: '排队' },
-  { key: 'parsing', label: '解析' },
-  { key: 'chunking', label: '切块' },
-  { key: 'embedding', label: '向量化' },
-  { key: 'completed', label: '完成' },
-] as const
+    { key: 'queued', label: '排队' },
+    { key: 'parsing', label: '解析' },
+    { key: 'chunking', label: '切块' },
+    { key: 'embedding', label: '向量化' },
+    { key: 'completed', label: '完成' },
+]
+
+function displayPrimitive(value: unknown, fallback: string = '-'): string {
+  if (typeof value === 'string') return value || fallback
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value)
+  return fallback
+}
 
 function inferStage(doc: Document): string {
   const raw = (doc.current_stage || '').toLowerCase()
@@ -45,11 +51,11 @@ export function IngestionDetailDialog({
   open,
   onOpenChange,
   documentId,
-}: {
+}: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   documentId: string | null
-}) {
+}>) {
   const { openDocument } = useDocumentView()
   const [isActing, setIsActing] = useState(false)
   const [diffFrom, setDiffFrom] = useState<string | null>(null)
@@ -67,7 +73,7 @@ export function IngestionDetailDialog({
     enabled: open && Boolean(documentId),
     staleTime: 1_000,
     refetchInterval: (query) => {
-      const data = query.state.data as Document | undefined
+      const data = query.state.data
       if (!open || !data) return false
       return data.status === 'pending' || data.status === 'processing' ? 2_000 : false
     },
@@ -105,7 +111,7 @@ export function IngestionDetailDialog({
     const meta = (doc.metadata ?? {}) as Record<string, unknown>
     const pipeline = (meta.pipeline ?? {}) as unknown
     const user = (meta.user ?? {}) as Record<string, unknown>
-    const userTags = user.tags as unknown
+    const userTags = user.tags
     return [
       { k: 'Document ID', v: doc.id },
       { k: 'Dataset ID', v: doc.dataset_id || '-' },
@@ -114,13 +120,13 @@ export function IngestionDetailDialog({
       { k: 'Progress', v: `${doc.processing_progress ?? 0}%` },
       { k: 'Stage', v: doc.current_stage || '-' },
       { k: 'Updated', v: formatDate(doc.updated_at) },
-      { k: 'Parser', v: String(meta.parser_backend || '-') },
-      { k: 'Chunker', v: String(meta.chunk_strategy || '-') },
-      { k: 'Pipeline Hash', v: String(meta.pipeline_hash || '-') },
-      { k: 'Task ID', v: String(meta.task_id || '-') },
-      { k: 'KG Task ID', v: String(meta.kg_task_id || '-') },
-      { k: 'User Tags', v: Array.isArray(userTags) ? userTags.join(', ') || '-' : String(userTags ?? '-') },
-      { k: 'Pipeline', v: typeof pipeline === 'object' ? JSON.stringify(pipeline) : String(pipeline ?? '-') },
+      { k: 'Parser', v: displayPrimitive(meta.parser_backend) },
+      { k: 'Chunker', v: displayPrimitive(meta.chunk_strategy) },
+      { k: 'Pipeline Hash', v: displayPrimitive(meta.pipeline_hash) },
+      { k: 'Task ID', v: displayPrimitive(meta.task_id) },
+      { k: 'KG Task ID', v: displayPrimitive(meta.kg_task_id) },
+      { k: 'User Tags', v: Array.isArray(userTags) ? userTags.join(', ') || '-' : displayPrimitive(userTags) },
+      { k: 'Pipeline', v: typeof pipeline === 'object' ? JSON.stringify(pipeline) : displayPrimitive(pipeline) },
     ]
   }, [doc])
 
@@ -235,7 +241,19 @@ export function IngestionDetailDialog({
                     const isDone = doc.status === 'completed' ? true : idx < activeIndex
                     const isActive = doc.status !== 'completed' && idx === activeIndex
                     const isFailed = (doc.status === 'failed' || doc.status === 'quarantined') && isActive
-                    const Icon = isDone ? CheckCircle2 : isFailed ? AlertCircle : null
+                    const Icon = (() => {
+    if (isDone) {
+        return CheckCircle2;
+    }
+    else {
+        if (isFailed) {
+            return AlertCircle;
+        }
+        else {
+            return null;
+        }
+    }
+})()
                     return (
                       <div key={s.key} className="flex flex-col items-center gap-3 group">
                         <div

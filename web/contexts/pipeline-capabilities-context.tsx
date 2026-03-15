@@ -18,7 +18,7 @@ const PipelineCapabilitiesContext = createContext<PipelineCapabilitiesContextVal
 
 function normalizeParserBackendName(value?: string) {
   const raw = (value || '').toLowerCase().trim()
-  const normalized = raw.replace(/_/g, '-')
+  const normalized = raw.replaceAll(/_/g, '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
   if (normalized === 'olm-ocr') return 'olmocr'
   if (normalized === 'olmocr-pdf') return 'olmocr'
@@ -33,7 +33,7 @@ function normalizeChunkStrategyName(value?: string) {
   return (value || '').toLowerCase().trim()
 }
 
-export function PipelineCapabilitiesProvider({ children }: { children: React.ReactNode }) {
+export function PipelineCapabilitiesProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [capabilities, setCapabilities] = useState<PipelineCapabilitiesResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

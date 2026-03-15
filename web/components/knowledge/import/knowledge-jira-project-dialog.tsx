@@ -21,6 +21,8 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api-client'
 import { buildJiraProjectRunPayload } from './knowledge-jira-project-dialog.payload'
+import { detachPromise } from '@/lib/utils'
+
 
 type KnowledgeJiraProjectDialogProps = {
   open: boolean
@@ -46,7 +48,7 @@ export function KnowledgeJiraProjectDialog({
   loadDocuments,
   loadConnectorRuns,
   onRunCreated,
-}: KnowledgeJiraProjectDialogProps) {
+}: Readonly<KnowledgeJiraProjectDialogProps>) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
@@ -173,8 +175,8 @@ export function KnowledgeJiraProjectDialog({
       setAccessGroupIds([])
       setSourceAclEnabled(false)
       setSourceAclFallbackMode('partial_members')
-      void loadConnectorRuns({ datasetId: selectedDatasetId })
-      void loadDocuments()
+      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
+      detachPromise(loadDocuments())
     } catch (err: any) {
       toast.error(formatApiError(err, '创建 Jira 导入任务失败'))
     } finally {

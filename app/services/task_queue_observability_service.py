@@ -18,7 +18,7 @@ import contextlib
 import json
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from prometheus_client import Gauge
@@ -57,7 +57,7 @@ TASK_QUEUE_OBSERVABILITY_LAST_REFRESH_DURATION_SECONDS = Gauge(
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _queue_enabled() -> bool:

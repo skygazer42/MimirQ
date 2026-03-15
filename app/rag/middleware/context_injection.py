@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from app.core.config import settings
 
@@ -48,7 +48,7 @@ class ContextItem:
     source: str
     priority: int = 0  # Higher priority = injected first
     category: str = "general"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class BaseContextProvider(ABC):
@@ -68,9 +68,9 @@ class BaseContextProvider(ABC):
     @abstractmethod
     async def get_context(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         **kwargs,
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         """
         Get context items to inject.
 
@@ -97,9 +97,9 @@ class TimeContextProvider(BaseContextProvider):
 
     async def get_context(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         **kwargs,
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         if not INJECT_TIME_CONTEXT:
             return []
 
@@ -138,9 +138,9 @@ class StyleGuideProvider(BaseContextProvider):
 
     async def get_context(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         **kwargs,
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         # Check for style in state or use default
         style = state.get("response_style") or DEFAULT_RESPONSE_STYLE
         if not style or style not in self.STYLE_GUIDES:
@@ -162,8 +162,8 @@ class FileContentProvider(BaseContextProvider):
 
     def __init__(
         self,
-        base_path: Optional[str] = None,
-        allowed_extensions: Optional[List[str]] = None,
+        base_path: str | None = None,
+        allowed_extensions: list[str] | None = None,
         max_file_size: int = 100_000,  # 100KB
     ):
         self.base_path = Path(base_path) if base_path else Path.cwd()
@@ -180,9 +180,9 @@ class FileContentProvider(BaseContextProvider):
 
     async def get_context(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         **kwargs,
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         file_paths = state.get("inject_files", [])
         if not file_paths:
             return []
@@ -204,7 +204,7 @@ class FileContentProvider(BaseContextProvider):
 
         return items
 
-    async def _read_file(self, file_path: str) -> Optional[str]:
+    async def _read_file(self, file_path: str) -> str | None:
         """Read file content with safety checks."""
         path = Path(file_path)
 
@@ -245,9 +245,9 @@ class UserPreferencesProvider(BaseContextProvider):
 
     async def get_context(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         **kwargs,
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         preferences = state.get("user_preferences", {})
         if not preferences:
             return []
@@ -298,9 +298,9 @@ class RAGContextProvider(BaseContextProvider):
 
     async def get_context(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         **kwargs,
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         documents = state.get("documents", [])
         if not documents:
             return []
@@ -366,9 +366,9 @@ class KnowledgeGraphProvider(BaseContextProvider):
 
     async def get_context(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         **kwargs,
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         kg_context = state.get("kg_context", "")
         if not kg_context:
             return []
@@ -402,7 +402,7 @@ class ContextInjectionMiddleware:
 
     def __init__(
         self,
-        providers: Optional[List[BaseContextProvider]] = None,
+        providers: list[BaseContextProvider] | None = None,
         inject_position: str = "system",  # system | user | both
     ):
         """
@@ -415,7 +415,7 @@ class ContextInjectionMiddleware:
         self.providers = providers or self._default_providers()
         self.inject_position = inject_position
 
-    def _default_providers(self) -> List[BaseContextProvider]:
+    def _default_providers(self) -> list[BaseContextProvider]:
         """Get default context providers."""
         return [
             TimeContextProvider(),
@@ -438,9 +438,9 @@ class ContextInjectionMiddleware:
 
     async def get_all_context(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         **kwargs,
-    ) -> List[ContextItem]:
+    ) -> list[ContextItem]:
         """
         Gather context from all providers.
 
@@ -465,7 +465,7 @@ class ContextInjectionMiddleware:
 
         return all_items
 
-    def format_context(self, items: List[ContextItem]) -> str:
+    def format_context(self, items: list[ContextItem]) -> str:
         """
         Format context items into a string.
 
@@ -484,7 +484,7 @@ class ContextInjectionMiddleware:
 
         return "\n\n".join(parts)
 
-    async def before_model(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def before_model(self, state: dict[str, Any]) -> dict[str, Any]:
         """
         Inject context before model invocation.
 
@@ -516,10 +516,10 @@ class ContextInjectionMiddleware:
 
     def _inject_to_system(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         context: str,
-        messages: List[Any],
-    ) -> Dict[str, Any]:
+        messages: list[Any],
+    ) -> dict[str, Any]:
         """Inject context into system message."""
         # Find or create system message
         has_system = False
@@ -550,10 +550,10 @@ class ContextInjectionMiddleware:
 
     def _inject_to_user(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         context: str,
-        messages: List[Any],
-    ) -> Dict[str, Any]:
+        messages: list[Any],
+    ) -> dict[str, Any]:
         """Inject context into the last user message."""
         if not messages:
             return state
@@ -627,9 +627,9 @@ def create_context_middleware(
 
 
 async def inject_context(
-    state: Dict[str, Any],
-    middleware: Optional[ContextInjectionMiddleware] = None,
-) -> Dict[str, Any]:
+    state: dict[str, Any],
+    middleware: ContextInjectionMiddleware | None = None,
+) -> dict[str, Any]:
     """
     Inject context into state.
 

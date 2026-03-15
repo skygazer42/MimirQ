@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -31,11 +31,11 @@ _CHANGE_RE = re.compile(r"(?m)^\s*#\s+(?P<addr>.+?)\s+will\s+be\s+(?P<action>.+?
 _PLAN_HINT_RE = re.compile(r"(?i)terraform\s+will\s+perform\s+the\s+following\s+actions|^\s*Plan:\s*\d+", re.MULTILINE)
 
 
-def _build_change_blocks(text: str) -> List[_ChangeBlock]:
+def _build_change_blocks(text: str) -> list[_ChangeBlock]:
     matches = list(_CHANGE_RE.finditer(text or ""))
     if not matches:
         return []
-    blocks: List[_ChangeBlock] = []
+    blocks: list[_ChangeBlock] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -68,8 +68,8 @@ class TerraformPlanChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_regression_gate_summary_computes_recall_and_rates() -> None:
     from app.rag.evaluation import ragas as ragas_mod
@@ -33,14 +35,14 @@ def test_regression_gate_summary_computes_recall_and_rates() -> None:
 
     summary = ragas_mod._build_regression_gate_summary(items)  # noqa: SLF001
 
-    assert summary["retrieval_recall"] == 0.5
-    assert summary["retrieval_hit_at_1"] == 0.5
-    assert summary["retrieval_hit_at_3"] == 0.5
-    assert summary["retrieval_hit_at_20"] == 0.5
-    assert summary["retrieval_mrr"] == 0.5
-    assert summary["retrieval_ndcg_at_10"] == 0.45
-    assert summary["retrieval_ndcg_at_20"] == 0.45
-    assert summary["abstain_rate"] == 0.5
+    assert summary["retrieval_recall"] == pytest.approx(0.5)
+    assert summary["retrieval_hit_at_1"] == pytest.approx(0.5)
+    assert summary["retrieval_hit_at_3"] == pytest.approx(0.5)
+    assert summary["retrieval_hit_at_20"] == pytest.approx(0.5)
+    assert summary["retrieval_mrr"] == pytest.approx(0.5)
+    assert summary["retrieval_ndcg_at_10"] == pytest.approx(0.45)
+    assert summary["retrieval_ndcg_at_20"] == pytest.approx(0.45)
+    assert summary["abstain_rate"] == pytest.approx(0.5)
 
 
 def test_regression_gate_summary_skips_missing_values() -> None:
@@ -69,4 +71,4 @@ def test_regression_gate_summary_skips_missing_values() -> None:
     assert summary["retrieval_mrr"] is None
     assert summary["retrieval_ndcg_at_10"] is None
     assert summary["retrieval_ndcg_at_20"] is None
-    assert summary["abstain_rate"] == 0.0
+    assert summary["abstain_rate"] == pytest.approx(0.0)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -34,26 +35,27 @@ async def test_kg_recall_expands_query_via_entity_aliases(monkeypatch: pytest.Mo
     # Patch alias lookup to return a deterministic hit.
     import app.rag.kg.search.recall as recall_mod
 
-    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *a, **k: [hit], raising=True)
+    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *_a, **_k: [hit], raising=True)
     # Avoid DB connections in unit tests.
-    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda self: None})(), raising=True)
+    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda _self: None})(), raising=True)
 
     # Prevent Milvus and DB IO: patch repositories to return empty candidates/events.
-    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *a, **k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *_a, **_k: [], raising=True)
     monkeypatch.setattr(
         recall_mod.EventRepository,
         "filter_entity_ids_in_documents",
-        lambda *a, **k: {alias_entity_id},
+        lambda *_a, **_k: {alias_entity_id},
         raising=True,
     )
-    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *a, **k: [], raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *a, **k: [], raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *a, **k: [], raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *a, **k: {}, raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *_a, **_k: {}, raising=True)
 
     expanded_queries: list[str] = []
 
     async def _fake_embed(text: str) -> list[float]:
+        await asyncio.sleep(0)  # Sonar S7503
         expanded_queries.append(text)
         return [0.0, 0.0, 0.0]
 
@@ -98,19 +100,19 @@ async def test_kg_recall_alias_keys_require_evidence_for_relation_expansion(monk
 
     import app.rag.kg.search.recall as recall_mod
 
-    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *a, **k: [hit], raising=True)
-    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda self: None})(), raising=True)
-    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *a, **k: [], raising=True)
+    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *_a, **_k: [hit], raising=True)
+    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda _self: None})(), raising=True)
+    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *_a, **_k: [], raising=True)
     monkeypatch.setattr(
         recall_mod.EventRepository,
         "filter_entity_ids_in_documents",
-        lambda *a, **k: {alias_entity_id},
+        lambda *_a, **_k: {alias_entity_id},
         raising=True,
     )
-    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *a, **k: [], raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *a, **k: [], raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *a, **k: [], raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *a, **k: {}, raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *_a, **_k: [], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *_a, **_k: {}, raising=True)
 
     class _Rel:
         def __init__(self) -> None:
@@ -123,11 +125,12 @@ async def test_kg_recall_alias_keys_require_evidence_for_relation_expansion(monk
     monkeypatch.setattr(
         recall_mod.RelationRepository,
         "list_relations_for_entities",
-        lambda *a, **k: [_Rel()],
+        lambda *_a, **_k: [_Rel()],
         raising=True,
     )
 
     async def _fake_embed(_text: str) -> list[float]:
+        await asyncio.sleep(0)  # Sonar S7503
         return [0.0, 0.0, 0.0]
 
     searcher = RecallSearcher()

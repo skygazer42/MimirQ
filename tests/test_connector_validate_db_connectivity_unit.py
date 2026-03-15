@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -59,6 +60,7 @@ def test_connectors_validate_db_connectivity_is_exposed_under_checks_db_connecti
     called: dict[str, object] = {"n": 0, "last_connector_id": None}
 
     async def _fake_db_check(*, connector_id: str, cfg):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         called["n"] = int(called["n"] or 0) + 1
         called["last_connector_id"] = connector_id
         return {"ok": True, "latency_ms": 12.3, "read_only": True}, []
@@ -86,7 +88,7 @@ def test_connectors_validate_db_connectivity_is_exposed_under_checks_db_connecti
     assert body.get("ok") is True
     checks = body.get("checks") or {}
     assert (checks.get("db_connectivity") or {}).get("ok") is True
-    assert float((checks.get("db_connectivity") or {}).get("latency_ms") or 0.0) == 12.3
+    assert float((checks.get("db_connectivity") or {}).get("latency_ms") or 0.0) == pytest.approx(12.3)
     assert (checks.get("db_connectivity") or {}).get("read_only") is True
     assert int(called["n"] or 0) == 1
     assert called["last_connector_id"] == connector_id

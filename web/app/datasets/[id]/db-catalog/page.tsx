@@ -18,9 +18,11 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi, datasetApi } from '@/lib/api-client'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 
 import type { ConnectorRunOut, Dataset, DbCatalogTableDetail, DbCatalogTableSummary, DbProfileSnapshot } from '@/types'
+
+const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -95,7 +97,7 @@ export default function DatasetDbCatalogPage() {
       const items = res.items || []
       const catalog = items.filter((r) => ['mysql_catalog', 'sqlserver_catalog'].includes(String(r.connector_id || '').toLowerCase()))
       setLatestRun(catalog[0] || null)
-    } catch (_e) {
+    } catch {
       // Likely permission-gated (requires dataset write). Fail closed.
       setLatestRun(null)
     } finally {
@@ -194,7 +196,19 @@ export default function DatasetDbCatalogPage() {
 
     const cfg: any = {
       host,
-      port: Number.isFinite(syncPort) ? Math.trunc(syncPort) : syncConnectorId === 'sqlserver_catalog' ? 1433 : 3306,
+      port: (() => {
+    if (Number.isFinite(syncPort)) {
+        return Math.trunc(syncPort);
+    }
+    else {
+        if (syncConnectorId === 'sqlserver_catalog') {
+            return 1433;
+        }
+        else {
+            return 3306;
+        }
+    }
+})(),
       database,
       username,
       password,
@@ -219,9 +233,9 @@ export default function DatasetDbCatalogPage() {
       setSyncOpen(false)
       setSyncPassword('')
       // Best-effort: refresh after a short delay (sync runs async).
-      window.setTimeout(() => {
-        void loadList()
-        void loadLatestRun()
+      globalThis.window.setTimeout(() => {
+        detachPromise(loadList())
+        detachPromise(loadLatestRun())
       }, 1500)
     } catch (e: any) {
       console.error('Failed to create DB catalog run', e)
@@ -250,7 +264,7 @@ export default function DatasetDbCatalogPage() {
   }, [loadList])
 
   useEffect(() => {
-    void loadLatestRun()
+    detachPromise(loadLatestRun())
   }, [loadLatestRun])
 
   useEffect(() => {
@@ -282,11 +296,11 @@ export default function DatasetDbCatalogPage() {
         <Badge variant="soft" className="font-mono">
           {selected.table_type}
         </Badge>
-        {rowCount !== null ? (
+        {rowCount === null ? null : (
           <Badge variant="soft" className="font-mono tabular-nums">
             rows~: {rowCount.toLocaleString()}
           </Badge>
-        ) : null}
+        )}
         {selected.columns?.length ? (
           <Badge variant="soft" className="font-mono tabular-nums">
             cols: {selected.columns.length}
@@ -362,7 +376,7 @@ export default function DatasetDbCatalogPage() {
                     variant="outline"
                     size="sm"
                     className="gap-2"
-                    onClick={() => void loadLatestRun()}
+                    onClick={() => detachPromise(loadLatestRun())}
                     disabled={latestRunLoading}
                   >
                     <RefreshCw className={cn('h-3.5 w-3.5', latestRunLoading && 'animate-spin motion-reduce:animate-none')} />
@@ -370,9 +384,7 @@ export default function DatasetDbCatalogPage() {
                   </Button>
                 </div>
 
-                {!latestRun ? (
-                  <div className="mt-3 text-xs text-muted-foreground">暂无同步记录（或无权限）。</div>
-                ) : (
+                {latestRun ? (
                   <div className="mt-3 space-y-2 text-xs">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="outline" className="font-mono">
@@ -395,13 +407,24 @@ export default function DatasetDbCatalogPage() {
                       const ageSecRaw = schemaDoc.catalog_age_sec
                       const ageSec = typeof ageSecRaw === 'number' && Number.isFinite(ageSecRaw) ? ageSecRaw : null
                       const ageText =
-                        ageSec === null
-                          ? null
-                          : ageSec < 90
-                            ? `${Math.round(ageSec)}s`
-                            : ageSec < 3600
-                              ? `${Math.round(ageSec / 60)}m`
-                              : `${Math.round(ageSec / 3600)}h`
+                        (() => {
+    if (ageSec === null) {
+        return null;
+    }
+    else {
+        if (ageSec < 90) {
+            return `${Math.round(ageSec)}s`;
+        }
+        else {
+            if (ageSec < 3600) {
+                return `${Math.round(ageSec / 60)}m`;
+            }
+            else {
+                return `${Math.round(ageSec / 3600)}h`;
+            }
+        }
+    }
+})()
 
                       const tables = Number(result.tables ?? schemaDoc.tables ?? 0)
                       const cols = Number(result.columns_upserted ?? schemaDoc.columns ?? 0)
@@ -519,6 +542,8 @@ export default function DatasetDbCatalogPage() {
                       )
                     })()}
                   </div>
+                ) : (
+                  <div className="mt-3 text-xs text-muted-foreground">暂无同步记录（或无权限）。</div>
                 )}
               </div>
 
@@ -532,7 +557,7 @@ export default function DatasetDbCatalogPage() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {(['all', 'mysql', 'sqlserver'] as const).map((k) => (
+                {ENGINE_OPTIONS.map((k) => (
                   <Button
                     key={k}
                     type="button"
@@ -547,27 +572,21 @@ export default function DatasetDbCatalogPage() {
               </div>
 
               <div className="border-t border-border pt-3">
-                {isLoading ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-9 w-full" />
-                    <Skeleton className="h-9 w-full" />
-                    <Skeleton className="h-9 w-full" />
-                    <Skeleton className="h-9 w-full" />
-                  </div>
-                ) : items.length ? (
-                  <div className="space-y-1">
+                {(() => {
+    if (isLoading) {
+        return (<div className="space-y-2">
+                    <Skeleton className="h-9 w-full"/>
+                    <Skeleton className="h-9 w-full"/>
+                    <Skeleton className="h-9 w-full"/>
+                    <Skeleton className="h-9 w-full"/>
+                  </div>);
+    }
+    else {
+        if (items.length) {
+            return (<div className="space-y-1">
                     {items.map((t) => {
-                      const active = t.id === selectedId
-                      return (
-                        <button
-                          key={t.id}
-                          type="button"
-                          className={cn(
-                            'w-full text-left rounded-lg px-3 py-2 border transition duration-200',
-                            active ? 'border-primary/50 bg-primary/5' : 'border-border hover:bg-muted/40'
-                          )}
-                          onClick={() => setSelectedId(t.id)}
-                        >
+                    const active = t.id === selectedId;
+                    return (<button key={t.id} type="button" className={cn('w-full text-left rounded-lg px-3 py-2 border transition duration-200', active ? 'border-primary/50 bg-primary/5' : 'border-border hover:bg-muted/40')} onClick={() => setSelectedId(t.id)}>
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <div className="font-mono text-xs truncate tabular-nums">{formatQualifiedName(t)}</div>
@@ -579,33 +598,29 @@ export default function DatasetDbCatalogPage() {
                               {t.engine}
                             </Badge>
                           </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-border p-4 bg-muted/30">
+                        </button>);
+                })}
+                  </div>);
+        }
+        else {
+            return (<div className="rounded-xl border border-dashed border-border p-4 bg-muted/30">
                     <div className="text-sm font-medium">暂无数据库目录</div>
                     <div className="text-xs text-muted-foreground mt-1 text-pretty">
                       先运行 SQLServer/MySQL 目录同步（只同步结构与安全统计，不读取原始行）。
                     </div>
-                    {datasetId ? (
-                      <div className="mt-3">
-                        <Button
-                          variant="outline"
-                          className="gap-2"
-                          onClick={() => {
-                            setSyncError(null)
-                            setSyncOpen(true)
-                          }}
-                        >
-                          <Play className="h-4 w-4" />
+                    {datasetId ? (<div className="mt-3">
+                        <Button variant="outline" className="gap-2" onClick={() => {
+                        setSyncError(null);
+                        setSyncOpen(true);
+                    }}>
+                          <Play className="h-4 w-4"/>
                           新建同步
                         </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                )}
+                      </div>) : null}
+                  </div>);
+        }
+    }
+})()}
               </div>
             </div>
           </Panel>
@@ -619,43 +634,55 @@ export default function DatasetDbCatalogPage() {
                 </div>
               </div>
 
-              {detailLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-7 w-40" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : selected ? (
-                <div className="rounded-xl border border-border overflow-hidden">
+              {(() => {
+    if (detailLoading) {
+        return (<div className="space-y-2">
+                  <Skeleton className="h-7 w-40"/>
+                  <Skeleton className="h-10 w-full"/>
+                  <Skeleton className="h-10 w-full"/>
+                  <Skeleton className="h-10 w-full"/>
+                </div>);
+    }
+    else {
+        if (selected) {
+            return (<div className="rounded-xl border border-border overflow-hidden">
                   <div className="grid grid-cols-12 gap-0 bg-muted/40 text-xs font-medium">
                     <div className="col-span-5 px-3 py-2">Column</div>
                     <div className="col-span-4 px-3 py-2">Type</div>
                     <div className="col-span-3 px-3 py-2">Nullable</div>
                   </div>
-                  {selected.columns?.length ? (
-                    <div className="divide-y divide-border">
-                      {selected.columns.map((c) => (
-                        <div key={c.id} className="grid grid-cols-12 gap-0 text-xs">
+                  {selected.columns?.length ? (<div className="divide-y divide-border">
+                      {selected.columns.map((c) => (<div key={c.id} className="grid grid-cols-12 gap-0 text-xs">
                           <div className="col-span-5 px-3 py-2 font-mono truncate">{c.name}</div>
                           <div className="col-span-4 px-3 py-2 font-mono text-muted-foreground truncate">
                             {c.data_type || '—'}
                           </div>
                           <div className="col-span-3 px-3 py-2 font-mono text-muted-foreground">
-                            {c.nullable === null || c.nullable === undefined ? '—' : c.nullable ? 'true' : 'false'}
+                            {(() => {
+                        if (c.nullable === null || c.nullable === undefined) {
+                            return '—';
+                        }
+                        else {
+                            if (c.nullable) {
+                                return 'true';
+                            }
+                            else {
+                                return 'false';
+                            }
+                        }
+                    })()}
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 text-sm text-muted-foreground text-pretty">暂无列信息（可能尚未完成同步）。</div>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-border p-6 bg-muted/30 text-sm text-muted-foreground text-pretty">
+                        </div>))}
+                    </div>) : (<div className="p-4 text-sm text-muted-foreground text-pretty">暂无列信息（可能尚未完成同步）。</div>)}
+                </div>);
+        }
+        else {
+            return (<div className="rounded-xl border border-dashed border-border p-6 bg-muted/30 text-sm text-muted-foreground text-pretty">
                   请选择一张表查看结构。
-                </div>
-              )}
+                </div>);
+        }
+    }
+})()}
             </div>
           </Panel>
         </div>

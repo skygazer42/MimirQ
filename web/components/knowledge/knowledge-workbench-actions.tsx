@@ -43,7 +43,7 @@ export function KnowledgeWorkbenchActions({
   loadConnectorRuns,
   onConnectorRunCreated,
   className,
-}: KnowledgeWorkbenchActionsProps) {
+}: Readonly<KnowledgeWorkbenchActionsProps>) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [pipelineConfigOpen, setPipelineConfigOpen] = useState(false)
   const [urlImportOpen, setUrlImportOpen] = useState(false)

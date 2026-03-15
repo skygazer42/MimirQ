@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -30,8 +30,8 @@ class _PlayBlock:
     start: int
     end: int
     index: int
-    name: Optional[str]
-    hosts: Optional[str]
+    name: str | None
+    hosts: str | None
 
 
 _PLAY_START_RE = re.compile(r"(?m)^(?P<indent>\s*)-\s*(?:(?:name|hosts)\s*:)\s*")
@@ -40,8 +40,8 @@ _HOSTS_RE = re.compile(r"(?m)^\s*hosts\s*:\s*(?P<val>.+?)\s*$")
 _TASKS_RE = re.compile(r"(?m)^\s*tasks\s*:\s*")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -53,7 +53,7 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _extract_play_name(block_text: str) -> Optional[str]:
+def _extract_play_name(block_text: str) -> str | None:
     head = (block_text or "")[:2000]
     m = re.search(r"(?m)^-\s*name\s*:\s*(?P<val>.+?)\s*$", head)
     if not m:
@@ -64,7 +64,7 @@ def _extract_play_name(block_text: str) -> Optional[str]:
     return val[:120] or None
 
 
-def _extract_play_hosts(block_text: str) -> Optional[str]:
+def _extract_play_hosts(block_text: str) -> str | None:
     head = (block_text or "")[:2000]
     m = _HOSTS_RE.search(head)
     if not m:
@@ -73,9 +73,9 @@ def _extract_play_hosts(block_text: str) -> Optional[str]:
     return val[:120] or None
 
 
-def _build_play_blocks(text: str) -> List[_PlayBlock]:
+def _build_play_blocks(text: str) -> list[_PlayBlock]:
     lines = _iter_lines(text)
-    idxs: List[int] = []
+    idxs: list[int] = []
     for i, ln in enumerate(lines):
         plain = ln.plain
         if not plain.strip() or plain.lstrip().startswith("#"):
@@ -91,7 +91,7 @@ def _build_play_blocks(text: str) -> List[_PlayBlock]:
     if not idxs:
         return []
 
-    blocks: List[_PlayBlock] = []
+    blocks: list[_PlayBlock] = []
     for j, i in enumerate(idxs):
         start = lines[i].start
         end = lines[idxs[j + 1]].start if j + 1 < len(idxs) else len(text)
@@ -134,8 +134,8 @@ class AnsiblePlaybookChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

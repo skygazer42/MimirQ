@@ -139,10 +139,10 @@ const normalizeRegexRules = (value: unknown): Array<{ pattern: string; repl: str
   const out: Array<{ pattern: string; repl: string; flags: number }> = []
   for (const item of value) {
     if (!item || typeof item !== 'object') continue
-    const pattern = typeof (item as any).pattern === 'string' ? String((item as any).pattern).trim() : ''
+    const pattern = typeof (item).pattern === 'string' ? String((item).pattern).trim() : ''
     if (!pattern) continue
-    const repl = typeof (item as any).repl === 'string' ? String((item as any).repl) : ''
-    const flags = typeof (item as any).flags === 'number' ? (item as any).flags : 0
+    const repl = typeof (item).repl === 'string' ? String((item).repl) : ''
+    const flags = typeof (item).flags === 'number' ? (item).flags : 0
     out.push({ pattern, repl, flags })
     if (out.length >= 60) break
   }
@@ -227,15 +227,15 @@ const normalizeState = (raw: any): PipelineOptionsState => {
   }
 }
 
-export function PipelineOptionsProvider({ children }: { children: React.ReactNode }) {
+export function PipelineOptionsProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const [state, setState] = useState<PipelineOptionsState>({
     enabled: false,
     options: { ...DEFAULT_OPTIONS },
   })
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const stored = window.localStorage.getItem(STORAGE_KEY)
+    if (typeof globalThis.window === 'undefined') return
+    const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
     if (!stored) return
     try {
       const parsed = JSON.parse(stored)
@@ -246,12 +246,12 @@ export function PipelineOptionsProvider({ children }: { children: React.ReactNod
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    if (typeof globalThis.window === 'undefined') return
+    globalThis.window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   }, [state])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     const onStorage = (event: StorageEvent) => {
       if (event.key !== STORAGE_KEY || !event.newValue) return
       try {
@@ -261,8 +261,8 @@ export function PipelineOptionsProvider({ children }: { children: React.ReactNod
         // ignore
       }
     }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
+    globalThis.window.addEventListener('storage', onStorage)
+    return () => globalThis.window.removeEventListener('storage', onStorage)
   }, [])
 
   const value = useMemo<PipelineOptionsContextValue>(() => ({
@@ -300,8 +300,8 @@ export function PipelineOptionsProvider({ children }: { children: React.ReactNod
       try {
         if (parsed && typeof parsed === 'object' && ('options' in parsed || 'enabled' in parsed)) {
           const enabled =
-            typeof (parsed as any).enabled === 'boolean' ? Boolean((parsed as any).enabled) : state.enabled
-          const optionsRaw = (parsed as any).options ?? {}
+            typeof (parsed).enabled === 'boolean' ? Boolean((parsed).enabled) : state.enabled
+          const optionsRaw = (parsed).options ?? {}
           setState({ enabled, options: normalizeOptions(optionsRaw) })
           return { ok: true }
         }

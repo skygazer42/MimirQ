@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 from fastapi import FastAPI, Query
@@ -15,6 +17,7 @@ def _make_app() -> FastAPI:
 
     @app.get("/items")
     async def list_items(limit: int = Query(default=10, ge=1, le=100)) -> dict:
+        await asyncio.sleep(0)  # Sonar S7503
         return {"limit": limit}
 
     return app

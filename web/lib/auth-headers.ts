@@ -9,8 +9,8 @@
 export function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {}
 
-  if (typeof window !== 'undefined') {
-    const token = window.localStorage.getItem('mimirq_access_token')
+  if (typeof globalThis.window !== 'undefined') {
+    const token = globalThis.window.localStorage.getItem('mimirq_access_token')
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
     }
@@ -22,9 +22,9 @@ export function getAuthHeaders(): Record<string, string> {
   let userId = envUserId
   let tenantId = envTenantId
 
-  if (typeof window !== 'undefined') {
-    userId = window.localStorage.getItem('mimirq_user_id') || userId
-    tenantId = window.localStorage.getItem('mimirq_tenant_id') || tenantId
+  if (typeof globalThis.window !== 'undefined') {
+    userId = globalThis.window.localStorage.getItem('mimirq_user_id') || userId
+    tenantId = globalThis.window.localStorage.getItem('mimirq_tenant_id') || tenantId
   }
 
   if (!headers['Authorization']) {

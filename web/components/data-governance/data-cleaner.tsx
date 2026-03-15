@@ -1,16 +1,7 @@
 'use client'
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
-import {
-  Wrench,
-  Sparkles,
-  Check,
-  Undo,
-  TextCursorInput,
-  Loader2,
-  Info,
-  AlertTriangle,
-} from 'lucide-react'
+import { Wrench, Sparkles, Undo, TextCursorInput, Loader2, Info, AlertTriangle } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -38,7 +29,7 @@ interface DataCleanerProps {
   onClean: (cleaned: string) => void
 }
 
-export function DataCleaner({ content, cleanedContent = '', onClean }: DataCleanerProps) {
+export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<DataCleanerProps>) {
   const { options, updateOption, setEnabled } = usePipelineOptions()
   const [previewDiff, setPreviewDiff] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
@@ -159,7 +150,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
       if (Array.isArray(res.tags) && res.tags.length) info.push(`标签：${res.tags.slice(0, 12).join('，')}${res.tags.length > 12 ? '…' : ''}`)
       if (res.language) {
         const conf = typeof res.language_confidence === 'number' ? res.language_confidence : null
-        info.push(`语言：${res.language}${conf !== null ? `（${conf.toFixed(2)}）` : ''}`)
+        info.push(`语言：${res.language}${conf === null ? '' : `（${conf.toFixed(2)}）`}`)
       }
       if (Array.isArray(res.keywords) && res.keywords.length) {
         info.push(`关键词：${res.keywords.slice(0, 12).join('，')}${res.keywords.length > 12 ? '…' : ''}`)
@@ -218,7 +209,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
   const applyPipelinePatch = useCallback((patch: Record<string, any>) => {
     setEnabled(true)
     for (const [key, value] of Object.entries(patch || {})) {
-      updateOption(key as any, value as any)
+      updateOption(key as any, value)
     }
   }, [setEnabled, updateOption])
 
@@ -370,7 +361,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
                       <span className="font-mono text-foreground/90">
                         {impact.inputChars} → {impact.outputChars} ({impact.deltaChars >= 0 ? '+' : ''}
                         {impact.deltaChars}
-                        {impact.deltaCharsPct != null ? `, ${Math.round(impact.deltaCharsPct * 100)}%` : ''})
+                        {impact.deltaCharsPct == null ? '' : `, ${Math.round(impact.deltaCharsPct * 100)}%`})
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
@@ -416,11 +407,19 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: DataClean
                       <div key={it.code} className="text-xs text-foreground/80">
                         <span className={cn(
                           'mr-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium',
-                          it.severity === 'error'
-                            ? 'bg-destructive/10 text-destructive'
-                            : it.severity === 'warning'
-                              ? 'bg-warning/10 text-warning'
-                              : 'bg-info/10 text-info'
+                          (() => {
+    if (it.severity === 'error') {
+        return 'bg-destructive/10 text-destructive';
+    }
+    else {
+        if (it.severity === 'warning') {
+            return 'bg-warning/10 text-warning';
+        }
+        else {
+            return 'bg-info/10 text-info';
+        }
+    }
+})()
                         )}>
                           {it.severity.toUpperCase()}
                         </span>

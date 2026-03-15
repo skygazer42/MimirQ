@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -42,7 +42,7 @@ class _Heading:
 class _Section:
     start: int
     end: int
-    heading: Optional[_Heading]
+    heading: _Heading | None
 
 
 _MD_HEADING_RE = re.compile(r"^\s*(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$")
@@ -54,7 +54,7 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip()).lower()
 
 
-_SECTION_SYNONYMS: Dict[str, List[str]] = {
+_SECTION_SYNONYMS: dict[str, list[str]] = {
     "background": ["background", "context", "背景", "背景介绍", "现状", "动机"],
     "goals": ["goals", "goal", "objectives", "目标", "目标与收益", "目的"],
     "scope": ["scope", "in scope", "out of scope", "范围", "范围界定", "不在范围"],
@@ -69,14 +69,14 @@ _SECTION_SYNONYMS: Dict[str, List[str]] = {
     "metrics": ["metrics", "success metrics", "kpi", "指标", "成功指标", "衡量标准"],
 }
 
-_TITLE_TO_KEY: Dict[str, str] = {}
+_TITLE_TO_KEY: dict[str, str] = {}
 for k, vals in _SECTION_SYNONYMS.items():
     for v in vals:
         _TITLE_TO_KEY[_norm(v)] = k
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -88,7 +88,7 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _parse_heading_line(plain: str) -> Optional[Tuple[str, str, int]]:
+def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:
     s = (plain or "").strip()
     if not s:
         return None
@@ -115,8 +115,8 @@ def _parse_heading_line(plain: str) -> Optional[Tuple[str, str, int]]:
     return None
 
 
-def _iter_headings(text: str) -> List[_Heading]:
-    headings: List[_Heading] = []
+def _iter_headings(text: str) -> list[_Heading]:
+    headings: list[_Heading] = []
     for ln in _iter_lines(text):
         parsed = _parse_heading_line(ln.plain)
         if not parsed:
@@ -124,7 +124,7 @@ def _iter_headings(text: str) -> List[_Heading]:
         title, key, level = parsed
         headings.append(_Heading(start=ln.start, end=ln.end, title=title, key=key, level=level))
 
-    deduped: List[_Heading] = []
+    deduped: list[_Heading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -134,10 +134,10 @@ def _iter_headings(text: str) -> List[_Heading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[_Heading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[_Heading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = headings[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -175,8 +175,8 @@ class PRDSpecChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -187,7 +187,7 @@ class PRDSpecChunker(BaseChunker):
             headings = _iter_headings(text)
             sections = _build_sections(text, headings)
 
-            current: Optional[_Heading] = None
+            current: _Heading | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():

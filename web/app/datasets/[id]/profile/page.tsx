@@ -43,7 +43,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, formatFileSize, formatDate } from '@/lib/utils'
+import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 
 import type {
   Dataset,
@@ -126,7 +126,7 @@ export default function DatasetProfilePage() {
 
   const stopPolling = useCallback(() => {
     const t = pollTimerRef.current
-    if (t) window.clearTimeout(t)
+    if (t) globalThis.window.clearTimeout(t)
     pollTimerRef.current = null
   }, [])
 
@@ -154,7 +154,7 @@ export default function DatasetProfilePage() {
   }, [datasetId])
 
   useEffect(() => {
-    void load()
+    detachPromise(load())
     return () => stopPolling()
   }, [load, stopPolling])
 
@@ -399,12 +399,12 @@ export default function DatasetProfilePage() {
         setScanRun(next)
         const st = String(next.status || '').toLowerCase()
         if (st === 'pending' || st === 'running') {
-          pollTimerRef.current = window.setTimeout(() => void pollScanRun(datasetIdValue, runId), 2000)
+          pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollScanRun(datasetIdValue, runId)), 2000)
           return
         }
         setScanRunning(false)
         stopPolling()
-        void load()
+        detachPromise(load())
       } catch (e: any) {
         console.error('Failed to poll scan run', e)
         setScanRunning(false)
@@ -423,7 +423,7 @@ export default function DatasetProfilePage() {
     if (st !== 'pending' && st !== 'running') return
     if (pollTimerRef.current) return
     setScanRunning(true)
-    pollTimerRef.current = window.setTimeout(() => void pollScanRun(datasetId, String(run.id)), 500)
+    pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollScanRun(datasetId, String(run.id))), 500)
   }, [datasetId, pollScanRun, summary?.latest_scan_run])
 
   const startDeepScan = useCallback(async () => {
@@ -434,10 +434,10 @@ export default function DatasetProfilePage() {
       setScanRun(run)
       const st = String(run.status || '').toLowerCase()
       if (st === 'pending' || st === 'running') {
-        pollTimerRef.current = window.setTimeout(() => void pollScanRun(datasetId, run.id), 1200)
+        pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollScanRun(datasetId, run.id)), 1200)
       } else {
         setScanRunning(false)
-        void load()
+        detachPromise(load())
       }
       toast.success('已启动深度扫描')
     } catch (e: any) {
@@ -452,7 +452,7 @@ export default function DatasetProfilePage() {
     setIsExportingJson(true)
     try {
       const blob = await datasetApi.exportProfileSummary(datasetId)
-      const safe = String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.profile.json`)
       toast.success('已导出 JSON 报告')
     } catch (e: any) {
@@ -468,7 +468,7 @@ export default function DatasetProfilePage() {
     setIsExportingHtml(true)
     try {
       const blob = await datasetApi.exportProfileHtml(datasetId, { redact: true })
-      const safe = String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.profile.html`)
       toast.success('已导出 HTML 报告')
     } catch (e: any) {
@@ -572,7 +572,7 @@ export default function DatasetProfilePage() {
             <Button
               variant="outline"
               className="gap-2"
-              onClick={() => void load()}
+              onClick={() => detachPromise(load())}
               disabled={isLoading}
             >
               <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
@@ -581,7 +581,7 @@ export default function DatasetProfilePage() {
             <Button
               variant="outline"
               className="gap-2"
-              onClick={() => void exportJson()}
+              onClick={() => detachPromise(exportJson())}
               disabled={isExportingJson || !summary}
             >
               {isExportingJson ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
@@ -590,7 +590,7 @@ export default function DatasetProfilePage() {
             <Button
               variant="outline"
               className="gap-2"
-              onClick={() => void exportHtml()}
+              onClick={() => detachPromise(exportHtml())}
               disabled={isExportingHtml || !summary}
             >
               {isExportingHtml ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
@@ -603,10 +603,34 @@ export default function DatasetProfilePage() {
           <Panel className="p-5">
             <StatsGrid>
               <StatCard icon={FileSearch} label="文档总数" value={summary?.total_documents ?? (isLoading ? '…' : 0)} color="cyan" />
-              <StatCard icon={BarChart3} label="总大小" value={summary ? formatFileSize(summary.total_size_bytes || 0) : isLoading ? '…' : '-'} color="teal" />
+              <StatCard icon={BarChart3} label="总大小" value={(() => {
+    if (summary) {
+        return formatFileSize(summary.total_size_bytes || 0);
+    }
+    else {
+        if (isLoading) {
+            return '…';
+        }
+        else {
+            return '-';
+        }
+    }
+})()} color="teal" />
               <StatCard icon={Sparkles} label="P50 长度" value={summary?.length_percentiles?.p50 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
               <StatCard icon={Sparkles} label="P90 长度" value={summary?.length_percentiles?.p90 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
-              <StatCard icon={Sparkles} label="扫描 PDF" value={summary ? `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}` : isLoading ? '…' : '-'} color="orange" />
+              <StatCard icon={Sparkles} label="扫描 PDF" value={(() => {
+    if (summary) {
+        return `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`;
+    }
+    else {
+        if (isLoading) {
+            return '…';
+        }
+        else {
+            return '-';
+        }
+    }
+})()} color="orange" />
             </StatsGrid>
           </Panel>
 
@@ -630,8 +654,8 @@ export default function DatasetProfilePage() {
                       outerRadius={95}
                       paddingAngle={2}
                     >
-                      {fileTypeChartData.map((_entry, idx) => (
-                        <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                      {fileTypeChartData.map((entry, idx) => (
+                        <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                   </PieChart>
@@ -682,8 +706,8 @@ export default function DatasetProfilePage() {
                   <PieChart>
                     <Tooltip />
                     <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                      {pdfScanData.map((_entry, idx) => (
-                        <Cell key={idx} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
+                      {pdfScanData.map((entry, idx) => (
+                        <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'pdf-scan')} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
                       ))}
                     </Pie>
                   </PieChart>
@@ -823,8 +847,8 @@ export default function DatasetProfilePage() {
 
                       {Array.isArray((t as any).suggestions) && (t as any).suggestions.length ? (
                         <ul className="mt-2 pl-5 list-disc text-sm text-muted-foreground">
-                          {(t as any).suggestions.slice(0, 6).map((s: any, idx: number) => (
-                            <li key={idx} className="text-pretty">
+                          {(t as any).suggestions.slice(0, 6).map((s: any) => (
+                            <li key={String(s)} className="text-pretty">
                               {String(s)}
                             </li>
                           ))}
@@ -847,7 +871,7 @@ export default function DatasetProfilePage() {
                   <Button
                     variant="outline"
                     className="h-8 px-2 gap-1 text-xs"
-                    onClick={() => void openFinding(parseLowQualityFinding)}
+                    onClick={() => detachPromise(openFinding(parseLowQualityFinding))}
                   >
                     <FileSearch className="w-3.5 h-3.5" />
                     低质量
@@ -937,8 +961,8 @@ export default function DatasetProfilePage() {
                         outerRadius={95}
                         paddingAngle={2}
                       >
-                        {languageMixChartData.map((_entry, idx) => (
-                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        {languageMixChartData.map((entry, idx) => (
+                          <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'language')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                         ))}
                       </Pie>
                     </PieChart>
@@ -963,11 +987,11 @@ export default function DatasetProfilePage() {
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
                       <Bar dataKey="value" fill="#94a3b8" radius={[6, 6, 0, 0]}>
-                        {directoryChartData.map((entry, idx) => (
+                        {directoryChartData.map((entry) => (
                           <Cell
-                            key={idx}
+                            key={String(entry.name ?? entry.key ?? entry.label ?? 'directory')}
                             cursor={entry.key === '__other__' ? 'default' : 'pointer'}
-                            onClick={() => (entry.key === '__other__' ? null : void openBucket('directory', String(entry.key || 'root')))}
+                            onClick={() => (entry.key === '__other__' ? null : detachPromise(openBucket('directory', String(entry.key || 'root'))))}
                           />
                         ))}
                       </Bar>
@@ -993,11 +1017,11 @@ export default function DatasetProfilePage() {
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
                       <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]}>
-                        {qualityBucketChartData.map((entry, idx) => (
+                        {qualityBucketChartData.map((entry) => (
                           <Cell
-                            key={idx}
+                            key={String(entry.name ?? entry.key ?? entry.label ?? 'quality')}
                             cursor="pointer"
-                            onClick={() => void openBucket('quality_bucket', String(entry.key || 'unknown'))}
+                            onClick={() => detachPromise(openBucket('quality_bucket', String(entry.key || 'unknown')))}
                           />
                         ))}
                       </Bar>
@@ -1069,7 +1093,7 @@ export default function DatasetProfilePage() {
                     'text-left px-4 py-3 rounded-xl border border-border/60 bg-card/40 hover:bg-card/70 transition-colors',
                     'focus:outline-none focus:ring-2 focus:ring-primary/30'
                   )}
-                  onClick={() => void openFinding(f)}
+                  onClick={() => detachPromise(openFinding(f))}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-medium truncate">{f.label}</div>
@@ -1101,7 +1125,7 @@ export default function DatasetProfilePage() {
                 </div>
               </div>
 
-              <Button className="gap-2" onClick={() => void startDeepScan()} disabled={scanRunning}>
+              <Button className="gap-2" onClick={() => detachPromise(startDeepScan())} disabled={scanRunning}>
                 {scanRunning ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
                 启动
               </Button>
@@ -1157,7 +1181,19 @@ export default function DatasetProfilePage() {
 
             <div className="mt-4 flex items-center justify-between gap-4">
               <div className="text-sm text-muted-foreground">
-                进度：{scanRunning ? `${latestRunProgress || 0}%` : latestRunProgress ? `${latestRunProgress}%` : '-'}
+                进度：{(() => {
+    if (scanRunning) {
+        return `${latestRunProgress || 0}%`;
+    }
+    else {
+        if (latestRunProgress) {
+            return `${latestRunProgress}%`;
+        }
+        else {
+            return '-';
+        }
+    }
+})()}
                 {effectiveScanRun.error_message ? <span className="ml-3 text-destructive">错误：{effectiveScanRun.error_message}</span> : null}
               </div>
             </div>
@@ -1171,7 +1207,7 @@ export default function DatasetProfilePage() {
                   深度扫描会把“缺失指标”补齐，并保存一次 summary 快照；可用于回溯与对比。
                 </div>
               </div>
-              <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={isLoading}>
+              <Button variant="outline" className="gap-2" onClick={() => detachPromise(load())} disabled={isLoading}>
                 <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
                 刷新
               </Button>
@@ -1292,7 +1328,7 @@ export default function DatasetProfilePage() {
                   <Button
                     variant="outline"
                     className="gap-2"
-                    onClick={() => void exportHtml()}
+                    onClick={() => detachPromise(exportHtml())}
                     disabled={!summary || isExportingHtml}
                   >
                     {isExportingHtml ? (
@@ -1331,13 +1367,16 @@ export default function DatasetProfilePage() {
             </DialogHeader>
 
             <div className="mt-2">
-              {findingLoading && !findingRes ? (
-                <div className="py-10 flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+              {(() => {
+    if (findingLoading && !findingRes) {
+        return (<div className="py-10 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2"/>
                   加载中…
-                </div>
-              ) : findingRes ? (
-                <div className="space-y-3">
+                </div>);
+    }
+    else {
+        if (findingRes) {
+            return (<div className="space-y-3">
                   <div className="text-xs text-muted-foreground font-mono">
                     showing {findingRes.items.length}/{findingRes.total}
                   </div>
@@ -1353,31 +1392,25 @@ export default function DatasetProfilePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {findingRes.items.map((d) => (
-                          <tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
+                        {findingRes.items.map((d) => (<tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
                             <td className="px-3 py-2">
-                              <DocumentDetailDialog
-                                document={{
-                                  id: d.id,
-                                  filename: d.filename,
-                                  file_type: d.file_type,
-                                  file_size: d.file_size,
-                                  status: (d.status as any) || 'pending',
-                                  processing_progress: 0,
-                                  chunk_count: d.chunk_count || 0,
-                                  total_characters: d.total_characters || 0,
-                                  created_at: d.created_at || new Date().toISOString(),
-                                  updated_at: d.updated_at || new Date().toISOString(),
-                                  error_message: d.error_message || undefined,
-                                  metadata: d.metadata || {},
-                                  dataset_id: datasetId || undefined,
-                                } as Document}
-                                trigger={
-                                  <button type="button" className="text-primary hover:underline">
+                              <DocumentDetailDialog document={{
+                        id: d.id,
+                        filename: d.filename,
+                        file_type: d.file_type,
+                        file_size: d.file_size,
+                        status: (d.status as any) || 'pending',
+                        processing_progress: 0,
+                        chunk_count: d.chunk_count || 0,
+                        total_characters: d.total_characters || 0,
+                        created_at: d.created_at || new Date().toISOString(),
+                        updated_at: d.updated_at || new Date().toISOString(),
+                        error_message: d.error_message || undefined,
+                        metadata: d.metadata || {},
+                        dataset_id: datasetId || undefined,
+                    } as Document} trigger={<button type="button" className="text-primary hover:underline">
                                     {d.filename}
-                                  </button>
-                                }
-                              />
+                                  </button>}/>
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
                             <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
@@ -1387,8 +1420,7 @@ export default function DatasetProfilePage() {
                               </Badge>
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">{d.total_characters}</td>
-                          </tr>
-                        ))}
+                          </tr>))}
                       </tbody>
                     </table>
                   </div>
@@ -1397,22 +1429,20 @@ export default function DatasetProfilePage() {
                     <div className="text-xs text-muted-foreground">
                       {findingRes.items.length >= findingRes.total ? '已加载全部' : ''}
                     </div>
-                    <Button
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => void loadMoreFinding()}
-                      disabled={findingLoading || findingRes.items.length >= findingRes.total}
-                    >
-                      {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreFinding())} disabled={findingLoading || findingRes.items.length >= findingRes.total}>
+                      {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
                       加载更多
                     </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="py-10 text-center text-muted-foreground">
+                </div>);
+        }
+        else {
+            return (<div className="py-10 text-center text-muted-foreground">
                   暂无数据
-                </div>
-              )}
+                </div>);
+        }
+    }
+})()}
             </div>
           </DialogContent>
         </Dialog>
@@ -1430,11 +1460,29 @@ export default function DatasetProfilePage() {
               <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                 {(() => {
                   const label =
-                    bucketDim === 'file_type' ? '格式'
-                    : bucketDim === 'language' ? '语言'
-                    : bucketDim === 'directory' ? '目录'
-                    : bucketDim === 'quality_bucket' ? '质量桶'
-                    : '清单'
+                    (() => {
+    if (bucketDim === 'file_type') {
+        return '格式';
+    }
+    else {
+        if (bucketDim === 'language') {
+            return '语言';
+        }
+        else {
+            if (bucketDim === 'directory') {
+                return '目录';
+            }
+            else {
+                if (bucketDim === 'quality_bucket') {
+                    return '质量桶';
+                }
+                else {
+                    return '清单';
+                }
+            }
+        }
+    }
+})()
                   return bucketDim ? `${label}: ${bucketKey || ''}` : '清单'
                 })()}
                 {bucketRes ? (
@@ -1449,13 +1497,16 @@ export default function DatasetProfilePage() {
             </DialogHeader>
 
             <div className="mt-2">
-              {bucketLoading && !bucketRes ? (
-                <div className="py-10 flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+              {(() => {
+    if (bucketLoading && !bucketRes) {
+        return (<div className="py-10 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2"/>
                   加载中…
-                </div>
-              ) : bucketRes ? (
-                <div className="space-y-3">
+                </div>);
+    }
+    else {
+        if (bucketRes) {
+            return (<div className="space-y-3">
                   <div className="text-xs text-muted-foreground font-mono">
                     showing {bucketRes.items.length}/{bucketRes.total}
                   </div>
@@ -1472,31 +1523,25 @@ export default function DatasetProfilePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {bucketRes.items.map((d) => (
-                          <tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
+                        {bucketRes.items.map((d) => (<tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
                             <td className="px-3 py-2">
-                              <DocumentDetailDialog
-                                document={{
-                                  id: d.id,
-                                  filename: d.filename,
-                                  file_type: d.file_type,
-                                  file_size: d.file_size,
-                                  status: (d.status as any) || 'pending',
-                                  processing_progress: 0,
-                                  chunk_count: d.chunk_count || 0,
-                                  total_characters: d.total_characters || 0,
-                                  created_at: d.created_at || new Date().toISOString(),
-                                  updated_at: d.updated_at || new Date().toISOString(),
-                                  error_message: d.error_message || undefined,
-                                  metadata: d.metadata || {},
-                                  dataset_id: datasetId || undefined,
-                                } as Document}
-                                trigger={
-                                  <button type="button" className="text-primary hover:underline">
+                              <DocumentDetailDialog document={{
+                        id: d.id,
+                        filename: d.filename,
+                        file_type: d.file_type,
+                        file_size: d.file_size,
+                        status: (d.status as any) || 'pending',
+                        processing_progress: 0,
+                        chunk_count: d.chunk_count || 0,
+                        total_characters: d.total_characters || 0,
+                        created_at: d.created_at || new Date().toISOString(),
+                        updated_at: d.updated_at || new Date().toISOString(),
+                        error_message: d.error_message || undefined,
+                        metadata: d.metadata || {},
+                        dataset_id: datasetId || undefined,
+                    } as Document} trigger={<button type="button" className="text-primary hover:underline">
                                     {d.filename}
-                                  </button>
-                                }
-                              />
+                                  </button>}/>
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
                             <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
@@ -1507,20 +1552,12 @@ export default function DatasetProfilePage() {
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">{d.total_characters}</td>
                             <td className="px-3 py-2 max-w-[520px]">
-                              {d.preview ? (
-                                <div
-                                  className="text-xs text-muted-foreground line-clamp-2"
-                                  title={String(d.preview || '')}
-                                >
+                              {d.preview ? (<div className="text-xs text-muted-foreground line-clamp-2" title={String(d.preview || '')}>
                                   {String(d.preview)}
                                   {d.preview_truncated ? '…' : ''}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">-</span>
-                              )}
+                                </div>) : (<span className="text-xs text-muted-foreground">-</span>)}
                             </td>
-                          </tr>
-                        ))}
+                          </tr>))}
                       </tbody>
                     </table>
                   </div>
@@ -1529,22 +1566,20 @@ export default function DatasetProfilePage() {
                     <div className="text-xs text-muted-foreground">
                       {bucketRes.items.length >= bucketRes.total ? '已加载全部' : ''}
                     </div>
-                    <Button
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => void loadMoreBucket()}
-                      disabled={bucketLoading || bucketRes.items.length >= bucketRes.total}
-                    >
-                      {bucketLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreBucket())} disabled={bucketLoading || bucketRes.items.length >= bucketRes.total}>
+                      {bucketLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
                       加载更多
                     </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="py-10 text-center text-muted-foreground">
+                </div>);
+        }
+        else {
+            return (<div className="py-10 text-center text-muted-foreground">
                   暂无数据
-                </div>
-              )}
+                </div>);
+        }
+    }
+})()}
             </div>
           </DialogContent>
         </Dialog>

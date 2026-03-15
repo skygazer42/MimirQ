@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
@@ -77,7 +77,7 @@ class _FakeDB:
         self._added.append(obj)
         if getattr(obj, "id", None) is None:
             obj.id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -106,7 +106,7 @@ async def test_feedback_to_evidence_item_creates_item_with_pointers_and_trace(mo
     document_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
     request_id = "req-evi-1"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     suite = EvidenceSuite(
         id=suite_id,
@@ -177,14 +177,14 @@ async def test_feedback_to_evidence_item_creates_item_with_pointers_and_trace(mo
 
     db = _FakeDB(feedback_rows=[fb], messages=[assistant_msg, user_msg], conversations=[conv], suites=[suite])
 
-    monkeypatch.setattr(feedback_mod.DatasetService, "ensure_member", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(feedback_mod.DatasetService, "get_dataset", lambda *args, **kwargs: object(), raising=True)
-    monkeypatch.setattr(feedback_mod.DatasetService, "assert_dataset_readable", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(feedback_mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(feedback_mod.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(feedback_mod.DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
 
     monkeypatch.setattr(
         feedback_mod,
         "list_rag_traces",
-        lambda **kwargs: RagTraceListResponse(
+        lambda **_kwargs: RagTraceListResponse(
             enabled=True,
             path="/tmp/fake.jsonl",
             window_minutes=60,

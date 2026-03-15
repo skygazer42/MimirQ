@@ -72,7 +72,7 @@ export function CommandMenu() {
 
     const seq = ++requestSeqRef.current
     setDocLoading(true)
-    const t = window.setTimeout(() => {
+    const t = globalThis.window.setTimeout(() => {
       documentApi
         .list({ q, limit: 8, order_by: "created_at", order_dir: "desc" })
         .then((res) => {
@@ -89,7 +89,7 @@ export function CommandMenu() {
         })
     }, 220)
 
-    return () => window.clearTimeout(t)
+    return () => globalThis.window.clearTimeout(t)
   }, [open, query])
 
   const runCommand = React.useCallback((command: () => unknown) => {
@@ -135,33 +135,31 @@ export function CommandMenu() {
         {query.trim().length >= 2 ? (
           <>
             <CommandGroup heading="文档">
-              {docLoading ? (
-                <CommandItem disabled value="doc:loading">
-                  <FileText className="mr-2 h-4 w-4" />
+              {(() => {
+    if (docLoading) {
+        return (<CommandItem disabled value="doc:loading">
+                  <FileText className="mr-2 h-4 w-4"/>
                   <span>搜索中…</span>
-                </CommandItem>
-              ) : docResults.length ? (
-                docResults.map((doc) => (
-                  <CommandItem
-                    key={doc.id}
-                    value={doc.filename}
-                    onSelect={() =>
-                      runCommand(() => {
-                        openDocument(doc.id)
-                        router.push("/")
-                      })
-                    }
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
+                </CommandItem>);
+    }
+    else {
+        if (docResults.length) {
+            return (docResults.map((doc) => (<CommandItem key={doc.id} value={doc.filename} onSelect={() => runCommand(() => {
+                    openDocument(doc.id);
+                    router.push("/");
+                })}>
+                    <FileText className="mr-2 h-4 w-4"/>
                     <span className="truncate">{doc.filename}</span>
-                  </CommandItem>
-                ))
-              ) : (
-                <CommandItem disabled value="doc:empty">
-                  <FileText className="mr-2 h-4 w-4" />
+                  </CommandItem>)));
+        }
+        else {
+            return (<CommandItem disabled value="doc:empty">
+                  <FileText className="mr-2 h-4 w-4"/>
                   <span>未找到文档</span>
-                </CommandItem>
-              )}
+                </CommandItem>);
+        }
+    }
+})()}
             </CommandGroup>
 
             <CommandSeparator />

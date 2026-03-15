@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -30,8 +30,8 @@ class _Span:
 _SENTENCE_RE = re.compile(r"[^。！？!?\.\\n]+[。！？!?\.\\n]?", flags=re.S)
 
 
-def _iter_sentence_spans(text: str) -> List[_Span]:
-    spans: List[_Span] = []
+def _iter_sentence_spans(text: str) -> list[_Span]:
+    spans: list[_Span] = []
     for m in _SENTENCE_RE.finditer(text or ""):
         start, end = m.start(), m.end()
         if end <= start:
@@ -55,8 +55,8 @@ class SentenceWindowChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

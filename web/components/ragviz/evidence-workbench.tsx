@@ -9,7 +9,7 @@ import type { Citation, Dataset, EvidenceRetrieveResponse } from '@/types'
 import { datasetApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
@@ -91,7 +91,7 @@ export function EvidenceWorkbench() {
   }, [])
 
   useEffect(() => {
-    void loadDatasets()
+    detachPromise(loadDatasets())
   }, [loadDatasets])
 
   const datasetOptions = useMemo(() => {
@@ -153,7 +153,7 @@ export function EvidenceWorkbench() {
     if (!result) return
 
     const exportedAt = new Date().toISOString()
-    const safeTs = exportedAt.replace(/[:.]/g, '-')
+    const safeTs = exportedAt.replaceAll(/[:.]/g, '-')
     const ds = datasetId || 'all'
     const filename = `evidence-pack-${ds}-${safeTs}.json`
 
@@ -204,11 +204,19 @@ export function EvidenceWorkbench() {
                   ))}
                 </SelectContent>
               </Select>
-              {datasetsLoading ? (
-                <div className="mt-1 text-[11px] text-muted-foreground">加载数据集中…</div>
-              ) : datasetsError ? (
-                <div className="mt-1 text-[11px] text-destructive">{datasetsError}</div>
-              ) : null}
+              {(() => {
+    if (datasetsLoading) {
+        return (<div className="mt-1 text-[11px] text-muted-foreground">加载数据集中…</div>);
+    }
+    else {
+        if (datasetsError) {
+            return (<div className="mt-1 text-[11px] text-destructive">{datasetsError}</div>);
+        }
+        else {
+            return null;
+        }
+    }
+})()}
             </div>
 
             <div className="w-full md:w-[220px]">
@@ -238,7 +246,7 @@ export function EvidenceWorkbench() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button type="button" onClick={() => void run()} disabled={!query.trim() || running}>
+              <Button type="button" onClick={() => detachPromise(run())} disabled={!query.trim() || running}>
                 {running ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
@@ -287,11 +295,19 @@ export function EvidenceWorkbench() {
               <div
                 className={cn(
                   'px-2 py-1 rounded-md text-xs font-mono border',
-                  result.has_evidence
-                    ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-                    : result.abstain_triggered
-                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300'
-                      : 'bg-muted border-border text-muted-foreground'
+                  (() => {
+    if (result.has_evidence) {
+        return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300';
+    }
+    else {
+        if (result.abstain_triggered) {
+            return 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300';
+        }
+        else {
+            return 'bg-muted border-border text-muted-foreground';
+        }
+    }
+})()
                 )}
                 title="has_evidence / abstain"
               >
@@ -341,12 +357,12 @@ export function EvidenceWorkbench() {
 
             {citations.length ? (
               <div className="mt-3 space-y-2 max-h-[560px] overflow-auto pr-1">
-                {citations.map((c, idx) => {
+                {citations.map((c) => {
                   const content = String(c.chunk_content || '')
                   const safeImgUrl = c.has_image && c.img_url ? resolveSafeCitationImageUrl(c.img_url) : null
                   return (
                     <div
-                      key={`${c.chunk_id || idx}-${idx}`}
+                      key={`${String(c.document_id || '')}:${String(c.chunk_id || '')}:${String(c.page_number ?? '')}`}
                       className={cn(
                         'rounded-lg border border-border/60 bg-background/70 px-3 py-2',
                         'hover:border-primary/20 hover:bg-muted/20 transition-colors'

@@ -21,7 +21,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { documentApi, observabilityApi } from '@/lib/api-client'
-import { cn, formatDate, formatFileSize } from '@/lib/utils'
+import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type { Document, IngestionDashboardSummaryResponse } from '@/types'
 import { useDocumentView } from '@/store/document-view'
 import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-dialog'
@@ -56,7 +56,7 @@ function formatTs(tsMs: number) {
   }
 }
 
-function StatusPill({ status }: { status: Document['status'] }) {
+function StatusPill({ status }: Readonly<{ status: Document['status'] }>) {
   const cfg = (() => {
     switch (status) {
       case 'completed':
@@ -226,8 +226,8 @@ export default function IngestionMonitorPage() {
               variant="outline"
               className="group gap-2 rounded-full bg-background/60"
               onClick={() => {
-                void refetch()
-                void ingestionDashboardQuery.refetch()
+                detachPromise(refetch())
+                detachPromise(ingestionDashboardQuery.refetch())
               }}
             >
               <RefreshCw className={cn('h-3.5 w-3.5', isFetching ? 'animate-spin motion-reduce:animate-none' : '')} />
@@ -251,9 +251,9 @@ export default function IngestionMonitorPage() {
               { label: '已完成', value: stats.completed, icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'group-hover:border-emerald-200 dark:group-hover:border-emerald-800' },
               { label: '失败/隔离', value: stats.failed + stats.quarantined, icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-500/10', border: 'group-hover:border-red-200 dark:group-hover:border-red-800' },
               { label: '总存储量', value: formatFileSize(stats.totalSize), icon: Search, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'group-hover:border-indigo-200 dark:group-hover:border-indigo-800' },
-            ].map((stat, idx) => (
+            ].map((stat) => (
 	              <div
-	                key={idx}
+	                key={stat.label}
 	                className={cn(
 	                  "group relative overflow-hidden rounded-2xl bg-card border border-border shadow-soft hover:shadow-strong transition-colors transition-shadow duration-200 motion-reduce:transition-none",
 	                  stat.border
@@ -322,7 +322,7 @@ export default function IngestionMonitorPage() {
               <div className="flex items-center gap-2">
                 <Select
                   value={String(dashboardWindowHours)}
-                  onValueChange={(v) => setDashboardWindowHours(parseInt(v, 10))}
+                  onValueChange={(v) => setDashboardWindowHours(Number.parseInt(v, 10))}
                 >
                   <SelectTrigger className="h-9 rounded-xl w-[140px]">
                     <SelectValue />
@@ -339,7 +339,7 @@ export default function IngestionMonitorPage() {
                   variant="outline"
                   className="gap-2 rounded-xl"
                   disabled={ingestionDashboardQuery.isFetching}
-                  onClick={() => void ingestionDashboardQuery.refetch()}
+                  onClick={() => detachPromise(ingestionDashboardQuery.refetch())}
                 >
                   <RefreshCw className={cn('w-4 h-4', ingestionDashboardQuery.isFetching && 'animate-spin motion-reduce:animate-none')} />
                   刷新
@@ -348,15 +348,7 @@ export default function IngestionMonitorPage() {
             </div>
 
             <div className="border-t border-border/60 p-5">
-              {!dashboard ? (
-                <div className="text-xs text-muted-foreground">
-                  {ingestionDashboardQuery.isFetching
-                    ? '加载中...'
-                    : ingestionDashboardQuery.error
-                      ? formatApiError(ingestionDashboardQuery.error as any, '无权限或暂不可用')
-                      : '尚无数据'}
-                </div>
-              ) : (
+              {dashboard ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="rounded-xl border border-border/60 bg-background/60 p-4">
@@ -378,9 +370,7 @@ export default function IngestionMonitorPage() {
                     <div className="rounded-xl border border-border/60 bg-background/60 p-4">
                       <div className="text-[10px] font-bold uppercase text-muted-foreground">平均完成耗时</div>
                       <div className="mt-1 text-2xl font-black text-foreground">
-                        {dashboard.avg_completed_latency_sec != null
-                          ? `${(Number(dashboard.avg_completed_latency_sec || 0) / 60).toFixed(1)}m`
-                          : '-'}
+                        {dashboard.avg_completed_latency_sec == null ? '-' : `${(Number(dashboard.avg_completed_latency_sec || 0) / 60).toFixed(1)}m`}
                       </div>
                     </div>
                   </div>
@@ -420,6 +410,22 @@ export default function IngestionMonitorPage() {
                     </div>
                   </div>
                 </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  {(() => {
+    if (ingestionDashboardQuery.isFetching) {
+        return '加载中...';
+    }
+    else {
+        if (ingestionDashboardQuery.error) {
+            return formatApiError(ingestionDashboardQuery.error as any, '无权限或暂不可用');
+        }
+        else {
+            return '尚无数据';
+        }
+    }
+})()}
+                </div>
               )}
             </div>
           </div>
@@ -441,11 +447,29 @@ export default function IngestionMonitorPage() {
 
                 {/* Status Bar Accent */}
                 <div className={cn("absolute left-0 top-0 bottom-0 w-1",
-                  doc.status === 'processing' ? "bg-sky-500" :
-                    doc.status === 'completed' ? "bg-emerald-500" :
-                      doc.status === 'failed' ? "bg-red-500" :
-                        doc.status === 'quarantined' ? "bg-amber-500" :
-                          "bg-border"
+                  (() => {
+    if (doc.status === 'processing') {
+        return "bg-sky-500";
+    }
+    else {
+        if (doc.status === 'completed') {
+            return "bg-emerald-500";
+        }
+        else {
+            if (doc.status === 'failed') {
+                return "bg-red-500";
+            }
+            else {
+                if (doc.status === 'quarantined') {
+                    return "bg-amber-500";
+                }
+                else {
+                    return "bg-border";
+                }
+            }
+        }
+    }
+})()
                 )} />
 
                 <div className="flex items-center justify-between gap-6 p-5 relative z-10 pl-6">
@@ -546,10 +570,24 @@ export default function IngestionMonitorPage() {
 	                        <div
 	                          className={cn(
 	                            "h-full w-full origin-left transition-transform duration-200 ease-out motion-reduce:transition-none rounded-full",
-	                            doc.status === 'failed' ? "bg-red-400" :
-	                              doc.status === 'quarantined' ? "bg-amber-400" :
-	                              doc.status === 'completed' ? "bg-emerald-400" :
-	                                "bg-sky-500"
+	                            (() => {
+    if (doc.status === 'failed') {
+        return "bg-red-400";
+    }
+    else {
+        if (doc.status === 'quarantined') {
+            return "bg-amber-400";
+        }
+        else {
+            if (doc.status === 'completed') {
+                return "bg-emerald-400";
+            }
+            else {
+                return "bg-sky-500";
+            }
+        }
+    }
+})()
 	                          )}
 	                          style={{
 	                            transform: `scaleX(${Math.max(0, Math.min(100, doc.processing_progress || 0)) / 100})`,

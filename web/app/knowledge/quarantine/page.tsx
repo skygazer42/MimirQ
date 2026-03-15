@@ -67,7 +67,7 @@ function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
   if (!meta || typeof meta !== 'object') return {}
   const pipeline = (meta as any).pipeline
   if (!pipeline || typeof pipeline !== 'object') return {}
-  const governance = (pipeline as any).governance
+  const governance = (pipeline).governance
   if (!governance || typeof governance !== 'object') return {}
 
   const out: DocumentPipelineOptions = {}
@@ -105,7 +105,7 @@ export default function QuarantineQueuePage() {
   const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [search, setSearch] = useState('')
-  const [selectedReason, setSelectedReason] = useState<DropReason | 'all'>('all')
+  const [selectedReason, setSelectedReason] = useState<DropReason>('all')
   const [hideReviewed, setHideReviewed] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [acting, setActing] = useState<{ id: string; action: 'release' | 'retry' | 'delete' | 'review' | 'tune' } | null>(null)
@@ -397,11 +397,7 @@ export default function QuarantineQueuePage() {
       >
           <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-4">
             <div className="space-y-2">
-              {!filtered.length ? (
-                <Panel variant="glass" className="rounded-2xl p-10 text-center text-muted-foreground">
-                  当前筛选条件下没有隔离文档
-                </Panel>
-              ) : (
+              {filtered.length ? (
                 <Panel variant="glass" padding="none" className="rounded-2xl overflow-hidden">
                   <div className="divide-y divide-border/60">
                     {filtered.map((doc) => {
@@ -502,13 +498,15 @@ export default function QuarantineQueuePage() {
                     })}
                   </div>
                 </Panel>
+              ) : (
+                <Panel variant="glass" className="rounded-2xl p-10 text-center text-muted-foreground">
+                  当前筛选条件下没有隔离文档
+                </Panel>
               )}
             </div>
 
             <Panel variant="glass" className="rounded-2xl p-5 h-fit">
-              {!selected ? (
-                <div className="text-sm text-muted-foreground">选择一条隔离记录查看详情</div>
-              ) : (
+              {selected ? (
                 <div className="space-y-4">
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-muted-foreground uppercase ">Selected</div>
@@ -637,6 +635,8 @@ export default function QuarantineQueuePage() {
                     </ConfirmDialog>
                   </div>
                 </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">选择一条隔离记录查看详情</div>
               )}
             </Panel>
           </div>

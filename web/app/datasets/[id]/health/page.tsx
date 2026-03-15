@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Activity, ArrowLeft, BarChart3, Download, FileSearch, Loader2, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
+import { Activity, ArrowLeft, BarChart3, Download, FileSearch, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
@@ -17,7 +17,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetHealthToMarkdown } from '@/lib/dataset-health-export'
-import { cn, formatDate, formatFileSize } from '@/lib/utils'
+import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 
 import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } from '@/types'
 
@@ -31,7 +31,7 @@ function asDatasetId(raw: unknown): string | null {
 
 function sanitizeFilename(name: string) {
   const base = (name || '').trim() || 'dataset'
-  return base.replace(/[\\/:*?"<>|]+/g, '_')
+  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function downloadTextFile(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
@@ -41,7 +41,7 @@ function downloadTextFile(filename: string, content: string, mime = 'text/plain;
   a.href = url
   a.download = filename
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function sumRecordValues(m: Record<string, any> | undefined | null): number {
@@ -79,7 +79,7 @@ export default function DatasetHealthPage() {
   }, [datasetId])
 
   useEffect(() => {
-    void load()
+    detachPromise(load())
   }, [load])
 
   const profile = health?.profile
@@ -226,7 +226,7 @@ export default function DatasetHealthPage() {
                 入库策略
               </Button>
             ) : null}
-            <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={isLoading}>
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(load())} disabled={isLoading}>
               <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
@@ -274,17 +274,65 @@ export default function DatasetHealthPage() {
           <Panel className="p-5">
             <StatsGrid>
               <StatCard icon={FileSearch} label="文档总数" value={profile?.total_documents ?? (isLoading ? '…' : 0)} color="cyan" />
-              <StatCard icon={BarChart3} label="总大小" value={profile ? formatFileSize(profile.total_size_bytes || 0) : isLoading ? '…' : '-'} color="teal" />
+              <StatCard icon={BarChart3} label="总大小" value={(() => {
+    if (profile) {
+        return formatFileSize(profile.total_size_bytes || 0);
+    }
+    else {
+        if (isLoading) {
+            return '…';
+        }
+        else {
+            return '-';
+        }
+    }
+})()} color="teal" />
               <StatCard icon={ShieldAlert} label="失败" value={ingestion?.failed ?? (isLoading ? '…' : 0)} color="rose" />
               <StatCard icon={ShieldAlert} label="隔离" value={ingestion?.quarantined ?? (isLoading ? '…' : 0)} color="amber" />
               <StatCard
                 icon={Activity}
                 label="扫描 PDF"
-                value={profile ? `${profile.pdf_scan?.scanned ?? 0}/${pdfScanTotal || 0}` : isLoading ? '…' : '-'}
+                value={(() => {
+    if (profile) {
+        return `${profile.pdf_scan?.scanned ?? 0}/${pdfScanTotal || 0}`;
+    }
+    else {
+        if (isLoading) {
+            return '…';
+        }
+        else {
+            return '-';
+        }
+    }
+})()}
                 color="orange"
               />
-              <StatCard icon={ShieldAlert} label="PII" value={profile ? piiTotal : isLoading ? '…' : 0} color="sky" />
-              <StatCard icon={ShieldAlert} label="Secrets" value={profile ? secretsTotal : isLoading ? '…' : 0} color="sky" />
+              <StatCard icon={ShieldAlert} label="PII" value={(() => {
+    if (profile) {
+        return piiTotal;
+    }
+    else {
+        if (isLoading) {
+            return '…';
+        }
+        else {
+            return 0;
+        }
+    }
+})()} color="sky" />
+              <StatCard icon={ShieldAlert} label="Secrets" value={(() => {
+    if (profile) {
+        return secretsTotal;
+    }
+    else {
+        if (isLoading) {
+            return '…';
+        }
+        else {
+            return 0;
+        }
+    }
+})()} color="sky" />
             </StatsGrid>
           </Panel>
 
@@ -305,8 +353,8 @@ export default function DatasetHealthPage() {
                       <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                       <Tooltip />
                       <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                        {statusChartData.map((_entry, idx) => (
-                          <Cell key={`cell-${idx}`} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        {statusChartData.map((entry, idx) => (
+                          <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'status')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -329,8 +377,8 @@ export default function DatasetHealthPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={fileTypeChartData} dataKey="value" nameKey="name" outerRadius={110} label>
-                        {fileTypeChartData.map((_entry, idx) => (
-                          <Cell key={`cell-${idx}`} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                        {fileTypeChartData.map((entry, idx) => (
+                          <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                         ))}
                       </Pie>
                       <Tooltip />
@@ -349,8 +397,8 @@ export default function DatasetHealthPage() {
               <div className="text-xs text-muted-foreground">v1</div>
             </div>
             <div className="space-y-2">
-              {suggestions.map((s, idx) => (
-                <div key={idx} className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/20 p-3">
+              {suggestions.map((s) => (
+                <div key={`${s.severity}-${s.title}-${s.detail}`} className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/20 p-3">
                   <Badge variant={suggestionBadgeVariant(s.severity)} className="shrink-0">
                     {s.severity.toUpperCase()}
                   </Badge>
@@ -387,11 +435,11 @@ export default function DatasetHealthPage() {
             )}
           </Panel>
 
-          {!datasetId ? (
+          {datasetId ? null : (
             <Panel className="p-5">
               <EmptyState icon={Activity} title="缺少 datasetId" description="无法识别当前路由参数 id。" />
             </Panel>
-          ) : null}
+          )}
         </div>
       </PageScaffold>
     </AppFrame>

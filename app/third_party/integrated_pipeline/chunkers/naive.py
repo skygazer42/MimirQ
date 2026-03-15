@@ -522,7 +522,7 @@ class Markdown(MarkdownParser):
 
     def get_hyperlink_urls(self, soup):
         if soup:
-            return set([a.get('href') for a in soup.find_all('a') if a.get('href')])
+            return {a.get('href') for a in soup.find_all('a') if a.get('href')}
         return []
 
     def extract_image_urls_with_lines(self, text):
@@ -706,7 +706,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
         if binary is not None:
             embeds = extract_embed_file(binary)
         else:
-            raise Exception("Embedding extraction from file path is not supported.")
+            raise RuntimeError("Embedding extraction from file path is not supported.")
 
         # Recursively chunk each embedded file and collect results
         for embed_filename, embed_bytes in embeds:

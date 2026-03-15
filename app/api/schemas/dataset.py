@@ -3,7 +3,7 @@ Dataset-related Pydantic schemas.
 Defines data models for dataset creation, update, and query endpoints.
 """
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -35,22 +35,22 @@ class DatasetChunkTargetsV2(BaseModel):
     """
 
     # Token distribution objectives.
-    token_p50_min: Optional[int] = Field(default=None, ge=0, le=4000, description="Target P50 chunk token length (min)")
-    token_p50_max: Optional[int] = Field(default=None, ge=0, le=4000, description="Target P50 chunk token length (max)")
+    token_p50_min: int | None = Field(default=None, ge=0, le=4000, description="Target P50 chunk token length (min)")
+    token_p50_max: int | None = Field(default=None, ge=0, le=4000, description="Target P50 chunk token length (max)")
 
     # Ratio checks (percentage points, 0-100).
-    short_pct_warn: Optional[int] = Field(default=None, ge=0, le=100, description="Warn threshold for short chunk ratio (<=100 tokens)")
-    short_pct_fail: Optional[int] = Field(default=None, ge=0, le=100, description="Fail threshold for short chunk ratio (<=100 tokens)")
-    long_pct_warn: Optional[int] = Field(default=None, ge=0, le=100, description="Warn threshold for long chunk ratio (>=800 tokens)")
-    long_pct_fail: Optional[int] = Field(default=None, ge=0, le=100, description="Fail threshold for long chunk ratio (>=800 tokens)")
+    short_pct_warn: int | None = Field(default=None, ge=0, le=100, description="Warn threshold for short chunk ratio (<=100 tokens)")
+    short_pct_fail: int | None = Field(default=None, ge=0, le=100, description="Fail threshold for short chunk ratio (<=100 tokens)")
+    long_pct_warn: int | None = Field(default=None, ge=0, le=100, description="Warn threshold for long chunk ratio (>=800 tokens)")
+    long_pct_fail: int | None = Field(default=None, ge=0, le=100, description="Fail threshold for long chunk ratio (>=800 tokens)")
 
     # Chunk overlap waste objectives (percentage points, 0-100).
-    overlap_waste_p50_warn: Optional[int] = Field(default=None, ge=0, le=100, description="Warn threshold for overlap waste P50 (%)")
-    overlap_waste_p50_fail: Optional[int] = Field(default=None, ge=0, le=100, description="Fail threshold for overlap waste P50 (%)")
+    overlap_waste_p50_warn: int | None = Field(default=None, ge=0, le=100, description="Warn threshold for overlap waste P50 (%)")
+    overlap_waste_p50_fail: int | None = Field(default=None, ge=0, le=100, description="Fail threshold for overlap waste P50 (%)")
 
     # Chunk coverage objectives (percentage points, 0-100). This is best-effort and may be missing.
-    coverage_p50_warn: Optional[int] = Field(default=None, ge=0, le=100, description="Warn threshold for coverage P50 (%)")
-    coverage_p50_fail: Optional[int] = Field(default=None, ge=0, le=100, description="Fail threshold for coverage P50 (%)")
+    coverage_p50_warn: int | None = Field(default=None, ge=0, le=100, description="Warn threshold for coverage P50 (%)")
+    coverage_p50_fail: int | None = Field(default=None, ge=0, le=100, description="Fail threshold for coverage P50 (%)")
 
     model_config = ConfigDict(extra="ignore")
 
@@ -63,49 +63,49 @@ class DatasetRAGDefaults(BaseModel):
     """
 
     # Optional retrieval preset (applied by ChatRAGConfig validator when merged).
-    retrieval_profile: Optional[str] = None
+    retrieval_profile: str | None = None
     # Optional deterministic intent router toggle + policy overlay.
-    intent_router: Optional[bool] = None
-    intent_router_policy: Optional[Dict[str, Any]] = None
+    intent_router: bool | None = None
+    intent_router_policy: dict[str, Any] | None = None
 
     # Controlled query expansion for recall (optional).
-    enable_query_alias_expansion: Optional[bool] = None
-    query_aliases: Optional[Dict[str, List[str]]] = None
-    query_alias_max_queries: Optional[int] = Field(default=None, ge=0, le=20)
+    enable_query_alias_expansion: bool | None = None
+    query_aliases: dict[str, list[str]] | None = None
+    query_alias_max_queries: int | None = Field(default=None, ge=0, le=20)
 
     # Optional: per-dataset overrides for LLM multi-query generation (inherits global settings when None).
-    enable_multi_query: Optional[bool] = None
-    multi_query_count: Optional[int] = Field(default=None, ge=1, le=8)
-    multi_query_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
-    multi_query_max_chars: Optional[int] = Field(default=None, ge=0, le=2000)
+    enable_multi_query: bool | None = None
+    multi_query_count: int | None = Field(default=None, ge=1, le=8)
+    multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
 
-    top_k: Optional[int] = Field(default=None, ge=1, le=100)
-    score_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    retrieval_mode: Optional[str] = None  # hybrid | vector | keyword | mmr | auto
-    retrieval_contract_mode: Optional[str] = None
-    alpha: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    top_k: int | None = Field(default=None, ge=1, le=100)
+    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    retrieval_mode: str | None = None  # hybrid | vector | keyword | mmr | auto
+    retrieval_contract_mode: str | None = None
+    alpha: float | None = Field(default=None, ge=0.0, le=1.0)
 
     # Retrieval channel fusion strategy override (optional, dataset-scoped).
     # Supported: linear | rrf | budgeted_rrf | weighted
-    fusion_strategy: Optional[str] = None
+    fusion_strategy: str | None = None
     # Only used by fusion_strategy=budgeted_rrf (ignored otherwise).
-    fusion_budgets: Optional[Dict[str, int]] = None
-    fusion_min_scores: Optional[Dict[str, float]] = None
+    fusion_budgets: dict[str, int] | None = None
+    fusion_min_scores: dict[str, float] | None = None
     # Only used by fusion_strategy=weighted (ignored otherwise).
-    fusion_weights: Optional[Dict[str, float]] = None
+    fusion_weights: dict[str, float] | None = None
 
-    enable_weight_rerank: Optional[bool] = None
-    vector_weight: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    keyword_weight: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    mmr_lambda: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    enable_weight_rerank: bool | None = None
+    vector_weight: float | None = Field(default=None, ge=0.0, le=1.0)
+    keyword_weight: float | None = Field(default=None, ge=0.0, le=1.0)
+    mmr_lambda: float | None = Field(default=None, ge=0.0, le=1.0)
 
-    enable_reranker: Optional[bool] = None
-    reranker_provider: Optional[str] = None
-    reranker_top_n: Optional[int] = Field(default=None, ge=1, le=200)
+    enable_reranker: bool | None = None
+    reranker_provider: str | None = None
+    reranker_top_n: int | None = Field(default=None, ge=1, le=200)
 
     # Optional strict grounding mode: treat missing evidence as non-existent and abstain early.
     # Also forces post-generation claim-check (may buffer streaming).
-    visible_evidence_only: Optional[bool] = None
+    visible_evidence_only: bool | None = None
 
     model_config = ConfigDict(extra="ignore")
 
@@ -190,27 +190,27 @@ class DatasetRAGDefaults(BaseModel):
 
 class DatasetBase(BaseModel):
     name: str = Field(..., max_length=255)
-    description: Optional[str] = None
+    description: str | None = None
     permission: DatasetPermissionEnum = DatasetPermissionEnum.ALL_TEAM_MEMBERS
-    partial_member_list: Optional[List[str]] = None
-    partial_group_list: Optional[List[UUID]] = Field(default=None, max_length=200)
+    partial_member_list: list[str] | None = None
+    partial_group_list: list[UUID] | None = Field(default=None, max_length=200)
     # Dataset-level ingestion defaults (applied when the request uses global defaults).
-    default_parser_backend: Optional[str] = None
-    default_chunk_strategy: Optional[str] = None
+    default_parser_backend: str | None = None
+    default_chunk_strategy: str | None = None
     # Dataset-level default RAG settings (applied when chat doesn't specify).
-    rag_defaults: Optional[DatasetRAGDefaults] = None
+    rag_defaults: DatasetRAGDefaults | None = None
     # Dataset-level default RAG config template selectors (optional; used for safe rollout/rollback).
-    default_rag_config_template_id: Optional[UUID] = None
-    default_rag_config_template_key: Optional[str] = None
-    default_rag_config_ab_experiment_key: Optional[str] = None
+    default_rag_config_template_id: UUID | None = None
+    default_rag_config_template_key: str | None = None
+    default_rag_config_ab_experiment_key: str | None = None
     # Dataset-level default prompt settings (applied when chat doesn't specify).
-    default_prompt_template_id: Optional[UUID] = None
-    default_prompt_template_key: Optional[str] = None
-    default_prompt_ab_experiment_key: Optional[str] = None
+    default_prompt_template_id: UUID | None = None
+    default_prompt_template_key: str | None = None
+    default_prompt_ab_experiment_key: str | None = None
     # Dataset-level chunk targets (best-effort tuning objectives for profiling/auto-tune).
-    chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
+    chunk_targets_v2: DatasetChunkTargetsV2 | None = None
     # Dataset-level pipeline defaults (governance/indexing). If omitted, tenant defaults apply.
-    pipeline: Optional[DocumentPipelineOptions] = None
+    pipeline: DocumentPipelineOptions | None = None
 
 
 class DatasetCreate(DatasetBase):
@@ -218,49 +218,49 @@ class DatasetCreate(DatasetBase):
 
 
 class DatasetUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    permission: Optional[DatasetPermissionEnum] = None
-    partial_member_list: Optional[List[str]] = None
-    partial_group_list: Optional[List[UUID]] = Field(default=None, max_length=200)
-    default_parser_backend: Optional[str] = None
-    default_chunk_strategy: Optional[str] = None
-    rag_defaults: Optional[DatasetRAGDefaults] = None
-    default_rag_config_template_id: Optional[UUID] = None
-    default_rag_config_template_key: Optional[str] = None
-    default_rag_config_ab_experiment_key: Optional[str] = None
-    default_prompt_template_id: Optional[UUID] = None
-    default_prompt_template_key: Optional[str] = None
-    default_prompt_ab_experiment_key: Optional[str] = None
-    chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
-    pipeline: Optional[DocumentPipelineOptions] = None
+    name: str | None = None
+    description: str | None = None
+    permission: DatasetPermissionEnum | None = None
+    partial_member_list: list[str] | None = None
+    partial_group_list: list[UUID] | None = Field(default=None, max_length=200)
+    default_parser_backend: str | None = None
+    default_chunk_strategy: str | None = None
+    rag_defaults: DatasetRAGDefaults | None = None
+    default_rag_config_template_id: UUID | None = None
+    default_rag_config_template_key: str | None = None
+    default_rag_config_ab_experiment_key: str | None = None
+    default_prompt_template_id: UUID | None = None
+    default_prompt_template_key: str | None = None
+    default_prompt_ab_experiment_key: str | None = None
+    chunk_targets_v2: DatasetChunkTargetsV2 | None = None
+    pipeline: DocumentPipelineOptions | None = None
 
 
 class DatasetOut(OrmModel):
     id: UUID
     tenant_id: UUID
     name: str
-    description: Optional[str]
+    description: str | None
     permission: DatasetPermissionEnum
-    owner_id: Optional[str]
-    partial_member_list: Optional[List[str]] = None
-    partial_group_list: Optional[List[UUID]] = None
-    default_parser_backend: Optional[str] = None
-    default_chunk_strategy: Optional[str] = None
-    rag_defaults: Optional[DatasetRAGDefaults] = None
-    default_rag_config_template_id: Optional[UUID] = None
-    default_rag_config_template_key: Optional[str] = None
-    default_rag_config_ab_experiment_key: Optional[str] = None
-    default_prompt_template_id: Optional[UUID] = None
-    default_prompt_template_key: Optional[str] = None
-    default_prompt_ab_experiment_key: Optional[str] = None
-    chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
-    pipeline: Optional[DocumentPipelineOptions] = None
+    owner_id: str | None
+    partial_member_list: list[str] | None = None
+    partial_group_list: list[UUID] | None = None
+    default_parser_backend: str | None = None
+    default_chunk_strategy: str | None = None
+    rag_defaults: DatasetRAGDefaults | None = None
+    default_rag_config_template_id: UUID | None = None
+    default_rag_config_template_key: str | None = None
+    default_rag_config_ab_experiment_key: str | None = None
+    default_prompt_template_id: UUID | None = None
+    default_prompt_template_key: str | None = None
+    default_prompt_ab_experiment_key: str | None = None
+    chunk_targets_v2: DatasetChunkTargetsV2 | None = None
+    pipeline: DocumentPipelineOptions | None = None
 
 
 class DatasetListResponse(BaseModel):
     total: int
-    items: List[DatasetOut]
+    items: list[DatasetOut]
 
 
 class DatasetIngestionStats(BaseModel):
@@ -268,11 +268,11 @@ class DatasetIngestionStats(BaseModel):
 
     dataset_id: UUID
     total_documents: int
-    by_status: Dict[str, int] = Field(default_factory=dict)
+    by_status: dict[str, int] = Field(default_factory=dict)
     total_chunks: int = 0
     total_size: int = 0
     total_characters: int = 0
-    last_processed_at: Optional[datetime] = None
+    last_processed_at: datetime | None = None
 
 
 class DatasetConfigBundle(BaseModel):
@@ -283,19 +283,19 @@ class DatasetConfigBundle(BaseModel):
     across datasets without introducing visual workflow editors.
     """
 
-    default_parser_backend: Optional[str] = None
-    default_chunk_strategy: Optional[str] = None
-    rag_defaults: Optional[DatasetRAGDefaults] = None
-    default_rag_config_template_id: Optional[UUID] = None
-    default_rag_config_template_key: Optional[str] = None
-    default_rag_config_ab_experiment_key: Optional[str] = None
-    default_prompt_template_id: Optional[UUID] = None
-    default_prompt_template_key: Optional[str] = None
-    default_prompt_ab_experiment_key: Optional[str] = None
-    chunk_targets_v2: Optional[DatasetChunkTargetsV2] = None
-    pipeline: Optional[DocumentPipelineOptions] = None
-    ingestion_policy: Optional[IngestionPolicy] = None
-    fls_policy: Optional[FlsPolicy] = None
+    default_parser_backend: str | None = None
+    default_chunk_strategy: str | None = None
+    rag_defaults: DatasetRAGDefaults | None = None
+    default_rag_config_template_id: UUID | None = None
+    default_rag_config_template_key: str | None = None
+    default_rag_config_ab_experiment_key: str | None = None
+    default_prompt_template_id: UUID | None = None
+    default_prompt_template_key: str | None = None
+    default_prompt_ab_experiment_key: str | None = None
+    chunk_targets_v2: DatasetChunkTargetsV2 | None = None
+    pipeline: DocumentPipelineOptions | None = None
+    ingestion_policy: IngestionPolicy | None = None
+    fls_policy: FlsPolicy | None = None
 
 
 class DatasetConfigExport(BaseModel):
@@ -325,6 +325,6 @@ class DatasetPurgeResponse(BaseModel):
 
 class DatasetCloneRequest(BaseModel):
     name: str = Field(..., max_length=255)
-    description: Optional[str] = None
+    description: str | None = None
     copy_permission: bool = True
     copy_partial_members: bool = True

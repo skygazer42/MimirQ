@@ -44,8 +44,8 @@ def test_settings_put_writes_audit_log_without_secret_values(monkeypatch, tmp_pa
         return "test-account"
 
     # Keep test isolated from RBAC and runtime config mutation.
-    monkeypatch.setattr(settings_module, "_ensure_settings_writable", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(settings_module, "_apply_runtime_settings", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(settings_module, "_ensure_settings_writable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(settings_module, "_apply_runtime_settings", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(settings_module, "ENV_FILE", tmp_path / "test.env", raising=True)
     monkeypatch.setattr(settings, "SETTINGS_ENV_WRITE_ENABLED", True, raising=True)
 

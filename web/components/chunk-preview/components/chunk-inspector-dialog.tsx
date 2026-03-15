@@ -41,7 +41,7 @@ export function ChunkInspectorDialog({
   overrideUpdatedAt,
   onSave,
   onReset,
-}: {
+}: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   chunk: ChunkPreviewItem | null
@@ -50,7 +50,7 @@ export function ChunkInspectorDialog({
   overrideUpdatedAt?: number
   onSave: (payload: { content: string; metadata: Record<string, any> }) => void
   onReset: () => void
-}) {
+}>) {
   const pipelineCtx = usePipelineOptions()
   const [content, setContent] = useState('')
   const [metadataText, setMetadataText] = useState('{}')
@@ -92,7 +92,7 @@ export function ChunkInspectorDialog({
   const embeddingPrefixEnabled = Boolean(pipelineCtx.enabled && pipelineCtx.options.embedding_context_prefix_enabled)
   const embeddingText = useMemo(() => {
     if (!embeddingPrefixEnabled) return String(content ?? '')
-    const meta = (parsedMetadata || chunk?.metadata || null) as Record<string, any> | null
+    const meta = (parsedMetadata || chunk?.metadata || null)
     const sectionFull = sectionLabel?.full || null
     return buildEmbeddingText(String(content ?? ''), meta, sectionFull)
   }, [chunk?.metadata, content, embeddingPrefixEnabled, parsedMetadata, sectionLabel?.full])
@@ -108,7 +108,7 @@ export function ChunkInspectorDialog({
           <DialogDescription className="space-y-1">
             <div className="text-xs">
               {title}
-              {chunk?.page_number != null ? ` · P.${chunk.page_number}` : ''}
+              {chunk?.page_number == null ? '' : ` · P.${chunk.page_number}`}
               {chunk ? ` · ${chunk.start_index}-${chunk.end_index}` : ''}
             </div>
             {sectionLabel ? (

@@ -62,10 +62,23 @@ export function FileQueueItem({
   onClick,
   onRemove,
   onRetry,
-}: FileQueueItemProps) {
+}: Readonly<FileQueueItemProps>) {
   const ext = file.name.split('.').pop()?.toLowerCase() || 'txt'
   const config = FILE_TYPE_CONFIG[ext] || FILE_TYPE_CONFIG.txt
   const Icon = config.icon
+  const interactiveProps = onClick
+    ? {
+        onClick,
+        role: 'button' as const,
+        tabIndex: 0,
+        onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClick()
+          }
+        },
+      }
+    : {}
   const progressPct =
     file.progress == null || !Number.isFinite(Number(file.progress))
       ? 0
@@ -85,7 +98,7 @@ export function FileQueueItem({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs text-info">
               <Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" />
-              <span>解析中 {file.progress != null ? `${progressPct}%` : ''}</span>
+              <span>解析中 {file.progress == null ? '' : `${progressPct}%`}</span>
             </div>
             {file.progress !== undefined && (
               <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
@@ -147,7 +160,7 @@ export function FileQueueItem({
           ? 'bg-info/10 border-info/25 shadow-sm dark:shadow-none'
           : 'bg-card border-border hover:border-info/25 hover:bg-muted/40'
       )}
-      onClick={onClick}
+      {...interactiveProps}
     >
       <div className="flex items-start gap-3">
         {/* 文件图标 */}

@@ -26,7 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from app.core.config import settings
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         tenant_ids = [UUID(str(settings.DEFAULT_TENANT_ID))]
 
-    ran_at = datetime.now(timezone.utc)
+    ran_at = datetime.now(UTC)
     results: list[dict] = []
     ok = True
 

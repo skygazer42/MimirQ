@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import gzip
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -93,7 +93,7 @@ def test_get_kg_stats_counts(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
 
-    updated_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    updated_at = datetime(2026, 1, 1, tzinfo=UTC)
     db = _FakeDB(
         queries=[
             _FakeQuery(scalar=3),  # event_count
@@ -365,7 +365,7 @@ def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
     )
     assert out.event.id == UUID(int=10)
     assert out.entities[0].entity.id == UUID(int=20)
-    assert out.entities[0].weight == 0.7
+    assert out.entities[0].weight == pytest.approx(0.7)
     assert out.entities[0].role == "subject"
     assert out.entities[0].extra_data.get("chunk_id") == str(UUID(int=3))
     assert out.entities[0].extra_data.get("start_char") == 10

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import httpx
@@ -81,6 +82,7 @@ async def test_confluence_connector_applies_restriction_groups_as_doc_acl(monkey
     # Fake Confluence API calls via the http client pool.
     class _FakePool:
         async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
+            await asyncio.sleep(0)  # Sonar S7503
             if url.endswith("/content/search"):
                 payload = {
                     "_links": {"base": "https://example.atlassian.net/wiki"},
@@ -125,6 +127,7 @@ async def test_confluence_connector_applies_restriction_groups_as_doc_acl(monkey
     created_docs: list[_Doc] = []
 
     async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
+        await asyncio.sleep(0)  # Sonar S7503
         d = _Doc()
         created_docs.append(d)
         return d
@@ -274,6 +277,7 @@ async def test_confluence_incremental_replays_boundary_timestamp_and_skips_seen_
 
     class _FakePool:
         async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
+            await asyncio.sleep(0)  # Sonar S7503
             if url.endswith("/content/search"):
                 params = kwargs.get("params") or {}
                 seen["cql"] = params.get("cql")
@@ -307,6 +311,7 @@ async def test_confluence_incremental_replays_boundary_timestamp_and_skips_seen_
     monkeypatch.setattr(connectors, "get_http_client_pool", lambda: _FakePool(), raising=True)
 
     async def _fake_ingest(*_a, **kwargs):  # noqa: ANN001, ANN201
+        await asyncio.sleep(0)  # Sonar S7503
         body = kwargs.get("body")
         source_url = getattr(body, "url", None)
         if source_url and "/pages/124/" in source_url:

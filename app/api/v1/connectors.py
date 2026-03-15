@@ -14,7 +14,7 @@ import hashlib
 import html
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import parse_qs, quote, urlparse
@@ -107,7 +107,7 @@ CONNECTOR_RUN_NOT_FOUND_DETAIL = "Connector run not found"
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _is_http_or_https_url(value: str) -> bool:
@@ -2827,6 +2827,24 @@ def _parse_link_header_next(link_header: str | None) -> str | None:
     return None
 
 
+def _github_team_principal_key_from_repo_team_item(item: object, *, owner: str) -> str:
+    if not isinstance(item, dict):
+        return ""
+
+    slug = str(item.get("slug") or "").strip()
+    if not slug:
+        return ""
+
+    org_login = ""
+    org_obj = item.get("organization")
+    if isinstance(org_obj, dict):
+        org_login = str(org_obj.get("login") or "").strip()
+    if not org_login:
+        org_login = str(owner or "").strip()
+
+    return _github_team_principal_key(org=org_login, team_slug=slug)
+
+
 async def _github_fetch_repo_team_principal_keys(
     *,
     client: httpx.AsyncClient,
@@ -2859,16 +2877,7 @@ async def _github_fetch_repo_team_principal_keys(
         data = resp.json()
         items = data if isinstance(data, list) else []
         for it in items:
-            if not isinstance(it, dict):
-                continue
-            slug = str(it.get("slug") or "").strip()
-            org_obj = it.get("organization")
-            org_login = ""
-            if isinstance(org_obj, dict):
-                org_login = str(org_obj.get("login") or "").strip()
-            if not org_login:
-                org_login = o
-            key = _github_team_principal_key(org=org_login, team_slug=slug)
+            key = _github_team_principal_key_from_repo_team_item(it, owner=o)
             if not key or key in seen:
                 continue
             seen.add(key)
@@ -3844,6 +3853,57 @@ def _github_repo_path_is_included(path: str, include_set: set[str]) -> bool:
     return "" in include_set
 
 
+def _github_repo_listed_files_and_observed_paths(
+    *,
+    tree_items: list[dict[str, Any]],
+    tracked_paths: set[str],
+    include_set: set[str],
+    max_files: int,
+) -> tuple[list[tuple[str, str]], set[str]]:
+    files: list[tuple[str, str]] = []
+    observed_tracked_paths: set[str] = set()
+    max_files_bound = max(1, min(max_files, 200))
+
+    for item in tree_items:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("type") or "") != "blob":
+            continue
+
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        if path in tracked_paths:
+            observed_tracked_paths.add(path)
+        if not _github_repo_path_is_included(path, include_set):
+            continue
+
+        blob_sha = str(item.get("sha") or "").strip()
+        if len(files) < max_files_bound:
+            files.append((path, blob_sha))
+
+    return files, observed_tracked_paths
+
+
+def _github_repo_delta_files(
+    *,
+    files: list[tuple[str, str]],
+    existing_manifest: dict[str, str],
+    mode: str,
+    enable_source_acl: bool,
+) -> tuple[list[tuple[str, str]], int]:
+    delta_files: list[tuple[str, str]] = []
+    skipped_unchanged = 0
+
+    for path, blob_sha in files:
+        if (not enable_source_acl) and mode == "incremental" and existing_manifest.get(path) == blob_sha:
+            skipped_unchanged += 1
+            continue
+        delta_files.append((path, blob_sha))
+
+    return delta_files, skipped_unchanged
+
+
 def _build_github_repo_execution_plan(
     *,
     run_stats: dict[str, Any],
@@ -3856,35 +3916,21 @@ def _build_github_repo_execution_plan(
     existing_manifest = normalize_source_manifest(state.get("source_manifest"))
     tracked_paths = set(existing_manifest)
     resume_cursor_raw = get_resume_cursor(state)
-    files: list[tuple[str, str]] = []
-    observed_tracked_paths: set[str] = set()
-    max_files_bound = max(1, min(max_files, 200))
-
-    for item in tree_items:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("type") or "") != "blob":
-            continue
-        path = str(item.get("path") or "").strip()
-        if not path:
-            continue
-        blob_sha = str(item.get("sha") or "").strip()
-        if path in tracked_paths:
-            observed_tracked_paths.add(path)
-        if not _github_repo_path_is_included(path, include_set):
-            continue
-        if len(files) < max_files_bound:
-            files.append((path, blob_sha))
+    files, observed_tracked_paths = _github_repo_listed_files_and_observed_paths(
+        tree_items=tree_items,
+        tracked_paths=tracked_paths,
+        include_set=include_set,
+        max_files=max_files,
+    )
 
     is_resume_run = bool((run_stats or {}).get("resume_of")) or bool((not existing_manifest) and resume_cursor_raw > 0)
     mode = "incremental" if existing_manifest else "full"
-    delta_files: list[tuple[str, str]] = []
-    skipped_unchanged = 0
-    for path, blob_sha in files:
-        if (not enable_source_acl) and mode == "incremental" and existing_manifest.get(path) == blob_sha:
-            skipped_unchanged += 1
-            continue
-        delta_files.append((path, blob_sha))
+    delta_files, skipped_unchanged = _github_repo_delta_files(
+        files=files,
+        existing_manifest=existing_manifest,
+        mode=mode,
+        enable_source_acl=enable_source_acl,
+    )
 
     removed_paths = sorted(tracked_paths - observed_tracked_paths) if mode == "incremental" else []
     resume_cursor = resume_cursor_raw if (is_resume_run and mode == "full") else 0
@@ -4105,6 +4151,39 @@ def _persist_github_repo_progress(
     db.commit()
 
 
+def _github_repo_apply_processed_file_success(
+    *,
+    path: str,
+    blob_sha: str,
+    result: dict[str, Any],
+    created: int,
+    created_doc_ids: list[UUID],
+    delta_acl_docs_updated: int,
+    delta_acl_sources_updated: int,
+    source_manifest_state: dict[str, str],
+) -> dict[str, Any]:
+    created += 1
+    created_doc_ids = [*created_doc_ids, result["doc_id"]]
+
+    updated_existing = int(result.get("updated_existing") or 0)
+    delta_acl_docs_updated += updated_existing
+    if updated_existing:
+        delta_acl_sources_updated += 1
+    if path and blob_sha:
+        source_manifest_state = {
+            **source_manifest_state,
+            path: blob_sha,
+        }
+
+    return {
+        "created": created,
+        "created_doc_ids": created_doc_ids,
+        "delta_acl_docs_updated": delta_acl_docs_updated,
+        "delta_acl_sources_updated": delta_acl_sources_updated,
+        "source_manifest_state": source_manifest_state,
+    }
+
+
 async def _process_github_repo_files(
     db: Session,
     *,
@@ -4140,13 +4219,21 @@ async def _process_github_repo_files(
                 settings_map=settings_map,
                 source_acl_context=source_acl_context,
             )
-            created += 1
-            created_doc_ids.append(result["doc_id"])
-            delta_acl_docs_updated += int(result.get("updated_existing") or 0)
-            if int(result.get("updated_existing") or 0):
-                delta_acl_sources_updated += 1
-            if path and blob_sha:
-                source_manifest_state[path] = blob_sha
+            success_state = _github_repo_apply_processed_file_success(
+                path=path,
+                blob_sha=blob_sha,
+                result=result,
+                created=created,
+                created_doc_ids=created_doc_ids,
+                delta_acl_docs_updated=delta_acl_docs_updated,
+                delta_acl_sources_updated=delta_acl_sources_updated,
+                source_manifest_state=source_manifest_state,
+            )
+            created = int(success_state["created"])
+            created_doc_ids = list(success_state["created_doc_ids"])
+            delta_acl_docs_updated = int(success_state["delta_acl_docs_updated"])
+            delta_acl_sources_updated = int(success_state["delta_acl_sources_updated"])
+            source_manifest_state = dict(success_state["source_manifest_state"])
         except Exception as exc:  # noqa: BLE001
             failed += 1
             run.stats = _append_connector_error(dict(run.stats or {}), url=path, exc=exc)
@@ -5116,7 +5203,7 @@ def _minio_object_token(obj: object) -> str:
     last_modified_raw = getattr(obj, "last_modified", None)
     if isinstance(last_modified_raw, datetime):
         last_modified = (
-            last_modified_raw.astimezone(timezone.utc)
+            last_modified_raw.astimezone(UTC)
             .replace(microsecond=0)
             .isoformat()
             .replace("+00:00", "Z")

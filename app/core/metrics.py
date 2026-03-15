@@ -6,7 +6,7 @@ Designed to be optional: metrics are enabled only when PROMETHEUS_ENABLED=true.
 
 
 import time
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
@@ -41,7 +41,7 @@ class PrometheusMiddleware:
     - status: HTTP response status code
     """
 
-    def __init__(self, app, *, exclude_paths: Optional[Iterable[str]] = None) -> None:
+    def __init__(self, app, *, exclude_paths: Iterable[str] | None = None) -> None:
         self.app = app
         self.exclude_paths = set(exclude_paths or [])
 

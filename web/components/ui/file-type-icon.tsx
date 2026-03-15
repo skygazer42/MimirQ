@@ -7,10 +7,22 @@ type FileTypeIconProps = {
   className?: string
 }
 
-export function FileTypeIcon({ type, className }: FileTypeIconProps) {
+export function FileTypeIcon({ type, className }: Readonly<FileTypeIconProps>) {
   const t = String(type || "").trim().toLowerCase()
   const Icon =
-    t === "pdf" ? FileSignature : t === "md" || t === "txt" ? FileText : File
+    (() => {
+    if (t === "pdf") {
+        return FileSignature;
+    }
+    else {
+        if (t === "md" || t === "txt") {
+            return FileText;
+        }
+        else {
+            return File;
+        }
+    }
+})()
 
   return <Icon className={cn("h-4 w-4", className)} aria-hidden="true" />
 }

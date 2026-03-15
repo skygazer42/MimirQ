@@ -5,7 +5,7 @@ type PageHeaderBarProps = {
   className?: string
 }
 
-export function PageHeaderBar({ children, className }: PageHeaderBarProps) {
+export function PageHeaderBar({ children, className }: Readonly<PageHeaderBarProps>) {
   return (
     <div
       className={cn(

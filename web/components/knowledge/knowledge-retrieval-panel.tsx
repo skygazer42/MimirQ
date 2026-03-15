@@ -5,12 +5,14 @@ import { BarChart3, Loader2, RefreshCw } from 'lucide-react'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { useIndexAudit } from '@/hooks/use-index-audit'
+import { detachPromise } from '@/lib/utils'
+
 
 type KnowledgeRetrievalPanelProps = {
   selectedDatasetId?: string
 }
 
-export function KnowledgeRetrievalPanel({ selectedDatasetId }: KnowledgeRetrievalPanelProps) {
+export function KnowledgeRetrievalPanel({ selectedDatasetId }: Readonly<KnowledgeRetrievalPanelProps>) {
   const { indexAudit, indexAuditError, indexAuditLoading, runIndexAudit } = useIndexAudit({ selectedDatasetId })
 
   return (
@@ -32,7 +34,7 @@ export function KnowledgeRetrievalPanel({ selectedDatasetId }: KnowledgeRetrieva
             type="button"
             variant="outline"
             className="h-9 rounded-xl border-border/60 bg-background/60 text-muted-foreground hover:bg-background gap-2"
-            onClick={() => void runIndexAudit()}
+            onClick={() => detachPromise(runIndexAudit())}
             disabled={!selectedDatasetId || indexAuditLoading}
           >
             {indexAuditLoading ? (

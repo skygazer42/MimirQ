@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
 import { generateRequestId } from '@/lib/request-id'
+import { detachPromise } from '@/lib/utils'
+
 
 export const ROOT_FOLDER_ID = 'root'
 
@@ -129,9 +131,9 @@ export const useParsedFiles = create<ParsedFilesState>()(
           files: state.files.filter((f) => f.id !== id),
         }))
         // Best-effort cleanup of large content cache.
-        if (typeof window !== 'undefined') {
-          void deleteDocContentFromCache(id)
-          void deleteDocSourceFromCache(id)
+        if (typeof globalThis.window !== 'undefined') {
+          detachPromise(deleteDocContentFromCache(id))
+          detachPromise(deleteDocSourceFromCache(id))
         }
       },
 
@@ -142,24 +144,24 @@ export const useParsedFiles = create<ParsedFilesState>()(
           ),
         }))
         // Best-effort: persist large markdown to IndexedDB (not localStorage).
-        if (typeof window !== 'undefined') {
+        if (typeof globalThis.window !== 'undefined') {
           const nextMarkdown =
             typeof (updates as any)?.markdownContent === 'string' ? (updates as any).markdownContent : undefined
           const nextOriginal =
             typeof (updates as any)?.originalMarkdownContent === 'string' ? (updates as any).originalMarkdownContent : undefined
           if (typeof nextMarkdown === 'string' || typeof nextOriginal === 'string') {
-            void saveDocContentToCache({
+            detachPromise(saveDocContentToCache({
               id,
               markdownContent: nextMarkdown ?? '',
               originalMarkdownContent: nextOriginal ?? '',
-            })
+            }))
           }
         }
       },
 
       clearAll: () => {
         set({ files: [], folders: [], activeFolderId: ROOT_FOLDER_ID })
-        if (typeof window !== 'undefined') {
+        if (typeof globalThis.window !== 'undefined') {
           // We don't enumerate all ids here; best-effort keeps localStorage clean, but cache may remain.
           // Users can clear site data if needed.
         }
@@ -209,10 +211,10 @@ export const useParsedFiles = create<ParsedFilesState>()(
           activeFolderId: idsToDelete.includes(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
         }))
 
-        if (typeof window !== 'undefined' && fileIdsToDelete.length > 0) {
+        if (typeof globalThis.window !== 'undefined' && fileIdsToDelete.length > 0) {
           for (const fileId of fileIdsToDelete) {
-            void deleteDocContentFromCache(fileId)
-            void deleteDocSourceFromCache(fileId)
+            detachPromise(deleteDocContentFromCache(fileId))
+            detachPromise(deleteDocSourceFromCache(fileId))
           }
         }
       },
@@ -250,7 +252,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
     }),
     {
       name: 'mimirq_parsed_files',
-      storage: createJSONStorage(() => (typeof window === 'undefined' ? noopStorage : localStorage)),
+      storage: createJSONStorage(() => (typeof globalThis.window === 'undefined' ? noopStorage : localStorage)),
       partialize: (state) => ({
         files: state.files.map((f) => ({
           ...f,
@@ -261,7 +263,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
         activeFolderId: state.activeFolderId,
       }),
       onRehydrateStorage: () => (state) => {
-        if (typeof window !== 'undefined') {
+        if (typeof globalThis.window !== 'undefined') {
           state?.setLoaded(true)
         }
       },
@@ -324,7 +326,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
           folders: normalizedFolders,
           activeFolderId: typeof normalized.activeFolderId === 'string' && normalized.activeFolderId ? normalized.activeFolderId : ROOT_FOLDER_ID,
           isLoaded: true,
-        } as any
+        }
       }
     }
   )

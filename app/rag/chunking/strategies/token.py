@@ -4,7 +4,6 @@ LangChain TokenTextSplitter wrapper.
 Splits text by token count using tiktoken encoding.
 """
 
-from typing import List
 
 from langchain_core.documents import Document
 from langchain_text_splitters import TokenTextSplitter
@@ -44,7 +43,7 @@ class LangChainTokenChunker(BaseChunker):
             # Fall back to a heuristic splitter at runtime.
             self.splitter = None
 
-    def _split_text_fallback(self, text: str) -> List[str]:
+    def _split_text_fallback(self, text: str) -> list[str]:
         raw = text or ""
         if not raw:
             return []
@@ -59,14 +58,14 @@ class LangChainTokenChunker(BaseChunker):
         overlap_chars = max(0, self.chunk_overlap_tokens * chars_per_token)
         step = max(1, chunk_chars - overlap_chars)
 
-        out: List[str] = []
+        out: list[str] = []
         for start in range(0, len(raw), step):
             out.append(raw[start : start + chunk_chars])
             if start + chunk_chars >= len(raw):
                 break
         return out
 
-    def _split_text(self, text: str) -> List[str]:
+    def _split_text(self, text: str) -> list[str]:
         splitter = self.splitter
         if splitter is not None:
             try:
@@ -76,8 +75,8 @@ class LangChainTokenChunker(BaseChunker):
                 pass
         return self._split_text_fallback(text)
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        chunks: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        chunks: list[Document] = []
         for doc in documents:
             text = doc.page_content
             split_texts = self._split_text(text)

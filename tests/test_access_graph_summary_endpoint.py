@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import operator
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -140,7 +140,7 @@ def _build_client(*, monkeypatch, role: str, db: _FakeDB, tenant_id: uuid.UUID):
 
 def test_access_graph_summary_denies_viewer(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     db = _FakeDB(
         groups=[TenantGroup(id=uuid.uuid4(), tenant_id=tenant_id, name="g", created_at=now, updated_at=now)],
         group_members=[],
@@ -159,7 +159,7 @@ def test_access_graph_summary_denies_viewer(monkeypatch):  # noqa: ANN001
 
 def test_access_graph_summary_includes_bounded_counts(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     g1 = TenantGroup(id=uuid.uuid4(), tenant_id=tenant_id, name="finance", created_at=now, updated_at=now)
     g2 = TenantGroup(id=uuid.uuid4(), tenant_id=tenant_id, name="eng", created_at=now, updated_at=now)

@@ -43,13 +43,13 @@ async def test_ollama_embedding_encode_uses_pooled_http_client_and_retries(
     monkeypatch.setattr(
         requests,
         "post",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("requests.post should not be used")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("requests.post should not be used")),
         raising=True,
     )
     monkeypatch.setattr(
         httpx,
         "AsyncClient",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("httpx.AsyncClient should not be instantiated")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("httpx.AsyncClient should not be instantiated")),
         raising=True,
     )
 
@@ -104,7 +104,7 @@ async def test_ollama_embedding_aencode_uses_pooled_http_client_and_retries(
     monkeypatch.setattr(
         httpx,
         "AsyncClient",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("httpx.AsyncClient should not be instantiated")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("httpx.AsyncClient should not be instantiated")),
         raising=True,
     )
 

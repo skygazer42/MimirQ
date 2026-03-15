@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -60,7 +60,7 @@ def test_groups_create_emits_audit_log(monkeypatch: pytest.MonkeyPatch) -> None:
         tenant_id=tenant_id,
         name="Engineering",
         external_id="ext-1",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         updated_at=None,
     )
     monkeypatch.setattr(groups.TenantGroupService, "create_group", lambda *_a, **_k: group_obj, raising=True)

@@ -16,7 +16,6 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -200,7 +199,7 @@ def _trim_long_surface_parentheses(text: str) -> str:
     return trimmed
 
 
-def best_suffix_match(text: str, candidates: List[str], *, min_chars: int = 2) -> Optional[str]:
+def best_suffix_match(text: str, candidates: list[str], *, min_chars: int = 2) -> str | None:
     """
     Return the longest candidate string that is a suffix of `text`.
 
@@ -294,7 +293,7 @@ def is_abbrev_token(text: str) -> bool:
     return True
 
 
-def choose_alias_direction(a: str, b: str) -> Optional[Tuple[str, str]]:
+def choose_alias_direction(a: str, b: str) -> tuple[str, str] | None:
     """
     Decide which surface is alias vs canonical.
 
@@ -319,7 +318,7 @@ def choose_alias_direction(a: str, b: str) -> Optional[Tuple[str, str]]:
     return None
 
 
-def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> List[AliasCandidate]:
+def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> list[AliasCandidate]:
     """
     Extract explicit alias candidates from text.
 
@@ -333,7 +332,7 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> List[Ali
     if lim <= 0:
         return []
 
-    out: List[AliasCandidate] = []
+    out: list[AliasCandidate] = []
     seen: set[tuple[str, str, str]] = set()
 
     def _push(a: str, b: str, method: str) -> None:
@@ -379,7 +378,7 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> List[Ali
     return out
 
 
-def split_trailing_parenthetical_alias(name: str) -> Optional[Tuple[str, str]]:
+def split_trailing_parenthetical_alias(name: str) -> tuple[str, str] | None:
     """
     If `name` looks like "Long (Short)" return (Long, Short). Otherwise None.
     """

@@ -5,21 +5,22 @@ import difflib
 import json
 import re
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkCase:
     case_id: str
     path: Path
-    golden_markdown_path: Optional[Path] = None
+    golden_markdown_path: Path | None = None
 
 
 _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
-_LIST_ITEM_RE = re.compile(r"(?m)^\s*(?:[-*+]|[0-9]+\.)\s+\S+")
+_LIST_ITEM_RE = re.compile(r"(?m)^\s*(?:[-*+]|\d+\.)\s+\S+")
 _FENCE_RE = re.compile(r"(?m)^\s*```")
 _TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
 _STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
@@ -89,7 +90,7 @@ def _similarity(a: str, b: str) -> float:
     return float(difflib.SequenceMatcher(None, aa, bb).ratio())
 
 
-def _load_cases(input_dir: Path, *, manifest_path: Optional[Path], max_files: int) -> list[BenchmarkCase]:
+def _load_cases(input_dir: Path, *, manifest_path: Path | None, max_files: int) -> list[BenchmarkCase]:
     if manifest_path:
         obj = json.loads(_read_text(manifest_path))
         rows = obj.get("cases") if isinstance(obj, dict) else obj
@@ -386,7 +387,7 @@ def main() -> int:
     from app.parsing.quality.scorer import score_pdf_quality
     from app.parsing.quality.text_quality import score_parsed_text_quality
 
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     report: dict[str, Any] = {
         "schema": "mimirq.parser_benchmark.v1",
         "generated_at": started_at.isoformat(),

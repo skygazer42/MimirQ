@@ -8,10 +8,11 @@ and the WorkflowMode enumeration.
 
 import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
-from typing import Any, Awaitable, Callable, Dict, List, Optional, TypedDict
+from typing import Any, TypedDict
 
 from app.core.config import settings
 
@@ -30,32 +31,32 @@ class WorkflowState(TypedDict, total=False):
     """Standard workflow state structure."""
     question: str
     query: str
-    history: List[Dict[str, str]]
+    history: list[dict[str, str]]
     context: str
-    contexts: List[Dict[str, Any]]
+    contexts: list[dict[str, Any]]
     answer: str
-    citations: List[Dict[str, Any]]
-    metadata: Dict[str, Any]
-    error: Optional[str]
+    citations: list[dict[str, Any]]
+    metadata: dict[str, Any]
+    error: str | None
     # Workflow-specific fields
-    route: Optional[str]
-    plan: Optional[List[str]]
+    route: str | None
+    plan: list[str] | None
     current_step: int
     iterations: int
     score: float
-    reasoning_trace: List[str]
+    reasoning_trace: list[str]
 
 
 @dataclass
 class WorkflowResult:
     """Result of a workflow execution."""
     success: bool
-    state: Dict[str, Any]
+    state: dict[str, Any]
     answer: str = ""
-    error: Optional[str] = None
+    error: str | None = None
     iterations: int = 0
-    execution_path: List[str] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    execution_path: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class BaseWorkflow(ABC):
@@ -74,7 +75,7 @@ class BaseWorkflow(ABC):
 
     def __init__(
         self,
-        name: Optional[str] = None,
+        name: str | None = None,
         max_iterations: int = 10,
         timeout_sec: int = 120,
         **kwargs,
@@ -107,7 +108,7 @@ class BaseWorkflow(ABC):
             return
 
         @wraps(original_run)
-        async def wrapped(state: Dict[str, Any]) -> "WorkflowResult":
+        async def wrapped(state: dict[str, Any]) -> "WorkflowResult":
             initial_state = dict(state or {})
             initial_state["_agent"] = {
                 "workflow": self.name,
@@ -148,7 +149,7 @@ class BaseWorkflow(ABC):
         pass
 
     @abstractmethod
-    async def run(self, state: Dict[str, Any]) -> WorkflowResult:
+    async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
         Execute the workflow.
 
@@ -160,7 +161,7 @@ class BaseWorkflow(ABC):
         """
         pass
 
-    def validate_state(self, state: Dict[str, Any]) -> bool:
+    def validate_state(self, state: dict[str, Any]) -> bool:
         """
         Validate that state has required fields.
 
@@ -172,15 +173,15 @@ class BaseWorkflow(ABC):
         """
         return "question" in state or "query" in state
 
-    def get_question(self, state: Dict[str, Any]) -> str:
+    def get_question(self, state: dict[str, Any]) -> str:
         """Extract question from state."""
         return state.get("question") or state.get("query") or ""
 
     def create_result(
         self,
-        state: Dict[str, Any],
+        state: dict[str, Any],
         success: bool = True,
-        error: Optional[str] = None,
+        error: str | None = None,
         **kwargs,
     ) -> WorkflowResult:
         """
@@ -216,8 +217,8 @@ class WorkflowStep:
     def __init__(
         self,
         name: str,
-        func: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
-        condition: Optional[Callable[[Dict[str, Any]], bool]] = None,
+        func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+        condition: Callable[[dict[str, Any]], bool] | None = None,
     ):
         """
         Initialize a workflow step.
@@ -231,13 +232,13 @@ class WorkflowStep:
         self.func = func
         self.condition = condition
 
-    async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, state: dict[str, Any]) -> dict[str, Any]:
         """Execute the step."""
         if self.condition and not self.condition(state):
             return state
         return await self.func(state)
 
-    def should_execute(self, state: Dict[str, Any]) -> bool:
+    def should_execute(self, state: dict[str, Any]) -> bool:
         """Check if step should execute."""
         if self.condition is None:
             return True

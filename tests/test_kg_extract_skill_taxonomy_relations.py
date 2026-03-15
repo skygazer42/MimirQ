@@ -80,6 +80,7 @@ async def test_kg_extract_skill_taxonomy_persists_tag_and_compose_edges(monkeypa
     monkeypatch.setattr(extractor_mod, "RelationRepository", _FakeRelationRepo, raising=True)
 
     async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
+        await asyncio.sleep(0)  # Sonar S7503
         return object()
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)

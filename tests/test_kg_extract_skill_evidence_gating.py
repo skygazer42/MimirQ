@@ -68,6 +68,7 @@ async def test_kg_extract_skills_without_evidence_are_dropped_when_required(monk
     monkeypatch.setattr(extractor_mod.EventExtractor, "_writeback_document_metadata", lambda *_a, **_k: None, raising=True)
 
     async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
+        await asyncio.sleep(0)  # Sonar S7503
         return object()
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)

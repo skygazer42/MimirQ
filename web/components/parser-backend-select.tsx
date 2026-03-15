@@ -17,7 +17,7 @@ export function ParserBackendSelect({
   label = '解析方式',
   className,
   compact = false,
-}: ParserBackendSelectProps) {
+}: Readonly<ParserBackendSelectProps>) {
   const { parserBackend, setParserBackend } = useParserBackendPreference()
   const currentOption = getParserOption(parserBackend)
 
@@ -29,22 +29,22 @@ export function ParserBackendSelect({
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-0.5">
           <div className="text-xs font-semibold text-foreground">{label}</div>
-          {!compact ? (
+          {compact ? null : (
             <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <Info className="h-3.5 w-3.5" />
               <span>影响解析、切块和上传流程</span>
             </div>
-          ) : null}
+          )}
         </div>
       </div>
 
       <ParserDropdown value={parserBackend} onChange={setParserBackend} compact={compact} />
 
-      {!compact ? (
+      {compact ? null : (
         <p className="text-xs leading-relaxed text-muted-foreground">
           {currentOption.description}
         </p>
-      ) : null}
+      )}
     </Panel>
   )
 }

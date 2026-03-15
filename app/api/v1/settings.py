@@ -11,7 +11,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Annotated, Any, Dict, Optional
+from typing import Annotated, Any
 from urllib.parse import urlparse, urlunparse
 from uuid import UUID
 
@@ -382,24 +382,24 @@ class SystemSettings(BaseModel):
 
 class UpdateSettingsRequest(BaseModel):
     """Update config request."""
-    feature_flags: Optional[FeatureFlags] = None
-    kg: Optional[KGConfig] = None
-    llm: Optional[LLMConfig] = None
-    embedding: Optional[EmbeddingConfig] = None
-    milvus: Optional[MilvusConfig] = None
-    rag: Optional[RAGConfig] = None
-    cache: Optional[CacheConfig] = None
-    url_ingest: Optional[UrlIngestConfig] = None
-    governance: Optional[GovernanceConfig] = None
-    mineru: Optional[MinerUConfig] = None
-    etl4llm: Optional[Etl4LlmConfig] = None
-    marker: Optional[MarkerConfig] = None
-    paddle_vl: Optional[PaddleVLConfig] = None
-    magicpdf: Optional[MagicPDFConfig] = None
-    observability: Optional[ObservabilityConfig] = None
-    safety: Optional[SafetyConfig] = None
-    chat: Optional[ChatConfig] = None
-    langgraph: Optional[LangGraphConfig] = None
+    feature_flags: FeatureFlags | None = None
+    kg: KGConfig | None = None
+    llm: LLMConfig | None = None
+    embedding: EmbeddingConfig | None = None
+    milvus: MilvusConfig | None = None
+    rag: RAGConfig | None = None
+    cache: CacheConfig | None = None
+    url_ingest: UrlIngestConfig | None = None
+    governance: GovernanceConfig | None = None
+    mineru: MinerUConfig | None = None
+    etl4llm: Etl4LlmConfig | None = None
+    marker: MarkerConfig | None = None
+    paddle_vl: PaddleVLConfig | None = None
+    magicpdf: MagicPDFConfig | None = None
+    observability: ObservabilityConfig | None = None
+    safety: SafetyConfig | None = None
+    chat: ChatConfig | None = None
+    langgraph: LangGraphConfig | None = None
 
 
 def _parse_bool(value: Any) -> bool:
@@ -423,7 +423,7 @@ def _parse_float(value: Any, *, default: float = 0.0) -> float:
         return default
 
 
-def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -> None:
+def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -> None:
     """
     Best-effort: apply updated .env values to the in-memory settings object so
     config changes can take effect without a restart.
@@ -681,7 +681,7 @@ def _apply_runtime_settings(env_vars: Dict[str, str], updated_keys: list[str]) -
         settings.LANGGRAPH_USE_SUBGRAPHS = _parse_bool(env_vars["LANGGRAPH_USE_SUBGRAPHS"])
 
 
-def read_env_file() -> Dict[str, str]:
+def read_env_file() -> dict[str, str]:
     """Read .env file."""
     env_vars = {}
     if ENV_FILE.exists():
@@ -694,7 +694,7 @@ def read_env_file() -> Dict[str, str]:
     return env_vars
 
 
-def write_env_file(env_vars: Dict[str, str]):
+def write_env_file(env_vars: dict[str, str]):
     """Write .env file, preserving comments and formatting (atomic best-effort)."""
     lines = []
     existing_keys = set()

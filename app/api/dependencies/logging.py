@@ -7,6 +7,8 @@ low-cardinality fields like the route template.
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import Request
 
 from app.core.logging_config import set_request_route
@@ -21,6 +23,7 @@ async def bind_route_context(request: Request) -> None:
     - We prefer route templates (e.g. `/api/v1/rag/retrieve`) over raw paths to avoid
       high-cardinality logs (e.g. `/api/v1/documents/<uuid>`).
     """
+    await asyncio.sleep(0)
     route = request.scope.get("route")
     template = getattr(route, "path", None)
     if template:

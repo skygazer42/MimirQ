@@ -2,7 +2,7 @@
 User service: register, authenticate, and tenant membership bootstrap.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -121,7 +121,7 @@ class UserService:
 
     @staticmethod
     def mark_login(db: Session, user: User) -> None:
-        user.last_login_at = datetime.now(timezone.utc)
+        user.last_login_at = datetime.now(UTC)
         db.add(user)
         db.commit()
 

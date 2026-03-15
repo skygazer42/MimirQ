@@ -10,7 +10,8 @@ Pattern: Split -> [Task1, Task2, ...] (parallel) -> Aggregate -> Result
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.rag.core.hashing import stable_hash
 from app.rag.workflows.base import (
@@ -28,14 +29,14 @@ class ParallelTask:
     def __init__(
         self,
         name: str,
-        func: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
+        func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         weight: float = 1.0,
     ):
         self.name = name
         self.func = func
         self.weight = weight
 
-    async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, state: dict[str, Any]) -> dict[str, Any]:
         """Execute the task."""
         return await self.func(state)
 
@@ -56,9 +57,9 @@ class ParallelWorkflow(BaseWorkflow):
 
     def __init__(
         self,
-        aggregator: Optional[Callable[[List[Dict[str, Any]]], Awaitable[Dict[str, Any]]]] = None,
+        aggregator: Callable[[list[dict[str, Any]]], Awaitable[dict[str, Any]]] | None = None,
         fail_fast: bool = False,
-        max_concurrency: Optional[int] = None,
+        max_concurrency: int | None = None,
         **kwargs,
     ):
         """
@@ -71,7 +72,7 @@ class ParallelWorkflow(BaseWorkflow):
             **kwargs: Additional configuration
         """
         super().__init__(**kwargs)
-        self._tasks: List[ParallelTask] = []
+        self._tasks: list[ParallelTask] = []
         self._aggregator = aggregator or self._default_aggregator
         self.fail_fast = fail_fast
         self.max_concurrency = max_concurrency
@@ -83,7 +84,7 @@ class ParallelWorkflow(BaseWorkflow):
     def add_task(
         self,
         name: str,
-        func: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
+        func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         weight: float = 1.0,
     ) -> "ParallelWorkflow":
         """
@@ -102,7 +103,7 @@ class ParallelWorkflow(BaseWorkflow):
 
     def set_aggregator(
         self,
-        aggregator: Callable[[List[Dict[str, Any]]], Awaitable[Dict[str, Any]]],
+        aggregator: Callable[[list[dict[str, Any]]], Awaitable[dict[str, Any]]],
     ) -> "ParallelWorkflow":
         """Set the result aggregator."""
         self._aggregator = aggregator
@@ -111,16 +112,16 @@ class ParallelWorkflow(BaseWorkflow):
     async def _execute_task(
         self,
         task: ParallelTask,
-        state: Dict[str, Any],
-        semaphore: Optional[asyncio.Semaphore],
-    ) -> Dict[str, Any]:
+        state: dict[str, Any],
+        semaphore: asyncio.Semaphore | None,
+    ) -> dict[str, Any]:
         """Execute a single task with optional semaphore."""
         if semaphore:
             async with semaphore:
                 return await task.execute(state)
         return await task.execute(state)
 
-    async def run(self, state: Dict[str, Any]) -> WorkflowResult:
+    async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
         Execute the parallel workflow.
 
@@ -144,7 +145,7 @@ class ParallelWorkflow(BaseWorkflow):
                 error="No tasks configured",
             )
 
-        execution_path: List[str] = ["parallel_start"]
+        execution_path: list[str] = ["parallel_start"]
 
         # Create semaphore for concurrency limiting
         semaphore = None
@@ -157,9 +158,9 @@ class ParallelWorkflow(BaseWorkflow):
             for task in self._tasks
         ]
 
-        results: List[Dict[str, Any]] = []
-        errors: List[str] = []
-        completed_tasks: List[str] = []
+        results: list[dict[str, Any]] = []
+        errors: list[str] = []
+        completed_tasks: list[str] = []
 
         try:
             if self.fail_fast:
@@ -227,7 +228,7 @@ class ParallelWorkflow(BaseWorkflow):
                 execution_path=execution_path,
             )
 
-    async def _default_aggregator(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _default_aggregator(self, results: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Default aggregation: merge all results.
 
@@ -237,8 +238,8 @@ class ParallelWorkflow(BaseWorkflow):
         if not results:
             return {}
 
-        merged: Dict[str, Any] = {}
-        all_contexts: List[Any] = []
+        merged: dict[str, Any] = {}
+        all_contexts: list[Any] = []
 
         for result in results:
             for key, value in result.items():
@@ -255,13 +256,13 @@ class ParallelWorkflow(BaseWorkflow):
         return merged
 
 
-async def create_multi_query_aggregator() -> Callable[[List[Dict[str, Any]]], Awaitable[Dict[str, Any]]]:
+async def create_multi_query_aggregator() -> Callable[[list[dict[str, Any]]], Awaitable[dict[str, Any]]]:
     """
     Create an aggregator for multi-query retrieval.
 
     Deduplicates and ranks contexts from multiple queries.
     """
-    async def aggregator(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def aggregator(results: list[dict[str, Any]]) -> dict[str, Any]:
         all_contexts = []
         seen_ids = set()
 

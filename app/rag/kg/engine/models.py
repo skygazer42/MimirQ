@@ -1,7 +1,7 @@
 """Engine result/log models."""
 
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -14,11 +14,11 @@ class TaskLog(BaseModel):
     stage: TaskStage
     level: LogLevel
     message: str
-    extra: Optional[Dict[str, Any]] = None
+    extra: dict[str, Any] | None = None
 
     def __init__(self, **data):
         if "timestamp" not in data:
-            data["timestamp"] = datetime.utcnow()
+            data["timestamp"] = datetime.now(UTC).replace(tzinfo=None)
         super().__init__(**data)
 
     def __str__(self) -> str:
@@ -29,11 +29,11 @@ class TaskLog(BaseModel):
 class StageResult(BaseModel):
     stage: TaskStage
     status: str  # success/failed/skipped
-    data_ids: List[str] = Field(default_factory=list)
-    data_full: List[Dict[str, Any]] = Field(default_factory=list)
-    stats: Dict[str, Any] = Field(default_factory=dict)
-    error: Optional[str] = None
-    duration: Optional[float] = None
+    data_ids: list[str] = Field(default_factory=list)
+    data_full: list[dict[str, Any]] = Field(default_factory=list)
+    stats: dict[str, Any] = Field(default_factory=dict)
+    error: str | None = None
+    duration: float | None = None
 
 
 class TaskResult(BaseModel):
@@ -43,20 +43,20 @@ class TaskResult(BaseModel):
     task_name: str
     status: TaskStatus
 
-    source_config_id: Optional[str] = None
-    article_id: Optional[str] = None
+    source_config_id: str | None = None
+    article_id: str | None = None
 
-    load_result: Optional[StageResult] = None
-    extract_result: Optional[StageResult] = None
-    search_result: Optional[StageResult] = None
+    load_result: StageResult | None = None
+    extract_result: StageResult | None = None
+    search_result: StageResult | None = None
 
-    stats: Dict[str, Any] = Field(default_factory=dict)
-    logs: List[TaskLog] = Field(default_factory=list)
-    error: Optional[str] = None
+    stats: dict[str, Any] = Field(default_factory=dict)
+    logs: list[TaskLog] = Field(default_factory=list)
+    error: str | None = None
 
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    duration: Optional[float] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    duration: float | None = None
 
     def to_dict(self, output_config: OutputConfig) -> dict:
         data = {

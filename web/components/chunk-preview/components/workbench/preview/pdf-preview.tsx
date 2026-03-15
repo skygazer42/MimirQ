@@ -157,7 +157,8 @@ export function PdfPreview() {
   )
 
   const handleClickBlockId = useCallback(
-    (blockId: string) => {
+    (blockId: string | null) => {
+      if (!blockId) return
       const idx = blockIdToChunkIndex.get(blockId)
       if (typeof idx !== 'number' || !Number.isFinite(idx)) return
       setSelectedChunkIndex(idx)

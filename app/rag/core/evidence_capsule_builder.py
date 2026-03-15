@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.rag.core.hashing import stable_json_hash, stable_json_hmac
@@ -129,7 +129,7 @@ def _capsule_payload_without_hash(
     }
     return {
         "schema": EVIDENCE_CAPSULE_SCHEMA_V1,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "query_for_retrieval": str(query_for_retrieval or ""),
         "request_context": dict(request_context or {}),
         "retrieval_summary": retrieval_summary,

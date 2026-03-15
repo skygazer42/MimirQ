@@ -7,7 +7,7 @@ by DB catalog connectors. They do NOT expose raw DB rows.
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -94,8 +94,8 @@ def list_db_catalog_tables(
     dataset_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    engine: Annotated[Optional[str], Query(description='Filter by engine: mysql|sqlserver')] = None,
-    q: Annotated[Optional[str], Query(description='Fuzzy search across db/schema/table names')] = None,
+    engine: Annotated[str | None, Query(description='Filter by engine: mysql|sqlserver')] = None,
+    q: Annotated[str | None, Query(description='Fuzzy search across db/schema/table names')] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -220,7 +220,7 @@ def get_db_catalog_table(
 def list_db_catalog_profiles(
     dataset_id: UUID,
     table_id: Annotated[UUID, Query(..., description='Catalog table id')],
-    entitlement_hash: Annotated[Optional[str], Query(description='Filter by entitlement hash (stable permission context)')] = None,
+    entitlement_hash: Annotated[str | None, Query(description='Filter by entitlement hash (stable permission context)')] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     *,

@@ -50,9 +50,9 @@ async def test_documents_parsed_content_returns_available_and_truncates(monkeypa
         original_markdown_content="b" * 60,
     )
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: None, raising=True)
-    monkeypatch.setattr(DatasetService, "get_dataset", lambda db, tenant_id, dataset_id: SimpleNamespace(id=dataset_id), raising=True)
-    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda db, ds, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "get_dataset", lambda _db, _tenant_id, dataset_id: SimpleNamespace(id=dataset_id), raising=True)
+    monkeypatch.setattr(DatasetService, "assert_dataset_readable", lambda _db, _ds, _account_id: None, raising=True)
 
     db = _FakeDB({DBDocument: doc, DocumentParsedContent: row})
 
@@ -86,7 +86,7 @@ async def test_documents_parsed_content_returns_unavailable_when_missing(monkeyp
 
     doc = SimpleNamespace(id=document_id, tenant_id=tenant_id, dataset_id=None, doc_metadata={})
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: None, raising=True)
 
     db = _FakeDB({DBDocument: doc, DocumentParsedContent: None})
     out = await get_document_parsed_content(
@@ -112,7 +112,7 @@ async def test_documents_parsed_content_404_when_document_missing(monkeypatch: p
     tenant_id = UUID(int=1)
     document_id = UUID(int=2)
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda db, tenant_id, account_id: None, raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: None, raising=True)
 
     db = _FakeDB({DBDocument: None})
 

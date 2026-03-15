@@ -10,7 +10,7 @@ import re
 import threading
 import time
 from collections import Counter, OrderedDict
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 import jieba
@@ -69,13 +69,13 @@ class HybridRetriever(BaseRetriever):
     rrf_k: int = settings.RETRIEVAL_RRF_K
     # Optional: override channel fusion behavior per retriever instance (used by Evidence API / ablations).
     # Only used when fusion_strategy="budgeted_rrf".
-    fusion_budgets: Optional[Dict[str, int]] = None
-    fusion_min_scores: Optional[Dict[str, float]] = None
+    fusion_budgets: dict[str, int] | None = None
+    fusion_min_scores: dict[str, float] | None = None
     # Only used when fusion_strategy="weighted".
-    fusion_weights: Optional[Dict[str, float]] = None
+    fusion_weights: dict[str, float] | None = None
     # Optional: when None, follow settings.SPARSE_RETRIEVAL_ENABLED dynamically (useful for tests / hot reload).
     # When set, acts as an explicit per-retriever override.
-    sparse_enabled: Optional[bool] = None
+    sparse_enabled: bool | None = None
     sparse_provider: str = Field(default_factory=lambda: settings.SPARSE_RETRIEVAL_PROVIDER)
     dedup_enabled: bool = settings.RETRIEVAL_DEDUP_ENABLED
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
@@ -83,56 +83,56 @@ class HybridRetriever(BaseRetriever):
     max_chunks_per_doc: int = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
     max_chunks_per_page: int = getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0)
     min_distinct_docs: int = settings.RETRIEVAL_MIN_DISTINCT_DOCS
-    tenant_id: Optional[UUID] = None
+    tenant_id: UUID | None = None
     # Optional: used for candidate-level ACL trimming when retrieval is not pre-scoped
     # by document_ids. When set, results are filtered fail-closed.
-    account_id: Optional[str] = None
+    account_id: str | None = None
     # Optional: dataset scope. When set, results are restricted to documents within the dataset.
-    dataset_id: Optional[UUID] = None
-    document_ids: Optional[List[UUID]] = None
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] | None = None
     # Metadata filtering
-    metadata_filter: Optional[Dict[str, Any]] = None
+    metadata_filter: dict[str, Any] | None = None
     metadata_filter_enabled: bool = getattr(settings, "RETRIEVAL_METADATA_FILTER_ENABLED", True)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    _bm25_retrievers: Dict[str, BM25Retriever] = PrivateAttr(default_factory=dict)
-    _bm25_docs: Dict[str, List[Document]] = PrivateAttr(default_factory=dict)
-    _bm25_doc_ids: Dict[str, set[str]] = PrivateAttr(default_factory=dict)
-    _chunk_id_lookup: Dict[str, Dict[str, str]] = PrivateAttr(default_factory=dict)
-    _bm25_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
+    _bm25_retrievers: dict[str, BM25Retriever] = PrivateAttr(default_factory=dict)
+    _bm25_docs: dict[str, list[Document]] = PrivateAttr(default_factory=dict)
+    _bm25_doc_ids: dict[str, set[str]] = PrivateAttr(default_factory=dict)
+    _chunk_id_lookup: dict[str, dict[str, str]] = PrivateAttr(default_factory=dict)
+    _bm25_build_locks: dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
     # LRU order for per-tenant BM25 caches (prevents unbounded growth in multi-tenant deployments).
     _bm25_cache_order: "OrderedDict[str, None]" = PrivateAttr(default_factory=OrderedDict)
     _bm25_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
     # Cache versions per BM25 scope key (used to invalidate dataset-scoped indices after ingest).
-    _bm25_cache_versions: Dict[str, str] = PrivateAttr(default_factory=dict)
+    _bm25_cache_versions: dict[str, str] = PrivateAttr(default_factory=dict)
     # Best-effort debug metrics for the last retrieval call (per retriever instance).
     # Used by debug endpoints / observability to expose trimming/overfetch behavior.
-    _last_debug_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    _last_debug_metrics: dict[str, Any] = PrivateAttr(default_factory=dict)
     # Per-query retrieval channel metrics (vector/BM25/lexical DB) for attribution/debugging.
     # Populated by `_hybrid_search` and embedded into `_last_debug_metrics` by `_get_relevant_documents`.
-    _last_channel_metrics: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    _last_channel_metrics: dict[str, Any] = PrivateAttr(default_factory=dict)
     # Doc/page diversity caps (max chunks per doc/page, min distinct docs) effects for the last call.
     # PII-safe: numeric only (no ids, no query text).
-    _last_diversity_caps: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    _last_diversity_caps: dict[str, Any] = PrivateAttr(default_factory=dict)
     # Cache whether pg_trgm is available for lexical DB search (per retriever instance).
-    _lexical_pg_trgm_available: Optional[bool] = PrivateAttr(default=None)
+    _lexical_pg_trgm_available: bool | None = PrivateAttr(default=None)
     # Optional sparse retrieval channel caches (per scope key).
-    _sparse_doc_vectors: Dict[str, Dict[str, SparseVector]] = PrivateAttr(default_factory=dict)
-    _sparse_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
+    _sparse_doc_vectors: dict[str, dict[str, SparseVector]] = PrivateAttr(default_factory=dict)
+    _sparse_build_locks: dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
     # Last sparse provider status for current query (PII-safe, low-cardinality).
-    _last_sparse_provider_status: Dict[str, Any] = PrivateAttr(default_factory=dict)
+    _last_sparse_provider_status: dict[str, Any] = PrivateAttr(default_factory=dict)
     # Optional ColBERT-style ANN retrieval caches (per scope key).
     # These are used only when settings.COLBERT_RETRIEVAL_ENABLED=true.
-    _colbert_index_cache: Dict[str, Any] = PrivateAttr(default_factory=dict)
-    _colbert_build_locks: Dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
+    _colbert_index_cache: dict[str, Any] = PrivateAttr(default_factory=dict)
+    _colbert_build_locks: dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
 
     def _effective_sparse_enabled(self) -> bool:
         if self.sparse_enabled is not None:
             return bool(self.sparse_enabled)
         return bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
 
-    def _resolve_sparse_provider_status(self, *, sparse_enabled: bool) -> Dict[str, Any]:
+    def _resolve_sparse_provider_status(self, *, sparse_enabled: bool) -> dict[str, Any]:
         from app.rag.retrieval.sparse import resolve_sparse_provider_capability
 
         return resolve_sparse_provider_capability(
@@ -142,7 +142,7 @@ class HybridRetriever(BaseRetriever):
             default_provider="deterministic",
         )
 
-    def _refresh_bm25_doc_ids(self, tenant_key: str, docs: List[Document] | None) -> None:
+    def _refresh_bm25_doc_ids(self, tenant_key: str, docs: list[Document] | None) -> None:
         if not docs:
             self._bm25_doc_ids.pop(tenant_key, None)
             return
@@ -157,15 +157,15 @@ class HybridRetriever(BaseRetriever):
                 doc_ids.add(s)
         self._bm25_doc_ids[tenant_key] = doc_ids
 
-    def _tenant_key(self, tenant_id: Optional[UUID]) -> str:
+    def _tenant_key(self, tenant_id: UUID | None) -> str:
         return str(tenant_id or settings.DEFAULT_TENANT_ID)
 
     def _bm25_scope_key(
         self,
         *,
         tenant_id: UUID,
-        dataset_id: Optional[UUID],
-        document_ids: Optional[List[UUID]],
+        dataset_id: UUID | None,
+        document_ids: list[UUID] | None,
     ) -> str:
         """
         Return the in-memory BM25 cache key for a retrieval scope.
@@ -200,7 +200,7 @@ class HybridRetriever(BaseRetriever):
     def _bm25_dataset_cache_version(
         self,
         *,
-        tenant_id: Optional[UUID],
+        tenant_id: UUID | None,
         dataset_id: UUID,
     ) -> str:
         """
@@ -209,7 +209,7 @@ class HybridRetriever(BaseRetriever):
         Cross-process goal: ingestion workers can "touch" the dataset row, and API instances
         observe the updated `updated_at` to invalidate their in-memory BM25 indices.
         """
-        tenant_uuid: Optional[UUID] = tenant_id
+        tenant_uuid: UUID | None = tenant_id
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
@@ -264,8 +264,8 @@ class HybridRetriever(BaseRetriever):
     def _resolve_candidate_cache_corpus_token(
         self,
         *,
-        tenant_id: Optional[UUID],
-        document_ids: Optional[List[UUID]],
+        tenant_id: UUID | None,
+        document_ids: list[UUID] | None,
     ) -> str | None:
         tenant_uuid = tenant_id or self.tenant_id
         if tenant_uuid is None:
@@ -291,7 +291,7 @@ class HybridRetriever(BaseRetriever):
         self,
         *,
         cache_key: str,
-        docs: List[Document],
+        docs: list[Document],
         version_token: str | None = None,
     ) -> None:
         """
@@ -364,7 +364,7 @@ class HybridRetriever(BaseRetriever):
             texts = [str(d.page_content or "") for d in (docs or []) if d is not None and d.id is not None]
             vecs = encoder.encode_batch(texts)
 
-            out: Dict[str, SparseVector] = {}
+            out: dict[str, SparseVector] = {}
             idx = 0
             for d in docs or []:
                 if d is None or d.id is None:
@@ -406,8 +406,8 @@ class HybridRetriever(BaseRetriever):
         self,
         *,
         cache_key: str,
-        corpus_docs: List[Document],
-        upsert_docs: List[Document],
+        corpus_docs: list[Document],
+        upsert_docs: list[Document],
         version_token: str | None = None,
     ) -> None:
         """
@@ -577,7 +577,7 @@ class HybridRetriever(BaseRetriever):
             if save_outcome is not None:
                 observe_sparse_index_save(provider=provider, outcome=save_outcome)
 
-    def _colbert_corpus_fingerprint(self, docs: List[Document]) -> str:
+    def _colbert_corpus_fingerprint(self, docs: list[Document]) -> str:
         """
         Stable fingerprint for a ColBERT ANN index corpus.
 
@@ -598,7 +598,7 @@ class HybridRetriever(BaseRetriever):
             h.update(b"\n")
         return h.hexdigest()[:24]
 
-    def _build_colbert_index(self, *, cache_key: str, docs: List[Document]) -> None:
+    def _build_colbert_index(self, *, cache_key: str, docs: list[Document]) -> None:
         """
         Build (or rebuild) a ColBERT-style ANN index for the current scope key.
 
@@ -689,8 +689,8 @@ class HybridRetriever(BaseRetriever):
         self,
         *,
         cache_key: str,
-        corpus_docs: List[Document],
-        upsert_docs: List[Document],
+        corpus_docs: list[Document],
+        upsert_docs: list[Document],
     ) -> None:
         """
         Incrementally update a ColBERT ANN index for a scope key.
@@ -813,7 +813,7 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
 
-    def _sparse_corpus_fingerprint(self, docs: List[Document]) -> str:
+    def _sparse_corpus_fingerprint(self, docs: list[Document]) -> str:
         """
         Stable fingerprint for a sparse index corpus.
 
@@ -889,9 +889,9 @@ class HybridRetriever(BaseRetriever):
     def _lazy_build_bm25_index(
         self,
         *,
-        tenant_id: Optional[UUID],
-        document_ids: Optional[List[UUID]],
-        dataset_id: Optional[UUID] = None,
+        tenant_id: UUID | None,
+        document_ids: list[UUID] | None,
+        dataset_id: UUID | None = None,
     ) -> bool:
         """Build BM25 index on-demand to mitigate cold-start in multi-process deployments."""
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
@@ -899,7 +899,7 @@ class HybridRetriever(BaseRetriever):
         if not bool(getattr(settings, "BM25_LAZY_BUILD_ENABLED", True)):
             return False
 
-        tenant_uuid: Optional[UUID] = tenant_id
+        tenant_uuid: UUID | None = tenant_id
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
@@ -1041,7 +1041,7 @@ class HybridRetriever(BaseRetriever):
                             q = _maybe_call(q, "execution_options", stream_results=True)
                             if max_chunks:
                                 q = q.limit(max_chunks)
-                            docs: List[Document] = []
+                            docs: list[Document] = []
                             for row in _iter_rows(q, 2000):
                                 (
                                     chunk_id,
@@ -1099,7 +1099,7 @@ class HybridRetriever(BaseRetriever):
                             if remaining <= 0:
                                 return True
                             q = q.limit(remaining)
-                        bm25_docs: List[Document] = []
+                        bm25_docs: list[Document] = []
                         for row in _iter_rows(q, 2000):
                             (
                                 chunk_id,
@@ -1157,7 +1157,7 @@ class HybridRetriever(BaseRetriever):
                 q = q.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
                 if max_chunks:
                     q = q.limit(max_chunks)
-                docs: List[Document] = []
+                docs: list[Document] = []
                 for row in _iter_rows(q, 2000):
                     (
                         chunk_id,
@@ -1199,16 +1199,16 @@ class HybridRetriever(BaseRetriever):
                     pass
 
     @staticmethod
-    def _bm25_tokenize(text: str) -> List[str]:
+    def _bm25_tokenize(text: str) -> list[str]:
         """Tokenize text for BM25 (shared)."""
         return tokenize_for_bm25(text)
 
-    def build_bm25_index(self, chunks: List[DocumentChunk], tenant_id: Optional[UUID] = None):
+    def build_bm25_index(self, chunks: list[DocumentChunk], tenant_id: UUID | None = None):
         """Build/rebuild BM25 index."""
         if not chunks:
             return
 
-        docs: List[Document] = []
+        docs: list[Document] = []
         for chunk in chunks:
             meta = dict(chunk.doc_metadata or {})
             meta.setdefault("tenant_id", str(chunk.tenant_id))
@@ -1225,9 +1225,9 @@ class HybridRetriever(BaseRetriever):
 
     def _build_bm25_index_from_documents(
         self,
-        docs: List[Document],
+        docs: list[Document],
         *,
-        tenant_id: Optional[UUID] = None,
+        tenant_id: UUID | None = None,
         cache_key: str | None = None,
     ) -> None:
         """Build BM25 from LangChain Document list (avoids dependency on ORM objects)."""
@@ -1238,7 +1238,7 @@ class HybridRetriever(BaseRetriever):
         self._bm25_retrievers[key] = retriever
         self._bm25_docs[key] = docs
         self._refresh_bm25_doc_ids(key, docs)
-        lookup: Dict[str, str] = {}
+        lookup: dict[str, str] = {}
         for d in docs:
             meta = d.metadata or {}
             doc_id = meta.get("document_id")
@@ -1258,8 +1258,8 @@ class HybridRetriever(BaseRetriever):
         db: Session,
         *,
         tenant_id: UUID,
-        dataset_id: Optional[UUID] = None,
-        document_ids: Optional[List[UUID]] = None,
+        dataset_id: UUID | None = None,
+        document_ids: list[UUID] | None = None,
         max_chunks: int = 0,
         batch_size: int = 2000,
     ) -> int:
@@ -1284,11 +1284,11 @@ class HybridRetriever(BaseRetriever):
         db: Session,
         *,
         tenant_id: UUID,
-        dataset_id: Optional[UUID] = None,
-        document_ids: Optional[List[UUID]] = None,
+        dataset_id: UUID | None = None,
+        document_ids: list[UUID] | None = None,
         max_chunks: int = 0,
         batch_size: int = 2000,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """
         Load retrieval documents from DB with streaming to avoid large ORM materialization spikes.
 
@@ -1319,7 +1319,7 @@ class HybridRetriever(BaseRetriever):
         if max_chunks and int(max_chunks) > 0:
             q = q.limit(int(max_chunks))
 
-        docs: List[Document] = []
+        docs: list[Document] = []
         for (
             chunk_id,
             content,
@@ -1347,9 +1347,9 @@ class HybridRetriever(BaseRetriever):
         db: Session,
         *,
         tenant_id: UUID,
-        dataset_id: Optional[UUID] = None,
+        dataset_id: UUID | None = None,
         batch_size: int = 2000,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Rebuild persisted retrieval artifacts for a tenant/dataset scope.
 
@@ -1400,7 +1400,7 @@ class HybridRetriever(BaseRetriever):
             "colbert_rebuilt": colbert_rebuilt,
         }
 
-    def upsert_bm25_documents(self, docs: List[Document], tenant_id: Optional[UUID] = None):
+    def upsert_bm25_documents(self, docs: list[Document], tenant_id: UUID | None = None):
         """
         Incrementally update BM25 index (avoids full DB scan each time).
         Note: BM25Retriever itself doesn't support incremental training, so we merge in-memory and rebuild.
@@ -1408,7 +1408,7 @@ class HybridRetriever(BaseRetriever):
         """
         if not docs:
             return
-        tenant_uuid: Optional[UUID] = tenant_id
+        tenant_uuid: UUID | None = tenant_id
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
@@ -1423,7 +1423,7 @@ class HybridRetriever(BaseRetriever):
             document_ids=None,
         )
         existing = self._bm25_docs.get(cache_key) or []
-        merged: Dict[str, Document] = {str(d.id): d for d in existing if d.id is not None}
+        merged: dict[str, Document] = {str(d.id): d for d in existing if d.id is not None}
         for d in docs:
             if d.id is None:
                 continue
@@ -1438,7 +1438,7 @@ class HybridRetriever(BaseRetriever):
         self._bm25_retrievers[cache_key] = retriever
         self._bm25_docs[cache_key] = merged_docs
         self._refresh_bm25_doc_ids(cache_key, merged_docs)
-        lookup: Dict[str, str] = {}
+        lookup: dict[str, str] = {}
         for d in merged_docs:
             meta = d.metadata or {}
             doc_id = meta.get("document_id")
@@ -1482,7 +1482,7 @@ class HybridRetriever(BaseRetriever):
             except Exception as exc:
                 logger.warning("ColBERT index update failed for scope %s: %s", cache_key, str(exc)[:200])
 
-    def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: Optional[UUID] = None):
+    def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: UUID | None = None):
         """Remove all chunks of a specified document from the BM25 index."""
         self.remove_from_bm25_index_by_metadata_filter(
             tenant_id=tenant_id,
@@ -1492,8 +1492,8 @@ class HybridRetriever(BaseRetriever):
     def remove_from_bm25_index_by_metadata_filter(
         self,
         *,
-        tenant_id: Optional[UUID] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> int:
         """
         Remove BM25 docs that match a metadata_filter (in-memory only).
@@ -1561,7 +1561,7 @@ class HybridRetriever(BaseRetriever):
             self._bm25_retrievers[scope_key] = retriever
             self._bm25_docs[scope_key] = filtered
             self._refresh_bm25_doc_ids(scope_key, filtered)
-            lookup: Dict[str, str] = {}
+            lookup: dict[str, str] = {}
             for d in filtered:
                 meta = d.metadata or {}
                 doc_id = meta.get("document_id")
@@ -1645,15 +1645,15 @@ class HybridRetriever(BaseRetriever):
         self,
         query: str,
         top_k: int = 10,
-        document_ids: Optional[List[UUID]] = None,
-        tenant_id: Optional[UUID] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """BM25 keyword retrieval (internal use, returns dicts with scores)."""
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             return []
 
-        tenant_uuid: Optional[UUID] = tenant_id
+        tenant_uuid: UUID | None = tenant_id
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
@@ -1704,7 +1704,7 @@ class HybridRetriever(BaseRetriever):
         processed_query = retriever.preprocess_func(query)
         scores = retriever.vectorizer.get_scores(processed_query)  # type: ignore[attr-defined]
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for doc, score in zip(docs, scores, strict=False):
             meta = doc.metadata or {}
             if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
@@ -1741,10 +1741,10 @@ class HybridRetriever(BaseRetriever):
         self,
         query: str,
         top_k: int = 10,
-        document_ids: Optional[List[UUID]] = None,
-        tenant_id: Optional[UUID] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Optional ColBERT-style ANN retrieval channel (production scaffold).
 
@@ -1759,7 +1759,7 @@ class HybridRetriever(BaseRetriever):
         if not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
             return []
 
-        tenant_uuid: Optional[UUID] = tenant_id
+        tenant_uuid: UUID | None = tenant_id
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
@@ -1920,10 +1920,10 @@ class HybridRetriever(BaseRetriever):
         if not scored:
             return []
 
-        doc_by_id: Dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
+        doc_by_id: dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
         allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         for idx, score in scored:
             if idx < 0 or idx >= len(doc_ids):
                 continue
@@ -1959,10 +1959,10 @@ class HybridRetriever(BaseRetriever):
         self,
         query: str,
         top_k: int = 10,
-        document_ids: Optional[List[UUID]] = None,
-        tenant_id: Optional[UUID] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Optional sparse retrieval channel (SPLADE-style scaffolding).
 
@@ -1975,7 +1975,7 @@ class HybridRetriever(BaseRetriever):
         if not self._effective_sparse_enabled():
             return []
 
-        tenant_uuid: Optional[UUID] = tenant_id
+        tenant_uuid: UUID | None = tenant_id
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
@@ -2109,10 +2109,10 @@ class HybridRetriever(BaseRetriever):
                     reason = "no_candidates"
                 return []
 
-            doc_by_id: Dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
+            doc_by_id: dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
             allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
 
-            results: List[Dict[str, Any]] = []
+            results: list[dict[str, Any]] = []
             for doc_id, score in scored:
                 doc = doc_by_id.get(str(doc_id))
                 if doc is None:
@@ -2181,10 +2181,10 @@ class HybridRetriever(BaseRetriever):
         *,
         query: str,
         top_k: int = 10,
-        document_ids: Optional[List[UUID]] = None,
-        tenant_id: Optional[UUID] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Persistent lexical retrieval backed by the primary Postgres DB.
 
@@ -2203,7 +2203,7 @@ class HybridRetriever(BaseRetriever):
         if not bool(getattr(settings, "LEXICAL_DB_ENABLED", True)):
             return []
 
-        tenant_uuid: Optional[UUID] = tenant_id
+        tenant_uuid: UUID | None = tenant_id
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
@@ -2213,8 +2213,8 @@ class HybridRetriever(BaseRetriever):
             return []
 
         # Best-effort: extract dataset scope from the metadata filter so we can push it down via join.
-        dataset_uuid: Optional[UUID] = None
-        dataset_str: Optional[str] = None
+        dataset_uuid: UUID | None = None
+        dataset_str: str | None = None
         if isinstance(metadata_filter, dict):
             ds_raw = metadata_filter.get("dataset_id")
             if isinstance(ds_raw, str) and ds_raw.strip():
@@ -2270,7 +2270,7 @@ class HybridRetriever(BaseRetriever):
                     q = q.filter(DocumentChunk.document_id.in_(document_ids))
                 return q
 
-            results_by_id: Dict[str, Dict[str, Any]] = {}
+            results_by_id: dict[str, dict[str, Any]] = {}
 
             # 1) Full-text search (FTS)
             try:
@@ -2464,8 +2464,8 @@ class HybridRetriever(BaseRetriever):
         query: str,
         top_k: int = 5,
         score_threshold: float = 0.7,
-        document_ids: Optional[List[UUID]] = None,
-        tenant_id: Optional[UUID] = None,
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
         alpha: float = 0.5,
         enable_weight_rerank: bool = True,
         vector_weight: float = 0.6,
@@ -2473,15 +2473,15 @@ class HybridRetriever(BaseRetriever):
         retrieval_mode: str = "hybrid",
         mmr_lambda: float = 0.7,
         mmr_fetch_k_multiplier: int = 4,
-        metadata_filter: Optional[Dict[str, Any]] = None,
+        metadata_filter: dict[str, Any] | None = None,
         requested_k: int | None = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Hybrid search: vector retrieval + BM25, optional reranking."""
         retrieval_mode = (retrieval_mode or "hybrid").lower()
 
         # Best-effort per-query debug metrics (low overhead, no external deps).
         # `_get_relevant_documents` will embed these into `_last_debug_metrics`.
-        channel_metrics: Dict[str, Any] = {
+        channel_metrics: dict[str, Any] = {
             "timing": {"vector_ms": 0.0, "colbert_ms": 0.0, "bm25_ms": 0.0, "fusion_ms": 0.0},
             "counts": {
                 "vector_candidates": 0,
@@ -2516,8 +2516,8 @@ class HybridRetriever(BaseRetriever):
                 full_metadata_filter.setdefault("dataset_id", ds_val)
             else:
                 full_metadata_filter = {"dataset_id": ds_val}
-        bm25_filter: Optional[Dict[str, Any]] = None
-        vector_filter: Optional[Dict[str, Any]] = None
+        bm25_filter: dict[str, Any] | None = None
+        vector_filter: dict[str, Any] | None = None
         if full_metadata_filter and isinstance(full_metadata_filter, dict):
             bm25_filter = {
                 k: v
@@ -2542,7 +2542,7 @@ class HybridRetriever(BaseRetriever):
                 "image_url",
                 "page_number",
             }
-            vf: Dict[str, Any] = {}
+            vf: dict[str, Any] = {}
             for k, v in bm25_filter.items():
                 if not isinstance(k, str):
                     continue
@@ -2579,7 +2579,7 @@ class HybridRetriever(BaseRetriever):
         want_lexical = retrieval_mode in ("hybrid", "keyword", "mmr") and lexical_db_enabled
         # Optional sparse retrieval (SPLADE-style scaffolding) is an additional sparse channel.
         want_sparse = retrieval_mode in ("hybrid", "keyword", "mmr") and self._effective_sparse_enabled()
-        keyword_strategy: Dict[str, Any] | None = None
+        keyword_strategy: dict[str, Any] | None = None
         if retrieval_mode == "keyword":
             if lexical_db_enabled:
                 want_bm25 = keyword_bm25_secondary_enabled
@@ -2614,7 +2614,7 @@ class HybridRetriever(BaseRetriever):
         cached = None
         cache_hit = False
         cache_eligible = bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False))
-        cache_meta: Dict[str, Any] = {
+        cache_meta: dict[str, Any] = {
             "enabled": bool(cache_eligible),
             "backend": "redis",
             "hit": False,
@@ -2695,7 +2695,7 @@ class HybridRetriever(BaseRetriever):
             fetch_k = top_k * max(1, mmr_fetch_k_multiplier)
 
         # 1) Vector retrieval
-        vector_results: List[Dict[str, Any]] = []
+        vector_results: list[dict[str, Any]] = []
         if want_vector:
             vector_store = get_vector_store()
             try:
@@ -2742,8 +2742,8 @@ class HybridRetriever(BaseRetriever):
                 logger.warning("ColBERT ANN search failed: %s", exc)
                 vector_results = []
 
-        bm25_results: List[Dict[str, Any]] = []
-        lexical_results: List[Dict[str, Any]] = []
+        bm25_results: list[dict[str, Any]] = []
+        lexical_results: list[dict[str, Any]] = []
         if retrieval_mode == "keyword":
             if want_lexical:
                 try:
@@ -2799,7 +2799,7 @@ class HybridRetriever(BaseRetriever):
                     lexical_results = []
 
         # 2c) Optional sparse channel (SPLADE-style)
-        sparse_results: List[Dict[str, Any]] = []
+        sparse_results: list[dict[str, Any]] = []
         self._last_sparse_provider_status = self._resolve_sparse_provider_status(
             sparse_enabled=self._effective_sparse_enabled()
         )
@@ -2884,7 +2884,7 @@ class HybridRetriever(BaseRetriever):
         if vector_results and document_ids:
             allowed = {str(did) for did in document_ids if did is not None}
             if allowed:
-                filtered_vec: List[Dict[str, Any]] = []
+                filtered_vec: list[dict[str, Any]] = []
                 for r in vector_results:
                     meta = r.get("metadata") or {}
                     did = meta.get("document_id") or r.get("document_id")
@@ -3100,7 +3100,7 @@ class HybridRetriever(BaseRetriever):
 
         # 5) Optional: LLM Reranker refinement (executed before final truncation)
         if merged_results and bool(self.enable_reranker):
-            rerank_meta: Dict[str, Any] = {
+            rerank_meta: dict[str, Any] = {
                 "enabled": True,
                 "provider": None,
                 "top_n_config": int(self.reranker_top_n or 0),
@@ -3128,8 +3128,8 @@ class HybridRetriever(BaseRetriever):
                 candidates_n = min(candidates_n, len(merged_results))
                 rerank_meta["candidates_n"] = int(candidates_n)
 
-                candidates: List[RerankCandidate] = []
-                id_to_doc: Dict[str, Dict[str, Any]] = {}
+                candidates: list[RerankCandidate] = []
+                id_to_doc: dict[str, dict[str, Any]] = {}
                 for doc in merged_results[:candidates_n]:
                     rid = self._result_key(doc)
                     text = (doc.get("content") or "").strip()
@@ -3227,7 +3227,7 @@ class HybridRetriever(BaseRetriever):
             pass
 
         before_diversity = len(merged_results or [])
-        div_caps: Dict[str, Any] = {}
+        div_caps: dict[str, Any] = {}
         merged_results = self._apply_document_diversity(merged_results, top_k=top_k, stats=div_caps)
         self._last_diversity_caps = div_caps
         after_diversity = len(merged_results or [])
@@ -3258,10 +3258,10 @@ class HybridRetriever(BaseRetriever):
 
     def _enrich_results_with_db_metadata(
         self,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         *,
-        stats: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        stats: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Vector store may return "trimmed" metadata (e.g., without img_id).
         Use chunk_id / (document_id, chunk_index) to look up DB and fill in key fields:
@@ -3291,7 +3291,7 @@ class HybridRetriever(BaseRetriever):
             dataset_filter = self.dataset_id
             embedding_space = current_embedding_space_hash()
 
-            chunk_ids: List[UUID] = []
+            chunk_ids: list[UUID] = []
             # First collect existing chunk_ids (prefer using these for lookup)
             for r in results:
                 cid = r.get("chunk_id")
@@ -3305,7 +3305,7 @@ class HybridRetriever(BaseRetriever):
                 except Exception:
                     continue
 
-            chunks_by_id: Dict[str, DocumentChunk] = {}
+            chunks_by_id: dict[str, DocumentChunk] = {}
             if chunk_ids:
                 q = db.query(DocumentChunk).filter(DocumentChunk.id.in_(chunk_ids))
                 if tenant_filter:
@@ -3331,7 +3331,7 @@ class HybridRetriever(BaseRetriever):
                     continue
                 missing_pairs.add((doc_uuid, chunk_idx))
 
-            chunks_by_pair: Dict[tuple[str, int], DocumentChunk] = {}
+            chunks_by_pair: dict[tuple[str, int], DocumentChunk] = {}
             if missing_pairs:
                 q = db.query(DocumentChunk).filter(
                     tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(missing_pairs))
@@ -3343,11 +3343,11 @@ class HybridRetriever(BaseRetriever):
 
             # Document-level user metadata is stored on documents.metadata.user (not per-chunk).
             # Fetch it once per document to enable metadata filtering like `document_user.tags`.
-            doc_user_by_id: Dict[str, Dict[str, Any]] = {}
-            doc_dataset_by_id: Dict[str, str] = {}
-            doc_ready_by_id: Dict[str, bool] = {}
-            doc_active_pipeline_key_by_id: Dict[str, str] = {}
-            doc_parse_quality_by_id: Dict[str, float] = {}
+            doc_user_by_id: dict[str, dict[str, Any]] = {}
+            doc_dataset_by_id: dict[str, str] = {}
+            doc_ready_by_id: dict[str, bool] = {}
+            doc_active_pipeline_key_by_id: dict[str, str] = {}
+            doc_parse_quality_by_id: dict[str, float] = {}
             try:
                 doc_ids: set[UUID] = set()
                 for ck in list(chunks_by_id.values()) + list(chunks_by_pair.values()):
@@ -3417,7 +3417,7 @@ class HybridRetriever(BaseRetriever):
 
             # Candidate-level ACL trimming (security trimming) and dataset scoping.
             # This enables "open scope" retrieval (no precomputed allowed_doc_ids list) without leaking data.
-            allowed_docs_str: Optional[set[str]] = None
+            allowed_docs_str: set[str] | None = None
             if tenant_filter and account_id:
                 try:
                     from app.services.document_access import get_allowed_document_id_sets
@@ -3465,7 +3465,7 @@ class HybridRetriever(BaseRetriever):
                 # If caller provided account_id but not tenant_id, fail closed.
                 allowed_docs_str = set()
 
-            resolved: List[Dict[str, Any]] = []
+            resolved: list[dict[str, Any]] = []
             for r in results:
                 meta = dict(r.get("metadata") or {})
                 cid = r.get("chunk_id") or meta.get("chunk_id")
@@ -3635,7 +3635,7 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
 
-    def _expand_results_with_neighbors(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _expand_results_with_neighbors(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Optionally attach adjacent chunks around top hits for better continuity."""
         if not results:
             return results
@@ -3652,7 +3652,7 @@ class HybridRetriever(BaseRetriever):
         # - We must avoid pulling neighbors from an inactive pipeline version, even for the same document.
         desired_pipeline_by_doc: dict[str, str] = {}
 
-        anchors: list[tuple[Dict[str, Any], UUID | None, int | None, str | None]] = []
+        anchors: list[tuple[dict[str, Any], UUID | None, int | None, str | None]] = []
         for r in results:
             meta = r.get("metadata") or {}
             doc_id = meta.get("document_id")
@@ -3723,7 +3723,7 @@ class HybridRetriever(BaseRetriever):
             if cid:
                 seen.add(str(cid))
 
-        expanded: list[Dict[str, Any]] = []
+        expanded: list[dict[str, Any]] = []
         added_neighbors = 0
         for r, doc_uuid, idx, _pk in anchors:
             meta = r.get("metadata") or {}
@@ -3787,7 +3787,7 @@ class HybridRetriever(BaseRetriever):
 
         return expanded
 
-    def _stitch_results_for_continuity(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _stitch_results_for_continuity(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Reorder results to improve continuity by stitching contiguous chunk ranges.
 
@@ -3804,14 +3804,14 @@ class HybridRetriever(BaseRetriever):
         if not bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False)):
             return results
 
-        def _score(r: Dict[str, Any]) -> float:
+        def _score(r: dict[str, Any]) -> float:
             try:
                 return float(r.get("score") or 0.0)
             except Exception:
                 return 0.0
 
-        stitchable_by_doc: dict[str, list[tuple[int, int, Dict[str, Any]]]] = {}
-        singleton_groups: list[tuple[float, int, list[Dict[str, Any]]]] = []
+        stitchable_by_doc: dict[str, list[tuple[int, int, dict[str, Any]]]] = {}
+        singleton_groups: list[tuple[float, int, list[dict[str, Any]]]] = []
 
         for pos, r in enumerate(results):
             meta = r.get("metadata") or {}
@@ -3827,11 +3827,11 @@ class HybridRetriever(BaseRetriever):
             else:
                 singleton_groups.append((_score(r), pos, [r]))
 
-        groups: list[tuple[float, str, int, int, int, list[Dict[str, Any]]]] = []
+        groups: list[tuple[float, str, int, int, int, list[dict[str, Any]]]] = []
         # group tuple: (score, doc_id, start_idx, end_idx, min_pos, items)
         for doc_id, entries in stitchable_by_doc.items():
             entries.sort(key=lambda t: (t[0], t[1]))
-            run: list[tuple[int, int, Dict[str, Any]]] = []
+            run: list[tuple[int, int, dict[str, Any]]] = []
             for idx, pos, r in entries:
                 if not run:
                     run = [(idx, pos, r)]
@@ -3860,13 +3860,13 @@ class HybridRetriever(BaseRetriever):
         # Sort stitched groups by their max relevance score, then deterministic tie-breakers.
         groups.sort(key=lambda g: (-float(g[0]), str(g[1]), int(g[2]), int(g[4])))
 
-        stitched: list[Dict[str, Any]] = []
+        stitched: list[dict[str, Any]] = []
         for _score_g, _doc_id, _start, _end, _pos, items in groups:
             stitched.extend(items)
 
         return stitched
 
-    def _auto_merge_parent_child(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _auto_merge_parent_child(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Parent-child auto merge (LlamaIndex AutoMergingRetriever-style, simplified).
 
@@ -3890,8 +3890,8 @@ class HybridRetriever(BaseRetriever):
         tenant_filter = self.tenant_id
 
         # Group child hits by (document_id, parent_id).
-        child_groups: dict[tuple[str, str], list[Dict[str, Any]]] = {}
-        parent_results: dict[tuple[str, str], Dict[str, Any]] = {}
+        child_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        parent_results: dict[tuple[str, str], dict[str, Any]] = {}
 
         # For neighbor cleanup (replace mode).
         child_chunk_ids_by_group: dict[tuple[str, str], set[str]] = {}
@@ -4006,7 +4006,7 @@ class HybridRetriever(BaseRetriever):
                         pass
 
         # Helper: materialize a parent result dict.
-        def _parent_result_for(key: tuple[str, str], *, best_child_score: float) -> Dict[str, Any] | None:
+        def _parent_result_for(key: tuple[str, str], *, best_child_score: float) -> dict[str, Any] | None:
             if key in parent_results:
                 # If parent is already present (e.g., neighbor expansion), bump its score and mark role.
                 existing = parent_results[key]
@@ -4056,7 +4056,7 @@ class HybridRetriever(BaseRetriever):
 
         if mode == "append":
             inserted: set[tuple[str, str]] = set()
-            out: list[Dict[str, Any]] = []
+            out: list[dict[str, Any]] = []
             for r in results:
                 out.append(r)
                 meta = r.get("metadata") or {}
@@ -4084,7 +4084,7 @@ class HybridRetriever(BaseRetriever):
             removed_child_ids |= child_chunk_ids_by_group.get(key, set())
 
         inserted: set[tuple[str, str]] = set()
-        out: list[Dict[str, Any]] = []
+        out: list[dict[str, Any]] = []
         for r in results:
             meta = r.get("metadata") or {}
             cid = r.get("chunk_id") or meta.get("chunk_id")
@@ -4133,7 +4133,7 @@ class HybridRetriever(BaseRetriever):
         query: str,
         *,
         run_manager: CallbackManagerForRetrieverRun,
-    ) -> List[Document]:
+    ) -> list[Document]:
         # Deterministic query normalization applied upstream of all retrieval channels.
         # Keep the original for debugging/observability (stored in _last_debug_metrics below).
         from app.query.normalize import normalize_query
@@ -4178,7 +4178,7 @@ class HybridRetriever(BaseRetriever):
         if str(self.retrieval_mode or "").strip().lower() == "mmr":
             fetch_k = int(search_k) * max(1, int(self.mmr_fetch_k_multiplier or 0))
 
-        debug: Dict[str, Any] = {
+        debug: dict[str, Any] = {
             "requested_k": int(requested_k),
             "search_k": int(search_k),
             "fetch_k": int(fetch_k),
@@ -4261,7 +4261,7 @@ class HybridRetriever(BaseRetriever):
                 debug["diversity"] = div
         except Exception:
             pass
-        enrich1: Dict[str, Any] = {}
+        enrich1: dict[str, Any] = {}
         results = self._enrich_results_with_db_metadata(results, stats=enrich1)
         debug["enrich_pass1"] = enrich1
         n_enrich1 = len(results or [])
@@ -4275,12 +4275,12 @@ class HybridRetriever(BaseRetriever):
         # Neighbor expansion / parent-child merges can introduce additional chunks that were
         # not part of the original retrieval result set. Re-apply DB enrichment + ACL/version
         # trimming to guarantee defense-in-depth and avoid leaking stale/non-active pipelines.
-        enrich2: Dict[str, Any] = {}
+        enrich2: dict[str, Any] = {}
         results = self._enrich_results_with_db_metadata(results, stats=enrich2)
         debug["enrich_pass2"] = enrich2
 
         # Optional: lifecycle governance-aware retrieval policy (disabled by default).
-        gov_stats: Dict[str, Any] = {}
+        gov_stats: dict[str, Any] = {}
         results = self._apply_governance_policy(results, stats=gov_stats)
         if gov_stats:
             debug["governance_policy"] = gov_stats
@@ -4295,7 +4295,7 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
 
-        docs: List[Document] = []
+        docs: list[Document] = []
         for r in prefix:
             meta = dict(r.get("metadata") or {})
             meta["score"] = r.get("score")
@@ -4328,10 +4328,10 @@ class HybridRetriever(BaseRetriever):
 
     def _apply_governance_policy(
         self,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         *,
-        stats: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        stats: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Apply optional lifecycle governance preferences at the *final candidate ranking* stage.
 
@@ -4503,7 +4503,7 @@ class HybridRetriever(BaseRetriever):
 
             now_ts = time.time()
             boosts: list[float] = []
-            scored: list[tuple[float, int, Dict[str, Any]]] = []
+            scored: list[tuple[float, int, dict[str, Any]]] = []
             for i, r in enumerate(out):
                 try:
                     base = float(r.get("score") or r.get("retrieval_score") or 0.0)
@@ -4567,10 +4567,10 @@ class HybridRetriever(BaseRetriever):
         query: str,
         *,
         run_manager: AsyncCallbackManagerForRetrieverRun,
-    ) -> List[Document]:
+    ) -> list[Document]:
         return self._get_relevant_documents(query, run_manager=CallbackManagerForRetrieverRun.get_noop_manager())
 
-    def _result_key(self, result: Dict[str, Any]) -> str:
+    def _result_key(self, result: dict[str, Any]) -> str:
         meta = result.get("metadata") or {}
         doc_id = meta.get("document_id")
         chunk_index = meta.get("chunk_index")
@@ -4582,12 +4582,12 @@ class HybridRetriever(BaseRetriever):
         content = str(result.get("content") or "")
         return f"content:{stable_hash(content)}"
 
-    def _get_doc_id(self, result: Dict[str, Any]) -> str:
+    def _get_doc_id(self, result: dict[str, Any]) -> str:
         meta = result.get("metadata") or {}
         doc_id = meta.get("document_id")
         return str(doc_id) if doc_id is not None else ""
 
-    def _match_metadata_filter(self, meta: Dict[str, Any], filter_spec: Dict[str, Any]) -> bool:
+    def _match_metadata_filter(self, meta: dict[str, Any], filter_spec: dict[str, Any]) -> bool:
         return match_metadata_filter(meta, filter_spec)
 
     @staticmethod
@@ -4629,7 +4629,7 @@ class HybridRetriever(BaseRetriever):
         norm = re.sub(r"\s+", " ", (text or "").strip())
         return norm.casefold()
 
-    def _deduplicate_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _deduplicate_results(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not results or not bool(self.dedup_enabled):
             return results
 
@@ -4650,8 +4650,8 @@ class HybridRetriever(BaseRetriever):
         seen_chunk_ids: set[str] = set()
         seen_content_hashes: set[str] = set()
         seen_fingerprints: set[str] = set()
-        kept: List[Dict[str, Any]] = []
-        kept_tokens_by_doc: Dict[str, List[set[str]]] = {}
+        kept: list[dict[str, Any]] = []
+        kept_tokens_by_doc: dict[str, list[set[str]]] = {}
         kept_simhashes: list[int] = []
         dropped_near = 0
         dropped_content_hash = 0
@@ -4745,16 +4745,16 @@ class HybridRetriever(BaseRetriever):
 
     def _apply_document_diversity(
         self,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         *,
         top_k: int,
-        stats: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        stats: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         max_per_doc = int(self.max_chunks_per_doc or 0)
         max_per_page = int(getattr(self, "max_chunks_per_page", 0) or 0)
         min_docs = int(self.min_distinct_docs or 0)
 
-        def _page_key(r: Dict[str, Any]) -> tuple[str, int] | None:
+        def _page_key(r: dict[str, Any]) -> tuple[str, int] | None:
             meta = r.get("metadata") or {}
             doc_id = self._get_doc_id(r)
             if not doc_id:
@@ -4812,17 +4812,17 @@ class HybridRetriever(BaseRetriever):
                 )
             return results
 
-        groups: Dict[str, List[Dict[str, Any]]] = {}
+        groups: dict[str, list[dict[str, Any]]] = {}
         for r in results:
             groups.setdefault(self._get_doc_id(r), []).append(r)
 
-        must_have: List[Dict[str, Any]] = []
+        must_have: list[dict[str, Any]] = []
         if min_docs > 0:
             firsts = [items[0] for items in groups.values() if items]
             firsts.sort(key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
             must_have = firsts[: max(0, min(min_docs, len(firsts), top_k))]
 
-        selected: List[Dict[str, Any]] = []
+        selected: list[dict[str, Any]] = []
         used_keys: set[str] = set()
         per_doc = Counter()
         per_page = Counter()
@@ -4838,7 +4838,7 @@ class HybridRetriever(BaseRetriever):
             if pk is not None:
                 per_page[pk] += 1
 
-        overflow: List[Dict[str, Any]] = []
+        overflow: list[dict[str, Any]] = []
         for r in results:
             if len(selected) >= top_k:
                 break
@@ -4893,15 +4893,15 @@ class HybridRetriever(BaseRetriever):
 
     def _merge_results(
         self,
-        vector_results: List[Dict[str, Any]],
-        bm25_results: List[Dict[str, Any]],
-        lexical_results: Optional[List[Dict[str, Any]]] = None,
-        sparse_results: Optional[List[Dict[str, Any]]] = None,
+        vector_results: list[dict[str, Any]],
+        bm25_results: list[dict[str, Any]],
+        lexical_results: list[dict[str, Any]] | None = None,
+        sparse_results: list[dict[str, Any]] | None = None,
         alpha: float = 0.5,
         fusion_strategy: str | None = None,
         rrf_k: int | None = None,
         top_k: int | None = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Merge retrieval channel results into a single ranked list."""
 
         lexical_results = list(lexical_results or [])
@@ -4914,7 +4914,7 @@ class HybridRetriever(BaseRetriever):
         field_aware_title_boost = min(field_aware_title_boost, field_aware_max_boost)
         field_aware_heading_boost = min(field_aware_heading_boost, field_aware_max_boost)
 
-        def _resolve_field_signal(result: Dict[str, Any]) -> str:
+        def _resolve_field_signal(result: dict[str, Any]) -> str:
             meta = result.get("metadata") or {}
             hinted = str(
                 meta.get("embedding_field_role")
@@ -4941,14 +4941,14 @@ class HybridRetriever(BaseRetriever):
                 return field_aware_heading_boost
             return 0.0
 
-        def normalize(results: List[Dict[str, Any]], *, channel: str) -> Dict[str, Dict[str, Any]]:
+        def normalize(results: list[dict[str, Any]], *, channel: str) -> dict[str, dict[str, Any]]:
             if not results:
                 return {}
             scores = [r.get("score", 0.0) for r in results]
             min_score = min(scores)
             max_score = max(scores)
             rng = max_score - min_score if max_score > min_score else 1.0
-            out: Dict[str, Dict[str, Any]] = {}
+            out: dict[str, dict[str, Any]] = {}
             for r in results:
                 key = self._result_key(r)
                 norm_score = (r.get("score", 0.0) - min_score) / rng
@@ -4974,7 +4974,7 @@ class HybridRetriever(BaseRetriever):
         lexical_norm = normalize(lexical_results, channel="lexical")
         sparse_norm = normalize(sparse_results, channel="sparse")
 
-        def _attach_field_aware_signal(item: Dict[str, Any], key: str) -> None:
+        def _attach_field_aware_signal(item: dict[str, Any], key: str) -> None:
             field_signal = vector_norm.get(key, {}).get("field_aware_signal")
             field_boost = float(vector_norm.get(key, {}).get("field_aware_boost") or 0.0)
             if field_signal:
@@ -5006,7 +5006,7 @@ class HybridRetriever(BaseRetriever):
 
         fusion = (fusion_strategy or "linear").lower().strip()
         if fusion in ("rrf", "reciprocal_rank_fusion"):
-            def _rank_sort_key(r: Dict[str, Any]) -> tuple[float, str]:
+            def _rank_sort_key(r: dict[str, Any]) -> tuple[float, str]:
                 # Deterministic ordering is important for regression replay.
                 return (-float(r.get("score", 0.0) or 0.0), self._result_key(r))
 
@@ -5015,10 +5015,10 @@ class HybridRetriever(BaseRetriever):
             l_sorted = sorted(lexical_results, key=_rank_sort_key)
             s_sorted = sorted(sparse_results, key=_rank_sort_key)
 
-            v_rank: Dict[str, int] = {}
-            b_rank: Dict[str, int] = {}
-            l_rank: Dict[str, int] = {}
-            s_rank: Dict[str, int] = {}
+            v_rank: dict[str, int] = {}
+            b_rank: dict[str, int] = {}
+            l_rank: dict[str, int] = {}
+            s_rank: dict[str, int] = {}
             for idx, r in enumerate(v_sorted, 1):
                 key = self._result_key(r)
                 if key not in v_rank:
@@ -5039,8 +5039,8 @@ class HybridRetriever(BaseRetriever):
             k0 = int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60)
             k0 = max(1, k0)
 
-            merged: Dict[str, Dict[str, Any]] = {}
-            raw_scores: List[float] = []
+            merged: dict[str, dict[str, Any]] = {}
+            raw_scores: list[float] = []
             keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
             for key in keys:
                 v_data = vector_norm.get(key, {}).get("data")
@@ -5104,7 +5104,7 @@ class HybridRetriever(BaseRetriever):
                     raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
                     item["score"] = (raw - min_s) / rng
 
-            def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
+            def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
                 return (
                     -float(item.get("score", 0.0) or 0.0),
                     -float(item.get("rrf_score_raw", 0.0) or 0.0),
@@ -5118,7 +5118,7 @@ class HybridRetriever(BaseRetriever):
             return sorted(merged.values(), key=_sort_key)
 
         if fusion in ("budgeted_rrf", "budget_rrf"):
-            def _rank_sort_key(r: Dict[str, Any]) -> tuple[float, str]:
+            def _rank_sort_key(r: dict[str, Any]) -> tuple[float, str]:
                 # Deterministic ordering is important for regression replay.
                 return (-float(r.get("score", 0.0) or 0.0), self._result_key(r))
 
@@ -5127,10 +5127,10 @@ class HybridRetriever(BaseRetriever):
             l_sorted = sorted(lexical_results, key=_rank_sort_key)
             s_sorted = sorted(sparse_results, key=_rank_sort_key)
 
-            v_rank: Dict[str, int] = {}
-            b_rank: Dict[str, int] = {}
-            l_rank: Dict[str, int] = {}
-            s_rank: Dict[str, int] = {}
+            v_rank: dict[str, int] = {}
+            b_rank: dict[str, int] = {}
+            l_rank: dict[str, int] = {}
+            s_rank: dict[str, int] = {}
             for idx, r in enumerate(v_sorted, 1):
                 key = self._result_key(r)
                 if key not in v_rank:
@@ -5148,7 +5148,7 @@ class HybridRetriever(BaseRetriever):
                 if key not in s_rank:
                     s_rank[key] = idx
 
-            def _rank_score(rank_map: Dict[str, int], key: str) -> float:
+            def _rank_score(rank_map: dict[str, int], key: str) -> float:
                 rnk = rank_map.get(key)
                 if not rnk:
                     return 0.0
@@ -5157,10 +5157,10 @@ class HybridRetriever(BaseRetriever):
                     return 0.0
                 return 1.0 / float(rnk)
 
-            def _coerce_budgets(raw: Any) -> Dict[str, int]:
+            def _coerce_budgets(raw: Any) -> dict[str, int]:
                 if not isinstance(raw, dict):
                     return {}
-                out0: Dict[str, int] = {}
+                out0: dict[str, int] = {}
                 for k, v in raw.items():
                     key = str(k or "").strip().lower()
                     if not key:
@@ -5172,10 +5172,10 @@ class HybridRetriever(BaseRetriever):
                     out0[key] = max(0, iv)
                 return out0
 
-            def _coerce_min_scores(raw: Any) -> Dict[str, float]:
+            def _coerce_min_scores(raw: Any) -> dict[str, float]:
                 if not isinstance(raw, dict):
                     return {}
-                out0: Dict[str, float] = {}
+                out0: dict[str, float] = {}
                 for k, v in raw.items():
                     key = str(k or "").strip().lower()
                     if not key:
@@ -5208,8 +5208,8 @@ class HybridRetriever(BaseRetriever):
             k0 = int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60)
             k0 = max(1, k0)
 
-            merged: Dict[str, Dict[str, Any]] = {}
-            raw_scores: List[float] = []
+            merged: dict[str, dict[str, Any]] = {}
+            raw_scores: list[float] = []
             keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
 
             def _candidate_eligible(key: str) -> bool:
@@ -5291,7 +5291,7 @@ class HybridRetriever(BaseRetriever):
                     raw = float(item.get("rrf_score_raw", 0.0) or 0.0)
                     item["score"] = (raw - min_s) / rng
 
-            def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
+            def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, float, str]:
                 return (
                     -float(item.get("score", 0.0) or 0.0),
                     -float(item.get("rrf_score_raw", 0.0) or 0.0),
@@ -5305,11 +5305,11 @@ class HybridRetriever(BaseRetriever):
             all_sorted = sorted(merged.values(), key=_sort_key)
 
             # Build a top_k prefix that enforces budgets/quotas but still orders by fused score.
-            selected_keys: List[str] = []
+            selected_keys: list[str] = []
             used: set[str] = set()
-            picked_by_channel: Dict[str, int] = {"vector": 0, "bm25": 0, "lexical": 0, "sparse": 0, "fill": 0}
+            picked_by_channel: dict[str, int] = {"vector": 0, "bm25": 0, "lexical": 0, "sparse": 0, "fill": 0}
 
-            def _select_from_channel(channel: str, sorted_results: List[Dict[str, Any]], rank_map: Dict[str, int]) -> None:
+            def _select_from_channel(channel: str, sorted_results: list[dict[str, Any]], rank_map: dict[str, int]) -> None:
                 quota = int(budgets.get(channel, 0) or 0)
                 if quota <= 0:
                     return
@@ -5389,11 +5389,11 @@ class HybridRetriever(BaseRetriever):
             return prefix + rest
 
         if fusion in ("weighted", "weighted_linear", "weighted_sum"):
-            def _coerce_weights(raw: Any) -> Dict[str, float]:
+            def _coerce_weights(raw: Any) -> dict[str, float]:
                 if not isinstance(raw, dict):
                     return {}
                 allowed = {"vector", "bm25", "lexical", "sparse"}
-                out0: Dict[str, float] = {}
+                out0: dict[str, float] = {}
                 for k, v in raw.items():
                     key = str(k or "").strip().lower()
                     if not key or key not in allowed:
@@ -5415,7 +5415,7 @@ class HybridRetriever(BaseRetriever):
             else:
                 weights = {k: (float(v) / w_sum) for k, v in weights_raw.items()}
 
-                merged: Dict[str, Dict[str, Any]] = {}
+                merged: dict[str, dict[str, Any]] = {}
                 keys = sorted(
                     set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys())
                 )
@@ -5480,7 +5480,7 @@ class HybridRetriever(BaseRetriever):
                 except Exception:
                     pass
 
-                def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, str]:
+                def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, str]:
                     return (
                         -float(item.get("score", 0.0) or 0.0),
                         -float(item.get("vector_score", 0.0) or 0.0),
@@ -5492,7 +5492,7 @@ class HybridRetriever(BaseRetriever):
 
                 return sorted(merged.values(), key=_sort_key)
 
-        merged: Dict[str, Dict[str, Any]] = {}
+        merged: dict[str, dict[str, Any]] = {}
         keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
         for key in keys:
             v_score = vector_norm.get(key, {}).get("score", 0.0)
@@ -5548,7 +5548,7 @@ class HybridRetriever(BaseRetriever):
             }
             _attach_field_aware_signal(merged[key], key)
 
-        def _sort_key(item: Dict[str, Any]) -> tuple[float, float, float, float, float, str]:
+        def _sort_key(item: dict[str, Any]) -> tuple[float, float, float, float, float, str]:
             return (
                 -float(item.get("score", 0.0) or 0.0),
                 -float(item.get("vector_score", 0.0) or 0.0),
@@ -5563,10 +5563,10 @@ class HybridRetriever(BaseRetriever):
     def _weight_rerank(
         self,
         query: str,
-        documents: List[Dict[str, Any]],
+        documents: list[dict[str, Any]],
         vector_weight: float = 0.6,
         keyword_weight: float = 0.4,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Vector score + keyword TF-IDF cosine linear weighting."""
         if not documents:
             return documents
@@ -5574,24 +5574,24 @@ class HybridRetriever(BaseRetriever):
         query_tokens = self._bm25_tokenize(query)
         doc_tokens_list = [self._bm25_tokenize(doc.get("content", "")) for doc in documents]
 
-        all_tokens = set(tok for tokens in doc_tokens_list for tok in tokens)
+        all_tokens = {tok for tokens in doc_tokens_list for tok in tokens}
         if not all_tokens:
             return documents
 
         doc_count = len(documents)
-        token_idf: Dict[str, float] = {}
+        token_idf: dict[str, float] = {}
         for tok in all_tokens:
             df = sum(1 for tokens in doc_tokens_list if tok in tokens)
             token_idf[tok] = math.log((1 + doc_count) / (1 + df)) + 1
 
-        def tfidf_vec(tokens: List[str]) -> Dict[str, float]:
+        def tfidf_vec(tokens: list[str]) -> dict[str, float]:
             tf = Counter(tokens)
             return {t: tf[t] * token_idf.get(t, 0.0) for t in tf}
 
         query_vec = tfidf_vec(query_tokens)
         doc_vecs = [tfidf_vec(tokens) for tokens in doc_tokens_list]
 
-        def cosine(a: Dict[str, float], b: Dict[str, float]) -> float:
+        def cosine(a: dict[str, float], b: dict[str, float]) -> float:
             if not a or not b:
                 return 0.0
             common = set(a.keys()) & set(b.keys())
@@ -5601,7 +5601,7 @@ class HybridRetriever(BaseRetriever):
 
         keyword_scores = [cosine(query_vec, v) for v in doc_vecs]
 
-        reranked: List[Dict[str, Any]] = []
+        reranked: list[dict[str, Any]] = []
         for doc, kw_score in zip(documents, keyword_scores, strict=False):
             vec_score = doc.get("vector_score", doc.get("score", 0.0))
             final_score = vector_weight * float(vec_score) + keyword_weight * float(kw_score)
@@ -5615,11 +5615,11 @@ class HybridRetriever(BaseRetriever):
 
     def _mmr_rerank(
         self,
-        documents: List[Dict[str, Any]],
+        documents: list[dict[str, Any]],
         query: str,
         top_k: int,
         lambda_mult: float = 0.7,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Simple MMR (Maximal Marginal Relevance) reranking:
         max lambda*sim(query, doc) - (1-lambda)*max sim(doc, selected)
@@ -5629,12 +5629,12 @@ class HybridRetriever(BaseRetriever):
             return documents
 
         lambda_mult = max(min(lambda_mult, 1.0), 0.0)
-        selected: List[Dict[str, Any]] = []
+        selected: list[dict[str, Any]] = []
         candidates = list(documents)
         # Pre-cache tokens to avoid multiple tokenizations
         tokens_map = {id(doc): self._tokenize_for_similarity(doc.get("content", "")) for doc in candidates}
 
-        def doc_similarity(doc_a: Dict[str, Any], doc_b: Dict[str, Any]) -> float:
+        def doc_similarity(doc_a: dict[str, Any], doc_b: dict[str, Any]) -> float:
             tokens_a = tokens_map.get(id(doc_a), set())
             tokens_b = tokens_map.get(id(doc_b), set())
             if not tokens_a or not tokens_b:

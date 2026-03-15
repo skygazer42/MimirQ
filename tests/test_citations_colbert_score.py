@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from langchain_core.documents import Document
 
 from app.rag.core.citations import build_citations_from_docs
@@ -22,6 +23,6 @@ def test_build_citations_includes_colbert_score_and_hit_type():  # noqa: ANN001
     out = build_citations_from_docs(docs, retrieval_elapsed_sec=0.123, retrieval_mode="vector", query="alpha")
     assert len(out) == 1
     c = out[0]
-    assert c.get("colbert_score") == 0.42
+    assert c.get("colbert_score") == pytest.approx(0.42)
     assert c.get("hit_type") == "colbert_ann"
 

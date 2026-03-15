@@ -11,8 +11,8 @@ import json
 import logging
 import sys
 from contextvars import ContextVar
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 
 _request_id: ContextVar[str] = ContextVar("request_id", default="")
 _tenant_id: ContextVar[str] = ContextVar("tenant_id", default="")
@@ -50,8 +50,8 @@ def _get_otel_trace_context() -> tuple[str, str]:
         return "", ""
 
 
-def bind_request_context(*, request_id: str, tenant_id: str = "", user_id: str = "", route: str = "") -> Dict[str, Any]:
-    tokens: Dict[str, Any] = {}
+def bind_request_context(*, request_id: str, tenant_id: str = "", user_id: str = "", route: str = "") -> dict[str, Any]:
+    tokens: dict[str, Any] = {}
     tokens["request_id"] = _request_id.set((request_id or "").strip())
     tokens["tenant_id"] = _tenant_id.set((tenant_id or "").strip())
     tokens["user_id"] = _user_id.set((user_id or "").strip())
@@ -87,7 +87,7 @@ def set_request_route(route: str) -> None:
     _route.set((route or "").strip())
 
 
-def reset_request_context(tokens: Dict[str, Any]) -> None:
+def reset_request_context(tokens: dict[str, Any]) -> None:
     if not tokens:
         return
     try:
@@ -100,7 +100,7 @@ def reset_request_context(tokens: Dict[str, Any]) -> None:
         return
 
 
-def get_request_context() -> Dict[str, str]:
+def get_request_context() -> dict[str, str]:
     return {
         "request_id": _request_id.get() or "",
         "tenant_id": _tenant_id.get() or "",
@@ -111,8 +111,8 @@ def get_request_context() -> Dict[str, str]:
 
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        payload: Dict[str, Any] = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+        payload: dict[str, Any] = {
+            "ts": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "msg": record.getMessage(),

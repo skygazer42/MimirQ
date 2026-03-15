@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -152,7 +152,7 @@ def test_retriever_filters_archived_documents(monkeypatch: pytest.MonkeyPatch) -
             None,
             "completed",
             {"active_pipeline_ready": True, "pipeline_hash": "h"},
-            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 1, tzinfo=UTC),
             None,
             "published",
         )
@@ -192,7 +192,7 @@ def test_retriever_filters_disabled_chunks(monkeypatch: pytest.MonkeyPatch) -> N
         chunk_id=chunk_id,
         doc_metadata={"pipeline_hash": "h"},
     )
-    disabled_chunk.disabled_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    disabled_chunk.disabled_at = datetime(2026, 1, 2, tzinfo=UTC)
 
     chunks = [disabled_chunk]
     doc_rows = [

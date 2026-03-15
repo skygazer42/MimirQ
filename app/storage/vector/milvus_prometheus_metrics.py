@@ -15,7 +15,6 @@ from prometheus_client import Counter
 
 from app.core.config import settings
 
-
 MILVUS_WRITE_COMPAT_FALLBACK_TOTAL = Counter(
     "vector_milvus_write_compat_fallback_total",
     "Total Milvus write compatibility fallbacks (retry after dropping scalar fields)",

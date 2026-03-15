@@ -73,7 +73,7 @@ def expand_param_grid(grid: dict[str, list[Any]]) -> list[dict[str, Any]]:
     values = [list((grid or {}).get(k) or []) for k in keys]
     combos: list[dict[str, Any]] = []
     for row in itertools.product(*values):
-        combos.append({k: v for k, v in zip(keys, row, strict=True)})
+        combos.append(dict(zip(keys, row, strict=True)))
     return combos
 
 

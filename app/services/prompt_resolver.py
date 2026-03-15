@@ -10,7 +10,6 @@ user feedback correlation, regression datasets, and more).
 
 
 import hashlib
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -29,11 +28,11 @@ def resolve_prompt_template(
     *,
     db: Session,
     tenant_id: UUID,
-    prompt_template_id: Optional[UUID] = None,
-    template_key: Optional[str] = None,
-    ab_experiment_key: Optional[str] = None,
-    ab_user_key: Optional[str] = None,
-) -> Optional[PromptTemplate]:
+    prompt_template_id: UUID | None = None,
+    template_key: str | None = None,
+    ab_experiment_key: str | None = None,
+    ab_user_key: str | None = None,
+) -> PromptTemplate | None:
     """
     Resolve the final PromptTemplate to use (returns ORM object).
 

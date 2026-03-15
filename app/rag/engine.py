@@ -7,7 +7,8 @@ import json
 import re
 import threading
 import time
-from typing import Any, AsyncGenerator, Dict, List, Optional, Type
+from collections.abc import AsyncGenerator
+from typing import Any
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -81,7 +82,7 @@ class RAGEngine:
 
         # Build available models for dynamic routing (inspired by agent middleware pattern)
         default_model_name = settings.LLM_MODEL or "gpt-4-turbo-preview"
-        self.models: Dict[str, Any] = {}
+        self.models: dict[str, Any] = {}
         self.models["default"] = self._build_llm(ChatOpenAI, default_model_name)
         if settings.ENABLE_DYNAMIC_MODEL_ROUTING:
             if settings.LLM_MODEL_FAST:
@@ -123,7 +124,7 @@ class RAGEngine:
         )
 
         # Structured output presets (extensible).
-        self.structured_presets: Dict[str, str] = {
+        self.structured_presets: dict[str, str] = {
             "faq": (
                 "Output JSON only, structure: "
                 '{"answer": "string", "citations": [{"document_id": "...", "chunk_id": "..."}],'
@@ -207,7 +208,7 @@ Requirements:
         )
 
 
-    def _build_llm(self, chat_cls: Type[ChatOpenAI], model_name: str) -> Any:
+    def _build_llm(self, chat_cls: type[ChatOpenAI], model_name: str) -> Any:
         """Create a ChatOpenAI-compatible LLM with shared HTTP clients.
 
         In dev/E2E we optionally use a fake streaming LLM to avoid external network calls.
@@ -231,7 +232,7 @@ Requirements:
             http_async_client=self.http_async_client,
         )
 
-    def _score_question_complexity(self, question: str, history: Optional[List[Dict[str, str]]]) -> float:
+    def _score_question_complexity(self, question: str, history: list[dict[str, str]] | None) -> float:
         """
         Coarse-grained complexity scoring:
         - question length
@@ -261,7 +262,7 @@ Requirements:
 
         return score
 
-    def _select_llm(self, question: str, history: Optional[List[Dict[str, str]]]) -> tuple[Any, str, str]:
+    def _select_llm(self, question: str, history: list[dict[str, str]] | None) -> tuple[Any, str, str]:
         """
         Dynamic model routing: inspired by agent/middleware dynamic model selection pattern.
         Returns: (llm instance, route identifier, reason)
@@ -298,7 +299,7 @@ Requirements:
         return " ".join((text or "").strip().split())
 
     @classmethod
-    def _dedup_retrieval_queries(cls, queries: List[tuple[str, str]]) -> List[tuple[str, str]]:
+    def _dedup_retrieval_queries(cls, queries: list[tuple[str, str]]) -> list[tuple[str, str]]:
         if not queries:
             return []
         seen: set[str] = set()
@@ -315,10 +316,10 @@ Requirements:
         return out
 
     @staticmethod
-    def _annotate_docs_with_role(docs: List[Document], role: str) -> List[Document]:
+    def _annotate_docs_with_role(docs: list[Document], role: str) -> list[Document]:
         if not docs:
             return []
-        out: List[Document] = []
+        out: list[Document] = []
         for d in docs:
             meta = dict(d.metadata or {})
             meta.setdefault("retrieval_role", role)
@@ -332,7 +333,7 @@ Requirements:
         return out
 
     @staticmethod
-    def _merge_meta(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
+    def _merge_meta(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
         for k, v in (src or {}).items():
             if k not in dst or dst.get(k) in (None, "", [], {}):
                 dst[k] = v
@@ -356,21 +357,21 @@ Requirements:
     @classmethod
     def fuse_docs_rrf(
         cls,
-        docs_by_query: List[List[Document]],
+        docs_by_query: list[list[Document]],
         *,
         rrf_k: int | None = None,
         meta_prefix: str = "query_expansion",
-    ) -> List[Document]:
+    ) -> list[Document]:
         if not docs_by_query:
             return []
 
         k0 = int(rrf_k or 0) or int(settings.RETRIEVAL_RRF_K or 60)
         k0 = max(1, k0)
 
-        score_map: Dict[str, float] = {}
-        hit_counts: Dict[str, int] = {}
-        best_docs: Dict[str, Document] = {}
-        merged_meta: Dict[str, Dict[str, Any]] = {}
+        score_map: dict[str, float] = {}
+        hit_counts: dict[str, int] = {}
+        best_docs: dict[str, Document] = {}
+        merged_meta: dict[str, dict[str, Any]] = {}
 
         for docs in docs_by_query:
             seen_in_query: set[str] = set()
@@ -438,53 +439,53 @@ Requirements:
     async def stream_chat(
         self,
         question: str,
-        history: Optional[List[Dict[str, str]]] = None,
-        conversation_id: Optional[UUID] = None,
-        document_ids: Optional[List[UUID]] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
+        history: list[dict[str, str]] | None = None,
+        conversation_id: UUID | None = None,
+        document_ids: list[UUID] | None = None,
+        metadata_filter: dict[str, Any] | None = None,
         top_k: int = 5,
         score_threshold: float = 0.7,
-        tenant_id: Optional[UUID] = None,
-        account_id: Optional[str] = None,
-        dataset_id: Optional[UUID] = None,
+        tenant_id: UUID | None = None,
+        account_id: str | None = None,
+        dataset_id: UUID | None = None,
         structured_output: bool = False,
-        structured_preset: Optional[str] = None,
+        structured_preset: str | None = None,
         visible_evidence_only: bool = False,
         retrieval_mode: str = "hybrid",
-        retrieval_profile: Optional[str] = None,
-        retrieval_contract_mode: Optional[str] = None,
-        must_recall: Optional[bool] = None,
-        must_recall_expected_source_keys: Optional[List[str]] = None,
-        must_recall_required_anchor_fields: Optional[List[str]] = None,
-        intent_router: Optional[bool] = None,
-        intent_router_policy: Optional[Dict[str, Any]] = None,
-        enable_query_alias_expansion: Optional[bool] = None,
-        query_aliases: Optional[Dict[str, List[str]]] = None,
-        query_alias_max_queries: Optional[int] = None,
-        enable_multi_query: Optional[bool] = None,
-        multi_query_count: Optional[int] = None,
-        multi_query_temperature: Optional[float] = None,
-        multi_query_max_chars: Optional[int] = None,
+        retrieval_profile: str | None = None,
+        retrieval_contract_mode: str | None = None,
+        must_recall: bool | None = None,
+        must_recall_expected_source_keys: list[str] | None = None,
+        must_recall_required_anchor_fields: list[str] | None = None,
+        intent_router: bool | None = None,
+        intent_router_policy: dict[str, Any] | None = None,
+        enable_query_alias_expansion: bool | None = None,
+        query_aliases: dict[str, list[str]] | None = None,
+        query_alias_max_queries: int | None = None,
+        enable_multi_query: bool | None = None,
+        multi_query_count: int | None = None,
+        multi_query_temperature: float | None = None,
+        multi_query_max_chars: int | None = None,
         alpha: float = 0.6,
-        fusion_strategy: Optional[str] = None,
-        fusion_budgets: Optional[Dict[str, int]] = None,
-        fusion_min_scores: Optional[Dict[str, float]] = None,
-        fusion_weights: Optional[Dict[str, float]] = None,
+        fusion_strategy: str | None = None,
+        fusion_budgets: dict[str, int] | None = None,
+        fusion_min_scores: dict[str, float] | None = None,
+        fusion_weights: dict[str, float] | None = None,
         enable_weight_rerank: bool = True,
         vector_weight: float = 0.6,
         keyword_weight: float = 0.4,
         mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
         enable_reranker: bool = settings.ENABLE_RERANKER,
-        reranker_provider: Optional[str] = settings.RERANKER_PROVIDER,
+        reranker_provider: str | None = settings.RERANKER_PROVIDER,
         reranker_top_n: int = settings.RERANKER_TOP_N,
-        request_id: Optional[str] = None,
-        prompt_template_id: Optional[UUID] = None,
-        prompt_template_key: Optional[str] = None,
-        prompt_ab_experiment_key: Optional[str] = None,
-        rag_config_template: Optional[Dict[str, Any]] = None,
-        ab_user_key: Optional[str] = None,
-        db: Optional[Any] = None,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+        request_id: str | None = None,
+        prompt_template_id: UUID | None = None,
+        prompt_template_key: str | None = None,
+        prompt_ab_experiment_key: str | None = None,
+        rag_config_template: dict[str, Any] | None = None,
+        ab_user_key: str | None = None,
+        db: Any | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Streaming chat interface
 
@@ -503,10 +504,10 @@ Requirements:
 
             # Load prompt template (id / key latest / A/B experiment)
             current_prompt_template = self.prompt_template
-            selected_prompt_template_id: Optional[UUID] = None
-            selected_prompt_template_key: Optional[str] = None
-            selected_prompt_ab_experiment_key: Optional[str] = None
-            selected_prompt_ab_variant: Optional[str] = None
+            selected_prompt_template_id: UUID | None = None
+            selected_prompt_template_key: str | None = None
+            selected_prompt_ab_experiment_key: str | None = None
+            selected_prompt_ab_variant: str | None = None
 
             if db and tenant_id and (prompt_template_id or prompt_template_key or prompt_ab_experiment_key):
                 chosen = resolve_prompt_template(
@@ -702,7 +703,7 @@ Requirements:
                 if intent_router is not None
                 else bool(getattr(settings, "RAG_INTENT_ROUTER_ENABLED", False))
             )
-            intent_router_meta: Dict[str, Any] = {"enabled": bool(intent_router_enabled), "used": False}
+            intent_router_meta: dict[str, Any] = {"enabled": bool(intent_router_enabled), "used": False}
             if bool(intent_router_enabled):
                 try:
                     overrides, intent_router_meta = route_retrieval_preset(
@@ -845,8 +846,8 @@ Requirements:
             # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
             alias_elapsed = 0.0
             alias_used = False
-            alias_meta: Dict[str, Any] = {"enabled": False, "used": False}
-            alias_queries: List[str] = []
+            alias_meta: dict[str, Any] = {"enabled": False, "used": False}
+            alias_queries: list[str] = []
 
             alias_enabled = enable_query_alias_expansion
             if alias_enabled is None:
@@ -865,8 +866,8 @@ Requirements:
             # Deterministic dictionary expansion (bounded, auditable).
             dict_elapsed = 0.0
             dict_used = False
-            dict_meta: Dict[str, Any] = {"enabled": False, "used": False}
-            dict_expansions: List[Dict[str, Any]] = []
+            dict_meta: dict[str, Any] = {"enabled": False, "used": False}
+            dict_expansions: list[dict[str, Any]] = []
             try:
                 from app.query.expand import generate_dictionary_expansions, load_base_dictionary_rules
 
@@ -889,7 +890,7 @@ Requirements:
             #
             # Purpose: provide extra retrieval queries derived from KG entity recall
             # to reduce false negatives, with clear attribution ("kgq").
-            kg_result_cached: Dict[str, Any] | None = None
+            kg_result_cached: dict[str, Any] | None = None
             kg_query_expansion_enabled = bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False))
             kg_query_expansion_used = False
             kg_query_expansion_elapsed = 0.0
@@ -986,8 +987,8 @@ Requirements:
             multi_query_elapsed = 0.0
             multi_query_used = False
             multi_query_model_used = None
-            multi_query_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
-            multi_queries: List[str] = []
+            multi_query_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+            multi_queries: list[str] = []
 
             mq_enabled = bool(settings.ENABLE_MULTI_QUERY) if enable_multi_query is None else bool(enable_multi_query)
             mq_n = (
@@ -1080,8 +1081,8 @@ Requirements:
             decompose_elapsed = 0.0
             decompose_used = False
             decompose_model_used = None
-            decompose_parse_meta: Dict[str, Any] = {"ok": False, "method": None, "error": None}
-            sub_questions: List[str] = []
+            decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+            sub_questions: list[str] = []
 
             dq_n = max(0, min(int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS or 0), 8))
             dq_min_chars = max(0, int(settings.QUERY_DECOMPOSITION_MIN_CHARS or 0))
@@ -1164,7 +1165,7 @@ Requirements:
 
             # Step 1: Hybrid retrieval (LangChain Retriever).
             yield {"type": "event", "data": {"message": "正在从知识库中检索相关资料..."}}
-            retriever_update: Dict[str, Any] = {
+            retriever_update: dict[str, Any] = {
                 "k": top_k,
                 "score_threshold": score_threshold_used,
                 "alpha": alpha_val,
@@ -1199,7 +1200,7 @@ Requirements:
 
             retriever = hybrid_retriever.model_copy(update=retriever_update)
 
-            retrieval_queries: List[tuple[str, str]] = [("main", query_for_retrieval)]
+            retrieval_queries: list[tuple[str, str]] = [("main", query_for_retrieval)]
             for q in alias_queries:
                 retrieval_queries.append(("alias", q))
             for e in dict_expansions:
@@ -1221,11 +1222,11 @@ Requirements:
 
             retrieval_queries = self._dedup_retrieval_queries(retrieval_queries)
 
-            docs_by_query: List[List[Document]] = []
-            docs_by_query_kinds: List[str] = []
+            docs_by_query: list[list[Document]] = []
+            docs_by_query_kinds: list[str] = []
             t_retrieval_start = time.time()
             retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
-            retrieval_plan: List[tuple[str, str, Any]] = []
+            retrieval_plan: list[tuple[str, str, Any]] = []
             for kind, q in retrieval_queries:
                 r = retriever
                 if kind != "main":
@@ -1241,12 +1242,12 @@ Requirements:
                         r = retriever.model_copy(update={"enable_reranker": False})
                 retrieval_plan.append((kind, q, r))
 
-            retrieval_errors: List[str] = []
-            retrieval_per_query: List[Dict[str, Any]] = []
+            retrieval_errors: list[str] = []
+            retrieval_per_query: list[dict[str, Any]] = []
 
             async def _run_one(
                 kind: str, q: str, r: Any
-            ) -> tuple[str, List[Document], str | None, float, Dict[str, Any] | None]:
+            ) -> tuple[str, list[Document], str | None, float, dict[str, Any] | None]:
                 t0 = time.time()
                 try:
                     docs_i = await asyncio.to_thread(r.invoke, q)
@@ -1289,7 +1290,7 @@ Requirements:
 
                 async def _guarded(
                     kind: str, q: str, r: Any
-                ) -> tuple[str, List[Document], str | None, float, Dict[str, Any] | None]:
+                ) -> tuple[str, list[Document], str | None, float, dict[str, Any] | None]:
                     async with sem:
                         return await _run_one(kind, q, r)
 
@@ -1506,8 +1507,8 @@ Requirements:
                 kg_chunks_injected = 0
 
             # Optional: Image bridge - inject bounded image/figure chunks (CLIP) as extra context.
-            image_docs: List[Document] = []
-            image_meta: Dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+            image_docs: list[Document] = []
+            image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
             if str(multimodal_modality or "text").strip().lower() == "image":
                 try:
                     from app.services.chat_image_service import build_chat_image_context_docs
@@ -1534,8 +1535,8 @@ Requirements:
                 docs = (image_docs or []) + (docs or [])
 
             # Optional: TAG bridge - inject bounded table query results as extra context.
-            tag_docs: List[Document] = []
-            tag_meta: Dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+            tag_docs: list[Document] = []
+            tag_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
             try:
                 from app.services.chat_tag_service import build_chat_tag_context_docs
 
@@ -1574,7 +1575,7 @@ Requirements:
             }
 
             # Build citation info.
-            citations: List[Dict[str, Any]] = build_citations_from_docs(
+            citations: list[dict[str, Any]] = build_citations_from_docs(
                 docs,
                 retrieval_elapsed_sec=retrieval_elapsed,
                 retrieval_mode=mode_used,
@@ -1662,7 +1663,7 @@ Requirements:
 
                 if structured_output:
                     preset_key = (structured_preset or "").lower()
-                    structured_citations: List[Dict[str, Any]] = []
+                    structured_citations: list[dict[str, Any]] = []
                     for c in citations[: max(0, int(top_k or 0))] if citations else []:
                         structured_citations.append(
                             {
@@ -1672,7 +1673,7 @@ Requirements:
                                 "relevance_score": c.get("relevance_score"),
                             }
                         )
-                    payload: Dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
+                    payload: dict[str, Any] = {"answer": abstain_message, "citations": structured_citations}
                     if preset_key == "faq":
                         payload["qa_pairs"] = []
                     elif preset_key == "summary":
@@ -2050,7 +2051,7 @@ Requirements:
             except Exception:
                 retrieval_config_hash = None
 
-            rag_trace_payload: Dict[str, Any] = {
+            rag_trace_payload: dict[str, Any] = {
                 "event": "rag_trace",
                 "conversation_id": str(conversation_id) if conversation_id else None,
                 "tenant_id": str(tenant_id) if tenant_id else None,
@@ -2188,7 +2189,7 @@ Requirements:
             question_for_model = redact_text(question) if pii_on else question
 
             pending = ""
-            buffered_parts: List[str] | None = [] if claim_check_applied else None
+            buffered_parts: list[str] | None = [] if claim_check_applied else None
             async for token in chain.astream(
                 {
                     "context": context_for_model,
@@ -2235,7 +2236,7 @@ Requirements:
                 if claim_check_mode == "text":
                     claims = split_into_claims(full_response, max_claims=claim_check_max_claims)
                     claim_check_total = len(claims)
-                    kept: List[str] = []
+                    kept: list[str] = []
                     for c in claims:
                         vr = verify_claim_with_fallback(
                             c,
@@ -2273,7 +2274,7 @@ Requirements:
                     parsed, _meta = parse_json_from_text(full_response, expected="object")
                     if not isinstance(parsed, dict):
                         # Fail-safe: always return valid JSON when structured_output=true.
-                        structured_citations: List[Dict[str, Any]] = []
+                        structured_citations: list[dict[str, Any]] = []
                         for c in citations[: max(0, int(top_k or 0))] if citations else []:
                             structured_citations.append(
                                 {
@@ -2340,7 +2341,7 @@ Requirements:
                 and bool(settings.SHOW_IMAGE_IN_ANSWER)
                 and settings.IMAGE_APPEND_MAX > 0
             ):
-                image_urls: List[str] = []
+                image_urls: list[str] = []
                 for c in citations:
                     if not c.get("has_image"):
                         continue
@@ -2671,7 +2672,7 @@ Requirements:
             }
 
 
-_rag_engine_instance: Optional[RAGEngine] = None
+_rag_engine_instance: RAGEngine | None = None
 _rag_engine_lock: threading.Lock = threading.Lock()
 
 

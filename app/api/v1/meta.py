@@ -5,7 +5,7 @@ Backend metadata endpoints for frontend/dev tooling.
 
 import os
 import platform
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
@@ -48,7 +48,7 @@ def get_meta() -> dict:
     return {
         "name": "MimirQ",
         "api_version": "v1",
-        "time": datetime.now(timezone.utc).isoformat(),
+        "time": datetime.now(UTC).isoformat(),
         "build": {
             "sha": _get_build_sha(),
             "time": _get_build_time(),

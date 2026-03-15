@@ -32,14 +32,14 @@ import re
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 _RESOURCE_RE = re.compile(r"^(deployment|statefulset|daemonset|replicaset|job|cronjob)/[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass

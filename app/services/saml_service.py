@@ -4,7 +4,7 @@ import json
 import uuid
 from base64 import b64decode
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
@@ -49,8 +49,8 @@ def _parse_iso_datetime(raw: str | None) -> datetime | None:
         value = f"{value[:-1]}+00:00"
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _normalize_path(raw: str | None) -> str:
@@ -275,7 +275,7 @@ def _validate_conditions(root: etree._Element, assertion: etree._Element, provid
     expected_audience = provider.audience
     expected_issuer = provider.issuer
     skew = max(0, int(getattr(settings, "SAML_ALLOWED_CLOCK_SKEW_SEC", 60) or 60))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     response_issuer = _get_text(root, "./saml:Issuer")
     assertion_issuer = _get_text(assertion, "./saml:Issuer")

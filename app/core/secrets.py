@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from typing import Any, Dict
+from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -90,7 +90,7 @@ def decrypt_secret(value: str | None) -> str | None:
     raise ValueError("invalid_encrypted_secret")
 
 
-def redact_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
+def redact_secrets(config: dict[str, Any]) -> dict[str, Any]:
     """
     Best-effort redaction for connector config fields.
 
@@ -99,7 +99,7 @@ def redact_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(config, dict):
         return {}
 
-    out: Dict[str, Any] = dict(config)
+    out: dict[str, Any] = dict(config)
     # Common top-level secret fields (e.g. DB connectors).
     if "password" in out and out.get("password"):
         out["password"] = "<redacted>"
@@ -113,7 +113,7 @@ def redact_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def encrypt_connector_config_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
+def encrypt_connector_config_secrets(config: dict[str, Any]) -> dict[str, Any]:
     """
     Encrypt known secret fields inside a connector config dict.
 
@@ -122,7 +122,7 @@ def encrypt_connector_config_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     if not isinstance(config, dict):
         return {}
-    out: Dict[str, Any] = dict(config)
+    out: dict[str, Any] = dict(config)
     # Common top-level secret fields (e.g. DB connectors).
     if "password" in out:
         out["password"] = encrypt_secret(out.get("password"))  # type: ignore[assignment]
@@ -139,7 +139,7 @@ def encrypt_connector_config_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
-def decrypt_connector_config_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
+def decrypt_connector_config_secrets(config: dict[str, Any]) -> dict[str, Any]:
     """
     Decrypt known secret fields inside a connector config dict.
 
@@ -147,7 +147,7 @@ def decrypt_connector_config_secrets(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     if not isinstance(config, dict):
         return {}
-    out: Dict[str, Any] = dict(config)
+    out: dict[str, Any] = dict(config)
     # Common top-level secret fields (e.g. DB connectors).
     if "password" in out:
         out["password"] = decrypt_secret(out.get("password"))  # type: ignore[assignment]

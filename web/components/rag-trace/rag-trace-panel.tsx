@@ -6,7 +6,7 @@
 
 import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
 	import { Badge } from '@/components/ui/badge'
 	import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ import { useDocumentView } from '@/store/document-view'
 	import { Input } from '@/components/ui/input'
 	import { Panel } from '@/components/ui/panel'
 	import { ScrollArea } from '@/components/ui/scroll-area'
-	import type { RagTrace, RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
+	import type { RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
 
 function formatTs(tsMs: number) {
   try {
@@ -40,13 +40,13 @@ function shortHash(value: string, opts?: { head?: number; tail?: number }) {
 }
 
 function safeIsoForFilename(ts: string) {
-  return (ts || new Date().toISOString()).replace(/[:.]/g, '-')
+  return (ts || new Date().toISOString()).replaceAll(/[:.]/g, '-')
 }
 
 function safeIdForFilename(value: string) {
   return String(value || '')
     .trim()
-    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replaceAll(/[^a-zA-Z0-9_-]+/g, '_')
     .slice(0, 80) || 'request'
 }
 
@@ -91,7 +91,7 @@ type RagTracePanelProps = {
   className?: string
 }
 
-export function RagTracePanel({ conversationId, className }: RagTracePanelProps) {
+export function RagTracePanel({ conversationId, className }: Readonly<RagTracePanelProps>) {
   const { openDocument } = useDocumentView()
 
   const [data, setData] = React.useState<RagTraceListResponse | null>(null)
@@ -221,7 +221,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
   }, [conversationId])
 
   React.useEffect(() => {
-    void load()
+    detachPromise(load())
   }, [load])
 
   if (loading && !data) {
@@ -354,7 +354,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
 	                    size="sm"
 	                    className="gap-2 rounded-xl"
 	                    disabled={!requestId || bundleDownloading}
-	                    onClick={() => void downloadBundle()}
+	                    onClick={() => detachPromise(downloadBundle())}
 	                    title="下载 request_id bundle（admin-only）"
 	                  >
 	                    {bundleDownloading ? (
@@ -407,7 +407,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
 	                      size="sm"
 	                      className="gap-2 rounded-xl"
 	                      disabled={!requestId || !diffOtherRequestId.trim() || diffLoading}
-	                      onClick={() => void runDiff()}
+	                      onClick={() => detachPromise(runDiff())}
 	                    >
 	                      {diffLoading ? (
 	                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
@@ -449,9 +449,9 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
 	                        changes: {diffResult.diff?.length ?? 0} · truncated: {diffResult.truncated ? 'yes' : 'no'}
 	                      </div>
 	                      <div className="space-y-2">
-	                        {(diffResult.diff || []).map((it, idx) => (
+	                        {(diffResult.diff || []).map((it) => (
 	                          <div
-	                            key={`${it.key}-${idx}`}
+	                            key={String(it.key)}
 	                            className="grid grid-cols-1 gap-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 md:grid-cols-3"
 	                          >
 	                            <div className="text-xs font-mono text-foreground">{it.key}</div>
@@ -508,8 +508,8 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                       <div className="text-xs font-semibold text-foreground">{s.label}</div>
                       <div className="mt-0.5 text-[11px] text-muted-foreground">
                         {s.meta?.mode ? `mode=${s.meta.mode}` : null}
-                        {s.meta?.query_count != null ? ` · queries=${s.meta.query_count}` : null}
-                        {s.meta?.count != null ? ` · count=${s.meta.count}` : null}
+                        {s.meta?.query_count == null ? null : ` · queries=${s.meta.query_count}`}
+                        {s.meta?.count == null ? null : ` · count=${s.meta.count}`}
                       </div>
                     </div>
                     <div className="shrink-0 text-xs font-medium text-muted-foreground">{formatSec(s.elapsed_sec)}</div>
@@ -523,9 +523,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                 <div className="text-sm font-semibold">Channels</div>
               </div>
               <div className="p-4 space-y-3">
-                {!channels ? (
-                  <div className="text-xs text-muted-foreground">暂无 per-channel 指标（旧 trace 或 retriever_debug 被裁剪）。</div>
-                ) : (
+                {channels ? (
                   <>
                     <div className="flex flex-wrap items-center gap-2">
                       {channels.retrieval_mode ? (
@@ -548,21 +546,21 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                           rrf_k={channels.rrf_k}
                         </Badge>
                       ) : null}
-                      {channels?.timing?.vector_ms != null ? (
+                      {channels?.timing?.vector_ms == null ? null : (
                         <Badge variant="soft" className="text-[10px]">
                           vector_ms={channels.timing.vector_ms}
                         </Badge>
-                      ) : null}
-                      {channels?.timing?.bm25_ms != null ? (
+                      )}
+                      {channels?.timing?.bm25_ms == null ? null : (
                         <Badge variant="soft" className="text-[10px]">
                           bm25_ms={channels.timing.bm25_ms}
                         </Badge>
-                      ) : null}
-                      {channels?.timing?.fusion_ms != null ? (
+                      )}
+                      {channels?.timing?.fusion_ms == null ? null : (
                         <Badge variant="soft" className="text-[10px]">
                           fusion_ms={channels.timing.fusion_ms}
                         </Badge>
-                      ) : null}
+                      )}
                     </div>
 
                     {(rerankSkipReason || rerankError) ? (
@@ -581,7 +579,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                     ) : null}
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {(['vector', 'colbert_ann', 'bm25', 'lexical_db', 'sparse'] as const).map((k) => {
+                      {(['vector', 'colbert_ann', 'bm25', 'lexical_db', 'sparse']).map((k) => {
                         const box = (channels as any)?.[k] as Record<string, any> | null | undefined
                         if (!box) return null
                         return (
@@ -589,22 +587,24 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                             <div className="min-w-0">
                               <div className="text-xs font-semibold text-foreground">{k}</div>
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                {box.enabled != null ? `enabled=${String(box.enabled)}` : null}
-                                {box.used != null ? ` · used=${String(box.used)}` : null}
-                                {box.filter_applied != null ? ` · filter=${String(box.filter_applied)}` : null}
-                                {box.index_enabled != null ? ` · index=${String(box.index_enabled)}` : null}
+                                {box.enabled == null ? null : `enabled=${String(box.enabled)}`}
+                                {box.used == null ? null : ` · used=${String(box.used)}`}
+                                {box.filter_applied == null ? null : ` · filter=${String(box.filter_applied)}`}
+                                {box.index_enabled == null ? null : ` · index=${String(box.index_enabled)}`}
                                 {box.provider ? ` · provider=${String(box.provider)}` : null}
                                 {box.skipped_reason ? ` · skipped=${String(box.skipped_reason)}` : null}
                               </div>
                             </div>
                             <div className="shrink-0 text-xs font-medium text-muted-foreground">
-                              {box.candidates != null ? `${box.candidates}` : '—'}
+                              {box.candidates == null ? '—' : `${box.candidates}`}
                             </div>
                           </Panel>
                         )
                       })}
                     </div>
                   </>
+                ) : (
+                  <div className="text-xs text-muted-foreground">暂无 per-channel 指标（旧 trace 或 retriever_debug 被裁剪）。</div>
                 )}
               </div>
             </Panel>
@@ -619,7 +619,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                     const score = getPrimaryScore(c)
                     const docId = c.document_id || ''
                     const chunkId = c.chunk_id || ''
-                    const page = c.page_number != null ? `p.${c.page_number}` : null
+                    const page = c.page_number == null ? null : `p.${c.page_number}`
                     const rerankScore = formatScore(c.rerank_score, 3)
                     const retrievalScore = formatScore(c.retrieval_score, 3)
                     const relScore = formatScore(c.relevance_score, 3)
@@ -632,7 +632,7 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                     const neighborOf = c.neighbor_of ? String(c.neighbor_of) : null
                     return (
                       <div
-                        key={`${docId}:${chunkId}:${idx}`}
+                        key={`${docId}:${chunkId}:${role || ''}:${neighborOf || ''}`}
                         className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card/40 px-3 py-2"
                       >
                         <div className="min-w-0">
@@ -650,11 +650,11 @@ export function RagTracePanel({ conversationId, className }: RagTracePanelProps)
                                 neighbor_of={shortHash(neighborOf, { head: 10, tail: 6 })}
                               </Badge>
                             ) : null}
-                            {score != null ? (
+                            {score == null ? null : (
                               <Badge variant="soft" className="text-[10px]">
                                 score={score.toFixed(3)}
                               </Badge>
-                            ) : null}
+                            )}
                             {rerankScore ? (
                               <Badge variant="soft" className="text-[10px]">
                                 rerank={rerankScore}

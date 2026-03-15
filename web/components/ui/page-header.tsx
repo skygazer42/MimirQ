@@ -19,7 +19,7 @@ export function PageHeader({
   children,
   className,
   badge,
-}: PageHeaderProps) {
+}: Readonly<PageHeaderProps>) {
   return (
     <header className={cn("flex-shrink-0 relative z-10", className)}>
       <div className="flex items-start justify-between gap-4">

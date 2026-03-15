@@ -4,7 +4,7 @@ import asyncio
 import base64
 import types
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from tests.test_confluence_connector_unit import _import_connectors_with_lightweight_stubs
 
@@ -415,6 +415,76 @@ def test_github_repo_path_is_included_supports_extension_and_extensionless_paths
     assert connectors._github_repo_path_is_included("LICENSE", {".md"}) is False
 
 
+def test_github_team_principal_key_from_repo_team_item_uses_org_fallback_and_skips_invalid_values() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    assert (
+        connectors._github_team_principal_key_from_repo_team_item(  # type: ignore[attr-defined]
+            {"slug": "platform", "organization": {"login": "acme"}},
+            owner="fallback-org",
+        )
+        == "github:team:acme/platform"
+    )
+    assert (
+        connectors._github_team_principal_key_from_repo_team_item(  # type: ignore[attr-defined]
+            {"slug": "platform"},
+            owner="fallback-org",
+        )
+        == "github:team:fallback-org/platform"
+    )
+    assert (
+        connectors._github_team_principal_key_from_repo_team_item(  # type: ignore[attr-defined]
+            {"organization": {"login": "acme"}},
+            owner="fallback-org",
+        )
+        == ""
+    )
+    assert connectors._github_team_principal_key_from_repo_team_item("not-a-dict", owner="fallback-org") == ""  # type: ignore[attr-defined]
+
+
+def test_github_repo_listed_files_and_observed_paths_filters_tree_and_preserves_tracked_paths() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    files, observed_paths = connectors._github_repo_listed_files_and_observed_paths(  # type: ignore[attr-defined]
+        tree_items=[
+            {"type": "tree", "path": "docs", "sha": "ignored"},
+            {"type": "blob", "path": "tracked.txt", "sha": "sha-tracked"},
+            {"type": "blob", "path": "guide.md", "sha": "sha-guide"},
+            {"type": "blob", "path": "LICENSE", "sha": "sha-license"},
+            {"type": "blob", "path": "notes.txt", "sha": "sha-notes"},
+            {"type": "blob", "path": " ", "sha": "sha-blank"},
+        ],
+        tracked_paths={"tracked.txt", "missing.md"},
+        include_set={".md"},
+        max_files=2,
+    )
+
+    assert files == [("guide.md", "sha-guide")]
+    assert observed_paths == {"tracked.txt"}
+
+
+def test_github_repo_delta_files_skips_unchanged_only_when_acl_delta_sync_is_disabled() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    delta_files, skipped_unchanged = connectors._github_repo_delta_files(  # type: ignore[attr-defined]
+        files=[("guide.md", "sha-guide"), ("notes.md", "sha-notes")],
+        existing_manifest={"guide.md": "sha-guide"},
+        mode="incremental",
+        enable_source_acl=False,
+    )
+    assert delta_files == [("notes.md", "sha-notes")]
+    assert skipped_unchanged == 1
+
+    delta_files_acl, skipped_unchanged_acl = connectors._github_repo_delta_files(  # type: ignore[attr-defined]
+        files=[("guide.md", "sha-guide")],
+        existing_manifest={"guide.md": "sha-guide"},
+        mode="incremental",
+        enable_source_acl=True,
+    )
+    assert delta_files_acl == [("guide.md", "sha-guide")]
+    assert skipped_unchanged_acl == 0
+
+
 def test_build_drive_files_execution_plan_resumes_full_sync_from_saved_cursor() -> None:
     connectors = _import_connectors_with_lightweight_stubs()
 
@@ -527,6 +597,7 @@ def test_process_drive_files_sources_only_passes_required_ingest_args(monkeypatc
         file_id,
         settings_map,
     ):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         seen["ingest_run"] = run
         seen["ingest_run_id"] = run_id
         seen["ingest_tenant_id"] = tenant_id
@@ -590,13 +661,42 @@ def test_process_drive_files_sources_only_passes_required_ingest_args(monkeypatc
     assert seen["persist_kwargs"]["source_manifest_state"] == {"file-1": "token-1"}
 
 
+def test_github_repo_apply_processed_file_success_updates_counts_and_manifest() -> None:
+    connectors = _import_connectors_with_lightweight_stubs()
+
+    state = connectors._github_repo_apply_processed_file_success(  # type: ignore[attr-defined]
+        path="docs/guide.md",
+        blob_sha="sha-guide",
+        result={"doc_id": uuid.UUID("11111111-1111-1111-1111-111111111111"), "updated_existing": 2},
+        created=1,
+        created_doc_ids=[uuid.UUID("00000000-0000-0000-0000-000000000000")],
+        delta_acl_docs_updated=3,
+        delta_acl_sources_updated=4,
+        source_manifest_state={"docs/old.md": "sha-old"},
+    )
+
+    assert state == {
+        "created": 2,
+        "created_doc_ids": [
+            uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            uuid.UUID("11111111-1111-1111-1111-111111111111"),
+        ],
+        "delta_acl_docs_updated": 5,
+        "delta_acl_sources_updated": 5,
+        "source_manifest_state": {
+            "docs/old.md": "sha-old",
+            "docs/guide.md": "sha-guide",
+        },
+    }
+
+
 def test_minio_object_token_includes_etag_timestamp_and_size() -> None:
     connectors = _import_connectors_with_lightweight_stubs()
 
     token = connectors._minio_object_token(
         types.SimpleNamespace(
             etag="etag-1",
-            last_modified=datetime(2026, 3, 10, 12, 34, 56, tzinfo=timezone.utc),
+            last_modified=datetime(2026, 3, 10, 12, 34, 56, tzinfo=UTC),
             size=123,
         )
     )
@@ -1105,6 +1205,7 @@ def test_ingest_single_jira_linked_artifact_sets_metadata_and_auth_headers(monke
     dummy_db = _DummyDB()
 
     async def _fake_ingest_url_upload_request(*_a, **kwargs):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         body = kwargs["body"]
         seen["body_url"] = getattr(body, "url", None)
         seen["body_fetch_headers"] = getattr(body, "fetch_headers", None)
@@ -1204,6 +1305,7 @@ def test_ingest_jira_issue_linked_artifacts_tracks_created_docs_and_reconciles(m
     monkeypatch.setattr(connectors, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=False)
 
     async def _fake_ingest_single_jira_linked_artifact(*_a, **kwargs):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         link_url = str(kwargs.get("link_url") or "")
         seen.setdefault("link_urls", []).append(link_url)
         return created_ids[len(seen["link_urls"]) - 1]
@@ -1294,6 +1396,7 @@ def test_ingest_jira_issue_linked_artifacts_skips_reconcile_when_listing_is_trun
     monkeypatch.setattr(connectors, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=False)
 
     async def _fake_ingest_single_jira_linked_artifact(*_a, **_kwargs):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return uuid.uuid4()
 
     def _fake_soft_disable(*_a, **_kwargs):  # noqa: ANN001
@@ -1381,6 +1484,7 @@ def test_ingest_single_jira_attachment_sets_metadata_and_filename(monkeypatch) -
     dummy_db = _DummyDB()
 
     async def _fake_ingest_url_upload_request(*_a, **kwargs):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         body = kwargs["body"]
         seen["body_url"] = getattr(body, "url", None)
         seen["body_fetch_headers"] = getattr(body, "fetch_headers", None)
@@ -1488,6 +1592,7 @@ def test_ingest_jira_issue_attachments_filters_extensions_and_reconciles(monkeyp
     monkeypatch.setattr(connectors.settings, "ALLOWED_EXTENSIONS", ".pdf", raising=False)
 
     async def _fake_ingest_single_jira_attachment(*_a, **kwargs):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         seen.setdefault("attachment_ids", []).append(kwargs.get("attachment_ref", {}).get("attachment_id"))
         return created_id
 
@@ -1587,6 +1692,7 @@ def test_ingest_jira_issue_attachments_skips_reconcile_when_listing_is_truncated
     monkeypatch.setattr(connectors.settings, "ALLOWED_EXTENSIONS", ".pdf,.txt", raising=False)
 
     async def _fake_ingest_single_jira_attachment(*_a, **_kwargs):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return uuid.uuid4()
 
     def _fake_soft_disable(*_a, **_kwargs):  # noqa: ANN001

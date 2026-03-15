@@ -19,7 +19,7 @@ interface LottieAnimationProps extends Omit<LottieComponentProps, "animationData
 
 const lottieCache = new Map<string, any>()
 
-export function LottieAnimation({ url, className, fallback, ...props }: LottieAnimationProps) {
+export function LottieAnimation({ url, className, fallback, ...props }: Readonly<LottieAnimationProps>) {
     const shouldReduceMotion = useReducedMotion()
     const [animationData, setAnimationData] = React.useState<any>(() => lottieCache.get(url) ?? null)
     const [hasError, setHasError] = React.useState(false)

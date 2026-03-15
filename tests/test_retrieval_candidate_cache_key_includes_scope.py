@@ -22,19 +22,19 @@ def test_retrieval_candidate_cache_key_changes_with_scope() -> None:
 
     build = mod.build_retrieval_candidate_cache_key
 
-    base = dict(
-        tenant_id="t1",
-        account_id="acct-1",
-        dataset_id="ds-1",
-        pipeline_key="pipe-a",
-        corpus_cache_token="corp-a",
-        query="hello world",
-        top_k=10,
-        score_threshold=0.5,
-        retrieval_mode="hybrid",
-        metadata_filter={"source": "kb"},
-        document_ids=[],
-    )
+    base = {
+        "tenant_id": "t1",
+        "account_id": "acct-1",
+        "dataset_id": "ds-1",
+        "pipeline_key": "pipe-a",
+        "corpus_cache_token": "corp-a",
+        "query": "hello world",
+        "top_k": 10,
+        "score_threshold": 0.5,
+        "retrieval_mode": "hybrid",
+        "metadata_filter": {"source": "kb"},
+        "document_ids": [],
+    }
 
     k0 = build(**base)
     assert isinstance(k0, str) and k0

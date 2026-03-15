@@ -88,11 +88,19 @@ const markdownComponents = {
   ),
   img: ({ src, alt }: { src?: string | Blob; alt?: string }) => {
     const raw = typeof src === 'string' ? src : ''
-    const resolved = raw
-      ? /^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)
-        ? raw
-        : toAbsoluteBackendUrl(raw)
-      : ''
+    const resolved = (() => {
+    if (raw) {
+        if (/^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)) {
+            return raw;
+        }
+        else {
+            return toAbsoluteBackendUrl(raw);
+        }
+    }
+    else {
+        return '';
+    }
+})()
     if (!resolved) return null
     const finalSrc = maybeAttachImageAuthToken(resolved)
     return (
@@ -136,10 +144,10 @@ const markdownComponents = {
 export const ChatMessageItem = memo(function ChatMessageItem({
   message,
   isStreaming = false,
-}: {
+}: Readonly<{
   message: Message
   isStreaming?: boolean
-}) {
+}>) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
   const [diagOpen, setDiagOpen] = useState(false)
@@ -151,7 +159,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   useEffect(() => {
     return () => {
       if (copyTimerRef.current != null) {
-        window.clearTimeout(copyTimerRef.current)
+        globalThis.window.clearTimeout(copyTimerRef.current)
       }
     }
   }, [])
@@ -187,9 +195,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
     setCopied(true)
     if (copyTimerRef.current != null) {
-      window.clearTimeout(copyTimerRef.current)
+      globalThis.window.clearTimeout(copyTimerRef.current)
     }
-    copyTimerRef.current = window.setTimeout(() => setCopied(false), 1200)
+    copyTimerRef.current = globalThis.window.setTimeout(() => setCopied(false), 1200)
   }
 
   const handleCopyDiagnostics = useCallback(async () => {
@@ -205,7 +213,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     }
   }, [message.citations, message.id, message.message_metadata])
 
-  const metrics = (message.message_metadata || {}) as Record<string, any>
+  const metrics = (message.message_metadata || {})
   const claimEvidence = Array.isArray(metrics.claim_evidence) ? metrics.claim_evidence : null
   const metricEntries: Array<{ k: string; v: any }> = [
     { k: 'request_id', v: metrics.request_id },
@@ -310,7 +318,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	            <div className="pl-4 border-l border-primary/20 space-y-1">
               {message.steps.map((step, idx) => (
 	                <div
-	                  key={idx}
+	                  key={step}
 	                  className={cn(
 	                    "text-xs transition-opacity duration-200 motion-reduce:transition-none",
 	                    idx === message.steps!.length - 1 ? "text-foreground font-medium motion-safe:animate-pulse" : "text-muted-foreground/60"
@@ -433,9 +441,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                         </td>
                                         <td className="px-4 py-2.5 text-right font-mono">{c.page_number ?? "-"}</td>
                                         <td className="px-4 py-2.5 text-right font-mono font-semibold">{Number.isFinite(score) ? score.toFixed(3) : "-"}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono">{c.vector_score != null ? Number(c.vector_score).toFixed(3) : "-"}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono">{c.bm25_score != null ? Number(c.bm25_score).toFixed(3) : "-"}</td>
-                                        <td className="px-4 py-2.5 text-right font-mono">{c.rerank_score != null ? Number(c.rerank_score).toFixed(3) : "-"}</td>
+                                        <td className="px-4 py-2.5 text-right font-mono">{c.vector_score == null ? "-" : Number(c.vector_score).toFixed(3)}</td>
+                                        <td className="px-4 py-2.5 text-right font-mono">{c.bm25_score == null ? "-" : Number(c.bm25_score).toFixed(3)}</td>
+                                        <td className="px-4 py-2.5 text-right font-mono">{c.rerank_score == null ? "-" : Number(c.rerank_score).toFixed(3)}</td>
                                       </tr>
                                     )
                                   })}
@@ -462,7 +470,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                 const evidence = Array.isArray(item?.evidence) ? item.evidence : []
                                 return (
                                   <div
-                                    key={`${idx}-${claim.slice(0, 32)}`}
+                                    key={claim || evidence.map((ev: any) => String(ev?.chunk_id || ev?.document_id || '')).join(':') || 'claim'}
                                     className="rounded-lg border border-border/60 bg-background/40 p-3"
                                   >
                                     <div className="flex items-start justify-between gap-3">
@@ -489,7 +497,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
                                           return (
                                             <button
-                                              key={`${eidx}-${docId}-${chunkId}`}
+                                              key={`${docId}:${chunkId}:${quote.slice(0, 24)}`}
                                               type="button"
                                               disabled={disabled}
                                               aria-label={disabled ? 'Evidence unavailable' : 'Open evidence in document viewer'}
@@ -510,14 +518,14 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                                                     {c?.document_name || docId || 'Unknown'}
                                                   </div>
                                                   <div className="text-[10px] text-muted-foreground tabular-nums">
-                                                    {c?.page_number != null ? `P.${c.page_number}` : '—'}
+                                                    {c?.page_number == null ? '—' : `P.${c.page_number}`}
                                                     {typeof ev?.start_char === 'number' && typeof ev?.end_char === 'number'
                                                       ? ` · ${Math.trunc(ev.start_char)}-${Math.trunc(ev.end_char)}`
                                                       : ''}
                                                   </div>
                                                 </div>
                                                 <div className="text-[10px] font-mono text-muted-foreground tabular-nums">
-                                                  {score != null ? score.toFixed(3) : ''}
+                                                  {score == null ? '' : score.toFixed(3)}
                                                 </div>
                                               </div>
                                               {quote ? (
@@ -586,18 +594,21 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	            isUser && 'prose-code:bg-primary-foreground/10 prose-code:text-primary-foreground'
 	          )}
 	        >
-          {isUser ? (
-            <div className="whitespace-pre-wrap font-normal ">{message.content}</div>
-          ) : isStreaming ? (
-            <CinematicTypewriter content={message.content} isStreaming={true} />
-          ) : (
-            <ReactMarkdown
-              remarkPlugins={markdownPlugins}
-              components={markdownComponents}
-            >
+          {(() => {
+    if (isUser) {
+        return (<div className="whitespace-pre-wrap font-normal ">{message.content}</div>);
+    }
+    else {
+        if (isStreaming) {
+            return (<CinematicTypewriter content={message.content} isStreaming={true}/>);
+        }
+        else {
+            return (<ReactMarkdown remarkPlugins={markdownPlugins} components={markdownComponents}>
               {message.content}
-            </ReactMarkdown>
-          )}
+            </ReactMarkdown>);
+        }
+    }
+})()}
         </div>
 
         {!isUser && message.citations && message.citations.length > 0 && (
@@ -661,7 +672,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   )
 })
 
-const CitationCard = memo(function CitationCard({ citation, index }: { citation: Citation; index: number }) {
+const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ citation: Citation; index: number }>) {
   const { openDocument } = useDocumentView()
   const [hideImage, setHideImage] = useState(false)
   const [viewerOpen, setViewerOpen] = useState(false)
@@ -690,17 +701,33 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
     // Open document viewer panel
     if (citation.document_id) {
       const start =
-        typeof citation.evidence_start_char === 'number'
-          ? citation.evidence_start_char
-          : typeof citation.start_char === 'number'
-          ? citation.start_char
-          : null
+        (() => {
+    if (typeof citation.evidence_start_char === 'number') {
+        return citation.evidence_start_char;
+    }
+    else {
+        if (typeof citation.start_char === 'number') {
+            return citation.start_char;
+        }
+        else {
+            return null;
+        }
+    }
+})()
       const end =
-        typeof citation.evidence_end_char === 'number'
-          ? citation.evidence_end_char
-          : typeof citation.end_char === 'number'
-          ? citation.end_char
-          : null
+        (() => {
+    if (typeof citation.evidence_end_char === 'number') {
+        return citation.evidence_end_char;
+    }
+    else {
+        if (typeof citation.end_char === 'number') {
+            return citation.end_char;
+        }
+        else {
+            return null;
+        }
+    }
+})()
       const range = start != null && end != null && end > start ? { start, end } : undefined
       openDocument(citation.document_id, citation.chunk_id, range)
     }
@@ -709,7 +736,15 @@ const CitationCard = memo(function CitationCard({ citation, index }: { citation:
 	  return (
       <>
 	      <div
+	        role="button"
+	        tabIndex={0}
 	        onClick={handleClick}
+	        onKeyDown={(event) => {
+	          if (event.key === 'Enter' || event.key === ' ') {
+	            event.preventDefault()
+	            handleClick()
+	          }
+	        }}
 	        className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 cursor-pointer shadow-sm focus-ring transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md"
 	      >
       <div className="flex items-start gap-3">

@@ -4,7 +4,7 @@ type AppBackgroundProps = {
   className?: string
 }
 
-export function AppBackground({ className }: AppBackgroundProps) {
+export function AppBackground({ className }: Readonly<AppBackgroundProps>) {
   return (
     // NOTE: Keep this layer from creating window-level scrollbars (avoid negative offsets + heavy blurs).
     <div aria-hidden="true" className={cn("pointer-events-none fixed inset-0 z-0 overflow-hidden", className)}>

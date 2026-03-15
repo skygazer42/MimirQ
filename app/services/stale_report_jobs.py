@@ -14,7 +14,7 @@ Design principles (similar to retention jobs):
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any
 from uuid import UUID
@@ -31,7 +31,7 @@ def _dt_to_json(v: datetime | None) -> str | None:
     if v is None:
         return None
     try:
-        s = v.astimezone(timezone.utc).isoformat()
+        s = v.astimezone(UTC).isoformat()
     except Exception:
         return None
     if s.endswith("+00:00"):
@@ -48,8 +48,8 @@ def _parse_datetime_best_effort(raw: object) -> datetime | None:
     try:
         dt = parsedate_to_datetime(value)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
     except Exception:
         pass
 
@@ -58,8 +58,8 @@ def _parse_datetime_best_effort(raw: object) -> datetime | None:
         iso = value[:-1] + "+00:00" if value.endswith("Z") else value
         dt = datetime.fromisoformat(iso)
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
     except Exception:
         return None
 
@@ -173,7 +173,7 @@ def run_daily_stale_report(
       3) processed_at / updated_at / created_at / linked_at (fallback)
     - If effective timestamp is older than (now - stale_after_days), classify as stale.
     """
-    now0 = now or datetime.now(timezone.utc)
+    now0 = now or datetime.now(UTC)
     try:
         days_i = max(1, int(stale_after_days or 0))
     except Exception:
@@ -255,8 +255,8 @@ def run_daily_stale_report(
             reason = "fallback:document_timestamps"
         if isinstance(eff_dt, datetime):
             if eff_dt.tzinfo is None:
-                eff_dt = eff_dt.replace(tzinfo=timezone.utc)
-            eff_dt = eff_dt.astimezone(timezone.utc)
+                eff_dt = eff_dt.replace(tzinfo=UTC)
+            eff_dt = eff_dt.astimezone(UTC)
         else:
             # Should be rare; treat as now to avoid false stale inflation.
             eff_dt = now0

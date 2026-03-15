@@ -9,12 +9,12 @@ export function DocumentTags({
   max = 4,
   className,
   dense = false,
-}: {
+}: Readonly<{
   tags: unknown
   max?: number
   className?: string
   dense?: boolean
-}) {
+}>) {
   const normalized = React.useMemo(() => normalizeTags(tags), [tags])
   const cap = Math.max(0, Math.min(50, Number(max || 0)))
   if (!normalized.length) return null

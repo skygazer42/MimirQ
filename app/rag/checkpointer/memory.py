@@ -5,11 +5,12 @@ Non-persistent checkpoints suitable for development and testing environments.
 Data is lost after application restart.
 """
 
+import builtins
 import logging
 import threading
 from collections import defaultdict
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
@@ -25,16 +26,16 @@ class MemorySaver:
 
     def __init__(self):
         """Initialize the memory saver."""
-        self._storage: Dict[str, Dict[str, Any]] = {}
-        self._by_thread: Dict[str, List[str]] = defaultdict(list)
+        self._storage: dict[str, dict[str, Any]] = {}
+        self._by_thread: dict[str, list[str]] = defaultdict(list)
         self._lock = threading.RLock()
 
     def put(
         self,
-        config: Dict[str, Any],
-        checkpoint: Dict[str, Any],
-        metadata: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        config: dict[str, Any],
+        checkpoint: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """
         Save a checkpoint.
 
@@ -57,7 +58,7 @@ class MemorySaver:
                 "parent_id": parent_id,
                 "checkpoint": checkpoint,
                 "metadata": metadata or {},
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(UTC).replace(tzinfo=None).isoformat(),
             }
 
             self._by_thread[thread_id].append(checkpoint_id)
@@ -69,7 +70,7 @@ class MemorySaver:
                 }
             }
 
-    def get(self, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def get(self, config: dict[str, Any]) -> dict[str, Any] | None:
         """
         Get a checkpoint.
 
@@ -93,7 +94,7 @@ class MemorySaver:
 
             return None
 
-    def get_tuple(self, config: Dict[str, Any]) -> Optional[Tuple[Dict[str, Any], Dict[str, Any]]]:
+    def get_tuple(self, config: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]] | None:
         """
         Get checkpoint with metadata.
 
@@ -128,10 +129,10 @@ class MemorySaver:
 
     def list(
         self,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         limit: int = 100,
-        before: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        before: str | None = None,
+    ) -> list[dict[str, Any]]:
         """
         List checkpoints for a thread.
 
@@ -159,7 +160,7 @@ class MemorySaver:
 
             return [self._storage[cid] for cid in ids if cid in self._storage]
 
-    def delete(self, config: Dict[str, Any]) -> bool:
+    def delete(self, config: dict[str, Any]) -> bool:
         """
         Delete a checkpoint.
 
@@ -218,7 +219,7 @@ class MemorySaver:
             self._by_thread.clear()
             return count
 
-    def get_thread_ids(self, limit: int = 100) -> List[str]:
+    def get_thread_ids(self, limit: int = 100) -> builtins.list[str]:
         """
         Get all unique thread IDs.
 

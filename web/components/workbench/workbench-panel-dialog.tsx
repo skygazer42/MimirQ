@@ -37,18 +37,26 @@ export function WorkbenchPanelDialog({
   triggerIcon: TriggerIcon,
   triggerLabel,
   className,
-}: WorkbenchPanelDialogProps) {
+}: Readonly<WorkbenchPanelDialogProps>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {trigger ? (
-        <DialogTrigger asChild>{trigger}</DialogTrigger>
-      ) : TriggerIcon && triggerLabel ? (
-        <DialogTrigger asChild>
+      {(() => {
+    if (trigger) {
+        return (<DialogTrigger asChild>{trigger}</DialogTrigger>);
+    }
+    else {
+        if (TriggerIcon && triggerLabel) {
+            return (<DialogTrigger asChild>
           <IconButton label={triggerLabel} variant="ghost">
-            <TriggerIcon className="size-4" />
+            <TriggerIcon className="size-4"/>
           </IconButton>
-        </DialogTrigger>
-      ) : null}
+        </DialogTrigger>);
+        }
+        else {
+            return null;
+        }
+    }
+})()}
 
       <DialogContent
         className={cn(

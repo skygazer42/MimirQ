@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional, Sequence, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 from app.services.dataset_profile_service import extract_language_bucket, quality_bucket_from_governance_quality
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def _as_uuid(value: Any) -> Optional[UUID]:
+def _as_uuid(value: Any) -> UUID | None:
     if value is None:
         return None
     if isinstance(value, UUID):
@@ -55,7 +56,7 @@ def _norm_hit_type(value: Any) -> str:
     return s if s in {"vector", "keyword", "hybrid", "mmr", "tag", "image", "table"} else "unknown"
 
 
-def _percentile(values: Sequence[float], pct: float) -> Optional[float]:
+def _percentile(values: Sequence[float], pct: float) -> float | None:
     if not values:
         return None
     if pct <= 0:
@@ -71,7 +72,7 @@ def _percentile(values: Sequence[float], pct: float) -> Optional[float]:
     return float(vals[k])
 
 
-def _mean(values: Sequence[float]) -> Optional[float]:
+def _mean(values: Sequence[float]) -> float | None:
     vals = [float(v) for v in values if v is not None and math.isfinite(float(v))]
     if not vals:
         return None
@@ -87,7 +88,7 @@ def _get_attr(obj: Any, name: str) -> Any:
 def compute_suite_throughput(
     items: Sequence[Any],
     *,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
     window_days: int = 7,
 ) -> dict[str, Any]:
     """
@@ -170,7 +171,7 @@ class CoverageHeatmap:
 
 
 def _top_n_buckets(
-    buckets: Dict[str, Tuple[set[str], int]],
+    buckets: dict[str, tuple[set[str], int]],
     *,
     top_n: int,
 ) -> list[CoverageBucket]:
@@ -202,7 +203,7 @@ def _top_n_buckets(
 def compute_suite_coverage(
     items: Sequence[Any],
     *,
-    documents: Dict[UUID, Dict[str, Any]],
+    documents: dict[UUID, dict[str, Any]],
     top_n: int = 12,
     heatmap_top_n: int = 8,
 ) -> dict[str, Any]:

@@ -9,7 +9,7 @@ Adds a stable request id to:
 
 import re
 import uuid
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -22,7 +22,7 @@ from app.core.request_state import bind_request_state, reset_request_state
 _SAFE_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-:.]{0,127}$")
 
 
-def _normalize_request_id(raw: Optional[str]) -> str:
+def _normalize_request_id(raw: str | None) -> str:
     value = (raw or "").strip()
     if not value:
         return uuid.uuid4().hex

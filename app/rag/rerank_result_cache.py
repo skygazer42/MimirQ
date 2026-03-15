@@ -17,7 +17,8 @@ import json
 import threading
 import time
 from collections import OrderedDict
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
@@ -210,7 +211,7 @@ class _TTLCache:
     def _enabled(self) -> bool:
         return bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)) and self._max_entries() > 0
 
-    def get(self, key: str) -> Optional[dict[str, Any]]:
+    def get(self, key: str) -> dict[str, Any] | None:
         if not key or not self._enabled():
             return None
         now = time.time()
@@ -280,7 +281,7 @@ def _invalidate_redis_client() -> None:
     _redis_client = None
 
 
-def _get_cached_payload_from_redis(key: str) -> Optional[dict[str, Any]]:
+def _get_cached_payload_from_redis(key: str) -> dict[str, Any] | None:
     if not key or not bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)):
         return None
     client = _get_redis_client()

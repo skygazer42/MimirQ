@@ -10,9 +10,10 @@ import contextlib
 import io
 import json
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Iterator
+from typing import Any, BinaryIO
 from urllib.parse import urlparse
 
 from app.core.config import settings

@@ -8,7 +8,9 @@ Task intent (from AGENTS.md / project notes):
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import UTC
+from typing import Any
 from uuid import UUID
 
 from app.types.indexing import ChunkInput
@@ -141,7 +143,7 @@ def upsert_and_index_virtual_schema_doc(
     - This function touches DB + vector/BM25 indexes via `Indexer`.
     """
     import time
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from sqlalchemy.orm import Session  # noqa: WPS433
 
@@ -154,7 +156,7 @@ def upsert_and_index_virtual_schema_doc(
         raise TypeError("db must be a SQLAlchemy Session")
 
     t0 = time.time()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     file_path = virtual_schema_file_path(str(dataset_id))
     filename = virtual_schema_filename(str(dataset_id))
@@ -407,7 +409,7 @@ def _iter_tables_sorted(tables: Sequence[Mapping[str, Any]]) -> Iterable[Mapping
             _norm_str(t.get("table_name")).lower(),
         )
 
-    return sorted(list(tables or []), key=key)
+    return sorted(tables or [], key=key)
 
 
 def _iter_columns_sorted(columns: Sequence[Mapping[str, Any]]) -> Iterable[Mapping[str, Any]]:
@@ -418,7 +420,7 @@ def _iter_columns_sorted(columns: Sequence[Mapping[str, Any]]) -> Iterable[Mappi
             ordinal = 0
         return (ordinal, _norm_str(c.get("name")).lower())
 
-    return sorted(list(columns or []), key=key)
+    return sorted(columns or [], key=key)
 
 
 def render_virtual_schema_markdown(

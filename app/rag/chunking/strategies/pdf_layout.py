@@ -22,8 +22,9 @@ Notes:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Mapping, Tuple
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -36,7 +37,7 @@ POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0
 
 @dataclass(frozen=True)
 class PositionTag:
-    pages: Tuple[int, ...]
+    pages: tuple[int, ...]
     left: float
     right: float
     top: float
@@ -47,7 +48,7 @@ class PositionTag:
 class _Block:
     raw_start: int
     raw_end: int
-    tags: List[PositionTag]
+    tags: list[PositionTag]
 
 
 def _strip_position_tags(text: str) -> str:
@@ -56,10 +57,10 @@ def _strip_position_tags(text: str) -> str:
     return POSITION_TAG_RE.sub("", text)
 
 
-def _parse_pages(value: str) -> Tuple[int, ...]:
+def _parse_pages(value: str) -> tuple[int, ...]:
     s = str(value or "").strip()
     if not s:
-        return tuple()
+        return ()
     out: list[int] = []
     for part in s.split("-"):
         part = part.strip()
@@ -97,7 +98,7 @@ def _parse_tag(match: re.Match[str]) -> PositionTag | None:
     return PositionTag(pages=pages, left=float(left), right=float(right), top=float(top), bottom=float(bottom))
 
 
-def _extract_position_blocks(raw: str) -> List[_Block]:
+def _extract_position_blocks(raw: str) -> list[_Block]:
     """
     Extract position-tag blocks from raw markdown.
 
@@ -135,14 +136,14 @@ def _extract_position_blocks(raw: str) -> List[_Block]:
     return blocks
 
 
-def _collect_tags(blocks: Iterable[_Block]) -> List[PositionTag]:
+def _collect_tags(blocks: Iterable[_Block]) -> list[PositionTag]:
     out: list[PositionTag] = []
     for b in blocks:
         out.extend(list(b.tags or []))
     return out
 
 
-def _layout_meta_from_tags(tags: List[PositionTag]) -> Dict[str, Any] | None:
+def _layout_meta_from_tags(tags: list[PositionTag]) -> dict[str, Any] | None:
     if not tags:
         return None
 
@@ -239,7 +240,7 @@ class PDFLayoutChunker(BaseChunker):
         self.chunk_overlap = int(chunk_overlap)
         self._fallback = LangChainRecursiveChunker(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
+    def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
         for doc in documents or []:
             raw = doc.page_content or ""

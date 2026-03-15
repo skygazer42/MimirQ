@@ -9,7 +9,6 @@ Goals:
 from __future__ import annotations
 
 import re
-from typing import List, Tuple
 
 _WS_RE = re.compile(r"\s+")
 _NUMERIC_RE = re.compile(r"^\s*[-+]?(\d+(\.\d+)?|\.\d+)\s*$")
@@ -30,15 +29,15 @@ def clean_table_cell(text: str) -> str:
     return raw
 
 
-def _pad_rows(rows: List[List[str]], width: int) -> List[List[str]]:
-    out: List[List[str]] = []
+def _pad_rows(rows: list[list[str]], width: int) -> list[list[str]]:
+    out: list[list[str]] = []
     for r in rows:
         rr = list(r) + [""] * max(0, width - len(r))
         out.append(rr[:width])
     return out
 
 
-def infer_table_header(rows: List[List[str]]) -> Tuple[List[str], List[List[str]]]:
+def infer_table_header(rows: list[list[str]]) -> tuple[list[str], list[list[str]]]:
     """
     Infer whether the first row is likely a header.
 
@@ -72,7 +71,7 @@ def infer_table_header(rows: List[List[str]]) -> Tuple[List[str], List[List[str]
     return header, padded
 
 
-def build_markdown_table(*, header: List[str], rows: List[List[str]]) -> str:
+def build_markdown_table(*, header: list[str], rows: list[list[str]]) -> str:
     """
     Build a Markdown pipe table string.
     """
@@ -83,12 +82,12 @@ def build_markdown_table(*, header: List[str], rows: List[List[str]]) -> str:
     header2 = _pad_rows([header], width)[0]
     rows2 = _pad_rows(rows, width)
 
-    def _row(cells: List[str]) -> str:
+    def _row(cells: list[str]) -> str:
         safe = [clean_table_cell(c) for c in cells]
         return "| " + " | ".join(safe) + " |"
 
     align = "| " + " | ".join(["---"] * width) + " |"
-    out: List[str] = [_row(header2), align]
+    out: list[str] = [_row(header2), align]
     for r in rows2:
         out.append(_row(r))
     return "\n".join(out).strip()

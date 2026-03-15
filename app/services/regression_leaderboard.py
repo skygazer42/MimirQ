@@ -9,14 +9,15 @@ Goal:
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterable, List, Optional
+from collections.abc import Iterable
+from typing import Any
 
 from app.core.config import settings
 from app.rag.core.query_rewrite_strategy import build_query_rewrite_strategy_spec
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 
 
-def _to_float(v: Any) -> Optional[float]:
+def _to_float(v: Any) -> float | None:
     try:
         if v is None:
             return None
@@ -25,7 +26,7 @@ def _to_float(v: Any) -> Optional[float]:
         return None
 
 
-def _safe_dict(v: Any) -> Dict[str, Any]:
+def _safe_dict(v: Any) -> dict[str, Any]:
     return v if isinstance(v, dict) else {}
 
 
@@ -64,7 +65,7 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _build_run_retrieval_config_hash(*, rag_params: Dict[str, Any]) -> Optional[str]:
+def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | None:
     rp = _safe_dict(rag_params)
     mode = str(rp.get("retrieval_mode") or "").strip().lower() or "hybrid"
 
@@ -143,7 +144,7 @@ def build_regression_run_leaderboard(
     runs: Iterable[object],
     metric_key: str,
     limit: int = 50,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Build a leaderboard-like list sorted by `metric_key` (descending).
 

@@ -23,7 +23,7 @@ function ChunkPreviewContent() {
 }
 
 // 导出组件：带 Context Provider
-export function ChunkPreview(props: ChunkPreviewProps) {
+export function ChunkPreview(props: Readonly<ChunkPreviewProps>) {
   return (
     <ChunkPreviewProvider onConfirm={props.onConfirm} onClose={props.onClose}>
       <ChunkPreviewContent />

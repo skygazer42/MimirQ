@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 
@@ -14,9 +15,11 @@ class _FakeRedis:
         self._lists: dict[str, list[str]] = {}
 
     async def ping(self):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return True
 
     async def zadd(self, key, mapping):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         k = str(key)
         z = self._sorted_sets.setdefault(k, {})
         for member, score in (mapping or {}).items():
@@ -24,13 +27,16 @@ class _FakeRedis:
         return True
 
     async def expire(self, key, seconds):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         self._expires[str(key)] = int(seconds or 0)
         return True
 
     async def zcard(self, key):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return len(self._sorted_sets.get(str(key), {}))
 
     async def zremrangebyscore(self, key, min_score, max_score):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         k = str(key)
         z = self._sorted_sets.get(k, {})
         if not z:
@@ -44,12 +50,14 @@ class _FakeRedis:
         return len(to_delete)
 
     async def lpush(self, key, value):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         k = str(key)
         bucket = self._lists.setdefault(k, [])
         bucket.insert(0, str(value))
         return len(bucket)
 
     async def ltrim(self, key, start, stop):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         k = str(key)
         bucket = self._lists.get(k, [])
         if not bucket:
@@ -61,6 +69,7 @@ class _FakeRedis:
         return True
 
     async def lrange(self, key, start, stop):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         bucket = list(self._lists.get(str(key), []))
         if int(stop) < 0:
             return bucket[int(start) :]
@@ -87,6 +96,7 @@ async def test_refresh_snapshot_reports_depth_and_active_workers(monkeypatch: py
     monkeypatch.setattr(settings, "TASK_WORKER_HEARTBEAT_TTL_SEC", 30, raising=False)
 
     async def _fake_get_arq_redis():  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return fake
 
     monkeypatch.setattr(svc, "_get_arq_redis", _fake_get_arq_redis, raising=True)
@@ -113,6 +123,7 @@ async def test_refresh_updates_prometheus_gauges_when_enabled(monkeypatch: pytes
     monkeypatch.setattr(settings, "TASK_QUEUE_ENABLED", True, raising=False)
 
     async def _fake_get_arq_redis():  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return fake
 
     monkeypatch.setattr(svc, "_get_arq_redis", _fake_get_arq_redis, raising=True)
@@ -149,6 +160,7 @@ async def test_refresh_snapshot_includes_recent_job_outcomes(monkeypatch: pytest
     monkeypatch.setattr(settings, "TASK_QUEUE_RECENT_JOB_OUTCOMES_LIMIT", 5, raising=False)
 
     async def _fake_get_arq_redis():  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return fake
 
     monkeypatch.setattr(svc, "_get_arq_redis", _fake_get_arq_redis, raising=True)

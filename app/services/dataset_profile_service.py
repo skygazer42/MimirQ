@@ -13,8 +13,9 @@ from __future__ import annotations
 import re
 import time
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
-from typing import Any, Iterable, List, Tuple
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_, select
@@ -302,7 +303,7 @@ def build_dataset_documents_query(
     tenant_id: UUID,
     account_id: str,
     dataset_id: UUID,
-) -> Tuple[Dataset, Any]:
+) -> tuple[Dataset, Any]:
     """
     Return (dataset, query) for documents within a dataset that the account can read.
 
@@ -382,24 +383,24 @@ def aggregate_profile_from_rows(
     by_status: Counter[str] = Counter()
     by_type: Counter[str] = Counter()
     total_size = 0
-    lengths: List[int] = []
-    file_sizes: List[int] = []
-    chunk_counts: List[int] = []
-    avg_chunk_chars: List[int] = []
-    avg_chunk_tokens: List[int] = []
+    lengths: list[int] = []
+    file_sizes: list[int] = []
+    chunk_counts: list[int] = []
+    avg_chunk_chars: list[int] = []
+    avg_chunk_tokens: list[int] = []
     chunk_length_bins: list[int] = [0 for _ in range(len(CHUNK_LENGTH_BINS))]
     chunk_length_total: int = 0
     chunk_token_bins: list[int] = [0 for _ in range(len(CHUNK_TOKEN_BINS))]
     chunk_token_total: int = 0
 
-    coverage_pcts: List[int] = []
-    overlap_waste_pcts: List[int] = []
+    coverage_pcts: list[int] = []
+    overlap_waste_pcts: list[int] = []
 
     pdf_scanned = 0
     pdf_not_scanned = 0
     pdf_unknown = 0
 
-    page_counts: List[int] = []
+    page_counts: list[int] = []
     language_counts: Counter[str] = Counter()
     directory_counts: Counter[str] = Counter()
     quality_bucket_counts: Counter[str] = Counter()
@@ -409,13 +410,13 @@ def aggregate_profile_from_rows(
     provenance_docs = 0
     provenance_by_backend: Counter[str] = Counter()
     provenance_fallback_docs = 0
-    provenance_elapsed_ms: List[int] = []
+    provenance_elapsed_ms: list[int] = []
 
     pii_totals: dict[str, int] = defaultdict(int)
     secrets_totals: dict[str, int] = defaultdict(int)
 
     # Findings counters.
-    finding_counts: dict[str, int] = {k: 0 for k in FINDING_KEY_REASONS.keys()}
+    finding_counts: dict[str, int] = dict.fromkeys(FINDING_KEY_REASONS.keys(), 0)
     sha_counts: Counter[str] = Counter()
     duplicate_like_docs = 0
 
@@ -823,7 +824,7 @@ def aggregate_profile_from_rows(
     )
 
     # Findings list in stable order.
-    findings_out: List[DatasetProfileFindingSummary] = []
+    findings_out: list[DatasetProfileFindingSummary] = []
     for key in FINDING_KEY_REASONS.keys():
         info = FINDING_KEY_REASONS[key]
         findings_out.append(
@@ -877,7 +878,7 @@ def aggregate_profile_from_rows(
     if cov_fail > cov_warn:
         cov_fail = cov_warn
 
-    chunk_targets_out: List[DatasetProfileTargetCheck] = []
+    chunk_targets_out: list[DatasetProfileTargetCheck] = []
     try:
         # Token distribution objectives (requires chunking_stats_tokens histogram).
         if int(chunk_token_total or 0) <= 0:
@@ -1050,7 +1051,7 @@ def aggregate_profile_from_rows(
     except Exception:
         chunk_targets_out = []
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return DatasetProfileSummary(
         dataset_id=dataset_id,
         generated_at=now,

@@ -4,7 +4,7 @@ import gzip
 import json
 import operator
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -148,7 +148,7 @@ def _parse_ndjson(text: str) -> list[dict]:  # noqa: ANN001
 def test_dataset_documents_export_ndjson_sanitizes_sensitive_fields_by_default(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     doc = Document(
         id=uuid.uuid4(),
@@ -180,7 +180,7 @@ def test_dataset_documents_export_ndjson_sanitizes_sensitive_fields_by_default(m
 def test_dataset_documents_export_ndjson_can_include_sensitive_fields(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     doc = Document(
         id=uuid.uuid4(),
@@ -209,7 +209,7 @@ def test_dataset_documents_export_ndjson_can_include_sensitive_fields(monkeypatc
 def test_dataset_documents_export_ndjson_supports_cursor(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    t0 = datetime.now(timezone.utc)
+    t0 = datetime.now(UTC)
     t1 = t0 + timedelta(seconds=1)
     t2 = t0 + timedelta(seconds=2)
 
@@ -275,7 +275,7 @@ def test_dataset_documents_export_ndjson_supports_cursor(monkeypatch):  # noqa: 
 def test_dataset_documents_export_ndjson_denies_without_lifecycle_permission(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     doc = Document(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -298,7 +298,7 @@ def test_dataset_documents_export_ndjson_denies_without_lifecycle_permission(mon
 def test_dataset_documents_export_ndjson_supports_gzip(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     doc = Document(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
@@ -335,7 +335,7 @@ def test_dataset_documents_export_ndjson_includes_source_and_lifecycle_fields_re
 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
     supersedes = uuid.uuid4()
     source_url = "https://example.com/private/doc.txt"
 
@@ -390,7 +390,7 @@ def test_dataset_documents_export_ndjson_includes_source_and_lifecycle_fields_re
 def test_dataset_documents_export_json_format_returns_items_and_cursor(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    t0 = datetime(2026, 3, 4, 0, 0, 0, tzinfo=timezone.utc)
+    t0 = datetime(2026, 3, 4, 0, 0, 0, tzinfo=UTC)
     t1 = t0 + timedelta(seconds=1)
     t2 = t0 + timedelta(seconds=2)
 

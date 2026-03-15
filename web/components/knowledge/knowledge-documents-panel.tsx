@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, formatDate, formatFileSize } from '@/lib/utils'
+import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { getUserTagsFromDocument } from '@/lib/document-user-tags'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
@@ -163,7 +163,7 @@ export function KnowledgeDocumentsPanel({
   anySelectedNotArchived,
   deleteDocument,
   handleFileUpload,
-}: KnowledgeDocumentsPanelProps) {
+}: Readonly<KnowledgeDocumentsPanelProps>) {
   const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
   const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
@@ -267,7 +267,7 @@ export function KnowledgeDocumentsPanel({
             <Button
               type="button"
               variant="destructive"
-              onClick={() => void confirmSingleDelete()}
+              onClick={() => detachPromise(confirmSingleDelete())}
               disabled={singleDeleteWorking || !singleDeleteDoc}
             >
               {singleDeleteWorking ? '删除中…' : '确认删除'}
@@ -276,95 +276,74 @@ export function KnowledgeDocumentsPanel({
         </AlertDialogContent>
       </AlertDialog>
 
-      {isLoading && documents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-          <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3" />
+      {(() => {
+    if (isLoading && documents.length === 0) {
+        return (<div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+          <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3"/>
           <p className="text-sm">正在加载文档库...</p>
-        </div>
-      ) : documents.length === 0 && hasActiveFilters ? (
-        <div className="py-10">
-          <EmptyState
-            icon={Filter}
-            title="未找到匹配的文档"
-            description={<span className="text-muted-foreground">尝试清空筛选条件，重新查看范围内的全部文档。</span>}
-            className="bg-transparent shadow-none"
-          >
+        </div>);
+    }
+    else {
+        if (documents.length === 0 && hasActiveFilters) {
+            return (<div className="py-10">
+          <EmptyState icon={Filter} title="未找到匹配的文档" description={<span className="text-muted-foreground">尝试清空筛选条件，重新查看范围内的全部文档。</span>} className="bg-transparent shadow-none">
             <Button type="button" variant="outline" className="rounded-xl" onClick={onClearFilters}>
               清空筛选
             </Button>
           </EmptyState>
-        </div>
-      ) : documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets ? (
-        <div className="py-10">
-          <EmptyState
-            icon={Database}
-            title="该数据集暂无文档"
-            description={
-              <span className="text-muted-foreground">
+        </div>);
+        }
+        else {
+            if (documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets) {
+                return (<div className="py-10">
+          <EmptyState icon={Database} title="该数据集暂无文档" description={<span className="text-muted-foreground">
                 当前范围为{' '}
                 <span className="font-mono tabular-nums">
                   {selectedDatasetLabel ? selectedDatasetLabel : selectedDatasetId}
                 </span>
                 。可切换到全部数据集查看其他文档，或通过顶部“导入/新增”上传/导入。
-              </span>
-            }
-            className="bg-transparent shadow-none"
-          >
+              </span>} className="bg-transparent shadow-none">
             <Button type="button" variant="outline" className="rounded-xl" onClick={onSwitchToAllDatasets}>
               切换到全部数据集
             </Button>
           </EmptyState>
-        </div>
-      ) : documents.length === 0 ? (
-        <div className="py-10">
-          <EmptyState
-            icon={Upload}
-            title="知识库空空如也"
-            description={
-              <span className="text-muted-foreground">
+        </div>);
+            }
+            else {
+                if (documents.length === 0) {
+                    return (<div className="py-10">
+          <EmptyState icon={Upload} title="知识库空空如也" description={<span className="text-muted-foreground">
                 上传您的第一份文档，MimirQ 将自动解析并构建专属知识索引。
                 <br />
                 支持 PDF, TXT, Markdown, Excel, Word 等常见格式。
-              </span>
-            }
-            className="bg-transparent shadow-none"
-          >
-            <label>
+              </span>} className="bg-transparent shadow-none">
+            <div>
               <Button size="lg" className="gap-2 rounded-xl shadow-sm" asChild>
                 <span>
-                  <Upload className="w-5 h-5" />
+                  <Upload className="w-5 h-5"/>
                   立即上传文档
                 </span>
               </Button>
-              <input type="file" multiple accept={UPLOAD_ACCEPT} className="hidden" onChange={handleFileUpload} />
-            </label>
+              <input type="file" multiple accept={UPLOAD_ACCEPT} className="hidden" onChange={handleFileUpload}/>
+            </div>
           </EmptyState>
-        </div>
-      ) : (
-        <>
+        </div>);
+                }
+                else {
+                    return (<>
           <div className="mb-4 flex flex-col lg:flex-row lg:items-center gap-3">
             <div className="flex w-full lg:max-w-2xl flex-col sm:flex-row gap-3">
-              <SearchInput
-                value={docFilter}
-                onValueChange={setDocFilter}
-                placeholder="搜索文档名称…"
-                containerClassName="w-full"
-                inputClassName="h-9 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"
-              />
+              <SearchInput value={docFilter} onValueChange={setDocFilter} placeholder="搜索文档名称…" containerClassName="w-full" inputClassName="h-9 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"/>
 
-              <Select
-                value={`${sortKey}:${sortDir}`}
-                onValueChange={(value) => {
-                  const [k, d] = String(value || '').split(':')
-                  if (k === 'created_at' || k === 'filename' || k === 'file_size') setSortKey(k)
-                  if (d === 'asc' || d === 'desc') setSortDir(d)
-                }}
-              >
-                <SelectTrigger
-                  className="h-9 w-full sm:w-[200px] rounded-lg border-border/60 bg-background"
-                  aria-label="排序"
-                >
-                  <SelectValue placeholder="排序" />
+              <Select value={`${sortKey}:${sortDir}`} onValueChange={(value) => {
+                            const [k, d] = String(value || '').split(':');
+                            if (k === 'created_at' || k === 'filename' || k === 'file_size')
+                                setSortKey(k);
+                            if (d === 'asc' || d === 'desc')
+                                setSortDir(d);
+                        }}>
+                <SelectTrigger className="h-9 w-full sm:w-[200px] rounded-lg border-border/60 bg-background" aria-label="排序">
+                  <SelectValue placeholder="排序"/>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="created_at:desc">最新上传</SelectItem>
@@ -380,8 +359,7 @@ export function KnowledgeDocumentsPanel({
             {scopeSummary ? <div className="text-xs">{scopeSummary}</div> : null}
           </div>
 
-          {selectedDocIds.length > 0 ? (
-            <div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+          {selectedDocIds.length > 0 ? (<div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
               <div className="text-sm text-foreground">
                 已选 <span className="font-mono tabular-nums">{selectedDocIds.length}</span> 项
               </div>
@@ -389,78 +367,29 @@ export function KnowledgeDocumentsPanel({
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={toggleSelectAllVisible}>
                   {allVisibleSelected ? '取消全选' : '全选当前列表'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => setSelectedDocIds([])}
-                >
+                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => setSelectedDocIds([])}>
                   清除选择
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => void runBatchReingest()}
-                  disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}
-                >
+                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchReingest())} disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}>
                   {batchReingestWorking ? '重新入库中…' : '重新入库'}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => void runBatchLifecycle('disable')}
-                  disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}
-                >
+                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('disable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}>
                   禁用
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => void runBatchLifecycle('enable')}
-                  disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}
-                >
+                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('enable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}>
                   启用
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => void runBatchLifecycle('archive')}
-                  disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}
-                >
+                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('archive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}>
                   归档
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => void runBatchLifecycle('unarchive')}
-                  disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}
-                >
+                <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('unarchive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}>
                   取消归档
                 </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={() => setBatchDeleteOpen(true)}
-                  disabled={batchDeleting || batchLifecycleWorking}
-                >
+                <Button type="button" variant="destructive" size="sm" className="rounded-xl" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
                   批量删除
                 </Button>
               </div>
-            </div>
-          ) : null}
+            </div>) : null}
 
           <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
             <AlertDialogContent className="max-w-md">
@@ -471,110 +400,67 @@ export function KnowledgeDocumentsPanel({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setBatchDeleteOpen(false)}
-                  disabled={batchDeleting}
-                >
+                <Button type="button" variant="outline" onClick={() => setBatchDeleteOpen(false)} disabled={batchDeleting}>
                   取消
                 </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => void confirmBatchDelete()}
-                  disabled={batchDeleting || selectedDocIds.length === 0}
-                >
+                <Button type="button" variant="destructive" onClick={() => detachPromise(confirmBatchDelete())} disabled={batchDeleting || selectedDocIds.length === 0}>
                   {batchDeleting ? '删除中…' : '确认删除'}
                 </Button>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
 
-          {filteredDocuments.length === 0 ? (
-            <div className="py-10">
-              <EmptyState
-                icon={Filter}
-                title="未找到匹配的文档"
-                description={<span className="text-muted-foreground">尝试调整筛选条件，或清空筛选后重新查看全部文档。</span>}
-                className="bg-transparent shadow-none"
-              >
+          {(() => {
+                            if (filteredDocuments.length === 0) {
+                                return (<div className="py-10">
+              <EmptyState icon={Filter} title="未找到匹配的文档" description={<span className="text-muted-foreground">尝试调整筛选条件，或清空筛选后重新查看全部文档。</span>} className="bg-transparent shadow-none">
                 <Button type="button" variant="outline" className="rounded-xl" onClick={onClearFilters}>
                   清空筛选
                 </Button>
               </EmptyState>
-            </div>
-          ) : viewMode === 'grid' ? (
-            <div
-              role="list"
-              aria-label="文档列表"
-              style={{
-                height: `${docsGridVirtualizer.getTotalSize()}px`,
-                width: '100%',
-                position: 'relative',
-              }}
-            >
+            </div>);
+                            }
+                            else {
+                                if (viewMode === 'grid') {
+                                    return (<div role="list" aria-label="文档列表" style={{
+                                            height: `${docsGridVirtualizer.getTotalSize()}px`,
+                                            width: '100%',
+                                            position: 'relative',
+                                        }}>
               {docsGridVirtualRows.map((virtualRow: any) => {
-                const cols = Math.max(1, docGridColumns)
-                const startIndex = virtualRow.index * cols
-                const rowDocs = filteredDocuments.slice(startIndex, startIndex + cols)
-                const isLastRow = virtualRow.index === docGridRowCount - 1
-
-                return (
-                  <div
-                    key={virtualRow.key}
-                    data-index={virtualRow.index}
-                    ref={docsGridVirtualizer.measureElement}
-                    role="presentation"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                    className={isLastRow ? undefined : 'pb-5'}
-                  >
+                                            const cols = Math.max(1, docGridColumns);
+                                            const startIndex = virtualRow.index * cols;
+                                            const rowDocs = filteredDocuments.slice(startIndex, startIndex + cols);
+                                            const isLastRow = virtualRow.index === docGridRowCount - 1;
+                                            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={docsGridVirtualizer.measureElement} role="presentation" style={{
+                                                    position: 'absolute',
+                                                    top: 0,
+                                                    left: 0,
+                                                    width: '100%',
+                                                    transform: `translateY(${virtualRow.start}px)`,
+                                                }} className={isLastRow ? undefined : 'pb-5'}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
                       {rowDocs.map((doc) => {
-                        const badge = getStatusBadge(doc.status)
-                        return (
-                          <div key={doc.id} role="listitem">
-                            <DocumentCard
-                              doc={doc}
-                              statusBadge={badge}
-                              statusBarClassName={statusBarClassName(badge.status)}
-                              onRequestDelete={requestSingleDelete}
-                              copyText={copyText}
-                              selected={selectedSet.has(doc.id)}
-                              onToggleSelect={() => toggleDocSelection(doc.id)}
-                            />
-                          </div>
-                        )
-                      })}
+                                                    const badge = getStatusBadge(doc.status);
+                                                    return (<div key={doc.id} role="listitem">
+                            <DocumentCard doc={doc} statusBadge={badge} statusBarClassName={statusBarClassName(badge.status)} onRequestDelete={requestSingleDelete} copyText={copyText} selected={selectedSet.has(doc.id)} onToggleSelect={() => toggleDocSelection(doc.id)}/>
+                          </div>);
+                                                })}
                     </div>
-                  </div>
-                )
-              })}
-            </div>
-	          ) : (
-	            <Panel padding="none" className="rounded-xl overflow-hidden">
+                  </div>);
+                                        })}
+            </div>);
+                                }
+                                else {
+                                    return (<Panel padding="none" className="rounded-xl overflow-hidden">
 	              <table className="w-full text-sm text-left">
 	                <thead className="text-xs text-muted-foreground uppercase border-b border-border/60">
 	                  <tr>
 	                    <th className="sticky top-0 z-10 bg-card px-3 py-3 font-medium w-10">
-	                      <input
-	                        type="checkbox"
-	                        className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-	                        checked={allVisibleSelected}
-	                        onChange={toggleSelectAllVisible}
-	                        aria-label="全选当前列表"
-	                      />
+	                      <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="全选当前列表"/>
 	                    </th>
 	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">文档名称</th>
-	                    {showDatasetColumn ? (
-	                      <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">数据集</th>
-	                    ) : null}
+	                    {showDatasetColumn ? (<th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">数据集</th>) : null}
 	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">标签</th>
 	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">状态</th>
 	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">分块</th>
@@ -584,94 +470,53 @@ export function KnowledgeDocumentsPanel({
 	                  </tr>
 	                </thead>
 	                <tbody className="divide-y divide-border/60">
-	                  {docsTablePaddingTop > 0 ? (
-	                    <tr aria-hidden="true">
-	                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingTop}px` }} />
-	                    </tr>
-	                  ) : null}
+	                  {docsTablePaddingTop > 0 ? (<tr aria-hidden="true">
+	                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingTop}px` }}/>
+	                    </tr>) : null}
 
                   {docsTableVirtualRows.map((virtualRow: any) => {
-                    const doc = filteredDocuments[virtualRow.index]
-                    if (!doc) return null
-                    const badge = getStatusBadge(doc.status)
-                    const fileType = getFileTypeMeta(doc)
-                    const TypeIcon = fileType.icon
-                    const userTags = getUserTagsFromDocument(doc)
-                    const sourcePath = String((doc.metadata as any)?.source_path || '').trim()
-                    return (
-                      <tr
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={docsTableVirtualizer.measureElement}
-                        className="hover:bg-muted/20 transition-colors group"
-                      >
+                                            const doc = filteredDocuments[virtualRow.index];
+                                            if (!doc)
+                                                return null;
+                                            const badge = getStatusBadge(doc.status);
+                                            const fileType = getFileTypeMeta(doc);
+                                            const TypeIcon = fileType.icon;
+                                            const userTags = getUserTagsFromDocument(doc);
+                                            const sourcePath = String((doc.metadata as any)?.source_path || '').trim();
+                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="hover:bg-muted/20 transition-colors group">
 	                        <td className="px-3 py-3 align-middle">
-	                          <input
-	                            type="checkbox"
-	                            className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
-	                            checked={selectedSet.has(doc.id)}
-	                            onChange={() => toggleDocSelection(doc.id)}
-	                            aria-label={`选择文档 ${doc.filename}`}
-	                          />
+	                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={() => toggleDocSelection(doc.id)} aria-label={`选择文档 ${doc.filename}`}/>
 	                        </td>
                         <td className="px-4 py-3 font-medium text-foreground">
                           <div className="flex items-start gap-3">
                             <div className={cn('mt-0.5 p-1.5 rounded-md border', fileType.bg, fileType.border, fileType.color)}>
-                              <TypeIcon className="w-4 h-4" />
+                              <TypeIcon className="w-4 h-4"/>
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <span className="truncate max-w-[260px]" title={doc.filename}>
                                   {doc.filename}
                                 </span>
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ',
-                                    fileType.bg,
-                                    fileType.border,
-                                    fileType.color
-                                  )}
-                                  title={fileType.label}
-                                >
+                                <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ', fileType.bg, fileType.border, fileType.color)} title={fileType.label}>
                                   {fileType.label}
                                 </span>
                               </div>
-                              {sourcePath ? (
-                                <button
-                                  type="button"
-                                  className="mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4"
-                                  onClick={() => void copyText(sourcePath, '已复制 Source Path')}
-                                  title="点击复制 Source Path"
-                                >
+                              {sourcePath ? (<button type="button" className="mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4" onClick={() => detachPromise(copyText(sourcePath, '已复制 Source Path'))} title="点击复制 Source Path">
                                   {sourcePath}
-                                </button>
-                              ) : null}
+                                </button>) : null}
                             </div>
                           </div>
                         </td>
-	                        {showDatasetColumn ? (
-	                          <td className="px-4 py-3 align-middle">
-	                            {doc.dataset_id ? (
-	                              <span
-	                                className="text-xs text-muted-foreground truncate block max-w-[180px]"
-	                                title={doc.dataset_id}
-	                              >
+	                        {showDatasetColumn ? (<td className="px-4 py-3 align-middle">
+	                            {doc.dataset_id ? (<span className="text-xs text-muted-foreground truncate block max-w-[180px]" title={doc.dataset_id}>
 	                                {datasetLabelById?.[doc.dataset_id] ?? doc.dataset_id}
-	                              </span>
-	                            ) : (
-	                              <span className="text-xs text-muted-foreground">—</span>
-	                            )}
-	                          </td>
-	                        ) : null}
+	                              </span>) : (<span className="text-xs text-muted-foreground">—</span>)}
+	                          </td>) : null}
 	                        <td className="px-4 py-3 align-middle">
-	                          {userTags.length ? (
-	                            <DocumentTags tags={userTags} max={3} dense />
-	                          ) : (
-	                            <span className="text-xs text-muted-foreground">—</span>
-	                          )}
+	                          {userTags.length ? (<DocumentTags tags={userTags} max={3} dense/>) : (<span className="text-xs text-muted-foreground">—</span>)}
 	                        </td>
 	                        <td className="px-4 py-3 align-middle">
-	                          <StatusBadge status={badge.status} label={badge.label} dense />
+	                          <StatusBadge status={badge.status} label={badge.label} dense/>
 	                        </td>
 	                        <td className="px-4 py-3 align-middle text-right text-muted-foreground font-mono tabular-nums text-xs">
 	                          {doc.chunk_count ?? '-'}
@@ -683,78 +528,54 @@ export function KnowledgeDocumentsPanel({
 	                          {formatDate(doc.created_at)}
 	                        </td>
 	                        <td className="px-4 py-3 align-middle text-right flex items-center justify-end gap-1">
-	                          <DocumentDetailDialog
-	                            document={doc}
-	                            trigger={
-	                              <IconButton
-	                                label="预览内容"
-	                                variant="ghost"
-	                                className={cn(
-	                                  'h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity',
-	                                  // Hover-only affordances fail on touch; reveal on small screens and on keyboard focus.
-	                                  'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
-	                                )}
-	                              >
-	                                <Eye className="h-4 w-4" />
-	                              </IconButton>
-	                            }
-	                          />
+	                          <DocumentDetailDialog document={doc} trigger={<IconButton label="预览内容" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity', 
+                                                    // Hover-only affordances fail on touch; reveal on small screens and on keyboard focus.
+                                                    'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100')}>
+	                                <Eye className="h-4 w-4"/>
+	                              </IconButton>}/>
 
                           <DropdownMenu>
 	                            <DropdownMenuTrigger asChild>
-	                              <IconButton
-	                                label="更多操作"
-	                                variant="ghost"
-	                                className={cn(
-	                                  'h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity',
-	                                  'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
-	                                )}
-	                              >
-	                                <MoreVertical className="h-4 w-4" />
+	                              <IconButton label="更多操作" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity', 'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100')}>
+	                                <MoreVertical className="h-4 w-4"/>
 	                              </IconButton>
 	                            </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem onSelect={() => void copyText(doc.id, '已复制文档 ID')}>
+                              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, '已复制文档 ID'))}>
                                 复制文档 ID
                               </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => void copyText(doc.filename, '已复制文件名')}>
+                              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, '已复制文件名'))}>
                                 复制文件名
                               </DropdownMenuItem>
-                              {String((doc.metadata as any)?.source_path || '').trim() ? (
-                                <DropdownMenuItem
-                                  onSelect={() =>
-                                    void copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path')
-                                  }
-                                >
+                              {String((doc.metadata as any)?.source_path || '').trim() ? (<DropdownMenuItem onSelect={() => detachPromise(copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path'))}>
                                   复制 Source Path
-                                </DropdownMenuItem>
-                              ) : null}
+                                </DropdownMenuItem>) : null}
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onSelect={() => requestSingleDelete(doc)}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => requestSingleDelete(doc)}>
+                                <Trash2 className="mr-2 h-4 w-4"/>
                                 删除文档
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </td>
-                      </tr>
-                    )
-                  })}
+                      </tr>);
+                                        })}
 
-	                  {docsTablePaddingBottom > 0 ? (
-	                    <tr aria-hidden="true">
-	                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }} />
-	                    </tr>
-	                  ) : null}
+	                  {docsTablePaddingBottom > 0 ? (<tr aria-hidden="true">
+	                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }}/>
+	                    </tr>) : null}
 	                </tbody>
 	              </table>
-	            </Panel>
-          )}
-        </>
-      )}
+	            </Panel>);
+                                }
+                            }
+                        })()}
+        </>);
+                }
+            }
+        }
+    }
+})()}
     </div>
   )
 }
@@ -767,7 +588,7 @@ function DocumentCard({
   copyText,
   selected,
   onToggleSelect,
-}: {
+}: Readonly<{
   doc: Document
   statusBadge: { status: StatusBadgeStatus; label: string }
   statusBarClassName: string
@@ -775,7 +596,7 @@ function DocumentCard({
   copyText: (text: string, okMsg: string) => void | Promise<void>
   selected: boolean
   onToggleSelect: () => void
-}) {
+}>) {
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
   const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeMeta(doc)
@@ -877,16 +698,16 @@ function DocumentCard({
               </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onSelect={() => void copyText(doc.id, '已复制文档 ID')}>
+              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, '已复制文档 ID'))}>
                 复制文档 ID
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void copyText(doc.filename, '已复制文件名')}>
+              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, '已复制文件名'))}>
                 复制文件名
               </DropdownMenuItem>
               {String((doc.metadata as any)?.source_path || '').trim() ? (
                 <DropdownMenuItem
                   onSelect={() =>
-                    void copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path')
+                    detachPromise(copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path'))
                   }
                 >
                   复制 Source Path

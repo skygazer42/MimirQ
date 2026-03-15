@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import Depends, FastAPI
@@ -27,7 +27,7 @@ def _jwt_token(*, secret_key: str, sub: str, tenant_id: str) -> str:
         {
             "sub": sub,
             "tenant_id": tenant_id,
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
         },
         secret_key,
         algorithm="HS256",

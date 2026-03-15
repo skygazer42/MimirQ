@@ -226,7 +226,7 @@ def test_nightly_ablations_fails_when_bundle_cases_missing_from_db(
     monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
     monkeypatch.setattr(mod, "_default_ablations", lambda: [{"ablation_key": "baseline", "rag_params": {}}])
     monkeypatch.setattr(mod, "RagasRegressionRun", _FakeRun)
-    monkeypatch.setattr(mod, "run_regression_ragas_evaluation", lambda **kwargs: None)
+    monkeypatch.setattr(mod, "run_regression_ragas_evaluation", lambda **_kwargs: None)
 
     rc = mod.main(
         [

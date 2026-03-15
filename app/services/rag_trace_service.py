@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any
 
 from app.core.config import settings
 from app.rag.trace_schema import (
@@ -25,7 +26,7 @@ from app.rag.trace_schema import (
 )
 
 
-def _to_int(v: Any) -> Optional[int]:
+def _to_int(v: Any) -> int | None:
     try:
         if v is None:
             return None
@@ -34,7 +35,7 @@ def _to_int(v: Any) -> Optional[int]:
         return None
 
 
-def _to_float(v: Any) -> Optional[float]:
+def _to_float(v: Any) -> float | None:
     try:
         if v is None:
             return None
@@ -43,7 +44,7 @@ def _to_float(v: Any) -> Optional[float]:
         return None
 
 
-def _to_bool(v: Any) -> Optional[bool]:
+def _to_bool(v: Any) -> bool | None:
     if v is None:
         return None
     if isinstance(v, bool):
@@ -657,8 +658,8 @@ def _safe_citations(raw: Any) -> list[RagTraceCitation]:
     return out
 
 
-def _max_float(values: Iterable[Optional[float]]) -> Optional[float]:
-    best: Optional[float] = None
+def _max_float(values: Iterable[float | None]) -> float | None:
+    best: float | None = None
     for v in values:
         if v is None:
             continue
@@ -671,7 +672,7 @@ def _max_float(values: Iterable[Optional[float]]) -> Optional[float]:
     return best
 
 
-def normalize_rag_trace_record(record: Dict[str, Any]) -> RagTrace:
+def normalize_rag_trace_record(record: dict[str, Any]) -> RagTrace:
     ts_ms = _to_int(record.get("ts_ms")) or 0
     request_id = record.get("request_id")
     conversation_id = record.get("conversation_id")

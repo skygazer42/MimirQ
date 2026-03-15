@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime
+from typing import Any
 
 from app.services.connector_sync_state import normalize_source_manifest
 
@@ -9,7 +10,7 @@ CONNECTOR_RECONCILE_SCHEMA_V1 = "mimirq.connector_reconcile.v1"
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _normalize_refs(value: Any, *, max_items: int = 10_000) -> list[str]:

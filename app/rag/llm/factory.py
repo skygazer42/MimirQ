@@ -1,7 +1,7 @@
 """
 Factory for LLM and embedding clients backed by the existing project settings.
 """
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -22,7 +22,7 @@ logger = get_logger("rag.llm.factory")
 class OpenAIChatClient(BaseLLMClient):
     """Thin wrapper around langchain_openai.ChatOpenAI to match BaseLLMClient."""
 
-    def __init__(self, model_config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, model_config: dict[str, Any] | None = None) -> None:
         trust_env = httpx_trust_env(logger=logger)
 
         cfg = model_config or {}
@@ -64,8 +64,8 @@ class OpenAIChatClient(BaseLLMClient):
     async def chat(
         self,
         messages: list[LLMMessage],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         converted = self._convert_messages(messages)
@@ -80,8 +80,8 @@ class OpenAIChatClient(BaseLLMClient):
     def chat_stream(
         self,
         messages: list[LLMMessage],
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         include_reasoning: bool = False,
         **kwargs: Any,
     ):
@@ -115,7 +115,7 @@ class EmbeddingClient:
 
 async def create_llm_client(
     scenario: str = "general",
-    model_config: Optional[Dict[str, Any]] = None,
+    model_config: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> BaseLLMClient:
     _ = scenario

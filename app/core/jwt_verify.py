@@ -17,7 +17,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -56,7 +56,7 @@ def jwt_secret_key_candidates() -> list[str]:
 
 @dataclass(frozen=True)
 class _JWKSCacheEntry:
-    keys: List[Dict[str, Any]]
+    keys: list[dict[str, Any]]
     fetched_at_monotonic: float
     expires_at_monotonic: float
 

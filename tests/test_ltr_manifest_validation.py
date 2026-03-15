@@ -27,7 +27,7 @@ def test_ltr_reranker_validates_sidecar_manifest(tmp_path: Path) -> None:
     spec = LTRFeatureSpec.default()
     rows = []
     for score, label in ((0.9, 1), (0.8, 1), (0.2, 0), (0.1, 0)):
-        feats = {k: 0.0 for k in spec.feature_names}
+        feats = dict.fromkeys(spec.feature_names, 0.0)
         feats["vector_score"] = float(score)
         feats["role_main"] = 1.0
         rows.append({"features": feats, "label": int(label)})
@@ -53,7 +53,7 @@ def test_ltr_reranker_validates_sidecar_manifest(tmp_path: Path) -> None:
 
 def test_ltr_reranker_rejects_mismatched_manifest(tmp_path: Path) -> None:
     spec = LTRFeatureSpec.default()
-    feats = {k: 0.0 for k in spec.feature_names}
+    feats = dict.fromkeys(spec.feature_names, 0.0)
     feats["vector_score"] = 1.0
     feats["role_main"] = 1.0
     model_bytes = train_ltr_xgboost_model(training_rows=[{"features": feats, "label": 1}], spec=spec, num_boost_round=2, seed=7)

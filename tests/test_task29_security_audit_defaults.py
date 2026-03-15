@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.models.connector import ConnectorRun
 from app.models.connector_config import ConnectorConfig
@@ -85,7 +85,7 @@ def test_audit_ensure_admin_allows_auditor(monkeypatch):  # noqa: ANN001
     class _Member:
         role = "auditor"
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *args, **kwargs: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: _Member(), raising=True)
     audit_mod._ensure_admin(db=object(), tenant_id=uuid.uuid4(), account_id="u")
 
 
@@ -98,7 +98,7 @@ def test_audit_ensure_admin_rejects_non_admin(monkeypatch):  # noqa: ANN001
     class _Member:
         role = "viewer"
 
-    monkeypatch.setattr(DatasetService, "ensure_member", lambda *args, **kwargs: _Member(), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_args, **_kwargs: _Member(), raising=True)
     try:
         audit_mod._ensure_admin(db=object(), tenant_id=uuid.uuid4(), account_id="u")
     except HTTPException as exc:
@@ -123,10 +123,10 @@ def test_query_dataset_table_hides_sql_by_default_and_allows_privileged_include(
     class _Member:
         role = "auditor"
 
-    monkeypatch.setattr(mod.DatasetService, "get_dataset", lambda *args, **kwargs: _Dataset(), raising=True)
-    monkeypatch.setattr(mod.DatasetService, "assert_dataset_readable", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *args, **kwargs: _Member(), raising=True)
-    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(mod.DatasetService, "get_dataset", lambda *_args, **_kwargs: _Dataset(), raising=True)
+    monkeypatch.setattr(mod.DatasetService, "assert_dataset_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: _Member(), raising=True)
+    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         mod,
         "run_table_query",
@@ -168,7 +168,7 @@ def test_query_dataset_table_hides_sql_by_default_and_allows_privileged_include(
 def test_connector_outputs_mask_db_connection_info():
     import app.api.v1.connectors as connectors_mod
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
     run = ConnectorRun(

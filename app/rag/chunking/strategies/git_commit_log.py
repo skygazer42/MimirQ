@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -27,15 +27,15 @@ class _Commit:
     end: int
     index: int
     sha: str
-    author: Optional[str]
-    date: Optional[str]
+    author: str | None
+    date: str | None
 
 
 @dataclass(frozen=True)
 class _Section:
     start: int
     end: int
-    commit: Optional[_Commit]
+    commit: _Commit | None
 
 
 _COMMIT_RE = re.compile(r"(?m)^\s*commit\s+(?P<sha>[0-9a-f]{7,40})\b")
@@ -43,11 +43,11 @@ _AUTHOR_RE = re.compile(r"(?m)^\s*Author:\s*(?P<val>.+?)\s*$")
 _DATE_RE = re.compile(r"(?m)^\s*Date:\s*(?P<val>.+?)\s*$")
 
 
-def _iter_commits(text: str) -> List[_Commit]:
+def _iter_commits(text: str) -> list[_Commit]:
     starts = [m.start() for m in _COMMIT_RE.finditer(text or "")]
     if not starts:
         return []
-    commits: List[_Commit] = []
+    commits: list[_Commit] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
         chunk = (text or "")[start:end]
@@ -63,11 +63,11 @@ def _iter_commits(text: str) -> List[_Commit]:
     return commits
 
 
-def _build_sections(text: str, commits: List[_Commit]) -> List[_Section]:
+def _build_sections(text: str, commits: list[_Commit]) -> list[_Section]:
     if not commits:
         return [_Section(start=0, end=len(text), commit=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = commits[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, commit=None))
@@ -104,8 +104,8 @@ class GitCommitLogChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -116,7 +116,7 @@ class GitCommitLogChunker(BaseChunker):
             commits = _iter_commits(text)
             sections = _build_sections(text, commits)
 
-            current: Optional[_Commit] = None
+            current: _Commit | None = None
             for section in sections:
                 sec_text = text[section.start : section.end]
                 if not sec_text.strip():

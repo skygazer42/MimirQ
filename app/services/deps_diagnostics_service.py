@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
@@ -20,7 +20,7 @@ _SCHEMA_V1 = "mimirq.observability.deps.v1"
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _probe_postgres() -> dict[str, Any]:
@@ -200,7 +200,7 @@ def build_deps_diagnostics_snapshot() -> DepsDiagnosticsSnapshot:
 
     return DepsDiagnosticsSnapshot(
         schema=_SCHEMA_V1,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         postgres=_probe_postgres(),
         redis=_probe_redis(),
         minio=_probe_minio(),

@@ -32,7 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { datasetApi, sseApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, formatFileSize, formatDate } from '@/lib/utils'
+import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 
 import type {
   Dataset,
@@ -145,7 +145,7 @@ export default function DatasetPrecheckPage() {
 
   const stopPolling = useCallback(() => {
     const t = pollTimerRef.current
-    if (t) window.clearTimeout(t)
+    if (t) globalThis.window.clearTimeout(t)
     pollTimerRef.current = null
   }, [])
 
@@ -189,7 +189,7 @@ export default function DatasetPrecheckPage() {
   }, [datasetId])
 
   useEffect(() => {
-    void load()
+    detachPromise(load())
     return () => {
       stopPolling()
       stopSse()
@@ -203,7 +203,7 @@ export default function DatasetPrecheckPage() {
         setSelectedRun(next)
         const st = String(next.status || '').toLowerCase()
         if (st === 'pending' || st === 'running') {
-          pollTimerRef.current = window.setTimeout(() => void pollRun(datasetIdValue, runId), 2000)
+          pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollRun(datasetIdValue, runId)), 2000)
           return
         }
         setScanRunning(false)
@@ -230,7 +230,7 @@ export default function DatasetPrecheckPage() {
       const ctrl = new AbortController()
       sseAbortRef.current = ctrl
 
-      void sseApi
+      detachPromise(sseApi
         .streamPrecheckScanEvents(
           datasetIdValue,
           runId,
@@ -240,13 +240,13 @@ export default function DatasetPrecheckPage() {
               if (obj?.id) setSelectedRun(obj)
               const st = String(obj?.status || '').toLowerCase()
               if (st === 'completed') {
-                void datasetApi.getPrecheckSummary(datasetIdValue, runId).then(setSummary).catch(() => setSummary(null))
+                detachPromise(datasetApi.getPrecheckSummary(datasetIdValue, runId).then(setSummary).catch(() => setSummary(null)))
               }
               if (st && st !== 'pending' && st !== 'running') {
                 setScanRunning(false)
                 stopSse()
                 stopPolling()
-                void loadRuns()
+                detachPromise(loadRuns())
               }
             } catch {
               // ignore
@@ -262,8 +262,10 @@ export default function DatasetPrecheckPage() {
         .catch((e) => {
           console.warn('Precheck SSE unavailable; fallback to polling', e)
           stopSse()
-          pollTimerRef.current = window.setTimeout(() => void pollRun(datasetIdValue, runId), 800)
-        })
+          pollTimerRef.current = globalThis.window.setTimeout(() => {
+            detachPromise(pollRun(datasetIdValue, runId))
+          }, 800)
+        }))
     },
     [loadRuns, pollRun, stopPolling, stopSse]
   )
@@ -281,10 +283,10 @@ export default function DatasetPrecheckPage() {
     stopPolling()
     stopSse()
     if (st === 'completed') {
-      void datasetApi
+      detachPromise(datasetApi
         .getPrecheckSummary(datasetId, selectedRun.id)
         .then(setSummary)
-        .catch(() => setSummary(null))
+        .catch(() => setSummary(null)))
       return
     }
     setSummary(null)
@@ -398,7 +400,7 @@ export default function DatasetPrecheckPage() {
     setIsExporting(true)
     try {
       const blob = await datasetApi.exportPrecheckSummary(datasetId, selectedRun.id)
-      const safe = String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.precheck.json`)
       toast.success('已导出 JSON 报告')
     } catch (e: any) {
@@ -414,7 +416,7 @@ export default function DatasetPrecheckPage() {
     setIsExporting(true)
     try {
       const blob = await datasetApi.exportPrecheckHtml(datasetId, selectedRun.id, { redact: true })
-      const safe = String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.precheck.html`)
       toast.success('已导出 HTML 报告')
     } catch (e: any) {
@@ -569,7 +571,7 @@ export default function DatasetPrecheckPage() {
                 表格 / TAG
               </Button>
             ) : null}
-            <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={loading}>
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(load())} disabled={loading}>
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>
@@ -577,15 +579,15 @@ export default function DatasetPrecheckPage() {
               <Settings2 className="w-4 h-4" />
               高级
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => void openPolicy()} disabled={!selectedRun?.id}>
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(openPolicy())} disabled={!selectedRun?.id}>
               <Wand2 className="w-4 h-4" />
               生成入库策略
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => void exportJson()} disabled={isExporting || !selectedRun?.id || !summary}>
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(exportJson())} disabled={isExporting || !selectedRun?.id || !summary}>
               {isExporting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
               导出 JSON
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => void exportHtml()} disabled={isExporting || !selectedRun?.id || !summary}>
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(exportHtml())} disabled={isExporting || !selectedRun?.id || !summary}>
               {isExporting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
               导出 HTML
             </Button>
@@ -611,12 +613,12 @@ export default function DatasetPrecheckPage() {
 
               <div className="flex items-center gap-2">
                 {scanRunning && selectedRun?.id ? (
-                  <Button variant="outline" className="gap-2" onClick={() => void cancelScan()}>
+                  <Button variant="outline" className="gap-2" onClick={() => detachPromise(cancelScan())}>
                     <StopCircle className="w-4 h-4" />
                     取消
                   </Button>
                 ) : null}
-                <Button className="gap-2" onClick={() => void startScan()} disabled={scanRunning}>
+                <Button className="gap-2" onClick={() => detachPromise(startScan())} disabled={scanRunning}>
                   {scanRunning ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
                   启动
                 </Button>
@@ -715,7 +717,19 @@ export default function DatasetPrecheckPage() {
 
             <div className="mt-4 flex items-center justify-between gap-4">
               <div className="text-sm text-muted-foreground">
-                进度：{scanRunning ? `${latestRunProgress || 0}%` : latestRunProgress ? `${latestRunProgress}%` : '-'}
+                进度：{(() => {
+    if (scanRunning) {
+        return `${latestRunProgress || 0}%`;
+    }
+    else {
+        if (latestRunProgress) {
+            return `${latestRunProgress}%`;
+        }
+        else {
+            return '-';
+        }
+    }
+})()}
                 {selectedRun?.error_message ? <span className="ml-3 text-destructive">错误：{selectedRun.error_message}</span> : null}
               </div>
             </div>
@@ -742,7 +756,7 @@ export default function DatasetPrecheckPage() {
                       ))}
                   </SelectContent>
                 </Select>
-                <Button variant="outline" className="gap-2" onClick={() => void loadDiff()} disabled={!diffBaseRunId || diffLoading || !selectedRun?.id}>
+                <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadDiff())} disabled={!diffBaseRunId || diffLoading || !selectedRun?.id}>
                   {diffLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
                   计算
                 </Button>
@@ -778,7 +792,19 @@ export default function DatasetPrecheckPage() {
                             <td className="px-3 py-2 font-mono text-xs">{it.key}</td>
                             <td className="px-3 py-2 font-mono text-xs">{it.before}</td>
                             <td className="px-3 py-2 font-mono text-xs">{it.after}</td>
-                            <td className={cn('px-3 py-2 font-mono text-xs', it.delta > 0 ? 'text-warning' : it.delta < 0 ? 'text-teal-400' : '')}>
+                            <td className={cn('px-3 py-2 font-mono text-xs', (() => {
+    if (it.delta > 0) {
+        return 'text-warning';
+    }
+    else {
+        if (it.delta < 0) {
+            return 'text-teal-400';
+        }
+        else {
+            return '';
+        }
+    }
+})())}>
                               {it.delta}
                             </td>
                           </tr>
@@ -796,10 +822,34 @@ export default function DatasetPrecheckPage() {
           <Panel className="p-5">
             <StatsGrid>
               <StatCard icon={FileSearch} label="文件总数" value={summary?.total_files ?? (loading ? '…' : 0)} color="cyan" />
-              <StatCard icon={FileSearch} label="总大小" value={summary ? formatFileSize(summary.total_size_bytes || 0) : loading ? '…' : '-'} color="teal" />
+              <StatCard icon={FileSearch} label="总大小" value={(() => {
+    if (summary) {
+        return formatFileSize(summary.total_size_bytes || 0);
+    }
+    else {
+        if (loading) {
+            return '…';
+        }
+        else {
+            return '-';
+        }
+    }
+})()} color="teal" />
               <StatCard icon={Sparkles} label="P50 长度" value={summary?.length_percentiles?.p50 ?? (loading ? '…' : 0)} subValue="chars" color="blue" />
               <StatCard icon={Sparkles} label="P90 长度" value={summary?.length_percentiles?.p90 ?? (loading ? '…' : 0)} subValue="chars" color="blue" />
-              <StatCard icon={Sparkles} label="扫描 PDF" value={summary ? `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}` : loading ? '…' : '-'} color="orange" />
+              <StatCard icon={Sparkles} label="扫描 PDF" value={(() => {
+    if (summary) {
+        return `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`;
+    }
+    else {
+        if (loading) {
+            return '…';
+        }
+        else {
+            return '-';
+        }
+    }
+})()} color="orange" />
             </StatsGrid>
           </Panel>
 
@@ -814,8 +864,8 @@ export default function DatasetPrecheckPage() {
                   <PieChart>
                     <Tooltip />
                     <Pie data={fileTypeChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                      {fileTypeChartData.map((_entry, idx) => (
-                        <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                      {fileTypeChartData.map((entry, idx) => (
+                        <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
                       ))}
                     </Pie>
                   </PieChart>
@@ -849,8 +899,8 @@ export default function DatasetPrecheckPage() {
                   <PieChart>
                     <Tooltip />
                     <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                      {pdfScanData.map((_entry, idx) => (
-                        <Cell key={idx} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
+                      {pdfScanData.map((entry, idx) => (
+                        <Cell key={String(entry.name ?? entry.key ?? entry.label ?? 'pdf-scan')} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
                       ))}
                     </Pie>
                   </PieChart>
@@ -925,14 +975,14 @@ export default function DatasetPrecheckPage() {
                 <div className="text-sm text-muted-foreground mt-1">用于售前/交付对齐范围：分层代表性 + 问题分桶样本（不会做删留决策）</div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="gap-2" onClick={() => void loadSamples()} disabled={!selectedRun?.id || samplesLoading}>
+                <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadSamples())} disabled={!selectedRun?.id || samplesLoading}>
                   {samplesLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <FileSearch className="w-4 h-4" />}
                   加载
                 </Button>
                 <Button
                   variant="outline"
                   className="gap-2"
-                  onClick={() => downloadJsonObject(samplesRes, `${String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.precheck.samples.json`)}
+                  onClick={() => downloadJsonObject(samplesRes, `${String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.precheck.samples.json`)}
                   disabled={!samplesRes}
                 >
                   <Download className="w-4 h-4" />
@@ -1001,14 +1051,14 @@ export default function DatasetPrecheckPage() {
                 <div className="text-sm text-muted-foreground mt-1">基于抽样文本 SimHash；只输出待确认列表（不做删留决策）</div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="gap-2" onClick={() => void loadNearDups()} disabled={!selectedRun?.id || nearDupLoading}>
+                <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadNearDups())} disabled={!selectedRun?.id || nearDupLoading}>
                   {nearDupLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <FileSearch className="w-4 h-4" />}
                   加载
                 </Button>
                 <Button
                   variant="outline"
                   className="gap-2"
-                  onClick={() => downloadJsonObject(nearDupRes, `${String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.precheck.near_dups.json`)}
+                  onClick={() => downloadJsonObject(nearDupRes, `${String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.precheck.near_dups.json`)}
                   disabled={!nearDupRes}
                 >
                   <Download className="w-4 h-4" />
@@ -1041,7 +1091,7 @@ export default function DatasetPrecheckPage() {
                     'text-left px-4 py-3 rounded-xl border border-border/60 bg-card/40 hover:bg-card/70 transition-colors',
                     'focus:outline-none focus:ring-2 focus:ring-primary/30'
                   )}
-                  onClick={() => void openFinding(f)}
+                  onClick={() => detachPromise(openFinding(f))}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-medium truncate">{f.label}</div>
@@ -1082,13 +1132,16 @@ export default function DatasetPrecheckPage() {
             </DialogHeader>
 
             <div className="mt-2">
-              {findingLoading && !findingRes ? (
-                <div className="py-10 flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+              {(() => {
+    if (findingLoading && !findingRes) {
+        return (<div className="py-10 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2"/>
                   加载中…
-                </div>
-              ) : findingRes ? (
-                <div className="space-y-3">
+                </div>);
+    }
+    else {
+        if (findingRes) {
+            return (<div className="space-y-3">
                   <div className="text-xs text-muted-foreground font-mono">
                     showing {findingRes.items.length}/{findingRes.total}
                   </div>
@@ -1106,28 +1159,34 @@ export default function DatasetPrecheckPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {findingRes.items.map((d) => (
-                          <tr
-                            key={`${d.name}-${d.file_type}-${d.file_size}`}
-                            className="border-t border-border/60 hover:bg-muted/20 transition-colors cursor-pointer"
-                            onClick={() => {
-                              setFileDetail(d)
-                              setFileDetailOpen(true)
-                            }}
-                          >
+                        {findingRes.items.map((d) => (<tr key={`${d.name}-${d.file_type}-${d.file_size}`} className="border-t border-border/60 hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => {
+                        setFileDetail(d);
+                        setFileDetailOpen(true);
+                    }}>
                             <td className="px-3 py-2 font-mono text-xs">{d.name}</td>
                             <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
                             <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
                             <td className="px-3 py-2 font-mono text-xs">{d.text_characters}</td>
                             <td className="px-3 py-2 font-mono text-xs">
-                              {d.file_type === 'pdf' ? (d.pdf_scanned === true ? 'scan' : d.pdf_scanned === false ? 'text' : 'unknown') : ''}
+                              {d.file_type === 'pdf' ? ((() => {
+                    if (d.pdf_scanned === true) {
+                        return 'scan';
+                    }
+                    else {
+                        if (d.pdf_scanned === false) {
+                            return 'text';
+                        }
+                        else {
+                            return 'unknown';
+                        }
+                    }
+                })()) : ''}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">
                               {d.spreadsheet ? `${d.spreadsheet.row_count || 0}x${d.spreadsheet.col_count || 0}` : ''}
                             </td>
                             <td className="px-3 py-2 font-mono text-xs">{d.estimated_text ? 'yes' : ''}</td>
-                          </tr>
-                        ))}
+                          </tr>))}
                       </tbody>
                     </table>
                   </div>
@@ -1136,20 +1195,18 @@ export default function DatasetPrecheckPage() {
                     <div className="text-xs text-muted-foreground">
                       {findingRes.items.length >= findingRes.total ? '已加载全部' : ''}
                     </div>
-                    <Button
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => void loadMoreFinding()}
-                      disabled={findingLoading || findingRes.items.length >= findingRes.total}
-                    >
-                      {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreFinding())} disabled={findingLoading || findingRes.items.length >= findingRes.total}>
+                      {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
                       加载更多
                     </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="py-10 text-center text-muted-foreground">暂无数据</div>
-              )}
+                </div>);
+        }
+        else {
+            return (<div className="py-10 text-center text-muted-foreground">暂无数据</div>);
+        }
+    }
+})()}
             </div>
           </DialogContent>
         </Dialog>
@@ -1323,20 +1380,19 @@ export default function DatasetPrecheckPage() {
               </DialogDescription>
             </DialogHeader>
 
-            {policyLoading ? (
-              <div className="py-10 flex items-center justify-center text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+            {(() => {
+    if (policyLoading) {
+        return (<div className="py-10 flex items-center justify-center text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2"/>
                 生成中…
-              </div>
-            ) : policyRes ? (
-              <div className="space-y-4">
-                {policyRes.notes?.length ? (
-                  <div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground space-y-1">
-                    {policyRes.notes.map((n, i) => (
-                      <div key={i}>- {n}</div>
-                    ))}
-                  </div>
-                ) : null}
+              </div>);
+    }
+    else {
+        if (policyRes) {
+            return (<div className="space-y-4">
+                {policyRes.notes?.length ? (<div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground space-y-1">
+                    {policyRes.notes.map((n) => (<div key={n}>- {n}</div>))}
+                  </div>) : null}
 
                 <div className="rounded-xl border border-border/60 overflow-hidden">
                   <div className="px-3 py-2 text-sm font-medium bg-muted/40">待人工复核</div>
@@ -1349,13 +1405,11 @@ export default function DatasetPrecheckPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(policyRes.manual_review || []).map((b) => (
-                        <tr key={b.key} className="border-t border-border/60">
+                      {(policyRes.manual_review || []).map((b) => (<tr key={b.key} className="border-t border-border/60">
                           <td className="px-3 py-2 font-mono text-xs">{b.key}</td>
                           <td className="px-3 py-2 font-mono text-xs">{b.total}</td>
                           <td className="px-3 py-2 font-mono text-xs truncate">{(b.sample_names || []).slice(0, 5).join(', ')}</td>
-                        </tr>
-                      ))}
+                        </tr>))}
                     </tbody>
                   </table>
                 </div>
@@ -1367,28 +1421,27 @@ export default function DatasetPrecheckPage() {
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Checkbox checked={policyApplyReplace} onCheckedChange={(v) => setPolicyApplyReplace(!!v)} />
+                    <Checkbox checked={policyApplyReplace} onCheckedChange={(v) => setPolicyApplyReplace(!!v)}/>
                     <div className="text-sm text-muted-foreground">覆盖已有 ingestion_policy（replace=true）</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => downloadJsonObject(policyRes.policy, `${String(dataset?.name || 'dataset').replace(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.ingestion_policy.suggested.json`)}
-                    >
-                      <Download className="w-4 h-4" />
+                    <Button variant="outline" className="gap-2" onClick={() => downloadJsonObject(policyRes.policy, `${String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)}.ingestion_policy.suggested.json`)}>
+                      <Download className="w-4 h-4"/>
                       下载
                     </Button>
-                    <Button className="gap-2" onClick={() => void applyPolicy()} disabled={policyApplying}>
-                      {policyApplying ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
+                    <Button className="gap-2" onClick={() => detachPromise(applyPolicy())} disabled={policyApplying}>
+                      {policyApplying ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
                       应用到数据集
                     </Button>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="py-10 text-center text-muted-foreground">暂无数据</div>
-            )}
+              </div>);
+        }
+        else {
+            return (<div className="py-10 text-center text-muted-foreground">暂无数据</div>);
+        }
+    }
+})()}
           </DialogContent>
         </Dialog>
       </PageScaffold>

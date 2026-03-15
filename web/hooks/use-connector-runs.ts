@@ -9,6 +9,8 @@ import { toast } from 'sonner'
 import type { ConnectorRunOut } from '@/types'
 import { connectorApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
+import { detachPromise } from '@/lib/utils'
+
 
 export type ConnectorRunsListParams = {
   datasetId?: string
@@ -55,7 +57,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
       try {
         await connectorApi.cancelRun(runId)
         toast.success('已取消导入任务')
-        void refreshSelectedDatasetRuns()
+        detachPromise(refreshSelectedDatasetRuns())
       } catch (err: any) {
         toast.error(formatApiError(err, '取消导入任务失败'))
       }
@@ -69,8 +71,8 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
       try {
         const next = await connectorApi.retryFailed(runId)
         toast.success(`已创建重试任务：${String(next.id || '').slice(0, 8)}`)
-        void refreshSelectedDatasetRuns()
-        void loadDocuments?.()
+        detachPromise(refreshSelectedDatasetRuns())
+        detachPromise(loadDocuments?.())
       } catch (err: any) {
         toast.error(formatApiError(err, '重试失败项失败'))
       }
@@ -84,8 +86,8 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
       try {
         const next = await connectorApi.resumeRun(runId)
         toast.success(`已创建续跑任务：${String(next.id || '').slice(0, 8)}`)
-        void refreshSelectedDatasetRuns()
-        void loadDocuments?.()
+        detachPromise(refreshSelectedDatasetRuns())
+        detachPromise(loadDocuments?.())
       } catch (err: any) {
         toast.error(formatApiError(err, '续跑失败'))
       }

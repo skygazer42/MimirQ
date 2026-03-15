@@ -7,8 +7,9 @@ import asyncio
 import logging
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Set, Tuple
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -31,7 +32,7 @@ class BaseAdvancedParser(ABC):
     """
 
     # Subclasses can override; None means no extension check.
-    SUPPORTED_EXTENSIONS: Optional[Set[str]] = None
+    SUPPORTED_EXTENSIONS: set[str] | None = None
 
     def __init__(self):
         self._parser = None
@@ -65,7 +66,7 @@ class BaseAdvancedParser(ABC):
         pass
 
     @abstractmethod
-    def _check_parser_installation(self, parser: Any) -> Tuple[bool, str]:
+    def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
         """
         Check parser availability.
 
@@ -82,10 +83,10 @@ class BaseAdvancedParser(ABC):
         self,
         parser: Any,
         file_path: Path,
-        binary: Optional[bytes],
+        binary: bytes | None,
         callback: Callable[[float, str], None],
         **kwargs
-    ) -> Tuple[List, List]:
+    ) -> tuple[list, list]:
         """
         Call the underlying parser's parse method.
 
@@ -140,9 +141,9 @@ class BaseAdvancedParser(ABC):
 
     def _convert_sections_to_documents(
         self,
-        sections: List,
+        sections: list,
         base_metadata: dict
-    ) -> List[Document]:
+    ) -> list[Document]:
         """
         Convert sections to a list of Documents.
 
@@ -194,9 +195,9 @@ class BaseAdvancedParser(ABC):
 
     def _convert_tables_to_documents(
         self,
-        tables: List,
+        tables: list,
         base_metadata: dict
-    ) -> List[Document]:
+    ) -> list[Document]:
         """
         Convert tables to a list of Documents.
 
@@ -284,7 +285,7 @@ class BaseAdvancedParser(ABC):
         self,
         file_path: Path,
         **kwargs
-    ) -> List[Document]:
+    ) -> list[Document]:
         """
         Parse document.
 
@@ -336,7 +337,7 @@ class BaseAdvancedParser(ABC):
         self,
         file_path: Path,
         **kwargs,
-    ) -> List[Document]:
+    ) -> list[Document]:
         """
         Parse document asynchronously.
 

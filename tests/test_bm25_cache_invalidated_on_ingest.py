@@ -33,7 +33,7 @@ def test_bm25_cache_invalidates_when_dataset_version_changes(monkeypatch) -> Non
     monkeypatch.setattr(
         HybridRetriever,
         "_bm25_dataset_cache_version",
-        lambda _self, *, tenant_id, dataset_id: next(versions),
+        lambda _self, *, _tenant_id, _dataset_id: next(versions),
         raising=False,
     )
 

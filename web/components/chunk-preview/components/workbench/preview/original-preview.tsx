@@ -36,7 +36,7 @@ function canReadFileAsText(file: File | null) {
   )
 }
 
-function DeferredMarkdownToc({ markdown }: { markdown: string }) {
+function DeferredMarkdownToc({ markdown }: Readonly<{ markdown: string }>) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -158,7 +158,19 @@ export function OriginalPreview() {
 
   const canLoadFromFile = useMemo(() => canReadFileAsText(currentFile), [currentFile])
   const effectiveOriginalText = serverTextInfo.displayText ?? localOriginalText ?? null
-  const originalTextSource = previewData?.original_text ? 'server' : localOriginalText ? 'local' : null
+  const originalTextSource = (() => {
+    if (previewData?.original_text) {
+        return 'server';
+    }
+    else {
+        if (localOriginalText) {
+            return 'local';
+        }
+        else {
+            return null;
+        }
+    }
+})()
 
   useEffect(() => {
     setLocalOriginalText(null)
@@ -216,14 +228,14 @@ export function OriginalPreview() {
     if (safeActiveEnd <= activeStart) return null
 
     // Parent-child: when selecting a child, also highlight its parent range (if provided).
-    const meta = (chunk.metadata || {}) as Record<string, any>
+    const meta = (chunk.metadata || {})
     const role = String(meta.chunk_role || '')
     const parentStartRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
     const parentEndRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
-    const parentStart = role === 'child' && parentStartRaw != null ? Number(parentStartRaw) : NaN
-    const parentEnd = role === 'child' && parentEndRaw != null ? Number(parentEndRaw) : NaN
-    const parentStartMapped = Number.isFinite(parentStart) ? mapIndex(parentStart) : NaN
-    const parentEndMapped = Number.isFinite(parentEnd) ? mapIndex(parentEnd) : NaN
+    const parentStart = role === 'child' && parentStartRaw != null ? Number(parentStartRaw) : Number.NaN
+    const parentEnd = role === 'child' && parentEndRaw != null ? Number(parentEndRaw) : Number.NaN
+    const parentStartMapped = Number.isFinite(parentStart) ? mapIndex(parentStart) : Number.NaN
+    const parentEndMapped = Number.isFinite(parentEnd) ? mapIndex(parentEnd) : Number.NaN
     const hasParent =
       role === 'child' &&
       Number.isFinite(parentStartMapped) &&
@@ -284,8 +296,8 @@ export function OriginalPreview() {
       if (meta) {
         const psRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
         const peRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
-        const ps = psRaw != null ? mapIndex(Number(psRaw) || 0) : null
-        const pe = peRaw != null ? mapIndex(Number(peRaw) || 0) : null
+        const ps = psRaw == null ? null : mapIndex(Number(psRaw) || 0)
+        const pe = peRaw == null ? null : mapIndex(Number(peRaw) || 0)
         if (ps != null) {
           meta.parent_start_char = ps
           meta.parent_start_index = ps
@@ -317,7 +329,7 @@ export function OriginalPreview() {
     if (previewMode !== 'raw') return
     const el = highlightRef.current
     if (!el) return
-    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    const prefersReducedMotion = globalThis.window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
     el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' })
   }, [activeChunkIndex, previewMode])
 
@@ -334,7 +346,7 @@ export function OriginalPreview() {
               {activeChunkMeta ? (
                 <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                   {activeChunkMeta.label}
-                  {activeChunkMeta.page != null ? ` P.${activeChunkMeta.page}` : ''}
+                  {activeChunkMeta.page == null ? '' : ` P.${activeChunkMeta.page}`}
                   {' '}
                   <span className="text-muted-foreground">{activeChunkMeta.range}</span>
                   {activeChunkMeta.role ? (
@@ -356,7 +368,7 @@ export function OriginalPreview() {
                   {originalTextSource === 'server' ? 'server' : 'local'}
                 </span>
               ) : null}
-              {!previewData.original_text ? (() => {
+              {previewData.original_text ? null : (() => {
                 const limit = previewData.original_text_max_chars ?? 100000
                 const truncated = Boolean(previewData.original_text_truncated)
                 return (
@@ -367,7 +379,7 @@ export function OriginalPreview() {
                     {truncated ? '原文过大，已省略' : '原文未返回'}
                   </span>
                 )
-              })() : null}
+              })()}
             </div>
           )}
           {previewMode === 'raw' && effectiveOriginalText && activeChunkIndex !== null && effectiveOriginalText.length > 20000 ? (
@@ -439,84 +451,68 @@ export function OriginalPreview() {
             previewMode === 'editor' || previewMode === 'pdf' ? 'h-full' : null
           )}
         >
-          {previewData ? (
-            effectiveOriginalText ? (
-              previewMode === 'pdf' ? (
-                <div className="mx-auto w-full max-w-6xl h-full">
+          {(() => {
+    if (previewData) {
+        return (effectiveOriginalText ? ((() => {
+            if (previewMode === 'pdf') {
+                return (<div className="mx-auto w-full max-w-6xl h-full">
                   <PdfPreview />
-                </div>
-              ) : previewMode === 'rendered' ? (
-                <div className="mx-auto w-full max-w-6xl flex gap-8">
+                </div>);
+            }
+            else {
+                if (previewMode === 'rendered') {
+                    return (<div className="mx-auto w-full max-w-6xl flex gap-8">
                   <div className="min-w-0 flex-1">
                     <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-primary prose-code:text-primary prose-code:bg-primary/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-muted">
-                      <MarkdownRenderer markdown={effectiveOriginalText} autoScrollToHash />
+                      <MarkdownRenderer markdown={effectiveOriginalText} autoScrollToHash/>
                     </div>
                     <p className="mt-4 text-[11px] text-muted-foreground">
                       提示：渲染模式下不支持高亮显示，请切换至源码/编辑器模式查看切片对应位置
                     </p>
                   </div>
-	                  {tocEnabled && (
-	                    <aside className="hidden xl:block w-64 shrink-0">
+	                  {tocEnabled && (<aside className="hidden xl:block w-64 shrink-0">
 	                      <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/60 bg-card p-3">
-	                        <DeferredMarkdownToc markdown={effectiveOriginalText} />
+	                        <DeferredMarkdownToc markdown={effectiveOriginalText}/>
 	                      </div>
-	                    </aside>
-	                  )}
-	                </div>
-              ) : previewMode === 'editor' ? (
-                <div className="mx-auto w-full max-w-6xl h-full">
-                  <OriginalPreviewMonaco
-                    text={effectiveOriginalText}
-                    chunks={displayChunks}
-                    activeChunkIndex={activeChunkIndex}
-                    chunkOverrides={chunkOverrides}
-                    onSelectChunkIndex={setSelectedChunkIndex}
-                  />
+	                    </aside>)}
+	                </div>);
+                }
+                else {
+                    if (previewMode === 'editor') {
+                        return (<div className="mx-auto w-full max-w-6xl h-full">
+                  <OriginalPreviewMonaco text={effectiveOriginalText} chunks={displayChunks} activeChunkIndex={activeChunkIndex} chunkOverrides={chunkOverrides} onSelectChunkIndex={setSelectedChunkIndex}/>
                   <p className="mt-3 text-[11px] text-muted-foreground">
                     提示：右侧滚动条有 chunk 标记；点击原文可自动选中最细粒度的 chunk（child 优先）。
                   </p>
-                </div>
-              ) : (
-                <div className="font-mono text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap max-w-3xl mx-auto">
-                  {activeChunkIndex !== null && highlightModel ? (
-                    (() => {
-                      const excerpt = highlightModel.text.slice(highlightModel.excerptStart, highlightModel.excerptEnd)
-                      const rel = (abs: number) => abs - highlightModel.excerptStart
-                      const safeSlice = (fromAbs: number, toAbs: number) =>
-                        excerpt.slice(Math.max(0, rel(fromAbs)), Math.max(0, rel(toAbs)))
-
-                      const hasParent = highlightModel.parentStart != null && highlightModel.parentEnd != null
-                      const parentStart = hasParent ? Number(highlightModel.parentStart) : null
-                      const parentEnd = hasParent ? Number(highlightModel.parentEnd) : null
-
-                      if (!hasParent || parentStart == null || parentEnd == null) {
-                        return (
-                          <>
+                </div>);
+                    }
+                    else {
+                        return (<div className="font-mono text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap max-w-3xl mx-auto">
+                  {activeChunkIndex !== null && highlightModel ? ((() => {
+                                const excerpt = highlightModel.text.slice(highlightModel.excerptStart, highlightModel.excerptEnd);
+                                const rel = (abs: number) => abs - highlightModel.excerptStart;
+                                const safeSlice = (fromAbs: number, toAbs: number) => excerpt.slice(Math.max(0, rel(fromAbs)), Math.max(0, rel(toAbs)));
+                                const hasParent = highlightModel.parentStart != null && highlightModel.parentEnd != null;
+                                const parentStart = hasParent ? Number(highlightModel.parentStart) : null;
+                                const parentEnd = hasParent ? Number(highlightModel.parentEnd) : null;
+                                if (!hasParent || parentStart == null || parentEnd == null) {
+                                    return (<>
                             {highlightModel.prefixOmitted ? <span className="opacity-40">…</span> : null}
                             <span className="opacity-40">{safeSlice(highlightModel.excerptStart, highlightModel.activeStart)}</span>
-                            <mark
-                              ref={highlightRef}
-                              className="bg-primary/15 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
-                            >
+                            <mark ref={highlightRef} className="bg-primary/15 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium">
                               {safeSlice(highlightModel.activeStart, highlightModel.activeEnd)}
                             </mark>
                             <span className="opacity-40">{safeSlice(highlightModel.activeEnd, highlightModel.excerptEnd)}</span>
                             {highlightModel.suffixOmitted ? <span className="opacity-40">…</span> : null}
-                          </>
-                        )
-                      }
-
-                      return (
-                        <>
+                          </>);
+                                }
+                                return (<>
                           {highlightModel.prefixOmitted ? <span className="opacity-40">…</span> : null}
                           <span className="opacity-40">{safeSlice(highlightModel.excerptStart, parentStart)}</span>
 
                           <mark className="bg-primary/10 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm">
                             {safeSlice(parentStart, highlightModel.activeStart)}
-                            <mark
-                              ref={highlightRef}
-                              className="bg-primary/20 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium"
-                            >
+                            <mark ref={highlightRef} className="bg-primary/20 text-foreground rounded px-0.5 py-0.5 mx-0.5 shadow-sm font-medium">
                               {safeSlice(highlightModel.activeStart, highlightModel.activeEnd)}
                             </mark>
                             {safeSlice(highlightModel.activeEnd, parentEnd)}
@@ -524,79 +520,72 @@ export function OriginalPreview() {
 
                           <span className="opacity-40">{safeSlice(parentEnd, highlightModel.excerptEnd)}</span>
                           {highlightModel.suffixOmitted ? <span className="opacity-40">…</span> : null}
-                        </>
-                      )
-                    })()
-                  ) : (
-                    effectiveOriginalText
-                  )}
-                </div>
-              )
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-                <FileText className="w-12 h-12 opacity-10" />
+                        </>);
+                            })()) : (effectiveOriginalText)}
+                </div>);
+                    }
+                }
+            }
+        })()) : (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+                <FileText className="w-12 h-12 opacity-10"/>
                 <p className="text-xs">{previewData.original_text_truncated ? '原文已省略' : '原文未返回'}</p>
                 <p className="text-xs text-muted-foreground max-w-[480px] text-center leading-relaxed">
                   {(() => {
-                    const limit = previewData.original_text_max_chars ?? 100000
-                    if (previewData.original_text_truncated) {
-                      return `原文超过 ${limit.toLocaleString()} chars（当前 ${previewData.total_characters.toLocaleString()} chars），后端已省略返回以避免传输过大。`
-                    }
-                    return `原文内容较大（${previewData.total_characters.toLocaleString()} chars）时，后端可能会省略原文以避免传输过大。`
-                  })()}
+                const limit = previewData.original_text_max_chars ?? 100000;
+                if (previewData.original_text_truncated) {
+                    return `原文超过 ${limit.toLocaleString()} chars（当前 ${previewData.total_characters.toLocaleString()} chars），后端已省略返回以避免传输过大。`;
+                }
+                return `原文内容较大（${previewData.total_characters.toLocaleString()} chars）时，后端可能会省略原文以避免传输过大。`;
+            })()}
                   你仍可使用右侧切片列表进行检查与入库。
                 </p>
 
-                {localError ? (
-                  <p className="text-[10px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
+                {localError ? (<p className="text-[10px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
                     {localError}
-                  </p>
-                ) : null}
+                  </p>) : null}
 
-                {canLoadFromFile && currentFile ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-3 text-[11px] mt-2"
-                    disabled={localLoading}
-                    onClick={async () => {
-                      try {
-                        setLocalLoading(true)
-                        setLocalError(null)
-                        const text = await currentFile.text()
-                        setLocalOriginalText(text)
-                      } catch (err: any) {
-                        setLocalError((err?.message as string) || '从本地文件读取失败')
-                      } finally {
-                        setLocalLoading(false)
-                      }
-                    }}
-                  >
+                {canLoadFromFile && currentFile ? (<Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px] mt-2" disabled={localLoading} onClick={async () => {
+                    try {
+                        setLocalLoading(true);
+                        setLocalError(null);
+                        const text = await currentFile.text();
+                        setLocalOriginalText(text);
+                    }
+                    catch (err: any) {
+                        setLocalError((err?.message as string) || '从本地文件读取失败');
+                    }
+                    finally {
+                        setLocalLoading(false);
+                    }
+                }}>
                     {localLoading ? '正在读取本地原文...' : '从本地文件读取原文'}
-                  </Button>
-                ) : (
-                  <p className="text-[10px] text-muted-foreground">当前文件格式不支持在浏览器侧读取原文。</p>
-                )}
-              </div>
-            )
-          ) : isLoading ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20" />
+                  </Button>) : (<p className="text-[10px] text-muted-foreground">当前文件格式不支持在浏览器侧读取原文。</p>)}
+              </div>));
+    }
+    else {
+        if (isLoading) {
+            return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20"/>
               <p className="text-xs">加载中...</p>
-            </div>
-          ) : error ? (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <AlertCircle className="w-10 h-10 opacity-20" />
+            </div>);
+        }
+        else {
+            if (error) {
+                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+              <AlertCircle className="w-10 h-10 opacity-20"/>
               <p className="text-xs text-muted-foreground">加载失败</p>
               <p className="text-xs text-muted-foreground max-w-[360px] text-center break-words line-clamp-3">{error}</p>
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
-              <FileText className="w-12 h-12 opacity-10" />
+            </div>);
+            }
+            else {
+                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
+              <FileText className="w-12 h-12 opacity-10"/>
               <p className="text-xs">等待预览</p>
-            </div>
-          )}
+            </div>);
+            }
+        }
+    }
+})()}
         </div>
       </div>
     </div>

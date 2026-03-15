@@ -4,7 +4,7 @@ Common API error handling utilities
 Provides commonly used resource validation and error handling functions to eliminate duplicate code in API routes.
 """
 
-from typing import Any, Type, TypeVar
+from typing import Any, TypeVar
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ T = TypeVar("T")
 
 def get_or_404(
     db: Session,
-    model: Type[T],
+    model: type[T],
     resource_name: str = None,
     **filters
 ) -> T:
@@ -81,7 +81,7 @@ def check_permission_or_403(
 
 def check_member_or_403(
     db: Session,
-    tenant_member_model: Type,
+    tenant_member_model: type,
     tenant_id: Any,
     user_id: str,
     message: str = "Not a tenant member"

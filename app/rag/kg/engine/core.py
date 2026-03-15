@@ -1,7 +1,7 @@
 """
 Lightweight KG engine to run Extract -> Search using local adapters.
 """
-from typing import Dict, List, Optional, Sequence
+from collections.abc import Sequence
 from uuid import UUID
 
 from app.core.config import settings
@@ -17,25 +17,25 @@ logger = get_logger("kg.engine")
 
 
 class KGEngine:
-    def __init__(self, model_config: Optional[dict] = None):
+    def __init__(self, model_config: dict | None = None):
         self.extractor = EventExtractor(model_config=model_config)
         self.searcher = KGSearcher()
 
     async def extract(
         self,
         chunk_ids,
-        tenant_id: Optional[UUID] = None,
+        tenant_id: UUID | None = None,
         *,
-        chunks: Optional[Sequence[DocumentChunk]] = None,
-        index_options: Optional[IndexingOptions] = None,
-        prompt_template_id: Optional[UUID] = None,
-        prompt_template_key: Optional[str] = None,
-        prompt_ab_experiment_key: Optional[str] = None,
-        ab_user_key: Optional[str] = None,
-        extract_relations: Optional[bool] = None,
-        extract_skills: Optional[bool] = None,
-        replace_existing: Optional[bool] = None,
-        prune_orphan_entities: Optional[bool] = None,
+        chunks: Sequence[DocumentChunk] | None = None,
+        index_options: IndexingOptions | None = None,
+        prompt_template_id: UUID | None = None,
+        prompt_template_key: str | None = None,
+        prompt_ab_experiment_key: str | None = None,
+        ab_user_key: str | None = None,
+        extract_relations: bool | None = None,
+        extract_skills: bool | None = None,
+        replace_existing: bool | None = None,
+        prune_orphan_entities: bool | None = None,
     ):
         config = ExtractConfig(
             chunk_ids=list(chunk_ids),
@@ -64,15 +64,15 @@ class KGEngine:
     async def search(
         self,
         query: str,
-        tenant_id: Optional[UUID] = None,
+        tenant_id: UUID | None = None,
         *,
-        document_ids: Optional[List[UUID]] = None,
-        dataset_id: Optional[UUID] = None,
-        account_id: Optional[str] = None,
-        query_mode: Optional[str] = None,
-        query_mode_reason_codes: Optional[List[str]] = None,
-        query_mode_confidence: Optional[str] = None,
-    ) -> Dict:
+        document_ids: list[UUID] | None = None,
+        dataset_id: UUID | None = None,
+        account_id: str | None = None,
+        query_mode: str | None = None,
+        query_mode_reason_codes: list[str] | None = None,
+        query_mode_confidence: str | None = None,
+    ) -> dict:
         config = SearchConfig(
             query=query,
             tenant_id=tenant_id or settings.DEFAULT_TENANT_ID,

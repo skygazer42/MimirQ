@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -36,6 +37,7 @@ async def test_kg_search_cache_hits(monkeypatch: pytest.MonkeyPatch) -> None:
             query_mode_reason_codes=None,
             query_mode_confidence=None,
         ):
+            await asyncio.sleep(0)  # Sonar S7503
             calls["n"] += 1
             return {"ok": True, "call": int(calls["n"]), "query": str(query or "")[:10]}
 
@@ -94,6 +96,7 @@ async def test_kg_search_cache_separates_account_and_doc_scope(monkeypatch: pyte
             query_mode_reason_codes=None,
             query_mode_confidence=None,
         ):
+            await asyncio.sleep(0)  # Sonar S7503
             calls["n"] += 1
             return {
                 "ok": True,
@@ -156,6 +159,7 @@ async def test_kg_search_cache_invalidates_on_active_pipeline_hash_change(monkey
             query_mode_reason_codes=None,
             query_mode_confidence=None,
         ):
+            await asyncio.sleep(0)  # Sonar S7503
             calls["n"] += 1
             return {"ok": True, "call": int(calls["n"]), "query": str(query or "")[:10]}
 
@@ -224,6 +228,7 @@ async def test_kg_search_cache_separates_query_mode(monkeypatch: pytest.MonkeyPa
             query_mode_reason_codes=None,
             query_mode_confidence=None,
         ):
+            await asyncio.sleep(0)  # Sonar S7503
             calls["n"] += 1
             return {"ok": True, "call": int(calls["n"]), "query_mode": str(query_mode or "")}
 

@@ -15,10 +15,10 @@ type HomeSearchParams = {
 
 export default async function Home({
   searchParams,
-}: {
+}: Readonly<{
   // Next.js 16 types this as a Promise in app router PageProps.
   searchParams?: Promise<HomeSearchParams>
-}) {
+}>) {
   const sp = await searchParams
   return (
     <ChatPageClient

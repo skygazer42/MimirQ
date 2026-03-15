@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -38,20 +39,20 @@ async def test_kg_recall_skips_embeddings_when_vector_recall_disabled(monkeypatc
     import app.rag.kg.search.recall as recall_mod
 
     # No DB connections in unit tests.
-    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda self: None})(), raising=True)
+    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda _self: None})(), raising=True)
 
-    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *a, **k: [hit], raising=True)
-    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *a, **k: (_ for _ in ()).throw(AssertionError("vector entity recall should be disabled")), raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *a, **k: (_ for _ in ()).throw(AssertionError("vector event recall should be disabled")), raising=True)
+    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *_a, **_k: [hit], raising=True)
+    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("vector entity recall should be disabled")), raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("vector event recall should be disabled")), raising=True)
     monkeypatch.setattr(
         recall_mod.EventRepository,
         "filter_entity_ids_in_documents",
-        lambda *a, **k: {alias_entity_id},
+        lambda *_a, **_k: {alias_entity_id},
         raising=True,
     )
 
     # Minimal event plumbing for steps 2/5/6/7.
-    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *a, **k: [event_id], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *_a, **_k: [event_id], raising=True)
 
     class _Ev:
         def __init__(self) -> None:
@@ -65,8 +66,8 @@ async def test_kg_recall_skips_embeddings_when_vector_recall_disabled(monkeypatc
         def __init__(self) -> None:
             self.entity_id = alias_entity_id
 
-    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *a, **k: [_Ev()], raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *a, **k: {str(event_id): [_Link()]}, raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *_a, **_k: [_Ev()], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *_a, **_k: {str(event_id): [_Link()]}, raising=True)
 
     searcher = RecallSearcher()
     monkeypatch.setattr(
@@ -113,17 +114,17 @@ async def test_kg_recall_falls_back_when_embedding_provider_fails(monkeypatch: p
 
     import app.rag.kg.search.recall as recall_mod
 
-    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda self: None})(), raising=True)
-    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *a, **k: [hit], raising=True)
-    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not call milvus when embedding fails")), raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not call milvus when embedding fails")), raising=True)
+    monkeypatch.setattr(recall_mod, "get_session", lambda: type("_S", (), {"close": lambda _self: None})(), raising=True)
+    monkeypatch.setattr(recall_mod.AliasRepository, "match_aliases", lambda *_a, **_k: [hit], raising=True)
+    monkeypatch.setattr(recall_mod.EntityRepository, "search_similar", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not call milvus when embedding fails")), raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_similar_by_content", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not call milvus when embedding fails")), raising=True)
     monkeypatch.setattr(
         recall_mod.EventRepository,
         "filter_entity_ids_in_documents",
-        lambda *a, **k: {alias_entity_id},
+        lambda *_a, **_k: {alias_entity_id},
         raising=True,
     )
-    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *a, **k: [event_id], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "search_events_by_entities", lambda *_a, **_k: [event_id], raising=True)
 
     class _Ev:
         def __init__(self) -> None:
@@ -137,10 +138,11 @@ async def test_kg_recall_falls_back_when_embedding_provider_fails(monkeypatch: p
         def __init__(self) -> None:
             self.entity_id = alias_entity_id
 
-    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *a, **k: [_Ev()], raising=True)
-    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *a, **k: {str(event_id): [_Link()]}, raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_events_by_ids", lambda *_a, **_k: [_Ev()], raising=True)
+    monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *_a, **_k: {str(event_id): [_Link()]}, raising=True)
 
     async def _boom(_text: str) -> list[float]:
+        await asyncio.sleep(0)  # Sonar S7503
         raise RuntimeError("no embedding provider")
 
     searcher = RecallSearcher()

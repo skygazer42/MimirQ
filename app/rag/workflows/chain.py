@@ -9,7 +9,8 @@ Pattern: Step1 -> Step2 -> Step3 -> ... -> Result
 
 
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.rag.workflows.base import (
     BaseWorkflow,
@@ -37,7 +38,7 @@ class ChainWorkflow(BaseWorkflow):
 
     def __init__(
         self,
-        steps: Optional[List[WorkflowStep]] = None,
+        steps: list[WorkflowStep] | None = None,
         stop_on_error: bool = True,
         **kwargs,
     ):
@@ -50,7 +51,7 @@ class ChainWorkflow(BaseWorkflow):
             **kwargs: Additional configuration
         """
         super().__init__(**kwargs)
-        self._steps: List[WorkflowStep] = steps or []
+        self._steps: list[WorkflowStep] = steps or []
         self.stop_on_error = stop_on_error
 
     @property
@@ -60,8 +61,8 @@ class ChainWorkflow(BaseWorkflow):
     def add_step(
         self,
         name: str,
-        func: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
-        condition: Optional[Callable[[Dict[str, Any]], bool]] = None,
+        func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+        condition: Callable[[dict[str, Any]], bool] | None = None,
     ) -> "ChainWorkflow":
         """
         Add a step to the chain.
@@ -82,7 +83,7 @@ class ChainWorkflow(BaseWorkflow):
         self._steps.clear()
         return self
 
-    async def run(self, state: Dict[str, Any]) -> WorkflowResult:
+    async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
         Execute the chain workflow.
 
@@ -100,7 +101,7 @@ class ChainWorkflow(BaseWorkflow):
             )
 
         current_state = dict(state)
-        execution_path: List[str] = []
+        execution_path: list[str] = []
 
         for step in self._steps:
             step_name = step.name
@@ -145,8 +146,8 @@ class ChainWorkflow(BaseWorkflow):
 
 
 def create_rag_chain(
-    retrieve_func: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
-    generate_func: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
+    retrieve_func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
+    generate_func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
     **kwargs,
 ) -> ChainWorkflow:
     """

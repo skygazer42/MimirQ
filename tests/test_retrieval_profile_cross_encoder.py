@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from langchain_core.documents import Document
 
 
@@ -79,7 +80,7 @@ def test_orchestrator_hybrid_ce_profile_wires_cross_encoder_runtime(monkeypatch)
     assert retriever._last_update["enable_weight_rerank"] is False
     assert int(retriever._last_update["k"]) >= 20
     assert int(retriever._last_update["reranker_top_n"]) >= 20
-    assert float(retriever._last_update["score_threshold"]) == 0.0
+    assert float(retriever._last_update["score_threshold"]) == pytest.approx(0.0)
 
     metrics = out.get("metrics") or {}
     assert metrics.get("retrieval_profile") == "hybrid_ce"

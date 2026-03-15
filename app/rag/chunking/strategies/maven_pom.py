@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -23,7 +23,7 @@ class _Record:
     end: int
     index: int
     kind: str
-    ga: Optional[str]
+    ga: str | None
 
 
 _DEPENDENCY_START_RE = re.compile(r"(?is)<dependency\b[^>]*>")
@@ -39,7 +39,7 @@ def _clean_text(s: str) -> str:
     return out
 
 
-def _extract_ga(block_text: str) -> Optional[str]:
+def _extract_ga(block_text: str) -> str | None:
     head = (block_text or "")[:6000]
     gm = _GROUP_ID_RE.search(head)
     am = _ARTIFACT_ID_RE.search(head)
@@ -54,11 +54,11 @@ def _extract_ga(block_text: str) -> Optional[str]:
     return artifact_id[:300]
 
 
-def _iter_records(text: str) -> List[_Record]:
+def _iter_records(text: str) -> list[_Record]:
     if not text:
         return []
 
-    records: List[_Record] = []
+    records: list[_Record] = []
     for kind, start_re, end_re in (
         ("dependency", _DEPENDENCY_START_RE, _DEPENDENCY_END_RE),
         ("plugin", _PLUGIN_START_RE, _PLUGIN_END_RE),
@@ -84,7 +84,7 @@ def _iter_records(text: str) -> List[_Record]:
 
     # Sort by start and reindex.
     records.sort(key=lambda r: (r.start, r.end))
-    out: List[_Record] = []
+    out: list[_Record] = []
     for r in records:
         out.append(_Record(start=r.start, end=r.end, index=len(out), kind=r.kind, ga=r.ga))
     return out
@@ -115,8 +115,8 @@ class MavenPOMChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

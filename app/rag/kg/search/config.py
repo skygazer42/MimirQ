@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import List, Optional
 from uuid import UUID
 
 from pydantic import Field
@@ -56,32 +55,32 @@ class RerankConfig(KGBaseModel):
 
 class SearchConfig(KGBaseModel):
     query: str
-    tenant_id: Optional[UUID] = None
-    dataset_id: Optional[UUID] = None
+    tenant_id: UUID | None = None
+    dataset_id: UUID | None = None
     # Dataset-scoped searches require account_id to enforce document-level ACL (security trimming).
-    account_id: Optional[str] = None
-    document_ids: Optional[List[UUID]] = None
+    account_id: str | None = None
+    document_ids: list[UUID] | None = None
     return_type: ReturnType = ReturnType.EVENT
     # Per-call overrides (thread-safe) for diagnostics/experimentation.
     # - None means "use settings + existing default behavior".
     # - True/False forces the behavior for this call.
-    relation_expansion_enabled: Optional[bool] = None
+    relation_expansion_enabled: bool | None = None
     # Vector recall (embeddings + Milvus) override. Useful for diagnostics ablations.
-    vector_recall_enabled: Optional[bool] = None
+    vector_recall_enabled: bool | None = None
     # Graph embeddings (node2vec-like) recall override. Useful for diagnostics ablations.
-    graph_embeddings_enabled: Optional[bool] = None
+    graph_embeddings_enabled: bool | None = None
     # Query-mode routing: auto | local | global | drift.
     query_mode: str = "auto"
-    query_mode_reason_codes: List[str] = []
-    query_mode_confidence: Optional[str] = None
+    query_mode_reason_codes: list[str] = []
+    query_mode_confidence: str | None = None
     # When false, filter Skill-like entities from recall/expand (useful for ablations).
     include_skill_entities: bool = True
     recall: RecallConfig = RecallConfig()
     expand: ExpandConfig = ExpandConfig()
     rerank: RerankConfig = RerankConfig()
-    original_query: Optional[str] = None
+    original_query: str | None = None
 
-    def get_source_config_ids(self) -> List[str]:
+    def get_source_config_ids(self) -> list[str]:
         return []
 
 

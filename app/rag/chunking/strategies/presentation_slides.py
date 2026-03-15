@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -39,12 +39,12 @@ _SLIDE_MARK_RE = re.compile(
 _CN_PAGE_RE = re.compile(r"(?m)^\s*(?:#+\s*)?第\s*(?P<num>\d{1,4})\s*页\b.*$")
 
 
-def _split_by_hr(text: str) -> List[_Slide]:
+def _split_by_hr(text: str) -> list[_Slide]:
     matches = list(_HR_RE.finditer(text or ""))
     if len(matches) < 2:
         return []
 
-    slides: List[_Slide] = []
+    slides: list[_Slide] = []
     cursor = 0
     idx = 0
     for m in matches:
@@ -61,18 +61,18 @@ def _split_by_hr(text: str) -> List[_Slide]:
     return slides if len(slides) >= 2 else []
 
 
-def _split_by_markers(text: str) -> List[_Slide]:
-    starts: List[int] = []
+def _split_by_markers(text: str) -> list[_Slide]:
+    starts: list[int] = []
     for m in _SLIDE_MARK_RE.finditer(text or ""):
         starts.append(m.start())
     for m in _CN_PAGE_RE.finditer(text or ""):
         starts.append(m.start())
 
-    starts = sorted(set(i for i in starts if 0 <= i < len(text)))
+    starts = sorted({i for i in starts if 0 <= i < len(text)})
     if len(starts) < 2:
         return []
 
-    slides: List[_Slide] = []
+    slides: list[_Slide] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
         if end <= start:
@@ -95,7 +95,7 @@ def looks_like_presentation(text: str) -> bool:
     return False
 
 
-def _slide_title(slide_text: str) -> Optional[str]:
+def _slide_title(slide_text: str) -> str | None:
     for ln in (slide_text or "").splitlines():
         t = ln.strip()
         if not t:
@@ -122,8 +122,8 @@ class PresentationSlidesChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

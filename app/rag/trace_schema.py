@@ -8,101 +8,101 @@ Design constraints:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class RagTraceCitation(BaseModel):
     # Identifiers
-    document_id: Optional[str] = None
-    chunk_id: Optional[str] = None
-    chunk_index: Optional[int] = None
-    page_number: Optional[int] = None
+    document_id: str | None = None
+    chunk_id: str | None = None
+    chunk_index: int | None = None
+    page_number: int | None = None
 
     # Positions (when available)
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
+    start_char: int | None = None
+    end_char: int | None = None
 
     # Retrieval provenance (PII-safe identifiers only).
-    retrieval_role: Optional[str] = None
-    neighbor_of: Optional[str] = None
+    retrieval_role: str | None = None
+    neighbor_of: str | None = None
 
     # Provenance
-    doc_pipeline_key: Optional[str] = None
-    pipeline_hash: Optional[str] = None
+    doc_pipeline_key: str | None = None
+    pipeline_hash: str | None = None
 
     # Scores / timing
-    relevance_score: Optional[float] = None
-    vector_score: Optional[float] = None
-    bm25_score: Optional[float] = None
-    lexical_score: Optional[float] = None
-    sparse_score: Optional[float] = None
-    colbert_score: Optional[float] = None
-    keyword_score: Optional[float] = None
-    rerank_score: Optional[float] = None
-    retrieval_score: Optional[float] = None
+    relevance_score: float | None = None
+    vector_score: float | None = None
+    bm25_score: float | None = None
+    lexical_score: float | None = None
+    sparse_score: float | None = None
+    colbert_score: float | None = None
+    keyword_score: float | None = None
+    rerank_score: float | None = None
+    retrieval_score: float | None = None
 
-    reranker_provider: Optional[str] = None
-    rerank_elapsed_sec: Optional[float] = None
-    rerank_model_used: Optional[str] = None
+    reranker_provider: str | None = None
+    rerank_elapsed_sec: float | None = None
+    rerank_model_used: str | None = None
 
-    retrieval_mode: Optional[str] = None
-    vector_backend: Optional[str] = None
-    retrieval_elapsed_sec: Optional[float] = None
-    hit_type: Optional[str] = None  # vector | keyword | mmr | hybrid
+    retrieval_mode: str | None = None
+    vector_backend: str | None = None
+    retrieval_elapsed_sec: float | None = None
+    hit_type: str | None = None  # vector | keyword | mmr | hybrid
 
     # Image-related fields (no URLs here; only flags/ids)
     has_image: bool = False
     # Optional KG path provenance for KG-injected citations (bounded, PII-safe).
-    kg_path: Optional[List[Dict[str, Any]]] = None
+    kg_path: list[dict[str, Any]] | None = None
     # Optional KG shortest-path provenance (nodes/edges + source doc/chunk ids; bounded, PII-safe).
-    kg_path_provenance: Optional[Dict[str, Any]] = None
+    kg_path_provenance: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="ignore")
 
 
 class RagTraceRetrievalQuery(BaseModel):
-    kind: Optional[str] = None  # main|mq|subq|hyde
-    query_chars: Optional[int] = None
-    elapsed_sec: Optional[float] = None
-    ok: Optional[bool] = None
+    kind: str | None = None  # main|mq|subq|hyde
+    query_chars: int | None = None
+    elapsed_sec: float | None = None
+    ok: bool | None = None
     # Sanitized retriever-side debug counters (no text; no tenant/dataset ids).
-    retriever_debug: Optional[Dict[str, Any]] = None
+    retriever_debug: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="ignore")
 
 
 class RagTraceRetrieval(BaseModel):
-    mode: Optional[str] = None
-    requested_mode: Optional[str] = None
-    auto_routed: Optional[bool] = None
+    mode: str | None = None
+    requested_mode: str | None = None
+    auto_routed: bool | None = None
 
     # Stable, PII-safe fingerprint for cross-run comparisons.
-    retrieval_config_hash: Optional[str] = None
+    retrieval_config_hash: str | None = None
 
-    top_k: Optional[int] = None
-    query_parallelism: Optional[int] = None
-    query_count: Optional[int] = None
+    top_k: int | None = None
+    query_parallelism: int | None = None
+    query_count: int | None = None
 
-    per_query: List[RagTraceRetrievalQuery] = Field(default_factory=list)
-    errors: List[str] = Field(default_factory=list)
+    per_query: list[RagTraceRetrievalQuery] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
-    enable_reranker: Optional[bool] = None
-    reranker_provider: Optional[str] = None
-    reranker_top_n: Optional[int] = None
+    enable_reranker: bool | None = None
+    reranker_provider: str | None = None
+    reranker_top_n: int | None = None
 
-    elapsed_sec: Optional[float] = None
+    elapsed_sec: float | None = None
 
     model_config = ConfigDict(extra="ignore")
 
 
 class RagTraceRerank(BaseModel):
     enabled: bool = False
-    provider: Optional[str] = None
-    top_n: Optional[int] = None
-    elapsed_sec: Optional[float] = None
-    model_used: Optional[str] = None
+    provider: str | None = None
+    top_n: int | None = None
+    elapsed_sec: float | None = None
+    model_used: str | None = None
 
     model_config = ConfigDict(extra="ignore")
 
@@ -110,8 +110,8 @@ class RagTraceRerank(BaseModel):
 class RagTraceStep(BaseModel):
     key: str
     label: str
-    elapsed_sec: Optional[float] = None
-    meta: Dict[str, Any] = Field(default_factory=dict)
+    elapsed_sec: float | None = None
+    meta: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -120,16 +120,16 @@ class RagTrace(BaseModel):
     schema_version: int = 1
 
     ts_ms: int = 0
-    request_id: Optional[str] = None
-    conversation_id: Optional[str] = None
+    request_id: str | None = None
+    conversation_id: str | None = None
 
     retrieval: RagTraceRetrieval = Field(default_factory=RagTraceRetrieval)
     rerank: RagTraceRerank = Field(default_factory=RagTraceRerank)
 
-    citations: List[RagTraceCitation] = Field(default_factory=list)
+    citations: list[RagTraceCitation] = Field(default_factory=list)
     citations_count: int = 0
 
-    steps: List[RagTraceStep] = Field(default_factory=list)
+    steps: list[RagTraceStep] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -140,6 +140,6 @@ class RagTraceListResponse(BaseModel):
     window_minutes: int
     truncated: bool
     returned: int
-    items: List[RagTrace] = Field(default_factory=list)
+    items: list[RagTrace] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")

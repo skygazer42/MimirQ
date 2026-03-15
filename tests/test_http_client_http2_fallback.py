@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 
@@ -8,6 +10,7 @@ class _DummyAsyncClient:
         self.http2 = http2
 
     async def aclose(self) -> None:
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
 

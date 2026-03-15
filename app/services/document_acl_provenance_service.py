@@ -14,8 +14,9 @@ Security posture:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 
 from app.rag.core.hashing import stable_hash
 
@@ -23,7 +24,7 @@ ACL_PROVENANCE_SCHEMA = "mimirq.document_acl_provenance.v1"
 
 
 def _now_utc_iso() -> str:
-    s = datetime.now(timezone.utc).isoformat()
+    s = datetime.now(UTC).isoformat()
     if s.endswith("+00:00"):
         return s[:-6] + "Z"
     return s

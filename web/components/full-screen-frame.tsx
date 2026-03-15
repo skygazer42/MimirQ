@@ -13,7 +13,7 @@ export function FullScreenFrame({
   className,
   mainClassName,
   showBackground = true,
-}: FullScreenFrameProps) {
+}: Readonly<FullScreenFrameProps>) {
   return (
     <div className={cn("relative h-dvh overflow-y-auto overscroll-contain no-scrollbar bg-background text-foreground", className)}>
       {showBackground && <AppBackground />}

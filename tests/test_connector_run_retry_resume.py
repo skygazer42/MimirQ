@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -22,6 +23,7 @@ def test_connector_run_retry_failed_creates_new_run(monkeypatch):  # noqa: ANN00
     monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     async def _noop_async(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     monkeypatch.setattr(connectors_module, "_execute_url_batch_run", _noop_async, raising=True)
@@ -42,9 +44,9 @@ def test_connector_run_retry_failed_creates_new_run(monkeypatch):  # noqa: ANN00
             self.stats = {"failed_urls": ["https://example.com/b.txt"], "created": 1, "failed": 1}
             self.error_message = None
             self.task_id = None
-            self.created_at = datetime.now(timezone.utc)
-            self.started_at = datetime.now(timezone.utc)
-            self.finished_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.started_at = datetime.now(UTC)
+            self.finished_at = datetime.now(UTC)
             self.documents = []
 
     dummy_run = _DummyRun()
@@ -73,7 +75,7 @@ def test_connector_run_retry_failed_creates_new_run(monkeypatch):  # noqa: ANN00
             if getattr(obj, "id", None) is None:
                 obj.id = uuid.uuid4()
             if getattr(obj, "created_at", None) is None:
-                obj.created_at = datetime.now(timezone.utc)
+                obj.created_at = datetime.now(UTC)
             if getattr(obj, "documents", None) is None:
                 obj.documents = []
             self.added.append(obj)
@@ -121,6 +123,7 @@ def test_connector_run_resume_uses_cursor(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     async def _noop_async(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     monkeypatch.setattr(connectors_module, "_execute_url_batch_run", _noop_async, raising=True)
@@ -141,9 +144,9 @@ def test_connector_run_resume_uses_cursor(monkeypatch):  # noqa: ANN001
             self.stats = {"cursor": 1, "processed_urls": 1}
             self.error_message = None
             self.task_id = None
-            self.created_at = datetime.now(timezone.utc)
-            self.started_at = datetime.now(timezone.utc)
-            self.finished_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.started_at = datetime.now(UTC)
+            self.finished_at = datetime.now(UTC)
             self.documents = []
 
     dummy_run = _DummyRun()
@@ -171,7 +174,7 @@ def test_connector_run_resume_uses_cursor(monkeypatch):  # noqa: ANN001
             if getattr(obj, "id", None) is None:
                 obj.id = uuid.uuid4()
             if getattr(obj, "created_at", None) is None:
-                obj.created_at = datetime.now(timezone.utc)
+                obj.created_at = datetime.now(UTC)
             if getattr(obj, "documents", None) is None:
                 obj.documents = []
             self.added.append(obj)
@@ -218,6 +221,7 @@ def test_connector_run_resume_builds_state_for_web_crawl(monkeypatch):  # noqa: 
     monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     async def _noop_async(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     monkeypatch.setattr(connectors_module, "_execute_web_crawl_run", _noop_async, raising=True)
@@ -238,9 +242,9 @@ def test_connector_run_resume_builds_state_for_web_crawl(monkeypatch):  # noqa: 
             self.stats = {"cursor": 3, "processed_urls": 3, "total_urls": 9}
             self.error_message = "boom"
             self.task_id = None
-            self.created_at = datetime.now(timezone.utc)
-            self.started_at = datetime.now(timezone.utc)
-            self.finished_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.started_at = datetime.now(UTC)
+            self.finished_at = datetime.now(UTC)
             self.documents = []
 
     dummy_run = _DummyRun()
@@ -268,7 +272,7 @@ def test_connector_run_resume_builds_state_for_web_crawl(monkeypatch):  # noqa: 
             if getattr(obj, "id", None) is None:
                 obj.id = uuid.uuid4()
             if getattr(obj, "created_at", None) is None:
-                obj.created_at = datetime.now(timezone.utc)
+                obj.created_at = datetime.now(UTC)
             if getattr(obj, "documents", None) is None:
                 obj.documents = []
             self.added.append(obj)
@@ -318,6 +322,7 @@ def test_connector_run_resume_allows_incremental_github_manifest_even_when_curso
     monkeypatch.setattr(connectors_module.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
 
     async def _noop_async(*_a, **_k):  # noqa: ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     monkeypatch.setattr(connectors_module, "_execute_github_repo_run", _noop_async, raising=True)
@@ -342,9 +347,9 @@ def test_connector_run_resume_allows_incremental_github_manifest_even_when_curso
             }
             self.error_message = "boom"
             self.task_id = None
-            self.created_at = datetime.now(timezone.utc)
-            self.started_at = datetime.now(timezone.utc)
-            self.finished_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.started_at = datetime.now(UTC)
+            self.finished_at = datetime.now(UTC)
             self.documents = []
 
     dummy_run = _DummyRun()
@@ -372,7 +377,7 @@ def test_connector_run_resume_allows_incremental_github_manifest_even_when_curso
             if getattr(obj, "id", None) is None:
                 obj.id = uuid.uuid4()
             if getattr(obj, "created_at", None) is None:
-                obj.created_at = datetime.now(timezone.utc)
+                obj.created_at = datetime.now(UTC)
             if getattr(obj, "documents", None) is None:
                 obj.documents = []
             self.added.append(obj)

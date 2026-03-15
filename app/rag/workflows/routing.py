@@ -9,7 +9,8 @@ Pattern: Classify -> Route -> Handler -> Result
 
 
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from app.rag.workflows.base import (
     BaseWorkflow,
@@ -26,14 +27,14 @@ class RouteHandler:
     def __init__(
         self,
         name: str,
-        handler: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
+        handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         description: str = "",
     ):
         self.name = name
         self.handler = handler
         self.description = description
 
-    async def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, state: dict[str, Any]) -> dict[str, Any]:
         """Execute the handler."""
         return await self.handler(state)
 
@@ -54,7 +55,7 @@ class RoutingWorkflow(BaseWorkflow):
 
     def __init__(
         self,
-        classifier: Optional[Callable[[str], Awaitable[str]]] = None,
+        classifier: Callable[[str], Awaitable[str]] | None = None,
         default_route: str = "default",
         **kwargs,
     ):
@@ -68,7 +69,7 @@ class RoutingWorkflow(BaseWorkflow):
         """
         super().__init__(**kwargs)
         self._classifier = classifier
-        self._routes: Dict[str, RouteHandler] = {}
+        self._routes: dict[str, RouteHandler] = {}
         self._default_route = default_route
 
     @property
@@ -78,7 +79,7 @@ class RoutingWorkflow(BaseWorkflow):
     def add_route(
         self,
         name: str,
-        handler: Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]],
+        handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         description: str = "",
     ) -> "RoutingWorkflow":
         """
@@ -108,7 +109,7 @@ class RoutingWorkflow(BaseWorkflow):
         self._default_route = route
         return self
 
-    def get_route_descriptions(self) -> Dict[str, str]:
+    def get_route_descriptions(self) -> dict[str, str]:
         """Get all route descriptions."""
         return {name: handler.description for name, handler in self._routes.items()}
 
@@ -135,7 +136,7 @@ class RoutingWorkflow(BaseWorkflow):
             logger.error("Classification failed: %s", e)
             return self._default_route
 
-    async def run(self, state: Dict[str, Any]) -> WorkflowResult:
+    async def run(self, state: dict[str, Any]) -> WorkflowResult:
         """
         Execute the routing workflow.
 
@@ -153,7 +154,7 @@ class RoutingWorkflow(BaseWorkflow):
             )
 
         question = self.get_question(state)
-        execution_path: List[str] = ["classify"]
+        execution_path: list[str] = ["classify"]
 
         # Classify the query
         route_name = await self.classify(question)
@@ -201,7 +202,7 @@ class RoutingWorkflow(BaseWorkflow):
 
 async def create_llm_classifier(
     llm: Any,
-    routes: Dict[str, str],
+    routes: dict[str, str],
     default: str = "general",
 ) -> Callable[[str], Awaitable[str]]:
     """

@@ -9,8 +9,9 @@ Supports:
 - Multiple output formats
 """
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any
 
 from app.core.config import settings
 
@@ -26,8 +27,8 @@ class TCADPParser(BaseAdvancedParser):
 
     def __init__(
         self,
-        secret_id: Optional[str] = None,
-        secret_key: Optional[str] = None,
+        secret_id: str | None = None,
+        secret_key: str | None = None,
         region: str = "ap-guangzhou",
         table_result_type: str = "1",
         markdown_image_response_type: str = "1",
@@ -75,7 +76,7 @@ class TCADPParser(BaseAdvancedParser):
             markdown_image_response_type=self.markdown_image_response_type,
         )
 
-    def _check_parser_installation(self, parser: Any) -> Tuple[bool, str]:
+    def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
         unavailable_reason = getattr(parser, "_unavailable_reason", "")
         if unavailable_reason:
             return (False, unavailable_reason)
@@ -89,7 +90,7 @@ class TCADPParser(BaseAdvancedParser):
         binary: bytes | None,
         callback: Callable[[float, str], None],
         **kwargs
-    ) -> Tuple[List, List]:
+    ) -> tuple[list, list]:
         # Determine file type.
         suffix = file_path.suffix.lower()
         file_type_map = {

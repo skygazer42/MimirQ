@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,7 +9,7 @@ import pytest
 def test_compute_suite_throughput_counts_and_lead_times() -> None:
     from app.services.evidence_dashboard import compute_suite_throughput
 
-    now = datetime(2026, 2, 12, 12, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 2, 12, 12, 0, 0, tzinfo=UTC)
     items = [
         {
             "created_at": now - timedelta(days=1),

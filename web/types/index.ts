@@ -6,6 +6,7 @@
 
 export type PermissionEnum = 'only_me' | 'all_team_members' | 'partial_members'
 export type DocumentAccessMode = 'inherit' | PermissionEnum
+export type LooseString<T extends string> = T | (string & {})
 
 // ==================== 文档相关类型 ====================
 
@@ -485,8 +486,8 @@ export interface RagTraceBundleSummaryResponse {
 
 export interface RagTraceBundleDiffItem {
   key: string
-  a?: any | null
-  b?: any | null
+  a?: unknown
+  b?: unknown
   delta?: number | null
 }
 
@@ -817,7 +818,7 @@ export interface CleanPreviewRequest {
   remove_common_lines?: boolean
   unwrap_lines?: boolean
   remove_boilerplate?: boolean
-  remove_images?: 'none' | 'decorative' | 'all' | string
+  remove_images?: LooseString<'none' | 'decorative' | 'all'>
   extract_frontmatter?: boolean
   strip_frontmatter?: boolean
   detect_language?: boolean
@@ -836,10 +837,10 @@ export interface CleanPreviewRequest {
   normalize_tables?: boolean
   strip_code_line_numbers?: boolean
   pii_anonymize?: boolean
-  pii_mode?: 'mask' | 'token' | string
+  pii_mode?: LooseString<'mask' | 'token'>
   pii_mask?: string
   secrets_redact?: boolean
-  secrets_mode?: 'mask' | 'token' | string
+  secrets_mode?: LooseString<'mask' | 'token'>
   secrets_mask?: string
   drop_outline_only?: boolean
   drop_outline_min_content_chars?: number
@@ -1198,7 +1199,7 @@ export interface IngestionPolicyVersion {
   id: string
   created_at: string
   created_by?: string | null
-  source?: 'put' | 'import' | 'rollback' | string
+  source?: LooseString<'put' | 'import' | 'rollback'>
   policy: IngestionPolicy
   note?: string | null
   rollback_from_version_id?: string | null
@@ -1615,7 +1616,7 @@ export interface StreamEvent {
 }
 
 export interface ChatHistoryMessage {
-  role: 'user' | 'assistant' | string
+  role: LooseString<'user' | 'assistant'>
   content: string
 }
 
@@ -1626,7 +1627,7 @@ export interface ChatRequest {
   document_ids?: string[]
   stream: boolean
   structured_output?: boolean
-  structured_preset?: 'faq' | 'summary' | 'action_items' | 'custom' | string | null
+  structured_preset?: LooseString<'faq' | 'summary' | 'action_items' | 'custom'> | null
   enable_long_term_memory?: boolean
   enable_summary_memory?: boolean
   prompt_template_id?: string
@@ -1637,7 +1638,7 @@ export interface ChatRequest {
     top_k?: number
     score_threshold?: number
     max_tokens?: number
-    retrieval_mode?: 'auto' | 'hybrid' | 'vector' | 'keyword' | 'mmr' | string
+    retrieval_mode?: LooseString<'auto' | 'hybrid' | 'vector' | 'keyword' | 'mmr'>
     alpha?: number
     enable_weight_rerank?: boolean
     vector_weight?: number

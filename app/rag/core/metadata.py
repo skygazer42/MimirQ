@@ -8,7 +8,7 @@ Goals:
 
 import re
 import uuid
-from typing import Any, Dict
+from typing import Any
 
 _HEX32_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 
@@ -64,7 +64,7 @@ def _looks_like_minio_img_id(value: str) -> bool:
     return False
 
 
-def normalize_image_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_image_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize image-related fields:
     - img_id / image_id
@@ -129,7 +129,7 @@ def _leading_indent_level(line: str) -> int:
     return min(indent // 2, 50)
 
 
-def infer_chunk_structure(meta: Dict[str, Any], content: str) -> Dict[str, Any]:
+def infer_chunk_structure(meta: dict[str, Any], content: str) -> dict[str, Any]:
     """
     Infer lightweight structure signals for retrieval/reranking.
 
@@ -202,7 +202,7 @@ def infer_chunk_structure(meta: Dict[str, Any], content: str) -> Dict[str, Any]:
     return meta
 
 
-def normalize_section_metadata(meta: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_section_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize section/title metadata across chunkers.
 

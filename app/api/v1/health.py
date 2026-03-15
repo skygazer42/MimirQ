@@ -6,7 +6,7 @@ Provides system health status check interfaces for frontend and developer tools 
 
 
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Response
@@ -96,7 +96,7 @@ def health() -> dict:
     """
     Lightweight health check for web/dev tooling.
     """
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     return {
         "ok": True,
         "time": now,

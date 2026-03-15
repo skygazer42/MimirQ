@@ -6,13 +6,13 @@ Goal: compare two RAGAS regression run summaries and return objective deltas for
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _as_float(v: Any) -> float | None:

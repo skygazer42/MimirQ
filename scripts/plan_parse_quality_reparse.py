@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -80,7 +80,7 @@ def run(
 
     payload: dict[str, Any] = {
         "schema": "mimirq.parse_quality_reparse_plan.v1",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "source_report": str(report_path),
         "dataset_id": str(report.get("dataset_id") or ""),
         "low_threshold": round(float(low_threshold), 3),

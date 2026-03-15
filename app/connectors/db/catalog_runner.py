@@ -12,29 +12,30 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Protocol, Sequence
+from datetime import UTC, datetime
+from typing import Any, Protocol
 from uuid import UUID
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
-def _fingerprint(*, engine: str, db_name: str, schema_name: Optional[str], table_name: str) -> str:
+def _fingerprint(*, engine: str, db_name: str, schema_name: str | None, table_name: str) -> str:
     # Stable table identity for upsert. Keep it deterministic and do not include secrets.
     key = f"{str(engine or '').strip().lower()}|{str(db_name or '').strip()}|{str(schema_name or '').strip()}|{str(table_name or '').strip()}"
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
-def _entitlement_hash(*, engine: str, config: Dict[str, Any]) -> str:
+def _entitlement_hash(*, engine: str, config: dict[str, Any]) -> str:
     """
     Stable hash representing the permission context of a catalog run.
 
     Important: do not include secrets (e.g., passwords).
     """
-    safe_cfg: Dict[str, Any] = {}
+    safe_cfg: dict[str, Any] = {}
     for k, v in (config or {}).items():
         key = str(k or "").strip()
         if not key or key in {"password"} or key.startswith("_"):
@@ -49,19 +50,19 @@ def _entitlement_hash(*, engine: str, config: Dict[str, Any]) -> str:
 class CatalogColumnInput:
     ordinal: int
     name: str
-    data_type: Optional[str] = None
-    nullable: Optional[bool] = None
-    comment: Optional[str] = None
+    data_type: str | None = None
+    nullable: bool | None = None
+    comment: str | None = None
 
 
 @dataclass(frozen=True)
 class CatalogTableInput:
     engine: str
     db_name: str
-    schema_name: Optional[str]
+    schema_name: str | None
     table_name: str
     table_type: str
-    comment: Optional[str]
+    comment: str | None
     fingerprint: str
     columns: list[CatalogColumnInput] = field(default_factory=list)
 
@@ -72,7 +73,7 @@ class CatalogStore(Protocol):
         *,
         tenant_id: UUID,
         dataset_id: UUID,
-        connector_config_id: Optional[UUID],
+        connector_config_id: UUID | None,
         table: CatalogTableInput,
         seen_at: datetime,
     ) -> UUID: ...
@@ -84,13 +85,13 @@ class CatalogStore(Protocol):
         *,
         table_id: UUID,
         entitlement_hash: str,
-        profile: Dict[str, Any],
-        sample_meta: Dict[str, Any],
+        profile: dict[str, Any],
+        sample_meta: dict[str, Any],
     ) -> UUID: ...
 
 
 @contextlib.contextmanager
-def _connect_sqlserver(config: Dict[str, Any]):  # noqa: ANN201
+def _connect_sqlserver(config: dict[str, Any]):  # noqa: ANN201
     """
     Connect to SQL Server using SQLAlchemy.
 
@@ -136,7 +137,7 @@ def _connect_sqlserver(config: Dict[str, Any]):  # noqa: ANN201
 
 
 @contextlib.contextmanager
-def _connect_mysql(config: Dict[str, Any]):  # noqa: ANN201
+def _connect_mysql(config: dict[str, Any]):  # noqa: ANN201
     """
     Connect to MySQL using SQLAlchemy.
 
@@ -175,7 +176,7 @@ def _connect_mysql(config: Dict[str, Any]):  # noqa: ANN201
             engine.dispose()
 
 
-def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Stub: in a later iteration this will connect to MySQL and return table/column metadata.
 
@@ -249,7 +250,7 @@ def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: Dict[str, An
     return out
 
 
-def _introspect_sqlserver(*, tenant_id: UUID, dataset_id: UUID, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _introspect_sqlserver(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Stub: in a later iteration this will connect to SQL Server and return table/column metadata.
 
@@ -347,10 +348,10 @@ def run_catalog_sync(
     tenant_id: UUID,
     dataset_id: UUID,
     connector_id: str,
-    config: Dict[str, Any],
-    store: Optional[CatalogStore] = None,
-    connector_config_id: Optional[UUID] = None,
-) -> Dict[str, Any]:
+    config: dict[str, Any],
+    store: CatalogStore | None = None,
+    connector_config_id: UUID | None = None,
+) -> dict[str, Any]:
     """
     Run a catalog sync for a dataset.
 
@@ -482,9 +483,9 @@ def _jsonify_row_value(v: Any) -> Any:
     return str(v)
 
 
-def _row_hash(row: Dict[str, Any], *, exclude_keys: Sequence[str] | None = None) -> str:
+def _row_hash(row: dict[str, Any], *, exclude_keys: Sequence[str] | None = None) -> str:
     excluded = {str(k) for k in (exclude_keys or [])}
-    payload: Dict[str, Any] = {}
+    payload: dict[str, Any] = {}
     for k in sorted(row.keys()):
         if str(k) in excluded:
             continue
@@ -493,7 +494,7 @@ def _row_hash(row: Dict[str, Any], *, exclude_keys: Sequence[str] | None = None)
     return hashlib.sha256(raw.encode("utf-8", "ignore")).hexdigest()
 
 
-def _snapshot_token(*, source_table: str, rows: Sequence[Dict[str, Any]]) -> str:
+def _snapshot_token(*, source_table: str, rows: Sequence[dict[str, Any]]) -> str:
     payload = {
         "source_table": str(source_table or ""),
         "pk_hashes": [str(r.get("__row_pk_hash") or "") for r in rows if isinstance(r, dict)],
@@ -515,11 +516,11 @@ def extract_row_snapshots(
     tenant_id: UUID,
     dataset_id: UUID,
     connector_id: str,
-    config: Dict[str, Any],
+    config: dict[str, Any],
     max_tables: int,
     max_rows_per_table: int,
     max_cols: int,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Extract bounded per-table row snapshots for TAG sidecar recall.
 
@@ -533,7 +534,7 @@ def extract_row_snapshots(
     if max_tables_i <= 0 or max_rows_i <= 0 or max_cols_i <= 0:
         return []
 
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     if cid == "mysql_catalog":
         tables = _introspect_mysql(tenant_id=tenant_id, dataset_id=dataset_id, config=dict(config or {}))
         with _connect_mysql(dict(config or {})) as conn:
@@ -554,8 +555,8 @@ def extract_row_snapshots(
                     rows_raw = conn.execute(text(sql)).mappings().all()
                 except Exception:  # noqa: BLE001
                     continue
-                rows: List[Dict[str, Any]] = []
-                cols: List[str] = []
+                rows: list[dict[str, Any]] = []
+                cols: list[str] = []
                 if rows_raw:
                     cols = [str(k) for k in list(rows_raw[0].keys())[:max_cols_i]]
                 if not cols:
@@ -575,7 +576,7 @@ def extract_row_snapshots(
                 for row in rows_raw:
                     if len(rows) >= max_rows_i:
                         break
-                    rec: Dict[str, Any] = {}
+                    rec: dict[str, Any] = {}
                     for col in cols:
                         rec[col] = _jsonify_row_value(row.get(col))
                     rec["__row_pk_hash"] = _row_hash(rec, exclude_keys=["__row_pk_hash"])
@@ -618,8 +619,8 @@ def extract_row_snapshots(
                     rows_raw = conn.execute(text(sql)).mappings().all()
                 except Exception:  # noqa: BLE001
                     continue
-                rows: List[Dict[str, Any]] = []
-                cols: List[str] = []
+                rows: list[dict[str, Any]] = []
+                cols: list[str] = []
                 if rows_raw:
                     cols = [str(k) for k in list(rows_raw[0].keys())[:max_cols_i]]
                 if not cols:
@@ -639,7 +640,7 @@ def extract_row_snapshots(
                 for row in rows_raw:
                     if len(rows) >= max_rows_i:
                         break
-                    rec: Dict[str, Any] = {}
+                    rec: dict[str, Any] = {}
                     for col in cols:
                         rec[col] = _jsonify_row_value(row.get(col))
                     rec["__row_pk_hash"] = _row_hash(rec, exclude_keys=["__row_pk_hash"])

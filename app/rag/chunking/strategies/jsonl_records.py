@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -36,8 +36,8 @@ class _Record:
 _COMMENT_RE = re.compile(r"^\s*(#|//)")
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -49,7 +49,7 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _try_parse_json_line(line: str) -> Optional[tuple[Any, list[str]]]:
+def _try_parse_json_line(line: str) -> tuple[Any, list[str]] | None:
     s = (line or "").strip()
     if not s:
         return None
@@ -69,8 +69,8 @@ def _try_parse_json_line(line: str) -> Optional[tuple[Any, list[str]]]:
     return obj, keys
 
 
-def _iter_records(text: str) -> List[_Record]:
-    records: List[_Record] = []
+def _iter_records(text: str) -> list[_Record]:
+    records: list[_Record] = []
     for ln in _iter_lines(text):
         parsed = _try_parse_json_line(ln.plain)
         if not parsed:
@@ -107,8 +107,8 @@ class JsonlRecordsChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

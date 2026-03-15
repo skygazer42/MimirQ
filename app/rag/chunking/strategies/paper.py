@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -39,7 +39,7 @@ class PaperHeading:
 class _Section:
     start: int
     end: int
-    heading: Optional[PaperHeading]
+    heading: PaperHeading | None
 
 
 _EN_SECTIONS: dict[str, str] = {
@@ -101,7 +101,7 @@ _RE_CN_HEADING = re.compile(
 )
 
 
-def _normalize_section(title: str) -> Optional[str]:
+def _normalize_section(title: str) -> str | None:
     raw = (title or "").strip()
     if not raw:
         return None
@@ -112,8 +112,8 @@ def _normalize_section(title: str) -> Optional[str]:
     return _EN_SECTIONS.get(lower)
 
 
-def _iter_headings(text: str) -> List[PaperHeading]:
-    headings: List[PaperHeading] = []
+def _iter_headings(text: str) -> list[PaperHeading]:
+    headings: list[PaperHeading] = []
     if not text:
         return headings
 
@@ -128,7 +128,7 @@ def _iter_headings(text: str) -> List[PaperHeading]:
         if len(line) > 90:
             continue
 
-        title: Optional[str] = None
+        title: str | None = None
         if (m := _RE_CN_HEADING.match(line)) is not None:
             title = m.group("title")
         elif (m := _RE_EN_HEADING.match(line)) is not None:
@@ -148,7 +148,7 @@ def _iter_headings(text: str) -> List[PaperHeading]:
         )
 
     # Best-effort de-dup.
-    deduped: List[PaperHeading] = []
+    deduped: list[PaperHeading] = []
     last_start = -1
     for h in headings:
         if h.start == last_start:
@@ -158,11 +158,11 @@ def _iter_headings(text: str) -> List[PaperHeading]:
     return deduped
 
 
-def _build_sections(text: str, headings: List[PaperHeading]) -> List[_Section]:
+def _build_sections(text: str, headings: list[PaperHeading]) -> list[_Section]:
     if not headings:
         return [_Section(start=0, end=len(text), heading=None)]
 
-    sections: List[_Section] = []
+    sections: list[_Section] = []
     first = headings[0]
     if first.start > 0:
         sections.append(_Section(start=0, end=first.start, heading=None))
@@ -197,8 +197,8 @@ class PaperChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

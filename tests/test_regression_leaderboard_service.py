@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+import pytest
 
 
 def test_build_regression_run_leaderboard_sorts_and_includes_config_hash(monkeypatch):  # noqa: ANN001
@@ -15,7 +17,7 @@ def test_build_regression_run_leaderboard_sorts_and_includes_config_hash(monkeyp
     monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic", raising=False)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     class _Run:
         def __init__(self, *, mrr: float, mode: str):  # noqa: ANN001
@@ -46,7 +48,7 @@ def test_build_regression_run_leaderboard_sorts_and_includes_config_hash(monkeyp
     items = build_regression_run_leaderboard(runs=[low, high], metric_key="retrieval_mrr", limit=10)
 
     assert [x["run_id"] for x in items] == [str(high.id), str(low.id)]
-    assert items[0]["metric_value"] == 0.5
+    assert items[0]["metric_value"] == pytest.approx(0.5)
     assert items[0]["metric_key"] == "retrieval_mrr"
     assert items[0]["retrieval_config_hash"]
 
@@ -64,7 +66,7 @@ def test_regression_run_leaderboard_hash_changes_when_colbert_resource_cap_chang
     monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic", raising=False)
     monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", False, raising=False)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     class _Run:
         def __init__(self):  # noqa: ANN001

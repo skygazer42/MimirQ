@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 MUST_RECALL_FAIL_REASON_TAXONOMY_V1 = "mimirq.contract_fail_reason.v1"
 

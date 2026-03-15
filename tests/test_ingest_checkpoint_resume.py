@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -105,6 +106,7 @@ async def test_ingest_retry_resumes_without_reparsing(monkeypatch, tmp_path):  #
     parse_calls = {"count": 0}
 
     async def _fake_parse_run(self, **_kwargs):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         parse_calls["count"] += 1
         return processor_mod.ParseResult(
             resolved_backend="basic",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -103,7 +103,7 @@ def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001
         "publication_status": "published",
     }
 
-    due = datetime(2026, 3, 3, 12, 0, tzinfo=timezone.utc)
+    due = datetime(2026, 3, 3, 12, 0, tzinfo=UTC)
     res2 = client.patch(
         f"/api/v1/documents/{doc_id}/lifecycle-metadata",
         json={

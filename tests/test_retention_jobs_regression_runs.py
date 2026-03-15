@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class _FakeDB:
@@ -21,7 +21,7 @@ def test_run_regression_run_retention_dry_run(monkeypatch):  # noqa: ANN001
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 2, 27, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 2, 27, 0, 0, 0, tzinfo=UTC)
 
     monkeypatch.setattr(retention_jobs, "plan_regression_run_purge", lambda *_a, **_k: 12, raising=True)
 
@@ -61,7 +61,7 @@ def test_run_regression_run_retention_execute(monkeypatch):  # noqa: ANN001
 
     db = _FakeDB()
     tenant_id = uuid.uuid4()
-    now = datetime(2026, 2, 27, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 2, 27, 0, 0, 0, tzinfo=UTC)
 
     monkeypatch.setattr(retention_jobs, "plan_regression_run_purge", lambda *_a, **_k: 3, raising=True)
     monkeypatch.setattr(retention_jobs, "purge_regression_run_rows", lambda *_a, **_k: (2, 15), raising=True)

@@ -8,8 +8,9 @@ and compatible with LangGraph's `BaseCheckpointSaver` interface.
 import re
 import sqlite3
 import threading
+from collections.abc import AsyncIterator, Iterator, Sequence
 from pathlib import Path
-from typing import Any, AsyncIterator, Iterator, Optional, Sequence
+from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import (
@@ -44,7 +45,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
     def __init__(
         self,
-        db_path: Optional[str] = None,
+        db_path: str | None = None,
         *,
         table_prefix: str = "langgraph",
         serde=None,
@@ -136,7 +137,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
                 """
             )
 
-    def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
+    def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         thread_id: str = config["configurable"]["thread_id"]
         checkpoint_ns: str = config["configurable"].get("checkpoint_ns", "")
         checkpoint_id = get_checkpoint_id(config)
@@ -403,7 +404,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         conn.execute(f"DELETE FROM {self._writes_table} WHERE thread_id = ?", (thread_id,))
         conn.execute(f"DELETE FROM {self._checkpoints_table} WHERE thread_id = ?", (thread_id,))
 
-    async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
+    async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         return self.get_tuple(config)
 
     async def alist(

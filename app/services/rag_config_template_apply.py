@@ -10,7 +10,8 @@ This keeps debug/probe callers in control while enabling safe rollout for defaul
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Tuple
+from collections.abc import Iterable
+from typing import Any
 
 from app.api.schemas.chat import ChatRAGConfig
 
@@ -20,7 +21,7 @@ def apply_rag_config_patch(
     rag_config: ChatRAGConfig,
     patch: Any,
     request_fields_set: Iterable[str] | None,
-) -> Tuple[ChatRAGConfig, list[str]]:
+) -> tuple[ChatRAGConfig, list[str]]:
     provided = set(request_fields_set or [])
     raw_patch = patch if isinstance(patch, dict) else {}
 

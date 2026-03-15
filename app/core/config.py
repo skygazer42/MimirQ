@@ -12,7 +12,7 @@ import re
 import sys
 import warnings
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, model_validator
@@ -207,8 +207,8 @@ class Settings(BaseSettings):
     LLM_API_KEY: str = Field(default="", validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"))
     LLM_API_BASE: str = Field(default="https://api.openai.com/v1", validation_alias=AliasChoices("LLM_API_BASE", "OPENAI_BASE_URL"))
     LLM_MODEL: str = Field(default="gpt-4-turbo-preview", validation_alias=AliasChoices("LLM_MODEL", "OPENAI_MODEL"))
-    LLM_MODEL_FAST: Optional[str] = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_FAST", "LLM_MODEL_LIGHT"))
-    LLM_MODEL_HEAVY: Optional[str] = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_HEAVY", "LLM_MODEL_COMPLEX"))
+    LLM_MODEL_FAST: str | None = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_FAST", "LLM_MODEL_LIGHT"))
+    LLM_MODEL_HEAVY: str | None = Field(default=None, validation_alias=AliasChoices("LLM_MODEL_HEAVY", "LLM_MODEL_COMPLEX"))
     ENABLE_DYNAMIC_MODEL_ROUTING: bool = False
     MODEL_COMPLEXITY_THRESHOLD: int = 160
     MODEL_COMPLEXITY_HISTORY_WEIGHT: float = 0.35
@@ -1221,7 +1221,7 @@ class Settings(BaseSettings):
     # - v1: base retrieval scores + retrieval_role one-hot
     # - v2: v1 + KG ranking features (kg_pagerank/path/etc)
     LTR_FEATURE_SPEC_VERSION: int = 1
-    RERANKER_MODEL: Optional[str] = None
+    RERANKER_MODEL: str | None = None
     # Optional: use a dedicated API key/base for API-style rerankers (openai/dashscope),
     # falls back to LLM_API_KEY/LLM_API_BASE when empty.
     RERANKER_API_KEY: str = ""

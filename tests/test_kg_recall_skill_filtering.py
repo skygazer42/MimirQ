@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import pytest
@@ -18,6 +19,7 @@ async def test_kg_recall_can_filter_skill_entities(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeSession(), raising=True)
 
     async def _fake_generate_embedding(self, _text: str):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return [0.0]
 
     monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _fake_generate_embedding, raising=True)

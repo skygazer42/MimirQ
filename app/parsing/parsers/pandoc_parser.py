@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -55,22 +55,22 @@ class PandocParser:
             raise RuntimeError(f"Pandoc CLI not found: {self._cli}")
         self._pandoc_path = pandoc_path
 
-        self._soffice_path: Optional[str] = None
+        self._soffice_path: str | None = None
         if self._lo_enabled:
             soffice_path = resolve_cli_command(self._lo_cli)
             if not soffice_path:
                 raise RuntimeError(f"LibreOffice CLI not found: {self._lo_cli}")
             self._soffice_path = soffice_path
 
-    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+    def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
         run_id = _sanitize_run_id(document_id or file_path.stem or "pandoc")
         return (file_path.parent / ".pandoc" / run_id).absolute()
 
     def _run_pandoc(
         self,
         *,
-        input_path: Optional[Path],
-        input_text: Optional[str],
+        input_path: Path | None,
+        input_text: str | None,
         cwd: Path,
         extract_media: bool,
     ) -> str:
@@ -170,12 +170,12 @@ class PandocParser:
                 return c
         return candidates[0]
 
-    def parse(self, file_path: Path, **kwargs: Any) -> List[Document]:
+    def parse(self, file_path: Path, **kwargs: Any) -> list[Document]:
         document_id = kwargs.get("document_id")
         artifact_root = self._build_artifact_root(file_path, str(document_id) if document_id else None)
 
         ext = file_path.suffix.lower()
-        title: Optional[str] = None
+        title: str | None = None
 
         # HTML: best-effort readability extraction, keep local image refs (no media extraction).
         if ext in {".html", ".htm"}:

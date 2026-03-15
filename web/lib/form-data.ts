@@ -1,12 +1,5 @@
 import type { DocumentPipelineOptions } from '@/types'
 
-type FormValue = string | number | boolean | undefined | null
-
-function appendIfDefined(formData: FormData, key: string, value: FormValue): void {
-  if (value === undefined || value === null) return
-  formData.append(key, String(value))
-}
-
 export function appendPipelineOptionsToFormData(formData: FormData, pipeline?: DocumentPipelineOptions): void {
   if (!pipeline) return
 

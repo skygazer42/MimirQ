@@ -12,8 +12,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 REGRESSION_CASE_BUNDLE_SCHEMA_V1 = "mimirq.regression_cases.v1"
 MAX_QUOTE_CHARS = 2000
@@ -103,7 +104,7 @@ def _normalize_reference_sources(raw: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def _build_reference_sources_from_citations(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    selected = set(str(x).strip() for x in (pack.get("selected_chunk_ids") or []) if str(x).strip())
+    selected = {str(x).strip() for x in (pack.get("selected_chunk_ids") or []) if str(x).strip()}
     if not selected:
         return []
 

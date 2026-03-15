@@ -12,7 +12,6 @@ Design goals:
 from __future__ import annotations
 
 import re
-from typing import List, Tuple
 
 # Keep this aligned with chat_tag_service table intent detection, but avoid importing
 # that module here to keep dependencies minimal and prevent accidental cycles.
@@ -29,7 +28,7 @@ _IMAGE_HINT_RE = re.compile(
 )
 
 
-def classify_query_modality(query: str) -> Tuple[str, List[str]]:
+def classify_query_modality(query: str) -> tuple[str, list[str]]:
     """
     Return (modality, reason_codes).
 

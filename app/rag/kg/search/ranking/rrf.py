@@ -1,7 +1,7 @@
 """
 Reciprocal Rank Fusion reranker combining recall score and query similarity.
 """
-from typing import Any, Dict, List
+from typing import Any
 
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.provenance import build_kg_path_provenance
@@ -17,13 +17,13 @@ class RerankRRFSearcher:
     async def rerank(
         self,
         config: SearchConfig,
-        event_ids: List[str],
-        event_scores: Dict[str, float],
+        event_ids: list[str],
+        event_scores: dict[str, float],
         *,
-        query_vector: List[float] | None = None,
+        query_vector: list[float] | None = None,
         key_final: list[dict[str, Any]] | None = None,
         event_hops: dict[str, int] | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         session = get_session()
         try:
             repo = EventRepository(session)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -82,7 +83,7 @@ def test_image_url_denies_tenant_mismatch_between_img_id_and_request(monkeypatch
 
 
 def test_image_url_allows_token_query_param_and_enforces_tenant_claim(monkeypatch) -> None:
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from jose import jwt
 
@@ -136,7 +137,7 @@ def test_image_url_allows_token_query_param_and_enforces_tenant_claim(monkeypatc
         {
             "sub": "user-1",
             "tenant_id": str(tenant_id),
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
         },
         settings.SECRET_KEY,
         algorithm="HS256",

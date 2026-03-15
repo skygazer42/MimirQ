@@ -5,7 +5,6 @@ Custom separator-based chunking strategy.
 from __future__ import annotations
 
 import re
-from typing import List, Optional
 
 from langchain_core.documents import Document
 
@@ -45,8 +44,8 @@ class SeparatorChunker(BaseChunker):
         self.keep_separator = keep_separator
         self.max_chunk_size = max_chunk_size if max_chunk_size > 0 else chunk_size * 3
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        chunks: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        chunks: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""
@@ -125,12 +124,12 @@ class SeparatorChunker(BaseChunker):
         self,
         text: str,
         base_pos: int,
-        base_metadata: Optional[dict],
-    ) -> List[Document]:
+        base_metadata: dict | None,
+    ) -> list[Document]:
         """
         Split oversized chunks at sentence boundaries (best-effort).
         """
-        chunks: List[Document] = []
+        chunks: list[Document] = []
         pos = 0
 
         seps = ["。", ".", "，", "！", "!", "？", "?", "\n", " "]

@@ -5,8 +5,8 @@ Event extractor coordinating LLM + embeddings + persistence.
 import asyncio
 import hashlib
 import time
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Sequence, Tuple
+from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -220,16 +220,16 @@ def _canonicalize_entities_for_chunk(
 class EventExtractor:
     """Orchestrates event extraction for a batch of chunks."""
 
-    def __init__(self, model_config: Optional[dict] = None):
+    def __init__(self, model_config: dict | None = None):
         self.model_config = model_config
 
     async def extract(
         self,
         config: ExtractConfig,
         *,
-        chunks: Optional[Sequence[DocumentChunk]] = None,
-        index_options: Optional[IndexingOptions] = None,
-    ) -> List[KgSourceEvent]:
+        chunks: Sequence[DocumentChunk] | None = None,
+        index_options: IndexingOptions | None = None,
+    ) -> list[KgSourceEvent]:
         t0 = time.perf_counter()
         session = SessionLocal()
         try:
@@ -260,7 +260,7 @@ class EventExtractor:
                 cur[key] = int(cur.get(key, 0) or 0) + int(n)
 
             # Load chunks (or reuse provided ones to avoid duplicate DB reads)
-            resolved_chunks: List[DocumentChunk]
+            resolved_chunks: list[DocumentChunk]
             if chunks is None:
                 resolved_chunks = (
                     session.query(DocumentChunk)
@@ -439,7 +439,7 @@ class EventExtractor:
                         sections.append(resolved_chunks[pos + step])
                 return sections
 
-            async def _extract_one(chunk: DocumentChunk, *, batch_index: int) -> Tuple[DocumentChunk, List[Dict]]:
+            async def _extract_one(chunk: DocumentChunk, *, batch_index: int) -> tuple[DocumentChunk, list[dict]]:
                 nonlocal failed_chunks
                 nonlocal timed_out_chunks
                 nonlocal retry_attempts_total
@@ -511,7 +511,7 @@ class EventExtractor:
                     if retry_backoff_sec > 0:
                         await asyncio.sleep(float(retry_backoff_sec) * (2 ** (attempt - 1)))
 
-            extracted: List[Tuple[DocumentChunk, List[Dict]]] = []
+            extracted: list[tuple[DocumentChunk, list[dict]]] = []
             group_size = max(1, max_concurrency * 4)
             for offset in range(0, len(chunks_to_process), group_size):
                 group = chunks_to_process[offset : offset + group_size]
@@ -521,7 +521,7 @@ class EventExtractor:
                 extracted.extend(results)
 
             # Build normalized events first, then embed in batch.
-            processed_events: List[Tuple[DocumentChunk, Dict]] = []
+            processed_events: list[tuple[DocumentChunk, dict]] = []
             entity_parser = EntityValueParser()
             for chunk, events_data in extracted:
                 if not events_data:
@@ -834,13 +834,13 @@ class EventExtractor:
                     entity_evidence_stats["kept"] += 1
                 ev["entities"] = cleaned
 
-            embed_cache: Dict[str, List[float]] = {}
+            embed_cache: dict[str, list[float]] = {}
 
-            def _iter_batches(items: List[str], size: int):
+            def _iter_batches(items: list[str], size: int):
                 for i in range(0, len(items), size):
                     yield items[i : i + size]
 
-            to_embed: List[str] = []
+            to_embed: list[str] = []
             seen_text: set[str] = set()
             for chunk, ev in processed_events:
                 ev_text = (ev.get("content") or ev.get("summary") or ev.get("title") or "").strip()
@@ -871,12 +871,12 @@ class EventExtractor:
                     logger.warning("KG embedding batch failed; proceeding without vectors: %s", str(exc)[:200])
                     embed_cache = {}
 
-            events_to_index: List[IndexRecord] = []
+            events_to_index: list[IndexRecord] = []
             entity_total = 0
             for chunk, ev in processed_events:
                 vector = embed_cache.get(str(ev.get("_embed_text") or ""))
 
-                entity_inputs: List[EventEntityInput] = []
+                entity_inputs: list[EventEntityInput] = []
                 for ent in ev.get("entities") or []:
                     name = (ent.get("name") or "").strip()
                     if not name:
@@ -907,7 +907,7 @@ class EventExtractor:
                     )
                 entity_total += len(entity_inputs)
 
-                refs: Dict[str, object] = {"chunk_index": chunk.chunk_index, "page": chunk.page_number}
+                refs: dict[str, object] = {"chunk_index": chunk.chunk_index, "page": chunk.page_number}
                 if getattr(chunk, "start_char", None) is not None:
                     refs["start_char"] = int(chunk.start_char)
                 if getattr(chunk, "end_char", None) is not None:
@@ -1451,7 +1451,7 @@ class EventExtractor:
                         if ok:
                             succeeded_rel_chunk_ids.append(chunk_id)
 
-                        refs: Dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
+                        refs: dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
                         if getattr(ch, "start_char", None) is not None:
                             refs["start_char"] = int(ch.start_char)
                         if getattr(ch, "end_char", None) is not None:
@@ -2082,7 +2082,7 @@ class EventExtractor:
                             if ch is None:
                                 continue
 
-                            refs_base: Dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
+                            refs_base: dict[str, object] = {"chunk_index": ch.chunk_index, "page": ch.page_number}
                             if getattr(ch, "start_char", None) is not None:
                                 refs_base["start_char"] = int(ch.start_char)
                             if getattr(ch, "end_char", None) is not None:
@@ -2483,19 +2483,19 @@ class EventExtractor:
             if not doc_ids:
                 return
 
-            extracted_at = datetime.now(timezone.utc).isoformat()
+            extracted_at = datetime.now(UTC).isoformat()
             # Count events by document using chunk->doc mapping for robustness.
-            event_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
+            event_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
             for ev in kept_events:
                 cid = getattr(ev, "chunk_id", None)
                 doc_id = chunk_id_to_doc_id.get(cid) if cid is not None else getattr(ev, "document_id", None)
                 if doc_id in event_count_by_doc:
                     event_count_by_doc[doc_id] += 1
 
-            skipped_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
-            failed_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
-            short_skipped_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
-            retry_count_by_doc: dict[object, int] = {doc_id: 0 for doc_id in doc_ids}
+            skipped_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
+            failed_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
+            short_skipped_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
+            retry_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
             for cid in skipped_chunk_ids:
                 doc_id = chunk_id_to_doc_id.get(cid)
                 if doc_id in skipped_count_by_doc:

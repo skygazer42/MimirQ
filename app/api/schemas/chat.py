@@ -2,7 +2,7 @@
 Chat-related Pydantic schemas.
 """
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -24,37 +24,37 @@ class Citation(BaseModel):
     document_name: str
     chunk_id: UUID
     chunk_content: str
-    matched_terms: Optional[List[str]] = None
-    page_number: Optional[int] = None
-    chunk_index: Optional[int] = None
-    start_char: Optional[int] = None
-    end_char: Optional[int] = None
-    evidence_start_char: Optional[int] = None
-    evidence_end_char: Optional[int] = None
-    header_path: Optional[str] = None
-    chunk_strategy: Optional[str] = None
-    chunk_role: Optional[str] = None
-    retrieval_role: Optional[str] = None
-    neighbor_of: Optional[str] = None
-    doc_pipeline_key: Optional[str] = None
-    pipeline_hash: Optional[str] = None
+    matched_terms: list[str] | None = None
+    page_number: int | None = None
+    chunk_index: int | None = None
+    start_char: int | None = None
+    end_char: int | None = None
+    evidence_start_char: int | None = None
+    evidence_end_char: int | None = None
+    header_path: str | None = None
+    chunk_strategy: str | None = None
+    chunk_role: str | None = None
+    retrieval_role: str | None = None
+    neighbor_of: str | None = None
+    doc_pipeline_key: str | None = None
+    pipeline_hash: str | None = None
     relevance_score: float = 0.0
-    vector_score: Optional[float] = None
-    bm25_score: Optional[float] = None
-    keyword_score: Optional[float] = None
-    rerank_score: Optional[float] = None
-    retrieval_score: Optional[float] = None
-    reranker_provider: Optional[str] = None
-    rerank_elapsed_sec: Optional[float] = None
-    rerank_model_used: Optional[str] = None
-    retrieval_mode: Optional[str] = None
-    vector_backend: Optional[str] = None
-    retrieval_elapsed_sec: Optional[float] = None
-    hit_type: Optional[str] = None  # vector | keyword | mmr | hybrid
+    vector_score: float | None = None
+    bm25_score: float | None = None
+    keyword_score: float | None = None
+    rerank_score: float | None = None
+    retrieval_score: float | None = None
+    reranker_provider: str | None = None
+    rerank_elapsed_sec: float | None = None
+    rerank_model_used: str | None = None
+    retrieval_mode: str | None = None
+    vector_backend: str | None = None
+    retrieval_elapsed_sec: float | None = None
+    hit_type: str | None = None  # vector | keyword | mmr | hybrid
     # Image-related fields.
     has_image: bool = Field(default=False, description="Whether this citation contains an image")
-    img_id: Optional[str] = Field(default=None, description="Image ID (MinIO format: {tenant_id}:{dataset_id}:{document_id}:{chunk_index})")
-    img_url: Optional[str] = Field(default=None, description="Image access URL")
+    img_id: str | None = Field(default=None, description="Image ID (MinIO format: {tenant_id}:{dataset_id}:{document_id}:{chunk_index})")
+    img_url: str | None = Field(default=None, description="Image access URL")
 
     model_config = ConfigDict(extra="ignore")
 
@@ -64,29 +64,29 @@ class MessageSchema(OrmModel):
     id: UUID
     role: str  # user | assistant
     content: str
-    citations: List[Citation] = []
-    message_metadata: Optional[Dict[str, Any]] = None
+    citations: list[Citation] = []
+    message_metadata: dict[str, Any] | None = None
     created_at: datetime
 
 
 class ConversationCreate(BaseModel):
     """Create conversation."""
-    title: Optional[str] = None
-    dataset_id: Optional[UUID] = None
-    document_ids: List[UUID] = Field(default_factory=list)
+    title: str | None = None
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
 
 
 class ConversationUpdate(BaseModel):
     """Update conversation fields."""
 
-    title: Optional[str] = Field(default=None, max_length=500)
+    title: str | None = Field(default=None, max_length=500)
 
 
 class ConversationSchema(OrmModel):
     """Conversation session."""
     id: UUID
-    title: Optional[str] = None
-    last_message: Optional[str] = None
+    title: str | None = None
+    last_message: str | None = None
     message_count: int
     created_at: datetime
     updated_at: datetime
@@ -97,7 +97,7 @@ class ConversationDetail(BaseModel):
     conversation_id: UUID
     returned: int = 0
     has_more: bool = False
-    messages: List[MessageSchema]
+    messages: list[MessageSchema]
 
 
 class ConversationList(BaseModel):
@@ -105,7 +105,7 @@ class ConversationList(BaseModel):
     total: int
     returned: int = 0
     has_more: bool = False
-    items: List[ConversationSchema]
+    items: list[ConversationSchema]
 
 
 class HistoryMessage(BaseModel):
@@ -123,26 +123,26 @@ class ChatRAGConfig(BaseModel):
     # - "recall50": recall-first for larger corpora (top_k>=50, score_threshold=0.0)
     # - "coverage80": aggressive recall/coverage preset (top_k>=80, score_threshold=0.0)
     # - "hybrid_ce": explicit production baseline (hybrid recall + cross-encoder rerank)
-    retrieval_profile: Optional[str] = None
+    retrieval_profile: str | None = None
     # Optional retrieval contract override.
     # - None: use server default RETRIEVAL_CONTRACT_MODE
     # - "": disable contract for this request
     # - deterministic_recall | must_recall_strict | evidence_strict | audit_trace
-    retrieval_contract_mode: Optional[str] = None
+    retrieval_contract_mode: str | None = None
     # Request-level must-recall switch. None = use server/runtime defaults.
-    must_recall: Optional[bool] = None
+    must_recall: bool | None = None
     # Optional contract keys that must be represented by citations (e.g. table_id/source_table/doc_name).
-    must_recall_expected_source_keys: Optional[List[str]] = None
+    must_recall_expected_source_keys: list[str] | None = None
     # Optional citation anchor fields that must be present for must-recall.
-    must_recall_required_anchor_fields: Optional[List[str]] = None
+    must_recall_required_anchor_fields: list[str] | None = None
     # Optional intent router: when enabled, the system may override retrieval knobs based on
     # query intent (faq/howto/api/log). This is deterministic and PII-safe (no raw query in outputs).
     #
     # None means "use server default" (settings.RAG_INTENT_ROUTER_ENABLED).
-    intent_router: Optional[bool] = None
+    intent_router: bool | None = None
     # Optional tenant/dataset policy overlay for the deterministic intent router.
     # This is transport-only here; runtime validation stays inside app.rag.policy.intent_router.
-    intent_router_policy: Optional[Dict[str, Any]] = None
+    intent_router_policy: dict[str, Any] | None = None
 
     # Controlled query expansion for recall (optional).
     # - query_aliases: dataset-scoped alias/synonym dictionary.
@@ -150,15 +150,15 @@ class ChatRAGConfig(BaseModel):
     #     - True  -> apply aliases when present
     #     - False -> disable even if aliases exist
     #     - None  -> default to enabled iff query_aliases is non-empty (dataset defaults can set this)
-    enable_query_alias_expansion: Optional[bool] = None
-    query_aliases: Optional[Dict[str, List[str]]] = None
-    query_alias_max_queries: Optional[int] = Field(default=None, ge=0, le=20)
+    enable_query_alias_expansion: bool | None = None
+    query_aliases: dict[str, list[str]] | None = None
+    query_alias_max_queries: int | None = Field(default=None, ge=0, le=20)
 
     # Optional: per-request overrides for LLM multi-query generation (inherits global settings when None).
-    enable_multi_query: Optional[bool] = None
-    multi_query_count: Optional[int] = Field(default=None, ge=1, le=8)
-    multi_query_temperature: Optional[float] = Field(default=None, ge=0.0, le=2.0)
-    multi_query_max_chars: Optional[int] = Field(default=None, ge=0, le=2000)
+    enable_multi_query: bool | None = None
+    multi_query_count: int | None = Field(default=None, ge=1, le=8)
+    multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
 
     top_k: int = Field(default_factory=lambda: settings.RETRIEVAL_TOP_K, ge=1, le=100)
     score_threshold: float = Field(default_factory=lambda: settings.SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
@@ -172,17 +172,17 @@ class ChatRAGConfig(BaseModel):
     # - rrf: reciprocal-rank fusion (score normalized for UI)
     # - budgeted_rrf: RRF scoring but enforce per-channel quotas in the visible top-k prefix
     # - weighted: weighted sum across normalized channel scores (requires fusion_weights for effect)
-    fusion_strategy: Optional[str] = None
+    fusion_strategy: str | None = None
     # Only used by fusion_strategy=budgeted_rrf (ignored otherwise).
     # Example: {"vector": 25, "bm25": 10, "lexical": 10, "sparse": 5}
-    fusion_budgets: Optional[Dict[str, int]] = None
+    fusion_budgets: dict[str, int] | None = None
     # Only used by fusion_strategy=budgeted_rrf (ignored otherwise).
     # Per-channel minimum rank score in [0,1], where rank_score is 1/rank (rank starts at 1).
-    fusion_min_scores: Optional[Dict[str, float]] = None
+    fusion_min_scores: dict[str, float] | None = None
     # Only used by fusion_strategy=weighted (ignored otherwise).
     # Per-channel weights over normalized scores.
     # Allowed keys: vector, bm25, lexical, sparse.
-    fusion_weights: Optional[Dict[str, float]] = None
+    fusion_weights: dict[str, float] | None = None
 
     enable_weight_rerank: bool = True
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -206,7 +206,7 @@ class ChatRAGConfig(BaseModel):
     visible_evidence_only: bool = False
 
     # Optional: metadata filter for vector search / retrieval scoping
-    metadata_filter: Optional[Dict[str, Any]] = None
+    metadata_filter: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="ignore")
 
@@ -217,7 +217,7 @@ class ChatRAGConfig(BaseModel):
 
     @field_validator("retrieval_contract_mode", mode="before")
     @classmethod
-    def _normalize_retrieval_contract_mode(cls, v: Any) -> Optional[str]:
+    def _normalize_retrieval_contract_mode(cls, v: Any) -> str | None:
         if v is None:
             return None
         mode = normalize_retrieval_contract_mode(v)
@@ -230,10 +230,10 @@ class ChatRAGConfig(BaseModel):
 
     @field_validator("must_recall_expected_source_keys", "must_recall_required_anchor_fields", mode="before")
     @classmethod
-    def _normalize_optional_string_list(cls, v: Any) -> Optional[List[str]]:
+    def _normalize_optional_string_list(cls, v: Any) -> list[str] | None:
         if v is None:
             return None
-        values: List[str] = []
+        values: list[str] = []
         if isinstance(v, str):
             values = [p.strip() for p in v.split(",")]
         elif isinstance(v, (list, tuple, set)):
@@ -241,7 +241,7 @@ class ChatRAGConfig(BaseModel):
         else:
             raise ValueError("must be a list of strings or a comma-separated string")
 
-        cleaned: List[str] = []
+        cleaned: list[str] = []
         seen: set[str] = set()
         for item in values:
             s = str(item or "").strip()
@@ -258,7 +258,7 @@ class ChatRAGConfig(BaseModel):
 
     @field_validator("fusion_strategy", mode="before")
     @classmethod
-    def _normalize_fusion_strategy(cls, v: Any) -> Optional[str]:
+    def _normalize_fusion_strategy(cls, v: Any) -> str | None:
         raw = str(v or "").strip().lower()
         if not raw:
             return None
@@ -280,7 +280,7 @@ class ChatRAGConfig(BaseModel):
         if fb is not None:
             if not isinstance(fb, dict):
                 raise ValueError("fusion_budgets must be an object/dict when provided")
-            cleaned: Dict[str, int] = {}
+            cleaned: dict[str, int] = {}
             for k, v in fb.items():
                 key = str(k or "").strip().lower()
                 if not key:
@@ -300,7 +300,7 @@ class ChatRAGConfig(BaseModel):
         if fms is not None:
             if not isinstance(fms, dict):
                 raise ValueError("fusion_min_scores must be an object/dict when provided")
-            cleaned2: Dict[str, float] = {}
+            cleaned2: dict[str, float] = {}
             for k, v in fms.items():
                 key = str(k or "").strip().lower()
                 if not key:
@@ -328,7 +328,7 @@ class ChatRAGConfig(BaseModel):
         if not isinstance(fw, dict):
             raise ValueError("fusion_weights must be an object/dict when provided")
 
-        cleaned: Dict[str, float] = {}
+        cleaned: dict[str, float] = {}
         for k, v in fw.items():
             key = str(k or "").strip().lower()
             if not key:
@@ -442,23 +442,23 @@ class ChatRAGConfig(BaseModel):
 
 class ChatRequest(BaseModel):
     """Chat request."""
-    conversation_id: Optional[UUID] = None
+    conversation_id: UUID | None = None
     message: str
-    history: List[HistoryMessage] = Field(default_factory=list)  # Conversation history.
+    history: list[HistoryMessage] = Field(default_factory=list)  # Conversation history.
     # Optional dataset scope. When set and document_ids is empty, retrieval is restricted to this dataset.
-    dataset_id: Optional[UUID] = None
-    document_ids: List[UUID] = Field(default_factory=list)
+    dataset_id: UUID | None = None
+    document_ids: list[UUID] = Field(default_factory=list)
     stream: bool = True
     structured_output: bool = False  # Require structured (JSON) output.
-    structured_preset: Optional[str] = None  # faq | summary | action_items | custom
+    structured_preset: str | None = None  # faq | summary | action_items | custom
     enable_long_term_memory: bool = False  # Enable long-term memory retrieval.
     enable_summary_memory: bool = False  # Enable persistent summary memory injection (when available).
-    prompt_template_id: Optional[UUID] = None  # Custom prompt template ID.
-    prompt_template_key: Optional[str] = None  # Select latest version by key (optional).
-    prompt_ab_experiment_key: Optional[str] = None  # A/B experiment key (optional, stable per-user split).
-    rag_config_template_id: Optional[UUID] = None  # RAG config template ID (optional; retrieval/rerank knobs).
-    rag_config_template_key: Optional[str] = None  # Select latest RAG config template by key (optional).
-    rag_config_ab_experiment_key: Optional[str] = None  # A/B experiment key for RAG config templates (optional).
+    prompt_template_id: UUID | None = None  # Custom prompt template ID.
+    prompt_template_key: str | None = None  # Select latest version by key (optional).
+    prompt_ab_experiment_key: str | None = None  # A/B experiment key (optional, stable per-user split).
+    rag_config_template_id: UUID | None = None  # RAG config template ID (optional; retrieval/rerank knobs).
+    rag_config_template_key: str | None = None  # Select latest RAG config template by key (optional).
+    rag_config_ab_experiment_key: str | None = None  # A/B experiment key for RAG config templates (optional).
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
 
 
@@ -517,16 +517,16 @@ class ChatResponse(BaseModel):
     assistant_message_id: UUID
     request_id: str
     content: str
-    citations: List[Citation] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
     total_tokens: int = 0
-    usage: Optional[TokenUsage] = Field(
+    usage: TokenUsage | None = Field(
         default=None,
         description="Best-effort token usage metadata; currently may be an assistant-only estimate.",
     )
     total_chars: int = 0
-    retrieval_mode: Optional[str] = None
-    vector_backend: Optional[str] = None
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    retrieval_mode: str | None = None
+    vector_backend: str | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
     structured: bool = False
     structured_data: Any = None
 
@@ -540,24 +540,24 @@ class StreamEvent(BaseModel):
 
 
 class CheckpointItem(BaseModel):
-    checkpoint_id: Optional[str] = None
+    checkpoint_id: str | None = None
     checkpoint_ns: str = ""
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
     next: Any = None
-    metadata: Optional[Dict[str, Any]] = None
-    values: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
+    values: dict[str, Any] | None = None
 
 
 class CheckpointListResponse(BaseModel):
     thread_id: str
-    items: List[CheckpointItem] = Field(default_factory=list)
+    items: list[CheckpointItem] = Field(default_factory=list)
 
 
 class CheckpointDetailResponse(BaseModel):
     thread_id: str
-    checkpoint_id: Optional[str] = None
+    checkpoint_id: str | None = None
     checkpoint_ns: str = ""
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
     next: Any = None
-    metadata: Optional[Dict[str, Any]] = None
-    values: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
+    values: dict[str, Any] | None = None

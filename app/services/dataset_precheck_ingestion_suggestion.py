@@ -13,7 +13,7 @@ Design principles:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -36,7 +36,7 @@ STEP_STRIP_BOM = "text.strip_bom"
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _safe_int(v: Any) -> int:

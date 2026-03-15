@@ -50,7 +50,7 @@ interface ChunkStrategyDropdownProps {
   className?: string
 }
 
-export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrategyDropdownProps) {
+export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<ChunkStrategyDropdownProps>) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -185,11 +185,19 @@ export function ChunkStrategyDropdown({ value, onChange, className }: ChunkStrat
                         <span
                           className={cn(
                             'text-[10px] font-medium px-1.5 py-0.5 rounded',
-                            isSelected
-                              ? 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300'
-                              : option.badge === 'Token'
-                              ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300'
-                              : 'bg-muted text-muted-foreground'
+                            (() => {
+    if (isSelected) {
+        return 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300';
+    }
+    else {
+        if (option.badge === 'Token') {
+            return 'bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-300';
+        }
+        else {
+            return 'bg-muted text-muted-foreground';
+        }
+    }
+})()
                           )}
                         >
                           {option.badge}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -15,6 +17,7 @@ def _make_app() -> FastAPI:
 
     @app.get("/parse-timeout")
     async def parse_timeout() -> None:
+        await asyncio.sleep(0)  # Sonar S7503
         raise HTTPException(
             status_code=500,
             detail={"message": "Failed to parse document", "hint_key": "timeout"},
@@ -22,6 +25,7 @@ def _make_app() -> FastAPI:
 
     @app.get("/too-large")
     async def too_large() -> None:
+        await asyncio.sleep(0)  # Sonar S7503
         raise HTTPException(status_code=413, detail="File too large")
 
     return app

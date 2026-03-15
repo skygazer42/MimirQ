@@ -6,38 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import {
-  Braces,
-  MessageSquare,
-  Database,
-  Activity,
-  Layers,
-  History,
-  Settings,
-  FileText,
-  FileSearch,
-  Share2,
-  GitCompare,
-  Plus,
-  Scissors,
-  ChevronLeft,
-  ChevronRight,
-  BarChart3,
-  Star,
-  Wand2,
-  ShieldCheck,
-  Hash,
-  AlertTriangle,
-  Grid3X3,
-  SlidersHorizontal,
-  User,
-  Users,
-  LogIn,
-  LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Coins,
-} from 'lucide-react'
+import { Braces, MessageSquare, Database, Activity, Layers, History, Settings, FileText, FileSearch, Share2, GitCompare, Plus, Scissors, BarChart3, Star, Wand2, ShieldCheck, Hash, AlertTriangle, Grid3X3, SlidersHorizontal, User, Users, LogIn, LogOut, PanelLeftClose, PanelLeftOpen, Coins } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -116,8 +85,14 @@ function isActiveRoute(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
+function trimmedPrimitiveString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value).trim()
+  return ''
+}
+
 function formatDepStatus(status: unknown): { label: string; className: string } {
-  const label = String(status || '').trim() || 'unknown'
+  const label = trimmedPrimitiveString(status) || 'unknown'
   const lower = label.toLowerCase()
   if (lower === 'connected' || lower === 'ready') {
     return { label, className: 'text-success' }
@@ -131,10 +106,10 @@ function formatDepStatus(status: unknown): { label: string; className: string } 
 export function Navbar({
   isSidebarOpen: externalIsOpen,
   setSidebarOpen: externalSetOpen,
-}: {
+}: Readonly<{
   isSidebarOpen?: boolean
   setSidebarOpen?: (isOpen: boolean) => void
-} = {}) {
+}> = {}) {
   const navRef = useRef<HTMLElement | null>(null)
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
   const firstActionRef = useRef<HTMLButtonElement | null>(null)
@@ -149,12 +124,24 @@ export function Navbar({
   const backendReady = useBackendReady()
   const readyDetails = backendReady.data ?? null
   const backendOk =
-    typeof readyDetails?.ok === 'boolean' ? readyDetails.ok : backendReady.isError ? false : null
+    (() => {
+    if (typeof readyDetails?.ok === 'boolean') {
+        return readyDetails.ok;
+    }
+    else {
+        if (backendReady.isError) {
+            return false;
+        }
+        else {
+            return null;
+        }
+    }
+})()
   const lastReadyAt = Math.max(backendReady.dataUpdatedAt || 0, backendReady.errorUpdatedAt || 0) || null
   const closeSidebarOnMobile = useCallback(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     try {
-      if (window.matchMedia('(max-width: 768px)').matches) setSidebarOpen(false)
+      if (globalThis.window.matchMedia('(max-width: 768px)').matches) setSidebarOpen(false)
     } catch {
       // ignore
     }
@@ -175,14 +162,14 @@ export function Navbar({
   // Accessibility: close the mobile overlay with Escape.
   useEffect(() => {
     if (!isSidebarOpen) return
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return
       if (e.key !== 'Escape') return
       try {
         // Only treat as an overlay on small screens.
-        if (!window.matchMedia('(max-width: 768px)').matches) return
+        if (!globalThis.window.matchMedia('(max-width: 768px)').matches) return
       } catch {
         return
       }
@@ -190,13 +177,13 @@ export function Navbar({
       setSidebarOpen(false)
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    globalThis.window.addEventListener('keydown', onKeyDown)
+    return () => globalThis.window.removeEventListener('keydown', onKeyDown)
   }, [isSidebarOpen, setSidebarOpen])
 
   // Accessibility: restore focus to the toggle on close; move focus into the sidebar on open.
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     if (prevIsSidebarOpenRef.current === null) {
       prevIsSidebarOpenRef.current = isSidebarOpen
       return
@@ -229,10 +216,10 @@ export function Navbar({
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return
-    if (typeof window === 'undefined') return
+    if (typeof globalThis.window === 'undefined') return
     const key = '__mimirq_routes_prefetched__'
-    if ((window as any)[key]) return
-    ;(window as any)[key] = true
+    if ((globalThis.window as any)[key]) return
+    ;(globalThis.window as any)[key] = true
 
     const hrefs = menuItems.map((i) => i.href).filter(Boolean)
     const prefetchAll = () => {
@@ -247,7 +234,7 @@ export function Navbar({
     }
 
     // Prefer idle time to avoid blocking initial render.
-    const w = window as any
+    const w = globalThis.window as any
     if (typeof w.requestIdleCallback === 'function') {
       const id = w.requestIdleCallback(prefetchAll, { timeout: 2000 })
       return () => w.cancelIdleCallback?.(id)
@@ -474,8 +461,32 @@ export function Navbar({
                   title="查看后端依赖状态"
                 >
                   <StatusBadge
-                    status={backendOk === true ? "completed" : backendOk === false ? "failed" : "processing"}
-                    label={`Deps：${backendOk === true ? "OK" : backendOk === false ? "Down" : "..."}`}
+                    status={(() => {
+    if (backendOk === true) {
+        return "completed";
+    }
+    else {
+        if (backendOk === false) {
+            return "failed";
+        }
+        else {
+            return "processing";
+        }
+    }
+})()}
+                    label={`Deps：${(() => {
+    if (backendOk === true) {
+        return "OK";
+    }
+    else {
+        if (backendOk === false) {
+            return "Down";
+        }
+        else {
+            return "...";
+        }
+    }
+})()}`}
                     dense
                   />
                 </button>
@@ -487,14 +498,34 @@ export function Navbar({
                     <span
                       className={cn(
                         "font-medium",
-                        backendOk === true
-                          ? "text-success"
-                          : backendOk === false
-                            ? "text-destructive"
-                            : "text-muted-foreground"
+                        (() => {
+    if (backendOk === true) {
+        return "text-success";
+    }
+    else {
+        if (backendOk === false) {
+            return "text-destructive";
+        }
+        else {
+            return "text-muted-foreground";
+        }
+    }
+})()
                       )}
                     >
-                      {backendOk === true ? "OK" : backendOk === false ? "Down" : "..."}
+                      {(() => {
+    if (backendOk === true) {
+        return "OK";
+    }
+    else {
+        if (backendOk === false) {
+            return "Down";
+        }
+        else {
+            return "...";
+        }
+    }
+})()}
                     </span>
                   </div>
 
@@ -522,7 +553,7 @@ export function Navbar({
                       <div className="space-y-2">
                         {depRows.map((row) => {
                           const st = formatDepStatus(row.status)
-                          const errText = row.error ? String(row.error) : ''
+                          const errText = trimmedPrimitiveString(row.error)
                           return (
                             <div key={row.key} className="space-y-0.5">
                               <div className="flex items-start justify-between gap-2">

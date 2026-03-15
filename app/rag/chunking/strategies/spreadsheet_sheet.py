@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -31,11 +31,11 @@ class _Sheet:
 _SHEET_RE = re.compile(r"(?m)^##\s*Sheet:\s*(?P<name>.+?)\s*$")
 
 
-def _iter_sheets(text: str) -> List[_Sheet]:
+def _iter_sheets(text: str) -> list[_Sheet]:
     matches = list(_SHEET_RE.finditer(text or ""))
     if not matches:
         return []
-    sheets: List[_Sheet] = []
+    sheets: list[_Sheet] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
@@ -65,8 +65,8 @@ class SpreadsheetSheetChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

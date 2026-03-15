@@ -20,9 +20,9 @@ import contextlib
 import re
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -76,15 +76,15 @@ class ParsingContentResponse(BaseModel):
     parser_backend: str = Field(default="auto")
     markdown_content: str = Field(default="")
     original_markdown_content: str = Field(default="")
-    stats: Optional[Dict[str, int]] = Field(default=None)
-    parse_duration_sec: Optional[float] = Field(default=None)
-    pdf_quality: Optional[Dict[str, Any]] = Field(default=None)
-    quality_gate: Optional["ParsingQualityGate"] = Field(default=None)
+    stats: dict[str, int] | None = Field(default=None)
+    parse_duration_sec: float | None = Field(default=None)
+    pdf_quality: dict[str, Any] | None = Field(default=None)
+    quality_gate: "ParsingQualityGate" | None = Field(default=None)
 
 
 class ParsingContentUpdateRequest(BaseModel):
     markdown_content: str = Field(default="")
-    original_markdown_content: Optional[str] = None
+    original_markdown_content: str | None = None
 
 
 class ParsingQualityGate(BaseModel):
@@ -98,8 +98,8 @@ class ParsingQualityGate(BaseModel):
     """
 
     grade: Literal["pass", "warn", "fail"] = "pass"
-    reasons: List[str] = Field(default_factory=list)
-    evidence: Dict[str, Any] = Field(default_factory=dict)
+    reasons: list[str] = Field(default_factory=list)
+    evidence: dict[str, Any] = Field(default_factory=dict)
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -142,7 +142,7 @@ def _grade_max(a: str, b: str) -> str:
 def _compute_parsing_quality_gate(
     markdown: str,
     *,
-    pdf_quality: Optional[Dict[str, Any]],
+    pdf_quality: dict[str, Any] | None,
     min_content_chars: int,
     is_pdf: bool,
 ) -> ParsingQualityGate:
@@ -332,7 +332,7 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
 async def list_parsing_documents(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 200,
-    status: Optional[str] = None,
+    status: str | None = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -446,7 +446,7 @@ async def upload_parsing_document(
 async def parse_workspace_document(
     document_id: uuid.UUID,
     request: Request,
-    parser_backend: Optional[str] = None,
+    parser_backend: str | None = None,
     image_caption_enabled: Annotated[bool, Query()] = False,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -756,7 +756,7 @@ async def parse_workspace_document(
             next_meta["pdf_quality"] = dict(pdf_quality)
         if gate is not None:
             next_meta["quality_gate"] = gate.model_dump()
-        next_meta["parsed_at"] = datetime.now(timezone.utc).isoformat()
+        next_meta["parsed_at"] = datetime.now(UTC).isoformat()
         next_meta["parse_duration_sec"] = round(float(duration_sec), 3)
         if fallback_attempts:
             next_meta["parse_fallback"] = {
@@ -881,8 +881,8 @@ async def get_parsing_content(
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
     meta = doc.doc_metadata or {}
     parser_backend = ""
-    duration_sec: Optional[float] = None
-    stats: Optional[Dict[str, int]] = None
+    duration_sec: float | None = None
+    stats: dict[str, int] | None = None
     if isinstance(meta, dict):
         parser_backend = str(meta.get("parser_backend") or meta.get("parser_backend_requested") or "auto")
         raw_duration = meta.get("parse_duration_sec")
@@ -976,7 +976,7 @@ async def update_parsing_content(
     db.refresh(doc)
 
     parser_backend = "auto"
-    duration_sec: Optional[float] = None
+    duration_sec: float | None = None
     if isinstance(next_meta, dict):
         parser_backend = str(next_meta.get("parser_backend") or next_meta.get("parser_backend_requested") or "auto")
         raw_duration = next_meta.get("parse_duration_sec")

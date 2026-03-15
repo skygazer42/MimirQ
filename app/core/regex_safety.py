@@ -8,8 +8,9 @@ pipeline clean-preview custom rules) to reduce ReDoS risk and keep payloads boun
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 DEFAULT_MAX_RULES = 60
 DEFAULT_MAX_PATTERN_LEN = 600

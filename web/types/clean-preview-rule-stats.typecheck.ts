@@ -1,4 +1,6 @@
 import type { CleanPreviewResponse } from '@/types'
+import { detachPromise } from '@/lib/utils'
+
 
 const _sample: CleanPreviewResponse = {
   markdown: '',
@@ -8,5 +10,5 @@ const _sample: CleanPreviewResponse = {
   rule_stats: [],
 }
 
-void _sample
+detachPromise(_sample)
 

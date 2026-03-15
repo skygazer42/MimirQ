@@ -1,4 +1,5 @@
 import type { GraphData, GraphLink, GraphNode } from './graph-parser'
+import { toTrimmedPrimitiveString } from './primitive-text'
 
 type AnyObj = Record<string, any>
 
@@ -10,12 +11,12 @@ function truthyCount(obj: AnyObj, prefix: string) {
   return Object.entries(obj).filter(([k, v]) => k.startsWith(prefix) && !!v).length
 }
 
-function withSummary(summary: Array<string | null | undefined>) {
+function withSummary(summary: Array<string>) {
   return summary.map((s) => String(s || '').trim()).filter(Boolean)
 }
 
 function formatInherit(value: unknown) {
-  const s = value == null ? '' : String(value).trim()
+  const s = toTrimmedPrimitiveString(value)
   return s ? s : '(inherit)'
 }
 
@@ -50,7 +51,7 @@ function makeLink(source: string, target: string, label?: string): GraphLink {
 }
 
 export function buildDatasetConfigGraph(config: AnyObj): GraphData {
-  const cfg = (config || {}) as AnyObj
+  const cfg = (config || {})
   const cfgAny = cfg as any
 
   const nodes: GraphNode[] = [
@@ -154,7 +155,7 @@ export function buildDatasetConfigGraph(config: AnyObj): GraphData {
 
   // Ingestion policy (keep high-level)
   const ingestionPolicy = cfg.ingestion_policy || null
-  const policyRuleCount = (ingestionPolicy as any)?.rules?.length
+  const policyRuleCount = (ingestionPolicy)?.rules?.length
   addGroup(
     'ingestion_policy',
     'Ingestion Policy',
@@ -190,4 +191,3 @@ export function buildDatasetConfigGraph(config: AnyObj): GraphData {
 
   return { nodes, links }
 }
-

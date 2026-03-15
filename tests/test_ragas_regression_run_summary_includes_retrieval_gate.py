@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_merge_summary_with_regression_gate_includes_retrieval_keys() -> None:
     from app.rag.evaluation import ragas as mod
@@ -19,8 +21,8 @@ def test_merge_summary_with_regression_gate_includes_retrieval_keys() -> None:
     out = mod._merge_summary_with_regression_gate(summary, eval_items=eval_items)  # type: ignore[attr-defined]
 
     assert out["items"] == 1
-    assert out["faithfulness"] == 0.9
-    assert out["retrieval_recall"] == 0.5
-    assert out["retrieval_hit_at_10"] == 1.0
-    assert out["retrieval_hit_at_20"] == 1.0
-    assert out["abstain_rate"] == 0.0
+    assert out["faithfulness"] == pytest.approx(0.9)
+    assert out["retrieval_recall"] == pytest.approx(0.5)
+    assert out["retrieval_hit_at_10"] == pytest.approx(1.0)
+    assert out["retrieval_hit_at_20"] == pytest.approx(1.0)
+    assert out["abstain_rate"] == pytest.approx(0.0)

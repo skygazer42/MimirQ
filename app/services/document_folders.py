@@ -7,7 +7,7 @@ This derives a folder hierarchy from document metadata `source_path` values
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from app.api.schemas.document_folders import DocumentFolderNode
 

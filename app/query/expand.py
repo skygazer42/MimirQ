@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 
-def coerce_expansion_rules(raw: Any) -> Dict[str, List[str]]:
+def coerce_expansion_rules(raw: Any) -> dict[str, list[str]]:
     """
     Coerce a user/dataset-provided expansion dictionary into a normalized mapping.
 
@@ -27,7 +27,7 @@ def coerce_expansion_rules(raw: Any) -> Dict[str, List[str]]:
     if not isinstance(raw, dict):
         return {}
 
-    out: Dict[str, List[str]] = {}
+    out: dict[str, list[str]] = {}
     for k, v in raw.items():
         key = str(k or "").strip()
         if not key:
@@ -41,7 +41,7 @@ def coerce_expansion_rules(raw: Any) -> Dict[str, List[str]]:
         else:
             continue
 
-        cleaned: List[str] = []
+        cleaned: list[str] = []
         for item in vals:
             s = str(item or "").strip()
             if not s:
@@ -56,7 +56,7 @@ def coerce_expansion_rules(raw: Any) -> Dict[str, List[str]]:
 
         # Stable de-dup (case-insensitive for ASCII).
         seen: set[str] = set()
-        unique: List[str] = []
+        unique: list[str] = []
         for s in cleaned:
             sig = s.casefold() if s.isascii() else s
             if sig in seen:
@@ -97,11 +97,11 @@ def _replace(query: str, term: str, replacement: str) -> str:
 def generate_dictionary_expansions(
     *,
     query: str,
-    rules: Dict[str, List[str]] | None,
+    rules: dict[str, list[str]] | None,
     max_expansions_total: int = 5,
     max_expansions_per_rule: int = 2,
     max_query_chars: int = 400,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """
     Generate query variants by applying deterministic dictionary rules.
 
@@ -122,7 +122,7 @@ def generate_dictionary_expansions(
     if not rules_in:
         return [], {"enabled": False, "used": False, "reason": "no_rules"}
 
-    expansions: List[Dict[str, Any]] = []
+    expansions: list[dict[str, Any]] = []
     seen: set[str] = set()
 
     for key, targets in rules_in.items():
@@ -174,7 +174,7 @@ def generate_dictionary_expansions(
     }
 
 
-def load_base_dictionary_rules() -> Dict[str, List[str]]:
+def load_base_dictionary_rules() -> dict[str, list[str]]:
     """
     Load the bundled dictionary rules from `app/query/dictionaries/base.yaml`.
 
@@ -189,7 +189,7 @@ def load_base_dictionary_rules() -> Dict[str, List[str]]:
         raw = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return {}
-    parsed: Dict[str, List[str]] = {}
+    parsed: dict[str, list[str]] = {}
     current_key: str | None = None
     for ln in (raw or "").splitlines():
         line = ln.rstrip("\r\n")

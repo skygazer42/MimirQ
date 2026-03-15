@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -52,8 +52,8 @@ _RESERVED_KEYS = {
 }
 
 
-def _iter_lines(text: str) -> List[_Line]:
-    out: List[_Line] = []
+def _iter_lines(text: str) -> list[_Line]:
+    out: list[_Line] = []
     offset = 0
     for raw in (text or "").splitlines(keepends=True):
         start = offset
@@ -65,10 +65,10 @@ def _iter_lines(text: str) -> List[_Line]:
     return out
 
 
-def _build_top_blocks(text: str) -> List[_TopBlock]:
+def _build_top_blocks(text: str) -> list[_TopBlock]:
     lines = _iter_lines(text)
-    idxs: List[int] = []
-    keys: List[str] = []
+    idxs: list[int] = []
+    keys: list[str] = []
     for i, ln in enumerate(lines):
         plain = ln.plain
         if not plain.strip() or plain.lstrip().startswith("#"):
@@ -87,7 +87,7 @@ def _build_top_blocks(text: str) -> List[_TopBlock]:
     if not idxs:
         return []
 
-    blocks: List[_TopBlock] = []
+    blocks: list[_TopBlock] = []
     for j, i in enumerate(idxs):
         start = lines[i].start
         end = lines[idxs[j + 1]].start if j + 1 < len(idxs) else len(text)
@@ -123,8 +123,8 @@ class GitLabCIChunker(BaseChunker):
             add_start_index=True,
         )
 
-    def split_documents(self, documents: List[Document]) -> List[Document]:
-        out: List[Document] = []
+    def split_documents(self, documents: list[Document]) -> list[Document]:
+        out: list[Document] = []
 
         for doc in documents:
             text = doc.page_content or ""

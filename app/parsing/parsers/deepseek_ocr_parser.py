@@ -15,7 +15,6 @@ import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
-from typing import List, Optional
 from urllib.parse import unquote
 
 import fitz  # PyMuPDF
@@ -86,7 +85,7 @@ class DeepSeekOCRParser:
         self._session_local.session = session
         return session
 
-    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+    def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
         run_id = (document_id or file_path.stem or "deepseek_ocr").strip()
         run_id = re.sub(r"[^a-zA-Z0-9._-]+", "_", run_id)[:120] or "deepseek_ocr"
         return (file_path.parent / ".deepseek_ocr" / run_id).absolute()
@@ -331,10 +330,10 @@ class DeepSeekOCRParser:
         *,
         markdown_text: str,
         images_dir: Path,
-        page_png_path: Optional[Path] = None,
-        page_jpg_path: Optional[Path] = None,
-        page_png_bytes: Optional[bytes] = None,
-        page_jpg_bytes: Optional[bytes] = None,
+        page_png_path: Path | None = None,
+        page_jpg_path: Path | None = None,
+        page_png_bytes: bytes | None = None,
+        page_jpg_bytes: bytes | None = None,
     ) -> None:
         """
         Best-effort: some OCR outputs reference `images/<hash>.jpg` but do not actually
@@ -455,11 +454,11 @@ class DeepSeekOCRParser:
         self,
         file_path: Path,
         *,
-        dataset_id: Optional[str] = None,  # kept for interface parity
-        document_id: Optional[str] = None,
-        tenant_id: Optional[str] = None,  # kept for interface parity
+        dataset_id: str | None = None,  # kept for interface parity
+        document_id: str | None = None,
+        tenant_id: str | None = None,  # kept for interface parity
         **_kwargs,
-    ) -> List[Document]:
+    ) -> list[Document]:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
@@ -527,7 +526,7 @@ class DeepSeekOCRParser:
                     page_named_images[idx] = (png_path, jpg_path)
                     logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
                     text = self._call_api(img_bytes, mime_type="image/png")
-                    page_jpg_bytes: Optional[bytes] = None
+                    page_jpg_bytes: bytes | None = None
                     try:
                         page_jpg_bytes = pix.tobytes("jpg")
                     except Exception:

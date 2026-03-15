@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -16,7 +16,7 @@ from app.services.dataset_service import DatasetService
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def build_index_drift_marker(
@@ -159,7 +159,7 @@ def resolve_index_drift_item(
         return None
 
     item.status = "resolved"
-    item.resolved_at = datetime.now(timezone.utc)
+    item.resolved_at = datetime.now(UTC)
     item.resolved_by = str(resolved_by or "").strip()[:255] or None
     item.resolution_note = str(resolution_note or "").strip()[:2000] or None
     db.commit()
@@ -306,7 +306,7 @@ def _finalize_chunk_disable(*, db: Session, chunk: DocumentChunk | None) -> None
     if chunk is None:
         return
     if getattr(chunk, "disabled_at", None) is None:
-        chunk.disabled_at = datetime.now(timezone.utc)
+        chunk.disabled_at = datetime.now(UTC)
     with contextlib.suppress(Exception):
         chunk.vector_id = None
     db.commit()
@@ -433,7 +433,7 @@ def replay_index_drift_items(
         for item in items:
             item_id = str(item.id)
             item.replay_count = int(getattr(item, "replay_count", 0) or 0) + 1
-            item.last_replayed_at = datetime.now(timezone.utc)
+            item.last_replayed_at = datetime.now(UTC)
             db.commit()
 
             attempted_ids.append(item_id)
@@ -495,7 +495,7 @@ def compute_index_audit_summary(
     cap = max(0, int(sample_limit or 0))
 
     checked = [str(x) for x in (vector_ids_checked or []) if str(x).strip()]
-    existing = set(str(x) for x in (vector_ids_existing or set()) if str(x).strip())
+    existing = {str(x) for x in (vector_ids_existing or set()) if str(x).strip()}
 
     missing_in_vector = [vid for vid in checked if vid not in existing] if checked else []
     missing_in_vector_sorted = sorted(set(missing_in_vector))

@@ -88,7 +88,7 @@ def test_sparse_retrieval_channel_scores_synonym_match(monkeypatch: pytest.Monke
     meta_1 = by_id[str(d1_id)].get("metadata") or {}
     meta_2 = by_id[str(d2_id)].get("metadata") or {}
     assert float(meta_1.get("sparse_score", 0.0) or 0.0) > 0.0
-    assert float(meta_2.get("sparse_score", 0.0) or 0.0) == 0.0
+    assert float(meta_2.get("sparse_score", 0.0) or 0.0) == pytest.approx(0.0)
 
 
 def test_sparse_retrieval_can_be_enabled_per_retriever_instance(monkeypatch: pytest.MonkeyPatch) -> None:

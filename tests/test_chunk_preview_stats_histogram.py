@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -37,7 +38,7 @@ def _build_client(monkeypatch):  # noqa: ANN001
     from app.rag.chunking.factory import chunker_factory
 
     # preview_chunking enforces tenant membership via DB; bypass for this unit test.
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
 
     monkeypatch.setattr(chunker_factory, "resolve_strategy", lambda s: s, raising=True)
 
@@ -49,6 +50,7 @@ def _build_client(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(chunker_factory, "get_chunker", lambda *_, **__: _Chunker(), raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
+        await asyncio.sleep(0)  # Sonar S7503
         assert payload.get("action") == "parse_documents"
         file_path = Path(str(payload.get("file_path") or ""))
         text = file_path.read_text(encoding="utf-8")

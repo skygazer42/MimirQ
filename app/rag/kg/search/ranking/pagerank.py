@@ -1,7 +1,8 @@
 """
 PageRank-style rerank combining query similarity and entity co-occurrence graph.
 """
-from typing import Any, Dict, List
+import math
+from typing import Any
 
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.provenance import build_kg_path_provenance
@@ -17,13 +18,13 @@ class RerankPageRankSearcher:
     async def rerank(
         self,
         config: SearchConfig,
-        event_ids: List[str],
-        key_final: List[Dict[str, Any]],
-        event_scores: Dict[str, float],
+        event_ids: list[str],
+        key_final: list[dict[str, Any]],
+        event_scores: dict[str, float],
         *,
-        query_vector: List[float] | None = None,
+        query_vector: list[float] | None = None,
         event_hops: dict[str, int] | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         session = get_session()
         try:
             repo = EventRepository(session)
@@ -44,7 +45,7 @@ class RerankPageRankSearcher:
             # prepare adjacency via shared entities
             assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
 
-            base_scores: Dict[str, float] = {**event_scores}
+            base_scores: dict[str, float] = {**event_scores}
             for ev in events:
                 sim = cosine_similarity(query_vec, ev.content_vector or [])
                 ents = assoc_map.get(str(ev.id), [])
@@ -53,7 +54,7 @@ class RerankPageRankSearcher:
                 recall_score = event_scores.get(str(ev.id), 0.0)
                 base_scores[str(ev.id)] = 0.5 * recall_score + 0.3 * sim + 0.2 * boost
 
-            graph: Dict[str, Dict[str, float]] = {str(ev.id): {} for ev in events}
+            graph: dict[str, dict[str, float]] = {str(ev.id): {} for ev in events}
 
             # Build event-event edges by shared entities (faster than O(n^2) set intersections).
             entity_to_events: dict[str, list[str]] = {}
@@ -132,15 +133,15 @@ class RerankPageRankSearcher:
 
     def _pagerank(
         self,
-        graph: Dict[str, Dict[str, float]],
+        graph: dict[str, dict[str, float]],
         damping: float,
         max_iter: int,
-        base_scores: Dict[str, float],
-    ) -> Dict[str, float]:
+        base_scores: dict[str, float],
+    ) -> dict[str, float]:
         nodes = list(graph.keys())
         if not nodes:
             return {}
-        scores = {n: 1.0 for n in nodes}
+        scores = dict.fromkeys(nodes, 1.0)
         out_sum = {n: float(sum(graph.get(n, {}).values()) or 1.0) for n in nodes}
         teleport = {n: (1.0 - float(damping)) * float(base_scores.get(n, 0.0) or 0.0) for n in nodes}
 
@@ -152,7 +153,7 @@ class RerankPageRankSearcher:
                     continue
                 src_score = float(scores.get(src, 0.0) or 0.0)
                 denom = float(out_sum.get(src, 1.0) or 1.0)
-                if denom == 0.0:
+                if math.isclose(denom, 0.0, abs_tol=1e-12):
                     continue
                 scale = float(damping) * (src_score / denom)
                 for dst, w in edges.items():

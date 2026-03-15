@@ -52,7 +52,7 @@ async def test_rag_retrieve_defaults_to_recall50_when_rag_config_omitted(
     assert int(captured.get("top_k") or 0) >= 50
     score_threshold = captured.get("score_threshold")
     assert score_threshold is not None
-    assert float(score_threshold) == 0.0
+    assert float(score_threshold) == pytest.approx(0.0)
     assert captured.get("retrieval_profile") == "recall50"
 
 

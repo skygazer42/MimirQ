@@ -5,7 +5,7 @@ import json
 import operator
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -98,8 +98,8 @@ def _build_client(*, monkeypatch, items, allow: bool):  # noqa: ANN001
             self.permission = "all_team_members"
             self.owner_id = "o1"
             self.dataset_metadata = {}
-            self.created_at = datetime.now(timezone.utc)
-            self.updated_at = datetime.now(timezone.utc)
+            self.created_at = datetime.now(UTC)
+            self.updated_at = datetime.now(UTC)
 
     monkeypatch.setattr(
         datasets_module.DatasetService,
@@ -155,7 +155,7 @@ def _parse_ndjson(raw: bytes) -> list[dict]:  # noqa: ANN001
 def test_dataset_export_bundle_zip_includes_expected_files_and_redacts_by_default(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     doc = Document(
         id=uuid.uuid4(),
@@ -198,7 +198,7 @@ def test_dataset_export_bundle_zip_includes_expected_files_and_redacts_by_defaul
 def test_dataset_export_bundle_zip_can_include_sensitive(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     doc = Document(
         id=uuid.uuid4(),

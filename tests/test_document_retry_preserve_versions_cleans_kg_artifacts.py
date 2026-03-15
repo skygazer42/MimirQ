@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -76,6 +77,7 @@ async def test_retry_document_processing_preserve_existing_versions_cleans_kg(mo
     monkeypatch.setattr(docs_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
     async def _noop_enqueue(*_a, **_k):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     monkeypatch.setattr(docs_mod, "enqueue_document_processing", _noop_enqueue, raising=True)

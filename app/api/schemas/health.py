@@ -2,7 +2,6 @@
 Health check response schemas.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -10,19 +9,19 @@ from pydantic import BaseModel, Field
 class HealthResponse(BaseModel):
     ok: bool
     time: str
-    vector_backend: Optional[str] = None
-    use_langgraph_pipeline: Optional[bool] = None
+    vector_backend: str | None = None
+    use_langgraph_pipeline: bool | None = None
 
 
 class DatabaseStatus(BaseModel):
     status: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class VectorStatus(BaseModel):
     backend: str
     status: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class RedisStatus(BaseModel):
@@ -30,14 +29,14 @@ class RedisStatus(BaseModel):
     enabled: bool
     required: bool
     embedding_cache_enabled: bool = Field(default=False, alias="embedding_cache_enabled")
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class MinioStatus(BaseModel):
     status: str
     enabled: bool
-    bucket: Optional[str] = None
-    error: Optional[str] = None
+    bucket: str | None = None
+    error: str | None = None
 
 
 class ReadyResponse(BaseModel):

@@ -11,10 +11,10 @@ import { Button } from '@/components/ui/button'
 export function ChunkingHelpDialog({
   open,
   onOpenChange,
-}: {
+}: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
-}) {
+}>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">

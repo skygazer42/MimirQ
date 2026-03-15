@@ -2,7 +2,6 @@
 Dataset service: creation, permission checks, partial member management.
 """
 
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -76,11 +75,11 @@ class DatasetService:
         db: Session,
         tenant_id: UUID,
         name: str,
-        description: Optional[str],
+        description: str | None,
         permission: DatasetPermissionEnum,
         owner_id: str,
-        partial_members: Optional[List[str]] = None,
-        partial_groups: Optional[List[UUID]] = None,
+        partial_members: list[str] | None = None,
+        partial_groups: list[UUID] | None = None,
     ) -> Dataset:
         member = DatasetService.ensure_member(db, tenant_id, owner_id)
         DatasetService._assert_edit_role(member)
@@ -117,11 +116,11 @@ class DatasetService:
         db: Session,
         dataset: Dataset,
         updater_id: str,
-        name: Optional[str],
-        description: Optional[str],
-        permission: Optional[DatasetPermissionEnum],
-        partial_members: Optional[List[str]],
-        partial_groups: Optional[List[UUID]],
+        name: str | None,
+        description: str | None,
+        permission: DatasetPermissionEnum | None,
+        partial_members: list[str] | None,
+        partial_groups: list[UUID] | None,
     ) -> Dataset:
         member = DatasetService.ensure_member(db, dataset.tenant_id, updater_id)
         DatasetService._assert_edit_role(member)
@@ -289,7 +288,7 @@ class DatasetService:
 
 class DatasetPermissionService:
     @staticmethod
-    def get_dataset_partial_member_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> List[str]:
+    def get_dataset_partial_member_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> list[str]:
         rows = (
             db.query(DatasetPermission)
             .filter(DatasetPermission.tenant_id == tenant_id, DatasetPermission.dataset_id == dataset_id)
@@ -302,7 +301,7 @@ class DatasetPermissionService:
         db: Session,
         tenant_id: UUID,
         dataset_id: UUID,
-        member_ids: List[str],
+        member_ids: list[str],
     ):
         normalized_member_ids: list[str] = []
         seen: set[str] = set()
@@ -358,7 +357,7 @@ class DatasetPermissionService:
 
 class DatasetGroupPermissionService:
     @staticmethod
-    def get_dataset_partial_group_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> List[UUID]:
+    def get_dataset_partial_group_list(db: Session, tenant_id: UUID, dataset_id: UUID) -> list[UUID]:
         rows = (
             db.query(DatasetGroupPermission.group_id)
             .filter(
@@ -374,7 +373,7 @@ class DatasetGroupPermissionService:
         db: Session,
         tenant_id: UUID,
         dataset_id: UUID,
-        group_ids: List[UUID],
+        group_ids: list[UUID],
         *,
         actor_id: str | None = None,
         max_groups: int = 200,

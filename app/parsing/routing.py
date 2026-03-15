@@ -7,14 +7,13 @@ Unified usage in:
 """
 
 from pathlib import Path
-from typing import Dict, Optional, Tuple
 
 from app.core.config import settings
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.utils.cli import resolve_cli_command
 
 
-def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str:
+def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
     """
     Choose a PDF parser backend based on quality scoring and user request.
 
@@ -91,11 +90,11 @@ def choose_pdf_backend(quality: Optional[Dict], requested: Optional[str]) -> str
 
 def route_pdf_backend(
     file_path: Path,
-    requested: Optional[str],
+    requested: str | None,
     *,
     sample_pages: int = 3,
-    use_ocr_validation: Optional[bool] = None,
-) -> Tuple[str, Dict]:
+    use_ocr_validation: bool | None = None,
+) -> tuple[str, dict]:
     """
     Score a PDF and return (chosen_backend, quality).
     """

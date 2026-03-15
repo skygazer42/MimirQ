@@ -54,8 +54,9 @@ function clampInt(value: number, min: number, max: number) {
 const DATASET_DEFAULT_VALUE = '__mimirq_dataset_default__'
 
 type SidebarVariant = 'panel' | 'dialog' | 'pane'
+type SidebarProps = Readonly<{ variant?: SidebarVariant }>
 
-export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}) {
+export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const {
     fileList,
     currentFileIndex,
@@ -132,9 +133,13 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
     const statSource = previewData.chunks.map((c) => {
       const tokensFallback = Math.max(0, Math.trunc((Number(c.length || 0) || 0) / 4))
+      const chunkLength = (() => {
+        if (!isTokenStrategy) return c.length
+        return typeof c.tokens_est === 'number' ? c.tokens_est : tokensFallback
+      })()
       return {
         content: c.content,
-        length: isTokenStrategy ? (typeof c.tokens_est === 'number' ? c.tokens_est : tokensFallback) : c.length,
+        length: chunkLength,
       }
     })
 
@@ -229,7 +234,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
     if (!raw) return '\n\n'
     try {
       // Same trick as context.decodeSeparatorInput: support \n, \t, \uXXXX etc.
-      return JSON.parse(`"${raw.replace(/"/g, '\\"')}"`)
+      return JSON.parse(`"${raw.replaceAll(/"/g, '\\"')}"`)
     } catch {
       return raw
     }
@@ -237,7 +242,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
   const parentChildEffective = useMemo(() => {
     if (!isParentChildStrategy) return null
-    const sp = (previewData?.params as any)?.strategy_params as any
+    const sp = (previewData?.params as any)?.strategy_params
     const ratio = typeof sp?.child_ratio === 'number' && Number.isFinite(sp.child_ratio) ? sp.child_ratio : parentChildRatio
     const minSize =
       typeof sp?.min_child_size === 'number' && Number.isFinite(sp.min_child_size) ? sp.min_child_size : parentChildMinChildSize
@@ -473,7 +478,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-medium text-muted-foreground">原文上限（chars）</label>
+              <div className="text-xs font-medium text-muted-foreground">原文上限（chars）</div>
               <Input
                 type="number"
                 inputMode="numeric"
@@ -489,7 +494,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <label className="text-xs font-medium text-muted-foreground">最多返回 chunks</label>
+              <div className="text-xs font-medium text-muted-foreground">最多返回 chunks</div>
               <Input
                 type="number"
                 inputMode="numeric"
@@ -547,8 +552,8 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
             {previewData?.warnings?.length ? (
               <div className="text-[10px] text-muted-foreground space-y-1">
-                {(previewData.warnings || []).slice(0, 6).map((w, i) => (
-                  <div key={`${i}-${w}`} className="px-2 py-1 rounded-lg border border-border/60 bg-muted/40">
+                {(previewData.warnings || []).slice(0, 6).map((w) => (
+                  <div key={w} className="px-2 py-1 rounded-lg border border-border/60 bg-muted/40">
                     {w}
                   </div>
                 ))}
@@ -557,7 +562,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">目标数据集（可选）</label>
+            <div className="text-xs font-medium text-muted-foreground">目标数据集（可选）</div>
             <Select
               value={datasetId || DATASET_DEFAULT_VALUE}
               onValueChange={(value) => {
@@ -578,13 +583,21 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
                 ))}
               </SelectContent>
             </Select>
-            {datasetsLoading ? (
-              <div className="text-[10px] text-muted-foreground">正在加载数据集...</div>
-            ) : datasetsError ? (
-              <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
+            {(() => {
+    if (datasetsLoading) {
+        return (<div className="text-[10px] text-muted-foreground">正在加载数据集...</div>);
+    }
+    else {
+        if (datasetsError) {
+            return (<div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
                 {datasetsError}
-              </div>
-            ) : null}
+              </div>);
+        }
+        else {
+            return null;
+        }
+    }
+})()}
 
             {selectedDataset?.pipeline ? (
               <div className="rounded-xl border border-border/60 bg-background p-3">
@@ -778,14 +791,14 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 	                pipelineCtx.setEnabled(true)
 	                for (const [k, v] of Object.entries(patch || {})) {
 	                  if (k in pipelineCtx.options) {
-	                    pipelineCtx.updateOption(k as any, v as any)
+	                    pipelineCtx.updateOption(k as any, v)
 	                  }
 	                }
 	              }}
 	            />
 	          </div>
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">解析器</label>
+            <div className="text-xs font-medium text-muted-foreground">解析器</div>
             <ChunkPresetPanel className="mb-3" />
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
             {parserAvailable === false && (
@@ -797,7 +810,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
           {/* 策略选择 */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">切块策略</label>
+            <div className="text-xs font-medium text-muted-foreground">切块策略</div>
             <ChunkStrategyDropdown
               value={chunkStrategy}
               onChange={(value) => {
@@ -893,7 +906,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
               )}
 
               <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground">分隔符预设</label>
+                <div className="text-xs font-medium text-muted-foreground">分隔符预设</div>
                 <Select
                   value={separatorPreset}
                   onValueChange={(value) => updateSeparatorSettings({ separatorPreset: value })}
@@ -921,7 +934,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
               {separatorPreset === 'custom' ? (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">自定义分隔符</label>
+                  <div className="text-xs font-medium text-muted-foreground">自定义分隔符</div>
                   <Input
                     value={separatorCustom}
                     onChange={(e) => updateSeparatorSettings({ separatorCustom: e.target.value })}
@@ -953,7 +966,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <label className="text-xs font-medium text-muted-foreground">最大块长度（可选）</label>
+                  <div className="text-xs font-medium text-muted-foreground">最大块长度（可选）</div>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1011,7 +1024,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">child_ratio</label>
+                  <div className="text-xs font-medium text-muted-foreground">child_ratio</div>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -1031,7 +1044,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">min_child_size</label>
+                  <div className="text-xs font-medium text-muted-foreground">min_child_size</div>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1189,7 +1202,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
           )}
 
           <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">入库管线</label>
+            <div className="text-xs font-medium text-muted-foreground">入库管线</div>
             <PipelineOptionsPanel compact />
           </div>
 
@@ -1217,7 +1230,19 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
               }}
               className="h-11 rounded-xl"
             >
-              {isLoading ? '取消' : cacheHit ? '忽略缓存' : '强制刷新'}
+              {(() => {
+    if (isLoading) {
+        return '取消';
+    }
+    else {
+        if (cacheHit) {
+            return '忽略缓存';
+        }
+        else {
+            return '强制刷新';
+        }
+    }
+})()}
             </Button>
           </div>
         </div>
@@ -1274,23 +1299,23 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="coverage_ratio">
                 <div className="text-[10px] text-muted-foreground uppercase  font-medium">覆盖率</div>
                 <div className="text-xl font-bold text-foreground mt-1">
-                  {coverageSignals?.coveragePct != null ? `${coverageSignals.coveragePct}%` : '-'}
+                  {coverageSignals?.coveragePct == null ? '-' : `${coverageSignals.coveragePct}%`}
                 </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="overlap_waste_ratio">
                 <div className="text-[10px] text-muted-foreground uppercase  font-medium">重叠浪费</div>
                 <div className="text-xl font-bold text-foreground mt-1">
-                  {coverageSignals?.overlapWastePct != null ? `${coverageSignals.overlapWastePct}%` : '-'}
+                  {coverageSignals?.overlapWastePct == null ? '-' : `${coverageSignals.overlapWastePct}%`}
                 </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="gap_count / largest_gap">
                 <div className="text-[10px] text-muted-foreground uppercase  font-medium">Gaps</div>
                 <div className="text-xl font-bold text-foreground mt-1">
-                  {coverageSignals?.gapCount != null ? String(coverageSignals.gapCount) : '-'}
+                  {coverageSignals?.gapCount == null ? '-' : String(coverageSignals.gapCount)}
                 </div>
-                {coverageSignals?.largestGap != null ? (
+                {coverageSignals?.largestGap == null ? null : (
                   <div className="mt-1 text-[10px] text-muted-foreground font-mono">largest {coverageSignals.largestGap}</div>
-                ) : null}
+                )}
               </div>
             </div>
 
@@ -1322,7 +1347,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
                         'mt-1 text-[10px]',
                         coverageSignals.coveragePct != null && coverageSignals.coveragePct < 95 ? 'text-warning' : 'text-muted-foreground'
                       )}
-                      title={coverageSignals.largestGap != null ? `largest_gap: ${coverageSignals.largestGap}` : undefined}
+                      title={coverageSignals.largestGap == null ? undefined : `largest_gap: ${coverageSignals.largestGap}`}
                     >
                       coverage {coverageSignals.coveragePct ?? '-'}% · waste {coverageSignals.overlapWastePct ?? '-'}% · gaps {coverageSignals.gapCount ?? '-'}
                     </div>
@@ -1342,7 +1367,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
                           <Tooltip
                             formatter={(value: any) => [value, 'count']}
                             labelFormatter={(_label: any, payload: any) => {
-                              const p = payload?.[0]?.payload as any
+                              const p = payload?.[0]?.payload
                               const min = typeof p?.min === 'number' ? p.min : null
                               const max = typeof p?.max === 'number' ? p.max : null
                               if (min != null && max != null) return `${min}-${max} ${statsUnitLabel}`
@@ -1374,7 +1399,7 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
                           onClick={() => {
                             for (const item of previewData.recommendation_patches || []) {
                               const target = (item as any)?.target || 'preview'
-                              const patch = ((item as any)?.patch || {}) as any
+                              const patch = ((item as any)?.patch || {})
                               if (target === 'preview') {
                                 const next: any = {}
                                 if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size)) next.chunkSize = Math.trunc(patch.chunk_size)
@@ -1405,13 +1430,13 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
                     {previewData?.recommendation_patches?.length ? (
                       <div className="mt-2 space-y-2">
-                        {(previewData.recommendation_patches || []).slice(0, 6).map((p, i) => {
+                        {(previewData.recommendation_patches || []).slice(0, 6).map((p) => {
                           const title = String((p as any)?.title || (p as any)?.id || 'patch')
                           const desc = String((p as any)?.description || '')
                           const target = String((p as any)?.target || 'preview')
-                          const patch = ((p as any)?.patch || {}) as any
+                          const patch = ((p as any)?.patch || {})
                           return (
-                            <div key={`${i}-${String((p as any)?.id || title)}`} className="rounded-lg border border-border/60 bg-background p-2">
+                            <div key={String((p as any)?.id || title)} className="rounded-lg border border-border/60 bg-background p-2">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="text-[11px] font-medium text-foreground/90">{title}</div>
@@ -1467,8 +1492,8 @@ export function Sidebar({ variant = 'panel' }: { variant?: SidebarVariant } = {}
 
                     {previewData?.recommendations?.length ? (
                       <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-                        {(previewData.recommendations || []).slice(0, 8).map((r, i) => (
-                          <div key={`${i}-${String(r).slice(0, 12)}`} className="flex gap-2">
+                        {(previewData.recommendations || []).slice(0, 8).map((r) => (
+                          <div key={String(r)} className="flex gap-2">
                             <span className="font-mono text-muted-foreground/70">-</span>
                             <span className="flex-1">{String(r)}</span>
                           </div>

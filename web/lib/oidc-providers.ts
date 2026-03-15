@@ -20,14 +20,18 @@ function readEnv(name: string): string {
   return String(process.env[name] || '').trim()
 }
 
+function trimPrimitiveString(raw: unknown): string {
+  if (typeof raw === 'string') return raw.trim()
+  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw).trim()
+  return ''
+}
+
 function normalizeIssuer(raw: unknown): string {
-  return String(raw || '')
-    .trim()
-    .replace(/\/+$/, '')
+  return trimPrimitiveString(raw).replace(/\/+$/, '')
 }
 
 function normalizeProviderId(raw: unknown): string {
-  const id = String(raw || '').trim()
+  const id = trimPrimitiveString(raw)
   if (!id) return ''
   if (id.length > 64) return ''
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id)) return ''
@@ -53,7 +57,7 @@ function parseAuthParams(raw: unknown): Record<string, string> {
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
       const key = String(k || '').trim()
       if (!key) continue
-      const value = String(v ?? '').trim()
+      const value = trimPrimitiveString(v)
       if (!value) continue
       out[key] = value
     }
@@ -85,11 +89,11 @@ export function getOidcPublicProvidersFromEnv(): OidcProviderPublic[] {
     const id = normalizeProviderId(obj.id)
     if (!id || seen.has(id)) continue
     const issuer = normalizeIssuer(obj.issuer)
-    const clientId = String(obj.client_id || '').trim()
+    const clientId = trimPrimitiveString(obj.client_id)
     if (!issuer || !clientId) continue
 
-    const name = String(obj.name || '').trim() || undefined
-    const scopes = String(obj.scopes || '').trim() || undefined
+    const name = trimPrimitiveString(obj.name) || undefined
+    const scopes = trimPrimitiveString(obj.scopes) || undefined
     const authParams = parseAuthParams(obj.auth_params)
 
     seen.add(id)
@@ -140,13 +144,25 @@ export function getOidcServerProvidersFromEnv(): OidcProviderServer[] {
     const id = normalizeProviderId(obj.id)
     if (!id || seen.has(id)) continue
     const issuer = normalizeIssuer(obj.issuer)
-    const clientId = String(obj.client_id || '').trim()
+    const clientId = trimPrimitiveString(obj.client_id)
     if (!issuer || !clientId) continue
 
-    const name = String(obj.name || '').trim() || undefined
-    const secret = String(obj.client_secret || '').trim() || undefined
-    const rawMethod = String(obj.client_auth_method || '').trim().toLowerCase()
-    const clientAuthMethod = rawMethod === 'post' ? 'post' : rawMethod === 'basic' ? 'basic' : undefined
+    const name = trimPrimitiveString(obj.name) || undefined
+    const secret = trimPrimitiveString(obj.client_secret) || undefined
+    const rawMethod = trimPrimitiveString(obj.client_auth_method).toLowerCase()
+    const clientAuthMethod = (() => {
+    if (rawMethod === 'post') {
+        return 'post';
+    }
+    else {
+        if (rawMethod === 'basic') {
+            return 'basic';
+        }
+        else {
+            return undefined;
+        }
+    }
+})()
 
     seen.add(id)
     out.push({
@@ -169,9 +185,7 @@ export function getOidcServerProvidersFromEnv(): OidcProviderServer[] {
         issuer,
         client_id: clientId,
         client_secret: String(readEnv('OIDC_CLIENT_SECRET') || '').trim() || undefined,
-        client_auth_method: (String(readEnv('OIDC_CLIENT_AUTH_METHOD') || '').trim().toLowerCase() === 'post' ? 'post' : 'basic') as
-          | 'basic'
-          | 'post',
+        client_auth_method: (String(readEnv('OIDC_CLIENT_AUTH_METHOD') || '').trim().toLowerCase() === 'post' ? 'post' : 'basic'),
       })
     }
   }
@@ -191,4 +205,3 @@ export function resolveOidcServerProvider(providerId?: string | null): OidcProvi
   if (providers.length === 1) return providers[0]
   return null
 }
-

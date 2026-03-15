@@ -6,7 +6,7 @@ can share a common schema without importing heavy runtime modules.
 """
 
 
-from typing import Any, Dict, List, Literal, Optional, Protocol, TypedDict
+from typing import Any, Literal, Protocol, TypedDict
 
 
 class Citation(TypedDict, total=False):
@@ -19,32 +19,32 @@ class Citation(TypedDict, total=False):
     vector_score: float
     bm25_score: float
     keyword_score: float
-    rerank_score: Optional[float]
-    retrieval_score: Optional[float]
-    reranker_provider: Optional[str]
-    rerank_elapsed_sec: Optional[float]
-    rerank_model_used: Optional[str]
+    rerank_score: float | None
+    retrieval_score: float | None
+    reranker_provider: str | None
+    rerank_elapsed_sec: float | None
+    rerank_model_used: str | None
     retrieval_mode: str
     vector_backend: str
     retrieval_elapsed_sec: float
     hit_type: str
-    img_id: Optional[str]
-    img_url: Optional[str]
+    img_id: str | None
+    img_url: str | None
     has_image: bool
 
 
 class PipelineResult(TypedDict, total=False):
     answer: str
-    citations: List[Citation]
-    model_used: Optional[str]
-    route: Optional[str]
-    routing_reason: Optional[str]
-    metrics: Dict[str, Any]
+    citations: list[Citation]
+    model_used: str | None
+    route: str | None
+    routing_reason: str | None
+    metrics: dict[str, Any]
 
 
 class StreamEvent(TypedDict):
     type: Literal["citations", "token", "done", "error", "route"]
-    data: Dict[str, Any]
+    data: dict[str, Any]
 
 
 class RAGPipeline(Protocol):

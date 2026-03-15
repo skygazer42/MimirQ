@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -42,7 +42,7 @@ class _DummyDB:
             obj.chunk_count = 0
         if getattr(obj, "total_characters", None) is None:
             obj.total_characters = 0
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if getattr(obj, "created_at", None) is None:
             obj.created_at = now
         if getattr(obj, "updated_at", None) is None:
@@ -72,16 +72,16 @@ def test_patch_user_metadata_emits_audit_log(monkeypatch):  # noqa: ANN001
         status="completed",
         processing_progress=100,
         doc_metadata={},
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     doc.chunk_count = 0
     doc.total_characters = 0
 
     # Avoid permission/DB lookups in unit test.
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module.DatasetService, "get_dataset", lambda *args, **kwargs: object(), raising=True)
-    monkeypatch.setattr(documents_module.DatasetService, "assert_dataset_writable", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(documents_module.DatasetService, "assert_dataset_writable", lambda *_args, **_kwargs: None, raising=True)
 
     events: list[dict] = []
 
@@ -138,15 +138,15 @@ def test_patch_pipeline_emits_audit_log(monkeypatch):  # noqa: ANN001
         status="completed",
         processing_progress=100,
         doc_metadata={},
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     doc.chunk_count = 0
     doc.total_characters = 0
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *args, **kwargs: None, raising=True)
-    monkeypatch.setattr(documents_module.DatasetService, "get_dataset", lambda *args, **kwargs: object(), raising=True)
-    monkeypatch.setattr(documents_module.DatasetService, "assert_dataset_writable", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.DatasetService, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
+    monkeypatch.setattr(documents_module.DatasetService, "assert_dataset_writable", lambda *_args, **_kwargs: None, raising=True)
 
     events: list[dict] = []
 

@@ -9,15 +9,15 @@ function stripInlineMarkdown(text: string): string {
   let out = text || ''
 
   // Images: ![alt](url) -> alt
-  out = out.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+  out = out.replaceAll(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
   // Links: [text](url) -> text
-  out = out.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+  out = out.replaceAll(/\[([^\]]+)\]\([^)]+\)/g, '$1')
   // Inline code: `code` -> code
-  out = out.replace(/`([^`]+)`/g, '$1')
+  out = out.replaceAll(/`([^`]+)`/g, '$1')
   // Emphasis markers: ** / __ / * / _
-  out = out.replace(/(\*\*|__|\*|_)/g, '')
+  out = out.replaceAll(/(\*\*|__|\*|_)/g, '')
   // HTML tags
-  out = out.replace(/<[^>]+>/g, '')
+  out = out.replaceAll(/<[^>]+>/g, '')
 
   return out.trim()
 }
@@ -30,16 +30,16 @@ export function slugifyHeading(text: string): string {
     return raw
       .toLowerCase()
       .normalize('NFKD')
-      .replace(/[^\p{L}\p{N}]+/gu, '-')
-      .replace(/-{2,}/g, '-')
-      .replace(/^-+|-+$/g, '')
+      .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
+      .replaceAll(/-{2,}/g, '-')
+      .replaceAll(/^-+|-+$/g, '')
   } catch {
     // Fallback for environments without unicode property escapes (very unlikely in modern browsers)
     return raw
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/-{2,}/g, '-')
-      .replace(/^-+|-+$/g, '')
+      .replaceAll(/[^a-z0-9]+/g, '-')
+      .replaceAll(/-{2,}/g, '-')
+      .replaceAll(/^-+|-+$/g, '')
   }
 }
 
@@ -106,11 +106,11 @@ export function scrollToElementId(
   id: string,
   options: { behavior?: ScrollBehavior; block?: ScrollLogicalPosition } = {}
 ): boolean {
-  if (typeof window === 'undefined') return false
+  if (typeof globalThis.window === 'undefined') return false
   const key = (id || '').replace(/^#/, '').trim()
   if (!key) return false
 
-  const el = window.document.getElementById(key)
+  const el = globalThis.window.document.getElementById(key)
   if (!el) return false
 
   const behavior = options.behavior ?? 'smooth'
@@ -120,14 +120,14 @@ export function scrollToElementId(
 }
 
 export function flashElementId(id: string, className: string, durationMs = 900): void {
-  if (typeof window === 'undefined') return
+  if (typeof globalThis.window === 'undefined') return
   const key = (id || '').replace(/^#/, '').trim()
   if (!key) return
-  const el = window.document.getElementById(key)
+  const el = globalThis.window.document.getElementById(key)
   if (!el) return
 
   el.classList.add(...className.split(/\s+/g).filter(Boolean))
-  window.setTimeout(() => {
+  globalThis.window.setTimeout(() => {
     el.classList.remove(...className.split(/\s+/g).filter(Boolean))
   }, Math.max(0, Number(durationMs) || 0))
 }

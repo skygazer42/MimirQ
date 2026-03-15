@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 
@@ -70,7 +71,7 @@ def test_kg_ranking_features_help_ltr_rerank(tmp_path: Path, monkeypatch: pytest
     spec = LTRFeatureSpec.v2()
     rows = []
     for anchored, label in ((1.0, 1), (0.0, 0)):
-        feats = {k: 0.0 for k in spec.feature_names}
+        feats = dict.fromkeys(spec.feature_names, 0.0)
         feats["kg_evidence_anchored"] = float(anchored)
         rows.append({"features": feats, "label": int(label)})
 
@@ -99,6 +100,7 @@ def test_kg_ranking_features_help_ltr_rerank(tmp_path: Path, monkeypatch: pytest
     monkeypatch.setattr(orch_mod, "hybrid_retriever", _FakeRetriever(docs=[main_doc]), raising=True)
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
+        await asyncio.sleep(0)  # Sonar S7503
         assert query
         assert tenant_id is not None
         assert document_ids

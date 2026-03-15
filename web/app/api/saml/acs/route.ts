@@ -68,6 +68,11 @@ function buildErrorState(message: string): SamlBridgeState {
   return { kind: 'error', error }
 }
 
+function getFormString(form: FormData, key: string): string {
+  const value = form.get(key)
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 export async function POST(req: NextRequest) {
   if (!isSamlEnabled()) {
     return jsonNoStore({ error: 'saml_disabled' }, { status: 404 })
@@ -78,14 +83,14 @@ export async function POST(req: NextRequest) {
     return redirectWithBridgeState(req, buildErrorState('Invalid SAML request'))
   }
 
-  const samlResponse = String(form.get('SAMLResponse') || '').trim()
+  const samlResponse = getFormString(form, 'SAMLResponse')
   if (!samlResponse) {
     return redirectWithBridgeState(req, buildErrorState('Missing SAMLResponse'))
   }
 
-  const relayState = String(form.get('RelayState') || '').trim() || undefined
+  const relayState = getFormString(form, 'RelayState') || undefined
   const requestUrl = new URL(req.url)
-  const providerId = String(form.get('provider_id') || requestUrl.searchParams.get('provider_id') || '').trim() || undefined
+  const providerId = getFormString(form, 'provider_id') || requestUrl.searchParams.get('provider_id')?.trim() || undefined
 
   const backendRes = await fetch(`${API_V1_BASE_URL}/auth/saml/exchange`, {
     method: 'POST',

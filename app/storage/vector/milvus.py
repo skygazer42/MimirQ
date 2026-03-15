@@ -9,7 +9,7 @@ Provides two usage modes:
 import logging
 import re
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 from uuid import UUID
 
 from app.core.config import settings
@@ -79,10 +79,10 @@ _MILVUS_FILTER_KEY_ALIASES: dict[str, str] = {
 
 
 def _sanitize_milvus_metadata_filter(
-    metadata_filter: Optional[Dict[str, Any]],
+    metadata_filter: dict[str, Any] | None,
     *,
-    allowed_fields: Optional[set[str]] = None,
-) -> Dict[str, Any]:
+    allowed_fields: set[str] | None = None,
+) -> dict[str, Any]:
     """
     Return a safe, best-effort filter spec that only contains supported keys.
 
@@ -95,7 +95,7 @@ def _sanitize_milvus_metadata_filter(
         return {}
 
     allowed = allowed_fields or set(_MILVUS_ALLOWED_FILTER_FIELDS)
-    cleaned: Dict[str, Any] = {}
+    cleaned: dict[str, Any] = {}
     for raw_key, condition in metadata_filter.items():
         if not isinstance(raw_key, str):
             continue
@@ -125,12 +125,12 @@ def _coerce_milvus_metadata_value(value: Any) -> Any:
     return str(value)[:_MILVUS_MAX_VARCHAR_BYTES]
 
 
-def _normalize_milvus_metadata_batch(metadatas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _normalize_milvus_metadata_batch(metadatas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Ensure consistent keys and Milvus-compatible values across a batch."""
     if not metadatas:
         return metadatas
 
-    schema_meta: Dict[str, Any] = {}
+    schema_meta: dict[str, Any] = {}
     for k, v in (metadatas[0] or {}).items():
         schema_meta[str(k)] = _coerce_milvus_metadata_value(v)
 
@@ -207,7 +207,7 @@ def _chunk_in_list_values(
     return batches
 
 
-def _milvus_value_expr(field: str, value: Any) -> Optional[str]:
+def _milvus_value_expr(field: str, value: Any) -> str | None:
     if field in _MILVUS_NUMERIC_FIELDS:
         try:
             return str(int(value))
@@ -218,10 +218,10 @@ def _milvus_value_expr(field: str, value: Any) -> Optional[str]:
     return None
 
 
-def _milvus_in_list_expr(field: str, values: Any) -> Optional[str]:
+def _milvus_in_list_expr(field: str, values: Any) -> str | None:
     if not isinstance(values, (list, tuple, set)):
         return None
-    items: List[str] = []
+    items: list[str] = []
     for v in values:
         expr = _milvus_value_expr(field, v)
         if expr is None:
@@ -232,12 +232,12 @@ def _milvus_in_list_expr(field: str, values: Any) -> Optional[str]:
     return f"[{', '.join(items)}]"
 
 
-def _build_milvus_metadata_expr(metadata_filter: Optional[Dict[str, Any]]) -> Optional[str]:
+def _build_milvus_metadata_expr(metadata_filter: dict[str, Any] | None) -> str | None:
     """Best-effort translation of metadata_filter into Milvus expr (AND semantics)."""
     if not metadata_filter or not isinstance(metadata_filter, dict):
         return None
 
-    parts: List[str] = []
+    parts: list[str] = []
     for key, condition in metadata_filter.items():
         if not isinstance(key, str):
             continue
@@ -314,7 +314,7 @@ def _init_embedding_model():
     )
 
 
-def _get_milvus_connection_args() -> Dict[str, Any]:
+def _get_milvus_connection_args() -> dict[str, Any]:
     """Get Milvus connection configuration."""
     return {
         "host": settings.MILVUS_HOST,
@@ -324,12 +324,12 @@ def _get_milvus_connection_args() -> Dict[str, Any]:
     }
 
 
-def _get_milvus_index_params() -> Dict[str, Any]:
+def _get_milvus_index_params() -> dict[str, Any]:
     """Get Milvus index configuration."""
     return MilvusConfig.get_index_params()
 
 
-def _get_milvus_search_params() -> Dict[str, Any]:
+def _get_milvus_search_params() -> dict[str, Any]:
     """Get Milvus search configuration."""
     return MilvusConfig.get_search_params()
 
@@ -378,14 +378,14 @@ class MilvusAdapter:
 
     def add_vectors(
         self,
-        items: List[Dict[str, Any]],
-        embeddings: Optional[List[List[float]]] = None,
+        items: list[dict[str, Any]],
+        embeddings: list[list[float]] | None = None,
         *,
         batch_size: int = 1000,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         upsert: bool = True,
         **kwargs: Any,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Batch write vectors (supports directly writing pre-computed embeddings to avoid duplicate embedding).
 
@@ -413,9 +413,9 @@ class MilvusAdapter:
             getattr(self._store, "_vector_field", self.vector_field),
         }
 
-        texts: List[str] = []
-        metadatas: List[Dict[str, Any]] = []
-        ids: List[str] = []
+        texts: list[str] = []
+        metadatas: list[dict[str, Any]] = []
+        ids: list[str] = []
         for item in items:
             ids.append(str(item["id"]))
             texts.append((item.get("content") or "")[:65_000])
@@ -444,7 +444,7 @@ class MilvusAdapter:
 
         # Ensure collection initialized (schema/index/search params/load).
         if not isinstance(getattr(self._store, "col", None), Collection):
-            init_kwargs: Dict[str, Any] = {"embeddings": embeddings, "metadatas": metadatas}
+            init_kwargs: dict[str, Any] = {"embeddings": embeddings, "metadatas": metadatas}
             partition_names = getattr(self._store, "partition_names", None)
             if partition_names:
                 init_kwargs["partition_names"] = partition_names
@@ -458,7 +458,7 @@ class MilvusAdapter:
             self._store._init(**init_kwargs)  # type: ignore[attr-defined]
 
         # Build insert columns (match LangChain Milvus.insert behavior).
-        insert_dict: Dict[str, List[Any]] = {
+        insert_dict: dict[str, list[Any]] = {
             self._store._text_field: texts,  # type: ignore[attr-defined]
             self._store._vector_field: embeddings,  # type: ignore[attr-defined]
         }
@@ -475,13 +475,13 @@ class MilvusAdapter:
                     keys = (
                         [x for x in fields if x != self._store._primary_field]  # type: ignore[attr-defined]
                         if getattr(self._store, "auto_id", False)
-                        else [x for x in fields]
+                        else list(fields)
                     )
                     if key in keys:
                         insert_dict.setdefault(key, []).append(value)
 
         total_count = len(embeddings)
-        pks: List[str] = []
+        pks: list[str] = []
         assert isinstance(self._store.col, Collection)
         for i in range(0, total_count, batch_size):
             end = min(i + batch_size, total_count)
@@ -505,7 +505,7 @@ class MilvusAdapter:
 
         return pks
 
-    def delete(self, ids: List[str]) -> None:
+    def delete(self, ids: list[str]) -> None:
         """Delete vectors with specified IDs."""
         if not ids:
             return
@@ -515,11 +515,11 @@ class MilvusAdapter:
 
     def search(
         self,
-        query_vector: List[float],
+        query_vector: list[float],
         top_k: int = 10,
-        expr: Optional[str] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        expr: str | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Vector similarity search.
 
@@ -566,7 +566,7 @@ class MilvusAdapter:
         ]
 
 
-_milvus_adapter_cache: Dict[Tuple[str, str, str], MilvusAdapter] = {}
+_milvus_adapter_cache: dict[tuple[str, str, str], MilvusAdapter] = {}
 _milvus_adapter_cache_lock = threading.Lock()
 
 
@@ -643,11 +643,11 @@ class MilvusVectorStore:
 
     def _build_expr(
         self,
-        document_ids: Optional[List[UUID]] = None,
-        tenant_id: Optional[UUID] = None,
-    ) -> Optional[str]:
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
+    ) -> str | None:
         """Build a Milvus filter expression."""
-        expr_parts: List[str] = []
+        expr_parts: list[str] = []
         if tenant_id:
             expr_parts.append(f'tenant_id == "{str(tenant_id)}"')
         if document_ids:
@@ -666,10 +666,10 @@ class MilvusVectorStore:
 
     def add_documents(
         self,
-        documents: List[Dict[str, Any]],
+        documents: list[dict[str, Any]],
         document_id: UUID,
         tenant_id: UUID,
-    ) -> List[str]:
+    ) -> list[str]:
         """Add document chunks to Milvus (returns vector id list)."""
         self._ensure_store()
         assert self._store is not None
@@ -716,9 +716,9 @@ class MilvusVectorStore:
                 pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
             return [str(pk) for pk in pks]
 
-        texts: List[str] = []
-        metadatas: List[Dict[str, Any]] = []
-        ids: List[str] = []
+        texts: list[str] = []
+        metadatas: list[dict[str, Any]] = []
+        ids: list[str] = []
 
         for idx, doc in enumerate(documents):
             content = (doc.get("content") or "")[:65_535]
@@ -778,10 +778,10 @@ class MilvusVectorStore:
         query: str,
         top_k: int = 5,
         score_threshold: float = 0.7,
-        document_ids: Optional[List[UUID]] = None,
-        tenant_id: Optional[UUID] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Vector similarity search (text query)."""
         self._ensure_store()
         assert self._store is not None
@@ -819,7 +819,7 @@ class MilvusVectorStore:
                 pass
             results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=base_expr)
 
-        formatted: List[Dict[str, Any]] = []
+        formatted: list[dict[str, Any]] = []
         for doc, score in results:
             if score < score_threshold:
                 continue
@@ -856,7 +856,7 @@ class MilvusVectorStore:
 
         return formatted
 
-    def delete_by_document_id(self, document_id: UUID, tenant_id: Optional[UUID] = None) -> None:
+    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         """Delete all vectors for a given document."""
         self._ensure_store()
         assert self._store is not None
@@ -873,8 +873,8 @@ class MilvusVectorStore:
         self,
         *,
         document_id: UUID,
-        tenant_id: Optional[UUID] = None,
-        metadata_filter: Optional[Dict[str, Any]] = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> None:
         """
         Delete vectors for a given document, scoped by a metadata_filter (best-effort).
@@ -909,10 +909,10 @@ class MilvusVectorStore:
 
     def fetch_existing_ids(
         self,
-        ids: List[str],
+        ids: list[str],
         *,
         max_ids_per_query: int = 256,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> set[str]:
         """
         Best-effort existence check for a list of vector primary keys.
@@ -981,8 +981,8 @@ class MilvusVectorStore:
         dataset_id: UUID,
         limit: int = 2000,
         offset: int = 0,
-        timeout: Optional[float] = None,
-    ) -> List[str]:
+        timeout: float | None = None,
+    ) -> list[str]:
         """
         Best-effort listing of vector ids for a dataset.
 

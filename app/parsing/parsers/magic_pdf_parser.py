@@ -14,7 +14,6 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import List, Optional
 
 from langchain_core.documents import Document
 
@@ -39,7 +38,7 @@ class MagicPDFParser:
             "or set MAGIC_PDF_CLI to the full path of the executable."
         )
 
-    def _build_artifact_root(self, file_path: Path, document_id: Optional[str]) -> Path:
+    def _build_artifact_root(self, file_path: Path, document_id: str | None) -> Path:
         # Keep artifacts alongside the uploaded file so downstream stages can
         # access generated images before cleanup.
         run_id = (document_id or file_path.stem or "magicpdf").strip()
@@ -99,10 +98,10 @@ class MagicPDFParser:
         self,
         file_path: Path,
         *,
-        dataset_id: Optional[str] = None,  # kept for interface parity
-        document_id: Optional[str] = None,
+        dataset_id: str | None = None,  # kept for interface parity
+        document_id: str | None = None,
         **_kwargs,
-    ) -> List[Document]:
+    ) -> list[Document]:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")

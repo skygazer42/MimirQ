@@ -7,7 +7,6 @@ package to avoid the legacy `app/rag/tools.py` name collision.
 
 from __future__ import annotations
 
-from typing import List, Optional
 from uuid import UUID
 
 from app.core.config import settings
@@ -18,9 +17,9 @@ def search_knowledge_base(
     query: str,
     top_k: int = 5,
     *,
-    dataset_id: Optional[str] = None,
-    document_ids: Optional[List[str]] = None,
-    tenant_id: Optional[str] = None,
+    dataset_id: str | None = None,
+    document_ids: list[str] | None = None,
+    tenant_id: str | None = None,
 ) -> str:
     """
     Search for relevant document chunks in the knowledge base.

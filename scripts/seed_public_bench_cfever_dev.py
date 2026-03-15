@@ -30,10 +30,11 @@ import json
 import re
 import sys
 import time
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 from uuid import UUID, uuid5
 
 from huggingface_hub import HfApi, hf_hub_download
@@ -693,7 +694,7 @@ def main(argv: list[str] | None = None) -> int:
         seeded = res.get("seeded") if isinstance(res, dict) else None
         manifest = {
             "schema": MANIFEST_SCHEMA,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "bench_key": BENCH_KEY,
             "tenant_id": str(tenant_id),
             "dataset_id": str(dataset_id),

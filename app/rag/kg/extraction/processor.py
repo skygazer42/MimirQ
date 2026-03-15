@@ -1,7 +1,7 @@
 """
 Simplified event processor: call LLM to extract events and entities from chunk text.
 """
-from typing import Any, Dict, List
+from typing import Any
 
 from app.core.config import settings
 from app.models.document import DocumentChunk
@@ -23,12 +23,12 @@ class EventProcessor:
 
     async def extract_from_sections(
         self,
-        sections: List[DocumentChunk],
+        sections: list[DocumentChunk],
         batch_index: int,
         *,
         max_events: int = 3,
         max_entities_per_event: int = 30,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Extract events from a list of chunks. Returns list of dicts:
         {"title": str, "summary": str, "content": str, "entities": [{"name":..., "type":...}, ...], "chunk_id": uuid}
@@ -112,7 +112,7 @@ class EventProcessor:
         result = await self.llm_client.chat_with_schema(messages, response_schema=schema, temperature=0.2)
         events_data = result.get("events", []) if isinstance(result, dict) else []
 
-        events: List[Dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
         for raw in events_data:
             if not isinstance(raw, dict):
                 continue

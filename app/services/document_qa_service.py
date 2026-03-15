@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func
@@ -45,15 +45,15 @@ class DocumentQAGenerateResult:
     mode: str
     deleted: int
     created: int
-    chunk_ids: List[UUID]
-    preview: List[Dict[str, str]]
+    chunk_ids: list[UUID]
+    preview: list[dict[str, str]]
 
 
 _Q_RE = re.compile(r"^\s*(?:q|question|问|問題|问题)\s*[:：]\s*(.+?)\s*$", flags=re.IGNORECASE)
 _A_RE = re.compile(r"^\s*(?:a|answer|答)\s*[:：]\s*(.*)\s*$", flags=re.IGNORECASE)
 
 
-def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> List[QAPair]:
+def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> list[QAPair]:
     """
     Extract Q/A pairs from plain text using lightweight heuristics.
 
@@ -65,9 +65,9 @@ def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> List[QAPair]:
     if not raw or max_pairs <= 0:
         return []
 
-    pairs: List[QAPair] = []
+    pairs: list[QAPair] = []
     question: str | None = None
-    answer_lines: List[str] = []
+    answer_lines: list[str] = []
     saw_answer_prefix = False
 
     for line in raw.splitlines():
@@ -114,7 +114,7 @@ def _llm_enabled() -> bool:
     return bool((settings.LLM_API_KEY or "").strip())
 
 
-def _generate_pairs(source_text: str, *, num_pairs: int, prefer_llm: bool) -> tuple[str, List[QAPair]]:
+def _generate_pairs(source_text: str, *, num_pairs: int, prefer_llm: bool) -> tuple[str, list[QAPair]]:
     """
     Generate Q/A pairs via LLM (when enabled) or extract via regex as fallback.
 
@@ -145,7 +145,7 @@ def _generate_pairs(source_text: str, *, num_pairs: int, prefer_llm: bool) -> tu
     return ("extract", pairs) if pairs else ("none", [])
 
 
-def generate_qa_pairs_with_llm(text: str, *, num_pairs: int) -> List[QAPair]:
+def generate_qa_pairs_with_llm(text: str, *, num_pairs: int) -> list[QAPair]:
     """
     Generate Q/A pairs using the configured LLM (OpenAI-compatible).
 
@@ -196,7 +196,7 @@ Return JSON:
     if not isinstance(pairs_raw, list):
         return []
 
-    pairs: List[QAPair] = []
+    pairs: list[QAPair] = []
     for item in pairs_raw:
         if len(pairs) >= num_pairs:
             break
@@ -210,11 +210,11 @@ Return JSON:
     return pairs
 
 
-def _active_pipeline_hash(doc_meta: Dict[str, Any]) -> str:
+def _active_pipeline_hash(doc_meta: dict[str, Any]) -> str:
     return str((doc_meta or {}).get("active_pipeline_hash") or (doc_meta or {}).get("pipeline_hash") or "").strip()
 
 
-def _active_doc_pipeline_key(document_id: UUID, doc_meta: Dict[str, Any]) -> str:
+def _active_doc_pipeline_key(document_id: UUID, doc_meta: dict[str, Any]) -> str:
     h = _active_pipeline_hash(doc_meta)
     return f"{document_id}:{h}" if h else str(document_id)
 
@@ -247,7 +247,7 @@ def _get_source_text(db: Session, *, tenant_id: UUID, document_id: UUID, max_cha
         .limit(2000)
         .all()
     )
-    buf: List[str] = []
+    buf: list[str] = []
     total = 0
     for (content,) in chunks:
         s = (content or "").strip()
@@ -291,7 +291,7 @@ def generate_and_index_document_qa(
             .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == document_id)
             .all()
         )
-        qa_ids: List[UUID] = []
+        qa_ids: list[UUID] = []
         for cid, meta in rows:
             m = meta if isinstance(meta, dict) else {}
             if str(m.get("doc_pipeline_key") or "").strip() != active_key:
@@ -385,15 +385,15 @@ def generate_and_index_document_qa(
 
     # 5) Prepare chunk payloads.
     source_label = str(getattr(document, "filename", "") or "document").strip()[:500] or "document"
-    records: List[Dict[str, Any]] = []
-    chunk_ids: List[UUID] = []
-    chunk_metas: List[Dict[str, Any]] = []
+    records: list[dict[str, Any]] = []
+    chunk_ids: list[UUID] = []
+    chunk_metas: list[dict[str, Any]] = []
 
     for pair in pairs:
         cid = uuid.uuid4()
         content = f"Q: {pair.question.strip()}\nA: {pair.answer.strip()}".strip()
 
-        meta: Dict[str, Any] = {
+        meta: dict[str, Any] = {
             "tenant_id": str(tenant_id),
             "document_id": str(document_id),
             "chunk_id": str(cid),
@@ -416,7 +416,7 @@ def generate_and_index_document_qa(
         next_index += 1
 
     # 6) Vector indexing (best-effort).
-    vector_ids: List[Optional[str]] = [None] * len(records)
+    vector_ids: list[str | None] = [None] * len(records)
     try:
         ids = list(get_vector_store().add_documents(records, document_id, tenant_id))
         for i, vid in enumerate(ids):
@@ -436,7 +436,7 @@ def generate_and_index_document_qa(
         vector_ids = [None] * len(records)
 
     # 7) Persist chunks.
-    db_chunks: List[DocumentChunk] = []
+    db_chunks: list[DocumentChunk] = []
     for i, cid in enumerate(chunk_ids):
         chunk = DocumentChunk(
             id=cid,
@@ -489,7 +489,7 @@ def generate_and_index_document_qa(
     except Exception:
         db.rollback()
 
-    preview: List[Dict[str, str]] = []
+    preview: list[dict[str, str]] = []
     for pair in pairs[: max(0, min(int(preview_pairs or 0), 20))]:
         preview.append({"question": pair.question.strip(), "answer": pair.answer.strip()})
 

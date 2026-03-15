@@ -10,7 +10,7 @@ import asyncio
 import contextlib
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -96,7 +96,7 @@ async def _job_result(
         "ok": bool(ok),
         "reason": str(reason).strip() if reason is not None else None,
         "elapsed_sec": round(max(0.0, float(time.perf_counter() - started_at)), 3),
-        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "finished_at": datetime.now(UTC).isoformat(),
         "progress": progress or _job_progress(stage="completed" if ok else "failed", done=1 if ok else 0, total=1),
     }
     for key, value in fields.items():
@@ -774,7 +774,7 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                 if run is not None:
                     run.status = "failed"
                     run.error_message = str(exc)[:200]
-                    run.finished_at = datetime.now(timezone.utc)
+                    run.finished_at = datetime.now(UTC)
                     db.commit()
             except SQLAlchemyError:
                 pass
@@ -894,7 +894,7 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                 if run is not None:
                     run.status = "failed"
                     run.error_message = str(exc)[:200]
-                    run.finished_at = datetime.now(timezone.utc)
+                    run.finished_at = datetime.now(UTC)
                     db.commit()
             except SQLAlchemyError:
                 pass

@@ -4,14 +4,14 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SUITE_NAME = "perf-v1"
 
 
 def _utc_compact_timestamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     payload = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "suite": SUITE_NAME,
         "base_url": args.base_url,
         "llm_mock": llm_mock,

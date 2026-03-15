@@ -8,7 +8,7 @@ interface MagneticProps {
   strength?: number
 }
 
-export function Magnetic({ children, strength = 0.5 }: MagneticProps) {
+export function Magnetic({ children, strength = 0.5 }: Readonly<MagneticProps>) {
   const ref = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
   const [isFinePointer, setIsFinePointer] = useState(false)
@@ -24,9 +24,9 @@ export function Magnetic({ children, strength = 0.5 }: MagneticProps) {
   const enabled = !shouldReduceMotion && isFinePointer
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (typeof globalThis.window === "undefined") return
 
-    const mq = window.matchMedia("(pointer: fine)")
+    const mq = globalThis.window.matchMedia("(pointer: fine)")
     const update = () => setIsFinePointer(mq.matches)
     update()
 

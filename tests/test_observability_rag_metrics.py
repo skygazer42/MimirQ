@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -27,7 +28,7 @@ def test_observability_rag_metrics_summary(monkeypatch, tmp_path):  # noqa: ANN0
     from app.core.config import settings
 
     # Bypass role checks.
-    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *args, **kwargs: None, raising=True)
+    monkeypatch.setattr(obs_mod, "_ensure_admin", lambda *_args, **_kwargs: None, raising=True)
 
     tenant_id = uuid.uuid4()
     now_ms = int(time.time() * 1000)
@@ -122,7 +123,7 @@ def test_observability_rag_metrics_summary(monkeypatch, tmp_path):  # noqa: ANN0
     assert (body.get("hit_type_counts") or {}).get("keyword") == 1
 
     assert body.get("retriever_overfetch_count") == 1
-    assert body.get("retriever_overfetch_avg_ratio") == 4.0
+    assert body.get("retriever_overfetch_avg_ratio") == pytest.approx(4.0)
     assert body.get("retriever_filtered_acl_total") == 2
     assert body.get("retrieval_candidate_cache_hit_count") == 0
     assert (body.get("retrieval_candidate_cache_skip_reason_counts") or {}).get("missing_corpus_cache_token") == 1

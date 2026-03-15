@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import sys
 import types
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -53,6 +54,7 @@ def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
             return None
 
     async def _noop_async(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        await asyncio.sleep(0)  # Sonar S7503
         return None
 
     documents.LocalHtmlIngestRequest = _DummyRequest
@@ -549,7 +551,7 @@ def test_sync_connector_config_from_run_persists_last_modified():  # noqa: ANN00
             "connector_id": "confluence_space",
             "status": "completed",
             "error_message": None,
-            "started_at": datetime.now(timezone.utc),
+            "started_at": datetime.now(UTC),
             "finished_at": None,
             "stats": {"config_id": str(cfg_id), "last_modified": "2026-02-14T00:00:00.000Z"},
         },
@@ -602,7 +604,7 @@ def test_sync_connector_config_from_run_persists_cursor_for_github_repo():  # no
             "connector_id": "github_repo",
             "status": "completed",
             "error_message": None,
-            "started_at": datetime.now(timezone.utc),
+            "started_at": datetime.now(UTC),
             "finished_at": None,
             "stats": {"config_id": str(cfg_id), "cursor": 12},
         },
@@ -659,7 +661,7 @@ def test_sync_connector_config_from_run_versions_state_and_emits_audit(monkeypat
 
     monkeypatch.setattr(audit_log_service, "audit_log_event", _capture_audit, raising=True)
 
-    finished_at = datetime(2026, 3, 7, 12, 0, tzinfo=timezone.utc)
+    finished_at = datetime(2026, 3, 7, 12, 0, tzinfo=UTC)
     run = type(
         "_Run",
         (),

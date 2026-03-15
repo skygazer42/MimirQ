@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from app.parsing.factory import ParserFactory
 
@@ -49,7 +49,7 @@ def sample_pdf_text_pages(
             idxs.append(page_count // 2 + 1)
         if page_count >= 2:
             idxs.append(page_count)
-        idxs = sorted(set([i for i in idxs if 1 <= i <= page_count]))
+        idxs = sorted({i for i in idxs if 1 <= i <= page_count})
         idxs = idxs[: max(0, int(max_pages or 0))] if int(max_pages or 0) > 0 else idxs
 
         samples: list[dict[str, Any]] = []
@@ -120,7 +120,7 @@ def suggest_parser_backends(
     file_ext: str,
     *,
     parser_factory: ParserFactory,
-    pdf_is_scanned: Optional[bool] = None,
+    pdf_is_scanned: bool | None = None,
 ) -> list[str]:
     """
     Suggest a small ordered list of parser backends for user retry actions.
@@ -176,7 +176,7 @@ def build_parse_failure_diagnostics(
     parser_factory = ParserFactory()
 
     pdf_sample: dict[str, Any] | None = None
-    pdf_is_scanned: Optional[bool] = None
+    pdf_is_scanned: bool | None = None
     if ext == ".pdf":
         pdf_sample = sample_pdf_text_pages(Path(file_path), max_pages=3, max_excerpt_chars=240)
         pdf_is_scanned = bool(pdf_sample.get("is_scanned")) if isinstance(pdf_sample, dict) else None

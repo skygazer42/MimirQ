@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.services.queryset_health_service import (
     build_queryset_health_snapshot,
     update_queryset_health_history,
@@ -92,22 +94,22 @@ def test_build_queryset_health_snapshot_includes_profile_hash_and_trend() -> Non
     assert snap.get("fixture_hash") == "fx123"
     assert snap.get("retrieval_mode") == "keyword"
     assert int(snap.get("top_k") or 0) == 5
-    assert snap.get("metrics", {}).get("hit_at_k") == 0.85
+    assert snap.get("metrics", {}).get("hit_at_k") == pytest.approx(0.85)
 
     trend = snap.get("trend") or {}
     assert trend.get("hit_at_k_delta") == -0.05
     assert trend.get("mrr_delta") == -0.02
     assert trend.get("ndcg_at_k_delta") == -0.02
-    assert trend.get("p95_latency_ms_delta") == 3.0
-    assert trend.get("miss_rate_delta") == 0.2
-    assert trend.get("weak_hit_rate_delta") == 0.2
+    assert trend.get("p95_latency_ms_delta") == pytest.approx(3.0)
+    assert trend.get("miss_rate_delta") == pytest.approx(0.2)
+    assert trend.get("weak_hit_rate_delta") == pytest.approx(0.2)
     assert trend.get("policy_changed") is False
 
     risk = snap.get("risk") or {}
     assert risk.get("miss_count") == 1
-    assert risk.get("miss_rate") == 0.2
+    assert risk.get("miss_rate") == pytest.approx(0.2)
     assert risk.get("weak_hit_count") == 2
-    assert risk.get("weak_hit_rate") == 0.4
+    assert risk.get("weak_hit_rate") == pytest.approx(0.4)
     hard_cases = risk.get("hard_cases")
     assert isinstance(hard_cases, list)
     assert [row.get("id") for row in hard_cases[:2]] == ["q-1", "q-4"]

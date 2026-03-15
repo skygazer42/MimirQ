@@ -2,6 +2,7 @@
 
 import type { AuthResponse, AuthToken, UserProfile } from '@/types'
 import { setAuthSession } from '@/lib/auth-storage'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { generateOauthState, generatePkceCodeVerifier, pkceChallengeFromVerifier, tryDecodeJwtPayload } from '@/lib/oidc-pkce'
 import { getOidcPublicProvidersFromEnv, resolveOidcPublicProvider } from '@/lib/oidc-providers'
 
@@ -63,11 +64,11 @@ function resolveRedirectUri(): string {
   const override = readEnv('NEXT_PUBLIC_OIDC_REDIRECT_URI')
   if (override) return override
 
-  if (typeof window === 'undefined') {
+  if (typeof globalThis.window === 'undefined') {
     // Only used client-side; keep a stable placeholder for type safety.
     return '/auth/oidc/callback'
   }
-  return `${window.location.origin}/auth/oidc/callback`
+  return `${globalThis.window.location.origin}/auth/oidc/callback`
 }
 
 function resolveScopes(): string {
@@ -81,7 +82,7 @@ function txStorageKey(state: string): string {
 
 function sessionSet(key: string, value: string) {
   try {
-    window.sessionStorage.setItem(key, value)
+    globalThis.window.sessionStorage.setItem(key, value)
   } catch {
     // ignore
   }
@@ -89,7 +90,7 @@ function sessionSet(key: string, value: string) {
 
 function sessionGet(key: string): string | null {
   try {
-    return window.sessionStorage.getItem(key)
+    return globalThis.window.sessionStorage.getItem(key)
   } catch {
     return null
   }
@@ -97,7 +98,7 @@ function sessionGet(key: string): string | null {
 
 function sessionDel(key: string) {
   try {
-    window.sessionStorage.removeItem(key)
+    globalThis.window.sessionStorage.removeItem(key)
   } catch {
     // ignore
   }
@@ -114,7 +115,7 @@ async function discover(issuer: string): Promise<OidcDiscovery> {
   if (!res.ok) {
     throw new Error(`oidc_discovery_failed_${res.status}`)
   }
-  const data = (await res.json().catch(() => null)) as any
+  const data = (await res.json().catch(() => null))
   if (!data || typeof data !== 'object') {
     throw new Error('oidc_discovery_invalid')
   }
@@ -155,7 +156,7 @@ function buildUserFromClaims(claims: any): UserProfile {
 }
 
 function normalizeTokenType(raw: unknown): string {
-  const t = String(raw || '').trim()
+  const t = toTrimmedPrimitiveString(raw)
   return t ? t.toLowerCase() : 'bearer'
 }
 
@@ -166,7 +167,7 @@ export function isOidcEnabled(): boolean {
 }
 
 export async function startOidcLogin(params: { providerId?: string; returnTo?: string } = {}): Promise<void> {
-  if (typeof window === 'undefined') {
+  if (typeof globalThis.window === 'undefined') {
     throw new Error('oidc_browser_only')
   }
 
@@ -228,11 +229,11 @@ export async function startOidcLogin(params: { providerId?: string; returnTo?: s
     if (key) url.searchParams.set(key, String(value ?? ''))
   }
 
-  window.location.assign(url.toString())
+  globalThis.window.location.assign(url.toString())
 }
 
 export async function completeOidcLogin(params: { code: string; state: string }): Promise<{ session: AuthResponse; returnTo: string }> {
-  if (typeof window === 'undefined') {
+  if (typeof globalThis.window === 'undefined') {
     throw new Error('oidc_browser_only')
   }
 
@@ -294,7 +295,7 @@ export async function completeOidcLogin(params: { code: string; state: string })
         redirect_uri: tx.redirect_uri,
       }),
     })
-    const serverData = (await serverRes.json().catch(() => null)) as any
+    const serverData = (await serverRes.json().catch(() => null))
     if (!serverRes.ok) {
       const msg = String(serverData?.error || '').trim()
       const originalMsg = String(err?.message || '').trim()

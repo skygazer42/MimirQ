@@ -2,14 +2,13 @@
 Backend metadata schemas.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
 class BuildMeta(BaseModel):
-    sha: Optional[str] = None
-    time: Optional[str] = None
+    sha: str | None = None
+    time: str | None = None
 
 
 class MetaFeatureFlags(BaseModel):
