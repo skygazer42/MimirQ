@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { pipelineApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import type { GovernanceProfileCreate, GovernanceProfileListResponse, GovernanceProfileSummary } from '@/types'
 import { ProfileEditorDrawer } from '@/components/governance-profiles/profile-editor-drawer'
 import { buildGovernanceProfileCreateFromExisting, buildIngestionPolicyExportFilename } from '@/lib/governance-profile-utils'
@@ -54,8 +54,7 @@ export function GovernanceProfilesPage() {
 
   // Keep it simple: fetch on param change.
   useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(load())
   }, [params])
 
   const items: GovernanceProfileSummary[] = resp?.items || []
@@ -65,14 +64,14 @@ export function GovernanceProfilesPage() {
     if (!ref) return
     try {
       const blob = await pipelineApi.exportGovernanceProfile(ref)
-      const safe = (p.key || 'profile').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 120)
+      const safe = (p.key || 'profile').replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 120)
       const filename = `${safe}.governance-profile.json`
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = filename
       a.click()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       toast.success('已导出')
     } catch (err: any) {
       toast.error(formatApiError(err, '导出失败'))
@@ -90,7 +89,7 @@ export function GovernanceProfilesPage() {
       a.href = url
       a.download = filename
       a.click()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       toast.success('已导出 ingestion policy')
     } catch (err: any) {
       toast.error(formatApiError(err, '导出 ingestion policy 失败'))
@@ -104,7 +103,7 @@ export function GovernanceProfilesPage() {
     try {
       await pipelineApi.deleteGovernanceProfile(ref)
       toast.success('已删除')
-      void load()
+      detachPromise(load())
     } catch (err: any) {
       toast.error(formatApiError(err, '删除失败'))
     }
@@ -121,8 +120,8 @@ export function GovernanceProfilesPage() {
           setEditorOpen(next)
           if (!next) setEditorSeedCreate(null)
         }}
-        onSaved={() => void load()}
-        onCreated={() => void load()}
+        onSaved={() => detachPromise(load())}
+        onCreated={() => detachPromise(load())}
       />
       <PageScaffold
         title="治理 Profiles"
@@ -140,19 +139,19 @@ export function GovernanceProfilesPage() {
               onChange={(e) => {
                 const file = e.target.files?.[0]
                 if (!file) return
-                void (async () => {
+                detachPromise((async () => {
                   setImporting(true)
                   try {
                     const result = await pipelineApi.importGovernanceProfiles(file, importOverwrite)
                     toast.success(`导入完成：created=${result.created}, updated=${result.updated}`)
-                    void load()
+                    detachPromise(load())
                   } catch (err: any) {
                     toast.error(formatApiError(err, '导入失败'))
                   } finally {
                     setImporting(false)
                     if (importInputRef.current) importInputRef.current.value = ''
                   }
-                })()
+                })())
               }}
             />
             <Button
@@ -183,7 +182,7 @@ export function GovernanceProfilesPage() {
               variant="outline"
               className="gap-2 rounded-xl"
               disabled={loading}
-              onClick={() => void load()}
+              onClick={() => detachPromise(load())}
             >
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
               刷新
@@ -265,7 +264,7 @@ export function GovernanceProfilesPage() {
                       className="rounded-xl"
                       aria-label="复制 Profile"
                       onClick={() =>
-                        void (async () => {
+                        detachPromise((async () => {
                           const ref = p.is_system ? p.key : String(p.id || '').trim() || p.key
                           if (!ref) return
                           try {
@@ -277,7 +276,7 @@ export function GovernanceProfilesPage() {
                           } catch (err: any) {
                             toast.error(formatApiError(err, '复制失败'))
                           }
-                        })()
+                        })())
                       }
                     >
                       <Copy className="w-4 h-4" />
@@ -288,7 +287,7 @@ export function GovernanceProfilesPage() {
                       variant="outline"
                       className="rounded-xl"
                       aria-label="导出 Profile JSON"
-                      onClick={() => void exportOne(p)}
+                      onClick={() => detachPromise(exportOne(p))}
                     >
                       <Download className="w-4 h-4" />
                     </Button>
@@ -298,7 +297,7 @@ export function GovernanceProfilesPage() {
                       variant="outline"
                       className="rounded-xl"
                       aria-label="导出为 ingestion policy"
-                      onClick={() => void exportAsIngestionPolicy(p)}
+                      onClick={() => detachPromise(exportAsIngestionPolicy(p))}
                     >
                       <Download className="w-4 h-4" />
                     </Button>
@@ -317,7 +316,7 @@ export function GovernanceProfilesPage() {
                       cancelLabel="返回"
                       confirmVariant="destructive"
                       confirmDisabled={p.is_system}
-                      onConfirm={() => void deleteOne(p)}
+                      onConfirm={() => detachPromise(deleteOne(p))}
                     >
                       <Button
                         type="button"

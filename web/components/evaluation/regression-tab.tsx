@@ -11,35 +11,26 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { datasetApi, evaluationApi } from '@/lib/api-client'
-import type { Dataset, RegressionRunCreate } from '@/types'
+import type { Dataset, RegressionRun, RegressionRunCreate, RegressionRunDetail } from '@/types'
 import { Button } from '@/components/ui/button'
 import { TestCaseManager } from '@/components/test-case-manager'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
-import {
-  Sparkles,
-  Play,
-  Loader2,
-  BarChart3,
-  CheckCircle2,
-  XCircle,
-} from 'lucide-react'
+import { Sparkles, Loader2, BarChart3, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { formatApiError } from '@/lib/api-errors'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 
 const METRIC_OPTIONS = [
-  { key: 'faithfulness', label: 'Faithfulness（忠实度）' },
-  { key: 'response_relevancy', label: 'Response Relevancy（相关性）' },
-  { key: 'context_precision', label: 'Context Precision（无参考）' },
-] as const
+    { key: 'faithfulness', label: 'Faithfulness（忠实度）' },
+    { key: 'response_relevancy', label: 'Response Relevancy（相关性）' },
+    { key: 'context_precision', label: 'Context Precision（无参考）' },
+]
 
-export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) {
+export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: boolean }>) {
   const [showGenerationDialog, setShowGenerationDialog] = useState(false)
-  const [isRunning, setIsRunning] = useState(false)
-  const [selectedCaseIds, setSelectedCaseIds] = useState<string[]>([])
 
   // Dataset scope (required by backend for cases and runs)
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -54,9 +45,9 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
   const [retrievalOnly, setRetrievalOnly] = useState(false)
 
   // 运行历史
-  const [runs, setRuns] = useState<any[]>([])
+  const [runs, setRuns] = useState<RegressionRun[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string>('')
-  const [runDetail, setRunDetail] = useState<any | null>(null)
+  const [runDetail, setRunDetail] = useState<RegressionRunDetail | null>(null)
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
 
   const visibleRuns = useMemo(() => {
@@ -69,7 +60,6 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
     if (!selectedDatasetId) return
     if (selectedRunId && visibleRuns.some((r) => r?.id === selectedRunId)) return
     setSelectedRunId(visibleRuns?.[0]?.id || '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDatasetId, visibleRuns])
 
   // Load datasets for dataset-scoped regression UX.
@@ -91,11 +81,10 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
         if (!cancelled) setIsLoadingDatasets(false)
       }
     }
-    void run()
+    detachPromise(run())
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 加载运行历史
@@ -117,7 +106,6 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
 
   useEffect(() => {
     loadRuns()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 加载运行详情
@@ -128,7 +116,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
     }
 
     let cancelled = false
-    let timer: any = null
+    let timer: ReturnType<typeof setTimeout> | null = null
 
     const fetchDetail = async () => {
       try {
@@ -199,24 +187,30 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
     .map(([k, v]) => ({ key: k, value: Number(v) }))
 
   const runStatus = runDetail?.run?.status
-  const statusBadge = !runStatus ? null : (
-    runStatus === 'completed' ? (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
-        <CheckCircle2 className="w-3.5 h-3.5" />
+  const statusBadge = runStatus ? (
+    (() => {
+    if (runStatus === 'completed') {
+        return (<span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
+        <CheckCircle2 className="w-3.5 h-3.5"/>
         已完成
-      </span>
-    ) : runStatus === 'failed' ? (
-      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20">
-        <XCircle className="w-3.5 h-3.5" />
+      </span>);
+    }
+    else {
+        if (runStatus === 'failed') {
+            return (<span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20">
+        <XCircle className="w-3.5 h-3.5"/>
         失败
-      </span>
-	    ) : (
-	      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-info/10 text-info border border-info/20">
-	        <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+      </span>);
+        }
+        else {
+            return (<span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-info/10 text-info border border-info/20">
+	        <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"/>
 	        运行中
-	      </span>
-	    )
-	  )
+	      </span>);
+        }
+    }
+})()
+	  ) : null
 
   return (
     <div className={cn("flex-1 flex flex-col overflow-hidden", embedded && "overflow-visible")}>
@@ -427,47 +421,47 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
               </div>
             </div>
 	            <div className="max-h-40 overflow-y-auto overscroll-contain no-scrollbar">
-		              {isLoadingRuns ? (
-		                <div className="flex items-center justify-center py-8">
-		                  <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
-		                </div>
-		              ) : visibleRuns.length === 0 ? (
-	                <div className="text-center py-8 text-muted-foreground text-sm">
+		              {(() => {
+    if (isLoadingRuns) {
+        return (<div className="flex items-center justify-center py-8">
+		                  <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
+		                </div>);
+    }
+    else {
+        if (visibleRuns.length === 0) {
+            return (<div className="text-center py-8 text-muted-foreground text-sm">
 	                  暂无运行记录
-	                </div>
-	              ) : (
-	                visibleRuns.map((run) => (
-	                  <button
-                    key={run.id}
-	                    onClick={() => setSelectedRunId(run.id)}
-	                    className={cn(
-	                      'w-full text-left p-4 border-b border-border hover:bg-muted/50 transition-colors motion-reduce:transition-none',
-	                      selectedRunId === run.id && 'bg-primary/10'
-	                    )}
-	                  >
+	                </div>);
+        }
+        else {
+            return (visibleRuns.map((run) => (<button key={run.id} onClick={() => setSelectedRunId(run.id)} className={cn('w-full text-left p-4 border-b border-border hover:bg-muted/50 transition-colors motion-reduce:transition-none', selectedRunId === run.id && 'bg-primary/10')}>
 	                    <div className="flex items-center justify-between gap-2">
 	                      <div className="text-sm font-medium text-foreground truncate">
 	                        运行 {run.id.slice(0, 8)}
 	                      </div>
-	                      <span
-	                        className={cn(
-	                          'text-[11px] px-2 py-0.5 rounded-full border',
-	                          run.status === 'completed'
-	                            ? 'bg-success/10 text-success border-success/20'
-	                            : run.status === 'failed'
-	                            ? 'bg-destructive/10 text-destructive border-destructive/20'
-	                            : 'bg-info/10 text-info border-info/20'
-	                        )}
-	                      >
+	                      <span className={cn('text-[11px] px-2 py-0.5 rounded-full border', (() => {
+                    if (run.status === 'completed') {
+                        return 'bg-success/10 text-success border-success/20';
+                    }
+                    else {
+                        if (run.status === 'failed') {
+                            return 'bg-destructive/10 text-destructive border-destructive/20';
+                        }
+                        else {
+                            return 'bg-info/10 text-info border-info/20';
+                        }
+                    }
+                })())}>
 	                        {run.status}
 	                      </span>
 	                    </div>
 	                    <div className="mt-2 text-xs text-muted-foreground">
 	                      {new Date(run.created_at).toLocaleString()}
 	                    </div>
-	                  </button>
-	                ))
-	              )}
+	                  </button>)));
+        }
+    }
+})()}
 	            </div>
 	          </div>
 
@@ -517,7 +511,7 @@ export function RegressionTestTab({ embedded = false }: { embedded?: boolean }) 
 	                  测试明细 ({runDetail.items.length})
 	                </div>
 	                <div className="space-y-2">
-	                  {runDetail.items.map((item: any, index: number) => (
+	                  {runDetail.items.map((item, index: number) => (
 	                    <div
 	                      key={item.id}
 	                      className="p-3 rounded-lg border border-border bg-muted/40"

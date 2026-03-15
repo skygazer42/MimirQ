@@ -13,6 +13,22 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
 import { kgApi } from '@/lib/api-client'
+import { detachPromise } from '@/lib/utils'
+
+type SnapshotPayload = Record<string, unknown>
+
+type SnapshotDiffEntityRow = {
+  type?: string
+  delta?: number | null
+  [key: string]: unknown
+}
+
+type SnapshotDiffPayload = {
+  delta?: SnapshotPayload | null
+  entity_types_delta?: SnapshotDiffEntityRow[] | null
+  [key: string]: unknown
+}
+
 
 function prettyJson(value: unknown): string {
   try {
@@ -25,7 +41,7 @@ function prettyJson(value: unknown): string {
 function sanitizeFilename(name: string): string {
   const trimmed = String(name || '').trim()
   const base = trimmed || 'kg-snapshots'
-  return base.replace(/[\\/:*?"<>|]+/g, '_')
+  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function downloadJson(value: unknown, filename: string): void {
@@ -36,7 +52,7 @@ function downloadJson(value: unknown, filename: string): void {
   a.href = url
   a.download = filename
   a.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 async function copyToClipboard(text: string, label: string): Promise<void> {
@@ -68,9 +84,9 @@ export function KGSnapshotsPage() {
   const [pipelineHashB, setPipelineHashB] = useState('')
   const [documentIdsRaw, setDocumentIdsRaw] = useState('')
 
-  const [snapA, setSnapA] = useState<any | null>(null)
-  const [snapB, setSnapB] = useState<any | null>(null)
-  const [diff, setDiff] = useState<any | null>(null)
+  const [snapA, setSnapA] = useState<SnapshotPayload | null>(null)
+  const [snapB, setSnapB] = useState<SnapshotPayload | null>(null)
+  const [diff, setDiff] = useState<SnapshotDiffPayload | null>(null)
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const [isRunning, setIsRunning] = useState(false)
 
@@ -81,7 +97,7 @@ export function KGSnapshotsPage() {
   const diffJson = useMemo(() => prettyJson(diff ?? { hint: '点击“对比”生成 diff（mimirq.kg_snapshot_diff.v1）' }), [diff])
 
   const diffDelta = useMemo(() => {
-    const d = diff as any
+    const d = diff
     const delta = d?.delta && typeof d.delta === 'object' ? d.delta : null
     const entityTypesDelta = Array.isArray(d?.entity_types_delta) ? d.entity_types_delta : []
     return { delta, entityTypesDelta }
@@ -216,7 +232,7 @@ export function KGSnapshotsPage() {
                 <Button
                   variant="secondary"
                   className="gap-2"
-                  onClick={() => void runExport('a')}
+                  onClick={() => detachPromise(runExport('a'))}
                   disabled={isRunning}
                 >
                   导出 A 快照
@@ -224,12 +240,12 @@ export function KGSnapshotsPage() {
                 <Button
                   variant="secondary"
                   className="gap-2"
-                  onClick={() => void runExport('b')}
+                  onClick={() => detachPromise(runExport('b'))}
                   disabled={isRunning}
                 >
                   导出 B 快照
                 </Button>
-                <Button className="gap-2" onClick={() => void runCompare()} disabled={isRunning}>
+                <Button className="gap-2" onClick={() => detachPromise(runCompare())} disabled={isRunning}>
                   <GitCompare className="h-4 w-4" aria-hidden="true" />
                   对比
                 </Button>
@@ -251,12 +267,24 @@ export function KGSnapshotsPage() {
             <CardContent className="space-y-2">
               {diffDelta.delta ? (
                 <div className="grid gap-3 md:grid-cols-5">
-                  {(['docs', 'events', 'entities', 'links', 'relations'] as const).map((key) => {
-                    const a0 = Number((snapA as any)?.[key] ?? 0)
-                    const b0 = Number((snapB as any)?.[key] ?? 0)
-                    const d0 = Number((diffDelta.delta as any)?.[key] ?? b0 - a0)
+                  {(['docs', 'events', 'entities', 'links', 'relations']).map((key) => {
+                    const a0 = Number((snapA)?.[key] ?? 0)
+                    const b0 = Number((snapB)?.[key] ?? 0)
+                    const d0 = Number((diffDelta.delta)?.[key] ?? b0 - a0)
                     const sign = d0 > 0 ? '+' : ''
-                    const tone = d0 > 0 ? 'text-emerald-600' : d0 < 0 ? 'text-rose-600' : 'text-muted-foreground'
+                    const tone = (() => {
+    if (d0 > 0) {
+        return 'text-emerald-600';
+    }
+    else {
+        if (d0 < 0) {
+            return 'text-rose-600';
+        }
+        else {
+            return 'text-muted-foreground';
+        }
+    }
+})()
                     return (
                       <Card key={key} className="border-muted/60">
                         <CardHeader className="pb-2">
@@ -281,11 +309,23 @@ export function KGSnapshotsPage() {
                 <div className="rounded-md border bg-muted/20 p-3">
                   <div className="text-xs font-medium text-muted-foreground mb-2">entity_types_delta (top)</div>
                   <div className="grid gap-1 md:grid-cols-2">
-                    {diffDelta.entityTypesDelta.slice(0, 12).map((row: any) => {
+                    {diffDelta.entityTypesDelta.slice(0, 12).map((row) => {
                       const typ = String(row?.type || 'unknown')
                       const delta = Number(row?.delta ?? 0)
                       const sign = delta > 0 ? '+' : ''
-                      const tone = delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-muted-foreground'
+                      const tone = (() => {
+    if (delta > 0) {
+        return 'text-emerald-600';
+    }
+    else {
+        if (delta < 0) {
+            return 'text-rose-600';
+        }
+        else {
+            return 'text-muted-foreground';
+        }
+    }
+})()
                       return (
                         <div key={`${typ}:${delta}`} className="flex items-center justify-between gap-2 text-xs">
                           <div className="truncate">{typ}</div>
@@ -302,7 +342,7 @@ export function KGSnapshotsPage() {
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  onClick={() => void copyToClipboard(diffJson, 'diff JSON')}
+                  onClick={() => detachPromise(copyToClipboard(diffJson, 'diff JSON'))}
                 >
                   <Copy className="h-4 w-4" aria-hidden="true" />
                   复制
@@ -337,7 +377,7 @@ export function KGSnapshotsPage() {
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  onClick={() => void copyToClipboard(snapAJson, 'snapshot A JSON')}
+                  onClick={() => detachPromise(copyToClipboard(snapAJson, 'snapshot A JSON'))}
                 >
                   <Copy className="h-4 w-4" aria-hidden="true" />
                   复制
@@ -370,7 +410,7 @@ export function KGSnapshotsPage() {
                   variant="outline"
                   size="sm"
                   className="gap-2"
-                  onClick={() => void copyToClipboard(snapBJson, 'snapshot B JSON')}
+                  onClick={() => detachPromise(copyToClipboard(snapBJson, 'snapshot B JSON'))}
                 >
                   <Copy className="h-4 w-4" aria-hidden="true" />
                   复制

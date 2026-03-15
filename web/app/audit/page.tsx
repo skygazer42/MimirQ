@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { auditApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import type { AuditLogItem, AuditLogListResponse } from '@/types'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 
 function fmtTs(ts: string) {
   try {
@@ -85,8 +85,7 @@ export default function AuditLogsPage() {
   }
 
   useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(load())
   }, [params])
 
   const items: AuditLogItem[] = resp?.items || []
@@ -109,7 +108,7 @@ export default function AuditLogsPage() {
                 size="sm"
                 variant="outline"
                 className="gap-2 rounded-xl"
-                onClick={() => void load()}
+                onClick={() => detachPromise(load())}
                 disabled={loading}
               >
                 <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
@@ -236,85 +235,60 @@ export default function AuditLogsPage() {
           </Panel>
 
           <Panel padding="lg" className="mt-4">
-            {!resp ? (
-              <div className="text-sm text-muted-foreground">
-                无法加载审计日志。请确认你是 owner/admin，并且后端已更新到包含 /api/v1/audit 的版本。
-              </div>
-            ) : items.length === 0 ? (
-              <div className="text-sm text-muted-foreground">暂无记录</div>
-            ) : (
-              <div className="space-y-2">
+            {(() => {
+    if (resp) {
+        if (items.length === 0) {
+            return (<div className="text-sm text-muted-foreground">暂无记录</div>);
+        }
+        else {
+            return (<div className="space-y-2">
                 {items.map((it) => {
-                  const expanded = expandedId === it.id
-                  const resource = [it.resource_type, it.resource_id].filter(Boolean).join(': ')
-                  return (
-                    <div
-                      key={it.id}
-                      className={cn(
-                        'rounded-xl border border-border/60 bg-background hover:bg-muted/10 transition-colors',
-                        expanded && 'border-primary/30'
-                      )}
-                    >
+                    const expanded = expandedId === it.id;
+                    const resource = [it.resource_type, it.resource_id].filter(Boolean).join(': ');
+                    return (<div key={it.id} className={cn('rounded-xl border border-border/60 bg-background hover:bg-muted/10 transition-colors', expanded && 'border-primary/30')}>
                       <div className="p-3 flex items-start justify-between gap-3">
-                        <button
-                          type="button"
-                          className="flex-1 text-left min-w-0"
-                          onClick={() => setExpandedId(expanded ? null : it.id)}
-                        >
+                        <button type="button" className="flex-1 text-left min-w-0" onClick={() => setExpandedId(expanded ? null : it.id)}>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span className="font-mono">{fmtTs(it.created_at)}</span>
                             {it.actor_id ? <span className="font-mono">actor: {it.actor_id}</span> : null}
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="text-sm font-semibold text-foreground">{it.action}</span>
-                            {resource ? (
-                              <span className="text-xs text-muted-foreground font-mono">{resource}</span>
-                            ) : null}
-                            {it.request_id ? (
-                              <span className="text-xs text-muted-foreground font-mono">req: {shorten(it.request_id)}</span>
-                            ) : null}
+                            {resource ? (<span className="text-xs text-muted-foreground font-mono">{resource}</span>) : null}
+                            {it.request_id ? (<span className="text-xs text-muted-foreground font-mono">req: {shorten(it.request_id)}</span>) : null}
                           </div>
                         </button>
                         <div className="flex items-center gap-2">
-                          {it.request_id ? (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 gap-2"
-                              onClick={() => {
-                                setSkip(0)
-                                setFilters((p) => ({ ...p, request_id: it.request_id || '' }))
-                              }}
-                              title="按 request_id 过滤"
-                            >
-                              <Search className="w-4 h-4" />
+                          {it.request_id ? (<Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => {
+                                setSkip(0);
+                                setFilters((p) => ({ ...p, request_id: it.request_id || '' }));
+                            }} title="按 request_id 过滤">
+                              <Search className="w-4 h-4"/>
                               req
-                            </Button>
-                          ) : null}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-2"
-                            onClick={() => void copyText(JSON.stringify(it.details || {}, null, 2), '已复制 details JSON')}
-                          >
-                            <Copy className="w-4 h-4" />
+                            </Button>) : null}
+                          <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => detachPromise(copyText(JSON.stringify(it.details || {}, null, 2), '已复制 details JSON'))}>
+                            <Copy className="w-4 h-4"/>
                             JSON
                           </Button>
                         </div>
                       </div>
 
-                      {expanded ? (
-                        <div className="px-3 pb-3">
+                      {expanded ? (<div className="px-3 pb-3">
                           <pre className="text-xs whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-muted/20 p-3 max-h-[320px] overflow-auto">
                             {JSON.stringify(it.details || {}, null, 2)}
                           </pre>
-                        </div>
-                      ) : null}
-                    </div>
-                  )
+                        </div>) : null}
+                    </div>);
                 })}
-              </div>
-            )}
+              </div>);
+        }
+    }
+    else {
+        return (<div className="text-sm text-muted-foreground">
+                无法加载审计日志。请确认你是 owner/admin，并且后端已更新到包含 /api/v1/audit 的版本。
+              </div>);
+    }
+})()}
           </Panel>
         </PageScaffold>
       </div>

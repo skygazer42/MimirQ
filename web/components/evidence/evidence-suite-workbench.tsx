@@ -19,7 +19,7 @@ import { datasetApi, evidenceApi, feedbackApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { buildWhyMissedReport } from '@/lib/evidence-why-missed'
 import { extractEvidenceNeedles, rankEvidenceCitations } from '@/lib/evidence-suggestions'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -48,6 +48,22 @@ import {
 } from '@/components/ui/alert-dialog'
 
 type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
+
+type EvidenceRetrieveResult = {
+  citations?: Citation[]
+  has_evidence?: boolean | null
+  abstain_triggered?: boolean | null
+  abstain_reason?: string | null
+  [key: string]: unknown
+}
+
+type EvidenceImportPack = {
+  citations?: Citation[]
+  selected_chunk_ids?: unknown[]
+  retrieval_profile?: string | null
+  version?: string | number | null
+  [key: string]: unknown
+}
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -117,7 +133,7 @@ function buildReferenceSources(citations: Citation[], selectedChunkIds: Set<stri
 }
 
 function safeIsoForFilename(ts: string) {
-  return (ts || new Date().toISOString()).replace(/[:.]/g, '-')
+  return (ts || new Date().toISOString()).replaceAll(/[:.]/g, '-')
 }
 
 function formatDurationSec(sec: unknown): string {
@@ -133,7 +149,7 @@ function formatDurationSec(sec: unknown): string {
 
 const EMPTY_CITATIONS: Citation[] = []
 
-export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId: string }) {
+export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ datasetId: string }>) {
   const datasetId = asDatasetId(datasetIdRaw)
 
   const [dataset, setDataset] = useState<Dataset | null>(null)
@@ -206,10 +222,10 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
   const [retrieving, setRetrieving] = useState(false)
   const [retrieveError, setRetrieveError] = useState<string | null>(null)
-  const [retrieveRes, setRetrieveRes] = useState<any | null>(null)
+  const [retrieveRes, setRetrieveRes] = useState<EvidenceRetrieveResult | null>(null)
   const [selectedChunkIds, setSelectedChunkIds] = useState<string[]>([])
 
-  const [importPack, setImportPack] = useState<any | null>(null)
+  const [importPack, setImportPack] = useState<EvidenceImportPack | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const [importSelectedChunkIds, setImportSelectedChunkIds] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -383,26 +399,25 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
   }, [hardcaseTags, loadHardcases, loadItems, selectedSuiteId])
 
   useEffect(() => {
-    void loadDataset()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(loadDataset())
   }, [datasetId])
 
   useEffect(() => {
-    void loadSuites()
+    detachPromise(loadSuites())
   }, [loadSuites])
 
   useEffect(() => {
-    void loadItems()
+    detachPromise(loadItems())
   }, [loadItems])
 
   useEffect(() => {
     if (!dashboardOpen) return
-    void loadDashboard()
+    detachPromise(loadDashboard())
   }, [dashboardOpen, loadDashboard])
 
   useEffect(() => {
     if (!hardcaseOpen) return
-    void loadHardcases()
+    detachPromise(loadHardcases())
   }, [hardcaseOpen, loadHardcases])
 
   const resetCreateSuiteForm = useCallback(() => {
@@ -542,7 +557,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     let ragSnapshot: any = { retrieval_profile: profile }
 
     if (createItemTab === 'retrieve') {
-      citations = (retrieveRes?.citations || []) as Citation[]
+      citations = retrieveRes?.citations || []
       selected = selectedChunkIds || []
       retrievalSnapshot = {
         ...retrieveRes,
@@ -551,7 +566,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
       }
       ragSnapshot = { retrieval_profile: profile, created_from: 'retrieve' }
     } else {
-      citations = (importPack?.citations || []) as Citation[]
+      citations = importPack?.citations || []
       selected = importSelectedChunkIds || []
       retrievalSnapshot = {
         ...importPack,
@@ -589,7 +604,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
       setItems((prev) => [created, ...(prev || [])])
       setSelectedItemId(String(created.id))
       // Refresh suite counts (best-effort)
-      void loadSuites()
+      detachPromise(loadSuites())
     } catch (e: any) {
       toast.error(formatApiError(e, '创建 Evidence Item 失败'))
     } finally {
@@ -627,8 +642,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
         toast.success(
           `导入完成：parsed=${res.parsed} created=${res.created} skipped=${res.skipped} errors=${(res.errors || []).length}`
         )
-        void loadItems()
-        void loadSuites()
+        detachPromise(loadItems())
+        detachPromise(loadSuites())
       } catch (e: any) {
         toast.error(formatApiError(e, '导入失败'))
       } finally {
@@ -644,7 +659,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     try {
       const res = await evidenceApi.exportSuite(String(selectedSuite.id), { include_archived_items: false })
       const safeTs = safeIsoForFilename(res?.exported_at)
-      const name = (selectedSuite.name || 'evidence-suite').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
+      const name = (selectedSuite.name || 'evidence-suite').replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
       downloadJson(`${name}.${safeTs}.json`, res)
       toast.success('已导出 Evidence Suite')
     } catch (e: any) {
@@ -660,7 +675,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
         max_items: 2000,
       })
       const safeTs = safeIsoForFilename(new Date().toISOString())
-      const name = (selectedSuite.name || 'evidence-suite').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
+      const name = (selectedSuite.name || 'evidence-suite').replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
       downloadBlob(`${name}.${safeTs}.ltr_training.zip`, blob)
       toast.success('已导出 LTR 训练数据')
     } catch (e: any) {
@@ -678,8 +693,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
       } else {
         toast.success(`同步完成：created=${res.created} updated=${res.updated} skipped=${res.skipped}`)
       }
-      void loadItems()
-      void loadSuites()
+      detachPromise(loadItems())
+      detachPromise(loadSuites())
     } catch (e: any) {
       toast.error(formatApiError(e, '同步失败'))
     }
@@ -691,7 +706,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
       const updated = await evidenceApi.archiveItem(itemId)
       setItems((prev) => (prev || []).map((it) => (it.id === itemId ? updated : it)))
       toast.success('已归档')
-      void loadSuites()
+      detachPromise(loadSuites())
     } catch (e: any) {
       toast.error(formatApiError(e, '归档失败'))
     }
@@ -703,7 +718,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
       const updated = await evidenceApi.reviewItem(itemId)
       setItems((prev) => (prev || []).map((it) => (it.id === itemId ? updated : it)))
       toast.success('已提交 Review')
-      void loadSuites()
+      detachPromise(loadSuites())
     } catch (e: any) {
       toast.error(formatApiError(e, '提交 Review 失败'))
     }
@@ -715,7 +730,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
       const updated = await evidenceApi.approveItem(itemId)
       setItems((prev) => (prev || []).map((it) => (it.id === itemId ? updated : it)))
       toast.success('已批准（approved）')
-      void loadSuites()
+      detachPromise(loadSuites())
     } catch (e: any) {
       toast.error(formatApiError(e, '批准失败'))
     }
@@ -733,8 +748,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     }
   }, [selectedSuite?.item_counts])
 
-  const retrieveCitations = useMemo(() => ((retrieveRes?.citations as Citation[] | undefined) ?? EMPTY_CITATIONS), [retrieveRes])
-  const importCitations = useMemo(() => ((importPack?.citations as Citation[] | undefined) ?? EMPTY_CITATIONS), [importPack])
+  const retrieveCitations = useMemo(() => retrieveRes?.citations ?? EMPTY_CITATIONS, [retrieveRes])
+  const importCitations = useMemo(() => importPack?.citations ?? EMPTY_CITATIONS, [importPack])
 
   const expectedNeedles = useMemo(() => extractEvidenceNeedles(newExpected), [newExpected])
   const retrieveRanked = useMemo(() => rankEvidenceCitations(retrieveCitations, expectedNeedles), [expectedNeedles, retrieveCitations])
@@ -804,7 +819,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
   useEffect(() => {
     if (!whyMissedOpen) return
-    void loadWhyMissedDrift()
+    detachPromise(loadWhyMissedDrift())
   }, [loadWhyMissedDrift, whyMissedOpen])
 
   const runWhyMissedRetrieve = useCallback(async () => {
@@ -881,7 +896,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
     if (!whyMissedReport) return
 
     const safeTs = safeIsoForFilename(new Date().toISOString())
-    const suiteName = (selectedSuite.name || 'evidence-suite').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
+    const suiteName = (selectedSuite.name || 'evidence-suite').replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
     const itemId = String(selectedItem.id).slice(0, 8)
     downloadJson(`${suiteName}.why-missed.${itemId}.${safeTs}.json`, {
       schema: 'mimirq.evidence_why_missed.v1',
@@ -934,7 +949,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
               size="icon"
               aria-label="刷新 Suites"
               className="size-9"
-              onClick={() => void loadSuites()}
+              onClick={() => detachPromise(loadSuites())}
               disabled={suitesLoading}
             >
               <RefreshCw className={cn('size-4', suitesLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
@@ -942,14 +957,14 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <label className="inline-flex items-center gap-2 select-none">
+            <div className="inline-flex items-center gap-2 select-none">
               <Checkbox
                 checked={includeArchivedSuites}
                 onCheckedChange={(v) => setIncludeArchivedSuites(Boolean(v))}
                 aria-label="包含已归档 suites"
               />
               包含已归档
-            </label>
+            </div>
             <span className="font-mono tabular-nums">{filteredSuites.length}</span>
           </div>
 
@@ -960,67 +975,53 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
           <div className="mt-3">
             <ScrollArea className="h-[420px] pr-2">
               <div className="space-y-2">
-                {suitesLoading ? (
-                  <div className="text-xs text-muted-foreground">加载中…</div>
-                ) : filteredSuites.length ? (
-                  filteredSuites.map((s) => {
-                    const active = s.id === selectedSuiteId
-                    const counts = (s as any)?.item_counts || {}
-                    const total = Number(counts?.total || 0)
-                    const approved = Number(counts?.approved || 0)
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        className={cn(
-                          'w-full text-left rounded-lg border px-3 py-2 transition-colors',
-                          active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30'
-                        )}
-                        onClick={() => {
-                          setSelectedSuiteId(String(s.id))
-                          setSelectedItemId('')
-                        }}
-                      >
+                {(() => {
+    if (suitesLoading) {
+        return (<div className="text-xs text-muted-foreground">加载中…</div>);
+    }
+    else {
+        if (filteredSuites.length) {
+            return (filteredSuites.map((s) => {
+                const active = s.id === selectedSuiteId;
+                const counts = (s as any)?.item_counts || {};
+                const total = Number(counts?.total || 0);
+                const approved = Number(counts?.approved || 0);
+                return (<button key={s.id} type="button" className={cn('w-full text-left rounded-lg border px-3 py-2 transition-colors', active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30')} onClick={() => {
+                        setSelectedSuiteId(String(s.id));
+                        setSelectedItemId('');
+                    }}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="text-sm font-medium text-foreground truncate">{s.name}</div>
-                            {s.description ? (
-                              <div className="mt-0.5 text-xs text-muted-foreground line-clamp-2 text-pretty">
+                            {s.description ? (<div className="mt-0.5 text-xs text-muted-foreground line-clamp-2 text-pretty">
                                 {s.description}
-                              </div>
-                            ) : null}
+                              </div>) : null}
                           </div>
                           <div className="flex flex-col items-end gap-1 flex-shrink-0">
                             <Badge variant="outline" className="font-mono tabular-nums">
                               {total}
                             </Badge>
-                            {approved ? (
-                              <Badge variant="soft" className="font-mono tabular-nums">
+                            {approved ? (<Badge variant="soft" className="font-mono tabular-nums">
                                 approved {approved}
-                              </Badge>
-                            ) : null}
+                              </Badge>) : null}
                           </div>
                         </div>
-                        {Array.isArray(s.tags) && s.tags.length ? (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {(s.tags || []).slice(0, 3).map((t) => (
-                              <Badge key={t} variant="secondary" className="text-[10px] font-mono">
+                        {Array.isArray(s.tags) && s.tags.length ? (<div className="mt-2 flex flex-wrap gap-1">
+                            {(s.tags || []).slice(0, 3).map((t) => (<Badge key={t} variant="secondary" className="text-[10px] font-mono">
                                 {t}
-                              </Badge>
-                            ))}
-                            {s.tags.length > 3 ? (
-                              <span className="text-[10px] text-muted-foreground font-mono">+{s.tags.length - 3}</span>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </button>
-                    )
-                  })
-                ) : (
-                  <div className="text-xs text-muted-foreground text-pretty">
+                              </Badge>))}
+                            {s.tags.length > 3 ? (<span className="text-[10px] text-muted-foreground font-mono">+{s.tags.length - 3}</span>) : null}
+                          </div>) : null}
+                      </button>);
+            }));
+        }
+        else {
+            return (<div className="text-xs text-muted-foreground text-pretty">
                     暂无 Suite。点击「新建」创建一个 Evidence Suite。
-                  </div>
-                )}
+                  </div>);
+        }
+    }
+})()}
               </div>
             </ScrollArea>
           </div>
@@ -1070,7 +1071,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 size="icon"
                 aria-label="刷新 Items"
                 className="size-9"
-                onClick={() => void loadItems()}
+                onClick={() => detachPromise(loadItems())}
                 disabled={!selectedSuiteId || itemsLoading}
               >
                 <RefreshCw className={cn('size-4', itemsLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
@@ -1086,31 +1087,22 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
           <div className="mt-3">
             <ScrollArea className="h-[420px] pr-2">
               <div className="space-y-2">
-                {!selectedSuiteId ? (
-                  <div className="text-xs text-muted-foreground text-pretty">选择一个 Suite 后即可查看/创建 Items。</div>
-                ) : itemsLoading ? (
-                  <div className="text-xs text-muted-foreground">加载中…</div>
-                ) : filteredItems.length ? (
-                  filteredItems.map((it) => {
-                    const active = it.id === selectedItemId
-                    return (
-                      <button
-                        key={it.id}
-                        type="button"
-                        className={cn(
-                          'w-full text-left rounded-lg border px-3 py-2 transition-colors',
-                          active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30'
-                        )}
-                        onClick={() => setSelectedItemId(String(it.id))}
-                      >
+                {(() => {
+    if (selectedSuiteId) {
+        if (itemsLoading) {
+            return (<div className="text-xs text-muted-foreground">加载中…</div>);
+        }
+        else {
+            if (filteredItems.length) {
+                return (filteredItems.map((it) => {
+                    const active = it.id === selectedItemId;
+                    return (<button key={it.id} type="button" className={cn('w-full text-left rounded-lg border px-3 py-2 transition-colors', active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30')} onClick={() => setSelectedItemId(String(it.id))}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="text-sm font-medium text-foreground line-clamp-2 text-pretty">
                               {it.query}
                             </div>
-                            {it.notes ? (
-                              <div className="mt-1 text-xs text-muted-foreground line-clamp-2 text-pretty">{it.notes}</div>
-                            ) : null}
+                            {it.notes ? (<div className="mt-1 text-xs text-muted-foreground line-clamp-2 text-pretty">{it.notes}</div>) : null}
                           </div>
                           <Badge variant={evidenceStatusBadgeVariant(it.status)} className="font-mono text-[10px] uppercase">
                             {it.status}
@@ -1118,14 +1110,20 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground font-mono tabular-nums">
                           <span>refs: {Array.isArray(it.reference_sources) ? it.reference_sources.length : 0}</span>
-                          <span>{String(it.updated_at || '').slice(0, 19).replace('T', ' ')}</span>
+                          <span>{String(it.updated_at || '').slice(0, 19).replaceAll('T', ' ')}</span>
                         </div>
-                      </button>
-                    )
-                  })
-                ) : (
-                  <div className="text-xs text-muted-foreground text-pretty">暂无 Items。点击「新建 Item」创建。</div>
-                )}
+                      </button>);
+                }));
+            }
+            else {
+                return (<div className="text-xs text-muted-foreground text-pretty">暂无 Items。点击「新建 Item」创建。</div>);
+            }
+        }
+    }
+    else {
+        return (<div className="text-xs text-muted-foreground text-pretty">选择一个 Suite 后即可查看/创建 Items。</div>);
+    }
+})()}
               </div>
             </ScrollArea>
           </div>
@@ -1154,7 +1152,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
-                  if (f) void handleImportQAFaq(f)
+                  if (f) detachPromise(handleImportQAFaq(f))
                 }}
               />
               <Button
@@ -1232,7 +1230,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>取消</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => void handleSyncSuite()} disabled={!selectedSuite?.id}>
+                    <AlertDialogAction onClick={() => detachPromise(handleSyncSuite())} disabled={!selectedSuite?.id}>
                       同步
                     </AlertDialogAction>
                   </AlertDialogFooter>
@@ -1263,11 +1261,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
           <Separator className="my-4" />
 
-          {!selectedItem ? (
-            <div className="text-sm text-muted-foreground text-pretty">
-              选择一个 Item 查看详情。你可以在 draft 状态下修改内容，然后提交 review → approve → sync。
-            </div>
-          ) : (
+          {selectedItem ? (
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -1286,14 +1280,14 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
                 <div className="flex flex-wrap items-center gap-2">
                   {selectedItem.status === 'draft' ? (
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => void handleReviewItem(String(selectedItem.id))}>
+                    <Button size="sm" variant="outline" className="gap-2" onClick={() => detachPromise(handleReviewItem(String(selectedItem.id)))}>
                       <Search className="size-4" aria-hidden="true" />
                       Review
                     </Button>
                   ) : null}
 
                   {selectedItem.status === 'reviewed' ? (
-                    <Button size="sm" className="gap-2" onClick={() => void handleApproveItem(String(selectedItem.id))}>
+                    <Button size="sm" className="gap-2" onClick={() => detachPromise(handleApproveItem(String(selectedItem.id)))}>
                       <ShieldCheck className="size-4" aria-hidden="true" />
                       Approve
                     </Button>
@@ -1320,7 +1314,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>取消</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => void handleArchiveItem(String(selectedItem.id))}>归档</AlertDialogAction>
+                        <AlertDialogAction onClick={() => detachPromise(handleArchiveItem(String(selectedItem.id)))}>归档</AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
@@ -1367,8 +1361,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 <Panel className="p-3">
                   <div className="space-y-2">
                     {(selectedItem.reference_sources || []).length ? (
-                      (selectedItem.reference_sources || []).map((r, idx) => (
-                        <div key={`${r.chunk_id}:${idx}`} className="rounded-md border border-border/60 p-2">
+                      (selectedItem.reference_sources || []).map((r) => (
+                        <div key={`${String(r.document_id)}:${String(r.chunk_id)}`} className="rounded-md border border-border/60 p-2">
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className="text-xs font-mono text-foreground truncate">
@@ -1403,6 +1397,10 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                   </Panel>
                 </div>
               ) : null}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground text-pretty">
+              选择一个 Item 查看详情。你可以在 draft 状态下修改内容，然后提交 review → approve → sync。
             </div>
           )}
         </Panel>
@@ -1443,14 +1441,14 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 </Select>
               </div>
 
-              <label className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
+              <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
                 <Checkbox
                   checked={hardcaseIncludeExisting}
                   onCheckedChange={(v) => setHardcaseIncludeExisting(Boolean(v))}
                   aria-label="Include existing items"
                 />
                 include existing
-              </label>
+              </div>
 
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">max candidates</span>
@@ -1478,7 +1476,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 variant="outline"
                 size="sm"
                 className="gap-2"
-                onClick={() => void loadHardcases()}
+                onClick={() => detachPromise(loadHardcases())}
                 disabled={!selectedSuiteId || hardcaseLoading}
               >
                 <RefreshCw className={cn('size-4', hardcaseLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
@@ -1495,39 +1493,34 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
           {hardcaseError ? <div className="text-xs text-destructive text-pretty">{hardcaseError}</div> : null}
 
           <ScrollArea className="max-h-[70vh] pr-3">
-            {hardcaseLoading ? (
-              <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
-                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            {(() => {
+    if (hardcaseLoading) {
+        return (<div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true"/>
                 loading…
-              </div>
-            ) : hardcaseRes ? (
-              <div className="space-y-3 py-1">
-                {!hardcaseRes.enabled ? (
-                  <Panel className="p-3">
-                    <div className="text-sm font-medium text-foreground">Metrics log disabled</div>
-                    <div className="mt-1 text-xs text-muted-foreground text-pretty">
-                      需要开启 <span className="font-mono">ENABLE_METRICS_LOG=true</span> 才能从 traces 中发现 hardcases。
-                    </div>
-                  </Panel>
-                ) : (hardcaseRes.candidates || []).length ? (
-                  (hardcaseRes.candidates || []).map((cand) => {
-                    const qh = String(cand.question_hash || '').trim()
-                    const fbIds = Array.isArray(cand.feedback_ids) ? cand.feedback_ids : []
-                    const reqIds = Array.isArray(cand.request_ids) ? cand.request_ids : []
-                    const errKinds = (cand.retrieval_error_kinds || {}) as Record<string, number>
-                    const errBadges = Object.entries(errKinds)
-                      .filter(([k, v]) => k && Number(v) > 0)
-                      .sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])))
-                      .slice(0, 4)
-
-                    const tmpl = (cand as any)?.rag_config_template || null
-                    const tmplKey = tmpl ? String(tmpl?.template_key || '').trim() : ''
-                    const tmplVer = tmpl && Number.isFinite(Number(tmpl?.version)) ? Number(tmpl.version) : null
-                    const tmplPatch = tmpl ? String(tmpl?.patch_hash || '').trim() : ''
-                    const tmplLabel = tmplKey ? `${tmplKey}${tmplVer !== null ? `@${tmplVer}` : ''}` : ''
-
-                    return (
-                      <Panel key={qh || JSON.stringify(cand)} className="p-3">
+              </div>);
+    }
+    else {
+        if (hardcaseRes) {
+            return (<div className="space-y-3 py-1">
+                {(() => {
+                    if (hardcaseRes.enabled) {
+                        if ((hardcaseRes.candidates || []).length) {
+                            return ((hardcaseRes.candidates || []).map((cand) => {
+                                const qh = String(cand.question_hash || '').trim();
+                                const fbIds = Array.isArray(cand.feedback_ids) ? cand.feedback_ids : [];
+                                const reqIds = Array.isArray(cand.request_ids) ? cand.request_ids : [];
+                                const errKinds = (cand.retrieval_error_kinds || {}) as Record<string, number>;
+                                const errBadges = Object.entries(errKinds)
+                                    .filter(([k, v]) => k && Number(v) > 0)
+                                    .sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])))
+                                    .slice(0, 4);
+                                const tmpl = (cand as any)?.rag_config_template || null;
+                                const tmplKey = tmpl ? String(tmpl?.template_key || '').trim() : '';
+                                const tmplVer = tmpl && Number.isFinite(Number(tmpl?.version)) ? Number(tmpl.version) : null;
+                                const tmplPatch = tmpl ? String(tmpl?.patch_hash || '').trim() : '';
+                                const tmplLabel = tmplKey ? `${tmplKey}${tmplVer === null ? '' : `@${tmplVer}`}` : '';
+                                return (<Panel key={qh || JSON.stringify(cand)} className="p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="text-[11px] text-muted-foreground">question_hash</div>
@@ -1537,149 +1530,106 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                             <Badge variant="outline" className="font-mono tabular-nums">
                               cluster {cand.cluster_size ?? 0}
                             </Badge>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="size-8"
-                              aria-label="复制 question_hash"
-                              onClick={() => void copyText('question_hash', qh)}
-                              disabled={!qh}
-                            >
-                              <Copy className="size-4" aria-hidden="true" />
+                            <Button variant="outline" size="icon" className="size-8" aria-label="复制 question_hash" onClick={() => detachPromise(copyText('question_hash', qh))} disabled={!qh}>
+                              <Copy className="size-4" aria-hidden="true"/>
                             </Button>
                           </div>
                         </div>
 
                         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground font-mono tabular-nums">
-                          {cand.retrieval_config_hash ? (
-                            <Badge variant="secondary" className="font-mono">
+                          {cand.retrieval_config_hash ? (<Badge variant="secondary" className="font-mono">
                               cfg {String(cand.retrieval_config_hash).slice(0, 16)}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="font-mono">
+                            </Badge>) : (<Badge variant="outline" className="font-mono">
                               cfg -
-                            </Badge>
-                          )}
+                            </Badge>)}
 
-                          {typeof cand.citations_count === 'number' ? (
-                            <Badge variant="outline" className="font-mono">
+                          {typeof cand.citations_count === 'number' ? (<Badge variant="outline" className="font-mono">
                               cites {cand.citations_count}
-                            </Badge>
-                          ) : null}
+                            </Badge>) : null}
 
-                          {errBadges.length ? (
-                            errBadges.map(([k, v]) => (
-                              <Badge key={k} variant="outline" className="font-mono">
+                          {errBadges.length ? (errBadges.map(([k, v]) => (<Badge key={k} variant="outline" className="font-mono">
                                 {k}:{v}
-                              </Badge>
-                            ))
-                          ) : (
-                            <Badge variant="outline" className="font-mono">
+                              </Badge>))) : (<Badge variant="outline" className="font-mono">
                               errors 0
-                            </Badge>
-                          )}
+                            </Badge>)}
 
-                          {tmplLabel ? (
-                            <Badge variant="outline" className="font-mono">
+                          {tmplLabel ? (<Badge variant="outline" className="font-mono">
                               tmpl {tmplLabel}
-                            </Badge>
-                          ) : null}
-                          {tmplPatch ? (
-                            <Badge variant="outline" className="font-mono">
+                            </Badge>) : null}
+                          {tmplPatch ? (<Badge variant="outline" className="font-mono">
                               patch {tmplPatch.slice(0, 10)}
-                            </Badge>
-                          ) : null}
+                            </Badge>) : null}
 
-                          {hardcaseRes.truncated ? (
-                            <Badge variant="destructive" className="font-mono">
+                          {hardcaseRes.truncated ? (<Badge variant="destructive" className="font-mono">
                               truncated
-                            </Badge>
-                          ) : null}
+                            </Badge>) : null}
                         </div>
 
                         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
                             <div className="text-[11px] text-muted-foreground mb-1">feedback_ids (sample)</div>
                             <div className="flex flex-wrap gap-2">
-                              {fbIds.length ? (
-                                fbIds.slice(0, 8).map((fid) => (
-                                  <div key={fid} className="inline-flex items-center gap-1.5">
+                              {fbIds.length ? (fbIds.slice(0, 8).map((fid) => (<div key={fid} className="inline-flex items-center gap-1.5">
                                     <Badge variant="outline" className="font-mono text-[10px]">
                                       {String(fid).slice(0, 8)}
                                     </Badge>
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="size-7"
-                                      aria-label="复制 feedback_id"
-                                      onClick={() => void copyText('feedback_id', String(fid))}
-                                    >
-                                      <Copy className="size-3.5" aria-hidden="true" />
+                                    <Button variant="outline" size="icon" className="size-7" aria-label="复制 feedback_id" onClick={() => detachPromise(copyText('feedback_id', String(fid)))}>
+                                      <Copy className="size-3.5" aria-hidden="true"/>
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      className="h-7 px-2 text-xs"
-                                      onClick={() => void handleConvertFeedbackToEvidence(String(fid), qh)}
-                                      disabled={!selectedSuiteId || Boolean(convertingFeedbackId)}
-                                    >
-                                      {convertingFeedbackId === String(fid) ? (
-                                        <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none mr-1.5" aria-hidden="true" />
-                                      ) : null}
+                                    <Button size="sm" className="h-7 px-2 text-xs" onClick={() => detachPromise(handleConvertFeedbackToEvidence(String(fid), qh))} disabled={!selectedSuiteId || Boolean(convertingFeedbackId)}>
+                                      {convertingFeedbackId === String(fid) ? (<Loader2 className="size-3.5 animate-spin motion-reduce:animate-none mr-1.5" aria-hidden="true"/>) : null}
                                       转为 draft
                                     </Button>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="text-xs text-muted-foreground">-</div>
-                              )}
+                                  </div>))) : (<div className="text-xs text-muted-foreground">-</div>)}
                             </div>
                           </div>
 
                           <div>
                             <div className="text-[11px] text-muted-foreground mb-1">request_ids (sample)</div>
                             <div className="flex flex-wrap gap-2">
-                              {reqIds.length ? (
-                                reqIds.slice(0, 6).map((rid) => (
-                                  <div key={rid} className="inline-flex items-center gap-1.5">
+                              {reqIds.length ? (reqIds.slice(0, 6).map((rid) => (<div key={rid} className="inline-flex items-center gap-1.5">
                                     <Badge variant="secondary" className="font-mono text-[10px]">
                                       {String(rid).slice(0, 10)}
                                     </Badge>
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      className="size-7"
-                                      aria-label="复制 request_id"
-                                      onClick={() => void copyText('request_id', String(rid))}
-                                    >
-                                      <Copy className="size-3.5" aria-hidden="true" />
+                                    <Button variant="outline" size="icon" className="size-7" aria-label="复制 request_id" onClick={() => detachPromise(copyText('request_id', String(rid)))}>
+                                      <Copy className="size-3.5" aria-hidden="true"/>
                                     </Button>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="text-xs text-muted-foreground">-</div>
-                              )}
+                                  </div>))) : (<div className="text-xs text-muted-foreground">-</div>)}
                             </div>
                           </div>
                         </div>
-                      </Panel>
-                    )
-                  })
-                ) : (
-                  <Panel className="p-3">
+                      </Panel>);
+                            }));
+                        }
+                        else {
+                            return (<Panel className="p-3">
                     <div className="text-sm font-medium text-foreground">暂无候选</div>
                     <div className="mt-1 text-xs text-muted-foreground text-pretty">
                       你可以尝试提高 <span className="font-mono">max rating</span> 或增大窗口（后端默认 7 天）。
                     </div>
-                  </Panel>
-                )}
+                  </Panel>);
+                        }
+                    }
+                    else {
+                        return (<Panel className="p-3">
+                    <div className="text-sm font-medium text-foreground">Metrics log disabled</div>
+                    <div className="mt-1 text-xs text-muted-foreground text-pretty">
+                      需要开启 <span className="font-mono">ENABLE_METRICS_LOG=true</span> 才能从 traces 中发现 hardcases。
+                    </div>
+                  </Panel>);
+                    }
+                })()}
 
                 <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
                   window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
                 </div>
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground py-4">点击 refresh 加载候选。</div>
-            )}
+              </div>);
+        }
+        else {
+            return (<div className="text-sm text-muted-foreground py-4">点击 refresh 加载候选。</div>);
+        }
+    }
+})()}
           </ScrollArea>
         </DialogContent>
       </Dialog>
@@ -1710,26 +1660,26 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
           </DialogHeader>
 
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <label className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
+            <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
               <Checkbox
                 checked={dashboardIncludeArchived}
                 onCheckedChange={(v) => setDashboardIncludeArchived(Boolean(v))}
                 aria-label="Include archived items"
               />
               include archived items
-            </label>
+            </div>
 
             <div className="sm:ml-auto flex items-center gap-2">
               {dashboard ? (
                 <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                  generated {String(dashboard.generated_at || '').slice(0, 19).replace('T', ' ')}
+                  generated {String(dashboard.generated_at || '').slice(0, 19).replaceAll('T', ' ')}
                 </div>
               ) : null}
               <Button
                 variant="outline"
                 size="sm"
                 className="gap-2"
-                onClick={() => void loadDashboard()}
+                onClick={() => detachPromise(loadDashboard())}
                 disabled={!selectedSuiteId || dashboardLoading}
               >
                 <RefreshCw className={cn('size-4', dashboardLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
@@ -1742,15 +1692,17 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
           <ScrollArea className="max-h-[70vh] pr-3">
             <div className="space-y-4">
-              {dashboardLoading ? (
-                <div className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              {(() => {
+    if (dashboardLoading) {
+        return (<div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true"/>
                   loading…
-                </div>
-              ) : dashboard ? (
-                <>
-                  {dashboardThroughput ? (
-                    <div>
+                </div>);
+    }
+    else {
+        if (dashboard) {
+            return (<>
+                  {dashboardThroughput ? (<div>
                       <div className="text-xs font-medium text-muted-foreground mb-2">
                         Throughput (last {dashboardThroughput.window_days}d)
                       </div>
@@ -1803,73 +1755,61 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                           </div>
                         </Panel>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-muted-foreground text-pretty">No throughput data.</div>
-                  )}
+                    </div>) : (<div className="text-sm text-muted-foreground text-pretty">No throughput data.</div>)}
 
                   <Separator />
 
-                  {dashboardCoverage ? (
-                    <>
+                  {dashboardCoverage ? (<>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <Panel className="p-3">
                           <div className="text-xs font-medium text-muted-foreground mb-2">Language coverage</div>
                           <div className="space-y-1">
-                            {(dashboardCoverage.language || []).map((b) => (
-                              <div key={`lang:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                            {(dashboardCoverage.language || []).map((b) => (<div key={`lang:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
                                 <div className="min-w-0 truncate font-mono">{b.key}</div>
                                 <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
                                   <span>refs {b.references}</span>
                                   <span>items {b.items}</span>
                                 </div>
-                              </div>
-                            ))}
+                              </div>))}
                           </div>
                         </Panel>
 
                         <Panel className="p-3">
                           <div className="text-xs font-medium text-muted-foreground mb-2">File type coverage</div>
                           <div className="space-y-1">
-                            {(dashboardCoverage.file_type || []).map((b) => (
-                              <div key={`ft:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                            {(dashboardCoverage.file_type || []).map((b) => (<div key={`ft:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
                                 <div className="min-w-0 truncate font-mono">{b.key}</div>
                                 <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
                                   <span>refs {b.references}</span>
                                   <span>items {b.items}</span>
                                 </div>
-                              </div>
-                            ))}
+                              </div>))}
                           </div>
                         </Panel>
 
                         <Panel className="p-3">
                           <div className="text-xs font-medium text-muted-foreground mb-2">Quality bucket coverage</div>
                           <div className="space-y-1">
-                            {(dashboardCoverage.quality_bucket || []).map((b) => (
-                              <div key={`qb:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                            {(dashboardCoverage.quality_bucket || []).map((b) => (<div key={`qb:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
                                 <div className="min-w-0 truncate font-mono">{b.key}</div>
                                 <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
                                   <span>refs {b.references}</span>
                                   <span>items {b.items}</span>
                                 </div>
-                              </div>
-                            ))}
+                              </div>))}
                           </div>
                         </Panel>
 
                         <Panel className="p-3">
                           <div className="text-xs font-medium text-muted-foreground mb-2">Channel (hit_type) coverage</div>
                           <div className="space-y-1">
-                            {(dashboardCoverage.channel || []).map((b) => (
-                              <div key={`ch:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
+                            {(dashboardCoverage.channel || []).map((b) => (<div key={`ch:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
                                 <div className="min-w-0 truncate font-mono">{b.key}</div>
                                 <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
                                   <span>refs {b.references}</span>
                                   <span>items {b.items}</span>
                                 </div>
-                              </div>
-                            ))}
+                              </div>))}
                           </div>
                         </Panel>
                       </div>
@@ -1878,82 +1818,75 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                         <div className="text-xs font-medium text-muted-foreground mb-2">
                           Heatmap: language × file_type (unique items)
                         </div>
-                        {dashboardCoverage.heatmaps?.['language_x_file_type'] ? (
-                          <div className="overflow-x-auto">
+                        {dashboardCoverage.heatmaps?.['language_x_file_type'] ? (<div className="overflow-x-auto">
                             {(() => {
-                              const hm = dashboardCoverage.heatmaps['language_x_file_type']
-                              const x = hm?.x || []
-                              const y = hm?.y || []
-                              const z = hm?.z || []
-                              let max = 0
-                              for (const row of z) {
+                            const hm = dashboardCoverage.heatmaps['language_x_file_type'];
+                            const x = hm?.x || [];
+                            const y = hm?.y || [];
+                            const z = hm?.z || [];
+                            let max = 0;
+                            for (const row of z) {
                                 for (const v of row) {
-                                  const n = Number(v) || 0
-                                  if (n > max) max = n
+                                    const n = Number(v) || 0;
+                                    if (n > max)
+                                        max = n;
                                 }
-                              }
-                              const cols = x.length
-                              return (
-                                <div
-                                  className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60"
-                                  style={{ gridTemplateColumns: `120px repeat(${cols}, minmax(72px, 1fr))` }}
-                                >
+                            }
+                            const cols = x.length;
+                            return (<div className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60" style={{ gridTemplateColumns: `120px repeat(${cols}, minmax(72px, 1fr))` }}>
                                   <div className="bg-muted/40 px-2 py-1 text-[11px] font-mono text-muted-foreground">
                                     lang \\ ft
                                   </div>
-                                  {x.map((ft) => (
-                                    <div
-                                      key={`hm-x:${ft}`}
-                                      className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate"
-                                    >
+                                  {x.map((ft) => (<div key={`hm-x:${ft}`} className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate">
                                       {ft}
-                                    </div>
-                                  ))}
-                                  {y.map((lang, rowIdx) => (
-                                    <div key={`hm-row:${lang}`} className="contents">
+                                    </div>))}
+                                  {y.map((lang, rowIdx) => (<div key={`hm-row:${lang}`} className="contents">
                                       <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">
                                         {lang}
                                       </div>
                                       {x.map((ft, colIdx) => {
-                                        const v = Number(z?.[rowIdx]?.[colIdx] ?? 0) || 0
-                                        const ratio = max > 0 ? v / max : 0
-                                        const cellBg =
-                                          v === 0
-                                            ? 'bg-muted/20'
-                                            : ratio >= 0.75
-                                              ? 'bg-primary/30'
-                                              : ratio >= 0.5
-                                                ? 'bg-primary/20'
-                                                : ratio >= 0.25
-                                                  ? 'bg-primary/10'
-                                                  : 'bg-primary/5'
-                                        return (
-                                          <div
-                                            key={`hm-cell:${lang}:${ft}`}
-                                            className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}
-                                          >
+                                        const v = Number(z?.[rowIdx]?.[colIdx] ?? 0) || 0;
+                                        const ratio = max > 0 ? v / max : 0;
+                                        const cellBg = (() => {
+                                            if (v === 0) {
+                                                return 'bg-muted/20';
+                                            }
+                                            else {
+                                                if (ratio >= 0.75) {
+                                                    return 'bg-primary/30';
+                                                }
+                                                else {
+                                                    if (ratio >= 0.5) {
+                                                        return 'bg-primary/20';
+                                                    }
+                                                    else {
+                                                        if (ratio >= 0.25) {
+                                                            return 'bg-primary/10';
+                                                        }
+                                                        else {
+                                                            return 'bg-primary/5';
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        })();
+                                        return (<div key={`hm-cell:${lang}:${ft}`} className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}>
                                             {v}
-                                          </div>
-                                        )
-                                  })}
-                                </div>
-                              ))}
-                            </div>
-                          )
+                                          </div>);
+                                    })}
+                                </div>))}
+                            </div>);
                         })()}
-                      </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground">No heatmap data.</div>
-                    )}
+                      </div>) : (<div className="text-xs text-muted-foreground">No heatmap data.</div>)}
                   </Panel>
-                    </>
-                  ) : (
-                    <div className="text-sm text-muted-foreground text-pretty">No coverage data.</div>
-                  )}
-                </>
-              ) : (
-                <div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>
-              )}
+                    </>) : (<div className="text-sm text-muted-foreground text-pretty">No coverage data.</div>)}
+                </>);
+        }
+        else {
+            return (<div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>);
+        }
+    }
+})()}
             </div>
           </ScrollArea>
         </DialogContent>
@@ -2003,7 +1936,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
             <Button variant="outline" onClick={() => setCreateSuiteOpen(false)}>
               取消
             </Button>
-            <Button onClick={() => void handleCreateSuite()} disabled={creatingSuite || !suiteName.trim()}>
+            <Button onClick={() => detachPromise(handleCreateSuite())} disabled={creatingSuite || !suiteName.trim()}>
               {creatingSuite ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none mr-2" aria-hidden="true" /> : null}
               创建
             </Button>
@@ -2076,7 +2009,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                     </Select>
                   </div>
 
-                  <Button className="gap-2" onClick={() => void runRetrieve()} disabled={retrieving || !newQuery.trim() || !datasetId}>
+                  <Button className="gap-2" onClick={() => detachPromise(runRetrieve())} disabled={retrieving || !newQuery.trim() || !datasetId}>
                     {retrieving ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Search className="size-4" aria-hidden="true" />}
                     运行检索
                   </Button>
@@ -2111,6 +2044,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 <Panel className="p-3">
                   <ScrollArea className="h-[320px] pr-2">
                     <div className="space-y-2">
+                      {/* eslint-disable-next-line no-nested-ternary */}
                       {retrieveRes ? (
                         retrieveRanked.length ? (
                           retrieveRanked.map((r) => {
@@ -2194,7 +2128,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0]
-                      if (file) void handlePickPackFile(file)
+                      if (file) detachPromise(handlePickPackFile(file))
                     }}
                   />
                   <Button
@@ -2223,6 +2157,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 <Panel className="p-3">
                   <ScrollArea className="h-[320px] pr-2">
                     <div className="space-y-2">
+                      {/* eslint-disable-next-line no-nested-ternary */}
                       {importPack ? (
                         importCitations.length ? (
                           importCitations.map((c) => {
@@ -2285,7 +2220,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
               取消
             </Button>
             <Button
-              onClick={() => void handleCreateItem()}
+              onClick={() => detachPromise(handleCreateItem())}
               disabled={creatingItem || !selectedSuiteId || !newQuery.trim()}
             >
               {creatingItem ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none mr-2" aria-hidden="true" /> : null}
@@ -2335,7 +2270,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
 
               <Button
                 className="gap-2"
-                onClick={() => void runWhyMissedRetrieve()}
+                onClick={() => detachPromise(runWhyMissedRetrieve())}
                 disabled={whyMissedRetrieving || !datasetId || !selectedItem?.query}
               >
                 {whyMissedRetrieving ? (
@@ -2349,7 +2284,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
               <Button
                 variant="outline"
                 className="gap-2"
-                onClick={() => void loadWhyMissedDrift()}
+                onClick={() => detachPromise(loadWhyMissedDrift())}
                 disabled={whyMissedDriftLoading || !selectedSuiteId || !selectedItem?.id}
                 title="Load drift audit details for this suite and filter to the selected item"
               >
@@ -2405,23 +2340,48 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 <div className="text-xs font-medium text-muted-foreground mb-2">Ground Truth（reference_sources）</div>
                 <ScrollArea className="h-[420px] pr-2">
                   <div className="space-y-2">
-                    {!selectedItem ? (
-                      <div className="text-sm text-muted-foreground text-pretty">未选择 Item。</div>
-                    ) : whyMissedReport ? (
-                      whyMissedReport.references.map((r) => {
-                        const status = r.status
-                        const statusLabel =
-                          status === 'retrieved'
-                            ? `hit #${r.retrieval?.rank ?? '?'}`
-                            : status === 'drifted'
-                              ? `drift:${String(r.drift?.reason || 'unknown')}`
-                              : status === 'missing'
-                                ? 'missed'
-                                : 'unknown'
-                        const statusVariant =
-                          status === 'retrieved' ? 'soft' : status === 'missing' ? 'destructive' : status === 'drifted' ? 'secondary' : 'outline'
-                        return (
-                          <div key={r.chunk_id} className="rounded-lg border border-border/60 p-2">
+                    {(() => {
+    if (selectedItem) {
+        if (whyMissedReport) {
+            return (whyMissedReport.references.map((r) => {
+                const status = r.status;
+                const statusLabel = (() => {
+                    if (status === 'retrieved') {
+                        return `hit #${r.retrieval?.rank ?? '?'}`;
+                    }
+                    else {
+                        if (status === 'drifted') {
+                            return `drift:${String(r.drift?.reason || 'unknown')}`;
+                        }
+                        else {
+                            if (status === 'missing') {
+                                return 'missed';
+                            }
+                            else {
+                                return 'unknown';
+                            }
+                        }
+                    }
+                })();
+                const statusVariant = (() => {
+                    if (status === 'retrieved') {
+                        return 'soft';
+                    }
+                    else {
+                        if (status === 'missing') {
+                            return 'destructive';
+                        }
+                        else {
+                            if (status === 'drifted') {
+                                return 'secondary';
+                            }
+                            else {
+                                return 'outline';
+                            }
+                        }
+                    }
+                })();
+                return (<div key={r.chunk_id} className="rounded-lg border border-border/60 p-2">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
@@ -2433,39 +2393,34 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                                   </div>
                                 </div>
                                 {r.label ? <div className="mt-1 text-xs text-muted-foreground line-clamp-1 text-pretty">{r.label}</div> : null}
-                                {r.retrieval ? (
-                                  <div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
+                                {r.retrieval ? (<div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
                                     {r.retrieval.hit_type ? `${r.retrieval.hit_type}` : 'hit'} · rank {r.retrieval.rank}
                                     {typeof r.retrieval.score === 'number' ? ` · score ${r.retrieval.score.toFixed(4)}` : null}
-                                  </div>
-                                ) : null}
-                                {r.hints?.document_hit_rank || r.hints?.chunk_index_hit_rank ? (
-                                  <div className="mt-2 flex flex-wrap gap-1">
-                                    {r.hints?.document_hit_rank ? (
-                                      <Badge variant="outline" className="font-mono text-[10px]">
+                                  </div>) : null}
+                                {r.hints?.document_hit_rank || r.hints?.chunk_index_hit_rank ? (<div className="mt-2 flex flex-wrap gap-1">
+                                    {r.hints?.document_hit_rank ? (<Badge variant="outline" className="font-mono text-[10px]">
                                         doc@{r.hints.document_hit_rank}
-                                      </Badge>
-                                    ) : null}
-                                    {r.hints?.chunk_index_hit_rank ? (
-                                      <Badge variant="outline" className="font-mono text-[10px]">
+                                      </Badge>) : null}
+                                    {r.hints?.chunk_index_hit_rank ? (<Badge variant="outline" className="font-mono text-[10px]">
                                         idx@{r.hints.chunk_index_hit_rank}
-                                      </Badge>
-                                    ) : null}
-                                  </div>
-                                ) : null}
+                                      </Badge>) : null}
+                                  </div>) : null}
                               </div>
-                              {typeof r.chunk_index === 'number' ? (
-                                <div className="text-[11px] text-muted-foreground font-mono tabular-nums flex-shrink-0">
+                              {typeof r.chunk_index === 'number' ? (<div className="text-[11px] text-muted-foreground font-mono tabular-nums flex-shrink-0">
                                   #{r.chunk_index}
-                                </div>
-                              ) : null}
+                                </div>) : null}
                             </div>
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <div className="text-sm text-muted-foreground text-pretty">运行检索后展示对照结果。</div>
-                    )}
+                          </div>);
+            }));
+        }
+        else {
+            return (<div className="text-sm text-muted-foreground text-pretty">运行检索后展示对照结果。</div>);
+        }
+    }
+    else {
+        return (<div className="text-sm text-muted-foreground text-pretty">未选择 Item。</div>);
+    }
+})()}
                   </div>
                 </ScrollArea>
               </Panel>
@@ -2474,39 +2429,40 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                 <div className="text-xs font-medium text-muted-foreground mb-2">Retrieved Citations（当前检索结果）</div>
                 <ScrollArea className="h-[420px] pr-2">
                   <div className="space-y-2">
-                    {!whyMissedRanRetrieve ? (
-                      <div className="text-sm text-muted-foreground text-pretty">先点击“运行检索”。</div>
-                    ) : whyMissedCitations.length ? (
-                      whyMissedCitations.slice(0, 80).map((c, idx) => {
-                        const docId = String((c as any)?.document_id || '').trim()
-                        const chunkId = String((c as any)?.chunk_id || '').trim()
-                        const isRefDoc = !!docId && whyMissedRefDocIds.has(docId)
-                        const isRefChunk = !!chunkId && whyMissedRefChunkIds.has(chunkId)
-                        const score = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score) as any
-                        return (
-                          <div
-                            key={chunkId || `${docId}:${idx}`}
-                            className={cn(
-                              'rounded-lg border p-2',
-                              isRefChunk ? 'border-primary/50 bg-primary/5' : isRefDoc ? 'border-border/60 bg-muted/20' : 'border-border/60'
-                            )}
-                          >
+                    {(() => {
+    if (whyMissedRanRetrieve) {
+        if (whyMissedCitations.length) {
+            return (whyMissedCitations.slice(0, 80).map((c, idx) => {
+                const docId = String((c as any)?.document_id || '').trim();
+                const chunkId = String((c as any)?.chunk_id || '').trim();
+                const isRefDoc = !!docId && whyMissedRefDocIds.has(docId);
+                const isRefChunk = !!chunkId && whyMissedRefChunkIds.has(chunkId);
+                const score = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score) as any;
+                return (<div key={chunkId || `${docId}:${idx}`} className={cn('rounded-lg border p-2', (() => {
+                        if (isRefChunk) {
+                            return 'border-primary/50 bg-primary/5';
+                        }
+                        else {
+                            if (isRefDoc) {
+                                return 'border-border/60 bg-muted/20';
+                            }
+                            else {
+                                return 'border-border/60';
+                            }
+                        }
+                    })())}>
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <div className="text-xs font-mono text-foreground truncate">
                                     #{idx + 1} {c.document_name || docId.slice(0, 8)}
                                   </div>
-                                  {isRefChunk ? (
-                                    <Badge variant="soft" className="font-mono text-[10px]">
+                                  {isRefChunk ? (<Badge variant="soft" className="font-mono text-[10px]">
                                       ref_chunk
-                                    </Badge>
-                                  ) : null}
-                                  {isRefDoc && !isRefChunk ? (
-                                    <Badge variant="outline" className="font-mono text-[10px]">
+                                    </Badge>) : null}
+                                  {isRefDoc && !isRefChunk ? (<Badge variant="outline" className="font-mono text-[10px]">
                                       ref_doc
-                                    </Badge>
-                                  ) : null}
+                                    </Badge>) : null}
                                 </div>
                                 <div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
                                   {String((c as any)?.hit_type || 'hit')} · score {Number(score || 0).toFixed(4)}
@@ -2514,23 +2470,24 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: { datasetId:
                                   {typeof (c as any)?.chunk_index === 'number' ? ` · #${(c as any).chunk_index}` : null}
                                 </div>
                               </div>
-                              {chunkId ? (
-                                <Badge variant="outline" className="font-mono text-[10px]">
+                              {chunkId ? (<Badge variant="outline" className="font-mono text-[10px]">
                                   {chunkId.slice(0, 8)}
-                                </Badge>
-                              ) : null}
+                                </Badge>) : null}
                             </div>
-                            {c.chunk_content ? (
-                              <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
+                            {c.chunk_content ? (<div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
                                 {c.chunk_content}
-                              </div>
-                            ) : null}
-                          </div>
-                        )
-                      })
-                    ) : (
-                      <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
-                    )}
+                              </div>) : null}
+                          </div>);
+            }));
+        }
+        else {
+            return (<div className="text-sm text-muted-foreground text-pretty">无 citations。</div>);
+        }
+    }
+    else {
+        return (<div className="text-sm text-muted-foreground text-pretty">先点击“运行检索”。</div>);
+    }
+})()}
                   </div>
                 </ScrollArea>
                 {whyMissedRanRetrieve && whyMissedCitations.length > 80 ? (

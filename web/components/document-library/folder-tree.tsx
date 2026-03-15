@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, FileMusic, FileVideo, Library, Package, Database, Loader2, CheckCircle2, AlertCircle, XCircle, Ban, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, Library, Package, AlertCircle, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -117,23 +117,23 @@ export function getFileIcon(filename: string, className?: string) {
 
         {/* Content */}
         <div className="flex-1 flex items-center justify-center bg-background/40">
-          {['W', 'X', 'P'].includes(label) ? (
-            <span className={cn("font-serif font-black text-lg leading-none", textTone[tone])}>
+          {(() => {
+    if (['W', 'X', 'P'].includes(label)) {
+        return (<span className={cn("font-serif font-black text-lg leading-none", textTone[tone])}>
               {label}
-            </span>
-          ) : ['PDF', 'TXT', 'ZIP', 'IMG'].includes(label) ? (
-            <span
-              className={cn(
-                "font-bold text-[9px]  leading-none border-2 rounded px-0.5",
-                textTone[tone],
-                badgeBorder[tone] || badgeBorder.slate
-              )}
-            >
+            </span>);
+    }
+    else {
+        if (['PDF', 'TXT', 'ZIP', 'IMG'].includes(label)) {
+            return (<span className={cn("font-bold text-[9px]  leading-none border-2 rounded px-0.5", textTone[tone], badgeBorder[tone] || badgeBorder.slate)}>
               {label}
-            </span>
-          ) : (
-            <Icon className={cn("w-5 h-5", textTone[tone])} />
-          )}
+            </span>);
+        }
+        else {
+            return (<Icon className={cn("w-5 h-5", textTone[tone])}/>);
+        }
+    }
+})()}
         </div>
 
         {/* Faux Text Lines (Decorative) */}
@@ -183,7 +183,7 @@ export function DocumentFolderTree({
   onSelectFile,
   onDeleteFolder,
   onFileDrop,
-}: {
+}: Readonly<{
   className?: string
   onRequestUpload?: (folderId: string) => void
   onRequestUploadFolder?: (folderId: string) => void
@@ -192,7 +192,7 @@ export function DocumentFolderTree({
   onSelectFile?: (fileId: string) => void
   onDeleteFolder?: (folderIds: string[]) => void
   onFileDrop?: (fileId: string, folderId: string) => void
-}) {
+}>) {
   const libraryFiles = useParsedFiles((state) => state.files)
   const folders = useParsedFiles((state) => state.folders)
   const activeFolderId = useParsedFiles((state) => state.activeFolderId)
@@ -525,6 +525,7 @@ export function DocumentFolderTree({
       return (
         <div key={folder.id}>
           <div
+            role="presentation"
             className={cn(
               'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-colors border border-transparent',
               isActive
@@ -810,6 +811,7 @@ export function DocumentFolderTree({
     <div className={cn('flex flex-col', className)} ref={scrollContainerRef}>
       <div className="space-y-1">
         <div
+          role="presentation"
           className={cn(
             'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-colors border border-transparent',
             activeFolderId === ROOT_FOLDER_ID
@@ -1023,11 +1025,19 @@ export function DocumentFolderTree({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {dialog.open && dialog.mode === 'rename'
-                ? '重命名文件夹'
-                : dialog.open && dialog.mode === 'move'
-                  ? '移动文件夹'
-                  : '新建文件夹'}
+              {(() => {
+    if (dialog.open && dialog.mode === 'rename') {
+        return '重命名文件夹';
+    }
+    else {
+        if (dialog.open && dialog.mode === 'move') {
+            return '移动文件夹';
+        }
+        else {
+            return '新建文件夹';
+        }
+    }
+})()}
             </DialogTitle>
           </DialogHeader>
 

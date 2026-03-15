@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { datasetApi, pipelineApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 
 import type {
   Dataset,
@@ -26,7 +26,7 @@ import type {
 } from '@/types'
 
 function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function buildLineRegexRule(sample: string): RegexRuleModel | null {
@@ -82,8 +82,7 @@ export function GovernanceCommonLinesPage() {
   }, [datasetId, profileRef])
 
   useEffect(() => {
-    void loadMeta()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(loadMeta())
   }, [])
 
   const candidates: GovernanceCommonLineCandidate[] = useMemo(() => resp?.candidates || [], [resp?.candidates])
@@ -200,7 +199,7 @@ export function GovernanceCommonLinesPage() {
             variant="outline"
             size="sm"
             className="gap-2 rounded-xl"
-            onClick={() => void loadMeta()}
+            onClick={() => detachPromise(loadMeta())}
             disabled={loadingMeta}
           >
             <RefreshCw className={cn('w-4 h-4', loadingMeta && 'animate-spin motion-reduce:animate-none')} />
@@ -209,7 +208,7 @@ export function GovernanceCommonLinesPage() {
           <Button
             size="sm"
             className="gap-2 rounded-xl"
-            onClick={() => void runLearn()}
+            onClick={() => detachPromise(runLearn())}
             disabled={loading}
           >
             {loading ? (
@@ -347,7 +346,7 @@ export function GovernanceCommonLinesPage() {
                 <Button
                   size="sm"
                   className="rounded-xl gap-2"
-                  onClick={() => void applyToProfile()}
+                  onClick={() => detachPromise(applyToProfile())}
                   disabled={loading}
                 >
                   {loading ? (
@@ -409,4 +408,3 @@ export function GovernanceCommonLinesPage() {
     </PageScaffold>
   )
 }
-

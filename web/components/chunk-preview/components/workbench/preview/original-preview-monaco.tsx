@@ -12,6 +12,13 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false 
 
 const MAX_OVERVIEW_MARKERS = 4000
 
+type MonacoRangeLike = {
+  startLineNumber: number
+  startColumn: number
+  endLineNumber: number
+  endColumn: number
+}
+
 function buildLineStarts(text: string) {
   const starts = [0]
   for (let i = 0; i < text.length; i++) {
@@ -62,14 +69,14 @@ function pickBestChunkAtOffset(chunks: ChunkPreviewItem[], offset: number) {
 }
 
 function resolveParentRange(chunk: ChunkPreviewItem, chunks: ChunkPreviewItem[]) {
-  const meta = (chunk.metadata || {}) as Record<string, any>
+  const meta = (chunk.metadata || {})
   const role = String(meta.chunk_role || '')
   if (role !== 'child') return null
 
   const parentStartRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
   const parentEndRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
-  const parentStart = parentStartRaw != null ? Number(parentStartRaw) : NaN
-  const parentEnd = parentEndRaw != null ? Number(parentEndRaw) : NaN
+  const parentStart = parentStartRaw == null ? Number.NaN : Number(parentStartRaw)
+  const parentEnd = parentEndRaw == null ? Number.NaN : Number(parentEndRaw)
   if (Number.isFinite(parentStart) && Number.isFinite(parentEnd) && parentEnd > parentStart) {
     return { start: parentStart, end: parentEnd }
   }
@@ -77,7 +84,7 @@ function resolveParentRange(chunk: ChunkPreviewItem, chunks: ChunkPreviewItem[])
   const parentId = meta.parent_id ?? meta.parent_node_id
   if (!parentId) return null
   const parent = chunks.find((it) => {
-    const m = (it.metadata || {}) as Record<string, any>
+    const m = (it.metadata || {})
     return String(m.chunk_role || '') === 'parent' && (m.parent_id === parentId || m.node_id === parentId || m.id === parentId)
   })
   if (!parent) return null
@@ -87,14 +94,14 @@ function resolveParentRange(chunk: ChunkPreviewItem, chunks: ChunkPreviewItem[])
   return { start, end }
 }
 
-export function OriginalPreviewMonaco(props: {
+export function OriginalPreviewMonaco(props: Readonly<{
   text: string
   chunks: ChunkPreviewItem[]
   activeChunkIndex: number | null
   activeRange?: { start: number; end: number } | null
   chunkOverrides?: Record<number, { disabled?: boolean }>
   onSelectChunkIndex?: (index: number) => void
-}) {
+}>) {
   const { text, chunks, activeChunkIndex, activeRange, chunkOverrides, onSelectChunkIndex } = props
 
   const editorRef = useRef<any>(null)
@@ -127,16 +134,26 @@ export function OriginalPreviewMonaco(props: {
       const end = clampOffset(Math.max(start, Number(chunk.end_index) || start), 0, textLen)
       const startPos = offsetToPosition(lineStarts, start)
       const endPos = offsetToPosition(lineStarts, end)
-      const meta = (chunk.metadata || {}) as Record<string, any>
+      const meta = (chunk.metadata || {})
       const role = String(meta.chunk_role || '')
       const isChild = role === 'child'
       const disabled = Boolean(chunkOverrides?.[chunk.index]?.disabled)
 
-      const color = disabled
-        ? 'rgba(148,163,184,0.35)'
-        : isChild
-          ? 'rgba(59,130,246,0.65)' // child highlight
-          : 'rgba(148,163,184,0.45)' // parent/others
+      const color = (() => {
+    if (disabled) {
+        return 'rgba(148,163,184,0.35)';
+    }
+    else {
+        if (isChild) {
+            return 'rgba(59,130,246,0.65)' // child highlight
+            ;
+        }
+        else {
+            return 'rgba(148,163,184,0.45)' // parent/others
+            ;
+        }
+    }
+})() // parent/others
 
       return {
         range: new monaco.Range(startPos.lineNumber, startPos.column, endPos.lineNumber, endPos.column),
@@ -155,7 +172,7 @@ export function OriginalPreviewMonaco(props: {
     if (!editor || !monaco) return
 
     const textLen = text.length
-    const chunk = activeChunkIndex != null ? chunks[activeChunkIndex] : null
+    const chunk = activeChunkIndex == null ? null : chunks[activeChunkIndex]
     const explicitStartRaw = activeRange?.start
     const explicitEndRaw = activeRange?.end
     const explicitStart =
@@ -197,7 +214,7 @@ export function OriginalPreviewMonaco(props: {
       }
     }
 
-    let revealRange: any | null = null
+    let revealRange: MonacoRangeLike | null = null
 
     if (chunk && activeEnd > activeStart) {
       const s = offsetToPosition(lineStarts, activeStart)

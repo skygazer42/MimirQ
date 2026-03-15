@@ -10,9 +10,11 @@ interface TiltCardProps {
   onClick?: () => void
   onMouseEnter?: () => void
   onMouseLeave?: () => void
+  onFocus?: React.FocusEventHandler<HTMLDivElement>
+  onBlur?: React.FocusEventHandler<HTMLDivElement>
 }
 
-export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave }: TiltCardProps) {
+export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur }: Readonly<TiltCardProps>) {
   const ref = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
   const [isFinePointer, setIsFinePointer] = useState(false)
@@ -32,9 +34,9 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   const enabled = !shouldReduceMotion && isFinePointer
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (typeof globalThis.window === "undefined") return
 
-    const mq = window.matchMedia("(pointer: fine)")
+    const mq = globalThis.window.matchMedia("(pointer: fine)")
     const update = () => setIsFinePointer(mq.matches)
     update()
 
@@ -49,7 +51,7 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     }
   }, [])
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!enabled) return
     if (!ref.current) return
 
@@ -69,7 +71,7 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     y.set(yPct)
   }
 
-  const handleMouseLeave = () => {
+  const handlePointerLeave = () => {
     x.set(0)
     y.set(0)
     onMouseLeave?.()
@@ -85,16 +87,29 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     }
   }
 
+  if (!interactive) {
+    return (
+      <div
+        ref={ref}
+        className={cn("relative", className)}
+      >
+        {children}
+      </div>
+    )
+  }
+
   if (!enabled) {
     return (
       <div
         ref={ref}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
         onClick={onClick}
-        role={interactive ? "button" : undefined}
-        tabIndex={interactive ? 0 : undefined}
-        onKeyDown={interactive ? handleKeyDown : undefined}
+        role="button"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        onPointerEnter={() => onMouseEnter?.()}
+        onPointerLeave={() => onMouseLeave?.()}
+        onFocus={onFocus}
+        onBlur={onBlur}
         className={cn("relative", className)}
       >
         {children}
@@ -103,26 +118,32 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   }
 
   return (
-    <motion.div
+    <div
       ref={ref}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={handleMouseLeave}
       onClick={onClick}
-      role={interactive ? "button" : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      onKeyDown={interactive ? handleKeyDown : undefined}
-      style={{
-        rotateX,
-        rotateY,
-        transformStyle: "preserve-3d",
-      }}
-      className={cn("relative transition-transform duration-200 ease-out perspective-1000", className)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onPointerMove={handlePointerMove}
+      onPointerEnter={() => onMouseEnter?.()}
+      onPointerLeave={handlePointerLeave}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      className={cn("relative perspective-1000", className)}
     >
-      {/* Content */}
-      <div className="relative z-10 h-full">
-        {children}
-      </div>
-    </motion.div>
+      <motion.div
+        style={{
+          rotateX,
+          rotateY,
+          transformStyle: "preserve-3d",
+        }}
+        className="h-full transition-transform duration-200 ease-out"
+      >
+        {/* Content */}
+        <div className="relative z-10 h-full">
+          {children}
+        </div>
+      </motion.div>
+    </div>
   )
 }

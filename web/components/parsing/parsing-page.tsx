@@ -2,47 +2,13 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Blocks,
-  Upload,
-  FileText,
-  Loader2,
-  Eye,
-  Code,
-  Download,
-  Copy,
-  Check,
-  RotateCcw,
-  Sparkles,
-  FileStack,
-  Clock,
-  Heading1,
-  Table2,
-  Image,
-  ChevronRight,
-  Zap,
-  ShieldCheck,
-  Edit3,
-  Save,
-  X,
-  FolderOpen,
-  Play,
-  Trash2,
-  AlertCircle,
-  CheckCircle2,
-  Paperclip,
-  FolderUp,
-  Plus,
-  Settings2,
-  Layers,
-  MoreVertical,
-} from 'lucide-react'
+import { Blocks, FileText, Loader2, Eye, Code, Download, Copy, Check, RotateCcw, Sparkles, FileStack, Clock, Heading1, Table2, Image, ChevronRight, ShieldCheck, Edit3, Save, X, FolderOpen, Play, Paperclip, FolderUp, Plus, Settings2, Layers, MoreVertical } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PipelineRail, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { Button } from '@/components/ui/button'
 import { documentApi, parsingApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
-import { formatFileSize, cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
@@ -58,14 +24,7 @@ import { PdfViewer } from '@/components/parsing/pdf-viewer'
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 import { toast } from 'sonner'
-import {
-  deleteDocContentFromCache,
-  deleteDocSourceFromCache,
-  getDocContentFromCache,
-  getDocSourceFromCache,
-  saveDocContentToCache,
-  saveDocSourceToCache,
-} from '@/lib/doc-content-cache'
+import { deleteDocContentFromCache, deleteDocSourceFromCache, getDocContentFromCache, getDocSourceFromCache, saveDocSourceToCache } from '@/lib/doc-content-cache'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import {
   DropdownMenu,
@@ -154,11 +113,6 @@ export default function ParsingPage() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [isLgUp, setIsLgUp] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.matchMedia('(min-width: 1024px)').matches
-  })
-  const [isDragging, setIsDragging] = useState(false)
   const [copied, setCopied] = useState(false)
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -193,7 +147,7 @@ export default function ParsingPage() {
   }, [])
 
   useEffect(() => {
-    const mql = window.matchMedia('(min-width: 1024px)')
+    const mql = globalThis.window.matchMedia('(min-width: 1024px)')
     const onChange = () => setIsLgUp(mql.matches)
     onChange()
 
@@ -241,14 +195,14 @@ export default function ParsingPage() {
   const [imageCaptionEnabled, setImageCaptionEnabled] = useState(false)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const stored = window.localStorage.getItem('mimirq_parsing_image_caption_enabled')
+    if (typeof globalThis.window === 'undefined') return
+    const stored = globalThis.window.localStorage.getItem('mimirq_parsing_image_caption_enabled')
     if (stored === 'true') setImageCaptionEnabled(true)
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(
+    if (typeof globalThis.window === 'undefined') return
+    globalThis.window.localStorage.setItem(
       'mimirq_parsing_image_caption_enabled',
       imageCaptionEnabled ? 'true' : 'false'
     )
@@ -292,7 +246,7 @@ export default function ParsingPage() {
   }, [])
 
   const getLibraryStatusBadge = (status?: FileStatus) => {
-    const s = (status || 'pending') as FileStatus
+    const s = (status || 'pending')
     switch (s) {
       case 'parsed':
         return { label: '已解析', cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' }
@@ -319,7 +273,7 @@ export default function ParsingPage() {
 	        const rawDuration = meta?.parse_duration_sec
 	        const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : existing?.durationSec
 	        const backendFromServer = String(meta?.parser_backend || meta?.parser_backend_requested || 'auto')
-	        const preferredBackend = backendFromServer !== 'auto' ? backendFromServer : (existing?.parserBackend || backendFromServer)
+	        const preferredBackend = backendFromServer === 'auto' ? (existing?.parserBackend || backendFromServer) : backendFromServer
 	        const resolved = resolveParserBackendForFilename(doc.filename || existing?.filename || 'document', preferredBackend)
 	        const backend = resolved.backend
 	        const status = mapBackendStatusToLibraryStatus(doc.status)
@@ -351,7 +305,7 @@ export default function ParsingPage() {
     if (!isLibraryLoaded) return
     if (didSyncLibraryFromServerRef.current) return
     didSyncLibraryFromServerRef.current = true
-    void syncLibraryFromServer()
+    detachPromise(syncLibraryFromServer())
   }, [isLibraryLoaded, syncLibraryFromServer])
 
   // 获取当前选中的文件
@@ -666,7 +620,7 @@ export default function ParsingPage() {
         toast.warning('源文件本地缓存失败：刷新后需要预览时将从服务器重新下载')
       }
 
-      void mountLibraryFileToQueue(target.libraryId, selectedFile, { autoParse: target.autoParse })
+      detachPromise(mountLibraryFileToQueue(target.libraryId, selectedFile, { autoParse: target.autoParse }))
     },
     [mountLibraryFileToQueue]
   )
@@ -693,7 +647,7 @@ export default function ParsingPage() {
             lastModified: cached.lastModified || Date.now(),
           })
           setActiveLibrarySourceStatus('available')
-          void mountLibraryFileToQueue(id, file, { autoParse })
+          detachPromise(mountLibraryFileToQueue(id, file, { autoParse }))
           return
         }
 
@@ -703,7 +657,7 @@ export default function ParsingPage() {
           lastModified: Date.now(),
         })
         setActiveLibrarySourceStatus('available')
-        void mountLibraryFileToQueue(id, file, { autoParse })
+        detachPromise(mountLibraryFileToQueue(id, file, { autoParse }))
       } catch (err) {
         console.warn('Failed to restore source file:', err)
         setActiveLibrarySourceStatus('missing')
@@ -1084,24 +1038,6 @@ export default function ParsingPage() {
   }, [visibleQueueFiles, activeFileId, activeLibraryFileId])
 
   // 拖放处理
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(true)
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-  }, [])
-
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragging(false)
-    uploadTargetFolderIdRef.current = null
-    const droppedFiles = Array.from(e.dataTransfer.files)
-    await addFiles(droppedFiles)
-  }, [addFiles])
-
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const targetFolderId = uploadTargetFolderIdRef.current
     uploadTargetFolderIdRef.current = null
@@ -1124,16 +1060,16 @@ export default function ParsingPage() {
       if (activeFileId === queue.id) setActiveFileId(null)
     }
     if (libId) {
-      void (async () => {
+      detachPromise((async () => {
         try {
           await parsingApi.delete(libId)
         } catch (err: any) {
           toast.error(formatApiError(err, '删除失败'))
         }
-      })()
+      })())
       removeParsedFile(libId)
-      void deleteDocContentFromCache(libId)
-      void deleteDocSourceFromCache(libId)
+      detachPromise(deleteDocContentFromCache(libId))
+      detachPromise(deleteDocSourceFromCache(libId))
       if (activeLibraryFileId === libId) setActiveLibraryFileId(null)
     }
   }
@@ -1318,11 +1254,19 @@ export default function ParsingPage() {
         headingCount: countMarkdownHeadings(markdownContent),
         pageCount: typeof apiStats?.page_count === 'number' ? apiStats.page_count : undefined,
         tableCount:
-          typeof apiStats?.table_count === 'number'
-            ? apiStats.table_count
-            : (markdownContent.match(/\|.*\|/g) || []).length > 0
-              ? (markdownContent.match(/^\|/gm) || []).length / 2
-              : 0,
+          (() => {
+    if (typeof apiStats?.table_count === 'number') {
+        return apiStats.table_count;
+    }
+    else {
+        if ((markdownContent.match(/\|.*\|/g) || []).length > 0) {
+            return (markdownContent.match(/^\|/gm) || []).length / 2;
+        }
+        else {
+            return 0;
+        }
+    }
+})(),
         imageCount:
           typeof apiStats?.image_count === 'number'
             ? apiStats.image_count
@@ -1379,7 +1323,7 @@ export default function ParsingPage() {
       const detail = err?.response?.data?.detail
       const diagnostics: ParseFailureDiagnostics | undefined =
         detail && typeof detail === 'object' && !Array.isArray(detail)
-          ? ((detail as any).diagnostics as ParseFailureDiagnostics | undefined)
+          ? ((detail).diagnostics as ParseFailureDiagnostics | undefined)
           : undefined
       setFiles((prev) =>
         prev.map((f) =>
@@ -1409,7 +1353,7 @@ export default function ParsingPage() {
     if (!autoParseFileId) return
     const id = autoParseFileId
     setAutoParseFileId(null)
-    void parseFile(id)
+    detachPromise(parseFile(id))
   }, [autoParseFileId, parseFile])
 
   const parseAllPending = async () => {
@@ -1579,7 +1523,6 @@ export default function ParsingPage() {
   const parsingCount = visibleQueueFiles.filter((f) => f.status === 'parsing').length
   const parsedCount = visibleQueueFiles.filter((f) => f.status === 'parsed').length
   const parseableCount = visibleQueueFiles.filter((f) => f.status === 'pending' || f.status === 'error').length
-  const parseAllLabel = activeFolderId && activeFolderId !== ROOT_FOLDER_ID ? '解析当前目录' : '全部解析'
   const queueCountLabel = visibleQueueFiles.length === 0 ? '0' : `${parsedCount}/${visibleQueueFiles.length}`
 
   return (
@@ -1663,6 +1606,7 @@ export default function ParsingPage() {
 
                 {/* File List Header & Toolbar */}
                 <div
+                  role="presentation"
                   className={cn(
                     "px-4 py-3 border-b border-border/60 flex items-center justify-between z-10 sticky top-0",
                     "bg-card dark:bg-background/40"
@@ -1773,54 +1717,34 @@ export default function ParsingPage() {
                 {/* File List */}
                 <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-2 bg-card dark:bg-background/40">
                   <div className="min-h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
-	                    {!isLibraryLoaded ? (
-	                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+	                    {(() => {
+    if (isLibraryLoaded) {
+        if (directFolders.length === 0 && visibleQueueFiles.length === 0 && visibleLibraryOnlyFiles.length === 0) {
+            return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground">
 	                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
-		                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin motion-reduce:animate-none" />
-	                        </div>
-	                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">正在加载文档库…</p>
-	                        <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">首次进入或刷新时会稍等片刻</p>
-	                      </div>
-	                    ) : directFolders.length === 0 && visibleQueueFiles.length === 0 && visibleLibraryOnlyFiles.length === 0 ? (
-	                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-	                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
-	                          <FolderOpen className="w-6 h-6 text-muted-foreground" />
+	                          <FolderOpen className="w-6 h-6 text-muted-foreground"/>
 	                        </div>
 	                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">暂无文件</p>
                         <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">拖拽文件到此处或点击上方按钮添加</p>
-                        {isQueueRehydrating ? (
-                          <p className="text-[11px] text-muted-foreground dark:text-muted-foreground mt-3">正在恢复队列…</p>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
+                        {isQueueRehydrating ? (<p className="text-[11px] text-muted-foreground dark:text-muted-foreground mt-3">正在恢复队列…</p>) : null}
+                      </div>);
+        }
+        else {
+            return (<div className="space-y-1">
                         {directFolders.map((folder) => {
-                          const stats = folderStatsById.get(folder.id)
-                          const latestTs = stats?.latestTs || Date.parse(folder.createdAt)
-                          return (
-                            <div
-                              key={folder.id}
-                              className={cn(
-                                "flex items-center gap-3 p-2.5 rounded-xl border border-transparent hover:bg-muted dark:hover:bg-muted/40 group transition-colors cursor-pointer relative",
-                                dragOverFolderId === folder.id && "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800",
-                                activeFolderId === folder.id && "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800"
-                              )}
-                              draggable
-                              onDragStart={(e) => {
-                                try {
-                                  e.dataTransfer.setData('application/x-mimirq-folder', folder.id)
-                                } catch {
-                                  // ignore
-                                }
-                                e.dataTransfer.effectAllowed = 'move'
-                              }}
-                              onClick={() => setActiveFolderId(folder.id)}
-                              onDragOver={(e) => handleFolderDragOver(e, folder.id)}
-                              onDragLeave={() => setDragOverFolderId(null)}
-                              onDrop={(e) => handleFolderDrop(e, folder.id)}
-                            >
+                    const stats = folderStatsById.get(folder.id);
+                    const latestTs = stats?.latestTs || Date.parse(folder.createdAt);
+                    return (<button key={folder.id} type="button" className={cn("flex w-full items-center gap-3 p-2.5 rounded-xl border border-transparent hover:bg-muted dark:hover:bg-muted/40 group transition-colors cursor-pointer relative text-left", dragOverFolderId === folder.id && "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800", activeFolderId === folder.id && "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800")} draggable onDragStart={(e) => {
+                            try {
+                                e.dataTransfer.setData('application/x-mimirq-folder', folder.id);
+                            }
+                            catch {
+                                // ignore
+                            }
+                            e.dataTransfer.effectAllowed = 'move';
+                        }} onClick={() => setActiveFolderId(folder.id)} onDragOver={(e) => handleFolderDragOver(e, folder.id)} onDragLeave={() => setDragOverFolderId(null)} onDrop={(e) => handleFolderDrop(e, folder.id)}>
                               <div className="w-9 h-9 rounded-xl bg-muted dark:bg-muted text-muted-foreground dark:text-muted-foreground flex items-center justify-center flex-shrink-0">
-                                <FolderOpen className="w-4 h-4" />
+                                <FolderOpen className="w-4 h-4"/>
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between">
@@ -1829,13 +1753,13 @@ export default function ParsingPage() {
                                   </div>
                                   <span className="text-[10px] text-muted-foreground dark:text-muted-foreground flex-shrink-0">
                                     {Number.isFinite(latestTs) && latestTs > 0
-                                      ? new Date(latestTs).toLocaleString([], {
-                                        month: '2-digit',
-                                        day: '2-digit',
-                                        hour: '2-digit',
-                                        minute: '2-digit',
-                                      })
-                                      : ''}
+                            ? new Date(latestTs).toLocaleString([], {
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                            })
+                            : ''}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-2 mt-1 min-h-[16px]">
@@ -1844,57 +1768,51 @@ export default function ParsingPage() {
                                   </span>
                                 </div>
                               </div>
-                            </div>
-                          )
-                        })}
+                            </button>);
+                })}
                         {/* Persisted library entries (with Cyber/Glass theme) */}
-	                        {visibleLibraryOnlyFiles.map((f) => (
-	                          <FileQueueItem
-	                            key={f.id}
-	                            file={{
-	                              id: f.id,
-	                              name: f.filename,
-	                              size: f.fileSize,
-	                              status: f.status || 'parsed',
-	                              parser: f.parser,
-	                              duration: f.durationSec,
-	                              folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined
-	                            }}
-	                            isActive={activeLibraryFileId === f.id}
-	                            onClick={() => {
-	                              setActiveFileId(null)
-                              setActiveLibraryFileId(f.id)
-                            }}
-                            onRemove={() => removeFile(f.id)}
-                          />
-                        ))}
+	                        {visibleLibraryOnlyFiles.map((f) => (<FileQueueItem key={f.id} file={{
+                        id: f.id,
+                        name: f.filename,
+                        size: f.fileSize,
+                        status: f.status || 'parsed',
+                        parser: f.parser,
+                        duration: f.durationSec,
+                        folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined
+                    }} isActive={activeLibraryFileId === f.id} onClick={() => {
+                        setActiveFileId(null);
+                        setActiveLibraryFileId(f.id);
+                    }} onRemove={() => removeFile(f.id)}/>))}
 
                         {/* Current session queue files */}
-                        {visibleQueueFiles.map(f => (
-                          <div key={f.id} draggable onDragStart={(e) => handleFileDragStart(e, f.id)}>
-                            <FileQueueItem
-                              file={{
-                                id: f.id,
-                                name: f.name,
-                                size: f.size,
-                                status: f.status,
-                                progress: f.progress,
-                                parser: f.parserLabel,
-                                folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
-                                sourcePath: f.sourcePath,
-                                error: f.error,
-                                duration: f.duration,
-                                pageCount: f.stats?.pageCount
-                              }}
-                              isActive={activeFileId === f.id}
-                              onClick={() => setActiveFileId(f.id)}
-                              onRemove={() => removeFile(f.id)}
-                              onRetry={f.status === 'error' ? () => parseFile(f.id) : undefined}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                        {visibleQueueFiles.map(f => (<div key={f.id} role="presentation" draggable onDragStart={(e) => handleFileDragStart(e, f.id)}>
+                            <FileQueueItem file={{
+                        id: f.id,
+                        name: f.name,
+                        size: f.size,
+                        status: f.status,
+                        progress: f.progress,
+                        parser: f.parserLabel,
+                        folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
+                        sourcePath: f.sourcePath,
+                        error: f.error,
+                        duration: f.duration,
+                        pageCount: f.stats?.pageCount
+                    }} isActive={activeFileId === f.id} onClick={() => setActiveFileId(f.id)} onRemove={() => removeFile(f.id)} onRetry={f.status === 'error' ? () => parseFile(f.id) : undefined}/>
+                          </div>))}
+                      </div>);
+        }
+    }
+    else {
+        return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+	                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
+		                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin motion-reduce:animate-none"/>
+	                        </div>
+	                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">正在加载文档库…</p>
+	                        <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">首次进入或刷新时会稍等片刻</p>
+	                      </div>);
+    }
+})()}
                   </div>
                 </div>
 
@@ -1946,20 +1864,7 @@ export default function ParsingPage() {
 
           {/* 右侧：预览区域 */}
           <div className="flex-1 min-w-0 flex flex-col bg-card dark:bg-background overflow-hidden min-h-0 ring-1 ring-border/40 shadow-sm dark:shadow-none">
-	              {!(activeFile || activeLibraryFile) ? (
-	                // 空状态
-	                <div className="flex-1 flex items-center justify-center">
-	                  <div className="text-center max-w-md">
-	                    <div className="size-20 mx-auto mb-4 rounded-2xl border border-border/60 bg-card flex items-center justify-center shadow-soft">
-	                      <FileText className="w-10 h-10 text-muted-foreground dark:text-muted-foreground" />
-	                    </div>
-	                    <h3 className="text-lg font-medium text-foreground/80 dark:text-muted-foreground mb-2">选择文件开始</h3>
-                    <p className="text-muted-foreground dark:text-muted-foreground text-sm">
-                      从左侧上传或选择文件，系统将使用 AI 智能解析文档结构
-                    </p>
-                  </div>
-                </div>
-              ) : (
+	              {(activeFile || activeLibraryFile) ? (
                 <>
                   {/* Library-only selection (no File object in current session) */}
                   {!activeFile && activeLibraryFile ? (
@@ -2043,6 +1948,7 @@ export default function ParsingPage() {
                               </Button>
                             )}
 
+                            {/* eslint-disable-next-line no-nested-ternary */}
                             {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
 	                              activeLibrarySourceStatus === 'available' ? (
 	                                <Button
@@ -2197,11 +2103,19 @@ export default function ParsingPage() {
                                 <span
                                   className={cn(
                                     'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border',
-                                    activeQualityGate.grade === 'fail'
-                                      ? 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20'
-                                      : activeQualityGate.grade === 'warn'
-                                        ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20'
-                                        : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20'
+                                    (() => {
+    if (activeQualityGate.grade === 'fail') {
+        return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20';
+    }
+    else {
+        if (activeQualityGate.grade === 'warn') {
+            return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20';
+        }
+        else {
+            return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
+        }
+    }
+})()
                                   )}
                                   title="解析质量门禁（best-effort）"
                                 >
@@ -2215,12 +2129,12 @@ export default function ParsingPage() {
                               </div>
                               <div className="text-[11px] text-muted-foreground font-mono">
                                 {(() => {
-                                  const ev = (activeQualityGate as any)?.evidence || {}
+                                  const ev = (activeQualityGate)?.evidence || {}
                                   const tq = ev?.text_quality || {}
                                   const pq = ev?.parse_quality || {}
                                   const pieces: string[] = []
-                                  if (activePdfQuality && typeof (activePdfQuality as any)?.score === 'number') {
-                                    pieces.push(`pdf_score=${Number((activePdfQuality as any).score).toFixed(3)}`)
+                                  if (activePdfQuality && typeof (activePdfQuality)?.score === 'number') {
+                                    pieces.push(`pdf_score=${Number((activePdfQuality).score).toFixed(3)}`)
                                   }
                                   if (typeof pq?.score === 'number') pieces.push(`parse_score=${Number(pq.score).toFixed(3)}`)
                                   if (typeof tq?.content_chars === 'number') pieces.push(`content_chars=${tq.content_chars}`)
@@ -2656,6 +2570,19 @@ export default function ParsingPage() {
                     </>
                   ) : null}
                 </>
+              ) : (
+	                // 空状态
+	                <div className="flex-1 flex items-center justify-center">
+	                  <div className="text-center max-w-md">
+	                    <div className="size-20 mx-auto mb-4 rounded-2xl border border-border/60 bg-card flex items-center justify-center shadow-soft">
+	                      <FileText className="w-10 h-10 text-muted-foreground dark:text-muted-foreground" />
+	                    </div>
+	                    <h3 className="text-lg font-medium text-foreground/80 dark:text-muted-foreground mb-2">选择文件开始</h3>
+                    <p className="text-muted-foreground dark:text-muted-foreground text-sm">
+                      从左侧上传或选择文件，系统将使用 AI 智能解析文档结构
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
         </ParsingMainPanel>
@@ -2716,7 +2643,7 @@ export default function ParsingPage() {
               </div>
               <div className="space-y-1">
                 {visibleQueueFiles.map((f) => (
-                  <div key={f.id} draggable onDragStart={(e) => handleFileDragStart(e, f.id)}>
+                  <div key={f.id} role="presentation" draggable onDragStart={(e) => handleFileDragStart(e, f.id)}>
                     <FileQueueItem
                       file={{
                         id: f.id,
@@ -2840,49 +2767,47 @@ export default function ParsingPage() {
                 </div>
               </div>
 
-              {rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0 ? (
-                <div className="space-y-2">
+              {(() => {
+    if (rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0) {
+        return (<div className="space-y-2">
                   <div className="text-xs font-semibold text-muted-foreground">定位块</div>
                   <div className="rounded-2xl border border-border/60 bg-card p-2">
                     <div className="max-h-[46vh] overflow-y-auto overscroll-contain no-scrollbar space-y-1">
                       {activeBlocksWithPositions.slice(0, 80).map((block, idx) => {
-                        const pageIndex = block.positions?.[0]?.pages?.[0]
-                        const isActive = block.id === activeBlockId
-                        return (
-                          <button
-                            key={block.id}
-                            type="button"
-                            onClick={() => {
-                              setActiveBlockId(block.id)
-                              setInspectorOpen(false)
-                            }}
-                            className={cn(
-                              'w-full text-left rounded-xl border px-3 py-2 text-sm transition-colors',
-                              isActive
-                                ? 'border-sky-400 bg-sky-50 dark:bg-sky-950/30'
-                                : 'border-border/50 hover:bg-muted/40'
-                            )}
-                          >
+                const pageIndex = block.positions?.[0]?.pages?.[0];
+                const isActive = block.id === activeBlockId;
+                return (<button key={block.id} type="button" onClick={() => {
+                        setActiveBlockId(block.id);
+                        setInspectorOpen(false);
+                    }} className={cn('w-full text-left rounded-xl border px-3 py-2 text-sm transition-colors', isActive
+                        ? 'border-sky-400 bg-sky-50 dark:bg-sky-950/30'
+                        : 'border-border/50 hover:bg-muted/40')}>
                             <div className="flex items-center justify-between gap-3">
                               <div className="font-medium truncate">块 {idx + 1}</div>
                               <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
                                 {Number.isFinite(pageIndex) ? `页 ${Number(pageIndex) + 1}` : ''}
                               </div>
                             </div>
-                          </button>
-                        )
-                      })}
+                          </button>);
+            })}
                     </div>
                   </div>
-                </div>
-              ) : rightPanelMode === 'markdown' ? (
-                <div className="space-y-2">
+                </div>);
+    }
+    else {
+        if (rightPanelMode === 'markdown') {
+            return (<div className="space-y-2">
                   <div className="text-xs font-semibold text-muted-foreground">目录</div>
                   <div className="rounded-2xl border border-border/60 bg-card p-3">
-                    <MarkdownToc markdown={activeMarkdown} />
+                    <MarkdownToc markdown={activeMarkdown}/>
                   </div>
-                </div>
-              ) : null}
+                </div>);
+        }
+        else {
+            return null;
+        }
+    }
+})()}
 
               <div className="space-y-2">
                 <div className="text-xs font-semibold text-muted-foreground">快捷操作</div>

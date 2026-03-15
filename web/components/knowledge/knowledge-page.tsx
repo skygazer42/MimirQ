@@ -7,49 +7,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import {
-  Database,
-  FileText,
-  FileType,
-  FileSpreadsheet,
-  FileCode,
-  Presentation,
-  Settings,
-  Loader2,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Clock,
-  Play,
-  RotateCcw,
-  Trash2,
-  RefreshCw,
-  Layers,
-  HardDrive,
-  FileStack,
-  Eye,
-  LayoutGrid,
-  List as ListIcon,
-  MoreVertical,
-  File as FileIcon,
-  Zap,
-  Filter,
-  Folder,
-  X,
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react'
+import { Database, FileText, Settings, Loader2, CheckCircle, XCircle, AlertTriangle, RefreshCw, Layers, HardDrive, FileStack, Eye, LayoutGrid, List as ListIcon, MoreVertical, Zap, Filter } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
-import { Button } from '@/components/ui/button'
+
 import { IconButton } from '@/components/ui/icon-button'
 import { useDocuments } from '@/hooks/use-documents'
-import { formatFileSize, formatDate, cn } from '@/lib/utils'
+import { formatFileSize, cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { toSourcePathPrefix } from '@/lib/document-folders'
-import type { ConnectorRunOut, Dataset, Document, DocumentStats } from '@/types'
+import type { ConnectorRunOut, Dataset, DocumentStats } from '@/types'
 import { datasetApi, documentApi } from '@/lib/api-client'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { RetrievePreviewPanel } from '@/components/rag/retrieve-preview-panel'
@@ -62,17 +31,7 @@ import { KnowledgeSettingsPanel } from '@/components/knowledge/knowledge-setting
 import { useKnowledgeScrollContainer } from '@/components/knowledge/use-knowledge-scroll-container'
 import { parseKnowledgeQueryState, serializeKnowledgeQueryState } from '@/components/knowledge/use-knowledge-query-state'
 import { useConnectorRuns } from '@/hooks/use-connector-runs'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+
 
 // Tab 类型
 type TabType = 'documents' | 'retrieval' | 'settings'
@@ -196,10 +155,10 @@ export default function KnowledgePage() {
 
   // PageBody is an internal scroll container; on tab switches keep the top anchored.
   useEffect(() => {
-    const id = window.requestAnimationFrame(() => {
+    const id = globalThis.window.requestAnimationFrame(() => {
       mainPaneScrollEl?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
     })
-    return () => window.cancelAnimationFrame(id)
+    return () => globalThis.window.cancelAnimationFrame(id)
   }, [activeTab, mainPaneScrollEl])
 
   // Load datasets for filtering (best-effort).
@@ -227,10 +186,10 @@ export default function KnowledgePage() {
   // Server-side filtering for large knowledge bases (debounced).
   useEffect(() => {
     if (activeTab !== 'documents') return
-    const t = window.setTimeout(() => {
+    const t = globalThis.window.setTimeout(() => {
       loadDocuments({
         limit: 200,
-        status: statusFilter !== 'all' ? statusFilter : undefined,
+        status: statusFilter === 'all' ? undefined : statusFilter,
         lifecycle: lifecycleFilter,
         q: docFilter.trim() || undefined,
         dataset_id: selectedDatasetId,
@@ -239,7 +198,7 @@ export default function KnowledgePage() {
         order_dir: sortDir,
       })
     }, 250)
-    return () => window.clearTimeout(t)
+    return () => globalThis.window.clearTimeout(t)
   }, [activeTab, statusFilter, lifecycleFilter, docFilter, selectedDatasetId, folderPath, sortKey, sortDir, loadDocuments])
 
   // Accurate dashboard stats (server aggregated) - avoids "only 200 items loaded" bias.
@@ -248,7 +207,7 @@ export default function KnowledgePage() {
     const seq = ++docStatsSeqRef.current
     setDocStatsLoading(true)
 
-    const t = window.setTimeout(() => {
+    const t = globalThis.window.setTimeout(() => {
       documentApi
         .stats({ q: docFilter.trim() || undefined, dataset_id: selectedDatasetId, lifecycle: lifecycleFilter })
         .then((res) => {
@@ -266,35 +225,53 @@ export default function KnowledgePage() {
         })
     }, 250)
 
-    return () => window.clearTimeout(t)
+    return () => globalThis.window.clearTimeout(t)
   }, [activeTab, docFilter, selectedDatasetId, lifecycleFilter])
 
   const totalDocs = docStats?.total ?? total ?? documents.length
   const byStatus = docStats?.by_status || {}
-  const completedDocsValue: string | number = docStats ? Number(byStatus.completed || 0) : (docStatsLoading ? '…' : '—')
+  const statsPlaceholder: string = docStatsLoading ? '…' : '—'
+  const completedDocsValue: string | number = docStats ? Number(byStatus.completed || 0) : statsPlaceholder
   const processingDocsCount = docStats ? Number(byStatus.pending || 0) + Number(byStatus.processing || 0) : 0
   const failedDocsCount = docStats ? Number(byStatus.failed || 0) : 0
   const quarantinedDocsCount = docStats ? Number(byStatus.quarantined || 0) : 0
-  const processingDocsValue: string | number = docStats ? processingDocsCount : (docStatsLoading ? '…' : '—')
-  const failedDocsValue: string | number = docStats ? failedDocsCount : (docStatsLoading ? '…' : '—')
-  const quarantinedDocsValue: string | number = docStats ? quarantinedDocsCount : (docStatsLoading ? '…' : '—')
-  const totalChunksValue: string | number = docStats ? Number(docStats.total_chunks || 0).toLocaleString() : (docStatsLoading ? '…' : '—')
-  const totalSizeValue: string | number = docStats ? formatFileSize(Number(docStats.total_size || 0)) : (docStatsLoading ? '…' : '—')
+  const processingDocsValue: string | number = docStats ? processingDocsCount : statsPlaceholder
+  const failedDocsValue: string | number = docStats ? failedDocsCount : statsPlaceholder
+  const quarantinedDocsValue: string | number = docStats ? quarantinedDocsCount : statsPlaceholder
+  const totalChunksValue: string | number = docStats ? Number(docStats.total_chunks || 0).toLocaleString() : statsPlaceholder
+  const totalSizeValue: string | number = docStats ? formatFileSize(Number(docStats.total_size || 0)) : statsPlaceholder
+  const attentionDocsCount = failedDocsCount + quarantinedDocsCount
   const showExtraCard = docStats ? (processingDocsCount > 0 || failedDocsCount > 0 || quarantinedDocsCount > 0) : false
+  let extraCardIcon = Loader2
+  let extraCardLabel = '处理中'
+  let extraCardValue: number = processingDocsCount
+  let extraCardColor: 'red' | 'amber' | 'sky' = 'sky'
+
+  if (attentionDocsCount > 0) {
+    extraCardLabel = '需关注'
+    extraCardValue = attentionDocsCount
+    if (failedDocsCount > 0) {
+      extraCardIcon = XCircle
+      extraCardColor = 'red'
+    } else {
+      extraCardIcon = AlertTriangle
+      extraCardColor = 'amber'
+    }
+  }
 
   // The backend already applies q/status/dataset filters; keep UI list consistent with server results.
   const filteredDocuments = useMemo(() => documents, [documents])
 
   const [docGridColumns, setDocGridColumns] = useState(() => {
-    if (typeof window === 'undefined') return 1
-    return docGridColumnsForViewportWidth(window.innerWidth)
+    if (typeof globalThis.window === 'undefined') return 1
+    return docGridColumnsForViewportWidth(globalThis.window.innerWidth)
   })
 
   useEffect(() => {
-    const onResize = () => setDocGridColumns(docGridColumnsForViewportWidth(window.innerWidth))
+    const onResize = () => setDocGridColumns(docGridColumnsForViewportWidth(globalThis.window.innerWidth))
     onResize()
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    globalThis.window.addEventListener('resize', onResize)
+    return () => globalThis.window.removeEventListener('resize', onResize)
   }, [])
 
   const docGridRowCount = useMemo(() => {
@@ -382,26 +359,48 @@ export default function KnowledgePage() {
       setBatchLifecycleWorking(true)
       try {
         const fn =
-          action === 'disable'
-            ? documentApi.batchDisable
-            : action === 'enable'
-              ? documentApi.batchEnable
-              : action === 'archive'
-                ? documentApi.batchArchive
-                : documentApi.batchUnarchive
+          (() => {
+    if (action === 'disable') {
+        return documentApi.batchDisable;
+    }
+    else {
+        if (action === 'enable') {
+            return documentApi.batchEnable;
+        }
+        else {
+            if (action === 'archive') {
+                return documentApi.batchArchive;
+            }
+            else {
+                return documentApi.batchUnarchive;
+            }
+        }
+    }
+})()
 
         const res = await fn(ids)
         if (res?.denied?.length || res?.not_found?.length || res?.conflicts?.length) {
           console.warn('Batch lifecycle partial result:', res)
         }
         toast.success(
-          action === 'disable'
-            ? `已禁用 ${res.updated} 份文档`
-            : action === 'enable'
-              ? `已启用 ${res.updated} 份文档`
-              : action === 'archive'
-                ? `已归档 ${res.updated} 份文档`
-                : `已取消归档 ${res.updated} 份文档`
+          (() => {
+    if (action === 'disable') {
+        return `已禁用 ${res.updated} 份文档`;
+    }
+    else {
+        if (action === 'enable') {
+            return `已启用 ${res.updated} 份文档`;
+        }
+        else {
+            if (action === 'archive') {
+                return `已归档 ${res.updated} 份文档`;
+            }
+            else {
+                return `已取消归档 ${res.updated} 份文档`;
+            }
+        }
+    }
+})()
         )
         setSelectedDocIds([])
         await loadDocuments()
@@ -462,7 +461,7 @@ export default function KnowledgePage() {
 
   useEffect(() => {
     if (activeTab !== 'settings') return
-    void loadConnectorRuns({ datasetId: selectedDatasetId })
+    detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
   }, [activeTab, loadConnectorRuns, selectedDatasetId])
 
   const handleConnectorRunCreated = useCallback(
@@ -585,10 +584,10 @@ export default function KnowledgePage() {
 	              />
 	              {showExtraCard && (
 	                <StatCard
-	                  icon={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount > 0 ? XCircle : AlertTriangle) : Loader2}
-	                  label={(failedDocsCount + quarantinedDocsCount) > 0 ? '需关注' : '处理中'}
-	                  value={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount + quarantinedDocsCount) : processingDocsCount}
-	                  color={(failedDocsCount + quarantinedDocsCount) > 0 ? (failedDocsCount > 0 ? 'red' : 'amber') : 'sky'}
+	                  icon={extraCardIcon}
+	                  label={extraCardLabel}
+	                  value={extraCardValue}
+	                  color={extraCardColor}
 	                  className="bg-card border-border/60 shadow-soft"
 	                />
 	              )}
@@ -702,7 +701,7 @@ export default function KnowledgePage() {
                     <IconButton
                       label="预览分块"
                       variant="ghost"
-                      onClick={() => window.open('/chunk-preview', '_blank')}
+                      onClick={() => globalThis.window.open('/chunk-preview', '_blank')}
                       className="h-9 w-9 text-muted-foreground hover:text-foreground"
                     >
                       <Eye className="w-4 h-4" />
@@ -786,37 +785,62 @@ export default function KnowledgePage() {
 	                    </span>
 	                  ) : null}
 
-	                  {statusFilter !== 'all' ? (
+	                  {statusFilter === 'all' ? null : (
 	                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
 	                      状态:
 	                      <span className="ml-1 font-medium text-foreground">
-	                        {statusFilter === 'completed'
-	                          ? '已就绪'
-	                          : statusFilter === 'processing'
-	                            ? '处理中'
-	                            : statusFilter === 'failed'
-                              ? '失败'
-                              : statusFilter === 'quarantined'
-                                ? '隔离'
-                                : statusFilter}
+	                        {(() => {
+    if (statusFilter === 'completed') {
+        return '已就绪';
+    }
+    else {
+        if (statusFilter === 'processing') {
+            return '处理中';
+        }
+        else {
+            if (statusFilter === 'failed') {
+                return '失败';
+            }
+            else {
+                if (statusFilter === 'quarantined') {
+                    return '隔离';
+                }
+                else {
+                    return statusFilter;
+                }
+            }
+        }
+    }
+})()}
                       </span>
                     </span>
-	                  ) : null}
+	                  )}
 
-	                  {lifecycleFilter !== 'active' ? (
+	                  {lifecycleFilter === 'active' ? null : (
 	                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
 	                      生命周期:
 	                      <span className="ml-1 font-medium text-foreground">
-	                        {lifecycleFilter === 'archived'
-	                          ? '已归档'
-	                          : lifecycleFilter === 'disabled'
-	                            ? '已禁用'
-                            : lifecycleFilter === 'all'
-                              ? '全部'
-                              : lifecycleFilter}
+	                        {(() => {
+    if (lifecycleFilter === 'archived') {
+        return '已归档';
+    }
+    else {
+        if (lifecycleFilter === 'disabled') {
+            return '已禁用';
+        }
+        else {
+            if (lifecycleFilter === 'all') {
+                return '全部';
+            }
+            else {
+                return lifecycleFilter;
+            }
+        }
+    }
+})()}
                       </span>
                     </span>
-                  ) : null}
+                  )}
                 </div>
               }
 

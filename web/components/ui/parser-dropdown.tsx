@@ -18,7 +18,7 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
@@ -58,7 +58,7 @@ interface ParserDropdownProps {
   compact?: boolean
 }
 
-export function ParserDropdown({ value, onChange, className, filename, compact = false }: ParserDropdownProps) {
+export function ParserDropdown({ value, onChange, className, filename, compact = false }: Readonly<ParserDropdownProps>) {
   const [isOpen, setIsOpen] = useState(false)
   const [paddleVlVersionBadge, setPaddleVlVersionBadge] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -66,7 +66,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
 
   const normalizeBackendName = (backend?: string) => {
     const raw = (backend || '').toLowerCase().trim()
-    const normalized = raw.replace(/_/g, '-')
+    const normalized = raw.replaceAll(/_/g, '-')
     if (normalized === 'magic-pdf') return 'magicpdf'
     if (normalized === 'olm-ocr') return 'olmocr'
     if (normalized === 'olmocr-pdf') return 'olmocr'
@@ -95,7 +95,12 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
       try {
         const status: any = await settingsApi.getStatus()
         const health = status?.parsers?.paddle_vl?.health
-        const pv = typeof health?.pipeline_version === 'string' ? health.pipeline_version : (typeof health?.version === 'string' ? health.version : '')
+        let pv = ''
+        if (typeof health?.pipeline_version === 'string') {
+          pv = health.pipeline_version
+        } else if (typeof health?.version === 'string') {
+          pv = health.version
+        }
         if (!cancelled) {
           setPaddleVlVersionBadge(pv ? `PaddleOCR-VL ${pv}` : null)
         }
@@ -194,7 +199,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                     type="button"
                     className="flex-shrink-0 text-xs text-red-700 hover:text-red-800 dark:text-red-300 dark:hover:text-red-200 underline underline-offset-2"
                     onClick={() => {
-                      void refresh()
+                      detachPromise(refresh())
                     }}
                   >
                     重试

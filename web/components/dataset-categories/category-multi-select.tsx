@@ -13,7 +13,7 @@ import { Panel } from '@/components/ui/panel'
 import { datasetApi, datasetCategoryApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { flattenDatasetCategoryTree } from '@/lib/dataset-categories'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 
 import type { DatasetCategoryNode } from '@/types'
 
@@ -23,7 +23,7 @@ function toggleId(list: string[], id: string): string[] {
   return [...list, id]
 }
 
-export function DatasetCategoryMultiSelect({ datasetId, className }: { datasetId: string; className?: string }) {
+export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ datasetId: string; className?: string }>) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -51,8 +51,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: { datasetId
   }
 
   useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    detachPromise(load())
   }, [datasetId])
 
   const flat = useMemo(() => flattenDatasetCategoryTree(tree), [tree])
@@ -102,30 +101,32 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: { datasetId
             <div className="text-sm font-semibold text-foreground">分类</div>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
-            {loading ? (
-              <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+            {(() => {
+    if (loading) {
+        return (<span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"/>
                 加载中…
-              </span>
-            ) : assignedBadges.shown.length ? (
-              <>
-                {assignedBadges.shown.map((name) => (
-                  <Badge key={name} variant="outline" className="text-xs">
+              </span>);
+    }
+    else {
+        if (assignedBadges.shown.length) {
+            return (<>
+                {assignedBadges.shown.map((name) => (<Badge key={name} variant="outline" className="text-xs">
                     {name}
-                  </Badge>
-                ))}
-                {assignedBadges.rest ? (
-                  <Badge variant="soft" className="text-xs">{`+${assignedBadges.rest}`}</Badge>
-                ) : null}
-              </>
-            ) : (
-              <span className="text-xs text-muted-foreground">未设置</span>
-            )}
+                  </Badge>))}
+                {assignedBadges.rest ? (<Badge variant="soft" className="text-xs">{`+${assignedBadges.rest}`}</Badge>) : null}
+              </>);
+        }
+        else {
+            return (<span className="text-xs text-muted-foreground">未设置</span>);
+        }
+    }
+})()}
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-9 px-3" onClick={() => void load()} disabled={loading} aria-label="刷新分类">
+          <Button variant="ghost" size="sm" className="h-9 px-3" onClick={() => detachPromise(load())} disabled={loading} aria-label="刷新分类">
             <Loader2 className={cn('h-4 w-4', loading ? 'animate-spin motion-reduce:animate-none' : 'opacity-0')} />
             <span className={cn('ml-0', loading ? 'sr-only' : 'sr-only')}>刷新</span>
           </Button>
@@ -206,7 +207,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: { datasetId
                 <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
                   取消
                 </Button>
-                <Button onClick={() => void save()} disabled={saving}>
+                <Button onClick={() => detachPromise(save())} disabled={saving}>
                   {saving ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none mr-2" /> : null}
                   保存
                 </Button>
@@ -218,4 +219,3 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: { datasetId
     </Panel>
   )
 }
-

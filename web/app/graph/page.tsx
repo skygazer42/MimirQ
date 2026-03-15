@@ -18,6 +18,7 @@ import { Kbd } from '@/components/ui/kbd'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { SearchInput } from '@/components/ui/search-input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -31,51 +32,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { 
-  Upload, 
-  Share2, 
-  Info, 
-  RefreshCw, 
-  ZoomIn, 
-  ZoomOut, 
-  Maximize, 
-  Settings,
-  MoreHorizontal,
-  X,
-  BarChart3,
-  Database,
-  Filter,
-  SlidersHorizontal,
-  Layers,
-  FileCode,
-  MessageSquare,
-  FileText,
-  Type,
-  Trash2,
-  Edit,
-  Network,
-  Route,
-  PlayCircle,
-  Layout,
-  Link as LinkIcon,
-  PlusCircle,
-  Lightbulb,
-  Box,
-  BoxSelect,
-} from 'lucide-react'
+import { Upload, Share2, Info, RefreshCw, ZoomIn, ZoomOut, Maximize, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, PlayCircle, Layout, Link as LinkIcon, Lightbulb, Box, BoxSelect } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { KnowledgeGraph3D } from '@/components/graph/force-graph-3d'
-import { parseGraphML, GraphData } from '@/lib/graph-parser'
+import { parseGraphML, GraphData, type GraphNode } from '@/lib/graph-parser'
 import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { kgApi } from '@/lib/api-client'
 import type {
   KGEntityAliasItem,
   KGEntityAliasSuggestionItem,
-  KGEntityAliasesResponse,
-  KGEntityAliasSuggestionsResponse,
   KGEntityDetailResponse,
   KGEntityMergePreviewResponse,
   KGEntityMergeResponse,
@@ -91,7 +59,7 @@ import type {
 type GraphConfBucket = 'high' | 'medium' | 'low'
 
 function coerceTrimmedString(value: unknown): string {
-  return String(value || '').trim()
+  return toTrimmedPrimitiveString(value)
 }
 
 function getGraphNodeKind(node: any): string {
@@ -120,7 +88,7 @@ function getGraphLinkConfidence(link: any): number | null {
 function getGraphLinkEndpointId(raw: any): string {
   if (raw == null) return ''
   if (typeof raw === 'string' || typeof raw === 'number') return String(raw)
-  if (typeof raw === 'object' && 'id' in raw) return String((raw as any).id || '')
+  if (typeof raw === 'object' && 'id' in raw) return String((raw).id || '')
   return ''
 }
 
@@ -135,7 +103,7 @@ export default function GraphPage() {
   const router = useRouter()
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
   const [fileName, setFileName] = useState<string | null>(null)
-  const [selectedNode, setSelectedNode] = useState<any | null>(null)
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [deleteNodeOpen, setDeleteNodeOpen] = useState(false)
@@ -195,29 +163,29 @@ export default function GraphPage() {
 
   // Path Finding State
   const [isPathMode, setIsPathMode] = useState(false)
-  const [pathStartNode, setPathStartNode] = useState<any | null>(null)
-  const [pathEndNode, setPathEndNode] = useState<any | null>(null)
+  const [pathStartNode, setPathStartNode] = useState<GraphNode | null>(null)
+  const [pathEndNode, setPathEndNode] = useState<GraphNode | null>(null)
 
   // Layout & View Mode
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('force')
 
   // Editing State
   const [isConnectMode, setIsConnectMode] = useState(false)
-  const [connectSourceNode, setConnectSourceNode] = useState<any | null>(null)
+  const [connectSourceNode, setConnectSourceNode] = useState<GraphNode | null>(null)
   const [connectLabelOpen, setConnectLabelOpen] = useState(false)
-  const [connectTargetNode, setConnectTargetNode] = useState<any | null>(null)
+  const [connectTargetNode, setConnectTargetNode] = useState<GraphNode | null>(null)
   const [connectLabelDraft, setConnectLabelDraft] = useState('related_to')
 
   const detailScrollRef = useRef<HTMLDivElement>(null)
-  const selectedNodeId = selectedNode?.id as string | undefined
+  const selectedNodeId = selectedNode?.id
 
   // Reset the detail panel scroll when switching nodes so it doesn't appear "half scrolled".
   useEffect(() => {
     if (!isDetailOpen || !selectedNodeId) return
-    const raf = window.requestAnimationFrame(() => {
+    const raf = globalThis.window.requestAnimationFrame(() => {
       detailScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
     })
-    return () => window.cancelAnimationFrame(raf)
+    return () => globalThis.window.cancelAnimationFrame(raf)
   }, [isDetailOpen, selectedNodeId])
 
   // Explainability State
@@ -458,9 +426,9 @@ export default function GraphPage() {
 
     ;(async () => {
       try {
-        const resp = (await kgApi.listEntityAliases(entityId)) as KGEntityAliasesResponse
+        const resp = (await kgApi.listEntityAliases(entityId))
         if (!cancelled) setEntityAliases(resp.aliases || [])
-      } catch (error) {
+      } catch {
         if (!cancelled) setEntityAliases([])
       } finally {
         if (!cancelled) setEntityAliasesLoading(false)
@@ -470,12 +438,12 @@ export default function GraphPage() {
     ;(async () => {
       try {
         const resp = (await kgApi.suggestEntityAliases(entityId, {
-          mode: 'offline',
-          k: 6,
-          min_similarity: 0.75,
-        })) as KGEntityAliasSuggestionsResponse
+    mode: 'offline',
+    k: 6,
+    min_similarity: 0.75,
+}))
         if (!cancelled) setAliasSuggestions(resp.suggestions || [])
-      } catch (error) {
+      } catch {
         if (!cancelled) setAliasSuggestions([])
       } finally {
         if (!cancelled) setAliasSuggestionsLoading(false)
@@ -581,11 +549,11 @@ export default function GraphPage() {
     // API response: { enabled, items: [...] }
     if (Array.isArray((payload as RagTraceListResponse).items)) {
       const first = (payload as RagTraceListResponse).items?.[0]
-      return first && typeof first === 'object' ? (first as RagTrace) : null
+      return first && typeof first === 'object' ? (first) : null
     }
 
     // Single item.
-    if (typeof (payload as any).ts_ms === 'number' && Array.isArray((payload as any).steps)) {
+    if (typeof (payload).ts_ms === 'number' && Array.isArray((payload).steps)) {
       return payload as RagTrace
     }
 
@@ -603,15 +571,13 @@ export default function GraphPage() {
     const idRerank = `${rootId}:rerank`
     const idCitations = `${rootId}:citations`
 
-    nodes.push({ id: rootId, label: 'RAG Trace', kind: 'trace', val: 2.5, color: '#0ea5e9' })
-    nodes.push({ id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2.0, color: '#2563eb' })
+        nodes.push({ id: rootId, label: 'RAG Trace', kind: 'trace', val: 2.5, color: '#0ea5e9' }, { id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2.0, color: '#2563eb' })
     if (hasRerank) nodes.push({ id: idRerank, label: 'Rerank', kind: 'step', val: 2.0, color: '#14b8a6' })
     nodes.push({ id: idCitations, label: 'Citations', kind: 'step', val: 2.0, color: '#f97316' })
 
     links.push({ source: rootId, target: idRetrieve, label: 'start' })
     if (hasRerank) {
-      links.push({ source: idRetrieve, target: idRerank, label: 'rerank' })
-      links.push({ source: idRerank, target: idCitations, label: 'cite' })
+            links.push({ source: idRetrieve, target: idRerank, label: 'rerank' }, { source: idRerank, target: idCitations, label: 'cite' })
     } else {
       links.push({ source: idRetrieve, target: idCitations, label: 'cite' })
     }
@@ -620,7 +586,7 @@ export default function GraphPage() {
     const citationNodeIds: string[] = []
     citations.forEach((c, idx) => {
       const doc = String(c.document_id || '').slice(0, 8) || 'doc'
-      const page = c.page_number != null ? `p${c.page_number}` : ''
+      const page = c.page_number == null ? '' : `p${c.page_number}`
       const score = (c.rerank_score ?? c.retrieval_score ?? c.relevance_score)
       const scoreTxt = score == null ? '' : ` score=${Number(score).toFixed(3)}`
       const id = `${rootId}:c${idx}`
@@ -761,7 +727,7 @@ export default function GraphPage() {
         setEntityAliasesLoading(true)
         const resp = await kgApi.listEntityAliases(entityId)
         setEntityAliases(resp.aliases || [])
-      } catch (error) {
+      } catch {
         setEntityAliases([])
       } finally {
         setEntityAliasesLoading(false)
@@ -771,7 +737,7 @@ export default function GraphPage() {
         setAliasSuggestionsLoading(true)
         const resp = await kgApi.suggestEntityAliases(entityId, { mode: 'offline', k: 6, min_similarity: 0.75 })
         setAliasSuggestions(resp.suggestions || [])
-      } catch (error) {
+      } catch {
         setAliasSuggestions([])
       } finally {
         setAliasSuggestionsLoading(false)
@@ -851,14 +817,14 @@ export default function GraphPage() {
 
     let cancelled = false
     setMergeSearchLoading(true)
-    const t = window.setTimeout(() => {
+    const t = globalThis.window.setTimeout(() => {
       ;(async () => {
         try {
           const rows = await kgApi.searchGraphNodes({ q, kind: 'entity', limit: 8 })
           const currentId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
           const filtered = (rows || []).filter((r) => String(r.id) !== currentId)
           if (!cancelled) setMergeSearchResults(filtered)
-        } catch (error) {
+        } catch {
           if (!cancelled) setMergeSearchResults([])
         } finally {
           if (!cancelled) setMergeSearchLoading(false)
@@ -868,7 +834,7 @@ export default function GraphPage() {
 
     return () => {
       cancelled = true
-      window.clearTimeout(t)
+      globalThis.window.clearTimeout(t)
     }
   }, [mergeOpen, mergeSearch, selectedNode])
 
@@ -1012,8 +978,8 @@ export default function GraphPage() {
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    globalThis.window.addEventListener('keydown', handleKeyDown)
+    return () => globalThis.window.removeEventListener('keydown', handleKeyDown)
   }, [selectedNode, isDetailOpen, isPathMode, isConnectMode, isExplainMode, handleDeleteNode, handleExpandNode])
 
   const startConnectMode = () => {
@@ -1099,8 +1065,8 @@ export default function GraphPage() {
       setSelectedNode(null)
 
       // Let the graph render once before running animation/focus.
-      window.requestAnimationFrame(() => {
-        void animateTrace(built.steps, built.graph)
+      globalThis.window.requestAnimationFrame(() => {
+        detachPromise(animateTrace(built.steps, built.graph))
       })
       return
     }
@@ -1140,7 +1106,19 @@ export default function GraphPage() {
 
     const steps = trace.map((node, i) => ({
         node: node.id,
-        reason: i === 0 ? "初始查询匹配到的实体" : i === trace.length - 1 ? "最终推理得出的答案" : "通过关系链召回的相关节点"
+        reason: (() => {
+    if (i === 0) {
+        return "初始查询匹配到的实体";
+    }
+    else {
+        if (i === trace.length - 1) {
+            return "最终推理得出的答案";
+        }
+        else {
+            return "通过关系链召回的相关节点";
+        }
+    }
+})()
     }))
 
     setExplainSteps(steps)
@@ -1174,9 +1152,17 @@ export default function GraphPage() {
             if (link) {
                 const rawId = (link as any).id
                 const idx = (g.links as any[]).indexOf(link as any)
-                const linkId =
-                  rawId ||
-                  ((link as any).index !== undefined ? `link-${(link as any).index}` : (idx >= 0 ? `link-${idx}` : null))
+                const linkIndex = (link as any).index
+                let linkId = rawId
+                if (!linkId) {
+                  if (linkIndex !== undefined) {
+                    linkId = `link-${linkIndex}`
+                  } else if (idx >= 0) {
+                    linkId = `link-${idx}`
+                  } else {
+                    linkId = null
+                  }
+                }
                 if (linkId) {
                     setHighlightedLinkIds(prev => new Set([...Array.from(prev), linkId]))
                 }
@@ -1197,20 +1183,20 @@ export default function GraphPage() {
 
   const handleNodeClick = (node: any) => {
     if (isPathMode) {
-      if (!pathStartNode) {
+      if (pathStartNode) { if (pathEndNode) {
         setPathStartNode(node)
-      } else if (!pathEndNode) {
+        setPathEndNode(null)
+        setHighlightedNodeIds(new Set())
+        setHighlightedLinkIds(new Set())
+      } else {
         if (node.id === pathStartNode.id) {
           setPathStartNode(null)
           return
         }
         setPathEndNode(node)
         calculatePath(pathStartNode, node)
-      } else {
+      } } else {
         setPathStartNode(node)
-        setPathEndNode(null)
-        setHighlightedNodeIds(new Set())
-        setHighlightedLinkIds(new Set())
       }
       return
     }
@@ -1424,7 +1410,19 @@ export default function GraphPage() {
 	              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 motion-reduce:animate-none">
 	                 <Route className="w-4 h-4" />
 	                 <span className="text-sm font-medium">
-	                   {!pathStartNode ? "请点击选择【起点】" : !pathEndNode ? "请点击选择【终点】" : "路径分析完成"}
+	                   {(() => {
+    if (pathStartNode) {
+        if (pathEndNode) {
+            return "路径分析完成";
+        }
+        else {
+            return "请点击选择【终点】";
+        }
+    }
+    else {
+        return "请点击选择【起点】";
+    }
+})()}
 	                 </span>
 	                 <IconButton
 	                   label="退出路径分析"
@@ -1803,6 +1801,7 @@ export default function GraphPage() {
              backgroundSize: '24px 24px'
           }}></div>
 
+          {/* eslint-disable-next-line no-nested-ternary */}
           {displayGraphData.nodes.length > 0 ? (
             viewMode === '3d' ? (
                 <KnowledgeGraph3D 
@@ -1866,18 +1865,23 @@ export default function GraphPage() {
 		                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
 		               </div>
                <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto overscroll-contain no-scrollbar">
-                 {explainSteps.map((step, idx) => {
-                   const node = displayGraphData.nodes.find(n => n.id === step.node)
-                   const isActive = idx === currentStepIndex
-                   const isDone = idx < currentStepIndex
-                   
-                   return (
-	                     <div key={idx} className={cn("relative pl-4 border-l-2 transition-colors duration-150 motion-reduce:transition-none", 
-	                        isActive ? "border-teal-500" : isDone ? "border-teal-500/30" : "border-border opacity-50"
-	                     )}>
-                        <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors", 
-                           isActive ? "bg-teal-500" : isDone ? "bg-teal-500/20" : "bg-muted"
-                        )}></div>
+                  {explainSteps.map((step, idx) => {
+                    const node = displayGraphData.nodes.find(n => n.id === step.node)
+                    const isActive = idx === currentStepIndex
+                    const isDone = idx < currentStepIndex
+                    let borderClass = "border-border opacity-50"
+                    let dotClass = "bg-muted"
+                    if (isActive) {
+                      borderClass = "border-teal-500"
+                      dotClass = "bg-teal-500"
+                    } else if (isDone) {
+                      borderClass = "border-teal-500/30"
+                      dotClass = "bg-teal-500/20"
+                    }
+                    
+                    return (
+	                     <div key={`${step.node}-${step.reason}`} className={cn("relative pl-4 border-l-2 transition-colors duration-150 motion-reduce:transition-none", borderClass)}>
+                        <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors", dotClass)}></div>
                         <p className="text-xs font-semibold text-foreground mb-0.5">
                           {node?.label || step.node}
                         </p>
@@ -2028,82 +2032,63 @@ export default function GraphPage() {
                         KG Detail
                       </h3>
 
-                      {kgNodeDetailLoading ? (
-                        <div className="text-xs text-muted-foreground bg-muted rounded-xl p-3 border border-border">
+                      {(() => {
+    if (kgNodeDetailLoading) {
+        return (<div className="text-xs text-muted-foreground bg-muted rounded-xl p-3 border border-border">
                           Loading...
-                        </div>
-                      ) : !kgNodeDetail ? (
-                        <div className="text-xs text-muted-foreground bg-muted rounded-xl p-3 border border-border">
-                          No KG detail available
-                        </div>
-                      ) : selectedNode?.meta?.kind === 'entity' ? (
-                        <div className="space-y-3">
+                        </div>);
+    }
+    else {
+        if (kgNodeDetail) {
+            if (selectedNode?.meta?.kind === 'entity') {
+                return (<div className="space-y-3">
                           <div className="bg-muted rounded-xl p-3 border border-border">
                             <div className="text-[10px] font-medium text-muted-foreground mb-1">Recent Events</div>
                             <div className="space-y-1">
-                              {(kgNodeDetail as KGEntityDetailResponse).events?.slice(0, 6)?.map((ev) => (
-                                <div key={ev.id} className="text-xs text-foreground truncate" title={ev.title}>
+                              {(kgNodeDetail as KGEntityDetailResponse).events?.slice(0, 6)?.map((ev) => (<div key={ev.id} className="text-xs text-foreground truncate" title={ev.title}>
                                   {ev.title}
-                                </div>
-                              ))}
+                                </div>))}
                             </div>
                           </div>
                           <div className="bg-muted rounded-xl p-3 border border-border">
                             <div className="text-[10px] font-medium text-muted-foreground mb-1">Top Neighbors</div>
                             <div className="space-y-1">
-                              {(kgNodeDetail as KGEntityDetailResponse).neighbors?.slice(0, 8)?.map((n) => (
-                                <div key={n.entity_id} className="flex items-center justify-between gap-2 text-xs">
+                              {(kgNodeDetail as KGEntityDetailResponse).neighbors?.slice(0, 8)?.map((n) => (<div key={n.entity_id} className="flex items-center justify-between gap-2 text-xs">
                                   <span className="text-foreground truncate" title={n.name}>
                                     {n.name || n.entity_id}
                                   </span>
                                   <span className="text-muted-foreground font-mono">{n.count}</span>
-                                </div>
-                              ))}
+                                </div>))}
                             </div>
                           </div>
                           <div className="bg-muted rounded-xl p-3 border border-border">
                             <div className="text-[10px] font-medium text-muted-foreground mb-2">Aliases</div>
-                            {entityAliasesLoading ? (
-                              <div className="text-xs text-muted-foreground">Loading...</div>
-                            ) : entityAliases.length === 0 ? (
-                              <div className="text-xs text-muted-foreground">No aliases</div>
-                            ) : (
-                              <div className="flex flex-wrap gap-2">
-                                {entityAliases.slice(0, 12).map((a) => (
-                                  <div
-                                    key={a.id}
-                                    className="inline-flex items-center gap-1 rounded-full bg-background/60 px-2 py-1 text-[11px] border border-border"
-                                  >
+                            {(() => {
+                        if (entityAliasesLoading) {
+                            return (<div className="text-xs text-muted-foreground">Loading...</div>);
+                        }
+                        else {
+                            if (entityAliases.length === 0) {
+                                return (<div className="text-xs text-muted-foreground">No aliases</div>);
+                            }
+                            else {
+                                return (<div className="flex flex-wrap gap-2">
+                                {entityAliases.slice(0, 12).map((a) => (<div key={a.id} className="inline-flex items-center gap-1 rounded-full bg-background/60 px-2 py-1 text-[11px] border border-border">
                                     <span className="max-w-[150px] truncate" title={a.alias}>
                                       {a.alias}
                                     </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => requestDeleteAlias(a)}
-                                      aria-label={`删除 alias ${a.alias}`}
-                                      className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-0.5 transition-colors"
-                                    >
-                                      <X className="size-3" />
+                                    <button type="button" onClick={() => requestDeleteAlias(a)} aria-label={`删除 alias ${a.alias}`} className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-0.5 transition-colors">
+                                      <X className="size-3"/>
                                     </button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                                  </div>))}
+                              </div>);
+                            }
+                        }
+                    })()}
 
                             <div className="mt-3 flex items-center gap-2">
-                              <Input
-                                value={aliasDraft}
-                                onChange={(e) => setAliasDraft(e.target.value)}
-                                placeholder="Add alias…"
-                                className="h-8 text-xs"
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="h-8 text-xs"
-                                onClick={handleSaveAlias}
-                                disabled={aliasSaving || !aliasDraft.trim()}
-                              >
+                              <Input value={aliasDraft} onChange={(e) => setAliasDraft(e.target.value)} placeholder="Add alias…" className="h-8 text-xs"/>
+                              <Button type="button" variant="outline" className="h-8 text-xs" onClick={handleSaveAlias} disabled={aliasSaving || !aliasDraft.trim()}>
                                 添加
                               </Button>
                             </div>
@@ -2111,54 +2096,59 @@ export default function GraphPage() {
 
                           <div className="bg-muted rounded-xl p-3 border border-border">
                             <div className="text-[10px] font-medium text-muted-foreground mb-2">Suggestions</div>
-                            {aliasSuggestionsLoading ? (
-                              <div className="text-xs text-muted-foreground">Loading...</div>
-                            ) : aliasSuggestions.length === 0 ? (
-                              <div className="text-xs text-muted-foreground">No suggestions</div>
-                            ) : (
-                              <div className="space-y-1">
-                                {aliasSuggestions.slice(0, 6).map((s) => (
-                                  <div key={s.entity_id} className="flex items-center justify-between gap-2 text-xs">
+                            {(() => {
+                        if (aliasSuggestionsLoading) {
+                            return (<div className="text-xs text-muted-foreground">Loading...</div>);
+                        }
+                        else {
+                            if (aliasSuggestions.length === 0) {
+                                return (<div className="text-xs text-muted-foreground">No suggestions</div>);
+                            }
+                            else {
+                                return (<div className="space-y-1">
+                                {aliasSuggestions.slice(0, 6).map((s) => (<div key={s.entity_id} className="flex items-center justify-between gap-2 text-xs">
                                     <span className="text-foreground truncate" title={s.name}>
                                       {s.name || s.entity_id}
                                     </span>
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 px-2 text-[11px]"
-                                      onClick={() => {
-                                        openMergeDialog()
-                                        selectMergeTarget({
-                                          id: s.entity_id,
-                                          label: s.name || s.entity_id,
-                                          meta: { kind: 'entity', type: s.type },
-                                        })
-                                      }}
-                                    >
+                                    <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => {
+                                            openMergeDialog();
+                                            selectMergeTarget({
+                                                id: s.entity_id,
+                                                label: s.name || s.entity_id,
+                                                meta: { kind: 'entity', type: s.type },
+                                            });
+                                        }}>
                                       合并
                                     </Button>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                                  </div>))}
+                              </div>);
+                            }
+                        }
+                    })()}
                           </div>
-                        </div>
-                      ) : (
-                        <div className="bg-muted rounded-xl p-3 border border-border">
+                        </div>);
+            }
+            else {
+                return (<div className="bg-muted rounded-xl p-3 border border-border">
                           <div className="text-[10px] font-medium text-muted-foreground mb-2">Entities</div>
                           <div className="space-y-1">
-                            {(kgNodeDetail as KGEventDetailResponse).entities?.slice(0, 12)?.map((row) => (
-                              <div key={row.entity.id} className="flex items-center justify-between gap-2 text-xs">
+                            {(kgNodeDetail as KGEventDetailResponse).entities?.slice(0, 12)?.map((row) => (<div key={row.entity.id} className="flex items-center justify-between gap-2 text-xs">
                                 <span className="text-foreground truncate" title={row.entity.name}>
                                   {row.entity.name || row.entity.id}
                                 </span>
                                 <span className="text-muted-foreground">{row.role || row.entity.type}</span>
-                              </div>
-                            ))}
+                              </div>))}
                           </div>
-                        </div>
-                      )}
+                        </div>);
+            }
+        }
+        else {
+            return (<div className="text-xs text-muted-foreground bg-muted rounded-xl p-3 border border-border">
+                          No KG detail available
+                        </div>);
+        }
+    }
+})()}
                     </div>
                   )}
 
@@ -2338,30 +2328,26 @@ export default function GraphPage() {
                   onChange={(e) => setMergeSearch(e.target.value)}
                   placeholder="输入名称关键词…"
                 />
-                {mergeSearchLoading ? (
-                  <div className="text-xs text-muted-foreground">Searching…</div>
-                ) : mergeSearchResults.length === 0 ? (
-                  <div className="text-xs text-muted-foreground">输入至少 2 个字符开始搜索</div>
-                ) : (
-                  <div className="space-y-1">
-                    {mergeSearchResults.slice(0, 8).map((n) => (
-                      <button
-                        key={n.id}
-                        type="button"
-                        onClick={() => selectMergeTarget(n)}
-                        className={cn(
-                          "w-full text-left rounded-lg border border-border bg-background/60 px-3 py-2 text-xs hover:bg-background transition-colors",
-                          mergeTarget?.id === n.id && "ring-2 ring-primary/20 border-primary/30"
-                        )}
-                      >
+                {(() => {
+    if (mergeSearchLoading) {
+        return (<div className="text-xs text-muted-foreground">Searching…</div>);
+    }
+    else {
+        if (mergeSearchResults.length === 0) {
+            return (<div className="text-xs text-muted-foreground">输入至少 2 个字符开始搜索</div>);
+        }
+        else {
+            return (<div className="space-y-1">
+                    {mergeSearchResults.slice(0, 8).map((n) => (<button key={n.id} type="button" onClick={() => selectMergeTarget(n)} className={cn("w-full text-left rounded-lg border border-border bg-background/60 px-3 py-2 text-xs hover:bg-background transition-colors", mergeTarget?.id === n.id && "ring-2 ring-primary/20 border-primary/30")}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate">{n.label || n.id}</span>
                           <span className="text-muted-foreground font-mono">{String(n.id).slice(0, 8)}</span>
                         </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                      </button>))}
+                  </div>);
+        }
+    }
+})()}
               </div>
 
               {mergeTarget && (
@@ -2370,18 +2356,24 @@ export default function GraphPage() {
                   <div className="text-xs text-foreground truncate" title={mergeTarget.label}>
                     Target: {mergeTarget.label || mergeTarget.id}
                   </div>
-                  {mergePreviewLoading ? (
-                    <div className="text-xs text-muted-foreground">Loading preview…</div>
-                  ) : mergePreview ? (
-                    <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                  {(() => {
+    if (mergePreviewLoading) {
+        return (<div className="text-xs text-muted-foreground">Loading preview…</div>);
+    }
+    else {
+        if (mergePreview) {
+            return (<div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
                       <div>source edges: {String(mergePreview.stats?.source_event_entity_edges ?? '—')}</div>
                       <div>overlap: {String(mergePreview.stats?.overlap_events ?? '—')}</div>
                       <div>relations: {String(mergePreview.stats?.source_relations ?? '—')}</div>
                       <div>self removed: {String(mergePreview.stats?.self_relations_removed ?? '—')}</div>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground">No preview available</div>
-                  )}
+                    </div>);
+        }
+        else {
+            return (<div className="text-xs text-muted-foreground">No preview available</div>);
+        }
+    }
+})()}
                 </div>
               )}
 

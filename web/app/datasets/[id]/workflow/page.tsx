@@ -17,9 +17,18 @@ import { GraphViewer } from '@/components/graph/graph-viewer'
 import { datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { buildDatasetConfigGraph } from '@/lib/dataset-config-graph'
-import { cn } from '@/lib/utils'
+import type { GraphNode } from '@/lib/graph-parser'
+import { cn, detachPromise } from '@/lib/utils'
 
-import type { Dataset, DatasetConfigBundle, DatasetConfigExport } from '@/types'
+import type { Dataset, DatasetConfigBundle, DatasetConfigExport, DatasetConfigImportRequest } from '@/types'
+
+type DatasetWorkflowGraphNode = GraphNode & {
+  meta?: {
+    configured?: boolean
+    summary?: string[]
+    json?: unknown
+  }
+}
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -37,7 +46,7 @@ function downloadJson(value: unknown, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-function normalizeImportedBundle(raw: any): DatasetConfigBundle | null {
+function normalizeImportedBundle(raw: unknown): DatasetConfigBundle | null {
   if (!raw || typeof raw !== 'object') return null
   if ('config' in raw && raw.config && typeof raw.config === 'object') return raw.config as DatasetConfigBundle
   return raw as DatasetConfigBundle
@@ -46,14 +55,15 @@ function normalizeImportedBundle(raw: any): DatasetConfigBundle | null {
 export default function DatasetWorkflowPage() {
   const router = useRouter()
   const params = useParams()
-  const datasetId = asDatasetId((params as any)?.id)
+  const routeParams = params as Readonly<Record<string, string | string[] | undefined>>
+  const datasetId = asDatasetId(routeParams.id)
 
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [exportRes, setExportRes] = useState<DatasetConfigExport | null>(null)
   const [graph, setGraph] = useState(() => buildDatasetConfigGraph({}))
-  const [selectedNode, setSelectedNode] = useState<any | null>(null)
+  const [selectedNode, setSelectedNode] = useState<DatasetWorkflowGraphNode | null>(null)
 
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -65,17 +75,26 @@ export default function DatasetWorkflowPage() {
 
   const importKeys = useMemo(() => {
     if (!importBundle || typeof importBundle !== 'object') return []
-    return Object.keys(importBundle as any).sort()
+    return Object.keys(importBundle).sort()
   }, [importBundle])
 
-  const selectedMeta = (selectedNode as any)?.meta as any | undefined
+  const selectedMeta = selectedNode?.meta
+  const selectedSummary = Array.isArray(selectedMeta?.summary) ? selectedMeta.summary : []
   const selectedJson = selectedMeta?.json
   const selectedJsonText = useMemo(() => {
     if (selectedJson === undefined) return ''
     try {
       return JSON.stringify(selectedJson, null, 2)
     } catch {
-      return String(selectedJson)
+      if (
+        typeof selectedJson === 'string'
+        || typeof selectedJson === 'number'
+        || typeof selectedJson === 'boolean'
+        || typeof selectedJson === 'bigint'
+      ) {
+        return String(selectedJson)
+      }
+      return '[unserializable JSON]'
     }
   }, [selectedJson])
 
@@ -89,7 +108,7 @@ export default function DatasetWorkflowPage() {
       ])
       setDataset(ds)
       setExportRes(exp)
-      setGraph(buildDatasetConfigGraph((exp as any)?.config || {}))
+      setGraph(buildDatasetConfigGraph(exp.config ?? {}))
       setSelectedNode(null)
     } catch (e: any) {
       console.error('Failed to load dataset workflow', e)
@@ -100,7 +119,7 @@ export default function DatasetWorkflowPage() {
   }, [datasetId])
 
   useEffect(() => {
-    void load()
+    detachPromise(load())
   }, [load])
 
   const doExport = useCallback(async () => {
@@ -109,7 +128,7 @@ export default function DatasetWorkflowPage() {
     try {
       const exp = await datasetApi.exportConfig(datasetId)
       const id8 = datasetId.slice(0, 8)
-      const name = (dataset?.name || 'dataset').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 60)
+      const name = (dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 60)
       downloadJson(exp, `dataset-config-${name}-${id8}.json`)
       toast.success('Exported config')
     } catch (e: any) {
@@ -147,7 +166,8 @@ export default function DatasetWorkflowPage() {
     if (!datasetId || !importBundle) return
     setImporting(true)
     try {
-      await datasetApi.importConfig(datasetId, { config: importBundle, replace: true } as any)
+      const payload: DatasetConfigImportRequest = { config: importBundle, replace: true }
+      await datasetApi.importConfig(datasetId, payload)
       toast.success('Imported config (replace=true)')
       setImportOpen(false)
       setImportBundle(null)
@@ -208,11 +228,11 @@ export default function DatasetWorkflowPage() {
                 Tables
               </Button>
             ) : null}
-            <Button variant="outline" className="gap-2" onClick={() => void load()} disabled={loading}>
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(load())} disabled={loading}>
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
               Refresh
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => void doExport()} disabled={exporting}>
+            <Button variant="outline" className="gap-2" onClick={() => detachPromise(doExport())} disabled={exporting}>
               {exporting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
               Export JSON
             </Button>
@@ -225,7 +245,7 @@ export default function DatasetWorkflowPage() {
               type="file"
               accept="application/json"
               className="hidden"
-              onChange={(e) => void onPickImportFile(e.target.files?.[0] || null)}
+              onChange={(e) => detachPromise(onPickImportFile(e.target.files?.[0] || null))}
             />
           </div>
         }
@@ -248,18 +268,24 @@ export default function DatasetWorkflowPage() {
                   {selectedNode?.label ? String(selectedNode.label) : 'Node Details'}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {selectedMeta?.configured === false ? (
-                    <span>Not configured (inherits defaults)</span>
-                  ) : selectedMeta?.configured === true ? (
-                    <span>Configured</span>
-                  ) : (
-                    <span>Click a node to inspect summary + JSON</span>
-                  )}
+                  {(() => {
+    if (selectedMeta?.configured === false) {
+        return (<span>Not configured (inherits defaults)</span>);
+    }
+    else {
+        if (selectedMeta?.configured === true) {
+            return (<span>Configured</span>);
+        }
+        else {
+            return (<span>Click a node to inspect summary + JSON</span>);
+        }
+    }
+})()}
                 </div>
               </div>
               {selectedJsonText.trim() ? (
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <Button variant="outline" size="sm" onClick={() => void copySelectedJson()}>
+                  <Button variant="outline" size="sm" onClick={() => detachPromise(copySelectedJson())}>
                     Copy JSON
                   </Button>
                 </div>
@@ -267,12 +293,12 @@ export default function DatasetWorkflowPage() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pt-3 space-y-4 no-scrollbar">
-              {Array.isArray(selectedMeta?.summary) && selectedMeta.summary.length > 0 ? (
+              {selectedSummary.length > 0 ? (
                 <div className="space-y-2">
                   <div className="text-xs font-medium text-muted-foreground">Summary</div>
                   <div className="flex flex-wrap gap-2">
-                    {(selectedMeta.summary as any[]).slice(0, 20).map((s, idx) => (
-                      <Badge key={idx} variant="outline" className="font-mono text-[10px]">
+                    {selectedSummary.slice(0, 20).map((s) => (
+                      <Badge key={String(s)} variant="outline" className="font-mono text-[10px]">
                         {String(s)}
                       </Badge>
                     ))}
@@ -343,7 +369,7 @@ export default function DatasetWorkflowPage() {
               >
                 Cancel
               </Button>
-              <Button onClick={() => void doImport()} disabled={importing || !importBundle || !datasetId} className="gap-2">
+              <Button onClick={() => detachPromise(doImport())} disabled={importing || !importBundle || !datasetId} className="gap-2">
                 {importing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
                 Import (replace)
               </Button>
@@ -354,4 +380,3 @@ export default function DatasetWorkflowPage() {
     </AppFrame>
   )
 }
-
