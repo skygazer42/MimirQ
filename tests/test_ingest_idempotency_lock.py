@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -11,6 +10,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyDB:
@@ -42,18 +42,18 @@ class _FakeRedis:
         self._store: dict[str, str] = {}
 
     async def set(self, key, value, ex=None, nx=False):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         if nx and key in self._store:
             return False
         self._store[str(key)] = str(value)
         return True
 
     async def get(self, key):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return self._store.get(str(key))
 
     async def delete(self, key):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         self._store.pop(str(key), None)
 
 
@@ -82,7 +82,7 @@ def test_concurrent_uploads_are_idempotent_via_lock(monkeypatch, tmp_path):  # n
     redis = _FakeRedis()
 
     async def _fake_get_queue():  # noqa: ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return redis
 
     monkeypatch.setattr("app.tasks.queue.get_queue", _fake_get_queue, raising=True)
@@ -90,7 +90,7 @@ def test_concurrent_uploads_are_idempotent_via_lock(monkeypatch, tmp_path):  # n
     calls = {"enqueue": 0}
 
     async def _fake_enqueue(**kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         calls["enqueue"] += 1
         return "task-123"
 

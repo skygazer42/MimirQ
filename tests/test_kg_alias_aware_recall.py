@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -55,7 +56,7 @@ async def test_kg_recall_expands_query_via_entity_aliases(monkeypatch: pytest.Mo
     expanded_queries: list[str] = []
 
     async def _fake_embed(text: str) -> list[float]:
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         expanded_queries.append(text)
         return [0.0, 0.0, 0.0]
 
@@ -130,7 +131,7 @@ async def test_kg_recall_alias_keys_require_evidence_for_relation_expansion(monk
     )
 
     async def _fake_embed(_text: str) -> list[float]:
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return [0.0, 0.0, 0.0]
 
     searcher = RecallSearcher()

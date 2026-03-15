@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -10,6 +9,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentBatchRetryResponse
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: ANN001
@@ -26,12 +26,12 @@ def test_documents_batch_reingest_calls_patch_and_retry(monkeypatch):  # noqa: A
     calls = {"patch": 0, "retry": 0}
 
     async def _fake_patch(**kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         calls["patch"] += 1
         return None
 
     async def _fake_retry(**kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         calls["retry"] += 1
         return {
             "id": kwargs.get("document_id"),

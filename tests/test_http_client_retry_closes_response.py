@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import asyncio
-
 import httpx
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyAsyncClient:
@@ -12,7 +12,7 @@ class _DummyAsyncClient:
         self._i = 0
 
     async def request(self, _method: str, _url: str, **_kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         resp = self._responses[self._i]
         self._i += 1
         return resp
@@ -40,7 +40,7 @@ async def test_request_with_retry_closes_error_response_before_retry(monkeypatch
     pool = hc.HTTPClientPool()
 
     async def _get_client():  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return dummy
 
     monkeypatch.setattr(pool, "get_client", _get_client)

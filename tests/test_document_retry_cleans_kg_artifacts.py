@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
 from fastapi import BackgroundTasks
+
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeQuery:
@@ -57,7 +58,7 @@ async def test_retry_document_processing_cleans_kg_artifacts(monkeypatch: pytest
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(docs_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
     async def _noop_enqueue(*_a, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     monkeypatch.setattr(docs_mod, "enqueue_document_processing", _noop_enqueue, raising=True)

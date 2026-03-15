@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import httpx
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -117,7 +118,7 @@ async def test_jira_connector_ingests_issue_and_applies_source_acl(monkeypatch):
 
     class _FakePool:
         async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             params = kwargs.get("params") or {}
             start_at = int(params.get("startAt", 0) or 0)
             if url.endswith("/rest/api/3/search") and start_at == 0:
@@ -143,7 +144,7 @@ async def test_jira_connector_ingests_issue_and_applies_source_acl(monkeypatch):
     seen: dict[str, object] = {}
 
     async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         body = _k.get("body")
         seen["ingest_filename"] = getattr(body, "filename", None)
         seen["ingest_source_url"] = getattr(body, "source_url", None)
@@ -337,7 +338,7 @@ async def test_jira_connector_ingests_attachments_with_issue_acl(monkeypatch):  
 
     class _FakePool:
         async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             params = kwargs.get("params") or {}
             start_at = int(params.get("startAt", 0) or 0)
             if url.endswith("/rest/api/3/search") and start_at == 0:
@@ -365,12 +366,12 @@ async def test_jira_connector_ingests_attachments_with_issue_acl(monkeypatch):  
     seen: dict[str, object] = {}
 
     async def _fake_ingest_issue(*_a, **_k):  # noqa: ANN001, ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         seen["issue_html_source_url"] = getattr(_k.get("body"), "source_url", None)
         return issue_doc
 
     async def _fake_ingest_attachment(*_a, **_k):  # noqa: ANN001, ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         body = _k.get("body")
         seen["attachment_url"] = getattr(body, "url", None)
         seen["attachment_filename"] = getattr(body, "filename", None)
@@ -550,7 +551,7 @@ async def test_jira_connector_ingests_linked_artifacts_without_leaking_auth(monk
 
     class _FakePool:
         async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             params = kwargs.get("params") or {}
             start_at = int(params.get("startAt", 0) or 0)
             if url.endswith("/rest/api/3/search") and start_at == 0:
@@ -578,11 +579,11 @@ async def test_jira_connector_ingests_linked_artifacts_without_leaking_auth(monk
     seen: dict[str, object] = {}
 
     async def _fake_ingest_issue(*_a, **_k):  # noqa: ANN001, ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return issue_doc
 
     async def _fake_ingest_link(*_a, **_k):  # noqa: ANN001, ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         body = _k.get("body")
         seen.setdefault("linked_urls", []).append(getattr(body, "url", None))
         seen.setdefault("linked_fetch_headers", []).append(getattr(body, "fetch_headers", None))

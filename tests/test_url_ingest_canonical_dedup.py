@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 
+from tests.helpers.async_utils import yield_control
+
 
 def test_web_crawl_dedups_by_canonical(monkeypatch):  # noqa: ANN001
     import app.services.web_crawler as crawler
 
     async def _fake_validate(url: str) -> str:
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return url
 
     async def _fake_fetch_page_text(
@@ -18,7 +20,7 @@ def test_web_crawl_dedups_by_canonical(monkeypatch):  # noqa: ANN001
         max_bytes,  # noqa: ANN001
         follow_redirects,  # noqa: ANN001
     ):
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         if "page1" in url:
             html = '<html><head><link rel="canonical" href="https://example.com/canon"/></head><body>1</body></html>'
             return html, url, "text/html"

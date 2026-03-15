@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 class _Session:
@@ -68,13 +69,13 @@ async def test_kg_extract_skills_without_evidence_are_dropped_when_required(monk
     monkeypatch.setattr(extractor_mod.EventExtractor, "_writeback_document_metadata", lambda *_a, **_k: None, raising=True)
 
     async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return object()
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
     async def _fake_extract(self, sections, batch_index, **_kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)
+        await yield_control()
         return [
             {
                 "title": "t",
@@ -87,13 +88,13 @@ async def test_kg_extract_skills_without_evidence_are_dropped_when_required(monk
     monkeypatch.setattr(EventProcessor, "extract_from_sections", _fake_extract, raising=True)
 
     async def _fake_generate_batch(self, texts):  # noqa: ANN001
-        await asyncio.sleep(0)
+        await yield_control()
         return [[0.1] for _ in texts]
 
     monkeypatch.setattr(DocumentProcessor, "generate_batch", _fake_generate_batch, raising=True)
 
     async def _fake_extract_skills(self, *, text: str, max_skills: int = 3):  # noqa: ANN001
-        await asyncio.sleep(0)
+        await yield_control()
         assert text
         assert max_skills == 3
         # No evidence_quote and name does not appear in the chunk => should be dropped when evidence is required.

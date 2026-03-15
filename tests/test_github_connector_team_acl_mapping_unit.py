@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -92,15 +93,15 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
             return None
 
         async def __aenter__(self):  # noqa: ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return False
 
         async def get(self, url: str, headers=None):  # noqa: ANN001, ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             assert "/git/trees/" in url
             return _FakeResp(
                 200,
@@ -126,7 +127,7 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
     created_docs: list[_Doc] = []
 
     async def _fake_ingest(*_a, **_k):  # noqa: ANN001, ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         d = _Doc()
         created_docs.append(d)
         return d
@@ -167,7 +168,7 @@ async def test_github_repo_connector_applies_team_acl_via_external_id(monkeypatc
     mapped_group_id = uuid.uuid4()
 
     async def _fake_fetch_team_keys(*_a, **_k):  # noqa: ANN001, ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return list(expected_external_ids)
 
     monkeypatch.setattr(connectors, "_github_fetch_repo_team_principal_keys", _fake_fetch_team_keys, raising=True)

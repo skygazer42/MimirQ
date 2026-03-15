@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import inspect
 
 import httpx
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -21,15 +22,15 @@ async def test_request_with_retry_can_use_external_client(monkeypatch):
 
     class _DummyClient:
         async def request(self, _method: str, _url: str, **_kwargs):  # noqa: ANN001
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return resp200
 
     async def _get_external_client():  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return _DummyClient()
 
     async def _get_client():  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise AssertionError("internal client should not be used when use_external_client=True")
 
     monkeypatch.setattr(pool, "get_external_client", _get_external_client)

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -142,7 +143,7 @@ async def test_kg_recall_falls_back_when_embedding_provider_fails(monkeypatch: p
     monkeypatch.setattr(recall_mod.EventRepository, "get_event_entities", lambda *_a, **_k: {str(event_id): [_Link()]}, raising=True)
 
     async def _boom(_text: str) -> list[float]:
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise RuntimeError("no embedding provider")
 
     searcher = RecallSearcher()

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
 from fastapi import Response
+
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeDoc:
@@ -68,7 +69,7 @@ async def test_kg_extract_endpoint_passes_extract_toggles(monkeypatch: pytest.Mo
     called: dict[str, object] = {}
 
     async def _fake_extract_events(chunk_ids, tenant_id=None, **kwargs):  # noqa: ANN001, ANN002, ANN003
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         called["chunk_ids"] = list(chunk_ids or [])
         called["tenant_id"] = tenant_id
         called.update(kwargs)

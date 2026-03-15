@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
@@ -10,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyDB:
@@ -60,7 +60,7 @@ def test_connectors_validate_db_connectivity_is_exposed_under_checks_db_connecti
     called: dict[str, object] = {"n": 0, "last_connector_id": None}
 
     async def _fake_db_check(*, connector_id: str, cfg):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         called["n"] = int(called["n"] or 0) + 1
         called["last_connector_id"] = connector_id
         return {"ok": True, "latency_ms": 12.3, "read_only": True}, []

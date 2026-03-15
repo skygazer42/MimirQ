@@ -1,4 +1,3 @@
-import asyncio
 import json
 from pathlib import Path
 from uuid import uuid4
@@ -7,6 +6,7 @@ import pytest
 
 from app.core.config import settings
 from app.parsing.subprocess_runner import SubprocessWorkerError, run_subprocess_worker
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -33,7 +33,7 @@ async def test_run_subprocess_worker_result_size_guard(monkeypatch, tmp_path):
 
     async def _fake_create_subprocess_exec(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
         # argv: python -m app.parsing.subprocess_worker <payload_path> <result_path>
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         result_path = Path(str(args[4]))
         oversized = {"ok": True, "data": {"blob": "x" * 5000}}
         result_path.write_text(json.dumps(oversized, ensure_ascii=False), encoding="utf-8")
@@ -43,7 +43,7 @@ async def test_run_subprocess_worker_result_size_guard(monkeypatch, tmp_path):
             pid = 12345
 
             async def wait(self):  # noqa: ANN201
-                await asyncio.sleep(0)  # Sonar S7503
+                await yield_control()
                 return 0
 
         return _Proc()

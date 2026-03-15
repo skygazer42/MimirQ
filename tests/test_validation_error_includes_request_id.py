@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import asyncio
-
 import httpx
 import pytest
 from fastapi import FastAPI, Query
 
 from app.api.middleware.request_id import RequestIDMiddleware
 from app.core.exceptions import register_exception_handlers
+from tests.helpers.async_utils import yield_control
 
 
 def _make_app() -> FastAPI:
@@ -17,7 +16,7 @@ def _make_app() -> FastAPI:
 
     @app.get("/items")
     async def list_items(limit: int = Query(default=10, ge=1, le=100)) -> dict:
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return {"limit": limit}
 
     return app

@@ -1,7 +1,8 @@
-import asyncio
 from uuid import UUID
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 class _Query:
@@ -54,13 +55,13 @@ async def test_kg_extract_skips_short_chunks(monkeypatch):
     monkeypatch.setattr(extractor_mod, "SessionLocal", lambda: _Session(), raising=True)
 
     async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return object()
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
 
     async def _should_not_be_called(self, sections, batch_index, **_kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise AssertionError("LLM should not be called for short chunks")
 
     monkeypatch.setattr(EventProcessor, "extract_from_sections", _should_not_be_called, raising=True)
@@ -92,7 +93,7 @@ async def test_kg_extract_retries_transient_failures(monkeypatch):
     monkeypatch.setattr(extractor_mod, "SessionLocal", lambda: _Session(), raising=True)
 
     async def _fake_create_llm_client(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return object()
 
     monkeypatch.setattr(extractor_mod, "create_llm_client", _fake_create_llm_client, raising=True)
@@ -103,7 +104,7 @@ async def test_kg_extract_retries_transient_failures(monkeypatch):
         calls["count"] += 1
         if calls["count"] == 1:
             raise RuntimeError("transient")
-        await asyncio.sleep(0)
+        await yield_control()
         return []
 
     monkeypatch.setattr(EventProcessor, "extract_from_sections", _flaky_extract, raising=True)

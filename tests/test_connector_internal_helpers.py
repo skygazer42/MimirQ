@@ -6,6 +6,7 @@ import types
 import uuid
 from datetime import UTC, datetime
 
+from tests.helpers.async_utils import yield_control
 from tests.test_confluence_connector_unit import _import_connectors_with_lightweight_stubs
 
 
@@ -597,7 +598,7 @@ def test_process_drive_files_sources_only_passes_required_ingest_args(monkeypatc
         file_id,
         settings_map,
     ):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         seen["ingest_run"] = run
         seen["ingest_run_id"] = run_id
         seen["ingest_tenant_id"] = tenant_id
@@ -1205,7 +1206,7 @@ def test_ingest_single_jira_linked_artifact_sets_metadata_and_auth_headers(monke
     dummy_db = _DummyDB()
 
     async def _fake_ingest_url_upload_request(*_a, **kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         body = kwargs["body"]
         seen["body_url"] = getattr(body, "url", None)
         seen["body_fetch_headers"] = getattr(body, "fetch_headers", None)
@@ -1305,7 +1306,7 @@ def test_ingest_jira_issue_linked_artifacts_tracks_created_docs_and_reconciles(m
     monkeypatch.setattr(connectors, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=False)
 
     async def _fake_ingest_single_jira_linked_artifact(*_a, **kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         link_url = str(kwargs.get("link_url") or "")
         seen.setdefault("link_urls", []).append(link_url)
         return created_ids[len(seen["link_urls"]) - 1]
@@ -1396,7 +1397,7 @@ def test_ingest_jira_issue_linked_artifacts_skips_reconcile_when_listing_is_trun
     monkeypatch.setattr(connectors, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=False)
 
     async def _fake_ingest_single_jira_linked_artifact(*_a, **_kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return uuid.uuid4()
 
     def _fake_soft_disable(*_a, **_kwargs):  # noqa: ANN001
@@ -1484,7 +1485,7 @@ def test_ingest_single_jira_attachment_sets_metadata_and_filename(monkeypatch) -
     dummy_db = _DummyDB()
 
     async def _fake_ingest_url_upload_request(*_a, **kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         body = kwargs["body"]
         seen["body_url"] = getattr(body, "url", None)
         seen["body_fetch_headers"] = getattr(body, "fetch_headers", None)
@@ -1592,7 +1593,7 @@ def test_ingest_jira_issue_attachments_filters_extensions_and_reconciles(monkeyp
     monkeypatch.setattr(connectors.settings, "ALLOWED_EXTENSIONS", ".pdf", raising=False)
 
     async def _fake_ingest_single_jira_attachment(*_a, **kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         seen.setdefault("attachment_ids", []).append(kwargs.get("attachment_ref", {}).get("attachment_id"))
         return created_id
 
@@ -1692,7 +1693,7 @@ def test_ingest_jira_issue_attachments_skips_reconcile_when_listing_is_truncated
     monkeypatch.setattr(connectors.settings, "ALLOWED_EXTENSIONS", ".pdf,.txt", raising=False)
 
     async def _fake_ingest_single_jira_attachment(*_a, **_kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return uuid.uuid4()
 
     def _fake_soft_disable(*_a, **_kwargs):  # noqa: ANN001

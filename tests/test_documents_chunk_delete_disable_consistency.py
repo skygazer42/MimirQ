@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -9,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeQuery:
@@ -107,7 +107,7 @@ def test_delete_chunk_strict_mode_records_drift_item_and_returns_409(monkeypatch
             return None
 
     async def _fake_enqueue_rebuild_indexes(**_kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return "task-1"
 
     monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: _VectorStore(), raising=True)
@@ -205,7 +205,7 @@ def test_disable_chunk_strict_mode_records_drift_item_and_returns_409(monkeypatc
             return None
 
     async def _fake_enqueue_rebuild_indexes(**_kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return "task-2"
 
     monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: _VectorStore(), raising=True)

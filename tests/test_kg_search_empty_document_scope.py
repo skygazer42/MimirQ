@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -13,7 +14,7 @@ async def test_recall_searcher_empty_document_ids_short_circuits(monkeypatch: py
     from app.rag.kg.search.recall import RecallSearcher
 
     async def _should_not_be_called(self, *_a, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise AssertionError("generate_embedding should not run for empty document scope")
 
     monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _should_not_be_called, raising=True)

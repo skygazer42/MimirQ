@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 
 import httpx
 import pytest
 
+from tests.helpers.async_utils import yield_control
 from tests.test_connector_saved_state_resume import _import_connectors_with_lightweight_stubs
 
 
@@ -84,7 +84,7 @@ class _FakePool:
         self._payloads = list(payloads)
 
     async def request_with_retry(self, method: str, url: str, **_kwargs):  # noqa: ANN201
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         if not url.endswith("/rest/api/3/search"):
             raise AssertionError(f"unexpected jira url: {url}")
         payload = self._payloads.pop(0) if self._payloads else {"issues": []}
@@ -116,7 +116,7 @@ def _jira_issue(issue_id: str, issue_key: str, updated: str) -> dict[str, object
 
 
 async def _fake_ingest_local_html_request(*_a, **_k):  # noqa: ANN001, ANN202
-    await asyncio.sleep(0)  # Sonar S7503
+    await yield_control()
     return _CreatedDoc()
 
 
@@ -375,7 +375,7 @@ async def test_execute_jira_project_run_replays_boundary_timestamp_and_skips_see
     seen: dict[str, object] = {"created_issue_keys": []}
 
     async def _fake_ingest_local_html_request(*_a, **_k):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         body = _k.get("body")
         source_url = getattr(body, "source_url", None)
         if source_url and source_url.endswith("/PLAT-1"):
@@ -391,7 +391,7 @@ async def test_execute_jira_project_run_replays_boundary_timestamp_and_skips_see
             self.jqls: list[str] = []
 
         async def request_with_retry(self, method: str, url: str, **kwargs):  # noqa: ANN201
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             if not url.endswith("/rest/api/3/search"):
                 raise AssertionError(f"unexpected jira url: {url}")
             params = kwargs.get("params") or {}

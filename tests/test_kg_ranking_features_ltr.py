@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from pathlib import Path
 
@@ -9,6 +8,7 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.reranker.ltr import LTRFeatureSpec, train_ltr_xgboost_model
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeChunk:
@@ -100,7 +100,7 @@ def test_kg_ranking_features_help_ltr_rerank(tmp_path: Path, monkeypatch: pytest
     monkeypatch.setattr(orch_mod, "hybrid_retriever", _FakeRetriever(docs=[main_doc]), raising=True)
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert query
         assert tenant_id is not None
         assert document_ids

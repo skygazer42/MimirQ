@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 
 import pytest
@@ -9,12 +8,13 @@ from opentelemetry.context import attach, detach
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 
 from app.core.logging_config import configure_logging
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
 async def test_log_records_include_trace_id_and_span_id(caplog):
     # Ensure our record factory is installed.
-    await asyncio.sleep(0)  # Sonar S7503
+    await yield_control()
     configure_logging(log_level="INFO", log_format="plain")
 
     logger = logging.getLogger("tests.otel")

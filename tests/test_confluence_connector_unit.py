@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import importlib.util
 import sys
 import types
@@ -9,6 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel
+
+from tests.helpers.async_utils import yield_control
 
 
 def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
@@ -54,7 +55,7 @@ def _import_connectors_with_lightweight_stubs():  # noqa: ANN202
             return None
 
     async def _noop_async(*_args, **_kwargs):  # noqa: ANN002, ANN003
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     documents.LocalHtmlIngestRequest = _DummyRequest

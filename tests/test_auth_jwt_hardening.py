@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -15,6 +14,7 @@ from app.api.middleware.request_id import RequestIDMiddleware
 from app.core.config import settings
 from app.core.jwt_utils import create_access_token
 from app.core.logging_config import get_request_context
+from tests.helpers.async_utils import yield_control
 
 
 def _build_app() -> FastAPI:
@@ -226,7 +226,7 @@ def test_jwt_jwks_verification_allows_rs256_tokens(monkeypatch):
     jwk_key["use"] = "sig"
 
     async def _fake_fetch(url: str):
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert url == jwks_url
         return [dict(jwk_key)]
 
@@ -276,7 +276,7 @@ def test_jwt_oidc_discovery_can_resolve_jwks_uri(monkeypatch):
     jwks_url = "https://idp.example/.well-known/jwks.json"
 
     async def _fake_fetch_oidc(url: str):
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert url == "https://idp.example/.well-known/openid-configuration"
         return {"jwks_uri": jwks_url}
 
@@ -299,7 +299,7 @@ def test_jwt_oidc_discovery_can_resolve_jwks_uri(monkeypatch):
     jwk_key["use"] = "sig"
 
     async def _fake_fetch_jwks(url: str):
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert url == jwks_url
         return [dict(jwk_key)]
 

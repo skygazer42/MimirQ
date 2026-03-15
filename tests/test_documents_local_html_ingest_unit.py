@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from pathlib import Path
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 @pytest.mark.asyncio
@@ -34,11 +35,11 @@ async def test_ingest_local_html_request_creates_doc_and_processes_inline(
     )
 
     async def _fake_enqueue_document_processing(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     async def _fake_process_document(*_a, **_k):  # noqa: ANN001, ANN002, ANN003
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return None
 
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue_document_processing, raising=True)

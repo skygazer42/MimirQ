@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from fastapi import FastAPI
@@ -9,6 +8,7 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyDB:
@@ -44,7 +44,7 @@ def test_connectors_validate_endpoint_happy_path(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     async def _ok_url(url: str) -> str:
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return url
 
     # Avoid DNS/network in unit tests; validate endpoint should be patchable.
@@ -149,7 +149,7 @@ def test_connectors_validate_rejects_unknown_source_acl_groups(monkeypatch):  # 
     monkeypatch.setattr(connectors_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     async def _ok_url(url: str) -> str:
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         return url
 
     monkeypatch.setattr(connectors_module, "validate_url_for_ingest", _ok_url, raising=False)

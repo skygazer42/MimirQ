@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
+
+from tests.helpers.async_utils import yield_control
 
 
 def test_search_knowledge_base_requires_dataset_id_when_no_document_ids(monkeypatch):  # noqa: ANN001
@@ -56,7 +57,7 @@ async def test_mcp_search_documents_requires_dataset_id(monkeypatch):  # noqa: A
     # Ensure we don't accidentally call the real retriever.
     class _StubRetriever:
         async def ainvoke(self, query):  # noqa: ANN001
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             raise AssertionError("retriever.ainvoke should not be called for open-scope requests")
 
     class _StubHybrid:
@@ -80,7 +81,7 @@ async def test_mcp_search_documents_passes_dataset_id_to_retriever(monkeypatch):
 
     class _StubRetriever:
         async def ainvoke(self, query):  # noqa: ANN001
-            await asyncio.sleep(0)  # Sonar S7503
+            await yield_control()
             return []
 
     class _StubHybrid:

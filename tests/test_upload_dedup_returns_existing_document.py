@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import uuid
@@ -13,6 +12,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail
 from app.core.database import get_db
+from tests.helpers.async_utils import yield_control
 
 
 class _DummyDB:
@@ -101,7 +101,7 @@ def test_upload_dedup_returns_existing_document(monkeypatch, tmp_path):  # noqa:
     )
 
     async def _unexpected_enqueue(**_kwargs):  # noqa: ANN001, ANN202
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise AssertionError("unexpected enqueue_document_processing call")
 
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _unexpected_enqueue, raising=True)

@@ -4,6 +4,8 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 
+from tests.helpers.async_utils import yield_control
+
 
 class _FakeDB:
     def __init__(self) -> None:
@@ -42,7 +44,7 @@ def test_run_knowledge_asset_retention_dry_run(monkeypatch):  # noqa: ANN001
     monkeypatch.setattr(retention_jobs, "plan_knowledge_asset_purge", lambda *_a, **_k: planned_rows, raising=True)
 
     async def _fail_delete(**_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         raise AssertionError("dry-run must not invoke document delete lifecycle")
 
     monkeypatch.setattr(retention_jobs, "_delete_document_lifecycle", _fail_delete, raising=False)
@@ -105,7 +107,7 @@ def test_run_knowledge_asset_retention_execute(monkeypatch):  # noqa: ANN001
     deleted_ids: list[uuid.UUID] = []
 
     async def _delete_document_lifecycle(*, document_id, tenant_id, account_id, db, enforce_permissions):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert tenant_id
         assert account_id == "system:test"
         assert enforce_permissions is False

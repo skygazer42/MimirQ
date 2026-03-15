@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from uuid import uuid4
 
 import pytest
 
 from scripts import run_retention_jobs
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeDB:
@@ -21,7 +21,7 @@ def test_run_retention_jobs_supports_knowledge_assets(monkeypatch: pytest.Monkey
     monkeypatch.setattr(run_retention_jobs, "SessionLocal", lambda: _FakeDB(), raising=True)
 
     async def _fake_job(db, **kwargs):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert db is not None
         captured.append(dict(kwargs))
         return {

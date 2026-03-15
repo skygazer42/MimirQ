@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import pytest
 from langchain_core.documents import Document
+
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeChunk:
@@ -77,7 +78,7 @@ def test_orchestrator_propagates_kg_ranking_features_from_kg_search(monkeypatch:
     kg_chunk = uuid.uuid4()
 
     async def _fake_kg_search(*, query, tenant_id=None, document_ids=None, dataset_id=None, account_id=None):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert query
         assert tenant_id is not None
         assert document_ids

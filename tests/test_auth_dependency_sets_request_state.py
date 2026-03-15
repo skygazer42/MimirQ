@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -10,6 +9,7 @@ from jose import jwt
 
 from app.api.dependencies.auth import get_current_account_id
 from app.core.config import settings
+from tests.helpers.async_utils import yield_control
 
 
 def _build_app() -> FastAPI:
@@ -17,7 +17,7 @@ def _build_app() -> FastAPI:
 
     @app.get("/state")
     async def state_endpoint(*, request: Request, account_id: Annotated[str, Depends(get_current_account_id)]):  # noqa: B008
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         tenant_state = getattr(request.state, "tenant_id", None)
         return {
             "account_id": account_id,

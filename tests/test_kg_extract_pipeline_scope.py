@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 from uuid import UUID
 
 import pytest
 from fastapi import Response
+
+from tests.helpers.async_utils import yield_control
 
 
 class _FakeDoc:
@@ -78,7 +79,7 @@ async def test_kg_extract_scopes_chunks_to_active_pipeline(monkeypatch: pytest.M
     called: dict[str, object] = {}
 
     async def _fake_extract_events(chunk_ids, tenant_id=None, *, chunks=None, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         called["chunk_ids"] = [str(cid) for cid in chunk_ids]
         called["chunks"] = chunks
         return [{"id": "e1"}]
@@ -130,7 +131,7 @@ async def test_kg_extract_async_job_id_uses_active_pipeline_hash(monkeypatch: py
     current_hash = "ph-current"
 
     async def _fake_enqueue_kg_extraction(*, job_id=None, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert job_id is not None
         assert job_id.endswith(f":{active_hash}")
         assert current_hash not in str(job_id)
@@ -173,7 +174,7 @@ async def test_kg_extract_can_override_pipeline_hash(monkeypatch: pytest.MonkeyP
     called: dict[str, object] = {}
 
     async def _fake_extract_events(chunk_ids, tenant_id=None, *, chunks=None, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         called["chunk_ids"] = [str(cid) for cid in chunk_ids]
         called["chunks"] = chunks
         return [{"id": "e1"}]
@@ -226,7 +227,7 @@ async def test_kg_extract_async_can_override_pipeline_hash(monkeypatch: pytest.M
     other_hash = "ph-other"
 
     async def _fake_enqueue_kg_extraction(*, job_id=None, pipeline_hash=None, **_k):  # noqa: ANN001
-        await asyncio.sleep(0)  # Sonar S7503
+        await yield_control()
         assert pipeline_hash == other_hash
         assert job_id is not None and str(job_id).endswith(f":{other_hash}")
         return "task-1"
