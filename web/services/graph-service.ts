@@ -14,8 +14,12 @@ function cloneGraphData(data: GraphData): GraphData {
 function hashString32(value: string): number {
   let hash = 2166136261
   for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index)
+    const codePoint = value.codePointAt(index) ?? 0
+    hash ^= codePoint
     hash = Math.imul(hash, 16777619)
+    if (codePoint > 0xffff) {
+      index += 1
+    }
   }
   return hash >>> 0
 }

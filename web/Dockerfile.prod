@@ -48,7 +48,12 @@ COPY --from=builder /app/next.config.mjs ./next.config.mjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next_build ./.next_build
 COPY --from=builder /app/node_modules ./node_modules
-RUN chown -R node:node /app && chmod -R a-w /app/package.json /app/next.config.mjs /app/public /app/.next_build /app/node_modules
+RUN chown -R node:node /app && \
+  chmod -R a-w /app/package.json \
+    /app/next.config.mjs \
+    /app/public \
+    /app/.next_build \
+    /app/node_modules
 
 EXPOSE 3000
 
