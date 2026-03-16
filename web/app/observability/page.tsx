@@ -48,9 +48,9 @@ const WINDOW_PRESETS = [
 ]
 
 const SLOW_PRESETS = [
-    { label: '≥ 1s', value: 1.0 },
-    { label: '≥ 2s', value: 2.0 },
-    { label: '≥ 5s', value: 5.0 },
+    { label: '≥ 1s', value: 1 },
+    { label: '≥ 2s', value: 2 },
+    { label: '≥ 5s', value: 5 },
 ]
 
 function formatTs(tsMs: number) {
@@ -98,7 +98,7 @@ export default function ObservabilityPage() {
   const [loadingSummary, setLoadingSummary] = useState(false)
   const [loadingAnalytics, setLoadingAnalytics] = useState(false)
   const [windowMinutes, setWindowMinutes] = useState<number>(60)
-  const [slowThresholdSec, setSlowThresholdSec] = useState<number>(2.0)
+  const [slowThresholdSec, setSlowThresholdSec] = useState<number>(2)
 
   const loading = tab === 'summary' ? loadingSummary : loadingAnalytics
 
