@@ -5,12 +5,17 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { documentApi } from '@/lib/api-client'
-import type { Document } from '@/types'
+import type {
+  Document,
+  DocumentBatchUploadFailure,
+  DocumentBatchUploadResponse,
+  DocumentBatchUploadSuccess,
+  DocumentPipelineOptions,
+} from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
-import type { DocumentBatchUploadFailure, DocumentBatchUploadResponse, DocumentBatchUploadSuccess } from '@/types'
 
 export type DocumentListParams = {
   skip?: number
@@ -24,7 +29,22 @@ export type DocumentListParams = {
   order_dir?: 'asc' | 'desc'
 }
 
-function matchesDocumentListParams(doc: Document, params: DocumentListParams): boolean {
+type UploadBatchRequestOptions = {
+  parser_backend: string
+  chunk_strategy: string
+  dataset_id?: string
+  pipeline?: DocumentPipelineOptions
+  max_concurrent: number
+}
+
+type DocumentStatusSnapshot = Pick<
+  Document,
+  'status' | 'processing_progress' | 'current_stage' | 'error_message'
+>
+
+const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled', 'quarantined'])
+
+export function matchesDocumentListParams(doc: Document, params: DocumentListParams): boolean {
   const status = String(params.status || '').trim()
   if (status && status !== 'all') {
     const normalized = status.toLowerCase()
@@ -63,6 +83,85 @@ function matchesDocumentListParams(doc: Document, params: DocumentListParams): b
   return true
 }
 
+export function isTerminalDocumentStatus(status: string | undefined): boolean {
+  return TERMINAL_DOCUMENT_STATUSES.has(String(status || '').toLowerCase())
+}
+
+export function mergeDocumentStatus(
+  doc: Document,
+  documentId: string,
+  status: DocumentStatusSnapshot
+): Document {
+  if (doc.id !== documentId) return doc
+  return {
+    ...doc,
+    status: status.status,
+    processing_progress: status.processing_progress,
+    current_stage: status.current_stage,
+    error_message: status.error_message,
+  }
+}
+
+export function replaceDocumentById(doc: Document, documentId: string, nextDocument: Document): Document {
+  return doc.id === documentId ? nextDocument : doc
+}
+
+export function clampUploadOption(
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  return Math.max(min, Math.min(max, Number(value ?? fallback)))
+}
+
+export function getUploadFileKey(
+  file: Pick<File, 'name'> & { webkitRelativePath?: string } | DocumentBatchUploadFailure
+): string {
+  if ('source_path' in file || 'filename' in file) {
+    return String(file.source_path || file.filename || '').trim()
+  }
+  return String(file.webkitRelativePath || file.name || '').trim()
+}
+
+export function collectRetryFiles(
+  failed: DocumentBatchUploadFailure[],
+  fileByKey: Map<string, File>
+): File[] {
+  const nextRemaining: File[] = []
+  for (const item of failed) {
+    const retryFile = fileByKey.get(getUploadFileKey(item))
+    if (retryFile) nextRemaining.push(retryFile)
+  }
+  return nextRemaining
+}
+
+async function uploadBatchRound(
+  files: File[],
+  options: UploadBatchRequestOptions,
+  fileByKey: Map<string, File>
+): Promise<{
+  successful: DocumentBatchUploadSuccess[]
+  failed: DocumentBatchUploadFailure[]
+  nextRemaining: File[]
+}> {
+  const successful: DocumentBatchUploadSuccess[] = []
+  const failed: DocumentBatchUploadFailure[] = []
+
+  for (let i = 0; i < files.length; i += 50) {
+    const batch = files.slice(i, i + 50)
+    const response = await documentApi.uploadBatch(batch, options)
+    successful.push(...(response.successful || []))
+    failed.push(...(response.failed || []))
+  }
+
+  return {
+    successful,
+    failed,
+    nextRemaining: collectRetryFiles(failed, fileByKey),
+  }
+}
+
 export function useDocuments() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [total, setTotal] = useState(0)
@@ -82,7 +181,9 @@ export function useDocuments() {
     setError(null)
 
     try {
-      const effective: DocumentListParams = { ...lastListParamsRef.current, ...(params || {}) }
+      const effective: DocumentListParams = params
+        ? { ...lastListParamsRef.current, ...params }
+        : { ...lastListParamsRef.current }
       lastListParamsRef.current = effective
       const response = await documentApi.list(effective)
       setDocuments(response.items || [])
@@ -112,29 +213,15 @@ export function useDocuments() {
           const status = await documentApi.getStatus(documentId)
 
           // 更新文档状态
-          setDocuments((prev) =>
-            prev.map((doc) =>
-              doc.id === documentId
-                ? {
-                    ...doc,
-                    status: status.status,
-                    processing_progress: status.processing_progress,
-                    current_stage: status.current_stage,
-                    error_message: status.error_message,
-                  }
-                : doc
-            )
-          )
+          setDocuments((prev) => prev.map((doc) => mergeDocumentStatus(doc, documentId, status)))
 
           // 如果处理完成/失败/隔离，停止轮询
-          if (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled' || status.status === 'quarantined') {
+          if (isTerminalDocumentStatus(status.status)) {
             pollTimersRef.current.delete(documentId)
 
             // 重新加载完整的文档信息
             const fullDoc = await documentApi.get(documentId)
-            setDocuments((prev) =>
-              prev.map((doc) => (doc.id === documentId ? fullDoc : doc))
-            )
+            setDocuments((prev) => prev.map((doc) => replaceDocumentById(doc, documentId, fullDoc)))
             return
           }
         } catch (err) {
@@ -205,20 +292,19 @@ export function useDocuments() {
       setIsLoading(true)
       setError(null)
 
-      const maxRetries = Math.max(0, Math.min(3, Number(options.maxRetries ?? 1)))
-      const maxConcurrent = Math.max(1, Math.min(10, Number(options.maxConcurrent ?? 5)))
+      const maxRetries = clampUploadOption(options.maxRetries, 1, 0, 3)
+      const maxConcurrent = clampUploadOption(options.maxConcurrent, 5, 1, 10)
       const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
 
-      const originalFiles = Array.from(files || []).filter(Boolean)
+      const originalFiles = files.filter(Boolean)
       const total = originalFiles.length
       if (total === 0) {
         return { total: 0, successful_count: 0, failed_count: 0, successful: [], failed: [] }
       }
 
-      const keyOf = (f: File) => String((f as any).webkitRelativePath || f.name || '').trim()
       const fileByKey = new Map<string, File>()
       for (const f of originalFiles) {
-        const k = keyOf(f)
+        const k = getUploadFileKey(f)
         if (k) fileByKey.set(k, f)
       }
 
@@ -230,33 +316,21 @@ export function useDocuments() {
 
       try {
         while (remaining.length > 0 && attempt <= maxRetries) {
-          const nextRemaining: File[] = []
-          const roundFailures: DocumentBatchUploadFailure[] = []
-
-          // Server caps at 50 files per request.
-          for (let i = 0; i < remaining.length; i += 50) {
-            const batch = remaining.slice(i, i + 50)
-            const res = await documentApi.uploadBatch(batch, {
+          const round = await uploadBatchRound(
+            remaining,
+            {
               parser_backend: parserBackend,
               chunk_strategy: chunkStrategy,
               dataset_id: datasetId || undefined,
               pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
               max_concurrent: maxConcurrent,
-            })
+            },
+            fileByKey
+          )
 
-            successes.push(...(res.successful || []))
-            const failed = res.failed || []
-            roundFailures.push(...failed)
-
-            // Prepare retry list (best-effort mapping by source_path or filename).
-            for (const item of failed) {
-              const key = String(item.source_path || item.filename || '').trim()
-              const f = key ? fileByKey.get(key) : undefined
-              if (f) nextRemaining.push(f)
-            }
-          }
-
-          failures = roundFailures
+          successes.push(...round.successful)
+          failures = round.failed
+          const nextRemaining = round.nextRemaining
           if (nextRemaining.length === 0) break
           attempt += 1
           remaining = nextRemaining
