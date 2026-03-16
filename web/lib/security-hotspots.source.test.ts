@@ -1,0 +1,40 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+function read(relativePath: string): string {
+  return fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')
+}
+
+describe('security hotspot source guards', () => {
+  it('avoids hotspot-prone regexes in env helpers', () => {
+    const src = read('./env.ts')
+
+    expect(src).not.toContain(".replace(/\\/+$/, '')")
+    expect(src).not.toContain(".replace(/=+$/")
+    expect(src).not.toContain('/^https?:\\/\\//i.test(path)')
+  })
+
+  it('avoids Math.random fallbacks in request and local parsed file ids', () => {
+    expect(read('./request-id.ts')).not.toContain('Math.random(')
+    expect(read('../hooks/use-parsed-files.ts')).not.toContain('Math.random(')
+  })
+
+  it('avoids Math.random in graph mock expansion', () => {
+    expect(read('../services/graph-service.ts')).not.toContain('Math.random(')
+  })
+
+  it('avoids recursive copy patterns in Dockerfiles', () => {
+    expect(read('../Dockerfile')).not.toContain('COPY . .')
+    expect(read('../Dockerfile.prod')).not.toContain('COPY . .')
+  })
+
+  it('runs the dev container as a non-root user and locks runner copy permissions', () => {
+    const devDockerfile = read('../Dockerfile')
+    const prodDockerfile = read('../Dockerfile.prod')
+
+    expect(devDockerfile).toContain('USER node')
+    expect(prodDockerfile).toContain('--chmod=')
+  })
+})
