@@ -742,49 +742,49 @@ export function DataGovernancePanel() {
         mainPanel={
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 flex items-center justify-center p-6 relative">
-          <div
-            className={cn(
-              "group relative w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center transition-colors duration-200 motion-reduce:transition-none",
-              isDragging
-                ? "border-primary/50 bg-primary/10"
-                : "border-border/50 bg-card/5 hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md"
-            )}
-            tabIndex={0}
-            onClick={() => globalThis.document.getElementById('file-upload')?.click()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                globalThis.document.getElementById('file-upload')?.click()
-              }
-            }}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-	            {/* Holographic Grid Background */}
-	            <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] pointer-events-none" />
+	          <div
+	            className={cn(
+	              "group relative w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center transition-colors duration-200 motion-reduce:transition-none",
+	              isDragging
+	                ? "border-primary/50 bg-primary/10"
+	                : "border-border/50 bg-card/5 hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md"
+	            )}
+	            onDragOver={handleDragOver}
+	            onDragLeave={handleDragLeave}
+	            onDrop={handleDrop}
+	          >
+		            {/* Holographic Grid Background */}
+		            <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] pointer-events-none" />
 
-	            <div className="relative z-10 flex flex-col items-center">
-		              <div className="mb-8 flex size-24 items-center justify-center rounded-full border border-primary/20 bg-primary/10 shadow-sm">
-		                {uploading ? (
-	                  <Sparkles className="w-10 h-10 text-primary animate-spin motion-reduce:animate-none" />
-	                ) : (
-	                  <Upload className="w-10 h-10 text-primary" />
-	                )}
-	              </div>
+		            <div className="relative z-10 flex flex-col items-center">
+			              <button
+                      type="button"
+                      className="flex flex-col items-center rounded-2xl bg-transparent text-center"
+                      onClick={() => globalThis.document.getElementById('file-upload')?.click()}
+                      disabled={uploading}
+                      aria-label="打开文件上传对话框"
+                    >
+			                  <div className="mb-8 flex size-24 items-center justify-center rounded-full border border-primary/20 bg-primary/10 shadow-sm">
+			                    {uploading ? (
+			                      <Sparkles className="w-10 h-10 text-primary animate-spin motion-reduce:animate-none" />
+			                    ) : (
+			                      <Upload className="w-10 h-10 text-primary" />
+			                    )}
+			                  </div>
 
-              <h3 className="text-3xl font-bold text-foreground mb-4 ">
-                {uploading ? '正在解析文档...' : '拖拽文档至全息工作台'}
-              </h3>
-              <p className="text-muted-foreground mb-10 max-w-lg mx-auto text-lg leading-relaxed">
-                {uploading
-                  ? 'AI 正在分析文档结构并提取内容，请稍候...'
-                  : '支持 PDF, Word, Excel, TXT, MD, ZIP 等格式。即刻开启智能治理流程。'
-                }
-              </p>
+                      <h3 className="text-3xl font-bold text-foreground mb-4">
+                        {uploading ? '正在解析文档...' : '拖拽文档至全息工作台'}
+                      </h3>
+                      <p className="text-muted-foreground mb-10 max-w-lg mx-auto text-lg leading-relaxed">
+                        {uploading
+                          ? 'AI 正在分析文档结构并提取内容，请稍候...'
+                          : '支持 PDF, Word, Excel, TXT, MD, ZIP 等格式。即刻开启智能治理流程。'
+                        }
+                      </p>
+                    </button>
 
-              <div className="relative z-20 mx-auto mb-10 w-full max-w-md text-left">
-                  <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">文档结构</div>
+	              <div className="relative z-20 mx-auto mb-10 w-full max-w-md text-left">
+	                  <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">文档结构</div>
                 <div className="max-h-48 overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/30 p-5 shadow-sm">
                   <DocumentFolderTree />
                 </div>
@@ -1074,27 +1074,22 @@ export function DataGovernancePanel() {
                   const score = state?.qualityScore || 0
 
 	                  return (
-	                    <div
-	                      key={file.id}
-	                      tabIndex={0}
-	                      onClick={() => handleSelectFile(file.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          handleSelectFile(file.id)
-                        }
-                      }}
-                      className={cn(
-                        "w-full text-left p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer group relative",
-                        selectedFileId === file.id
-                          ? "bg-sky-500/10 dark:bg-sky-500/20 border-sky-200 shadow-md ring-1 ring-sky-100"
-                          : "bg-card border-border hover:border-sky-200 hover:shadow-sm"
-                      )}
-                    >
-                      <div className="flex items-start gap-4">
-                        {/* File Icon */}
-                        {getFileIcon(file.filename, cn(
-                          "size-12 rounded-xl shadow-sm border transition-colors transition-shadow mr-0 motion-reduce:transition-none",
+                      <div key={file.id} className="group relative">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectFile(file.id)}
+                          className={cn(
+                            "w-full text-left p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer",
+                            selectedFileId === file.id
+                              ? "bg-sky-500/10 dark:bg-sky-500/20 border-sky-200 shadow-md ring-1 ring-sky-100"
+                              : "bg-card border-border hover:border-sky-200 hover:shadow-sm"
+                          )}
+                          aria-label={`打开文件：${file.filename}`}
+                        >
+	                      <div className="flex items-start gap-4">
+	                        {/* File Icon */}
+	                        {getFileIcon(file.filename, cn(
+	                          "size-12 rounded-xl shadow-sm border transition-colors transition-shadow mr-0 motion-reduce:transition-none",
                           selectedFileId === file.id
                             ? "ring-2 ring-sky-100 ring-offset-1 border-sky-200"
                             : "border-border group-hover:border-sky-200 group-hover:shadow-md"
@@ -1145,39 +1140,38 @@ export function DataGovernancePanel() {
                           </div>
 
                           {/* Row 3: Badges & Actions */}
-                          <div className="flex items-center justify-between h-5">
-                            <div className="flex items-center gap-2">
-                              {state?.isModified && (
-                                <span className="text-[9px] text-sky-600 dark:text-sky-300 flex items-center gap-1 bg-sky-500/10 dark:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 font-bold">
+	                          <div className="flex items-center justify-between h-5 pr-8">
+	                            <div className="flex items-center gap-2">
+	                              {state?.isModified && (
+	                                <span className="text-[9px] text-sky-600 dark:text-sky-300 flex items-center gap-1 bg-sky-500/10 dark:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 font-bold">
                                   <Sparkles className="w-2.5 h-2.5" /> 已清洗
                                 </span>
                               )}
                               {hasIssue && (
                                 <span className="text-[9px] text-rose-600 flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 font-bold">
-                                  <AlertTriangle className="w-2.5 h-2.5" /> 需关注
-                                </span>
-                              )}
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setDeleteFileTarget({ id: file.id, filename: file.filename })
-                                setDeleteFileOpen(true)
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1 -mr-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
-                              aria-label={`删除文件：${file.filename}`}
-                              title="删除文件"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
+	                                  <AlertTriangle className="w-2.5 h-2.5" /> 需关注
+	                                </span>
+	                              )}
+	                            </div>
+	                          </div>
+	                        </div>
+	                      </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteFileTarget({ id: file.id, filename: file.filename })
+                            setDeleteFileOpen(true)
+                          }}
+                          className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
+                          aria-label={`删除文件：${file.filename}`}
+                          title="删除文件"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    </div>
-                  )
-                })
+	                  )
+	                })
               )}
             </div>
 
