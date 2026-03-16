@@ -1,3 +1,16 @@
+function trimTrailingSlashes(value: string): string {
+  let end = value.length
+  while (end > 0 && value[end - 1] === '/') {
+    end -= 1
+  }
+  return value.slice(0, end)
+}
+
+function hasHttpProtocol(value: string): boolean {
+  const lower = value.slice(0, 8).toLowerCase()
+  return lower.startsWith('http://') || lower.startsWith('https://')
+}
+
 function resolveApiBaseUrl(): string {
   const publicUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim()
   const internalUrl = (process.env.API_INTERNAL_URL || '').trim()
@@ -5,7 +18,7 @@ function resolveApiBaseUrl(): string {
   // In Docker, the browser should call the host-mapped backend (usually http://localhost:8000),
   // but the Next.js server (SSR) must call the backend via container-to-container DNS.
   const chosen = globalThis.window === undefined && internalUrl ? internalUrl : publicUrl
-  const trimmed = chosen.replace(/\/+$/, '')
+  const trimmed = trimTrailingSlashes(chosen)
 
   // Browsers cannot call 0.0.0.0. Also, when opening the frontend via a LAN IP,
   // hardcoding the backend as localhost/127.0.0.1 will break. Best-effort rewrite
@@ -20,11 +33,11 @@ function resolveApiBaseUrl(): string {
 
       if (apiHost === '0.0.0.0' && pageHost) {
         url.hostname = pageHost
-        return url.toString().replace(/\/+$/, '')
+        return trimTrailingSlashes(url.toString())
       }
       if (loopbacks.has(apiHost) && pageHost && !loopbacks.has(pageHost)) {
         url.hostname = pageHost
-        return url.toString().replace(/\/+$/, '')
+        return trimTrailingSlashes(url.toString())
       }
     } catch {
       // ignore
@@ -49,6 +62,6 @@ export const API_LONG_TIMEOUT_MS = Number.isFinite(parsedLongTimeout) ? parsedLo
 
 export function toAbsoluteBackendUrl(path: string): string {
   if (!path) return API_BASE_URL
-  if (/^https?:\/\//i.test(path)) return path
+  if (hasHttpProtocol(path)) return path
   return path.startsWith('/') ? `${API_BASE_URL}${path}` : `${API_BASE_URL}/${path}`
 }

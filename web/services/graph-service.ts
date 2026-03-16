@@ -11,6 +11,19 @@ function cloneGraphData(data: GraphData): GraphData {
   return structuredClone(data)
 }
 
+function hashString32(value: string): number {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
+}
+
+function seededIndex(seed: string, size: number): number {
+  return size > 0 ? hashString32(seed) % size : 0
+}
+
 export class GraphService {
   static getMockGraph(): GraphData {
     const nodes: GraphNode[] = [
@@ -106,27 +119,30 @@ export class GraphService {
 
     await delay(600)
 
-    // Generate pseudo-random neighbors based on ID to be deterministic but look dynamic
-    const count = Math.floor(Math.random() * 3) + 2 // 2 to 4 new neighbors
+    // Generate deterministic mock neighbors from the node id so expansion remains stable.
+    const count = seededIndex(`${nodeId}:count`, 3) + 2 // 2 to 4 new neighbors
     const nodes: GraphNode[] = []
     const links: GraphLink[] = []
+    const labels = ['Concept', 'Tool', 'Person', 'Paper', 'Organization']
 
     for (let i = 0; i < count; i++) {
-      const newId = `${nodeId}-${Date.now()}-${i}`
-      const labels = ['Concept', 'Tool', 'Person', 'Paper', 'Organization']
-      const labelType = labels[Math.floor(Math.random() * labels.length)]
-      
+      const seedBase = `${nodeId}:${i}`
+      const labelType = labels[seededIndex(`${seedBase}:label-type`, labels.length)]
+      const labelNumber = seededIndex(`${seedBase}:label-number`, 100)
+      const group = seededIndex(`${seedBase}:group`, 5)
+      const newId = `${nodeId}-${Date.now().toString(36)}-${hashString32(seedBase).toString(36)}`
+
       nodes.push({
         id: newId,
-        label: `${labelType} ${Math.floor(Math.random() * 100)}`,
-        group: Math.floor(Math.random() * 5),
-        val: 5
+        label: `${labelType} ${labelNumber}`,
+        group,
+        val: 5,
       })
 
       links.push({
         source: nodeId,
         target: newId,
-        label: 'related_to'
+        label: 'related_to',
       })
     }
 

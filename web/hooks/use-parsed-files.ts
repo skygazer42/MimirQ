@@ -6,6 +6,8 @@
  */
 import { useState, useEffect, useCallback } from 'react'
 
+import { generateRequestId } from '@/lib/request-id'
+
 export interface ParsedFileData {
   id: string
   filename: string
@@ -72,7 +74,7 @@ export function useParsedFiles() {
     const newFile: ParsedFileData = {
       ...file,
       originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
-      id: Math.random().toString(36).substring(2, 15),
+      id: generateRequestId(),
       parsedAt: new Date().toISOString(),
     }
 
