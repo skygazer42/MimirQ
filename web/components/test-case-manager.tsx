@@ -10,7 +10,7 @@
 
 'use client'
 
-import { useMemo, useRef, useState, useEffect } from 'react'
+import { useMemo, useRef, useState, useEffect, useCallback, type MouseEvent, type ReactNode } from 'react'
 import { evaluationApi, ragApi } from '@/lib/api-client'
 import type { Citation, RegressionCase, RegressionCaseCreate, RegressionReferenceSource } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -57,12 +57,145 @@ type EvidencePackDraft = {
   [key: string]: unknown
 }
 
+type TestCaseRowProps = {
+  caseItem: RegressionCase
+  isSelected: boolean
+  isChecked: boolean
+  isGolden: boolean
+  onSelectCase: (caseItem: RegressionCase) => void
+  onToggleSelect: (caseId: string) => void
+  onToggleGolden: (caseItem: RegressionCase) => Promise<void>
+  onDelete: (caseId: string) => Promise<void>
+}
+
+function TestCaseRow({
+  caseItem,
+  isSelected,
+  isChecked,
+  isGolden,
+  onSelectCase,
+  onToggleSelect,
+  onToggleGolden,
+  onDelete,
+}: Readonly<TestCaseRowProps>) {
+  const handleSelect = () => {
+    onSelectCase(caseItem)
+  }
+
+  const handleToggleSelect = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    onToggleSelect(caseItem.id)
+  }
+
+  const handleToggleGolden = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    detachPromise(onToggleGolden(caseItem))
+  }
+
+  const handleDeleteConfirm = () => {
+    detachPromise(onDelete(caseItem.id))
+  }
+
+  return (
+    <div
+      className={cn(
+        'p-4 hover:bg-muted/50 transition-colors motion-reduce:transition-none',
+        isSelected && 'bg-primary/10'
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          onClick={handleToggleSelect}
+          className="mt-0.5"
+          aria-label={isChecked ? '取消选择测试用例' : '选择测试用例'}
+        >
+          {isChecked ? (
+            <CheckSquare className="w-4 h-4 text-primary" />
+          ) : (
+            <Square className="w-4 h-4 text-muted-foreground" />
+          )}
+        </button>
+
+        <button type="button" className="flex-1 min-w-0 text-left" onClick={handleSelect}>
+          <div className="text-sm font-medium text-foreground mb-1 line-clamp-2">{caseItem.question}</div>
+
+          {caseItem.expected_answer ? (
+            <div className="text-xs text-muted-foreground mb-2 line-clamp-2">期望: {caseItem.expected_answer}</div>
+          ) : null}
+
+          {caseItem.tags && caseItem.tags.length > 0 ? (
+            <div className="flex items-center gap-1 flex-wrap mb-2">
+              {caseItem.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-[10px] text-muted-foreground border border-border/60"
+                >
+                  <Tag className="w-2.5 h-2.5" />
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="flex items-center gap-3 text-[10px] text-muted-foreground/80">
+            <span className="flex items-center gap-1">
+              <Calendar className="w-3 h-3" />
+              {new Date(caseItem.created_at).toLocaleDateString()}
+            </span>
+            {caseItem.document_ids?.length ? (
+              <span className="flex items-center gap-1">
+                <FileText className="w-3 h-3" />
+                {caseItem.document_ids.length} 文档
+              </span>
+            ) : null}
+          </div>
+        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleToggleGolden}
+            className={cn(
+              'text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
+              isGolden && 'text-amber-600 hover:text-amber-700'
+            )}
+            aria-label={isGolden ? '取消 Golden 标记' : '标记为 Golden'}
+            title={isGolden ? '取消 Golden' : '标记为 Golden'}
+          >
+            <Star className="w-4 h-4" fill={isGolden ? 'currentColor' : 'none'} />
+          </button>
+
+          <ConfirmDialog
+            title="删除该测试用例？"
+            description="此操作不可恢复。"
+            confirmLabel="删除"
+            cancelLabel="返回"
+            confirmVariant="destructive"
+            onConfirm={handleDeleteConfirm}
+          >
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none"
+              aria-label="删除测试用例"
+              title="删除"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </ConfirmDialog>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function TestCaseManager({
   datasetId,
   onRunTests,
   onCaseSelected,
 }: Readonly<TestCaseManagerProps>) {
   const GOLDEN_TAG = 'golden'
+  const onCaseSelectedRef = useRef(onCaseSelected)
 
   const [cases, setCases] = useState<RegressionCase[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -86,6 +219,10 @@ export function TestCaseManager({
   const [evidenceSelectedChunkIds, setEvidenceSelectedChunkIds] = useState<Set<string>>(new Set())
   const [evidenceCreating, setEvidenceCreating] = useState(false)
 
+  useEffect(() => {
+    onCaseSelectedRef.current = onCaseSelected
+  }, [onCaseSelected])
+
   const evidenceCitations = useMemo(() => {
     const items = evidencePack?.citations
     return Array.isArray(items) ? items : []
@@ -97,7 +234,7 @@ export function TestCaseManager({
   }, [datasetId, evidencePack])
 
   // 加载用例列表
-  const loadCases = async () => {
+  const loadCases = useCallback(async () => {
     try {
       setIsLoading(true)
       if (!datasetId) {
@@ -115,14 +252,14 @@ export function TestCaseManager({
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [datasetId])
 
   useEffect(() => {
     setSelectedCaseIds(new Set())
     setSelectedCase(null)
-    onCaseSelected?.(null)
+    onCaseSelectedRef.current?.(null)
     detachPromise(loadCases())
-  }, [datasetId])
+  }, [loadCases])
 
   const goldenCount = useMemo(() => {
     return (cases || []).filter((c) => Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG)).length
@@ -412,6 +549,61 @@ export function TestCaseManager({
     onRunTests?.(Array.from(selectedCaseIds))
   }
 
+  let caseListContent: ReactNode
+  if (isLoading) {
+    caseListContent = (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+      </div>
+    )
+  } else if (filteredCases.length === 0) {
+    const emptyMessage = !datasetId
+      ? '请先选择数据集'
+      : searchQuery
+        ? '没有找到匹配的用例'
+        : '暂无测试用例'
+
+    caseListContent = <div className="text-center py-8 text-muted-foreground">{emptyMessage}</div>
+  } else {
+    caseListContent = (
+      <>
+        <div className="px-4 py-2 border-b border-border flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none"
+          >
+            {selectedCaseIds.size === filteredCases.length ? (
+              <CheckSquare className="w-4 h-4" />
+            ) : (
+              <Square className="w-4 h-4" />
+            )}
+            全选
+          </button>
+        </div>
+
+        <div className="divide-y divide-border">
+          {filteredCases.map((caseItem) => {
+            const isGolden = Array.isArray(caseItem.tags) && caseItem.tags.includes(GOLDEN_TAG)
+            return (
+              <TestCaseRow
+                key={caseItem.id}
+                caseItem={caseItem}
+                isSelected={selectedCase?.id === caseItem.id}
+                isChecked={selectedCaseIds.has(caseItem.id)}
+                isGolden={isGolden}
+                onSelectCase={handleSelectCase}
+                onToggleSelect={toggleSelect}
+                onToggleGolden={handleToggleGolden}
+                onDelete={handleDelete}
+              />
+            )
+          })}
+        </div>
+      </>
+    )
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* 头部操作栏 */}
@@ -687,114 +879,7 @@ export function TestCaseManager({
 
       {/* 用例列表 */}
       <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
-	        {(() => {
-    if (isLoading) {
-        return (<div className="flex items-center justify-center py-8">
-	            <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
-	          </div>);
-    }
-    else if (filteredCases.length === 0) {
-            return (<div className="text-center py-8 text-muted-foreground">
-            {(() => {
-                if (datasetId) {
-                    if (searchQuery) {
-                        return '没有找到匹配的用例';
-                    }
-                    else {
-                        return '暂无测试用例';
-                    }
-                }
-                else {
-                    return '请先选择数据集';
-                }
-            })()}
-          </div>);
-        }
-        else {
-            return (<>
-            {/* 全选框 */}
-            {filteredCases.length > 0 && (<div className="px-4 py-2 border-b border-border flex items-center gap-2">
-                <button onClick={toggleSelectAll} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none">
-                  {selectedCaseIds.size === filteredCases.length ? (<CheckSquare className="w-4 h-4"/>) : (<Square className="w-4 h-4"/>)}
-                  全选
-                </button>
-              </div>)}
-
-            {/* 用例卡片 */}
-            <div className="divide-y divide-border">
-              {filteredCases.map((caseItem) => ((() => {
-                    const isGolden = Array.isArray(caseItem.tags) && caseItem.tags.includes(GOLDEN_TAG);
-                    return (<div key={caseItem.id} className={cn('p-4 hover:bg-muted/50 transition-colors motion-reduce:transition-none cursor-pointer', selectedCase?.id === caseItem.id &&
-                            'bg-primary/10')} onClick={() => handleSelectCase(caseItem)} role="button" tabIndex={0} onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                handleSelectCase(caseItem);
-                            }
-                        }}>
-                  <div className="flex items-start gap-3">
-                    {/* 选择框 */}
-                    <button onClick={(e) => {
-                            e.stopPropagation();
-                            toggleSelect(caseItem.id);
-                        }} className="mt-0.5">
-                      {selectedCaseIds.has(caseItem.id) ? (<CheckSquare className="w-4 h-4 text-primary"/>) : (<Square className="w-4 h-4 text-muted-foreground"/>)}
-                    </button>
-
-                    {/* 内容 */}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground mb-1 line-clamp-2">
-                        {caseItem.question}
-                      </div>
-
-                      {caseItem.expected_answer && (<div className="text-xs text-muted-foreground mb-2 line-clamp-2">
-                          期望: {caseItem.expected_answer}
-                        </div>)}
-
-                      {/* 标签 */}
-                      {caseItem.tags && caseItem.tags.length > 0 && (<div className="flex items-center gap-1 flex-wrap mb-2">
-                          {caseItem.tags.map((tag) => (<span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-[10px] text-muted-foreground border border-border/60">
-                              <Tag className="w-2.5 h-2.5"/>
-                              {tag}
-                            </span>))}
-                        </div>)}
-
-                      {/* 元信息 */}
-                      <div className="flex items-center gap-3 text-[10px] text-muted-foreground/80">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3"/>
-                          {new Date(caseItem.created_at).toLocaleDateString()}
-                        </span>
-                        {caseItem.document_ids?.length > 0 && (<span className="flex items-center gap-1">
-                            <FileText className="w-3 h-3"/>
-                            {caseItem.document_ids.length} 文档
-                          </span>)}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={(e) => {
-                            e.stopPropagation();
-                            detachPromise(handleToggleGolden(caseItem));
-                        }} className={cn('text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none', isGolden && 'text-amber-600 hover:text-amber-700')} aria-label={isGolden ? '取消 Golden 标记' : '标记为 Golden'} title={isGolden ? '取消 Golden' : '标记为 Golden'}>
-                        <Star className="w-4 h-4" fill={isGolden ? 'currentColor' : 'none'}/>
-                      </button>
-
-                      {/* 删除按钮 */}
-                      <ConfirmDialog title="删除该测试用例？" description="此操作不可恢复。" confirmLabel="删除" cancelLabel="返回" confirmVariant="destructive" onConfirm={() => detachPromise(handleDelete(caseItem.id))}>
-                        <button type="button" onClick={(e) => {
-                            e.stopPropagation();
-                        }} className="text-muted-foreground hover:text-destructive transition-colors motion-reduce:transition-none" aria-label="删除测试用例" title="删除">
-                          <Trash2 className="w-4 h-4"/>
-                        </button>
-                      </ConfirmDialog>
-                    </div>
-                  </div>
-                </div>);
-                })()))}
-            </div>
-          </>);
-        }
-})()}
+        {caseListContent}
       </div>
 
       {/* 底部统计 */}
