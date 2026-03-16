@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 
-export default function Error({
+function GlobalErrorView({
   error,
   reset,
 }: Readonly<{
@@ -43,3 +43,5 @@ export default function Error({
     </FullScreenFrame>
   )
 }
+
+export default GlobalErrorView

@@ -26,7 +26,7 @@ import type {
 } from '@/types'
 
 function escapeRegex(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
 }
 
 function buildLineRegexRule(sample: string): RegexRuleModel | null {
@@ -34,9 +34,9 @@ function buildLineRegexRule(sample: string): RegexRuleModel | null {
   if (!raw) return null
   const tokens = raw.split(/\s+/).filter(Boolean)
   if (!tokens.length) return null
-  const body = tokens.map(escapeRegex).join('\\s+')
+  const body = tokens.map(escapeRegex).join(String.raw`\s+`)
   // (?m): line anchors, (?i): case-insensitive to tolerate casing changes from different parsers.
-  const pattern = `(?mi)^\\s*${body}\\s*$`
+  const pattern = String.raw`(?mi)^\s*${body}\s*$`
   return { pattern, repl: '', flags: 0 }
 }
 
@@ -83,7 +83,7 @@ export function GovernanceCommonLinesPage() {
 
   useEffect(() => {
     detachPromise(loadMeta())
-  }, [])
+  }, [loadMeta])
 
   const candidates: GovernanceCommonLineCandidate[] = useMemo(() => resp?.candidates || [], [resp?.candidates])
   const selectedCandidates = useMemo(

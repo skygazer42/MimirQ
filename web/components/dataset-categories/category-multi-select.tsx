@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { FolderTree, Loader2, Pencil, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -32,7 +32,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
   const [draft, setDraft] = useState<string[]>([])
   const [query, setQuery] = useState('')
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!datasetId) return
     setLoading(true)
     try {
@@ -48,11 +48,11 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
     } finally {
       setLoading(false)
     }
-  }
+  }, [datasetId])
 
   useEffect(() => {
     detachPromise(load())
-  }, [datasetId])
+  }, [load])
 
   const flat = useMemo(() => flattenDatasetCategoryTree(tree), [tree])
   const nameById = useMemo(() => new Map(flat.map((x) => [x.id, x.name])), [flat])
@@ -126,7 +126,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" className="h-9 px-3" onClick={() => detachPromise(load())} disabled={loading} aria-label="刷新分类">
             <Loader2 className={cn('h-4 w-4', loading ? 'animate-spin motion-reduce:animate-none' : 'opacity-0')} />
-            <span className={cn('ml-0', loading ? 'sr-only' : 'sr-only')}>刷新</span>
+            <span className="sr-only">刷新</span>
           </Button>
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>

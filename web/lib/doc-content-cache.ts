@@ -20,6 +20,12 @@ const DB_VERSION = 2
 const CONTENT_STORE = 'doc_contents'
 const SOURCE_STORE = 'doc_sources'
 
+function toError(reason: unknown, fallbackMessage: string): Error {
+  if (reason instanceof Error) return reason
+  if (typeof reason === 'string' && reason) return new Error(reason)
+  return new Error(fallbackMessage)
+}
+
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
@@ -33,7 +39,7 @@ function openDb(): Promise<IDBDatabase> {
       }
     }
     req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    req.onerror = () => reject(toError(req.error, `Failed to open IndexedDB "${DB_NAME}"`))
   })
 }
 
@@ -42,19 +48,36 @@ function withStore<T>(
   mode: IDBTransactionMode,
   fn: (store: IDBObjectStore) => IDBRequest<T>
 ): Promise<T> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const db = await openDb()
-      const tx = db.transaction(storeName, mode)
-      const store = tx.objectStore(storeName)
-      const req = fn(store)
-      req.onsuccess = () => resolve(req.result)
-      req.onerror = () => reject(req.error)
-      tx.onabort = () => reject(tx.error)
-      tx.oncomplete = () => db.close()
-    } catch (e) {
-      reject(e)
-    }
+  return new Promise((resolve, reject) => {
+    void openDb()
+      .then((db) => {
+        const tx = db.transaction(storeName, mode)
+        const store = tx.objectStore(storeName)
+        const req = fn(store)
+        let settled = false
+
+        const closeDb = () => db.close()
+        const resolveOnce = (value: T) => {
+          if (settled) return
+          settled = true
+          resolve(value)
+        }
+        const rejectOnce = (reason: unknown, fallbackMessage: string) => {
+          if (settled) return
+          settled = true
+          closeDb()
+          reject(toError(reason, fallbackMessage))
+        }
+
+        req.onsuccess = () => resolveOnce(req.result)
+        req.onerror = () => rejectOnce(req.error, `IndexedDB request failed for "${storeName}"`)
+        tx.onabort = () => rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
+        tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
+        tx.oncomplete = closeDb
+      })
+      .catch((error) => {
+        reject(toError(error, `Failed to access IndexedDB store "${storeName}"`))
+      })
   })
 }
 
@@ -114,4 +137,3 @@ export async function deleteDocSourceFromCache(id: string) {
   if (!id) return
   await withStore(SOURCE_STORE, 'readwrite', (store) => store.delete(id))
 }
-

@@ -7,6 +7,10 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+function cloneGraphData(data: GraphData): GraphData {
+  return structuredClone(data)
+}
+
 export class GraphService {
   static getMockGraph(): GraphData {
     const nodes: GraphNode[] = [
@@ -26,7 +30,7 @@ export class GraphService {
       { source: '2', target: '6', label: 'includes' },
     ]
 
-    return JSON.parse(JSON.stringify({ nodes, links }))
+    return cloneGraphData({ nodes, links })
   }
 
   /**
@@ -57,7 +61,7 @@ export class GraphService {
       const nodes = Array.isArray(data?.nodes) ? data.nodes : []
       const links = Array.isArray(data?.links) ? data.links : []
       if (nodes.length > 0) {
-        return JSON.parse(JSON.stringify({ nodes, links }))
+        return cloneGraphData({ nodes, links })
       }
     } catch {
       // ignore and fallback
@@ -93,7 +97,7 @@ export class GraphService {
           max_entity_links: options?.maxEntityLinks,
         })
         if (data?.nodes && data?.links) {
-          return JSON.parse(JSON.stringify({ nodes: data.nodes, links: data.links }))
+          return cloneGraphData({ nodes: data.nodes, links: data.links })
         }
       } catch {
         // ignore and fallback

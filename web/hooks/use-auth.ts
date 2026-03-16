@@ -30,11 +30,7 @@ export function useAuth() {
 
   const logout = useCallback(() => {
     // Best-effort: clear server-side OIDC refresh token cookie if present.
-    try {
-      fetch('/api/oidc/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => null)
-    } catch {
-      // ignore
-    }
+    void fetch('/api/oidc/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => undefined)
     clearAuthSession()
     setUser(null)
   }, [])

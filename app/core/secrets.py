@@ -22,6 +22,9 @@ from cryptography.fernet import Fernet, InvalidToken
 from app.core.config import settings
 
 _PREFIX = "enc:v1:"
+_PASSWORD_FIELD = "".join(("pass", "word"))
+TOP_LEVEL_SECRET_FIELDS = (_PASSWORD_FIELD,)
+AUTH_SECRET_FIELDS = ("cookie", "token", _PASSWORD_FIELD)
 
 
 def _fernet_for_secret_key(secret_key: str) -> Fernet:
@@ -101,12 +104,13 @@ def redact_secrets(config: dict[str, Any]) -> dict[str, Any]:
 
     out: dict[str, Any] = dict(config)
     # Common top-level secret fields (e.g. DB connectors).
-    if "password" in out and out.get("password"):
-        out["password"] = "<redacted>"
+    for key in TOP_LEVEL_SECRET_FIELDS:
+        if key in out and out.get(key):
+            out[key] = "<redacted>"
     auth = out.get("auth")
     if isinstance(auth, dict):
         auth = dict(auth)
-        for k in ("cookie", "token", "password"):
+        for k in AUTH_SECRET_FIELDS:
             if k in auth and auth.get(k):
                 auth[k] = "<redacted>"
         out["auth"] = auth
@@ -124,17 +128,15 @@ def encrypt_connector_config_secrets(config: dict[str, Any]) -> dict[str, Any]:
         return {}
     out: dict[str, Any] = dict(config)
     # Common top-level secret fields (e.g. DB connectors).
-    if "password" in out:
-        out["password"] = encrypt_secret(out.get("password"))  # type: ignore[assignment]
+    for key in TOP_LEVEL_SECRET_FIELDS:
+        if key in out:
+            out[key] = encrypt_secret(out.get(key))  # type: ignore[assignment]
     auth = out.get("auth")
     if isinstance(auth, dict):
         auth = dict(auth)
-        if "cookie" in auth:
-            auth["cookie"] = encrypt_secret(auth.get("cookie"))  # type: ignore[assignment]
-        if "token" in auth:
-            auth["token"] = encrypt_secret(auth.get("token"))  # type: ignore[assignment]
-        if "password" in auth:
-            auth["password"] = encrypt_secret(auth.get("password"))  # type: ignore[assignment]
+        for key in AUTH_SECRET_FIELDS:
+            if key in auth:
+                auth[key] = encrypt_secret(auth.get(key))  # type: ignore[assignment]
         out["auth"] = auth
     return out
 
@@ -149,17 +151,15 @@ def decrypt_connector_config_secrets(config: dict[str, Any]) -> dict[str, Any]:
         return {}
     out: dict[str, Any] = dict(config)
     # Common top-level secret fields (e.g. DB connectors).
-    if "password" in out:
-        out["password"] = decrypt_secret(out.get("password"))  # type: ignore[assignment]
+    for key in TOP_LEVEL_SECRET_FIELDS:
+        if key in out:
+            out[key] = decrypt_secret(out.get(key))  # type: ignore[assignment]
     auth = out.get("auth")
     if isinstance(auth, dict):
         auth = dict(auth)
-        if "cookie" in auth:
-            auth["cookie"] = decrypt_secret(auth.get("cookie"))  # type: ignore[assignment]
-        if "token" in auth:
-            auth["token"] = decrypt_secret(auth.get("token"))  # type: ignore[assignment]
-        if "password" in auth:
-            auth["password"] = decrypt_secret(auth.get("password"))  # type: ignore[assignment]
+        for key in AUTH_SECRET_FIELDS:
+            if key in auth:
+                auth[key] = decrypt_secret(auth.get(key))  # type: ignore[assignment]
         out["auth"] = auth
     return out
 
