@@ -6,23 +6,196 @@ export type MarkdownHeading = {
 }
 
 const CODE_FENCE_RE = /^(```+|~~~+)\s*/
-const MARKDOWN_HEADING_RE = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/
+
+function isAsciiWhitespace(char: string | undefined): boolean {
+  return (
+    char === ' ' ||
+    char === '\t' ||
+    char === '\n' ||
+    char === '\r' ||
+    char === '\f' ||
+    char === '\v'
+  )
+}
+
+function trimAsciiWhitespace(text: string): string {
+  let start = 0
+  let end = text.length
+
+  while (start < end && isAsciiWhitespace(text[start])) {
+    start += 1
+  }
+
+  while (end > start && isAsciiWhitespace(text[end - 1])) {
+    end -= 1
+  }
+
+  return text.slice(start, end)
+}
+
+function trimEdgeChar(text: string, char: string): string {
+  let start = 0
+  let end = text.length
+
+  while (start < end && text[start] === char) {
+    start += 1
+  }
+
+  while (end > start && text[end - 1] === char) {
+    end -= 1
+  }
+
+  return text.slice(start, end)
+}
+
+function readBalancedSegment(
+  text: string,
+  startIndex: number,
+  openChar: string,
+  closeChar: string
+): { content: string; nextIndex: number } | null {
+  if (text[startIndex] !== openChar) return null
+
+  let depth = 0
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index]
+
+    if (char === '\\') {
+      index += 1
+      continue
+    }
+
+    if (char === openChar) {
+      depth += 1
+      continue
+    }
+
+    if (char !== closeChar) continue
+
+    depth -= 1
+    if (depth === 0) {
+      return {
+        content: text.slice(startIndex + 1, index),
+        nextIndex: index + 1,
+      }
+    }
+  }
+
+  return null
+}
+
+function readMarkdownLink(
+  text: string,
+  startIndex: number,
+  options: { image?: boolean } = {}
+): { label: string; nextIndex: number } | null {
+  const labelStart = options.image ? startIndex + 1 : startIndex
+  const label = readBalancedSegment(text, labelStart, '[', ']')
+  if (!label) return null
+  if (text[label.nextIndex] !== '(') return null
+
+  const destination = readBalancedSegment(text, label.nextIndex, '(', ')')
+  if (!destination) return null
+
+  return {
+    label: label.content,
+    nextIndex: destination.nextIndex,
+  }
+}
+
+function readInlineCodeSpan(
+  text: string,
+  startIndex: number
+): { content: string; nextIndex: number } | null {
+  if (text[startIndex] !== '`') return null
+
+  let fenceLength = 1
+  while (text[startIndex + fenceLength] === '`') {
+    fenceLength += 1
+  }
+
+  const fence = '`'.repeat(fenceLength)
+  const endIndex = text.indexOf(fence, startIndex + fenceLength)
+  if (endIndex === -1) return null
+
+  return {
+    content: text.slice(startIndex + fenceLength, endIndex),
+    nextIndex: endIndex + fenceLength,
+  }
+}
+
+function stripTrailingHeadingFence(text: string): string {
+  let end = text.length
+
+  while (end > 0 && isAsciiWhitespace(text[end - 1])) {
+    end -= 1
+  }
+
+  while (end > 0 && text[end - 1] === '#') {
+    end -= 1
+  }
+
+  while (end > 0 && isAsciiWhitespace(text[end - 1])) {
+    end -= 1
+  }
+
+  return text.slice(0, end)
+}
 
 function stripInlineMarkdown(text = ''): string {
-  let out = text
+  if (!text) return ''
 
-  // Images: ![alt](url) -> alt
-  out = out.replaceAll(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
-  // Links: [text](url) -> text
-  out = out.replaceAll(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-  // Inline code: `code` -> code
-  out = out.replaceAll(/`([^`]+)`/g, '$1')
-  // Emphasis markers: ** / __ / * / _
-  out = out.replaceAll(/(\*\*|__|\*|_)/g, '')
-  // HTML tags
-  out = out.replaceAll(/<[^>]+>/g, '')
+  const parts: string[] = []
 
-  return out.trim()
+  for (let index = 0; index < text.length; ) {
+    if (text.startsWith('![', index)) {
+      const image = readMarkdownLink(text, index, { image: true })
+      if (image) {
+        parts.push(stripInlineMarkdown(image.label))
+        index = image.nextIndex
+        continue
+      }
+    }
+
+    const char = text[index]
+
+    if (char === '[') {
+      const link = readMarkdownLink(text, index)
+      if (link) {
+        parts.push(stripInlineMarkdown(link.label))
+        index = link.nextIndex
+        continue
+      }
+    }
+
+    if (char === '`') {
+      const codeSpan = readInlineCodeSpan(text, index)
+      if (codeSpan) {
+        parts.push(codeSpan.content)
+        index = codeSpan.nextIndex
+        continue
+      }
+    }
+
+    if (char === '<') {
+      const closeIndex = text.indexOf('>', index + 1)
+      if (closeIndex !== -1) {
+        index = closeIndex + 1
+        continue
+      }
+    }
+
+    if (char === '*' || char === '_') {
+      index += 1
+      continue
+    }
+
+    parts.push(char)
+    index += 1
+  }
+
+  return trimAsciiWhitespace(parts.join(''))
 }
 
 function getFenceState(
@@ -55,15 +228,32 @@ function parseMarkdownHeadingLine(
   line: string,
   maxDepth: number
 ): { level: number; rawText: string } | null {
-  const headingMatch = MARKDOWN_HEADING_RE.exec(line)
-  if (!headingMatch) return null
+  let index = 0
+  let indent = 0
 
-  const level = headingMatch[1].length
+  while (index < line.length && indent < 3 && (line[index] === ' ' || line[index] === '\t')) {
+    index += 1
+    indent += 1
+  }
+
+  let level = 0
+  while (index < line.length && line[index] === '#' && level < 6) {
+    level += 1
+    index += 1
+  }
+
   if (level < 1 || level > Math.min(6, maxDepth)) return null
+  if (!isAsciiWhitespace(line[index])) return null
+
+  while (index < line.length && isAsciiWhitespace(line[index])) {
+    index += 1
+  }
+
+  if (index >= line.length) return null
 
   return {
     level,
-    rawText: headingMatch[2],
+    rawText: stripTrailingHeadingFence(line.slice(index)),
   }
 }
 
@@ -72,19 +262,19 @@ export function slugifyHeading(text: string): string {
   if (!raw) return ''
 
   try {
-    return raw
+    const slug = raw
       .toLowerCase()
       .normalize('NFKD')
       .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
       .replaceAll(/-{2,}/g, '-')
-      .replaceAll(/^-+|-+$/g, '')
+    return trimEdgeChar(slug, '-')
   } catch {
     // Fallback for environments without unicode property escapes (very unlikely in modern browsers)
-    return raw
+    const slug = raw
       .toLowerCase()
       .replaceAll(/[^a-z0-9]+/g, '-')
       .replaceAll(/-{2,}/g, '-')
-      .replaceAll(/^-+|-+$/g, '')
+    return trimEdgeChar(slug, '-')
   }
 }
 
