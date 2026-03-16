@@ -81,6 +81,13 @@ export default function DatasetWorkflowPage() {
   const selectedMeta = selectedNode?.meta
   const selectedSummary = Array.isArray(selectedMeta?.summary) ? selectedMeta.summary : []
   const selectedJson = selectedMeta?.json
+  const pageTitle = dataset?.name ? `Workflow · ${dataset.name}` : 'Workflow'
+  const selectedMetaStatusText =
+    selectedMeta?.configured === false
+      ? 'Not configured (inherits defaults)'
+      : selectedMeta?.configured === true
+        ? 'Configured'
+        : 'Click a node to inspect summary + JSON'
   const selectedJsonText = useMemo(() => {
     if (selectedJson === undefined) return ''
     try {
@@ -110,7 +117,7 @@ export default function DatasetWorkflowPage() {
       setExportRes(exp)
       setGraph(buildDatasetConfigGraph(exp.config ?? {}))
       setSelectedNode(null)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to load dataset workflow', e)
       toast.error(formatApiError(e, 'Failed to load workflow config'))
     } finally {
@@ -131,7 +138,7 @@ export default function DatasetWorkflowPage() {
       const name = (dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 60)
       downloadJson(exp, `dataset-config-${name}-${id8}.json`)
       toast.success('Exported config')
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to export dataset config', e)
       toast.error(formatApiError(e, 'Export failed'))
     } finally {
@@ -153,7 +160,7 @@ export default function DatasetWorkflowPage() {
       setImportFileName(file.name || 'config.json')
       setImportBundle(bundle)
       setImportOpen(true)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to parse import JSON', e)
       toast.error('Failed to parse JSON file')
     } finally {
@@ -173,7 +180,7 @@ export default function DatasetWorkflowPage() {
       setImportBundle(null)
       setImportFileName('')
       await load()
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to import dataset config', e)
       toast.error(formatApiError(e, 'Import failed'))
     } finally {
@@ -195,7 +202,7 @@ export default function DatasetWorkflowPage() {
   return (
     <AppFrame>
       <PageScaffold
-        title={`Workflow${dataset?.name ? ` · ${dataset.name}` : ''}`}
+        title={pageTitle}
         badge="Dataset Workflow"
         icon={Layers}
         iconColor="text-primary"
@@ -267,19 +274,7 @@ export default function DatasetWorkflowPage() {
                 <div className="font-semibold truncate">
                   {selectedNode?.label ? String(selectedNode.label) : 'Node Details'}
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  {(() => {
-    if (selectedMeta?.configured === false) {
-        return (<span>Not configured (inherits defaults)</span>);
-    }
-    else if (selectedMeta?.configured === true) {
-            return (<span>Configured</span>);
-        }
-        else {
-            return (<span>Click a node to inspect summary + JSON</span>);
-        }
-})()}
-                </div>
+                <div className="text-xs text-muted-foreground">{selectedMetaStatusText}</div>
               </div>
               {selectedJsonText.trim() ? (
                 <div className="flex items-center gap-2 flex-shrink-0">

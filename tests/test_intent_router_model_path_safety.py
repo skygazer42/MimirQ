@@ -43,3 +43,15 @@ def test_load_intent_router_model_rejects_absolute_path_outside_cwd(tmp_path: Pa
 
     monkeypatch.chdir(tmp_path)
     assert load_intent_router_model(str(outside_model)) is None
+
+
+def test_load_intent_router_model_rejects_parent_traversal_segments(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    model_path = tmp_path / "artifacts" / "intent_router_model.v1.json"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    model_path.write_text(json.dumps(_model_payload(), ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    assert load_intent_router_model("artifacts/../artifacts/intent_router_model.v1.json") is None

@@ -262,18 +262,27 @@ export default function SettingsPage() {
   const [ltrBusyModelId, setLtrBusyModelId] = useState<string | null>(null)
 
   const ragMerged = useMemo(
-    () => ({ ...(settings?.rag ?? {}), ...(editedSettings.rag ?? {}) }) as Partial<SystemSettings['rag']>,
+    () => ({ ...settings?.rag, ...editedSettings.rag }) as Partial<SystemSettings['rag']>,
     [settings?.rag, editedSettings.rag]
   )
   const urlIngestMerged = useMemo(
     () =>
-      ({ ...(settings?.url_ingest ?? {}), ...(editedSettings.url_ingest ?? {}) }) as Partial<SystemSettings['url_ingest']>,
+      ({ ...settings?.url_ingest, ...editedSettings.url_ingest }) as Partial<SystemSettings['url_ingest']>,
     [settings?.url_ingest, editedSettings.url_ingest]
   )
   const governanceMerged = useMemo(
-    () => ({ ...(settings?.governance ?? {}), ...(editedSettings.governance ?? {}) }) as Partial<SystemSettings['governance']>,
+    () => ({ ...settings?.governance, ...editedSettings.governance }) as Partial<SystemSettings['governance']>,
     [settings?.governance, editedSettings.governance]
   )
+  const isBm25IndexEnabled = ragMerged.bm25_index_enabled ?? true
+  const isRerankerEnabled = ragMerged.enable_reranker ?? false
+  const isUrlIngestEnabled = urlIngestMerged.enabled ?? false
+  const allowsPrivateIps = urlIngestMerged.allow_private_ips ?? false
+  const followsRedirects = urlIngestMerged.follow_redirects ?? false
+  const isGovernanceEnabled = governanceMerged.enabled ?? false
+  const isPiiAnonymizeEnabled = governanceMerged.pii_anonymize ?? false
+  const isSecretsRedactEnabled = governanceMerged.secrets_redact ?? false
+  const isQuarantineOnDropEnabled = governanceMerged.quarantine_on_drop ?? false
 
   // 加载配置
   useEffect(() => {
@@ -1507,7 +1516,7 @@ export default function SettingsPage() {
 	                        max="1"
 	                        step="0.1"
 	                        value={ragMerged.similarity_threshold ?? 0.7}
-	                        onChange={(e) => updateRag({ similarity_threshold: parseFloat(e.target.value) })}
+                        onChange={(e) => updateRag({ similarity_threshold: Number.parseFloat(e.target.value) })}
 	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
 	                      />
 	                      <p className="text-xs text-muted-foreground mt-2">
@@ -1525,14 +1534,14 @@ export default function SettingsPage() {
 	                        </div>
 	                        <button
 	                          type="button"
-	                          onClick={() => updateRag({ bm25_index_enabled: !Boolean(ragMerged.bm25_index_enabled ?? true) })}
-	                          className="shrink-0"
-	                          aria-label="Toggle BM25"
-	                        >
-	                          {Boolean(ragMerged.bm25_index_enabled ?? true) ? (
-	                            <ToggleRight className="w-10 h-10 text-primary" />
-	                          ) : (
-	                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+                          onClick={() => updateRag({ bm25_index_enabled: !isBm25IndexEnabled })}
+                          className="shrink-0"
+                          aria-label="Toggle BM25"
+                        >
+                          {isBm25IndexEnabled ? (
+                            <ToggleRight className="w-10 h-10 text-primary" />
+                          ) : (
+                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
 	                          )}
 	                        </button>
 	                      </div>
@@ -1551,14 +1560,14 @@ export default function SettingsPage() {
 	                        </div>
 	                        <button
 	                          type="button"
-	                          onClick={() => updateRag({ enable_reranker: !Boolean(ragMerged.enable_reranker ?? false) })}
-	                          className="shrink-0"
-	                          aria-label="Toggle reranker"
-	                        >
-	                          {Boolean(ragMerged.enable_reranker ?? false) ? (
-	                            <ToggleRight className="w-10 h-10 text-primary" />
-	                          ) : (
-	                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+                          onClick={() => updateRag({ enable_reranker: !isRerankerEnabled })}
+                          className="shrink-0"
+                          aria-label="Toggle reranker"
+                        >
+                          {isRerankerEnabled ? (
+                            <ToggleRight className="w-10 h-10 text-primary" />
+                          ) : (
+                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
 	                          )}
 	                        </button>
 	                      </div>
@@ -1661,7 +1670,7 @@ export default function SettingsPage() {
 	                        允许通过 URL 拉取内容并入库（知识库页面的“URL 导入”会依赖此开关）
 	                      </div>
 	                    </div>
-	                    {Boolean(urlIngestMerged.enabled ?? false) ? (
+		                    {isUrlIngestEnabled ? (
 	                      <button
 	                        type="button"
 	                        onClick={() => updateUrlIngest({ enabled: false })}
@@ -1708,10 +1717,12 @@ export default function SettingsPage() {
 	                      <Input
 	                        type="number"
 	                        min={0}
-	                        step="0.5"
-	                        value={urlIngestMerged.timeout_sec ?? 30.0}
-	                        onChange={(e) => updateUrlIngest({ timeout_sec: Math.max(0, parseFloat(e.target.value || '0')) })}
-	                      />
+                        step="0.5"
+                        value={urlIngestMerged.timeout_sec ?? 30}
+                        onChange={(e) =>
+                          updateUrlIngest({ timeout_sec: Math.max(0, Number.parseFloat(e.target.value || '0')) })
+                        }
+                      />
 	                    </div>
 	                  </div>
 
@@ -1723,7 +1734,7 @@ export default function SettingsPage() {
 	                          高风险：可能导致 SSRF 打到内网服务（强烈不建议）
 	                        </div>
 	                      </div>
-	                      {Boolean(urlIngestMerged.allow_private_ips ?? false) ? (
+		                      {allowsPrivateIps ? (
 	                        <button
 	                          type="button"
 	                          onClick={() => updateUrlIngest({ allow_private_ips: false })}
@@ -1762,7 +1773,7 @@ export default function SettingsPage() {
 	                          可能重定向到内网/大文件；建议保持关闭
 	                        </div>
 	                      </div>
-	                      {Boolean(urlIngestMerged.follow_redirects ?? false) ? (
+		                      {followsRedirects ? (
 	                        <button
 	                          type="button"
 	                          onClick={() => updateUrlIngest({ follow_redirects: false })}
@@ -1830,14 +1841,14 @@ export default function SettingsPage() {
 	                      </div>
 	                      <button
 	                        type="button"
-	                        onClick={() => updateGovernance({ enabled: !Boolean(governanceMerged.enabled ?? false) })}
-	                        className="shrink-0"
-	                        aria-label="Toggle governance"
-	                      >
-	                        {Boolean(governanceMerged.enabled ?? false) ? (
-	                          <ToggleRight className="w-10 h-10 text-primary" />
-	                        ) : (
-	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        onClick={() => updateGovernance({ enabled: !isGovernanceEnabled })}
+                        className="shrink-0"
+                        aria-label="Toggle governance"
+                      >
+	                        {isGovernanceEnabled ? (
+                          <ToggleRight className="w-10 h-10 text-primary" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
 	                        )}
 	                      </button>
 	                    </div>
@@ -1851,14 +1862,14 @@ export default function SettingsPage() {
 	                      </div>
 	                      <button
 	                        type="button"
-	                        onClick={() => updateGovernance({ pii_anonymize: !Boolean(governanceMerged.pii_anonymize ?? false) })}
-	                        className="shrink-0"
-	                        aria-label="Toggle PII anonymize"
-	                      >
-	                        {Boolean(governanceMerged.pii_anonymize ?? false) ? (
-	                          <ToggleRight className="w-10 h-10 text-primary" />
-	                        ) : (
-	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        onClick={() => updateGovernance({ pii_anonymize: !isPiiAnonymizeEnabled })}
+                        className="shrink-0"
+                        aria-label="Toggle PII anonymize"
+                      >
+	                        {isPiiAnonymizeEnabled ? (
+                          <ToggleRight className="w-10 h-10 text-primary" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
 	                        )}
 	                      </button>
 	                    </div>
@@ -1872,14 +1883,14 @@ export default function SettingsPage() {
 	                      </div>
 	                      <button
 	                        type="button"
-	                        onClick={() => updateGovernance({ secrets_redact: !Boolean(governanceMerged.secrets_redact ?? false) })}
-	                        className="shrink-0"
-	                        aria-label="Toggle secrets redact"
-	                      >
-	                        {Boolean(governanceMerged.secrets_redact ?? false) ? (
-	                          <ToggleRight className="w-10 h-10 text-primary" />
-	                        ) : (
-	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        onClick={() => updateGovernance({ secrets_redact: !isSecretsRedactEnabled })}
+                        className="shrink-0"
+                        aria-label="Toggle secrets redact"
+                      >
+	                        {isSecretsRedactEnabled ? (
+                          <ToggleRight className="w-10 h-10 text-primary" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
 	                        )}
 	                      </button>
 	                    </div>
@@ -1893,14 +1904,14 @@ export default function SettingsPage() {
 	                      </div>
 	                      <button
 	                        type="button"
-	                        onClick={() => updateGovernance({ quarantine_on_drop: !Boolean(governanceMerged.quarantine_on_drop ?? false) })}
-	                        className="shrink-0"
-	                        aria-label="Toggle quarantine on drop"
-	                      >
-	                        {Boolean(governanceMerged.quarantine_on_drop ?? false) ? (
-	                          <ToggleRight className="w-10 h-10 text-primary" />
-	                        ) : (
-	                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
+	                        onClick={() => updateGovernance({ quarantine_on_drop: !isQuarantineOnDropEnabled })}
+                        className="shrink-0"
+                        aria-label="Toggle quarantine on drop"
+                      >
+	                        {isQuarantineOnDropEnabled ? (
+                          <ToggleRight className="w-10 h-10 text-primary" />
+                        ) : (
+                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
 	                        )}
 	                      </button>
 	                    </div>
@@ -2111,7 +2122,7 @@ export default function SettingsPage() {
                           max={120}
                           step={1}
                           value={editedSettings.chat?.stream_heartbeat_sec ?? settings?.chat?.stream_heartbeat_sec ?? DEFAULT_CHAT.stream_heartbeat_sec}
-                          onChange={(e) => updateChat({ stream_heartbeat_sec: parseFloat(e.target.value || '0') })}
+                          onChange={(e) => updateChat({ stream_heartbeat_sec: Number.parseFloat(e.target.value || '0') })}
                         />
                       </div>
                       <div className="text-xs text-muted-foreground md:col-span-2 flex items-center">

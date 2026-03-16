@@ -456,9 +456,9 @@ export function KnowledgeSettingsPanel({
               >
                 {selectedDatasetId || '全部数据集'}
               </span>
-              <span className="text-muted-foreground/40"> · </span>
+              <span className="text-muted-foreground/40">{' · '}</span>
               上次刷新: <span className="font-mono tabular-nums">{runsUpdatedAtLabel}</span>
-              <span className="text-muted-foreground/40"> · </span>
+              <span className="text-muted-foreground/40">{' · '}</span>
               自动刷新:{' '}
               <span className="font-mono tabular-nums">
                 {(() => {
@@ -524,7 +524,7 @@ export function KnowledgeSettingsPanel({
                 {visibleConnectorRuns.map((run) => {
                         const badge = getConnectorRunBadge(run.status);
                         const status = String(run.status || '').toLowerCase();
-                        const stats = (run.stats || {}) as any;
+                        const stats = run.stats ?? {};
                         const created = Number(stats.created || 0);
                         const failed = Number(stats.failed || 0);
                         const progress = getConnectorRunProgress(stats);
@@ -550,7 +550,8 @@ export function KnowledgeSettingsPanel({
                             supportsResume &&
                             (status === 'cancelled' || status === 'failed') &&
                             hasRemainingResumeWork;
-                        const hasDocs = Array.isArray(run.documents) && run.documents.length > 0;
+                        const documents = Array.isArray(run.documents) ? run.documents : [];
+                        const hasDocs = documents.length > 0;
                         const acl = run.acl_summary;
                         const aclDocsTotal = Number(acl?.documents_total || 0);
                         const aclModeRaw = String(acl?.mode || '').trim();
@@ -572,7 +573,7 @@ export function KnowledgeSettingsPanel({
                           <div className="mt-1 text-xs text-muted-foreground">
                             {formatDate(run.created_at)} · {run.connector_id} · dataset {run.dataset_id || '-'}
                             {durationLabel ? (<>
-                                <span className="text-muted-foreground/40"> · </span>
+                                <span className="text-muted-foreground/40">{' · '}</span>
                                 耗时 <span className="font-mono tabular-nums">{durationLabel}</span>
                               </>) : null}
                           </div>
@@ -588,12 +589,12 @@ export function KnowledgeSettingsPanel({
                           {aclModeLabel && aclDocsTotal > 0 ? (<div className="mt-1 text-xs text-muted-foreground">
                               ACL <span className="font-mono">{aclModeLabel}</span>
                               {aclBreakdown ? <span className="text-muted-foreground/60">（{aclBreakdown}）</span> : null}
-                              <span className="text-muted-foreground/40"> · </span>
+                              <span className="text-muted-foreground/40">{' · '}</span>
                               文档 <span className="font-mono tabular-nums">{aclDocsTotal}</span>
                               {aclHasAllowlist ? (<>
-                                  <span className="text-muted-foreground/40"> · </span>
+                                  <span className="text-muted-foreground/40">{' · '}</span>
                                   成员 <span className="font-mono tabular-nums">{aclMemberRange ?? '—'}</span>
-                                  <span className="text-muted-foreground/40"> · </span>
+                                  <span className="text-muted-foreground/40">{' · '}</span>
                                   组 <span className="font-mono tabular-nums">{aclGroupRange ?? '—'}</span>
                                 </>) : null}
                             </div>) : null}
@@ -645,15 +646,15 @@ export function KnowledgeSettingsPanel({
                           {hasDocs ? (<div className="mt-3">
                               <button type="button" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground/80" onClick={() => onToggleExpandedConnectorRun(run.id)}>
                                 {expandedConnectorRunId === run.id ? (<ChevronDown className="h-4 w-4"/>) : (<ChevronRight className="h-4 w-4"/>)}
-                                产物列表（{(run as any).documents.length}）
+                                产物列表（{documents.length}）
                               </button>
 
                               {expandedConnectorRunId === run.id ? (<div className="mt-2 rounded-lg border border-border/60 bg-background/40 p-3">
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="text-xs font-medium text-foreground/80">Documents</div>
                                     <Button type="button" variant="outline" size="sm" className="h-7 px-2 gap-1.5" onClick={() => {
-                                        const ids = (run as any).documents
-                                            .map((d: any) => String(d?.document_id || '').trim())
+                                        const ids = documents
+                                            .map((d) => String(d?.document_id || '').trim())
                                             .filter(Boolean);
                                         detachPromise(copyText(ids.join('\n'), '已复制文档 ID 列表'));
                                     }}>
@@ -662,7 +663,7 @@ export function KnowledgeSettingsPanel({
                                     </Button>
                                   </div>
                                   <div className="mt-2 space-y-1">
-                                    {(run as any).documents.slice(0, 15).map((d: any) => (<div key={String(d?.document_id)} className="flex items-start justify-between gap-3">
+                                    {documents.slice(0, 15).map((d) => (<div key={String(d?.document_id)} className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                           <div className="text-[11px] font-mono text-foreground/90 truncate">
                                             {String(d?.document_id || '')}
@@ -675,8 +676,8 @@ export function KnowledgeSettingsPanel({
                                           {String(d?.status || 'created')}
                                         </div>
                                       </div>))}
-                                    {(run as any).documents.length > 15 ? (<div className="text-[10px] text-muted-foreground">
-                                        …(+{(run as any).documents.length - 15})
+                                    {documents.length > 15 ? (<div className="text-[10px] text-muted-foreground">
+                                        …(+{documents.length - 15})
                                       </div>) : null}
                                   </div>
                                 </div>) : null}
@@ -696,7 +697,7 @@ export function KnowledgeSettingsPanel({
                                   <AlertDialogTitle>取消导入任务？</AlertDialogTitle>
                                   <AlertDialogDescription>
                                     将标记任务为 cancelled（best-effort）。仅影响后端后续处理，不会删除已产出的文档。run_id：
-                                    <span className="font-mono"> {run.id.slice(0, 8)}</span>
+                                    <span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -720,7 +721,7 @@ export function KnowledgeSettingsPanel({
                                   <AlertDialogTitle>续跑导入任务？</AlertDialogTitle>
                                   <AlertDialogDescription>
                                     将从上次 cursor 位置创建一个新的导入任务（best-effort）。run_id：
-                                    <span className="font-mono"> {run.id.slice(0, 8)}</span>
+                                    <span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -742,7 +743,7 @@ export function KnowledgeSettingsPanel({
                                   <AlertDialogTitle>只重试失败项？</AlertDialogTitle>
                                   <AlertDialogDescription>
                                     将创建一个新的导入任务（best-effort），仅处理失败项。run_id：
-                                    <span className="font-mono"> {run.id.slice(0, 8)}</span>
+                                    <span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>

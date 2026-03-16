@@ -19,6 +19,7 @@ _ALLOWED_OVERRIDES = {
     "reranker_provider",
     "reranker_top_n",
 }
+_SAFE_MODEL_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]{1,240}$")
 
 
 def _safe_tokenize(query: str) -> set[str]:
@@ -123,10 +124,18 @@ def load_intent_router_model(path: str | None) -> dict[str, Any] | None:
     path_s = str(path or "").strip()
     if not path_s:
         return None
-    p = Path(path_s).expanduser()
+    if not _SAFE_MODEL_PATH_RE.fullmatch(path_s):
+        return None
+    if path_s.startswith(("/", "\\", "~")):
+        return None
+
+    p = Path(path_s)
+    if any(part == ".." for part in p.parts):
+        return None
+
     base = Path.cwd().resolve(strict=False)
     try:
-        resolved = p.resolve(strict=False) if p.is_absolute() else (base / p).resolve(strict=False)
+        resolved = (base / p).resolve(strict=False)
         resolved.relative_to(base)
     except Exception:
         return None
