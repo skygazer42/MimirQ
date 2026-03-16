@@ -30,6 +30,8 @@ type FolderDialogState =
   | { open: true; mode: 'rename'; folderId: string }
   | { open: true; mode: 'move'; folderId: string }
 
+type FolderFileVisibility = 'none' | 'active' | 'all' | 'expanded'
+
 export function getFileIcon(filename: string, className?: string) {
   const ext = filename.split('.').pop()?.toLowerCase() || ''
   const isLarge = className?.includes('w-12')
@@ -186,7 +188,7 @@ export function DocumentFolderTree({
   onRequestUpload?: (folderId: string) => void
   onRequestUploadFolder?: (folderId: string) => void
   fileItems?: Array<{ id: string; name: string; folderId?: string; sourcePath?: string; status?: string; error?: string }>
-  showFiles?: 'none' | 'active' | 'all' | 'expanded'
+  showFiles?: FolderFileVisibility
   onSelectFile?: (fileId: string) => void
   onDeleteFolder?: (folderIds: string[]) => void
   onFileDrop?: (fileId: string, folderId: string) => void
@@ -440,6 +442,72 @@ export function DocumentFolderTree({
     return options
   }, [dialog, folders, childrenByParentId, folderPathById])
 
+  const requestExpand = useCallback((targetId: string) => {
+    if (showFiles !== 'expanded') return
+    if (expandedFileFolderIds.has(targetId)) return
+    const existing = dragExpandTimersRef.current.get(targetId)
+    if (existing) return
+    const timer = setTimeout(() => {
+      dragExpandTimersRef.current.delete(targetId)
+      setExpandedFileFolderIds((prev) => {
+        if (prev.has(targetId)) return prev
+        const next = new Set(prev)
+        next.add(targetId)
+        return next
+      })
+    }, 350)
+    dragExpandTimersRef.current.set(targetId, timer)
+  }, [expandedFileFolderIds, showFiles])
+
+  const clearExpandTimer = useCallback((targetId: string) => {
+    const timer = dragExpandTimersRef.current.get(targetId)
+    if (timer) {
+      clearTimeout(timer)
+      dragExpandTimersRef.current.delete(targetId)
+    }
+  }, [])
+
+  const requestActivate = useCallback((targetId: string) => {
+    const existing = dragActivateTimersRef.current.get(targetId)
+    if (existing) return
+    const timer = setTimeout(() => {
+      dragActivateTimersRef.current.delete(targetId)
+      setActiveFolderId(targetId)
+    }, 220)
+    dragActivateTimersRef.current.set(targetId, timer)
+  }, [setActiveFolderId])
+
+  const clearActivateTimer = useCallback((targetId: string) => {
+    const timer = dragActivateTimersRef.current.get(targetId)
+    if (timer) {
+      clearTimeout(timer)
+      dragActivateTimersRef.current.delete(targetId)
+    }
+  }, [])
+
+  const autoScrollOnDrag = useCallback((e: React.DragEvent) => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const edge = 24
+    let dir: 1 | -1 | 0 = 0
+    if (e.clientY < rect.top + edge) dir = -1
+    else if (e.clientY > rect.bottom - edge) dir = 1
+    dragScrollDirRef.current = dir
+    if (dir === 0) return
+    if (dragScrollRafRef.current != null) return
+    const step = () => {
+      const d = dragScrollDirRef.current
+      if (!container || d === 0) {
+        dragScrollRafRef.current = null
+        return
+      }
+      container.scrollTop += d * 6
+      dragScrollRafRef.current = requestAnimationFrame(step)
+    }
+    dragScrollRafRef.current = requestAnimationFrame(step)
+  }, [])
+
   const renderFolder = useCallback(
     (folder: FolderNode, depth: number) => {
       const isActive = activeFolderId === folder.id
@@ -454,76 +522,9 @@ export function DocumentFolderTree({
       const hasContent = count > 0 || children.length > 0
       const directFiles = isExpanded ? directFilesByFolderId.get(folder.id) || [] : []
 
-      const requestExpand = (targetId: string) => {
-        if (showFiles !== 'expanded') return
-        if (expandedFileFolderIds.has(targetId)) return
-        const existing = dragExpandTimersRef.current.get(targetId)
-        if (existing) return
-        const timer = setTimeout(() => {
-          dragExpandTimersRef.current.delete(targetId)
-          setExpandedFileFolderIds((prev) => {
-            if (prev.has(targetId)) return prev
-            const next = new Set(prev)
-            next.add(targetId)
-            return next
-          })
-        }, 350)
-        dragExpandTimersRef.current.set(targetId, timer)
-      }
-
-      const clearExpandTimer = (targetId: string) => {
-        const timer = dragExpandTimersRef.current.get(targetId)
-        if (timer) {
-          clearTimeout(timer)
-          dragExpandTimersRef.current.delete(targetId)
-        }
-      }
-
-      const requestActivate = (targetId: string) => {
-        const existing = dragActivateTimersRef.current.get(targetId)
-        if (existing) return
-        const timer = setTimeout(() => {
-          dragActivateTimersRef.current.delete(targetId)
-          setActiveFolderId(targetId)
-        }, 220)
-        dragActivateTimersRef.current.set(targetId, timer)
-      }
-
-      const clearActivateTimer = (targetId: string) => {
-        const timer = dragActivateTimersRef.current.get(targetId)
-        if (timer) {
-          clearTimeout(timer)
-          dragActivateTimersRef.current.delete(targetId)
-        }
-      }
-
-      const autoScrollOnDrag = (e: React.DragEvent) => {
-        const container = scrollContainerRef.current
-        if (!container) return
-        const rect = container.getBoundingClientRect()
-        const edge = 24
-        let dir: 1 | -1 | 0 = 0
-        if (e.clientY < rect.top + edge) dir = -1
-        else if (e.clientY > rect.bottom - edge) dir = 1
-        dragScrollDirRef.current = dir
-        if (dir === 0) return
-        if (dragScrollRafRef.current != null) return
-        const step = () => {
-          const d = dragScrollDirRef.current
-          if (!container || d === 0) {
-            dragScrollRafRef.current = null
-            return
-          }
-          container.scrollTop += d * 6
-          dragScrollRafRef.current = requestAnimationFrame(step)
-        }
-        dragScrollRafRef.current = requestAnimationFrame(step)
-      }
-
       return (
         <div key={folder.id}>
           <div
-            role="presentation"
             className={cn(
               'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-colors border border-transparent',
               isActive
@@ -776,7 +777,10 @@ export function DocumentFolderTree({
     },
     [
       activeFolderId,
+      autoScrollOnDrag,
       childrenByParentId,
+      clearActivateTimer,
+      clearExpandTimer,
       directCountByFolderId,
       directFilesByFolderId,
       expandedFileFolderIds,
@@ -790,6 +794,8 @@ export function DocumentFolderTree({
       onRequestUpload,
       onRequestUploadFolder,
       onSelectFile,
+      requestActivate,
+      requestExpand,
       showFiles,
       setActiveFolderId,
       toggleFileList,
@@ -809,7 +815,6 @@ export function DocumentFolderTree({
     <div className={cn('flex flex-col', className)} ref={scrollContainerRef}>
       <div className="space-y-1">
         <div
-          role="presentation"
           className={cn(
             'group relative flex items-center gap-2 rounded-xl px-3 py-2 transition-colors border border-transparent',
             activeFolderId === ROOT_FOLDER_ID
@@ -820,14 +825,7 @@ export function DocumentFolderTree({
           onDragOver={(e) => {
             e.preventDefault()
             setDragOverId(ROOT_FOLDER_ID)
-            const existing = dragActivateTimersRef.current.get(ROOT_FOLDER_ID)
-            if (!existing) {
-              const timer = setTimeout(() => {
-                dragActivateTimersRef.current.delete(ROOT_FOLDER_ID)
-                setActiveFolderId(ROOT_FOLDER_ID)
-              }, 220)
-              dragActivateTimersRef.current.set(ROOT_FOLDER_ID, timer)
-            }
+            requestActivate(ROOT_FOLDER_ID)
             if (showFiles === 'expanded' && !expandedFileFolderIds.has(ROOT_FOLDER_ID)) {
               setExpandedFileFolderIds((prev) => {
                 if (prev.has(ROOT_FOLDER_ID)) return prev
@@ -836,35 +834,11 @@ export function DocumentFolderTree({
                 return next
               })
             }
-            const container = scrollContainerRef.current
-            if (container) {
-              const rect = container.getBoundingClientRect()
-              const edge = 24
-              let dir: 1 | -1 | 0 = 0
-              if (e.clientY < rect.top + edge) dir = -1
-              else if (e.clientY > rect.bottom - edge) dir = 1
-              dragScrollDirRef.current = dir
-              if (dir !== 0 && dragScrollRafRef.current == null) {
-                const step = () => {
-                  const d = dragScrollDirRef.current
-                  if (!container || d === 0) {
-                    dragScrollRafRef.current = null
-                    return
-                  }
-                  container.scrollTop += d * 6
-                  dragScrollRafRef.current = requestAnimationFrame(step)
-                }
-                dragScrollRafRef.current = requestAnimationFrame(step)
-              }
-            }
+            autoScrollOnDrag(e)
           }}
           onDragLeave={() => {
             setDragOverId((prev) => (prev === ROOT_FOLDER_ID ? null : prev))
-            const timer = dragActivateTimersRef.current.get(ROOT_FOLDER_ID)
-            if (timer) {
-              clearTimeout(timer)
-              dragActivateTimersRef.current.delete(ROOT_FOLDER_ID)
-            }
+            clearActivateTimer(ROOT_FOLDER_ID)
           }}
           onDrop={(e) => {
             e.preventDefault()
@@ -877,11 +851,7 @@ export function DocumentFolderTree({
               if (fileId) onFileDrop?.(fileId, ROOT_FOLDER_ID)
             }
             setDragOverId(null)
-            const timer = dragActivateTimersRef.current.get(ROOT_FOLDER_ID)
-            if (timer) {
-              clearTimeout(timer)
-              dragActivateTimersRef.current.delete(ROOT_FOLDER_ID)
-            }
+            clearActivateTimer(ROOT_FOLDER_ID)
             dragScrollDirRef.current = 0
           }}
         >
