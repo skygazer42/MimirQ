@@ -1,27 +1,15 @@
 FROM node:20-alpine AS base
 
-RUN corepack enable && mkdir -p /app && chown -R node:node /app
+RUN corepack enable
 WORKDIR /app
 
 FROM base AS deps
-USER node
-COPY --chown=node:node package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
-USER node
-COPY --from=deps --chown=node:node /app/node_modules ./node_modules
-COPY --chown=node:node app ./app
-COPY --chown=node:node components ./components
-COPY --chown=node:node contexts ./contexts
-COPY --chown=node:node hooks ./hooks
-COPY --chown=node:node lib ./lib
-COPY --chown=node:node public ./public
-COPY --chown=node:node services ./services
-COPY --chown=node:node store ./store
-COPY --chown=node:node types ./types
-COPY --chown=node:node workers ./workers
-COPY --chown=node:node next.config.mjs next-env.d.ts openapi.json postcss.config.mjs tailwind.config.ts tsconfig.json ./
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_API_TIMEOUT_MS=60000
 ARG NEXT_PUBLIC_API_LONG_TIMEOUT_MS=600000
@@ -55,11 +43,12 @@ ENV NEXT_PUBLIC_TENANT_ID=$NEXT_PUBLIC_TENANT_ID
 ENV MIMIRQ_BUILD_SHA=$MIMIRQ_BUILD_SHA
 ENV MIMIRQ_BUILD_TIME=$MIMIRQ_BUILD_TIME
 
-COPY --from=builder --chown=node:node --chmod=0444 /app/package.json ./package.json
-COPY --from=builder --chown=node:node --chmod=0444 /app/next.config.mjs ./next.config.mjs
-COPY --from=builder --chown=node:node --chmod=0555 /app/public ./public
-COPY --from=builder --chown=node:node --chmod=0555 /app/.next_build ./.next_build
-COPY --from=builder --chown=node:node --chmod=0555 /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/next.config.mjs ./next.config.mjs
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next_build ./.next_build
+COPY --from=builder /app/node_modules ./node_modules
+RUN chown -R node:node /app && chmod -R a-w /app/package.json /app/next.config.mjs /app/public /app/.next_build /app/node_modules
 
 EXPOSE 3000
 

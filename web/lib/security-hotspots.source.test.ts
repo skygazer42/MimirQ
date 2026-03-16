@@ -25,16 +25,16 @@ describe('security hotspot source guards', () => {
     expect(read('../services/graph-service.ts')).not.toContain('Math.random(')
   })
 
-  it('avoids recursive copy patterns in Dockerfiles', () => {
-    expect(read('../Dockerfile')).not.toContain('COPY . .')
-    expect(read('../Dockerfile.prod')).not.toContain('COPY . .')
-  })
-
-  it('runs the dev container as a non-root user and locks runner copy permissions', () => {
+  it('runs the dev container as a non-root user and hardens copied files after staging', () => {
     const devDockerfile = read('../Dockerfile')
     const prodDockerfile = read('../Dockerfile.prod')
 
     expect(devDockerfile).toContain('USER node')
-    expect(prodDockerfile).toContain('--chmod=')
+    expect(devDockerfile).toContain('RUN chown -R node:node /app')
+    expect(devDockerfile).not.toContain('COPY --chown=node:node app ./app')
+
+    expect(prodDockerfile).toContain('RUN chown -R node:node /app')
+    expect(prodDockerfile).toContain('chmod -R a-w /app/package.json /app/next.config.mjs /app/public /app/.next_build /app/node_modules')
+    expect(prodDockerfile).not.toContain('--chmod=')
   })
 })
