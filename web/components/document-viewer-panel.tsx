@@ -23,7 +23,7 @@ import { formatApiError } from "@/lib/api-errors"
 import { toast } from "sonner"
 
 function escapeRegExp(value: string): string {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
 }
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -488,30 +488,16 @@ export function DocumentViewerPanel() {
     const value = (text || "").trim()
     if (!value) return
 
-    let ok = false
     try {
-      await navigator.clipboard.writeText(value)
-      ok = true
-    } catch {
-      try {
-        const textarea = document.createElement("textarea")
-        textarea.value = value
-        textarea.setAttribute("readonly", "")
-        textarea.style.position = "fixed"
-        textarea.style.left = "0"
-        textarea.style.top = "0"
-        textarea.style.opacity = "0"
-        document.body.appendChild(textarea)
-        textarea.focus()
-        textarea.select()
-        ok = document.execCommand("copy")
-        document.body.removeChild(textarea)
-      } catch {
-        ok = false
+      if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable")
       }
+      await navigator.clipboard.writeText(value)
+      toast.success(okMsg)
+    } catch (error) {
+      console.error(error)
+      toast.error("复制失败")
     }
-
-    if (ok) toast.success(okMsg)
   }, [])
 
   const canEditChunks = Boolean(doc && !["pending", "processing"].includes(String(doc.status || "").toLowerCase()))
@@ -577,7 +563,7 @@ export function DocumentViewerPanel() {
         const updated = await documentApi.updateChunk(documentId, target.id, { content, page_number: pageNumber })
         toast.success("切片已更新")
         setChunks((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-        setHighlightChunkState((prev) => (prev && prev.id === updated.id ? updated : prev))
+        setHighlightChunkState((prev) => (prev?.id === updated.id ? updated : prev))
       }
 
       // Re-measure virtualization after content changes (best-effort).

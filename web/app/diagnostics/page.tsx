@@ -29,34 +29,12 @@ function prettyJson(value: unknown): string {
   }
 }
 
-async function copyToClipboard(text: string): Promise<void> {
-  const content = text || ''
-
-  // Prefer async clipboard API when available; fall back to execCommand when blocked.
+async function copyToClipboard(text = ''): Promise<void> {
   try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(content)
-      toast.success('已复制到剪贴板')
-      return
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+      throw new Error('Clipboard API unavailable')
     }
-  } catch {
-    // fall through to legacy fallback
-  }
-
-  try {
-    const el = document.createElement('textarea')
-    el.value = content
-    el.setAttribute('readonly', 'true')
-    el.style.position = 'fixed'
-    el.style.left = '0'
-    el.style.top = '0'
-    el.style.opacity = '0'
-    document.body.appendChild(el)
-    el.focus()
-    el.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(el)
-    if (!ok) throw new Error('copy failed')
+    await navigator.clipboard.writeText(text)
     toast.success('已复制到剪贴板')
   } catch (err) {
     console.error('Copy failed:', err)
@@ -726,7 +704,7 @@ export default function DiagnosticsPage() {
 	                    '- If prompt/context tokens are high, reduce chunk size, enable context denoise/dedup, and tighten dataset scope.',
 	                    '- If UI feels sluggish, prefer list virtualization and avoid rendering huge markdown without need.',
 	                    '- For large bundles, keep heavy deps behind next/dynamic and check build output.',
-	                  ].join('\\n')
+	                  ].join(String.raw`\n`)
 	                )
 	              }
 	              title="复制"
