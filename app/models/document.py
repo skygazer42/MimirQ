@@ -23,6 +23,9 @@ from sqlalchemy.sql import func
 from app.core.database import Base
 
 
+DELETE_ORPHAN_CASCADE = "all, delete-orphan"
+
+
 class Document(Base):
     """Document table"""
     __tablename__ = "documents"
@@ -89,14 +92,14 @@ class Document(Base):
     disabled_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relations
-    chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
+    chunks = relationship("DocumentChunk", back_populates="document", cascade=DELETE_ORPHAN_CASCADE)
     parsed_content = relationship(
         "DocumentParsedContent",
         back_populates="document",
-        cascade="all, delete-orphan",
+        cascade=DELETE_ORPHAN_CASCADE,
         uselist=False,
     )
-    permissions = relationship("DocumentPermission", back_populates="document", cascade="all, delete-orphan")
+    permissions = relationship("DocumentPermission", back_populates="document", cascade=DELETE_ORPHAN_CASCADE)
 
 
 class DocumentPermission(Base):
