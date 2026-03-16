@@ -44,17 +44,29 @@ type DocumentStatusSnapshot = Pick<
 
 const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled', 'quarantined'])
 
-export function matchesDocumentListParams(doc: Document, params: DocumentListParams): boolean {
-  const status = String(params.status || '').trim()
-  if (status && status !== 'all') {
-    const normalized = status.toLowerCase()
-    if (normalized === 'processing') {
-      if (!(doc.status === 'pending' || doc.status === 'processing')) return false
-    } else if (doc.status !== normalized) {
-      return false
-    }
+export function matchesStatusFilter(doc: Document, statusFilter: string | undefined): boolean {
+  const status = String(statusFilter || '').trim().toLowerCase()
+  if (!status || status === 'all') return true
+  if (status === 'processing') {
+    return doc.status === 'pending' || doc.status === 'processing'
   }
+  return doc.status === status
+}
 
+export function matchesLifecycleFilter(doc: Document, lifecycleFilter: string | undefined): boolean {
+  const lifecycle = String(lifecycleFilter || '').trim().toLowerCase()
+  if (!lifecycle || lifecycle === 'all') return true
+
+  const isArchived = Boolean(doc.archived_at)
+  const isDisabled = Boolean(doc.disabled_at)
+  if (lifecycle === 'active') return !isArchived && !isDisabled
+  if (lifecycle === 'archived') return isArchived
+  if (lifecycle === 'disabled') return isDisabled
+  return true
+}
+
+export function matchesDocumentListParams(doc: Document, params: DocumentListParams): boolean {
+  if (!matchesStatusFilter(doc, params.status)) return false
   const datasetId = String(params.dataset_id || '').trim()
   if (datasetId && String(doc.dataset_id || '') !== datasetId) return false
 
@@ -64,19 +76,7 @@ export function matchesDocumentListParams(doc: Document, params: DocumentListPar
     if (!sourcePath?.startsWith(sourcePathPrefix)) return false
   }
 
-  const lifecycle = String(params.lifecycle || '').trim().toLowerCase()
-  if (lifecycle && lifecycle !== 'all') {
-    const isArchived = Boolean(doc.archived_at)
-    const isDisabled = Boolean(doc.disabled_at)
-    if (lifecycle === 'active') {
-      if (isArchived || isDisabled) return false
-    } else if (lifecycle === 'archived') {
-      if (!isArchived) return false
-    } else if (lifecycle === 'disabled') {
-      if (!isDisabled) return false
-    }
-  }
-
+  if (!matchesLifecycleFilter(doc, params.lifecycle)) return false
   const q = String(params.q || '').trim().toLowerCase()
   if (q && !String(doc.filename || '').toLowerCase().includes(q)) return false
 
@@ -87,7 +87,7 @@ export function isTerminalDocumentStatus(status: string | undefined): boolean {
   return TERMINAL_DOCUMENT_STATUSES.has(String(status || '').toLowerCase())
 }
 
-export function mergeDocumentStatus(
+export function mergePolledDocument(
   doc: Document,
   documentId: string,
   status: DocumentStatusSnapshot
@@ -102,8 +102,24 @@ export function mergeDocumentStatus(
   }
 }
 
-export function replaceDocumentById(doc: Document, documentId: string, nextDocument: Document): Document {
+export function replacePolledDocument(doc: Document, documentId: string, nextDocument: Document): Document {
   return doc.id === documentId ? nextDocument : doc
+}
+
+export function mergePolledDocumentList(
+  documents: Document[],
+  documentId: string,
+  status: DocumentStatusSnapshot
+): Document[] {
+  return documents.map((doc) => mergePolledDocument(doc, documentId, status))
+}
+
+export function replacePolledDocumentList(
+  documents: Document[],
+  documentId: string,
+  nextDocument: Document
+): Document[] {
+  return documents.map((doc) => replacePolledDocument(doc, documentId, nextDocument))
 }
 
 export function clampUploadOption(
@@ -213,7 +229,7 @@ export function useDocuments() {
           const status = await documentApi.getStatus(documentId)
 
           // 更新文档状态
-          setDocuments((prev) => prev.map((doc) => mergeDocumentStatus(doc, documentId, status)))
+          setDocuments((prev) => mergePolledDocumentList(prev, documentId, status))
 
           // 如果处理完成/失败/隔离，停止轮询
           if (isTerminalDocumentStatus(status.status)) {
@@ -221,7 +237,7 @@ export function useDocuments() {
 
             // 重新加载完整的文档信息
             const fullDoc = await documentApi.get(documentId)
-            setDocuments((prev) => prev.map((doc) => replaceDocumentById(doc, documentId, fullDoc)))
+            setDocuments((prev) => replacePolledDocumentList(prev, documentId, fullDoc))
             return
           }
         } catch (err) {

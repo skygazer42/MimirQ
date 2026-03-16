@@ -122,13 +122,7 @@ const normalizeImageMode = (value: unknown): 'none' | 'decorative' | 'all' => {
   return 'none'
 }
 
-const normalizePiiMode = (value: unknown): 'mask' | 'token' => {
-  const v = (toString(value) || '').toLowerCase()
-  if (v === 'token') return 'token'
-  return 'mask'
-}
-
-const normalizeSecretsMode = (value: unknown): 'mask' | 'token' => {
+const normalizeMaskingMode = (value: unknown): 'mask' | 'token' => {
   const v = (toString(value) || '').toLowerCase()
   if (v === 'token') return 'token'
   return 'mask'
@@ -180,10 +174,10 @@ const normalizeOptions = (raw: any): DocumentPipelineOptions => {
     governance_normalize_tables: toBool(raw.governance_normalize_tables) ?? DEFAULT_OPTIONS.governance_normalize_tables,
     governance_strip_code_line_numbers: toBool(raw.governance_strip_code_line_numbers) ?? DEFAULT_OPTIONS.governance_strip_code_line_numbers,
     governance_pii_anonymize: toBool(raw.governance_pii_anonymize) ?? DEFAULT_OPTIONS.governance_pii_anonymize,
-    governance_pii_mode: normalizePiiMode(raw.governance_pii_mode) ?? DEFAULT_OPTIONS.governance_pii_mode,
+    governance_pii_mode: normalizeMaskingMode(raw.governance_pii_mode) ?? DEFAULT_OPTIONS.governance_pii_mode,
     governance_pii_mask: toString(raw.governance_pii_mask) ?? DEFAULT_OPTIONS.governance_pii_mask,
     governance_secrets_redact: toBool(raw.governance_secrets_redact) ?? DEFAULT_OPTIONS.governance_secrets_redact,
-    governance_secrets_mode: normalizeSecretsMode(raw.governance_secrets_mode) ?? DEFAULT_OPTIONS.governance_secrets_mode,
+    governance_secrets_mode: normalizeMaskingMode(raw.governance_secrets_mode) ?? DEFAULT_OPTIONS.governance_secrets_mode,
     governance_secrets_mask: toString(raw.governance_secrets_mask) ?? DEFAULT_OPTIONS.governance_secrets_mask,
     governance_max_blank_lines: toInt(raw.governance_max_blank_lines) ?? DEFAULT_OPTIONS.governance_max_blank_lines,
     governance_html_xpath: toString(raw.governance_html_xpath) ?? DEFAULT_OPTIONS.governance_html_xpath,

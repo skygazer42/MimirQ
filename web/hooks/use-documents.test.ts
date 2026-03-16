@@ -6,7 +6,11 @@ import {
   clampUploadOption,
   collectRetryFiles,
   isTerminalDocumentStatus,
+  mergePolledDocument,
   matchesDocumentListParams,
+  matchesLifecycleFilter,
+  matchesStatusFilter,
+  replacePolledDocument,
 } from './use-documents'
 
 function makeDocument(overrides: Partial<Document> = {}): Document {
@@ -50,6 +54,20 @@ describe('matchesDocumentListParams', () => {
   })
 })
 
+describe('document filter helpers', () => {
+  it('matches processing status against both pending and processing documents', () => {
+    expect(matchesStatusFilter(makeDocument({ status: 'pending' }), 'processing')).toBe(true)
+    expect(matchesStatusFilter(makeDocument({ status: 'processing' }), 'processing')).toBe(true)
+    expect(matchesStatusFilter(makeDocument({ status: 'failed' }), 'processing')).toBe(false)
+  })
+
+  it('matches lifecycle states explicitly', () => {
+    expect(matchesLifecycleFilter(makeDocument({ archived_at: '2026-03-16T00:00:00Z' }), 'archived')).toBe(true)
+    expect(matchesLifecycleFilter(makeDocument({ disabled_at: '2026-03-16T00:00:00Z' }), 'disabled')).toBe(true)
+    expect(matchesLifecycleFilter(makeDocument(), 'active')).toBe(true)
+  })
+})
+
 describe('isTerminalDocumentStatus', () => {
   it('recognizes terminal statuses', () => {
     expect(isTerminalDocumentStatus('completed')).toBe(true)
@@ -85,5 +103,42 @@ describe('collectRetryFiles', () => {
     )
 
     expect(retryFiles).toEqual([fileA, fileB])
+  })
+})
+
+describe('polling document helpers', () => {
+  it('merges polled status fields into the targeted document only', () => {
+    const doc = makeDocument({ id: 'doc-1', status: 'pending' })
+    const untouched = makeDocument({ id: 'doc-2', status: 'completed' })
+
+    expect(
+      mergePolledDocument(doc, 'doc-1', {
+        status: 'processing',
+        processing_progress: 42,
+        current_stage: 'chunking',
+        error_message: null,
+      })
+    ).toMatchObject({
+      status: 'processing',
+      processing_progress: 42,
+      current_stage: 'chunking',
+    })
+
+    expect(
+      mergePolledDocument(untouched, 'doc-1', {
+        status: 'processing',
+        processing_progress: 42,
+        current_stage: 'chunking',
+        error_message: null,
+      })
+    ).toBe(untouched)
+  })
+
+  it('replaces a refreshed document only when ids match', () => {
+    const current = makeDocument({ id: 'doc-1', filename: 'old.pdf' })
+    const refreshed = makeDocument({ id: 'doc-1', filename: 'new.pdf' })
+
+    expect(replacePolledDocument(current, 'doc-1', refreshed)).toBe(refreshed)
+    expect(replacePolledDocument(current, 'doc-2', refreshed)).toBe(current)
   })
 })

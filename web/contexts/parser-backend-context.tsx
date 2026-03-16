@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 const STORAGE_KEY = 'mimirq_parser_backend'
@@ -13,58 +13,54 @@ type ParserBackendContextValue = {
 const ParserBackendContext = createContext<ParserBackendContextValue | null>(null)
 
 export function ParserBackendProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [parserBackend, setParserBackendState] = useState('auto')
+  const [parserBackend, setParserBackend] = useState('auto')
   const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
     if (globalThis.window === undefined) return
     const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
     if (stored) {
-      setParserBackendState(stored)
+      setParserBackend(stored)
     }
 
     const handleStorage = (event: StorageEvent) => {
       if (event.key === STORAGE_KEY && event.newValue) {
-        setParserBackendState(event.newValue)
+        setParserBackend(event.newValue)
       }
     }
     globalThis.window.addEventListener('storage', handleStorage)
     return () => globalThis.window.removeEventListener('storage', handleStorage)
   }, [])
 
-  const applyParserBackend = (value: string) => {
+  const persistParserBackend = useCallback((value: string) => {
     const raw = (value || '').toLowerCase().trim()
-    const normalized = raw.replaceAll("_", '-')
+    const normalized = raw.replaceAll('_', '-')
     let next = normalized
     if (next === 'magic-pdf') next = 'magicpdf'
     if (next === 'etl-4llm') next = 'etl4llm'
     if (next === 'bisheng-unstructured' || next === 'bishengunstructured' || next === 'bisheng') next = 'etl4llm'
     next = next || 'auto'
-    setParserBackendState(next)
+    setParserBackend(next)
     if (globalThis.window !== undefined) {
       globalThis.window.localStorage.setItem(STORAGE_KEY, next)
     }
-  }
+  }, [])
 
   useEffect(() => {
     if (!capabilities) return
     const ok = parserBackendAvailable(parserBackend)
     if (ok === false) {
-      applyParserBackend(capabilities.default_parser_backend || 'auto')
+      persistParserBackend(capabilities.default_parser_backend || 'auto')
     }
-  }, [capabilities, parserBackend, parserBackendAvailable])
+  }, [capabilities, parserBackend, parserBackendAvailable, persistParserBackend])
 
-  const setParserBackend = (value: string) => {
-    applyParserBackend(value)
-  }
+  const contextValue = useMemo(() => ({
+    parserBackend,
+    setParserBackend: persistParserBackend,
+  }), [parserBackend, persistParserBackend])
 
   return (
-    <ParserBackendContext.Provider
-      value={{
-        parserBackend,
-        setParserBackend,
-      }}
-    >
+    <ParserBackendContext.Provider value={contextValue}>
       {children}
     </ParserBackendContext.Provider>
   )

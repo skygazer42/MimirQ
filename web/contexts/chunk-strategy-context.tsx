@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 const STORAGE_KEY = 'mimirq_chunk_strategy'
@@ -13,19 +13,19 @@ type ChunkStrategyContextValue = {
 const ChunkStrategyContext = createContext<ChunkStrategyContextValue | null>(null)
 
 export function ChunkStrategyProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [chunkStrategy, setChunkStrategyState] = useState('langchain_recursive')
+  const [chunkStrategy, setChunkStrategy] = useState('langchain_recursive')
   const { capabilities, chunkStrategyAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
     if (globalThis.window === undefined) return
     const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
     if (stored) {
-      setChunkStrategyState(stored)
+      setChunkStrategy(stored)
     }
 
     const onStorage = (event: StorageEvent) => {
       if (event.key === STORAGE_KEY && event.newValue) {
-        setChunkStrategyState(event.newValue)
+        setChunkStrategy(event.newValue)
       }
     }
 
@@ -33,33 +33,29 @@ export function ChunkStrategyProvider({ children }: Readonly<{ children: React.R
     return () => globalThis.window.removeEventListener('storage', onStorage)
   }, [])
 
-  const applyChunkStrategy = (value: string) => {
+  const persistChunkStrategy = useCallback((value: string) => {
     const next = (value || '').trim().toLowerCase() || 'langchain_recursive'
-    setChunkStrategyState(next)
+    setChunkStrategy(next)
     if (globalThis.window !== undefined) {
       globalThis.window.localStorage.setItem(STORAGE_KEY, next)
     }
-  }
+  }, [])
 
   useEffect(() => {
     if (!capabilities) return
     const ok = chunkStrategyAvailable(chunkStrategy)
     if (ok === false) {
-      applyChunkStrategy(capabilities.default_chunk_strategy || 'langchain_recursive')
+      persistChunkStrategy(capabilities.default_chunk_strategy || 'langchain_recursive')
     }
-  }, [capabilities, chunkStrategy, chunkStrategyAvailable])
+  }, [capabilities, chunkStrategy, chunkStrategyAvailable, persistChunkStrategy])
 
-  const setChunkStrategy = (value: string) => {
-    applyChunkStrategy(value)
-  }
+  const contextValue = useMemo(() => ({
+    chunkStrategy,
+    setChunkStrategy: persistChunkStrategy,
+  }), [chunkStrategy, persistChunkStrategy])
 
   return (
-    <ChunkStrategyContext.Provider
-      value={{
-        chunkStrategy,
-        setChunkStrategy,
-      }}
-    >
+    <ChunkStrategyContext.Provider value={contextValue}>
       {children}
     </ChunkStrategyContext.Provider>
   )
