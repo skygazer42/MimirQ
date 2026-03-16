@@ -15,6 +15,7 @@ from app.core.jwt_verify import decode_access_token
 from app.core.logging_config import set_request_tenant_id, set_request_user_id
 
 logger = logging.getLogger(__name__)
+INVALID_TOKEN_DETAIL = "Invalid token"
 
 def _coerce_uuid(raw: object) -> str | None:
     value = str(raw or "").strip()
@@ -36,7 +37,7 @@ def _get_jwt_tenant_id(payload: dict) -> str | None:
     tenant_id = _coerce_uuid(raw)
     if not tenant_id:
         # If a tenant claim is configured but invalid, treat it as an invalid token.
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
     return tenant_id
 
 
@@ -46,8 +47,11 @@ def _best_effort_client_ip(request: Request) -> str | None:
         return (forwarded.split(",")[0] or "").strip() or None
     real_ip = request.headers.get("X-Real-IP")
     if real_ip:
-        return (real_ip or "").strip() or None
-    return request.client.host if request.client and request.client.host else None
+        return real_ip.strip() or None
+    client = request.client
+    if client is None:
+        return None
+    return str(client.host).strip() or None
 
 
 async def get_current_account_id_from_headers(
@@ -97,26 +101,26 @@ async def get_current_account_id_from_headers(
             raise HTTPException(status_code=401, detail="Token expired") from exc
         except JWTError as exc:
             logger.warning("Invalid token: %s", str(exc)[:100])
-            raise HTTPException(status_code=401, detail="Invalid token") from exc
+            raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL) from exc
         if request is not None:
             request.state._jwt_payload = payload
 
     user_id = payload.get("sub")
     if not user_id:
         logger.warning("Token missing 'sub' claim")
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
 
     jwt_tenant_id = _get_jwt_tenant_id(payload)
 
     if bool(getattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False)):
         if not jwt_tenant_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
 
         header_tenant_id = _coerce_uuid(x_tenant_id)
         if not header_tenant_id:
             raise HTTPException(status_code=400, detail="X-Tenant-ID header required")
         if header_tenant_id != jwt_tenant_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
 
     user_id = str(user_id)
     if request is not None:

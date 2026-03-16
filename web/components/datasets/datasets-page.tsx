@@ -68,6 +68,22 @@ function parseMembers(text: string): string[] {
     .filter(Boolean)
 }
 
+function mergePipelineOptions(
+  defaults: DocumentPipelineOptions,
+  overrides?: DocumentPipelineOptions | null
+): DocumentPipelineOptions {
+  if (!overrides) return { ...defaults }
+  return { ...defaults, ...overrides }
+}
+
+function applyPipelinePatch(
+  current: DocumentPipelineOptions,
+  patch?: DocumentPipelineOptions | null
+): DocumentPipelineOptions {
+  if (!patch) return { ...current }
+  return { ...current, ...patch }
+}
+
 export default function DatasetsPage() {
   const router = useRouter()
   const { options: defaultPipelineOptions } = usePipelineOptions()
@@ -168,7 +184,7 @@ export default function DatasetsPage() {
 
   const openEdit = (ds: Dataset) => {
     setEditing(ds)
-    const mergedPipeline = { ...defaultPipelineOptions, ...(ds.pipeline || {}) }
+    const mergedPipeline = mergePipelineOptions(defaultPipelineOptions, ds.pipeline)
     setForm({
       name: ds.name || '',
       description: ds.description || '',
@@ -220,7 +236,7 @@ export default function DatasetsPage() {
         description={
           <span className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-primary/50" />
-            管理知识库集合与访问权限
+            <span>管理知识库集合与访问权限</span>
             <span className="ml-4 text-xs font-mono text-primary/70 uppercase ">
               Total Archives: <span className="text-primary font-bold">{total}</span>
             </span>
@@ -572,10 +588,7 @@ function DatasetForm({
                 onApplyPatch={(patch) => {
                   setForm({
                     ...form,
-                    pipelineOptions: {
-                      ...form.pipelineOptions,
-                      ...(patch || {}),
-                    },
+                    pipelineOptions: applyPipelinePatch(form.pipelineOptions, patch),
                   })
                 }}
               />

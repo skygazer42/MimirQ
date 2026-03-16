@@ -16,6 +16,7 @@ from typing import Any
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+DEFAULT_MASK = "[REDACTED]"
 
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _CN_MOBILE_RE = re.compile(r"\b1[3-9]\d{9}\b")
@@ -23,9 +24,9 @@ _CN_ID_RE = re.compile(r"\b\d{17}[\dXx]\b")
 _OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")
 _AWS_ACCESS_KEY_RE = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
 _GENERIC_KV_SECRET_RE = re.compile(
-    r"(?i)\b(api[_-]?key|apikey|access[_-]?key|secret|token|bearer)\b\s*[:=]\s*([^\s,;]{8,})"
+    r"(?i)\b(api[_-]?key|access[_-]?key|secret|token|bearer)\b\s*[:=]\s*([^\s,;]{8,})"
 )
-_CARD_CANDIDATE_RE = re.compile(r"\b(?:\d[ -]*?){13,19}\b")
+_CARD_CANDIDATE_RE = re.compile(r"\b(?:\d[ -]*){13,19}\b")
 
 
 def pii_redaction_enabled() -> bool:
@@ -33,8 +34,8 @@ def pii_redaction_enabled() -> bool:
 
 
 def _current_mask() -> str:
-    mask = str(getattr(settings, "PII_REDACTION_MASK", "[REDACTED]") or "[REDACTED]").strip()
-    return mask or "[REDACTED]"
+    mask = str(getattr(settings, "PII_REDACTION_MASK", DEFAULT_MASK) or DEFAULT_MASK).strip()
+    return mask or DEFAULT_MASK
 
 
 def _luhn_ok(digits: str) -> bool:
@@ -55,7 +56,7 @@ def _luhn_ok(digits: str) -> bool:
 
 @dataclass
 class PIIRedactor:
-    mask: str = "[REDACTED]"
+    mask: str = DEFAULT_MASK
 
     def redact_text(self, text: str) -> tuple[str, dict[str, Any]]:
         raw = str(text or "")
@@ -113,7 +114,8 @@ class PIIRedactor:
 
 @lru_cache(maxsize=8)
 def _get_redactor(mask: str) -> PIIRedactor:
-    return PIIRedactor(mask=str(mask or "[REDACTED]") or "[REDACTED]")
+    normalized_mask = str(mask or DEFAULT_MASK).strip() or DEFAULT_MASK
+    return PIIRedactor(mask=normalized_mask)
 
 
 def redact_text(text: str) -> str:
@@ -163,4 +165,3 @@ __all__ = [
     "redact_obj",
     "redact_text",
 ]
-
