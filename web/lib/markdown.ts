@@ -5,8 +5,11 @@ export type MarkdownHeading = {
   line: number
 }
 
-function stripInlineMarkdown(text: string): string {
-  let out = text || ''
+const CODE_FENCE_RE = /^(```+|~~~+)\s*/
+const MARKDOWN_HEADING_RE = /^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/
+
+function stripInlineMarkdown(text = ''): string {
+  let out = text
 
   // Images: ![alt](url) -> alt
   out = out.replaceAll(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
@@ -20,6 +23,48 @@ function stripInlineMarkdown(text: string): string {
   out = out.replaceAll(/<[^>]+>/g, '')
 
   return out.trim()
+}
+
+function getFenceState(
+  trimmed: string,
+  inCodeFence: boolean,
+  fenceToken: string | null
+): { inCodeFence: boolean; fenceToken: string | null; matchedFence: boolean } {
+  const fenceMatch = CODE_FENCE_RE.exec(trimmed)
+  if (!fenceMatch) {
+    return { inCodeFence, fenceToken, matchedFence: false }
+  }
+
+  const token = fenceMatch[1]
+  if (!inCodeFence) {
+    return {
+      inCodeFence: true,
+      fenceToken: token.startsWith('```') ? '```' : '~~~',
+      matchedFence: true,
+    }
+  }
+
+  if (fenceToken && token.startsWith(fenceToken)) {
+    return { inCodeFence: false, fenceToken: null, matchedFence: true }
+  }
+
+  return { inCodeFence, fenceToken, matchedFence: false }
+}
+
+function parseMarkdownHeadingLine(
+  line: string,
+  maxDepth: number
+): { level: number; rawText: string } | null {
+  const headingMatch = MARKDOWN_HEADING_RE.exec(line)
+  if (!headingMatch) return null
+
+  const level = headingMatch[1].length
+  if (level < 1 || level > Math.min(6, maxDepth)) return null
+
+  return {
+    level,
+    rawText: headingMatch[2],
+  }
 }
 
 export function slugifyHeading(text: string): string {
@@ -62,28 +107,17 @@ export function extractMarkdownHeadings(
     const line = lines[index]
     const trimmed = line.trim()
 
-    // Code fences: ``` / ~~~
-    const fenceMatch = trimmed.match(/^(```+|~~~+)\s*/)
-    if (fenceMatch) {
-      const token = fenceMatch[1]
-      if (!inCodeFence) {
-        inCodeFence = true
-        fenceToken = token.startsWith('```') ? '```' : '~~~'
-      } else if (fenceToken && token.startsWith(fenceToken)) {
-        inCodeFence = false
-        fenceToken = null
-      }
+    const nextFenceState = getFenceState(trimmed, inCodeFence, fenceToken)
+    inCodeFence = nextFenceState.inCodeFence
+    fenceToken = nextFenceState.fenceToken
+    if (nextFenceState.matchedFence || inCodeFence) {
       continue
     }
-    if (inCodeFence) continue
 
-    const m = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/)
-    if (!m) continue
+    const heading = parseMarkdownHeadingLine(line, maxDepth)
+    if (!heading) continue
 
-    const level = m[1].length
-    if (level < 1 || level > Math.min(6, maxDepth)) continue
-
-    const headingText = stripInlineMarkdown(m[2])
+    const headingText = stripInlineMarkdown(heading.rawText)
     const base = slugifyHeading(headingText) || `section-${headings.length + 1}`
 
     const prev = seen.get(base) || 0
@@ -92,8 +126,8 @@ export function extractMarkdownHeadings(
     const id = nextCount === 1 ? base : `${base}-${nextCount}`
 
     headings.push({
-      level,
-      text: headingText || m[2].trim(),
+      level: heading.level,
+      text: headingText || heading.rawText.trim(),
       id,
       line: index + 1,
     })
@@ -131,4 +165,3 @@ export function flashElementId(id: string, className: string, durationMs = 900):
     el.classList.remove(...className.split(/\s+/g).filter(Boolean))
   }, Math.max(0, Number(durationMs) || 0))
 }
-

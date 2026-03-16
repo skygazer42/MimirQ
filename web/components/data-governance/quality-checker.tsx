@@ -34,6 +34,131 @@ const CHECK_ITEMS = [
   { id: 'issues', label: '问题识别', icon: AlertTriangle },
 ]
 
+const UTF8_BOM_CODE_POINT = 0xFEFF
+
+function getLeadingCodePoint(value: string): number | undefined {
+  return value.codePointAt(0)
+}
+
+function getContentFormat(hasHtml: boolean, hasMarkdown: boolean): string {
+  if (hasHtml) return 'HTML'
+  if (hasMarkdown) return 'Markdown'
+  return '纯文本'
+}
+
+function collectLocalQualityIssues(content: string): QualityIssue[] {
+  const detectedIssues: QualityIssue[] = []
+
+  const emptyParagraphs = (content.match(/\n\n+/g) || []).length
+  if (emptyParagraphs > 5) {
+    detectedIssues.push({
+      id: 'empty-paragraphs',
+      type: 'warning',
+      message: `发现 ${emptyParagraphs} 处空段落，可能影响检索质量`,
+    })
+  }
+
+  const longParagraphs = content.split('\n\n').filter((p) => p.length > 1000)
+  if (longParagraphs.length > 0) {
+    detectedIssues.push({
+      id: 'long-paragraphs',
+      type: 'warning',
+      message: `发现 ${longParagraphs.length} 处过长段落 (>1000字符)，建议切块`,
+    })
+  }
+
+  const specialChars = content.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g) || []
+  if (specialChars.length > 0) {
+    detectedIssues.push({
+      id: 'special-chars',
+      type: 'error',
+      message: `发现 ${specialChars.length} 个控制字符，可能导致解析错误`,
+    })
+  }
+
+  const paragraphs = content.split('\n').filter((p) => p.trim().length > 20)
+  const duplicates: string[] = []
+  const seen = new Set<string>()
+  for (const paragraph of paragraphs) {
+    const trimmed = paragraph.trim().substring(0, 50)
+    if (seen.has(trimmed)) {
+      if (!duplicates.includes(trimmed)) duplicates.push(trimmed)
+    }
+    seen.add(trimmed)
+  }
+  if (duplicates.length > 0) {
+    detectedIssues.push({
+      id: 'duplicates',
+      type: 'info',
+      message: `发现 ${duplicates.length} 处可能的重复内容`,
+    })
+  }
+
+  const urls = content.match(/https?:\/\/[^\s]+/g) || []
+  if (urls.length > 0) {
+    detectedIssues.push({
+      id: 'urls',
+      type: 'info',
+      message: `发现 ${urls.length} 个 URL 链接`,
+    })
+  }
+
+  return detectedIssues
+}
+
+function getBackendIssueType(severity: string | null | undefined): QualityIssue['type'] {
+  if (severity === 'error') return 'error'
+  if (severity === 'warning') return 'warning'
+  return 'info'
+}
+
+async function getBackendQualityIssues(content: string, inputFormat: 'html' | 'markdown'): Promise<QualityIssue[]> {
+  try {
+    const res = await pipelineApi.governanceAnalyze({
+      markdown: content,
+      input_format: inputFormat,
+    })
+
+    const detectedIssues = (res.issues || []).slice(0, 10).map((issue) => {
+      const countSuffix = typeof issue.count === 'number' && issue.count > 0 ? `（${issue.count}）` : ''
+      return {
+        id: `backend:${issue.code}`,
+        type: getBackendIssueType(issue.severity),
+        message: `后端检测：${issue.message}${countSuffix}`,
+      } satisfies QualityIssue
+    })
+
+    if (res.suggested_pipeline_patch && Object.keys(res.suggested_pipeline_patch).length > 0) {
+      detectedIssues.push({
+        id: 'backend:suggested-patch',
+        type: 'info',
+        message: `后端建议：可优化治理配置（${Object.keys(res.suggested_pipeline_patch).length} 项）`,
+      })
+    }
+
+    return detectedIssues
+  } catch (error) {
+    console.error('Backend governance analyze failed', error)
+    return [{
+      id: 'backend:failed',
+      type: 'info',
+      message: '后端检测失败（可忽略）',
+    }]
+  }
+}
+
+function calculateQualityScore(issues: QualityIssue[]): number {
+  let calculatedScore = 100
+
+  issues.forEach((issue) => {
+    if (issue.type === 'error') calculatedScore -= 15
+    if (issue.type === 'warning') calculatedScore -= 5
+    if (issue.type === 'info') calculatedScore -= 1
+  })
+
+  return Math.max(0, calculatedScore)
+}
+
 export function QualityChecker({ content, initialScore = 0, initialIssues = [], onComplete }: Readonly<QualityCheckerProps>) {
   const [isScanning, setIsScanning] = useState(false)
   const [score, setScore] = useState(initialScore)
@@ -67,14 +192,13 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
   }, [content])
 
   // 检测编码
+  const hasBom = useMemo(() => getLeadingCodePoint(content) === UTF8_BOM_CODE_POINT, [content])
   const encoding = useMemo(() => {
-    // 简单检测
-    const hasBOM = content.charCodeAt(0) === 0xFEFF
-    const hasHighByte = [...content].some((c) => c.charCodeAt(0) > 255)
-    if (hasBOM) return 'UTF-8 (BOM)'
+    const hasHighByte = [...content].some((char) => (char.codePointAt(0) ?? 0) > 255)
+    if (hasBom) return 'UTF-8 (BOM)'
     if (hasHighByte) return 'UTF-8'
     return 'ASCII'
-  }, [content])
+  }, [content, hasBom])
 
   // 检测语言
   const language = useMemo(() => {
@@ -95,17 +219,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     const hasTables = (content.match(/\|.*\|/g) || []).length > 0
 
     return {
-      format: (() => {
-    if (hasHtml) {
-        return 'HTML';
-    }
-    else if (hasMarkdown) {
-            return 'Markdown';
-        }
-        else {
-            return '纯文本';
-        }
-})(),
+      format: getContentFormat(hasHtml, hasMarkdown),
       hasHeaders,
       hasLists,
       hasTables,
@@ -116,7 +230,6 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
   const handleScan = useCallback(async () => {
     setIsScanning(true)
     setScanProgress(0)
-    const detectedIssues: QualityIssue[] = []
 
     // 模拟扫描进度
     const steps = [
@@ -132,118 +245,19 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
       setScanProgress(step.progress)
     }
 
-    // 问题检测
-    // 1. 空段落
-    const emptyParagraphs = (content.match(/\n\n+/g) || []).length
-    if (emptyParagraphs > 5) {
-      detectedIssues.push({
-        id: 'empty-paragraphs',
-        type: 'warning',
-        message: `发现 ${emptyParagraphs} 处空段落，可能影响检索质量`,
-      })
-    }
-
-    // 2. 过长段落
-    const longParagraphs = content.split('\n\n').filter((p) => p.length > 1000)
-    if (longParagraphs.length > 0) {
-      detectedIssues.push({
-        id: 'long-paragraphs',
-        type: 'warning',
-        message: `发现 ${longParagraphs.length} 处过长段落 (>1000字符)，建议切块`,
-      })
-    }
-
-    // 3. 特殊字符
-    const specialChars = (content.match(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g) || [])
-    if (specialChars.length > 0) {
-      detectedIssues.push({
-        id: 'special-chars',
-        type: 'error',
-        message: `发现 ${specialChars.length} 个控制字符，可能导致解析错误`,
-      })
-    }
-
-    // 4. 重复内容检测（简单版）
-    const paragraphs = content.split('\n').filter((p) => p.trim().length > 20)
-    const duplicates: string[] = []
-    const seen = new Set<string>()
-    for (const p of paragraphs) {
-      const trimmed = p.trim().substring(0, 50)
-      if (seen.has(trimmed)) {
-        if (!duplicates.includes(trimmed)) duplicates.push(trimmed)
-      }
-      seen.add(trimmed)
-    }
-    if (duplicates.length > 0) {
-      detectedIssues.push({
-        id: 'duplicates',
-        type: 'info',
-        message: `发现 ${duplicates.length} 处可能的重复内容`,
-      })
-    }
-
-    // 5. URL 检测
-    const urls = content.match(/https?:\/\/[^\s]+/g) || []
-    if (urls.length > 0) {
-      detectedIssues.push({
-        id: 'urls',
-        type: 'info',
-        message: `发现 ${urls.length} 个 URL 链接`,
-      })
-    }
+    const detectedIssues = collectLocalQualityIssues(content)
 
     // 6. 后端治理诊断（可选）
     if (backendScanEnabled) {
-      try {
-        const res = await pipelineApi.governanceAnalyze({
-          markdown: content,
-          input_format: formatInfo.format === 'HTML' ? 'html' : 'markdown',
-        })
-        const backendIssues = res.issues || []
-        for (const it of backendIssues.slice(0, 10)) {
-          detectedIssues.push({
-            id: `backend:${it.code}`,
-            type: (() => {
-    if (it.severity === 'error') {
-        return 'error';
-    }
-    else if (it.severity === 'warning') {
-            return 'warning';
-        }
-        else {
-            return 'info';
-        }
-})(),
-            message: `后端检测：${it.message}${typeof it.count === 'number' && it.count > 0 ? `（${it.count}）` : ''}`,
-          })
-        }
-        if (res.suggested_pipeline_patch && Object.keys(res.suggested_pipeline_patch).length > 0) {
-          detectedIssues.push({
-            id: 'backend:suggested-patch',
-            type: 'info',
-            message: `后端建议：可优化治理配置（${Object.keys(res.suggested_pipeline_patch).length} 项）`,
-          })
-        }
-      } catch (e) {
-        console.error('Backend governance analyze failed', e)
-        detectedIssues.push({
-          id: 'backend:failed',
-          type: 'info',
-          message: '后端检测失败（可忽略）',
-        })
-      }
+      detectedIssues.push(...await getBackendQualityIssues(
+        content,
+        formatInfo.format === 'HTML' ? 'html' : 'markdown'
+      ))
     }
 
     setIssues(detectedIssues)
 
-    // 计算质量分数
-    let calculatedScore = 100
-    detectedIssues.forEach((issue) => {
-      if (issue.type === 'error') calculatedScore -= 15
-      if (issue.type === 'warning') calculatedScore -= 5
-      if (issue.type === 'info') calculatedScore -= 1
-    })
-    calculatedScore = Math.max(0, calculatedScore)
+    const calculatedScore = calculateQualityScore(detectedIssues)
     setScore(calculatedScore)
 
     // 自动展开问题区域
@@ -416,7 +430,7 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
                     <div className="space-y-2">
                       <StatRow label="检测编码" value={encoding} />
                       <StatRow label="字符范围" value="基本多文种平面" />
-                      <StatRow label="是否含BOM" value={content.charCodeAt(0) === 0xFEFF ? '是' : '否'} />
+                      <StatRow label="是否含BOM" value={hasBom ? '是' : '否'} />
                     </div>
                   )}
 

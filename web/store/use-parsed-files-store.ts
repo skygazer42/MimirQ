@@ -34,6 +34,8 @@ export interface ParsedFileData {
   error?: string
 }
 
+type ParsedFileUpdates = Partial<Omit<ParsedFileData, 'id'>>
+
 interface ParsedFilesState {
   files: ParsedFileData[]
   folders: FolderNode[]
@@ -46,7 +48,7 @@ interface ParsedFilesState {
   setParsedFiles: (files: ParsedFileData[]) => void
   getFile: (id: string) => ParsedFileData | null
   removeFile: (id: string) => void
-  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
+  updateParsedFile: (id: string, updates: ParsedFileUpdates) => void
   clearAll: () => void
 
   createFolder: (name: string, parentId?: string) => string
@@ -60,6 +62,17 @@ interface ParsedFilesState {
 }
 
 const makeId = () => generateRequestId()
+
+function getUpdatedMarkdownFields(updates: ParsedFileUpdates): {
+  nextMarkdown: string | undefined
+  nextOriginal: string | undefined
+} {
+  return {
+    nextMarkdown: typeof updates.markdownContent === 'string' ? updates.markdownContent : undefined,
+    nextOriginal:
+      typeof updates.originalMarkdownContent === 'string' ? updates.originalMarkdownContent : undefined,
+  }
+}
 
 const noopStorage = {
   getItem: (_name: string) => null,
@@ -145,10 +158,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
         }))
         // Best-effort: persist large markdown to IndexedDB (not localStorage).
         if (globalThis.window !== undefined) {
-          const nextMarkdown =
-            typeof (updates as any)?.markdownContent === 'string' ? (updates as any).markdownContent : undefined
-          const nextOriginal =
-            typeof (updates as any)?.originalMarkdownContent === 'string' ? (updates as any).originalMarkdownContent : undefined
+          const { nextMarkdown, nextOriginal } = getUpdatedMarkdownFields(updates)
           if (typeof nextMarkdown === 'string' || typeof nextOriginal === 'string') {
             detachPromise(saveDocContentToCache({
               id,
@@ -197,18 +207,18 @@ export const useParsedFiles = create<ParsedFilesState>()(
         }
 
         const folders = get().folders
-        const idsToDelete = [id, ...collectDescendants(id, folders)]
+        const idsToDelete = new Set([id, ...collectDescendants(id, folders)])
         const fileIdsToDelete = get()
           .files
-          .filter((file) => Boolean(file.folderId) && idsToDelete.includes(String(file.folderId)))
+          .filter((file) => Boolean(file.folderId) && idsToDelete.has(String(file.folderId)))
           .map((file) => file.id)
 
         set((state) => ({
-          folders: state.folders.filter((f) => !idsToDelete.includes(f.id)),
+          folders: state.folders.filter((f) => !idsToDelete.has(f.id)),
           files: state.files.filter((file) =>
-            !(file.folderId && idsToDelete.includes(file.folderId))
+            !(file.folderId && idsToDelete.has(file.folderId))
           ),
-          activeFolderId: idsToDelete.includes(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
+          activeFolderId: idsToDelete.has(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
         }))
 
         if (globalThis.window !== undefined && fileIdsToDelete.length > 0) {

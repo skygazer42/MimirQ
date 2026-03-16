@@ -66,6 +66,23 @@ function maybeAttachImageAuthToken(url: string): string {
   return parsed.toString()
 }
 
+function getCitationRange(citation: Citation): { start: number; end: number } | undefined {
+  const start =
+    typeof citation.evidence_start_char === 'number'
+      ? citation.evidence_start_char
+      : typeof citation.start_char === 'number'
+        ? citation.start_char
+        : null
+  const end =
+    typeof citation.evidence_end_char === 'number'
+      ? citation.evidence_end_char
+      : typeof citation.end_char === 'number'
+        ? citation.end_char
+        : null
+
+  return start != null && end != null && end > start ? { start, end } : undefined
+}
+
 const markdownPlugins = [remarkGfm]
 const markdownComponents = {
   p: ({ children }: { children?: ReactNode }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
@@ -168,30 +185,13 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     const text = (message.content || '').trimEnd()
     if (!text) return
 
-    let ok = false
     try {
       await navigator.clipboard.writeText(text)
-      ok = true
-    } catch {
-      try {
-        const textarea = document.createElement('textarea')
-        textarea.value = text
-        textarea.setAttribute('readonly', '')
-        textarea.style.position = 'fixed'
-        textarea.style.left = '0'
-        textarea.style.top = '0'
-        textarea.style.opacity = '0'
-        document.body.appendChild(textarea)
-        textarea.focus()
-        textarea.select()
-        ok = document.execCommand('copy')
-        document.body.removeChild(textarea)
-      } catch {
-        ok = false
-      }
+    } catch (error) {
+      console.error('clipboard.writeText failed:', error)
+      toast.error('复制失败，请检查浏览器剪贴板权限')
+      return
     }
-
-    if (!ok) return
 
     setCopied(true)
     if (copyTimerRef.current != null) {
@@ -696,119 +696,89 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
 
   const handleClick = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation()
-    // Open document viewer panel
     if (citation.document_id) {
-      const start =
-        (() => {
-    if (typeof citation.evidence_start_char === 'number') {
-        return citation.evidence_start_char;
+      openDocument(citation.document_id, citation.chunk_id, getCitationRange(citation))
     }
-    else if (typeof citation.start_char === 'number') {
-            return citation.start_char;
-        }
-        else {
-            return null;
-        }
-})()
-      const end =
-        (() => {
-    if (typeof citation.evidence_end_char === 'number') {
-        return citation.evidence_end_char;
-    }
-    else if (typeof citation.end_char === 'number') {
-            return citation.end_char;
-        }
-        else {
-            return null;
-        }
-})()
-      const range = start != null && end != null && end > start ? { start, end } : undefined
-      openDocument(citation.document_id, citation.chunk_id, range)
-    }
-  }, [citation.document_id, citation.chunk_id, citation.evidence_start_char, citation.evidence_end_char, citation.start_char, citation.end_char, openDocument])
+  }, [citation, openDocument])
 
-	  return (
-      <>
-	      <div
-	        role="button"
-	        tabIndex={0}
-	        onClick={handleClick}
-	        onKeyDown={(event) => {
-	          if (event.key === 'Enter' || event.key === ' ') {
-	            event.preventDefault()
-	            handleClick()
-	          }
-	        }}
-	        className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 cursor-pointer shadow-sm focus-ring transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md"
-	      >
-      <div className="flex items-start gap-3">
-        <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[10px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
-          {index + 1}
-        </span>
-        <div className="flex-1 min-w-0 space-y-1">
-          <p className="font-semibold text-foreground truncate transition-colors">
-            {citation.document_name}
-            {citation.page_number && <span className="text-muted-foreground font-normal ml-1">· P.{citation.page_number}</span>}
-          </p>
-          <p className="text-muted-foreground mt-1 line-clamp-2 leading-relaxed group-hover/card:text-foreground/80 transition-colors">
-            &quot;{citation.chunk_content}&quot;
-          </p>
-          <div className="flex items-center gap-2 mt-2 pt-1">
-            <span className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[10px]">
-              相似度 {Math.round(citation.relevance_score * 100)}%
+  return (
+    <>
+      <div className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 shadow-sm transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md">
+        <button
+          type="button"
+          onClick={handleClick}
+          className="block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <div className="flex items-start gap-3">
+            <span className="flex-shrink-0 w-5 h-5 bg-secondary text-primary border border-border rounded flex items-center justify-center text-[10px] font-bold group-hover/card:bg-primary group-hover/card:text-primary-foreground transition-colors">
+              {index + 1}
             </span>
-            {canViewEvidence ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setViewerOpen(true)
-                }}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium',
-                  'border border-border bg-background/60 text-foreground/80',
-                  'hover:bg-muted/40 hover:text-foreground transition-colors'
-                )}
-                aria-label="view-evidence"
-                title="查看证据（图片/表格溯源）"
-              >
-                查看证据
-              </button>
-            ) : null}
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="font-semibold text-foreground truncate transition-colors">
+                {citation.document_name}
+                {citation.page_number && <span className="text-muted-foreground font-normal ml-1">· P.{citation.page_number}</span>}
+              </p>
+              <p className="text-muted-foreground mt-1 line-clamp-2 leading-relaxed group-hover/card:text-foreground/80 transition-colors">
+                &quot;{citation.chunk_content}&quot;
+              </p>
+            </div>
           </div>
+        </button>
 
-          {citation.has_image && imgUrl && !hideImage && (
-            <div className="mt-2 rounded-md overflow-hidden border border-border/50">
-	              <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setViewerOpen(true)
-                  }}
-                  className="block relative aspect-video w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-                  aria-label="open-evidence-viewer"
-                  title="打开 Evidence Viewer"
-                >
-	                <Image
-	                  src={imgUrl}
-	                  alt="引用图片"
-	                  fill
-	                  unoptimized
-	                  sizes="(max-width: 768px) 100vw, 300px"
-	                  className="object-cover"
-	                  onError={() => setHideImage(true)}
-	                />
-	              </button>
-	            </div>
-	          )}
+        <div className="flex items-center gap-2 mt-2 pt-1">
+          <span className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[10px]">
+            相似度 {Math.round(citation.relevance_score * 100)}%
+          </span>
+          {canViewEvidence ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setViewerOpen(true)
+              }}
+              className={cn(
+                'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium',
+                'border border-border bg-background/60 text-foreground/80',
+                'hover:bg-muted/40 hover:text-foreground transition-colors'
+              )}
+              aria-label="view-evidence"
+              title="查看证据（图片/表格溯源）"
+            >
+              查看证据
+            </button>
+          ) : null}
         </div>
+
+        {citation.has_image && imgUrl && !hideImage && (
+          <div className="mt-2 rounded-md overflow-hidden border border-border/50">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setViewerOpen(true)
+              }}
+              className="block relative aspect-video w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+              aria-label="open-evidence-viewer"
+              title="打开 Evidence Viewer"
+            >
+              <Image
+                src={imgUrl}
+                alt="引用图片"
+                fill
+                unoptimized
+                sizes="(max-width: 768px) 100vw, 300px"
+                className="object-cover"
+                onError={() => setHideImage(true)}
+              />
+            </button>
+          </div>
+        )}
       </div>
-    </div>
         <EvidenceViewerDialog
           open={viewerOpen}
           onOpenChange={setViewerOpen}
           citation={viewerOpen ? citation : null}
         />
-      </>
+    </>
   )
 })
