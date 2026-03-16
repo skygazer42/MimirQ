@@ -143,50 +143,85 @@ function stripTrailingHeadingFence(text: string): string {
   return text.slice(0, end)
 }
 
+type InlineMarkdownToken = {
+  content: string
+  nextIndex: number
+}
+
+function readImageToken(text: string, startIndex: number): InlineMarkdownToken | null {
+  if (!text.startsWith('![', startIndex)) return null
+
+  const image = readMarkdownLink(text, startIndex, { image: true })
+  if (!image) return null
+
+  return {
+    content: stripInlineMarkdown(image.label),
+    nextIndex: image.nextIndex,
+  }
+}
+
+function readLinkToken(text: string, startIndex: number): InlineMarkdownToken | null {
+  if (text[startIndex] !== '[') return null
+
+  const link = readMarkdownLink(text, startIndex)
+  if (!link) return null
+
+  return {
+    content: stripInlineMarkdown(link.label),
+    nextIndex: link.nextIndex,
+  }
+}
+
+function readCodeToken(text: string, startIndex: number): InlineMarkdownToken | null {
+  const codeSpan = readInlineCodeSpan(text, startIndex)
+  if (!codeSpan) return null
+
+  return {
+    content: codeSpan.content,
+    nextIndex: codeSpan.nextIndex,
+  }
+}
+
+function readHtmlTagToken(text: string, startIndex: number): InlineMarkdownToken | null {
+  if (text[startIndex] !== '<') return null
+
+  const closeIndex = text.indexOf('>', startIndex + 1)
+  if (closeIndex === -1) return null
+
+  return {
+    content: '',
+    nextIndex: closeIndex + 1,
+  }
+}
+
+function readInlineMarkdownToken(text: string, startIndex: number): InlineMarkdownToken | null {
+  return (
+    readImageToken(text, startIndex) ||
+    readLinkToken(text, startIndex) ||
+    readCodeToken(text, startIndex) ||
+    readHtmlTagToken(text, startIndex)
+  )
+}
+
+function isInlineFormattingMarker(char: string): boolean {
+  return char === '*' || char === '_'
+}
+
 function stripInlineMarkdown(text = ''): string {
   if (!text) return ''
 
   const parts: string[] = []
 
   for (let index = 0; index < text.length; ) {
-    if (text.startsWith('![', index)) {
-      const image = readMarkdownLink(text, index, { image: true })
-      if (image) {
-        parts.push(stripInlineMarkdown(image.label))
-        index = image.nextIndex
-        continue
-      }
+    const token = readInlineMarkdownToken(text, index)
+    if (token) {
+      parts.push(token.content)
+      index = token.nextIndex
+      continue
     }
 
     const char = text[index]
-
-    if (char === '[') {
-      const link = readMarkdownLink(text, index)
-      if (link) {
-        parts.push(stripInlineMarkdown(link.label))
-        index = link.nextIndex
-        continue
-      }
-    }
-
-    if (char === '`') {
-      const codeSpan = readInlineCodeSpan(text, index)
-      if (codeSpan) {
-        parts.push(codeSpan.content)
-        index = codeSpan.nextIndex
-        continue
-      }
-    }
-
-    if (char === '<') {
-      const closeIndex = text.indexOf('>', index + 1)
-      if (closeIndex !== -1) {
-        index = closeIndex + 1
-        continue
-      }
-    }
-
-    if (char === '*' || char === '_') {
+    if (isInlineFormattingMarker(char)) {
       index += 1
       continue
     }
