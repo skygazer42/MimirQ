@@ -131,7 +131,6 @@ export default function ParsingPage() {
   const [activeLibrarySourceStatus, setActiveLibrarySourceStatus] = useState<'unknown' | 'available' | 'missing'>(
     'unknown'
   )
-  const [, setIsLgUp] = useState(false)
 
   const cancelParse = useCallback((fileId: string) => {
     const controller = parseControllersRef.current.get(fileId)
@@ -145,21 +144,6 @@ export default function ParsingPage() {
       clearInterval(interval)
       parseProgressIntervalsRef.current.delete(fileId)
     }
-  }, [])
-
-  useEffect(() => {
-    const mql = globalThis.window.matchMedia('(min-width: 1024px)')
-    const onChange = () => setIsLgUp(mql.matches)
-    onChange()
-
-    if (typeof mql.addEventListener === 'function') {
-      mql.addEventListener('change', onChange)
-      return () => mql.removeEventListener('change', onChange)
-    }
-
-    // Safari fallback.
-    mql.addListener(onChange)
-    return () => mql.removeListener(onChange)
   }, [])
 
   useEffect(() => {

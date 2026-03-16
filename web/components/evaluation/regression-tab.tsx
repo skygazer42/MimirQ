@@ -49,7 +49,6 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
   const [selectedRunId, setSelectedRunId] = useState<string>('')
   const [runDetail, setRunDetail] = useState<RegressionRunDetail | null>(null)
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
-  const [isRunning, setIsRunning] = useState(false)
 
   const visibleRuns = useMemo(() => {
     if (!selectedDatasetId) return runs
@@ -154,7 +153,6 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
       return
     }
 
-    setIsRunning(true)
     try {
       const params: RegressionRunCreate = {
         case_ids: caseIds,
@@ -171,8 +169,6 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
     } catch (error) {
       console.error('运行测试失败:', error)
       toast.error(formatApiError(error, '运行测试失败'))
-    } finally {
-      setIsRunning(false)
     }
   }
 
