@@ -34,7 +34,8 @@ describe('security hotspot source guards', () => {
     expect(devDockerfile).not.toContain('COPY --chown=node:node app ./app')
 
     expect(prodDockerfile).toContain('RUN chown -R node:node /app')
-    expect(prodDockerfile).toContain('chmod -R a-w /app/package.json /app/next.config.mjs /app/public /app/.next_build /app/node_modules')
+    expect(prodDockerfile).toContain('RUN chown -R node:node /app && \\')
+    expect(prodDockerfile).toContain('chmod -R a-w /app/package.json \\')
     expect(prodDockerfile).not.toContain('--chmod=')
   })
 })

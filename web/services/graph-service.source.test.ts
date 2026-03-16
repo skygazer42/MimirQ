@@ -10,4 +10,11 @@ describe('graph service source', () => {
     expect(src).toContain('structuredClone(')
     expect(src).not.toContain('JSON.parse(JSON.stringify')
   })
+
+  it('uses codePointAt for unicode-safe hashing', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'graph-service.ts'), 'utf8')
+
+    expect(src).toContain('codePointAt(')
+    expect(src).not.toContain('charCodeAt(')
+  })
 })
