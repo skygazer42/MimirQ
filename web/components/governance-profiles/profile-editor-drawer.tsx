@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useMemo, useState } from 'react'
 import { Braces, FileText, Loader2, Play, Save } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -57,6 +57,18 @@ function defaultPayload(): GovernanceProfilePayload {
     },
     regex_rules: [],
   }
+}
+
+function applyPipelinePatchUpdate(
+  key: keyof DocumentPipelineOptions,
+  value: DocumentPipelineOptions[keyof DocumentPipelineOptions],
+  setPipelinePatch: Dispatch<SetStateAction<DocumentPipelineOptions>>,
+  setPatchJsonError: Dispatch<SetStateAction<string | null>>,
+  setPatchJsonDirty: Dispatch<SetStateAction<boolean>>,
+) {
+  setPipelinePatch((prev) => ({ ...prev, [key]: value }))
+  setPatchJsonError(null)
+  setPatchJsonDirty(false)
 }
 
 function safeParseJson<T>(text: string): { ok: true; value: T } | { ok: false; error: string } {
@@ -153,8 +165,8 @@ export function ProfileEditorDrawer({
     () => ({
       version: '1',
       input_formats: inputFormats.length ? inputFormats : ['markdown'],
-      pipeline_patch: pipelinePatch || {},
-      regex_rules: regexRules || [],
+      pipeline_patch: pipelinePatch,
+      regex_rules: regexRules,
     }),
     [inputFormats, pipelinePatch, regexRules]
   )
@@ -218,14 +230,14 @@ export function ProfileEditorDrawer({
         setKey(String(prof.key || ''))
         setDescription(String(prof.description || ''))
         setInputFormats(prof.payload?.input_formats || ['markdown'])
-        setPipelinePatch(prof.payload?.pipeline_patch || {})
-        setRegexRules(prof.payload?.regex_rules || [])
-        setPatchJson(JSON.stringify(prof.payload?.pipeline_patch || {}, null, 2))
+        setPipelinePatch(prof.payload?.pipeline_patch ?? {})
+        setRegexRules(prof.payload?.regex_rules ?? [])
+        setPatchJson(JSON.stringify(prof.payload?.pipeline_patch ?? {}, null, 2))
         setPatchJsonError(null)
         setPatchJsonDirty(false)
         setActiveTab('edit')
         setTestResp(null)
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '加载 Profile 失败'))
       } finally {
         if (!cancelled) setLoadingProfile(false)
@@ -265,7 +277,7 @@ export function ProfileEditorDrawer({
     // If user has a JSON error, do not overwrite their edits.
     if (patchJsonError) return
     if (patchJsonDirty) return
-    setPatchJson(JSON.stringify(pipelinePatch || {}, null, 2))
+    setPatchJson(JSON.stringify(pipelinePatch, null, 2))
   }, [pipelinePatch, open, patchJsonError, patchJsonDirty])
 
   const toggleInputFormat = (fmt: 'markdown' | 'html') => {
@@ -278,20 +290,15 @@ export function ProfileEditorDrawer({
     })
   }
 
-  const updatePatchBool = (key: keyof DocumentPipelineOptions, value: boolean) => {
-    setPipelinePatch((prev) => ({ ...(prev || {}), [key]: value }))
-    setPatchJsonError(null)
-    setPatchJsonDirty(false)
-  }
-
-  const updatePatchNumber = (key: keyof DocumentPipelineOptions, value: number) => {
-    setPipelinePatch((prev) => ({ ...(prev || {}), [key]: value }))
-    setPatchJsonError(null)
-    setPatchJsonDirty(false)
+  const updatePatchValue = <K extends keyof DocumentPipelineOptions>(
+    key: K,
+    value: DocumentPipelineOptions[K],
+  ) => {
+    applyPipelinePatchUpdate(key, value, setPipelinePatch, setPatchJsonError, setPatchJsonDirty)
   }
 
   const toggleRulePack = (pack: string) => {
-    const key = String(pack || '').trim()
+    const key = pack.trim()
     if (!key) return
     setPipelinePatch((prev) => {
       const current = Array.isArray(prev?.governance_rule_packs) ? prev.governance_rule_packs : []
@@ -299,7 +306,7 @@ export function ProfileEditorDrawer({
       if (next.has(key)) next.delete(key)
       else next.add(key)
       return {
-        ...(prev || {}),
+        ...prev,
         governance_rule_packs: Array.from(next).sort((a, b) => a.localeCompare(b)),
       }
     })
@@ -374,7 +381,7 @@ export function ProfileEditorDrawer({
         onSaved?.(updated)
         onOpenChange(false)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '保存失败'))
     } finally {
       setSaving(false)
@@ -394,7 +401,7 @@ export function ProfileEditorDrawer({
       const resp = await pipelineApi.cleanPreview(req)
       setTestResp(resp)
       toast.success('清洗预览完成')
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTestResp(null)
       toast.error(formatApiError(err, '清洗预览失败'))
     } finally {
@@ -593,7 +600,7 @@ export function ProfileEditorDrawer({
                       <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_enabled ?? true)}
-                          onCheckedChange={(v) => updatePatchBool('governance_enabled', Boolean(v))}
+                          onCheckedChange={(v) => updatePatchValue('governance_enabled', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         governance_enabled
@@ -601,7 +608,7 @@ export function ProfileEditorDrawer({
                       <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_unwrap_lines ?? true)}
-                          onCheckedChange={(v) => updatePatchBool('governance_unwrap_lines', Boolean(v))}
+                          onCheckedChange={(v) => updatePatchValue('governance_unwrap_lines', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         unwrap_lines
@@ -609,7 +616,7 @@ export function ProfileEditorDrawer({
                       <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_remove_common_lines ?? true)}
-                          onCheckedChange={(v) => updatePatchBool('governance_remove_common_lines', Boolean(v))}
+                          onCheckedChange={(v) => updatePatchValue('governance_remove_common_lines', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         remove_common_lines
@@ -617,7 +624,7 @@ export function ProfileEditorDrawer({
                       <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_remove_toc_lines ?? true)}
-                          onCheckedChange={(v) => updatePatchBool('governance_remove_toc_lines', Boolean(v))}
+                          onCheckedChange={(v) => updatePatchValue('governance_remove_toc_lines', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         remove_toc_lines
@@ -625,7 +632,7 @@ export function ProfileEditorDrawer({
                       <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_remove_noise_lines ?? true)}
-                          onCheckedChange={(v) => updatePatchBool('governance_remove_noise_lines', Boolean(v))}
+                          onCheckedChange={(v) => updatePatchValue('governance_remove_noise_lines', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         remove_noise_lines
@@ -633,7 +640,7 @@ export function ProfileEditorDrawer({
                       <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_remove_boilerplate ?? false)}
-                          onCheckedChange={(v) => updatePatchBool('governance_remove_boilerplate', Boolean(v))}
+                          onCheckedChange={(v) => updatePatchValue('governance_remove_boilerplate', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         remove_boilerplate
@@ -641,7 +648,7 @@ export function ProfileEditorDrawer({
                       <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_normalize_tables ?? false)}
-                          onCheckedChange={(v) => updatePatchBool('governance_normalize_tables', Boolean(v))}
+                          onCheckedChange={(v) => updatePatchValue('governance_normalize_tables', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         normalize_tables
@@ -649,7 +656,7 @@ export function ProfileEditorDrawer({
                       <div className="flex items-center gap-2 text-sm">
                         <Checkbox
                           checked={Boolean(pipelinePatch?.governance_normalize_urls ?? false)}
-                          onCheckedChange={(v) => updatePatchBool('governance_normalize_urls', Boolean(v))}
+                          onCheckedChange={(v) => updatePatchValue('governance_normalize_urls', Boolean(v))}
                           disabled={isReadOnly}
                         />
                         normalize_urls
@@ -658,12 +665,8 @@ export function ProfileEditorDrawer({
                         <Label className="text-sm text-muted-foreground">remove_images</Label>
                         <div className="flex-1">
                           <Select
-                            value={String(pipelinePatch?.governance_remove_images || 'none')}
-                            onValueChange={(v) => {
-                              setPipelinePatch((prev) => ({ ...(prev || {}), governance_remove_images: v }))
-                              setPatchJsonDirty(false)
-                              setPatchJsonError(null)
-                            }}
+                            value={String(pipelinePatch?.governance_remove_images ?? 'none')}
+                            onValueChange={(v) => updatePatchValue('governance_remove_images', v)}
                             disabled={isReadOnly}
                           >
                             <SelectTrigger className="h-9 rounded-xl">
@@ -683,7 +686,7 @@ export function ProfileEditorDrawer({
                           type="number"
                           className="h-9 rounded-xl"
                           value={String(pipelinePatch?.governance_max_blank_lines ?? 1)}
-                          onChange={(e) => updatePatchNumber('governance_max_blank_lines', Number(e.target.value || 1))}
+                          onChange={(e) => updatePatchValue('governance_max_blank_lines', Number(e.target.value || 1))}
                           disabled={isReadOnly}
                         />
                       </div>
