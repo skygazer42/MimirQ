@@ -81,7 +81,7 @@ function pythonReFlagsToJs(flags: number): string {
 
 function stripLeadingInlineFlags(pattern: string): { pattern: string; inlineJsFlags: string } {
   const raw = String(pattern || '')
-  const match = raw.match(/^\(\?([A-Za-z]+)\)/)
+  const match = /^\(\?([A-Za-z]+)\)/.exec(raw)
   if (!match) return { pattern: raw, inlineJsFlags: '' }
   const flags = match[1] || ''
   let js = ''
@@ -101,8 +101,8 @@ function validateRegexRuleBestEffort(pattern: string, flags: number): string | n
   const stripped = stripLeadingInlineFlags(raw)
   const jsFlags = Array.from(new Set((pythonReFlagsToJs(flags) + stripped.inlineJsFlags).split(''))).join('')
   const jsPattern = stripped.pattern
-    .replaceAll("\\A", '^')
-    .replaceAll("\\Z", '$')
+    .replaceAll(String.raw`\A`, '^')
+    .replaceAll(String.raw`\Z`, '$')
 
   try {
     new RegExp(jsPattern, jsFlags)
@@ -298,7 +298,10 @@ export function ProfileEditorDrawer({
       const next = new Set(current)
       if (next.has(key)) next.delete(key)
       else next.add(key)
-      return { ...(prev || {}), governance_rule_packs: Array.from(next).sort() }
+      return {
+        ...(prev || {}),
+        governance_rule_packs: Array.from(next).sort((a, b) => a.localeCompare(b)),
+      }
     })
     setPatchJsonError(null)
     setPatchJsonDirty(false)

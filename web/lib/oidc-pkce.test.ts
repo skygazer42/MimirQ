@@ -9,6 +9,10 @@ describe('oidc-pkce', () => {
     await expect(pkceChallengeFromVerifier(verifier)).resolves.toBe(expected)
   })
 
+  it('strips padding from base64url output', () => {
+    expect(base64UrlEncode(new Uint8Array([0]))).toBe('AA')
+  })
+
   it('base64url round-trips bytes', () => {
     const bytes = new Uint8Array([0, 1, 2, 3, 4, 5, 250, 251, 252, 253, 254, 255])
     const encoded = base64UrlEncode(bytes)
@@ -26,4 +30,3 @@ describe('oidc-pkce', () => {
     expect(decoded.email).toBe('u@example.com')
   })
 })
-

@@ -5,8 +5,8 @@ function bytesToBase64(bytes: Uint8Array): string {
   }
 
   let binary = ''
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
+  for (const byte of bytes) {
+    binary += String.fromCodePoint(byte)
   }
   // btoa expects Latin-1 bytes, which we provide via String.fromCharCode.
   return btoa(binary)
@@ -26,14 +26,14 @@ function base64ToBytes(base64: string): Uint8Array {
 }
 
 export function base64UrlEncode(bytes: Uint8Array): string {
-  return bytesToBase64(bytes).replaceAll("\\+", '-').replaceAll("/", '_').replaceAll("=+$", '')
+  return bytesToBase64(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
 }
 
 export function base64UrlDecodeToBytes(base64Url: string): Uint8Array {
   const raw = String(base64Url || '').trim()
   if (!raw) return new Uint8Array()
 
-  let base64 = raw.replaceAll("-", '+').replaceAll("_", '/')
+  let base64 = raw.replaceAll('-', '+').replaceAll('_', '/')
   const pad = base64.length % 4
   if (pad) base64 += '='.repeat(4 - pad)
 
@@ -98,4 +98,3 @@ export function tryDecodeJwtPayload<T = unknown>(token: string): T | null {
     return null
   }
 }
-

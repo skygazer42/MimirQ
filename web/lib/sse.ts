@@ -4,7 +4,7 @@ export function createSseDataParser() {
   function feed(chunk: string): string[] {
     if (!chunk) return []
 
-    buffer += chunk.replaceAll("\\r\\n", '\n')
+    buffer += chunk.replaceAll('\r\n', '\n')
     const out: string[] = []
 
     while (true) {
@@ -33,4 +33,3 @@ export function createSseDataParser() {
 
   return { feed, reset }
 }
-

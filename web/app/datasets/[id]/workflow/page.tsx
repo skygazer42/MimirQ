@@ -75,7 +75,7 @@ export default function DatasetWorkflowPage() {
 
   const importKeys = useMemo(() => {
     if (!importBundle || typeof importBundle !== 'object') return []
-    return Object.keys(importBundle).sort()
+    return Object.keys(importBundle).sort((a, b) => a.localeCompare(b))
   }, [importBundle])
 
   const selectedMeta = selectedNode?.meta

@@ -28,8 +28,8 @@ function toBase64Url(bytes: Uint8Array): string {
   }
 
   let out = ''
-  for (const byte of bytes) out += String.fromCharCode(byte)
-  return btoa(out).replaceAll("\\+", '-').replaceAll("/", '_').replaceAll("=+$", '')
+  for (const byte of bytes) out += String.fromCodePoint(byte)
+  return btoa(out).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
 }
 
 function fromBase64Url(value: string): Uint8Array | null {
@@ -41,9 +41,9 @@ function fromBase64Url(value: string): Uint8Array | null {
       return new Uint8Array(Buffer.from(normalized, 'base64url'))
     }
 
-    const padded = normalized.replaceAll("-", '+').replaceAll("_", '/').padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    const padded = normalized.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(normalized.length / 4) * 4, '=')
     const binary = atob(padded)
-    return Uint8Array.from(binary, (char) => char.charCodeAt(0))
+    return Uint8Array.from(binary, (char) => char.codePointAt(0) ?? 0)
   } catch {
     return null
   }
