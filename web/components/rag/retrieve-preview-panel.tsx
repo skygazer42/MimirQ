@@ -312,7 +312,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
   const activeMatchedTerms = useMemo(() => {
     const terms = activeHit?.matched_terms
     if (!Array.isArray(terms)) return []
-    return terms.filter(Boolean).slice(0, 24).map((t) => String(t))
+    return terms.filter(Boolean).slice(0, 24).map(String)
   }, [activeHit])
 
   return (
@@ -458,12 +458,12 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                 </thead>
                 <tbody>
                   {searchResults.map((hit, idx) => {
-                    const chunkId = String((hit as any)?.chunk_id || '')
+                    const chunkId = String(hit.chunk_id || '')
                     const checked = !!chunkId && selectedEvidenceSet.has(chunkId)
                     const role = String(hit.retrieval_role || 'main')
                     const chunkRole = String(hit.chunk_role || '')
-                    const clause = String((hit as any).policy_clause_number || '')
-                    const pathStr = String((hit as any).policy_path_str || '')
+                    const clause = String(hit.policy_clause_number || '')
+                    const pathStr = String(hit.policy_path_str || '')
                     const docName = String(hit.document_name || '')
                     return (
                       <tr key={`${String(hit.document_id || '')}:${chunkId}:${role}:${clause}:${pathStr}`} className="border-b border-border/40 hover:bg-muted/20">
