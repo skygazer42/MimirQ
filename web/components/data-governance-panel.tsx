@@ -731,8 +731,8 @@ export function DataGovernancePanel() {
         iconColor="text-primary"
         description={
           <span className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary/20" />
-            智能文档清洗、标注与结构化处理中枢
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/20" aria-hidden="true" />
+            <span>智能文档清洗、标注与结构化处理中枢</span>
           </span>
         }
         size="full"
@@ -749,7 +749,6 @@ export function DataGovernancePanel() {
                 ? "border-primary/50 bg-primary/10"
                 : "border-border/50 bg-card/5 hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md"
             )}
-            role="button"
             tabIndex={0}
             onClick={() => globalThis.document.getElementById('file-upload')?.click()}
             onKeyDown={(e) => {
@@ -846,6 +845,104 @@ export function DataGovernancePanel() {
     )
   }
 
+  const contentBody =
+    viewMode === 'edit' ? (
+      <div className="grid grid-cols-2 gap-4 h-full">
+        <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
+          <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
+            瀹炴椂棰勮
+          </div>
+          <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
+            <MarkdownRenderer markdown={displayContent || ''} />
+          </div>
+        </div>
+        <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
+          <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
+            婧愮爜缂栬緫
+          </div>
+          <textarea
+            value={displayContent}
+            onChange={(e) => handleManualEdit(e.target.value)}
+            className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-foreground"
+            spellCheck={false}
+          />
+        </div>
+      </div>
+    ) : displayContent?.includes(libraryOnlyNotice) ? (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+        <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-6 border border-border shadow-sm">
+          <FileText className="w-8 h-8 text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-bold text-foreground mb-2 truncate max-w-lg">
+          {selectedFile?.filename || '未知文件'}
+        </h3>
+        <div className="flex items-center gap-2 mb-8">
+          <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
+            文档库
+          </span>
+          <span className="px-2.5 py-1 rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/30 flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/20" />
+            Pending
+          </span>
+        </div>
+
+        <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
+          <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
+            <Info className="w-5 h-5 text-sky-500 flex-shrink-0 mt-0.5" />
+            {libraryOnlyNotice}。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            className="gap-2 bg-card hover:bg-muted text-foreground/80 border-border"
+            onClick={() => {
+              if (selectedFile?.filename) {
+                navigator.clipboard.writeText(selectedFile.filename)
+                toast.success('文件名已复制')
+              }
+            }}
+          >
+            <Copy className="w-4 h-4" />
+            复制名称
+          </Button>
+          <ConfirmDialog
+            title="移除该文件？"
+            description="将从文档库中移除该文件记录。此操作不可恢复。"
+            confirmLabel="移除"
+            cancelLabel="返回"
+            confirmVariant="destructive"
+            confirmDisabled={!selectedFileId}
+            onConfirm={() => {
+              if (!selectedFileId) return
+              const { removeFile } = useParsedFiles.getState()
+              removeFile(selectedFileId)
+              setSelectedFileId(null)
+              toast.success('文件已移除')
+            }}
+          >
+            <Button
+              variant="outline"
+              className="gap-2 bg-card hover:bg-red-500/10 dark:bg-red-500/20 text-foreground/80 hover:text-red-600 dark:text-red-300 border-border hover:border-red-500/30"
+              disabled={!selectedFileId}
+            >
+              <Trash2 className="w-4 h-4" />
+              移除文件
+            </Button>
+          </ConfirmDialog>
+        </div>
+      </div>
+    ) : previewFormat === 'rendered' ? (
+      <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-sky-600 dark:prose-a:text-sky-300">
+        <MarkdownRenderer markdown={displayContent || ''} />
+      </div>
+    ) : (
+      <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
+        {displayContent || ''}
+      </pre>
+    )
+
   return (
     <WorkbenchScaffold
       title="数据治理工作台"
@@ -854,8 +951,8 @@ export function DataGovernancePanel() {
       iconColor="text-sky-400"
       description={
         <span className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20" />
-          智能文档结构化处理与质量修复
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20" aria-hidden="true" />
+          <span>智能文档结构化处理与质量修复</span>
         </span>
       }
       actions={
@@ -976,12 +1073,11 @@ export function DataGovernancePanel() {
                   const hasIssue = state?.issues.some((i) => i.type === 'error')
                   const score = state?.qualityScore || 0
 
-                  return (
-                    <div
-                      key={file.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => handleSelectFile(file.id)}
+	                  return (
+	                    <div
+	                      key={file.id}
+	                      tabIndex={0}
+	                      onClick={() => handleSelectFile(file.id)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault()
@@ -1217,118 +1313,7 @@ export function DataGovernancePanel() {
                         </div>
                       )}
 
-                      {(() => {
-                        if (viewMode === 'edit') {
-                          return (
-                            <div className="grid grid-cols-2 gap-4 h-full">
-                              {/* 缂栬緫妯″紡锛氬乏渚ч瑙?*/}
-                              <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
-                                <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
-                                  瀹炴椂棰勮
-                                </div>
-                                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
-                                  <MarkdownRenderer markdown={displayContent || ''} />
-                                </div>
-                              </div>
-                              {/* 缂栬緫妯″紡锛氬彸渚ф簮鐮?*/}
-                              <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
-                                <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
-                                  婧愮爜缂栬緫
-                                </div>
-                                <textarea
-                                  value={displayContent}
-                                  onChange={(e) => handleManualEdit(e.target.value)}
-                                  className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-foreground"
-                                  spellCheck={false}
-                                />
-                              </div>
-                            </div>
-                          )
-                        }
-
-                        if (displayContent?.includes(libraryOnlyNotice)) {
-                          return (
-                            <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-                              <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-6 border border-border shadow-sm">
-                                <FileText className="w-8 h-8 text-muted-foreground" />
-                              </div>
-                              <h3 className="text-lg font-bold text-foreground mb-2 truncate max-w-lg">
-                                {selectedFile?.filename || '未知文件'}
-                              </h3>
-                              <div className="flex items-center gap-2 mb-8">
-                                <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
-                                  文档库
-                                </span>
-                                <span className="px-2.5 py-1 rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/30 flex items-center gap-1">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/20" />
-                                  Pending
-                                </span>
-                              </div>
-
-                              <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
-                                <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
-                                  <Info className="w-5 h-5 text-sky-500 flex-shrink-0 mt-0.5" />
-                                  {libraryOnlyNotice}。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
-                                </p>
-                              </div>
-
-                              <div className="flex items-center gap-3">
-                                <Button
-                                  variant="outline"
-                                  className="gap-2 bg-card hover:bg-muted text-foreground/80 border-border"
-                                  onClick={() => {
-                                    if (selectedFile?.filename) {
-                                      navigator.clipboard.writeText(selectedFile.filename)
-                                      toast.success('文件名已复制')
-                                    }
-                                  }}
-                                >
-                                  <Copy className="w-4 h-4" />
-                                  复制名称
-                                </Button>
-                                <ConfirmDialog
-                                  title="移除该文件？"
-                                  description="将从文档库中移除该文件记录。此操作不可恢复。"
-                                  confirmLabel="移除"
-                                  cancelLabel="返回"
-                                  confirmVariant="destructive"
-                                  confirmDisabled={!selectedFileId}
-                                  onConfirm={() => {
-                                    if (!selectedFileId) return
-                                    const { removeFile } = useParsedFiles.getState()
-                                    removeFile(selectedFileId)
-                                    setSelectedFileId(null)
-                                    toast.success('文件已移除')
-                                  }}
-                                >
-                                  <Button
-                                    variant="outline"
-                                    className="gap-2 bg-card hover:bg-red-500/10 dark:bg-red-500/20 text-foreground/80 hover:text-red-600 dark:text-red-300 border-border hover:border-red-500/30"
-                                    disabled={!selectedFileId}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                    移除文件
-                                  </Button>
-                                </ConfirmDialog>
-                              </div>
-                            </div>
-                          )
-                        }
-
-                        if (previewFormat === 'rendered') {
-                          return (
-                            <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-sky-600 dark:prose-a:text-sky-300">
-                              <MarkdownRenderer markdown={displayContent || ''} />
-                            </div>
-                          )
-                        }
-
-                        return (
-                          <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
-                            {displayContent || ''}
-                          </pre>
-                        )
-                      })()}
+	                      {contentBody}
                     </div>
                   </div>
                 </div>
@@ -1489,4 +1474,3 @@ export function DataGovernancePanel() {
     />
   )
 }
-
