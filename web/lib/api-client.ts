@@ -25,13 +25,18 @@ import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@
 import { generateRequestId } from '@/lib/request-id'
 import { readSseDataStrings } from '@/lib/sse-reader'
 
+type PrimitiveHeaderValue = string | number | boolean
+
 function headerValueToString(value: unknown): string | undefined {
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (Array.isArray(value)) {
     const joined = value
-      .filter((item): item is string | number | boolean => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')
-      .map((item) => String(item))
+      .filter(
+        (item): item is PrimitiveHeaderValue =>
+          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+      )
+      .map(String)
       .join(', ')
       .trim()
     return joined || undefined
@@ -53,10 +58,175 @@ type ApiRequestOptions = {
   signal?: AbortSignal
 }
 
+export type DocumentLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
+
+export type ChunkPreviewRequestParams = {
+  chunk_size?: number
+  chunk_overlap?: number
+  parser_backend?: string
+  chunk_strategy?: string
+  child_ratio?: number
+  min_child_size?: number
+  pipeline?: DocumentPipelineOptions
+  dataset_id?: string
+  include_original_text?: boolean
+  include_chunks?: boolean
+  original_text_max_chars?: number
+  max_chunks?: number
+  use_parse_cache?: boolean
+  separator_preset?: string
+  separator?: string
+  keep_separator?: boolean
+  separator_max_chunk_size?: number
+}
+
 export const apiClient = axios.create({
   baseURL: API_V1_BASE_URL,
   timeout: API_TIMEOUT_MS,
 })
+
+type RateLimitLogMessageInput = {
+  retryAfterSec?: number
+  scope?: string
+  limit?: number
+}
+
+function logRequestScopedError(message: string, requestId?: string, detail?: string) {
+  const parts = [message]
+  if (detail) parts.push(detail)
+  if (requestId) parts.push(`(request_id=${requestId})`)
+  console.error(...parts)
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === '') return undefined
+  const number = Number(value)
+  return Number.isFinite(number) ? number : undefined
+}
+
+export function coerceRetryAfterSeconds(retryAfterBody: unknown, retryAfterHeader: unknown): number | undefined {
+  return toFiniteNumber(retryAfterBody) ?? toFiniteNumber(retryAfterHeader)
+}
+
+export function formatRateLimitLogMessage({
+  retryAfterSec,
+  scope,
+  limit,
+}: Readonly<RateLimitLogMessageInput>): { message: string; extra: string } {
+  const bits: string[] = []
+  if (scope) bits.push(`scope=${scope}`)
+  if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) bits.push(`limit=${String(limit)}`)
+  if (typeof retryAfterSec === 'number' && Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+    bits.push(`retry_after=${String(retryAfterSec)}s`)
+  }
+
+  return {
+    message:
+      typeof retryAfterSec === 'number' && Number.isFinite(retryAfterSec) && retryAfterSec > 0
+        ? `[API] 请求过于频繁，请在 ${String(Math.round(retryAfterSec))} 秒后重试`
+        : '[API] 请求过于频繁，请稍后重试',
+    extra: bits.length ? `(${bits.join(', ')})` : '',
+  }
+}
+
+function extractRateLimitDetail(data: unknown): { retryAfterSec?: number; scope?: string; limit?: number } {
+  const detailObj = data && typeof data === 'object' ? (data as { detail?: Record<string, unknown> }).detail : null
+  return {
+    retryAfterSec: coerceRetryAfterSeconds(detailObj?.retry_after_sec, undefined),
+    scope: typeof detailObj?.scope === 'string' ? detailObj.scope : undefined,
+    limit: typeof detailObj?.limit === 'number' ? detailObj.limit : undefined,
+  }
+}
+
+async function handleUnauthorizedApiError(error: any, requestId?: string) {
+  logRequestScopedError('[API] 未授权，请检查登录状态', requestId)
+
+  const token = getAccessToken()
+  const canAttemptRefresh =
+    !!token && globalThis.window !== undefined && !!error?.config && !(error.config).__mimirqOidcRetried
+  if (canAttemptRefresh) {
+    ;(error.config).__mimirqOidcRetried = true
+
+    const refreshed = await tryRefreshOidcAccessToken()
+    if (refreshed) {
+      setAccessToken(refreshed)
+      return apiClient.request(error.config)
+    }
+  }
+
+  if (!token) return undefined
+
+  clearAuthSession()
+  if (globalThis.window === undefined) return undefined
+
+  const path = String(globalThis.window.location?.pathname || '')
+  if (!path.startsWith('/auth')) {
+    globalThis.window.location.href = '/auth'
+  }
+
+  return undefined
+}
+
+function handleResponseStatusError(status: number, detail: string, requestId: string | undefined, data: unknown, error: any) {
+  if (status === 403) {
+    logRequestScopedError('[API] 无权限访问', requestId)
+    return
+  }
+  if (status === 404) {
+    logRequestScopedError('[API] 资源不存在', requestId)
+    return
+  }
+  if (status === 422) {
+    logRequestScopedError('[API] 请求参数错误:', requestId, detail)
+    return
+  }
+  if (status === 429) {
+    const retryAfterHeader = error.response.headers?.['retry-after']
+    const rateLimit = extractRateLimitDetail(data)
+    const retryAfterSec = coerceRetryAfterSeconds(rateLimit.retryAfterSec, retryAfterHeader)
+    const { message, extra } = formatRateLimitLogMessage({
+      retryAfterSec,
+      scope: rateLimit.scope,
+      limit: rateLimit.limit,
+    })
+    logRequestScopedError(message, requestId, extra)
+    return
+  }
+  if (status === 500) {
+    logRequestScopedError('[API] 服务器错误:', requestId, detail)
+    return
+  }
+  logRequestScopedError('[API] 请求失败:', requestId, detail || error.message)
+}
+
+async function handleApiClientError(error: any) {
+  if (error.response) {
+    const status = error.response.status
+    const data = error.response.data
+    const detail = extractBackendMessage(data) || error.message
+    const headerRequestId = headerValueToString(error.response.headers?.['x-request-id'])
+    const requestId = extractBackendRequestId(data) || headerRequestId
+    ;(error).requestId = requestId
+
+    if (status === 401) {
+      const retried = await handleUnauthorizedApiError(error, requestId)
+      if (retried) return retried
+      throw error
+    }
+
+    handleResponseStatusError(status, detail, requestId, data, error)
+    throw error
+  }
+
+  if (error.request) {
+    const headers = AxiosHeaders.from(error.config?.headers)
+    const requestId = headerValueToString(headers.get('X-Request-ID'))
+    ;(error).requestId = requestId
+    logRequestScopedError('[API] 网络错误，请检查后端服务是否启动', requestId)
+  }
+
+  throw error
+}
 
 // Inject auth/tenant headers for every request (client-side friendly)
 apiClient.interceptors.request.use((config) => {
@@ -100,111 +270,60 @@ apiClient.interceptors.response.use(
 
     return response
   },
-  async (error) => {
-    // 统一错误处理
-    if (error.response) {
-      const status = error.response.status
-      const data = error.response.data
-      const detail = extractBackendMessage(data) || error.message
-      const headerRequestId = headerValueToString(error.response.headers?.['x-request-id'])
-      const requestId = extractBackendRequestId(data) || headerRequestId
-      ;(error).requestId = requestId
-
-      switch (status) {
-        case 401: {
-          console.error('[API] 未授权，请检查登录状态', requestId ? `(request_id=${requestId})` : '')
-
-          // If we were using JWT auth and the token is rejected/expired, clear the session
-          // so the UI doesn't stay in a broken "logged-in" state.
-          const token = getAccessToken()
-          const canAttemptRefresh =
-            !!token && globalThis.window !== undefined && !!error?.config && !(error.config).__mimirqOidcRetried
-          if (canAttemptRefresh) {
-            ;(error.config).__mimirqOidcRetried = true
-
-            const refreshed = await tryRefreshOidcAccessToken()
-            if (refreshed) {
-              setAccessToken(refreshed)
-              // Retry the original request once with the refreshed token.
-              // The request interceptor will inject the updated Authorization header.
-              return apiClient.request(error.config)
-            }
-          }
-
-          if (token) {
-            clearAuthSession()
-            if (globalThis.window !== undefined) {
-              const path = String(globalThis.window.location?.pathname || '')
-              if (!path.startsWith('/auth')) {
-                globalThis.window.location.href = '/auth'
-              }
-            }
-          }
-          break
-        }
-        case 403:
-          console.error('[API] 无权限访问', requestId ? `(request_id=${requestId})` : '')
-          break
-        case 404:
-          console.error('[API] 资源不存在', requestId ? `(request_id=${requestId})` : '')
-          break
-        case 422:
-          console.error('[API] 请求参数错误:', detail, requestId ? `(request_id=${requestId})` : '')
-          break
-        case 429: {
-          const retryAfterHeader = error.response.headers?.['retry-after']
-          const detailObj = data && typeof data === 'object' ? ((data).detail) : null
-          const retryAfterBody = detailObj?.retry_after_sec
-          const retryAfterSec =
-            (() => {
-    if (typeof retryAfterBody === 'number') {
-        return retryAfterBody;
-    }
-    else if (typeof retryAfterBody === 'string') {
-            return Number(retryAfterBody);
-        }
-        else if (retryAfterHeader) {
-                return Number(retryAfterHeader);
-            }
-            else {
-                return undefined;
-            }
-})()
-          const scope = typeof detailObj?.scope === 'string' ? detailObj.scope : undefined
-          const limit = typeof detailObj?.limit === 'number' ? detailObj.limit : undefined
-
-          const bits: string[] = []
-          if (scope) bits.push(`scope=${scope}`)
-          if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) bits.push(`limit=${String(limit)}`)
-          if (typeof retryAfterSec === 'number' && Number.isFinite(retryAfterSec) && retryAfterSec > 0) bits.push(`retry_after=${String(retryAfterSec)}s`)
-          const extra = bits.length ? `(${bits.join(', ')})` : ''
-
-          const msg =
-            typeof retryAfterSec === 'number' && Number.isFinite(retryAfterSec) && retryAfterSec > 0
-              ? `[API] 请求过于频繁，请在 ${String(Math.round(retryAfterSec))} 秒后重试`
-              : '[API] 请求过于频繁，请稍后重试'
-          console.error(msg, extra, requestId ? `(request_id=${requestId})` : '')
-          break
-        }
-        case 500:
-          console.error('[API] 服务器错误:', detail, requestId ? `(request_id=${requestId})` : '')
-          break
-        default:
-          console.error('[API] 请求失败:', detail || error.message, requestId ? `(request_id=${requestId})` : '')
-      }
-    } else if (error.request) {
-      const headers = AxiosHeaders.from(error.config?.headers)
-      const requestId = headerValueToString(headers.get('X-Request-ID'))
-      ;(error).requestId = requestId
-      console.error('[API] 网络错误，请检查后端服务是否启动', requestId ? `(request_id=${requestId})` : '')
-    }
-
-    return Promise.reject(error)
-  }
+  handleApiClientError
 )
 
 // Typed OpenAPI request helper (incremental migration target).
 const openapiRequest = createOpenApiAxiosClient(apiClient)
+
+function resolveChunkPreviewStrategy(chunkStrategy?: string): string {
+  return chunkStrategy || 'langchain_recursive'
+}
+
+function appendFormDataIfString(formData: FormData, key: string, value: string | undefined, requireTruthy = false) {
+  if (typeof value !== 'string') return
+  if (requireTruthy && !value) return
+  formData.append(key, value)
+}
+
+function appendFormDataIfNumber(formData: FormData, key: string, value: number | undefined) {
+  if (typeof value === 'number') formData.append(key, String(value))
+}
+
+function appendFormDataIfBoolean(formData: FormData, key: string, value: boolean | undefined) {
+  if (typeof value === 'boolean') formData.append(key, value ? 'true' : 'false')
+}
+
+export function appendChunkPreviewFormFields(
+  formData: FormData,
+  params: ChunkPreviewRequestParams,
+  effectiveStrategy: string
+) {
+  appendFormDataIfString(formData, 'dataset_id', params.dataset_id, true)
+  if (effectiveStrategy === 'parent_child') {
+    appendFormDataIfNumber(formData, 'child_ratio', params.child_ratio)
+    appendFormDataIfNumber(formData, 'min_child_size', params.min_child_size)
+  }
+  appendFormDataIfString(formData, 'separator_preset', params.separator_preset, true)
+  appendFormDataIfString(formData, 'separator', params.separator)
+  appendFormDataIfBoolean(formData, 'keep_separator', params.keep_separator)
+  appendFormDataIfNumber(formData, 'separator_max_chunk_size', params.separator_max_chunk_size)
+  appendPipelineOptionsToFormData(formData, params.pipeline)
+}
+
+export function buildChunkPreviewQueryParams(params: ChunkPreviewRequestParams) {
+  return {
+    chunk_size: params.chunk_size ?? params.pipeline?.chunk_size ?? 1000,
+    chunk_overlap: params.chunk_overlap ?? params.pipeline?.chunk_overlap ?? 200,
+    include_original_text:
+      typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
+    include_chunks: typeof params.include_chunks === 'boolean' ? params.include_chunks : undefined,
+    original_text_max_chars:
+      typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
+    max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
+    use_parse_cache: typeof params.use_parse_cache === 'boolean' ? params.use_parse_cache : undefined,
+  }
+}
 
 // ==================== Health API ====================
 
@@ -323,7 +442,7 @@ export const documentApi = {
       skip?: number
       limit?: number
       status?: string | null
-      lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
+      lifecycle?: DocumentLifecycleFilter
       dataset_id?: string | null
       file_type?: string | null
       owner_id?: string | null
@@ -347,7 +466,7 @@ export const documentApi = {
    */
   async folders(params: {
     dataset_id: string
-    lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
+    lifecycle?: DocumentLifecycleFilter
     max_depth?: number
   }): Promise<DocumentFolderTreeResponse> {
     return openapiRequest({
@@ -362,7 +481,7 @@ export const documentApi = {
    */
   async stats(params?: {
     dataset_id?: string | null
-    lifecycle?: 'active' | 'archived' | 'disabled' | 'all'
+    lifecycle?: DocumentLifecycleFilter
     file_type?: string | null
     owner_id?: string | null
     q?: string | null
@@ -902,63 +1021,21 @@ export const documentApi = {
    */
   async chunkPreview(
     file: File,
-    params: {
-      chunk_size?: number
-      chunk_overlap?: number
-      parser_backend?: string
-      chunk_strategy?: string
-      child_ratio?: number
-      min_child_size?: number
-      pipeline?: DocumentPipelineOptions
-      dataset_id?: string
-      include_original_text?: boolean
-      include_chunks?: boolean
-      original_text_max_chars?: number
-      max_chunks?: number
-      use_parse_cache?: boolean
-      separator_preset?: string
-      separator?: string
-      keep_separator?: boolean
-      separator_max_chunk_size?: number
-    } = {},
+    params: ChunkPreviewRequestParams = {},
     options?: { signal?: AbortSignal }
   ): Promise<ChunkPreviewResponse> {
     const resolvedParser = resolveParserBackendForFilename(file.name, params.parser_backend || 'auto')
+    const effectiveStrategy = resolveChunkPreviewStrategy(params.chunk_strategy)
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', resolvedParser.backend || 'auto')
-    const effectiveStrategy = params.chunk_strategy || 'langchain_recursive'
     formData.append('chunk_strategy', effectiveStrategy)
-    if (params.dataset_id) formData.append('dataset_id', params.dataset_id)
-    if (effectiveStrategy === 'parent_child') {
-      if (typeof params.child_ratio === 'number') formData.append('child_ratio', String(params.child_ratio))
-      if (typeof params.min_child_size === 'number') formData.append('min_child_size', String(params.min_child_size))
-    }
-    if (params.separator_preset) formData.append('separator_preset', params.separator_preset)
-    if (typeof params.separator === 'string') formData.append('separator', params.separator)
-    if (typeof params.keep_separator === 'boolean') {
-      formData.append('keep_separator', params.keep_separator ? 'true' : 'false')
-    }
-    if (typeof params.separator_max_chunk_size === 'number') {
-      formData.append('separator_max_chunk_size', String(params.separator_max_chunk_size))
-    }
-    appendPipelineOptionsToFormData(formData, params.pipeline)
-
-    const effectiveChunkSize = params.chunk_size ?? params.pipeline?.chunk_size ?? 1000
-    const effectiveChunkOverlap = params.chunk_overlap ?? params.pipeline?.chunk_overlap ?? 200
+    appendChunkPreviewFormFields(formData, params, effectiveStrategy)
 
     const { data } = await apiClient.post('/documents/chunk-preview', formData, {
       timeout: API_LONG_TIMEOUT_MS,
       signal: options?.signal,
-      params: {
-        chunk_size: effectiveChunkSize,
-        chunk_overlap: effectiveChunkOverlap,
-        include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
-        include_chunks: typeof params.include_chunks === 'boolean' ? params.include_chunks : undefined,
-        original_text_max_chars: typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
-        max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
-        use_parse_cache: typeof params.use_parse_cache === 'boolean' ? params.use_parse_cache : undefined,
-      },
+      params: buildChunkPreviewQueryParams(params),
     })
 
     return data
@@ -974,73 +1051,32 @@ export const documentApi = {
    * 如果缓存 miss，会返回 404；前端应回退到上传文件的方式。
    */
   async chunkPreviewBySha(
-    params: {
+    params: ChunkPreviewRequestParams & {
       file_sha256: string
       file_type?: string
       filename?: string
       file_size?: number
-      chunk_size?: number
-      chunk_overlap?: number
-      parser_backend?: string
-      chunk_strategy?: string
-      child_ratio?: number
-      min_child_size?: number
-      pipeline?: DocumentPipelineOptions
-      dataset_id?: string
-      include_original_text?: boolean
-      include_chunks?: boolean
-      original_text_max_chars?: number
-      max_chunks?: number
-      use_parse_cache?: boolean
-      separator_preset?: string
-      separator?: string
-      keep_separator?: boolean
-      separator_max_chunk_size?: number
     },
     options?: { signal?: AbortSignal }
   ): Promise<ChunkPreviewResponse> {
     const name = params.filename || `doc.${String(params.file_type || 'txt').replace(/^\\.+/, '')}`
     const resolvedParser = resolveParserBackendForFilename(name, params.parser_backend || 'auto')
+    const effectiveStrategy = resolveChunkPreviewStrategy(params.chunk_strategy)
 
     const formData = new FormData()
     formData.append('file_sha256', String(params.file_sha256 || ''))
-    if (params.file_type) formData.append('file_type', String(params.file_type))
-    if (params.filename) formData.append('filename', String(params.filename))
-    if (typeof params.file_size === 'number') formData.append('file_size', String(params.file_size))
+    appendFormDataIfString(formData, 'file_type', params.file_type, true)
+    appendFormDataIfString(formData, 'filename', params.filename, true)
+    appendFormDataIfNumber(formData, 'file_size', params.file_size)
 
     formData.append('parser_backend', resolvedParser.backend || 'auto')
-    const effectiveStrategy = params.chunk_strategy || 'langchain_recursive'
     formData.append('chunk_strategy', effectiveStrategy)
-    if (params.dataset_id) formData.append('dataset_id', params.dataset_id)
-    if (effectiveStrategy === 'parent_child') {
-      if (typeof params.child_ratio === 'number') formData.append('child_ratio', String(params.child_ratio))
-      if (typeof params.min_child_size === 'number') formData.append('min_child_size', String(params.min_child_size))
-    }
-    if (params.separator_preset) formData.append('separator_preset', params.separator_preset)
-    if (typeof params.separator === 'string') formData.append('separator', params.separator)
-    if (typeof params.keep_separator === 'boolean') {
-      formData.append('keep_separator', params.keep_separator ? 'true' : 'false')
-    }
-    if (typeof params.separator_max_chunk_size === 'number') {
-      formData.append('separator_max_chunk_size', String(params.separator_max_chunk_size))
-    }
-    appendPipelineOptionsToFormData(formData, params.pipeline)
-
-    const effectiveChunkSize = params.chunk_size ?? params.pipeline?.chunk_size ?? 1000
-    const effectiveChunkOverlap = params.chunk_overlap ?? params.pipeline?.chunk_overlap ?? 200
+    appendChunkPreviewFormFields(formData, params, effectiveStrategy)
 
     const { data } = await apiClient.post('/documents/chunk-preview/by-sha', formData, {
       timeout: API_LONG_TIMEOUT_MS,
       signal: options?.signal,
-      params: {
-        chunk_size: effectiveChunkSize,
-        chunk_overlap: effectiveChunkOverlap,
-        include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
-        include_chunks: typeof params.include_chunks === 'boolean' ? params.include_chunks : undefined,
-        original_text_max_chars: typeof params.original_text_max_chars === 'number' ? params.original_text_max_chars : undefined,
-        max_chunks: typeof params.max_chunks === 'number' ? params.max_chunks : undefined,
-        use_parse_cache: typeof params.use_parse_cache === 'boolean' ? params.use_parse_cache : undefined,
-      },
+      params: buildChunkPreviewQueryParams(params),
     })
 
     return data
