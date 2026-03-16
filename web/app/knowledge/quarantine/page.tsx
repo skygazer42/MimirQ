@@ -39,7 +39,8 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 
-type DropReason = string
+type QuarantineAction = 'release' | 'retry' | 'delete' | 'review' | 'tune'
+type ActingState = { id: string; action: QuarantineAction } | null
 
 function getUserMeta(doc: Document): any {
   const meta = doc.metadata
@@ -53,13 +54,13 @@ function isReviewed(doc: Document): boolean {
   return Boolean(user?.quarantine_reviewed)
 }
 
-function getDropReasons(doc: Document): DropReason[] {
+function getDropReasons(doc: Document): string[] {
   const reasons = doc.governance?.drop_reasons || {}
   if (!reasons || typeof reasons !== 'object') return []
   return Object.entries(reasons)
     .filter(([, v]) => typeof v === 'number' && v > 0)
     .map(([k]) => k)
-    .sort()
+    .sort((a, b) => a.localeCompare(b))
 }
 
 function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
@@ -101,14 +102,313 @@ function reasonLabel(reason: string): string {
   }
 }
 
+function createReviewMetadataPatch(extra?: Record<string, any>): Record<string, any> {
+  const patch: Record<string, any> = {
+    quarantine_reviewed: true,
+    quarantine_reviewed_at: new Date().toISOString(),
+  }
+
+  if (extra) Object.assign(patch, extra)
+
+  return patch
+}
+
+function getBusyIconClassName(acting: ActingState, docId: string, action: QuarantineAction): string {
+  return cn(
+    'h-4 w-4 mr-1',
+    acting?.id === docId && acting.action === action ? 'animate-spin motion-reduce:animate-none' : ''
+  )
+}
+
+interface QuarantineListPanelProps {
+  filtered: Document[]
+  selectedId: string | null
+  acting: ActingState
+  onSelect: (docId: string) => void
+  onPreview: (docId: string) => void
+  onTune: (doc: Document) => void
+}
+
+function QuarantineListPanel({
+  filtered,
+  selectedId,
+  acting,
+  onSelect,
+  onPreview,
+  onTune,
+}: Readonly<QuarantineListPanelProps>) {
+  if (!filtered.length) {
+    return (
+      <Panel variant="glass" className="rounded-2xl p-10 text-center text-muted-foreground">
+        当前筛选条件下没有隔离文档
+      </Panel>
+    )
+  }
+
+  return (
+    <Panel variant="glass" padding="none" className="overflow-hidden rounded-2xl">
+      <div className="divide-y divide-border/60">
+        {filtered.map((doc) => {
+          const active = doc.id === selectedId
+          const reasons = getDropReasons(doc)
+          const reviewed = isReviewed(doc)
+          const busy = acting?.id === doc.id
+
+          return (
+            <button
+              key={doc.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onSelect(doc.id)}
+              className={cn(
+                'group flex cursor-pointer items-start justify-between gap-4 p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                active ? 'bg-sky-50/70 dark:bg-sky-500/10' : 'hover:bg-accent'
+              )}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    已隔离
+                  </span>
+                  {reviewed && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      已处理
+                    </span>
+                  )}
+                  <span className="text-[10px] font-mono text-muted-foreground">ID: {doc.id.slice(0, 8)}</span>
+                </div>
+                <div className="mt-2 truncate font-bold text-foreground">{doc.filename}</div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-mono">{formatDate(doc.updated_at)}</span>
+                  <span className="text-muted-foreground/60">·</span>
+                  <span>{formatFileSize(doc.file_size)}</span>
+                  <span className="text-muted-foreground/60">·</span>
+                  <span>{doc.chunk_count ?? 0} 切片</span>
+                </div>
+                {reasons.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {reasons.slice(0, 6).map((reason) => (
+                      <Badge
+                        key={reason}
+                        variant="secondary"
+                        className="border border-amber-100 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300"
+                      >
+                        {reasonLabel(reason)}
+                      </Badge>
+                    ))}
+                    {reasons.length > 6 && (
+                      <Badge variant="secondary" className="border border-border/60 bg-muted">
+                        +{reasons.length - 6}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-xl px-3"
+                  disabled={busy}
+                  title="抽样预览原文"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onPreview(doc.id)
+                  }}
+                >
+                  <Eye className="mr-1 h-4 w-4" />
+                  预览
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-xl px-3"
+                  disabled={busy}
+                  title="调参回放"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onTune(doc)
+                  }}
+                >
+                  <Settings2 className="mr-1 h-4 w-4" />
+                  调参
+                </Button>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </Panel>
+  )
+}
+
+interface QuarantineDetailPanelProps {
+  selected: Document | null
+  acting: ActingState
+  onRelease: (doc: Document) => void
+  onRetry: (doc: Document) => void
+  onTune: (doc: Document) => void
+  onPreview: (docId: string) => void
+  onShowDetails: (docId: string) => void
+  onMarkReviewed: (doc: Document) => void
+  onDelete: (doc: Document) => void
+}
+
+function QuarantineDetailPanel({
+  selected,
+  acting,
+  onRelease,
+  onRetry,
+  onTune,
+  onPreview,
+  onShowDetails,
+  onMarkReviewed,
+  onDelete,
+}: Readonly<QuarantineDetailPanelProps>) {
+  if (!selected) {
+    return <div className="text-sm text-muted-foreground">选择一条隔离记录查看详情</div>
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="min-w-0">
+        <div className="text-xs font-bold uppercase text-muted-foreground">Selected</div>
+        <div className="mt-1 truncate font-bold text-foreground">{selected.filename}</div>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+          <span className="font-mono">{formatDate(selected.updated_at)}</span>
+          <span>·</span>
+          <span>{formatFileSize(selected.file_size)}</span>
+          <span>·</span>
+          <span>{selected.chunk_count ?? 0} 切片</span>
+        </div>
+      </div>
+
+      {selected.error_message && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="text-xs font-bold uppercase text-amber-700 dark:text-amber-300">隔离原因</div>
+          <div className="mt-2 break-words text-xs font-mono text-amber-800/80 dark:text-amber-200/80">
+            {selected.error_message}
+          </div>
+        </div>
+      )}
+
+      {getDropReasons(selected).length > 0 && (
+        <div className="rounded-xl border border-border bg-muted/30 p-4">
+          <div className="text-xs font-bold uppercase text-muted-foreground">命中规则</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {getDropReasons(selected).map((reason) => (
+              <Badge
+                key={reason}
+                variant="secondary"
+                className="border border-amber-100 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300"
+              >
+                {reasonLabel(reason)}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="warning"
+          className="rounded-xl"
+          disabled={acting?.id === selected.id}
+          title="按命中规则自动关闭对应过滤器，然后重试入库"
+          onClick={() => onRelease(selected)}
+        >
+          <RotateCcw className={getBusyIconClassName(acting, selected.id, 'release')} />
+          放行并重试
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-xl"
+          disabled={acting?.id === selected.id}
+          onClick={() => onRetry(selected)}
+        >
+          <RotateCcw className={getBusyIconClassName(acting, selected.id, 'retry')} />
+          直接重试
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-xl"
+          disabled={acting?.id === selected.id}
+          onClick={() => onTune(selected)}
+        >
+          <Settings2 className="mr-1 h-4 w-4" />
+          调参回放
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-xl"
+          disabled={acting?.id === selected.id}
+          onClick={() => onPreview(selected.id)}
+        >
+          <Eye className="mr-1 h-4 w-4" />
+          预览原文
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-xl"
+          onClick={() => onShowDetails(selected.id)}
+        >
+          <Settings2 className="mr-1 h-4 w-4" />
+          任务详情
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="rounded-xl"
+          disabled={acting?.id === selected.id}
+          onClick={() => onMarkReviewed(selected)}
+        >
+          <CheckCircle2 className={getBusyIconClassName(acting, selected.id, 'review')} />
+          标记已处理
+        </Button>
+        <ConfirmDialog
+          title="删除该文档？"
+          description={
+            <>
+              确定删除文档「<span className="font-mono">{selected.filename}</span>」吗？此操作不可恢复。
+            </>
+          }
+          confirmLabel="删除"
+          cancelLabel="返回"
+          confirmVariant="destructive"
+          confirmDisabled={acting?.id === selected.id}
+          onConfirm={() => onDelete(selected)}
+        >
+          <Button
+            size="sm"
+            variant="destructive"
+            className="rounded-xl"
+            disabled={acting?.id === selected.id}
+          >
+            <Trash2 className="mr-1 h-4 w-4" />
+            删除
+          </Button>
+        </ConfirmDialog>
+      </div>
+    </div>
+  )
+}
+
 export default function QuarantineQueuePage() {
   const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [search, setSearch] = useState('')
-  const [selectedReason, setSelectedReason] = useState<DropReason>('all')
+  const [selectedReason, setSelectedReason] = useState('all')
   const [hideReviewed, setHideReviewed] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [acting, setActing] = useState<{ id: string; action: 'release' | 'retry' | 'delete' | 'review' | 'tune' } | null>(null)
+  const [acting, setActing] = useState<ActingState>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailDocumentId, setDetailDocumentId] = useState<string | null>(null)
 
@@ -183,11 +483,7 @@ export default function QuarantineQueuePage() {
   }, [filtered, selectedId])
 
   const markReviewed = useCallback(async (docId: string, extra?: Record<string, any>) => {
-    const patch: Record<string, any> = {
-      quarantine_reviewed: true,
-      quarantine_reviewed_at: new Date().toISOString(),
-      ...(extra || {}),
-    }
+    const patch = createReviewMetadataPatch(extra)
     await documentApi.patchUserMetadata(docId, { patch, replace: false })
   }, [])
 
@@ -303,7 +599,7 @@ export default function QuarantineQueuePage() {
               Review
             </span>
             <span className="text-muted-foreground/60">|</span>
-            聚合命中规则，抽样预览原文，一键放行/重试/删除。
+            <span>聚合命中规则，抽样预览原文，一键放行/重试/删除。</span>
           </span>
         }
         actions={
@@ -397,247 +693,31 @@ export default function QuarantineQueuePage() {
       >
           <div className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-4">
             <div className="space-y-2">
-              {filtered.length ? (
-                <Panel variant="glass" padding="none" className="rounded-2xl overflow-hidden">
-                  <div className="divide-y divide-border/60">
-                    {filtered.map((doc) => {
-                      const active = doc.id === selectedId
-                      const reasons = getDropReasons(doc)
-                      const reviewed = isReviewed(doc)
-                      const busy = acting?.id === doc.id
-
-                      return (
-                        <button
-                          key={doc.id}
-                          onClick={() => setSelectedId(doc.id)}
-                          type="button"
-                          aria-pressed={active}
-                          className={cn(
-                            'group p-4 flex items-start justify-between gap-4 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                            active
-                              ? 'bg-sky-50/70 dark:bg-sky-500/10'
-                              : 'hover:bg-accent'
-                          )}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-xs font-bold">
-                                <AlertTriangle className="h-3.5 w-3.5" />
-                                已隔离
-                              </span>
-                              {reviewed && (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-xs font-bold">
-                                  <CheckCircle2 className="h-3.5 w-3.5" />
-                                  已处理
-                                </span>
-                              )}
-                              <span className="text-[10px] font-mono text-muted-foreground">ID: {doc.id.slice(0, 8)}</span>
-                            </div>
-                            <div className="mt-2 font-bold text-foreground truncate">
-                              {doc.filename}
-                            </div>
-                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                              <span className="font-mono">{formatDate(doc.updated_at)}</span>
-                              <span className="text-muted-foreground/60">·</span>
-                              <span>{formatFileSize(doc.file_size)}</span>
-                              <span className="text-muted-foreground/60">·</span>
-                              <span>{doc.chunk_count ?? 0} 切片</span>
-                            </div>
-                            {reasons.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {reasons.slice(0, 6).map((r) => (
-                                  <Badge
-                                    key={r}
-                                    variant="secondary"
-                                    className="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-500/20"
-                                  >
-                                    {reasonLabel(r)}
-                                  </Badge>
-                                ))}
-                                {reasons.length > 6 && (
-                                  <Badge variant="secondary" className="bg-muted border border-border/60">
-                                    +{reasons.length - 6}
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 px-3 rounded-xl"
-                              disabled={busy}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openDocument(doc.id)
-                              }}
-                              title="抽样预览原文"
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              预览
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 px-3 rounded-xl"
-                              disabled={busy}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openTuneDialog(doc)
-                              }}
-                              title="调参回放"
-                            >
-                              <Settings2 className="h-4 w-4 mr-1" />
-                              调参
-                            </Button>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </Panel>
-              ) : (
-                <Panel variant="glass" className="rounded-2xl p-10 text-center text-muted-foreground">
-                  当前筛选条件下没有隔离文档
-                </Panel>
-              )}
+              <QuarantineListPanel
+                filtered={filtered}
+                selectedId={selectedId}
+                acting={acting}
+                onSelect={setSelectedId}
+                onPreview={openDocument}
+                onTune={openTuneDialog}
+              />
             </div>
 
             <Panel variant="glass" className="rounded-2xl p-5 h-fit">
-              {selected ? (
-                <div className="space-y-4">
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-muted-foreground uppercase ">Selected</div>
-                    <div className="mt-1 font-bold text-foreground truncate">{selected.filename}</div>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span className="font-mono">{formatDate(selected.updated_at)}</span>
-                      <span>·</span>
-                      <span>{formatFileSize(selected.file_size)}</span>
-                      <span>·</span>
-                      <span>{selected.chunk_count ?? 0} 切片</span>
-                    </div>
-                  </div>
-
-                  {selected.error_message && (
-                    <div className="rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/10 p-4">
-                      <div className="text-xs font-bold text-amber-700 dark:text-amber-300 uppercase ">隔离原因</div>
-                      <div className="mt-2 text-xs font-mono break-words text-amber-800/80 dark:text-amber-200/80">
-                        {selected.error_message}
-                      </div>
-                    </div>
-                  )}
-
-                  {getDropReasons(selected).length > 0 && (
-                    <div className="rounded-xl border border-border bg-muted/30 p-4">
-                      <div className="text-xs font-bold text-muted-foreground uppercase ">命中规则</div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {getDropReasons(selected).map((r) => (
-                          <Badge
-                            key={r}
-                            variant="secondary"
-                            className="bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-100 dark:border-amber-500/20"
-                          >
-                            {reasonLabel(r)}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-	                  <div className="flex flex-wrap gap-2">
-	                    <Button
-	                      size="sm"
-	                      variant="warning"
-	                      className="rounded-xl"
-	                      disabled={acting?.id === selected.id}
-	                      onClick={() => handleRelease(selected)}
-	                      title="按命中规则自动关闭对应过滤器，然后重试入库"
-	                    >
-                      <RotateCcw className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'release' ? 'animate-spin motion-reduce:animate-none' : '')} />
-                      放行并重试
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl"
-                      disabled={acting?.id === selected.id}
-                      onClick={() => handleRetry(selected)}
-                    >
-                      <RotateCcw className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'retry' ? 'animate-spin motion-reduce:animate-none' : '')} />
-                      直接重试
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl"
-                      disabled={acting?.id === selected.id}
-                      onClick={() => openTuneDialog(selected)}
-                    >
-                      <Settings2 className="h-4 w-4 mr-1" />
-                      调参回放
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl"
-                      disabled={acting?.id === selected.id}
-                      onClick={() => openDocument(selected.id)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      预览原文
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl"
-                      onClick={() => {
-                        setDetailDocumentId(selected.id)
-                        setDetailOpen(true)
-                      }}
-                    >
-                      <Settings2 className="h-4 w-4 mr-1" />
-                      任务详情
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl"
-                      disabled={acting?.id === selected.id}
-                      onClick={() => handleMarkReviewedOnly(selected)}
-                    >
-                      <CheckCircle2 className={cn('h-4 w-4 mr-1', acting?.id === selected.id && acting.action === 'review' ? 'animate-spin motion-reduce:animate-none' : '')} />
-                      标记已处理
-                    </Button>
-                    <ConfirmDialog
-                      title="删除该文档？"
-                      description={
-                        <>
-                          确定删除文档「<span className="font-mono">{selected.filename}</span>」吗？此操作不可恢复。
-                        </>
-                      }
-                      confirmLabel="删除"
-                      cancelLabel="返回"
-                      confirmVariant="destructive"
-                      confirmDisabled={acting?.id === selected.id}
-                      onConfirm={() => handleDelete(selected)}
-                    >
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="rounded-xl"
-                        disabled={acting?.id === selected.id}
-                      >
-                        <Trash2 className="h-4 w-4 mr-1" />
-                        删除
-                      </Button>
-                    </ConfirmDialog>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">选择一条隔离记录查看详情</div>
-              )}
+              <QuarantineDetailPanel
+                selected={selected}
+                acting={acting}
+                onRelease={handleRelease}
+                onRetry={handleRetry}
+                onTune={openTuneDialog}
+                onPreview={openDocument}
+                onShowDetails={(docId) => {
+                  setDetailDocumentId(docId)
+                  setDetailOpen(true)
+                }}
+                onMarkReviewed={handleMarkReviewedOnly}
+                onDelete={handleDelete}
+              />
             </Panel>
           </div>
       </PageScaffold>
