@@ -456,10 +456,9 @@ export function KnowledgeSettingsPanel({
               >
                 {selectedDatasetId || '全部数据集'}
               </span>
-              <span className="text-muted-foreground/40">{' · '}</span>
-              上次刷新: <span className="font-mono tabular-nums">{runsUpdatedAtLabel}</span>
-              <span className="text-muted-foreground/40">{' · '}</span>
-              自动刷新:{' '}
+              <span className="text-muted-foreground/40">{' · 上次刷新: '}</span>
+              <span className="font-mono tabular-nums">{runsUpdatedAtLabel}</span>
+              <span className="text-muted-foreground/40">{' · 自动刷新: '}</span>
               <span className="font-mono tabular-nums">
                 {(() => {
     if (autoRefreshRuns) {
@@ -573,8 +572,8 @@ export function KnowledgeSettingsPanel({
                           <div className="mt-1 text-xs text-muted-foreground">
                             {formatDate(run.created_at)} · {run.connector_id} · dataset {run.dataset_id || '-'}
                             {durationLabel ? (<>
-                                <span className="text-muted-foreground/40">{' · '}</span>
-                                耗时 <span className="font-mono tabular-nums">{durationLabel}</span>
+                                <span className="text-muted-foreground/40">{' · 耗时 '}</span>
+                                <span className="font-mono tabular-nums">{durationLabel}</span>
                               </>) : null}
                           </div>
                           <div className="mt-2 text-xs text-foreground/80">
@@ -589,13 +588,13 @@ export function KnowledgeSettingsPanel({
                           {aclModeLabel && aclDocsTotal > 0 ? (<div className="mt-1 text-xs text-muted-foreground">
                               ACL <span className="font-mono">{aclModeLabel}</span>
                               {aclBreakdown ? <span className="text-muted-foreground/60">（{aclBreakdown}）</span> : null}
-                              <span className="text-muted-foreground/40">{' · '}</span>
-                              文档 <span className="font-mono tabular-nums">{aclDocsTotal}</span>
+                              <span className="text-muted-foreground/40">{' · 文档 '}</span>
+                              <span className="font-mono tabular-nums">{aclDocsTotal}</span>
                               {aclHasAllowlist ? (<>
-                                  <span className="text-muted-foreground/40">{' · '}</span>
-                                  成员 <span className="font-mono tabular-nums">{aclMemberRange ?? '—'}</span>
-                                  <span className="text-muted-foreground/40">{' · '}</span>
-                                  组 <span className="font-mono tabular-nums">{aclGroupRange ?? '—'}</span>
+                                  <span className="text-muted-foreground/40">{' · 成员 '}</span>
+                                  <span className="font-mono tabular-nums">{aclMemberRange ?? '—'}</span>
+                                  <span className="text-muted-foreground/40">{' · 组 '}</span>
+                                  <span className="font-mono tabular-nums">{aclGroupRange ?? '—'}</span>
                                 </>) : null}
                             </div>) : null}
 
@@ -696,8 +695,7 @@ export function KnowledgeSettingsPanel({
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>取消导入任务？</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    将标记任务为 cancelled（best-effort）。仅影响后端后续处理，不会删除已产出的文档。run_id：
-                                    <span className="font-mono">{run.id.slice(0, 8)}</span>
+                                    将标记任务为 cancelled（best-effort）。仅影响后端后续处理，不会删除已产出的文档。run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -720,8 +718,7 @@ export function KnowledgeSettingsPanel({
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>续跑导入任务？</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    将从上次 cursor 位置创建一个新的导入任务（best-effort）。run_id：
-                                    <span className="font-mono">{run.id.slice(0, 8)}</span>
+                                    将从上次 cursor 位置创建一个新的导入任务（best-effort）。run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
@@ -742,8 +739,7 @@ export function KnowledgeSettingsPanel({
                                 <AlertDialogHeader>
                                   <AlertDialogTitle>只重试失败项？</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    将创建一个新的导入任务（best-effort），仅处理失败项。run_id：
-                                    <span className="font-mono">{run.id.slice(0, 8)}</span>
+                                    将创建一个新的导入任务（best-effort），仅处理失败项。run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
