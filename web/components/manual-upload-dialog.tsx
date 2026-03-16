@@ -17,12 +17,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { documentApi } from '@/lib/api-client'
-import { formatFileSize } from '@/lib/utils'
+import { cn, formatFileSize } from '@/lib/utils'
 import type { DocumentPreview, ManualChunk } from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
-import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -34,6 +33,84 @@ interface ManualUploadDialogProps {
 }
 
 type ChunkMode = 'page' | 'length' | 'delimiter'
+
+function renderUploadState(isParsing: boolean, file: File | null) {
+  if (isParsing) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-2">
+        <Loader2 className="h-8 w-8 animate-spin text-primary motion-reduce:animate-none" />
+        <p className="text-sm font-medium text-primary">正在解析结构...</p>
+      </div>
+    )
+  }
+
+  if (file) {
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <div className="mb-1 rounded-lg bg-primary/10 p-2">
+          <FileText className="h-6 w-6 text-primary" />
+        </div>
+        <p className="line-clamp-1 break-all px-2 text-sm font-medium text-foreground">
+          {file.name}
+        </p>
+        <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+        <p className="mt-2 text-xs text-primary hover:underline">点击更换</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-2 py-2">
+      <div className="rounded-lg bg-muted p-2">
+        <Upload className="h-6 w-6 text-muted-foreground" />
+      </div>
+      <p className="text-sm text-muted-foreground">点击上传 PDF, TXT, MD</p>
+    </div>
+  )
+}
+
+function renderPreviewState(preview: DocumentPreview | null, chunkPreview: ManualChunk[]) {
+  if (!preview) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
+        <Scissors className="mb-3 h-12 w-12 opacity-20" />
+        <p className="text-sm">上传文档后在此处查看实时切片效果</p>
+      </div>
+    )
+  }
+
+  if (chunkPreview.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        当前规则未生成任何切片
+      </div>
+    )
+  }
+
+  return chunkPreview.slice(0, 100).map((chunk, index) => (
+    <div
+      key={`${String(chunk.page_number ?? '')}:${chunk.content}`}
+      className="group rounded-xl border border-border/60 bg-card p-4 shadow-soft/30 transition-colors hover:border-primary/30"
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+            #{index + 1}
+          </span>
+          {typeof chunk.page_number === 'number' && (
+            <span className="text-[10px] text-muted-foreground">P.{chunk.page_number}</span>
+          )}
+        </div>
+        <span className="text-[10px] font-mono text-muted-foreground/60 group-hover:text-primary">
+          {chunk.content.length} chars
+        </span>
+      </div>
+      <div className="rounded-lg border border-border/60 bg-muted/20 p-2 text-xs leading-relaxed text-foreground/90 whitespace-pre-wrap break-all font-mono">
+        {chunk.content}
+      </div>
+    </div>
+  ))
+}
 
 export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogProps>) {
   const [open, setOpen] = useState(false)
@@ -296,7 +373,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
             <div className="space-y-3">
               <div className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs">1</span>
-                源文档
+                <span>源文档</span>
               </div>
 
               <div className="space-y-2">
@@ -323,37 +400,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
                   className="hidden" 
                   onChange={handleFileChange} 
                 />
-                
-                {(() => {
-    if (isParsing) {
-        return (<div className="flex flex-col items-center gap-2 py-2">
-                    <Loader2 className="h-8 w-8 text-primary animate-spin motion-reduce:animate-none"/>
-                    <p className="text-sm text-primary font-medium">正在解析结构...</p>
-                  </div>);
-    }
-    else if (file) {
-            return (<div className="flex flex-col items-center gap-1">
-                    <div className="p-2 bg-primary/10 rounded-lg mb-1">
-                      <FileText className="h-6 w-6 text-primary"/>
-                    </div>
-                    <p className="text-sm font-medium text-foreground line-clamp-1 break-all px-2">
-                      {file.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatFileSize(file.size)}
-                    </p>
-                    <p className="text-xs text-primary mt-2 hover:underline">点击更换</p>
-                  </div>);
-        }
-        else {
-            return (<div className="flex flex-col items-center gap-2 py-2">
-                    <div className="p-2 bg-muted rounded-lg">
-                      <Upload className="h-6 w-6 text-muted-foreground"/>
-                    </div>
-                    <p className="text-sm text-muted-foreground">点击上传 PDF, TXT, MD</p>
-                  </div>);
-        }
-})()}
+                {renderUploadState(isParsing, file)}
               </button>
             </div>
 
@@ -361,7 +408,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
             <div className={cn("space-y-4 transition-opacity duration-200 motion-reduce:transition-none", !preview && "opacity-50 pointer-events-none")}>
               <div className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs">2</span>
-                切片策略
+                <span>切片策略</span>
               </div>
 
               <div className="grid grid-cols-3 gap-1 bg-muted/40 p-1 rounded-xl border border-border/60">
@@ -471,7 +518,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
             <div className={cn("space-y-3 transition-opacity duration-200 motion-reduce:transition-none", !preview && "opacity-50 pointer-events-none")}>
               <div className="text-sm font-semibold text-foreground flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs">3</span>
-                入库管线
+                <span>入库管线</span>
               </div>
               <PipelineOptionsPanel compact />
             </div>
@@ -491,7 +538,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
           <div className="flex-1 min-h-0 bg-background/40 p-6 overflow-hidden flex flex-col">
             <div className="flex items-center justify-between mb-4 shrink-0">
                <h3 className="text-sm font-semibold text-foreground">
-                 切片预览 
+                 <span>切片预览</span>
                  {preview && <span className="ml-2 text-muted-foreground font-normal">({chunkPreview.length} 个块)</span>}
                </h3>
                {preview && (
@@ -502,39 +549,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
             </div>
 
             <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar pr-2 space-y-3">
-              {(() => {
-    if (preview) {
-        if (chunkPreview.length === 0) {
-            return (<div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                  当前规则未生成任何切片
-                </div>);
-        }
-        else {
-            return (chunkPreview.slice(0, 100).map((chunk, index) => (<div key={`${String(chunk.page_number ?? '')}:${chunk.content}`} className="bg-card border border-border/60 rounded-xl p-4 shadow-soft/30 hover:border-primary/30 transition-colors group">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                         <span className="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] font-mono">
-                           #{index + 1}
-                         </span>
-                         {typeof chunk.page_number === 'number' && (<span className="text-[10px] text-muted-foreground">P.{chunk.page_number}</span>)}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground/60 group-hover:text-primary font-mono">
-                        {chunk.content.length} chars
-                      </span>
-                    </div>
-                    <div className="text-xs text-foreground/90 font-mono leading-relaxed whitespace-pre-wrap break-all bg-muted/20 p-2 rounded-lg border border-border/60">
-                      {chunk.content}
-                    </div>
-                  </div>)));
-        }
-    }
-    else {
-        return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-                  <Scissors className="h-12 w-12 mb-3 opacity-20"/>
-                  <p className="text-sm">上传文档后在此处查看实时切片效果</p>
-                </div>);
-    }
-})()}
+              {renderPreviewState(preview, chunkPreview)}
               {chunkPreview.length > 100 && (
                  <div className="text-center py-4 text-xs text-muted-foreground">
                    仅展示前 100 个切片，实际共 {chunkPreview.length} 个
