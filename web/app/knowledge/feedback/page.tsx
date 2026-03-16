@@ -123,7 +123,7 @@ export default function FeedbackTriagePage() {
               Active
             </span>
             <span className="text-muted-foreground/50">|</span>
-            用户反馈实时监控与优化分析。
+            <span>用户反馈实时监控与优化分析。</span>
           </span>
         }
 	        actions={

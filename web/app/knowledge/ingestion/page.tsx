@@ -217,7 +217,7 @@ export default function IngestionMonitorPage() {
               Online
             </span>
             <span className="text-muted-foreground/60">|</span>
-            实时追踪解析、切块、向量化与索引构建进度。
+            <span>实时追踪解析、切块、向量化与索引构建进度。</span>
           </span>
         }
         actions={
