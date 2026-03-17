@@ -203,7 +203,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 	                key={category.id}
 	                onClick={() => handleSelectCategory(category.id)}
 	                className={cn(
-	                  "flex items-center gap-2 p-3 rounded-xl border text-left transition-colors duration-200 motion-reduce:transition-none focus-ring",
+	                  "flex items-center gap-2 p-3 rounded-lg border text-left transition-colors duration-200 motion-reduce:transition-none focus-ring",
 	                  isSelected
 	                    ? tone.selected
 	                    : "bg-muted border-border hover:bg-muted"
@@ -236,7 +236,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 
         {/* 已选标签 */}
         {tags.length > 0 && (
-          <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-xl">
+          <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-lg">
             {tags.map((tag) => (
               <span
                 key={tag}
@@ -335,7 +335,7 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
 
       {/* 分类信息摘要 */}
       {(selectedCategory || tags.length > 0) && (
-        <div className="bg-muted/40 border border-border/60 rounded-xl p-4">
+        <div className="bg-muted/40 border border-border/60 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
             <Check className="w-4 h-4 text-success" />
             <span className="text-sm font-medium text-foreground">归档信息</span>

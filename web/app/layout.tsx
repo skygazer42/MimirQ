@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { ParserBackendProvider } from "@/contexts/parser-backend-context"
 import { ChunkStrategyProvider } from "@/contexts/chunk-strategy-context"
@@ -12,6 +13,18 @@ import { TaskCenter } from "@/components/task-center"
 import { QueryProvider } from "@/components/providers/query-provider"
 import { RouteScrollReset } from "@/components/route-scroll-reset"
 import { AuthGuard } from "@/components/auth-guard"
+
+const inter = Inter({
+  subsets: ['latin', 'latin-ext'],
+  variable: '--font-sans',
+  display: 'swap',
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: "MimirQ - AI 知识库助手",
@@ -31,10 +44,10 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning className="h-full overflow-hidden">
       {/* Lock window scrolling: the app uses panel-internal scrolling for better UX. */}
-      <body className="font-sans h-dvh overflow-hidden">
+      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans h-dvh overflow-hidden`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="dark"
           enableSystem
           disableTransitionOnChange
         >
