@@ -61,7 +61,7 @@ class TextHierarchyChunker(BaseChunker):
                     continue
                 sentences_by_parent.setdefault(pid, []).append(s)
 
-            for pid, slist in sentences_by_parent.items():
+            for _pid, slist in sentences_by_parent.items():
                 slist.sort(key=lambda x: int(x.get("index") or 0))
 
             for p in paragraphs:
@@ -138,4 +138,3 @@ class TextHierarchyChunker(BaseChunker):
 
 
 __all__ = ["TextHierarchyChunker"]
-

@@ -1212,6 +1212,10 @@ export const authApi = {
   async me(): Promise<UserProfile> {
     return openapiRequest({ path: '/api/v1/auth/me', method: 'get' })
   },
+  async samlMetadata(params?: { provider_id?: string | null }): Promise<string> {
+    const { data } = await apiClient.get('/auth/saml/metadata', { params, responseType: 'text' })
+    return String(data ?? '')
+  },
   async samlExchange(body: {
     provider_id?: string | null
     saml_response: string
@@ -1658,6 +1662,18 @@ export const connectorApi = {
     })
   },
 
+  async reconcileConfig(
+    configId: string,
+    params?: { apply?: boolean; sample_limit?: number }
+  ): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.post(
+      `/connectors/configs/${encodeURIComponent(configId)}/reconcile`,
+      undefined,
+      { params, timeout: API_LONG_TIMEOUT_MS }
+    )
+    return data
+  },
+
   async scheduledTick(): Promise<ConnectorScheduledTickResponse> {
     return openapiRequest({ path: '/api/v1/connectors/scheduled/tick', method: 'post' })
   },
@@ -1794,6 +1810,25 @@ export const ragApi = {
 
   async promptPreview(params: PromptPreviewRequest): Promise<PromptPreviewResponse> {
     const { data } = await apiClient.post('/rag/prompt-preview', params)
+    return data
+  },
+}
+
+// ==================== Retrieval Explain API ====================
+
+export const retrievalApi = {
+  async listProfiles(): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.get('/retrieval/profiles')
+    return data
+  },
+
+  async explain(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.post('/retrieval/explain', body, { timeout: API_LONG_TIMEOUT_MS })
+    return data
+  },
+
+  async configHash(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.post('/retrieval/config-hash', body)
     return data
   },
 }
@@ -1992,6 +2027,22 @@ export const evidenceApi = {
     return data as Blob
   },
 
+  async exportTrainingDataset(params: {
+    dataset_id: string
+    format?: 'jsonl' | 'csv'
+    include_feedback?: boolean
+    include_evidence?: boolean
+    include_archived_evidence?: boolean
+    max_rows_per_source?: number
+  }): Promise<Blob> {
+    const { data } = await apiClient.get('/evidence/training-export', {
+      params,
+      responseType: 'blob',
+      timeout: API_LONG_TIMEOUT_MS,
+    })
+    return data as Blob
+  },
+
   async importItems(
     suiteId: string,
     file: File,
@@ -2003,6 +2054,29 @@ export const evidenceApi = {
       params,
       timeout: API_LONG_TIMEOUT_MS,
     })
+    return data
+  },
+
+  async persistCapsule(payload: {
+    capsule: Record<string, unknown>
+    capsule_id?: string | null
+    overwrite?: boolean
+  }): Promise<{ capsule_id: string; capsule_hash: string; path: string; overwritten: boolean }> {
+    const { data } = await apiClient.post('/evidence/capsules', payload)
+    return data
+  },
+
+  async getCapsule(capsuleId: string): Promise<{ capsule_id: string; capsule_hash: string; capsule: Record<string, unknown> }> {
+    const { data } = await apiClient.get(`/evidence/capsules/${encodeURIComponent(capsuleId)}`)
+    return data
+  },
+
+  async verifyCapsule(payload: {
+    capsule: Record<string, unknown>
+    capsule_id?: string | null
+    overwrite?: boolean
+  }): Promise<{ capsule_id?: string | null; valid: boolean; reason: string }> {
+    const { data } = await apiClient.post('/evidence/capsules/verify', payload)
     return data
   },
 }
@@ -3241,6 +3315,25 @@ export const observabilityApi = {
     sample_limit?: number
   }): Promise<IndexAuditResponse> {
     const { data } = await apiClient.get('/observability/index-audit', { params })
+    return data
+  },
+
+  async invalidateDatasetCache(datasetId: string): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.post(
+      `/observability/cache/datasets/${encodeURIComponent(datasetId)}/invalidate`
+    )
+    return data
+  },
+
+  async listIndexDrift(params: { dataset_id?: string; status?: string; limit?: number } = {}): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.get('/observability/index-drift', { params })
+    return data
+  },
+
+  async resolveIndexDrift(itemId: string, payload: { resolution_note?: string } = {}): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.post(`/observability/index-drift/${encodeURIComponent(itemId)}/resolve`, {
+      resolution_note: payload.resolution_note ?? '',
+    })
     return data
   },
 }

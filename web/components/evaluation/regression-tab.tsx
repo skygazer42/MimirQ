@@ -9,7 +9,7 @@
 
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { datasetApi, evaluationApi } from '@/lib/api-client'
 import type { Dataset, RegressionRun, RegressionRunCreate, RegressionRunDetail } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -60,7 +60,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
     if (!selectedDatasetId) return
     if (selectedRunId && visibleRuns.some((r) => r?.id === selectedRunId)) return
     setSelectedRunId(visibleRuns?.[0]?.id || '')
-  }, [selectedDatasetId, visibleRuns])
+  }, [selectedDatasetId, selectedRunId, visibleRuns])
 
   // Load datasets for dataset-scoped regression UX.
   useEffect(() => {
@@ -71,8 +71,10 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
         const res = await datasetApi.list({ limit: 200 })
         if (cancelled) return
         setDatasets(res.items || [])
-        if (!selectedDatasetId && res.items?.[0]?.id) {
-          setSelectedDatasetId(res.items[0].id)
+        const firstId = res.items?.[0]?.id
+        if (firstId) {
+          // Avoid capturing selectedDatasetId in this effect; keep defaulting behavior.
+          setSelectedDatasetId((prev) => prev || firstId)
         }
       } catch (e) {
         // Non-fatal: users can still view existing runs; creating new runs will be blocked.
@@ -88,25 +90,24 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
   }, [])
 
   // 加载运行历史
-  const loadRuns = async () => {
+  const loadRuns = useCallback(async () => {
     try {
       setIsLoadingRuns(true)
       const result = await evaluationApi.listRegressionRuns({ limit: 50 })
       setRuns(result.items || [])
-      if (!selectedRunId && result.items?.length) {
-        setSelectedRunId(result.items[0].id)
-      }
+      const firstRunId = result.items?.[0]?.id
+      if (firstRunId) setSelectedRunId((prev) => prev || firstRunId)
     } catch (error) {
       console.error('加载运行历史失败:', error)
       toast.error(formatApiError(error, '加载运行历史失败'))
     } finally {
       setIsLoadingRuns(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    loadRuns()
-  }, [])
+    detachPromise(loadRuns())
+  }, [loadRuns])
 
   // 加载运行详情
   useEffect(() => {

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -161,7 +161,7 @@ export function DatasetFolderTree({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!datasetId) return
     setLoading(true)
     setError(null)
@@ -176,11 +176,11 @@ export function DatasetFolderTree({
     } finally {
       setLoading(false)
     }
-  }
+  }, [datasetId, lifecycle, maxDepth])
 
   useEffect(() => {
     detachPromise(load())
-  }, [datasetId, lifecycle, maxDepth])
+  }, [load])
 
   return (
     <div className={cn('space-y-3', className)}>

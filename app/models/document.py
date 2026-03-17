@@ -22,7 +22,6 @@ from sqlalchemy.sql import func
 
 from app.core.database import Base
 
-
 DELETE_ORPHAN_CASCADE = "all, delete-orphan"
 
 

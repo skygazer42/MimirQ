@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bookmark, Download, Loader2, Save, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -153,7 +153,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     }
   }
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true)
     try {
       const ds = (datasetId || '').trim()
@@ -171,11 +171,11 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     } finally {
       setLoading(false)
     }
-  }
+  }, [datasetId, selectedId])
 
   useEffect(() => {
     detachPromise(refresh())
-  }, [])
+  }, [refresh])
 
   const onSave = async () => {
     if (!selectedPreset) {

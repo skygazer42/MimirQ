@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { BarChart3, RefreshCw, Coins } from 'lucide-react'
 
@@ -41,7 +41,7 @@ export default function UsagePage() {
     return `${sec.toFixed(2)}s`
   }
 
-  const load = async (days = windowDays) => {
+  const load = useCallback(async (days: number) => {
     setLoading(true)
     try {
       const [usage, costUsage, q, datasets] = await Promise.all([
@@ -68,11 +68,11 @@ export default function UsagePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     detachPromise(load(windowDays))
-  }, [])
+  }, [load, windowDays])
 
   const rows = useMemo(() => {
     const list = summary?.by_dataset || []
@@ -118,7 +118,6 @@ export default function UsagePage() {
                   onValueChange={(v) => {
                     const next = Number.parseInt(v, 10)
                     setWindowDays(next)
-                    detachPromise(load(next))
                   }}
                 >
                   <SelectTrigger className="h-9 rounded-xl">

@@ -3162,6 +3162,14 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             hierarchy_expand_attempted = True
             exp_start = time.time()
 
+            tenant_uuid: UUID | None = None
+            try:
+                tenant_id_raw = state.get("tenant_id")
+                if tenant_id_raw is not None:
+                    tenant_uuid = UUID(str(tenant_id_raw))
+            except Exception:
+                tenant_uuid = None
+
             from app.rag.retrieval.hierarchy_expand import expand_hierarchy_context  # noqa: WPS433
 
             # Version-aware expansion: only fetch hierarchy parents/siblings from the same
@@ -3185,9 +3193,10 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             def _fetch_by_key(pairs: set[tuple[str, str]]) -> dict[tuple[str, str], Document]:
                 if not pairs:
                     return {}
+                from sqlalchemy import or_  # noqa: WPS433
+
                 from app.core.database import SessionLocal  # noqa: WPS433
                 from app.models.document import DocumentChunk  # noqa: WPS433
-                from sqlalchemy import or_  # noqa: WPS433
 
                 by_doc: dict[str, set[str]] = {}
                 for doc_id, node_key in pairs:
@@ -3213,7 +3222,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                             continue
 
                         q = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid)
-                        if tenant_uuid:
+                        if tenant_uuid is not None:
                             q = q.filter(DocumentChunk.tenant_id == tenant_uuid)
                         q = q.filter(
                             or_(
@@ -4068,6 +4077,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["hierarchy_recall_enabled"] = bool(hierarchy_recall_enabled)
     metrics["hierarchy_family_collapse"] = bool(hierarchy_family_collapse)
     metrics["hierarchy_family_aggregation"] = str(hierarchy_family_aggregation)
+    metrics["hierarchy_family_aggregation_meta"] = (
+        dict(family_aggregation_meta) if isinstance(family_aggregation_meta, dict) else None
+    )
     metrics["hierarchy_tree_dedup"] = bool(hierarchy_tree_dedup)
     metrics["hierarchy_tree_dedup_meta"] = (dict(tree_dedup_meta) if isinstance(tree_dedup_meta, dict) else None)
     metrics["hierarchy_parent_depth"] = int(hierarchy_parent_depth)
@@ -4300,6 +4312,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "enabled": bool(hierarchy_recall_enabled),
         "family_collapse": bool(hierarchy_family_collapse),
         "family_aggregation": str(hierarchy_family_aggregation),
+        "family_aggregation_meta": (
+            dict(family_aggregation_meta) if isinstance(family_aggregation_meta, dict) else None
+        ),
         "tree_dedup": bool(hierarchy_tree_dedup),
         "parent_depth": int(hierarchy_parent_depth),
         "sibling_window": int(hierarchy_sibling_window),

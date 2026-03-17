@@ -128,7 +128,7 @@ export default function ReportsCenterPage() {
 
   useEffect(() => {
     detachPromise(loadReport())
-  }, [datasetId])
+  }, [loadReport])
 
   useEffect(() => {
     return () => {

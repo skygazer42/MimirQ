@@ -118,9 +118,8 @@ from app.rag.chunking.strategies.markdown import (
     MarkdownAwareChunker,
     MarkdownHeaderChunker,
 )
-from app.rag.chunking.strategies.markdown_hierarchy import MarkdownHierarchyChunker
-from app.rag.chunking.strategies.text_hierarchy import TextHierarchyChunker
 from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker
+from app.rag.chunking.strategies.markdown_hierarchy import MarkdownHierarchyChunker
 from app.rag.chunking.strategies.markdown_outline import MarkdownOutlineChunker
 from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker
 from app.rag.chunking.strategies.maven_pom import MavenPOMChunker
@@ -154,6 +153,7 @@ from app.rag.chunking.strategies.stacktrace import StackTraceChunker
 from app.rag.chunking.strategies.subtitles import SubtitlesChunker
 from app.rag.chunking.strategies.terraform_hcl import TerraformHCLChunker
 from app.rag.chunking.strategies.terraform_plan import TerraformPlanChunker
+from app.rag.chunking.strategies.text_hierarchy import TextHierarchyChunker
 from app.rag.chunking.strategies.timeline_events import TimelineEventsChunker
 from app.rag.chunking.strategies.token import LangChainTokenChunker
 from app.rag.chunking.strategies.toml_config import TOMLConfigChunker
