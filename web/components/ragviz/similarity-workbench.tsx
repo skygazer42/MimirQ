@@ -1463,10 +1463,21 @@ function PlotlyHeatmap({
 
     const layout: any = {
       margin: { l: 120, r: 30, t: 30, b: 120 },
-      xaxis: { automargin: true, tickangle: 45 },
-      yaxis: { automargin: true, autorange: 'reversed' },
-      paper_bgcolor: 'transparent',
-      plot_bgcolor: 'transparent',
+      xaxis: {
+        automargin: true,
+        tickangle: 45,
+        tickfont: { color: '#94a3b8', size: 10, family: 'Inter, system-ui, sans-serif' },
+        gridcolor: 'rgba(100, 116, 139, 0.1)',
+      },
+      yaxis: {
+        automargin: true,
+        autorange: 'reversed',
+        tickfont: { color: '#94a3b8', size: 10, family: 'Inter, system-ui, sans-serif' },
+        gridcolor: 'rgba(100, 116, 139, 0.1)',
+      },
+      paper_bgcolor: 'rgba(0,0,0,0)',
+      plot_bgcolor: 'rgba(15, 15, 25, 0.5)',
+      font: { color: '#e2e8f0', family: 'Inter, system-ui, sans-serif' },
     }
 
     const config: any = {

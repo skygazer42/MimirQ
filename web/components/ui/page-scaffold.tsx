@@ -50,31 +50,33 @@ export function PageScaffold({
   return (
     <>
       {showHeader ? (
-        <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
-          <PageContainer size={size}>
-            <PageHeader
-              title={title}
-              description={description}
-              icon={icon}
-              iconColor={iconColor}
-              badge={badge}
-              className={cn("p-0", headerClassName)}
-            >
-              {actions}
-            </PageHeader>
-          </PageContainer>
+        <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-sm border-b border-border/50">
+          <div className="px-6 md:px-8 py-4">
+            <PageContainer size={size}>
+              <PageHeader
+                title={title}
+                description={description}
+                icon={icon}
+                iconColor={iconColor}
+                badge={badge}
+                className={cn("p-0", headerClassName)}
+              >
+                {actions}
+              </PageHeader>
+            </PageContainer>
+          </div>
         </div>
       ) : null}
 
       {top ? (
-        <div className={cn("px-6 md:px-8 pb-6 flex-shrink-0 relative z-10", topClassName)}>
+        <div className={cn("px-6 md:px-8 pb-4 flex-shrink-0 relative z-10", topClassName)}>
           <PageContainer size={size}>{top}</PageContainer>
         </div>
       ) : null}
 
       {toolbar ? (
         <PageHeaderBar className={cn("z-20", toolbarBarClassName)}>
-          <div className={cn("px-6 md:px-8 py-3 md:py-4", toolbarClassName)}>
+          <div className={cn("px-6 md:px-8 py-2.5", toolbarClassName)}>
             <PageContainer size={size}>
               <PageToolbar>{toolbar}</PageToolbar>
             </PageContainer>

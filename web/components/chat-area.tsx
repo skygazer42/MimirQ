@@ -688,9 +688,9 @@ export function ChatArea({
           </div>
 
 	          <div className={cn(
-	            "relative group rounded-[2rem] glass border-border/60 transition-colors transition-shadow duration-200 motion-reduce:transition-none",
-	            "shadow-soft hover:shadow-strong",
-	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
+	            "relative group rounded-xl bg-card border border-border/50 transition-all duration-150",
+	            "shadow-soft",
+	            "focus-within:ring-2 focus-within:ring-ring/30 focus-within:border-border"
 	          )}>
               <Label htmlFor="chat-composer" className="sr-only">
                 消息输入框
@@ -704,7 +704,7 @@ export function ChatArea({
               onKeyUp={handleKeyUp}
 	              placeholder="问点什么... (Shift + Enter 换行)"
 	              autoFocus
-	              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium"
+	              className="w-full px-4 py-3.5 pr-20 resize-none outline-none rounded-xl max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/50 no-scrollbar text-foreground"
 	              rows={1}
 	            />
 
@@ -714,7 +714,7 @@ export function ChatArea({
 	                  size="icon"
 	                  variant="ghost"
 	                  onClick={() => setVoiceModeOpen(true)}
-	                  className="rounded-full h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted"
+	                  className="rounded-lg size-8 text-muted-foreground hover:text-foreground"
 	                  title="语音模式"
 	                  aria-label="语音模式"
 	                >
@@ -727,7 +727,7 @@ export function ChatArea({
 	                  <Button
 	                    size="icon"
 	                    onClick={stopGeneration}
-	                    className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
+	                    className="rounded-lg size-8 bg-destructive/10 text-destructive hover:bg-destructive/20"
 	                    title="停止生成"
 	                    aria-label="停止生成"
 	                  >
@@ -741,10 +741,10 @@ export function ChatArea({
 	                    onClick={handleSend}
 	                    disabled={!inputValue.trim()}
                     className={cn(
-                      "rounded-full size-9 shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none",
+                      "rounded-lg size-8 transition-all duration-150",
                       inputValue.trim()
-                        ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
-                        : "bg-secondary text-muted-foreground cursor-not-allowed"
+                        ? "bg-primary text-primary-foreground hover:brightness-110"
+                        : "bg-muted text-muted-foreground cursor-not-allowed"
 	                    )}
 	                    title="发送"
 	                    aria-label="发送"
@@ -808,25 +808,24 @@ function WelcomeScreen() {
 })()
 
   return (
-    <div className="flex flex-col items-center justify-center text-center space-y-8 px-4 py-10 relative z-10">
-      <div className="size-24 rounded-[2rem] border border-border bg-card shadow-soft flex items-center justify-center">
-        <Bot className="h-12 w-12 text-primary" aria-hidden="true" />
+    <div className="flex flex-col items-center justify-center text-center space-y-6 px-4 py-10 relative z-10 animate-fade-in">
+      <div className="size-14 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+        <Bot className="h-7 w-7 text-primary" aria-hidden="true" />
       </div>
 
-      <div className="space-y-2 max-w-lg">
-        <h2 className="text-balance text-3xl font-semibold text-foreground">
-          {greeting}，<span className="text-primary">探索者</span>
+      <div className="space-y-2 max-w-md">
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+          {greeting}
         </h2>
-        <p className="text-pretty text-muted-foreground text-sm md:text-base leading-relaxed">
-          我是 MimirQ，你的智能知识中枢。<br />
-          你可以在下方输入问题，我会基于你的知识库进行检索与回答。
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          基于知识库进行检索与回答，问任何问题开始对话。
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-2xl">
-        <FeatureCard icon={Database} title="混合检索" desc="结合语义与关键词的精准召回" />
-        <FeatureCard icon={Sparkles} title="智能问答" desc="基于上下文的推理与回答" />
-        <FeatureCard icon={Wand2} title="结构化输出" desc="将非结构化内容整理为表格或 JSON" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 w-full max-w-xl">
+        <FeatureCard icon={Database} title="混合检索" desc="语义 + 关键词精准召回" />
+        <FeatureCard icon={Sparkles} title="智能问答" desc="基于上下文推理回答" />
+        <FeatureCard icon={Wand2} title="结构化输出" desc="整理为表格或 JSON" />
       </div>
     </div>
   )
@@ -834,10 +833,10 @@ function WelcomeScreen() {
 
 function FeatureCard({ icon: Icon, title, desc }: Readonly<{ icon: any, title: string, desc: string }>) {
   return (
-    <div className="p-5 rounded-2xl border border-border bg-card shadow-soft cursor-default text-left">
-      <Icon className="h-6 w-6 text-primary/80 mb-3" aria-hidden="true" />
-      <h3 className="text-sm font-semibold text-balance text-foreground/90 mb-1.5">{title}</h3>
-      <p className="text-xs text-pretty text-muted-foreground leading-relaxed">{desc}</p>
+    <div className="p-4 rounded-lg border border-border/50 bg-card cursor-default text-left transition-colors duration-150 hover:border-primary/20">
+      <Icon className="h-4 w-4 text-primary mb-2.5" aria-hidden="true" />
+      <h3 className="text-[13px] font-medium text-foreground mb-1">{title}</h3>
+      <p className="text-2xs text-muted-foreground leading-relaxed">{desc}</p>
     </div>
   )
 }
