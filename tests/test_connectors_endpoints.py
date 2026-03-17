@@ -29,6 +29,7 @@ def _cleanup_module_stubs():  # noqa: ANN201
         if sys.modules.get(name) is module:
             sys.modules.pop(name, None)
 
+
 if "app.core.config" not in sys.modules:
     config_mod = types.ModuleType("app.core.config")
     config_mod.settings = types.SimpleNamespace(
@@ -94,10 +95,10 @@ if "app.tasks.queue" not in sys.modules:
     sys.modules["app.tasks.queue"] = queue_mod
     _remember_stub("app.tasks.queue", queue_mod)
 
-from app.api.dependencies.auth import get_current_account_id
-from app.api.dependencies.tenant import get_tenant_id
-from app.api.schemas.connector import ConnectorInfo, ConnectorRunOut
-from app.core.database import get_db
+from app.api.dependencies.auth import get_current_account_id  # noqa: E402
+from app.api.dependencies.tenant import get_tenant_id  # noqa: E402
+from app.api.schemas.connector import ConnectorInfo, ConnectorRunOut  # noqa: E402
+from app.core.database import get_db  # noqa: E402
 
 
 class _DummyDB:

@@ -18,7 +18,6 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-
 FetchByHierarchyKey = Callable[[set[tuple[str, str]]], dict[tuple[str, str], Document]]
 
 

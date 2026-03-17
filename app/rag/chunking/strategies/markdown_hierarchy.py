@@ -96,7 +96,7 @@ class MarkdownHierarchyChunker(BaseChunker):
                     continue
                 sentences_by_parent.setdefault(pid, []).append(s)
 
-            for pid, slist in sentences_by_parent.items():
+            for _pid, slist in sentences_by_parent.items():
                 slist.sort(key=lambda x: int(x.get("index") or 0))
 
             # Heading context (optional; used by embedding prefix logic).
@@ -192,4 +192,3 @@ class MarkdownHierarchyChunker(BaseChunker):
 
 
 __all__ = ["MarkdownHierarchyChunker"]
-

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ShieldCheck, RefreshCw, Search, Copy, FilterX } from 'lucide-react'
 
@@ -71,7 +71,7 @@ export default function AuditLogsPage() {
     return p
   }, [filters, skip])
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await auditApi.listLogs(params)
@@ -82,11 +82,11 @@ export default function AuditLogsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [params])
 
   useEffect(() => {
     detachPromise(load())
-  }, [params])
+  }, [load])
 
   const items: AuditLogItem[] = resp?.items || []
   const total = resp?.total || 0

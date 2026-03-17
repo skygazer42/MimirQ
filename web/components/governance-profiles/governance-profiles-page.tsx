@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Download, Plus, RefreshCw, ShieldCheck, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -39,7 +39,7 @@ export function GovernanceProfilesPage() {
     }
   }, [query, includeBuiltin])
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const data = await pipelineApi.listGovernanceProfiles(params)
@@ -50,12 +50,12 @@ export function GovernanceProfilesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [params])
 
   // Keep it simple: fetch on param change.
   useEffect(() => {
     detachPromise(load())
-  }, [params])
+  }, [load])
 
   const items: GovernanceProfileSummary[] = resp?.items || []
 
