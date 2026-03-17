@@ -838,11 +838,8 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
                     continue
                 try:
                     img = pil_image.open(BytesIO(raw_bytes))  # type: ignore[arg-type]
-                    try:
-                        if getattr(img, "mode", None) != "RGB":
-                            img = img.convert("RGB")
-                    except Exception:
-                        pass
+                    if getattr(img, "mode", None) != "RGB":
+                        img = img.convert("RGB")
                     out = BytesIO()  # type: ignore[call-arg]
                     img.save(out, format="JPEG", quality=85, optimize=True)
                     image_bytes = out.getvalue()
@@ -2243,9 +2240,12 @@ async def _ingest_url_upload_request(
     url_normalized_canonical: str | None = None
 
     if content_type and "html" in content_type:
+        def _read_html_prefix(path: Path) -> str:
+            with path.open("rb") as f:
+                return f.read(200_000).decode("utf-8", "ignore")
+
         try:
-            with open(final_path, "rb") as f:
-                html_prefix = f.read(200_000).decode("utf-8", "ignore")
+            html_prefix = await asyncio.to_thread(_read_html_prefix, final_path)
             url_canonical = extract_canonical_url(html_prefix, base_url=url_final)
             url_normalized_canonical = normalize_url_for_dedup(url_canonical) if url_canonical else None
         except Exception:
@@ -3623,12 +3623,12 @@ async def upload_documents_batch(
                                     .first()
                                 )
                                 if row is not None:
-                                    row.status = "failed"
+                                    row.status = 'failed'
                                     row.error_message = str(exc)[:200]
                                     row.finished_at = datetime.now(UTC)
                                     db2.commit()
-                            except Exception:
-                                pass
+                            except Exception as mark_exc:  # noqa: BLE001
+                                logger.warning('Failed to mark precheck scan run as failed: %s', str(mark_exc)[:200])
                             raise
                         finally:
                             db2.close()
@@ -6460,8 +6460,9 @@ async def create_document_chunk(
             default_source=str(getattr(document, "filename", "") or "unknown"),
             enable_bm25=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
         )
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        # Best-effort: keep the primary write path resilient (BM25 is an auxiliary index).
+        logger.debug("BM25 upsert failed for chunk %s: %s", str(getattr(chunk, "id", "") or "?"), str(exc)[:200])
 
     # Update document stats for active version (best-effort).
     try:
@@ -6918,10 +6919,7 @@ async def disable_document_chunk(
 
     if getattr(chunk, "disabled_at", None) is None:
         chunk.disabled_at = datetime.now(UTC)
-    try:
-        chunk.vector_id = None
-    except Exception:
-        pass
+    chunk.vector_id = None
 
     await _record_chunk_index_drift(
         db=db,
@@ -7068,8 +7066,8 @@ async def reembed_document_chunks(
                 tenant_id=tenant_id,
                 metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
             )
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Vector filtered delete failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
 
         try:
             ids = list(vector_store.add_documents([{"content": chunk.content, "metadata": meta_for_vector}], document_id, tenant_id))
@@ -7086,8 +7084,8 @@ async def reembed_document_chunks(
             bm25_meta.setdefault("source", bm25_meta.get("source", str(getattr(document, "filename", "") or "unknown")))
             bm25_doc = Document(page_content=str(getattr(chunk, "content", "") or ""), id=str(chunk.id), metadata=bm25_meta)
             hybrid_retriever.upsert_bm25_documents([bm25_doc], tenant_id=tenant_id)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("BM25 upsert failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
 
         reembedded += 1
 
@@ -8389,8 +8387,8 @@ async def _delete_document_lifecycle(
             )
             if ds is not None:
                 ds.updated_at = datetime.now(UTC)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Failed touching dataset.updated_at after delete: %s", str(exc)[:200])
 
     db.delete(document)
     audit_log_event(
@@ -9672,8 +9670,8 @@ async def create_document_with_manual_chunks(
             )
             if stats:
                 meta["chunking_stats"] = stats
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Failed computing chunking stats for manual document %s: %s", document_id, str(exc)[:200])
         db_document.doc_metadata = meta
         db.commit()
         db.refresh(db_document)
@@ -10591,11 +10589,8 @@ async def preview_chunking(
         detail = "Failed to preview chunking" if is_production_env() else f"Failed to preview chunking: {msg}"
         raise HTTPException(status_code=500, detail=detail) from e
     finally:
-        try:
-            if run_dir.exists():
-                shutil.rmtree(run_dir, ignore_errors=True)
-        except Exception:
-            pass
+        if run_dir.exists():
+            shutil.rmtree(run_dir, ignore_errors=True)
 
 
 # ==================== Chunk preview reuse API (no upload) ====================
