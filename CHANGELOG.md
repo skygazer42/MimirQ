@@ -60,6 +60,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Web: cover missing backend routes in `web/lib/api-client.ts` (SCIM Groups/Users mutations; observability periodic job freshness).
 - Web: pin ESLint to v9 to avoid a runtime crash in `eslint-plugin-react` when linting.
 
+## [0.5.1] - 2026-03-17
+
+### Fixed
+
+- Web: stabilize React hooks dependencies in several pages/components to avoid stale closures and reduce `react-hooks/exhaustive-deps` noise.
+- Web: cover additional backend routes in `web/lib/api-client.ts` (SAML metadata, evidence training export/capsules, connectors reconcile, retrieval explain/config hash, observability cache invalidation and index drift).
+- OpenAPI: regenerate `web/types/openapi.ts` after adding new backend endpoints so contract checks stay consistent.
+- Retrieval: fix hierarchy expansion fetcher tenant scoping and include hierarchy family aggregation metadata in retrieval metrics/debug output.
+- Lint/Test: ruff cleanup (import order, unused vars) and test module import ordering guard fixes.
+
 ## [0.2] - 2026-02-22
 
 ### Added
