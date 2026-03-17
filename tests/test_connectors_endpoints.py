@@ -6,10 +6,28 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.helpers.async_utils import yield_control
+
+_STUBBED_MODULES: dict[str, types.ModuleType] = {}
+
+
+def _remember_stub(name: str, module: types.ModuleType) -> None:
+    # This test module installs lightweight stubs into `sys.modules` to avoid
+    # importing the full connector stack. Ensure we clean them up after this
+    # module finishes so other tests can import the real implementations.
+    _STUBBED_MODULES[name] = module
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_module_stubs():  # noqa: ANN201
+    yield
+    for name, module in list(_STUBBED_MODULES.items()):
+        if sys.modules.get(name) is module:
+            sys.modules.pop(name, None)
 
 if "app.core.config" not in sys.modules:
     config_mod = types.ModuleType("app.core.config")
@@ -27,11 +45,13 @@ if "app.core.config" not in sys.modules:
         DB_CATALOG_ENABLED=False,
     )
     sys.modules["app.core.config"] = config_mod
+    _remember_stub("app.core.config", config_mod)
 
 if "app.api.v1" not in sys.modules:
     v1_pkg = types.ModuleType("app.api.v1")
     v1_pkg.__path__ = [str(Path(__file__).resolve().parents[1] / "app" / "api" / "v1")]
     sys.modules["app.api.v1"] = v1_pkg
+    _remember_stub("app.api.v1", v1_pkg)
 
 if "app.api.v1.documents" not in sys.modules:
     documents_mod = types.ModuleType("app.api.v1.documents")
@@ -54,6 +74,7 @@ if "app.api.v1.documents" not in sys.modules:
     documents_mod._normalize_datetime_utc_iso = lambda *_a, **_k: None
     documents_mod._resolve_writable_dataset = lambda *_a, **_k: None
     sys.modules["app.api.v1.documents"] = documents_mod
+    _remember_stub("app.api.v1.documents", documents_mod)
 
 if "app.services.web_crawler" not in sys.modules:
     web_crawler_mod = types.ModuleType("app.services.web_crawler")
@@ -64,12 +85,14 @@ if "app.services.web_crawler" not in sys.modules:
 
     web_crawler_mod.crawl_site = _crawl_noop
     sys.modules["app.services.web_crawler"] = web_crawler_mod
+    _remember_stub("app.services.web_crawler", web_crawler_mod)
 
 if "app.tasks.queue" not in sys.modules:
     queue_mod = types.ModuleType("app.tasks.queue")
     queue_mod.enqueue_connector_run = lambda *_a, **_k: None
     queue_mod.get_queue = lambda *_a, **_k: None
     sys.modules["app.tasks.queue"] = queue_mod
+    _remember_stub("app.tasks.queue", queue_mod)
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id

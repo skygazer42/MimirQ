@@ -172,6 +172,42 @@ Rollback to defaults:
 python scripts/apply_fusion_weights_to_dataset.py --dataset-id <DATASET_UUID> --clear --execute
 ```
 
+## Hierarchy Recall Overlay (Post-Fusion)
+
+MimirQ also supports an optional **hierarchy-aware recall overlay** that runs **after** the base retrieval lists are produced (channel fusion, and query-variant fusion if multi-query is enabled).
+
+This is intentionally designed as an overlay:
+- It does **not** replace the ingestion parser or storage model.
+- It does **not** change the channel fusion math.
+- It operates on the *ranked* candidates to improve structural coverage and reduce redundancy.
+
+### What The Overlay Does
+
+When enabled, the orchestrator can apply:
+- **Overfetch then collapse by family**: fetch `top_k * hierarchy_overfetch_factor` and then collapse to distinct families (recall-first profiles).
+- **Family aggregation across query variants** (`frequency | score | combined`): promote candidates that are consistently hit across query variants.
+- **Tree-style dedup** (ancestor-wins): collapse near-duplicates using hierarchy keys (optional).
+- **Bounded context expansion**: attach parent/sibling chunks around an anchor hit (optional; controlled by `hierarchy_parent_depth` and `hierarchy_sibling_window`).
+
+### Control Knobs
+
+You can enable it in `rag_config` either by profile or by explicit flags:
+- Profiles: `hierarchy_recall20`, `hierarchy_recall20_expand`, `hierarchy_hybrid_ce`, `hierarchy_grounded_strict`
+- Flags:
+  - `enable_hierarchy_recall`
+  - `hierarchy_family_collapse`
+  - `hierarchy_family_aggregation`
+  - `hierarchy_tree_dedup`
+  - `hierarchy_overfetch_factor`
+  - `hierarchy_parent_depth`
+  - `hierarchy_sibling_window`
+
+### Interaction With Fusion
+
+Some pragmatic guidelines:
+- If you enable family collapse, expect the visible top-k to contain fewer “same-section duplicates”; increase `top_k` and/or `hierarchy_overfetch_factor` if you want more distinct context.
+- `budgeted_rrf` remains useful to enforce cross-channel coverage in the prefix; the hierarchy overlay complements it by reducing structural duplicates and (optionally) expanding local context.
+
 ## Offline Evaluation (Report)
 
 Use `scripts/eval_retrieval_fusion_offline.py` to compare fusion variants on a regression cases bundle through the Evidence API.

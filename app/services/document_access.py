@@ -132,6 +132,7 @@ def get_allowed_document_id_sets(
     doc_ids: list[UUID] | None,
     *,
     check_member: bool = True,
+    _check_member: bool | None = None,
 ) -> tuple[set[UUID], set[UUID]]:
     """
     Resolve (allowed_ids, missing_ids) for a set of document IDs.
@@ -139,7 +140,8 @@ def get_allowed_document_id_sets(
     - missing_ids: document ids not found under the tenant
     - allowed_ids: ids the account can read (legacy docs without dataset are allowed)
     """
-    if check_member:
+    check_member0 = bool(_check_member) if _check_member is not None else bool(check_member)
+    if check_member0:
         DatasetService.ensure_member(db, tenant_id, account_id)
     if not doc_ids:
         return set(), set()

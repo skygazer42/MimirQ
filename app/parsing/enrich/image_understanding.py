@@ -74,7 +74,7 @@ def _safe_read_image_path(raw_path: str, *, tenant_id: str) -> bytes:
     return candidate.read_bytes()
 
 
-def load_image_for_ocr(meta: dict[str, Any], *, tenant_id: str) -> tuple[PILImage.Image | None, bool]:
+def load_image_for_ocr(meta: dict[str, Any], *, _tenant_id: str) -> tuple[PILImage.Image | None, bool]:
     """
     Load a PIL image from chunk metadata for OCR (best-effort).
 
@@ -105,7 +105,7 @@ def load_image_for_ocr(meta: dict[str, Any], *, tenant_id: str) -> tuple[PILImag
     raw_path = meta.get("image_path")
     if isinstance(raw_path, str) and raw_path.strip():
         try:
-            binary = _safe_read_image_path(raw_path, tenant_id=tenant_id)
+            binary = _safe_read_image_path(raw_path, tenant_id=_tenant_id)
             if binary:
                 img = PILImage.open(BytesIO(binary))
                 return img, True
@@ -124,7 +124,7 @@ def load_image_for_ocr(meta: dict[str, Any], *, tenant_id: str) -> tuple[PILImag
     return None, False
 
 
-def ocr_image(image: PILImage.Image, *, max_chars: int = 2000) -> str:
+def ocr_image(image: PILImage.Image, *, _max_chars: int = 2000) -> str:
     """
     Run OCR on a PIL image (best-effort) and return text.
 
@@ -132,7 +132,7 @@ def ocr_image(image: PILImage.Image, *, max_chars: int = 2000) -> str:
     - Uses the same RapidOCR wrapper as PDF quality validation (lazy init).
     - Returns "" on any failure.
     """
-    max_chars_i = max(0, int(max_chars or 0))
+    max_chars_i = max(0, int(_max_chars or 0))
     if max_chars_i == 0:
         return ""
 
@@ -182,4 +182,3 @@ __all__ = [
     "load_image_for_ocr",
     "ocr_image",
 ]
-

@@ -17,6 +17,8 @@ from app.rag.retrieval.contract import (
 
 from .base import OrmModel
 
+HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
+
 
 class Citation(BaseModel):
     """Citation information."""
@@ -36,6 +38,10 @@ class Citation(BaseModel):
     chunk_role: str | None = None
     retrieval_role: str | None = None
     neighbor_of: str | None = None
+    hierarchy_basis: str | None = None
+    hierarchy_family_key: str | None = None
+    family_collapse_key: str | None = None
+    family_hit: bool | None = None
     doc_pipeline_key: str | None = None
     pipeline_hash: str | None = None
     relevance_score: float = 0.0
@@ -160,6 +166,15 @@ class ChatRAGConfig(BaseModel):
     multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
 
+    # Optional hierarchy-aware recall overlay.
+    enable_hierarchy_recall: bool | None = None
+    hierarchy_family_collapse: bool | None = None
+    hierarchy_family_aggregation: Literal["frequency", "score", "combined"] | None = None
+    hierarchy_tree_dedup: bool | None = None
+    hierarchy_parent_depth: int | None = Field(default=None, ge=0, le=8)
+    hierarchy_sibling_window: int | None = Field(default=None, ge=0, le=16)
+    hierarchy_overfetch_factor: int | None = Field(default=None, ge=1, le=32)
+
     top_k: int = Field(default_factory=lambda: settings.RETRIEVAL_TOP_K, ge=1, le=100)
     score_threshold: float = Field(default_factory=lambda: settings.SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     max_tokens: int = Field(default=2000, ge=1, le=200_000)
@@ -255,6 +270,26 @@ class ChatRAGConfig(BaseModel):
             if len(cleaned) >= 80:
                 break
         return cleaned or None
+
+    @field_validator("hierarchy_family_aggregation", mode="before")
+    @classmethod
+    def _normalize_hierarchy_family_aggregation(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError(
+                "hierarchy_family_aggregation must be one of: "
+                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+            )
+        raw = v.strip().lower()
+        if not raw:
+            return None
+        if raw not in HIERARCHY_FAMILY_AGGREGATION_VALUES:
+            raise ValueError(
+                "hierarchy_family_aggregation must be one of: "
+                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+            )
+        return raw
 
     @field_validator("fusion_strategy", mode="before")
     @classmethod
@@ -436,6 +471,20 @@ class ChatRAGConfig(BaseModel):
             self.retrieval_contract_mode = normalize_retrieval_contract_mode(applied["retrieval_contract_mode"])
         if applied.get("visible_evidence_only") is not None:
             self.visible_evidence_only = bool(applied["visible_evidence_only"])
+        if applied.get("enable_hierarchy_recall") is not None:
+            self.enable_hierarchy_recall = bool(applied["enable_hierarchy_recall"])
+        if applied.get("hierarchy_family_collapse") is not None:
+            self.hierarchy_family_collapse = bool(applied["hierarchy_family_collapse"])
+        if applied.get("hierarchy_family_aggregation") is not None:
+            self.hierarchy_family_aggregation = str(applied["hierarchy_family_aggregation"])
+        if applied.get("hierarchy_tree_dedup") is not None:
+            self.hierarchy_tree_dedup = bool(applied["hierarchy_tree_dedup"])
+        if applied.get("hierarchy_parent_depth") is not None:
+            self.hierarchy_parent_depth = int(applied["hierarchy_parent_depth"])
+        if applied.get("hierarchy_sibling_window") is not None:
+            self.hierarchy_sibling_window = int(applied["hierarchy_sibling_window"])
+        if applied.get("hierarchy_overfetch_factor") is not None:
+            self.hierarchy_overfetch_factor = int(applied["hierarchy_overfetch_factor"])
         if default_profile_applied and bool(getattr(settings, "CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY", False)):
             self.visible_evidence_only = True
         return self

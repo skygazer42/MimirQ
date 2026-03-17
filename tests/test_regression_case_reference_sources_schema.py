@@ -52,6 +52,8 @@ def test_reference_source_accepts_optional_fields():
                 "page_number": 3,
                 "start_char": 10,
                 "end_char": 42,
+                "family_collapse_key": "doc:section:1",
+                "hierarchy_family_key": "doc:section:1",
                 "quote": "snippet",
                 "label": "manual",
             }
@@ -59,4 +61,3 @@ def test_reference_source_accepts_optional_fields():
     )
     assert str(req.dataset_id) == str(ds)
     assert len(req.reference_sources) == 1
-

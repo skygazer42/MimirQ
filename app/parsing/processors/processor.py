@@ -36,8 +36,14 @@ from app.parsing.subprocess_runner import SubprocessCancelled, run_parser_subpro
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.roles import classify_chunk_semantic_role
 from app.rag.chunking.strategies import SeparatorChunker
+from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata
 from app.rag.core.logging import get_logger
-from app.rag.core.metadata import infer_chunk_structure, normalize_image_metadata, normalize_section_metadata
+from app.rag.core.metadata import (
+    ensure_hierarchy_overlay_metadata,
+    infer_chunk_structure,
+    normalize_image_metadata,
+    normalize_section_metadata,
+)
 from app.rag.kg.pipeline import extract_events
 from app.rag.preprocessing.markdown_canonical import canonicalize_markdown
 from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
@@ -1038,6 +1044,11 @@ class ChunkAssetStage:
             meta["chunk_strategy"] = resolved_chunk_strategy
             meta.setdefault("chunk_key", f"{str(document_id)}:{idx}")
             normalize_section_metadata(meta)
+            ensure_hierarchy_overlay_metadata(
+                meta,
+                document_id=str(document_id),
+                chunk_index=idx,
+            )
 
             # Image understanding (best-effort): keep it off by default; never fail ingest.
             caption = ""
@@ -1053,10 +1064,10 @@ class ChunkAssetStage:
                     except Exception:
                         caption = ""
                 if bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0):
-                    img, should_close = load_image_for_ocr(meta, tenant_id=str(tenant_id))
+                    img, should_close = load_image_for_ocr(meta, _tenant_id=str(tenant_id))
                     try:
                         if img is not None:
-                            ocr_text = ocr_image(img, max_chars=int(image_ocr_max_chars))
+                            ocr_text = ocr_image(img, _max_chars=int(image_ocr_max_chars))
                             if ocr_remaining is not None:
                                 ocr_remaining -= 1
                     except Exception:
@@ -1183,6 +1194,11 @@ class ChunkAssetStage:
                     ocr_meta["content_type"] = "ocr"
                     ocr_meta["chunk_role"] = "ocr"
                     ocr_meta["image_parent_chunk_index"] = int(idx)
+                    ensure_hierarchy_overlay_metadata(
+                        ocr_meta,
+                        document_id=str(document_id),
+                        chunk_index=int(out_idx),
+                    )
                     # Recompute content-derived fields for OCR chunk.
                     for k in ("content_hash", "content_hash_algo", "content_len", "simhash64", "simhash_algo", "structure", "chunk_semantic_role"):
                         ocr_meta.pop(k, None)
@@ -1227,7 +1243,19 @@ class ChunkAssetStage:
             doc_id = str(meta.get("document_id") or document_id)
             meta["prev_chunk_key"] = f"{doc_id}:{prev_idx}" if prev_idx is not None else None
             meta["next_chunk_key"] = f"{doc_id}:{next_idx}" if next_idx is not None else None
+            ensure_hierarchy_overlay_metadata(
+                meta,
+                document_id=doc_id,
+                chunk_index=i,
+                total_chunks=total_out,
+            )
             doc.metadata = meta
+        apply_sequence_hierarchy_metadata(
+            [doc.metadata for doc in out_chunks if isinstance(getattr(doc, "metadata", None), dict)],
+            document_id=str(document_id),
+            basis="chunk_sequence",
+            level="chunk",
+        )
 
         return ChunkAssetResult(chunks=out_chunks, img_ids=img_ids)
 

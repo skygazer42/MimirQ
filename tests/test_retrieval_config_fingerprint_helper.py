@@ -51,3 +51,29 @@ def test_build_retrieval_config_fingerprint_strips_sensitive_fields_and_hashes_s
     )
     assert fp3.get("hash") != fp1.get("hash")
 
+
+def test_build_retrieval_config_fingerprint_keeps_hierarchy_recall_knobs() -> None:
+    from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
+
+    fp = build_retrieval_config_fingerprint(
+        config={
+            "retrieval_mode": "hybrid",
+            "top_k": 20,
+            "enable_hierarchy_recall": True,
+            "hierarchy_family_collapse": True,
+            "hierarchy_family_aggregation": "combined",
+            "hierarchy_tree_dedup": True,
+            "hierarchy_parent_depth": 1,
+            "hierarchy_sibling_window": 2,
+            "hierarchy_overfetch_factor": 4,
+        }
+    )
+
+    cfg = fp.get("config") or {}
+    assert cfg.get("enable_hierarchy_recall") is True
+    assert cfg.get("hierarchy_family_collapse") is True
+    assert cfg.get("hierarchy_family_aggregation") == "combined"
+    assert cfg.get("hierarchy_tree_dedup") is True
+    assert cfg.get("hierarchy_parent_depth") == 1
+    assert cfg.get("hierarchy_sibling_window") == 2
+    assert cfg.get("hierarchy_overfetch_factor") == 4

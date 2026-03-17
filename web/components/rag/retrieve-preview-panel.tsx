@@ -461,6 +461,12 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                     const chunkId = String(hit.chunk_id || '')
                     const checked = !!chunkId && selectedEvidenceSet.has(chunkId)
                     const role = String(hit.retrieval_role || 'main')
+                    const isExpanded = role.startsWith('hierarchy_')
+                    const familyHitRaw = (hit as any).family_hit
+                    const familyHit =
+                      typeof familyHitRaw === 'boolean'
+                        ? familyHitRaw
+                        : Boolean(String((hit as any).family_collapse_key || (hit as any).hierarchy_family_key || '').trim())
                     const chunkRole = String(hit.chunk_role || '')
                     const clause = String(hit.policy_clause_number || '')
                     const pathStr = String(hit.policy_path_str || '')
@@ -479,9 +485,21 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                         </td>
                         <td className="p-3 align-top text-muted-foreground tabular-nums">{idx + 1}</td>
                         <td className="p-3 align-top">
-                          <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
-                            {role}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <span className="font-mono bg-muted/60 border border-border/60 px-2 py-1 rounded-md">
+                              {role}
+                            </span>
+                            {isExpanded ? (
+                              <span className="font-mono bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/20 px-2 py-1 rounded-md">
+                                expanded
+                              </span>
+                            ) : null}
+                            {familyHit ? (
+                              <span className="font-mono bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 px-2 py-1 rounded-md">
+                                family_hit
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="p-3 align-top">
                           {chunkRole ? (

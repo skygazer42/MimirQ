@@ -4,7 +4,7 @@ import importlib.util
 import json
 import sys
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -35,7 +35,7 @@ def test_materialize_feedback_case_infers_question_and_trace() -> None:
     feedback_id = uuid.uuid4()
     assistant_message_id = uuid.uuid4()
     request_id = "req-rollout-1"
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     conversation = Conversation(
         id=conversation_id,
@@ -121,7 +121,7 @@ def test_build_rollout_regression_bundle_materializes_approved_evidence_and_feed
     suite_id = uuid.uuid4()
     document_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     suite = EvidenceSuite(
         id=suite_id,

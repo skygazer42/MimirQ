@@ -97,6 +97,135 @@ def test_settings_accepts_grounded_strict_chat_default_profile(
     assert cfg.CHAT_DEFAULT_RETRIEVAL_PROFILE == "grounded_strict"
 
 
+def test_settings_accepts_hierarchy_hybrid_ce_chat_default_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("CHAT_DEFAULT_RETRIEVAL_PROFILE", "hierarchy_hybrid_ce")
+    cfg = Settings()
+    assert cfg.CHAT_DEFAULT_RETRIEVAL_PROFILE == "hierarchy_hybrid_ce"
+
+
+def test_settings_exposes_safe_off_hierarchy_recall_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    for key in (
+        "HIERARCHY_RECALL_ENABLED",
+        "HIERARCHY_RECALL_FAMILY_COLLAPSE",
+        "HIERARCHY_RECALL_FAMILY_AGGREGATION",
+        "HIERARCHY_RECALL_TREE_DEDUP",
+        "HIERARCHY_RECALL_PARENT_DEPTH",
+        "HIERARCHY_RECALL_SIBLING_WINDOW",
+        "HIERARCHY_RECALL_OVERFETCH_FACTOR",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    cfg = Settings()
+    assert cfg.HIERARCHY_RECALL_ENABLED is False
+    assert cfg.HIERARCHY_RECALL_FAMILY_COLLAPSE is False
+    assert cfg.HIERARCHY_RECALL_FAMILY_AGGREGATION == "combined"
+    assert cfg.HIERARCHY_RECALL_TREE_DEDUP is False
+    assert int(cfg.HIERARCHY_RECALL_PARENT_DEPTH) == 0
+    assert int(cfg.HIERARCHY_RECALL_SIBLING_WINDOW) == 0
+    assert int(cfg.HIERARCHY_RECALL_OVERFETCH_FACTOR) == 4
+
+
+def test_settings_accepts_hierarchy_recall_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("HIERARCHY_RECALL_ENABLED", "true")
+    monkeypatch.setenv("HIERARCHY_RECALL_FAMILY_COLLAPSE", "true")
+    monkeypatch.setenv("HIERARCHY_RECALL_FAMILY_AGGREGATION", "score")
+    monkeypatch.setenv("HIERARCHY_RECALL_TREE_DEDUP", "true")
+    monkeypatch.setenv("HIERARCHY_RECALL_PARENT_DEPTH", "2")
+    monkeypatch.setenv("HIERARCHY_RECALL_SIBLING_WINDOW", "3")
+    monkeypatch.setenv("HIERARCHY_RECALL_OVERFETCH_FACTOR", "5")
+
+    cfg = Settings()
+    assert cfg.HIERARCHY_RECALL_ENABLED is True
+    assert cfg.HIERARCHY_RECALL_FAMILY_COLLAPSE is True
+    assert cfg.HIERARCHY_RECALL_FAMILY_AGGREGATION == "score"
+    assert cfg.HIERARCHY_RECALL_TREE_DEDUP is True
+    assert int(cfg.HIERARCHY_RECALL_PARENT_DEPTH) == 2
+    assert int(cfg.HIERARCHY_RECALL_SIBLING_WINDOW) == 3
+    assert int(cfg.HIERARCHY_RECALL_OVERFETCH_FACTOR) == 5
+
+
+def test_settings_rejects_invalid_hierarchy_family_aggregation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("HIERARCHY_RECALL_FAMILY_AGGREGATION", "votes")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_negative_hierarchy_parent_depth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("HIERARCHY_RECALL_PARENT_DEPTH", "-1")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_too_large_hierarchy_parent_depth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("HIERARCHY_RECALL_PARENT_DEPTH", "9")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_negative_hierarchy_sibling_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("HIERARCHY_RECALL_SIBLING_WINDOW", "-1")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_too_large_hierarchy_sibling_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("HIERARCHY_RECALL_SIBLING_WINDOW", "17")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_non_positive_hierarchy_overfetch_factor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("HIERARCHY_RECALL_OVERFETCH_FACTOR", "0")
+    with pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_rejects_too_large_hierarchy_overfetch_factor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import Settings
+
+    monkeypatch.setenv("HIERARCHY_RECALL_OVERFETCH_FACTOR", "33")
+    with pytest.raises(ValueError):
+        Settings()
+
+
 def test_settings_rejects_invalid_parse_risk_hardcase_min_low_ratio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

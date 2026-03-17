@@ -52,6 +52,7 @@ class RetrievalExplainResponse(BaseModel):
     retrieval_only: bool = True
     query_for_retrieval: str
     channels: dict[str, Any] = Field(default_factory=dict)
+    hierarchy_recall: dict[str, Any] = Field(default_factory=dict)
     candidate_counts: dict[str, int] = Field(default_factory=dict)
     top_citations: list[dict[str, Any]] = Field(default_factory=list)
     rerank: dict[str, Any] = Field(default_factory=dict)
@@ -142,6 +143,13 @@ async def explain_retrieval(
         multi_query_count=effective_rag_config.multi_query_count,
         multi_query_temperature=effective_rag_config.multi_query_temperature,
         multi_query_max_chars=effective_rag_config.multi_query_max_chars,
+        enable_hierarchy_recall=effective_rag_config.enable_hierarchy_recall,
+        hierarchy_family_collapse=effective_rag_config.hierarchy_family_collapse,
+        hierarchy_family_aggregation=effective_rag_config.hierarchy_family_aggregation,
+        hierarchy_tree_dedup=effective_rag_config.hierarchy_tree_dedup,
+        hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
+        hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
+        hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
         enable_query_rewrite=getattr(effective_rag_config, "enable_query_rewrite", None),
         query_rewrite_strategy=getattr(effective_rag_config, "query_rewrite_strategy", None),
         query_rewrite_temperature=getattr(effective_rag_config, "query_rewrite_temperature", None),
@@ -172,6 +180,9 @@ async def explain_retrieval(
     retrieval_trace = out.get("retrieval_trace") if isinstance(out.get("retrieval_trace"), dict) else {}
 
     channels = query_debug.get("channels") if isinstance(query_debug.get("channels"), dict) else {}
+    hierarchy_recall = query_debug.get("hierarchy_recall") if isinstance(query_debug.get("hierarchy_recall"), dict) else {}
+    if not hierarchy_recall:
+        hierarchy_recall = retrieval_trace.get("hierarchy_recall") if isinstance(retrieval_trace.get("hierarchy_recall"), dict) else {}
     query_count = int(metrics.get("retrieval_query_count") or len(metrics.get("retrieval_per_query") or []))
     top_limit = max(1, int(body.top_citations_limit or 1))
 
@@ -201,6 +212,7 @@ async def explain_retrieval(
         retrieval_only=True,
         query_for_retrieval=str(out.get("query_for_retrieval") or body.query),
         channels=channels,
+        hierarchy_recall=hierarchy_recall,
         candidate_counts={
             "query_count": query_count,
             "citations": len(citations),

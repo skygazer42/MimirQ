@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChunkPreviewItem } from '@/types'
-import { computeCoverageSignals, computeDuplicateIndices, computeShortIndices } from './review-signals'
+import { computeCoverageSignals, computeDuplicateIndices, computeHierarchyReviewSignals, computeShortIndices } from './review-signals'
 
 function chunk(
   index: number,
@@ -86,5 +86,54 @@ describe('review-signals', () => {
     expect(Array.from(s.gapIndices)).toEqual([1])
     expect(s.gapBeforeByIndex.get(1)).toBe(50)
   })
-})
 
+  it('computeHierarchyReviewSignals stays inactive when no hierarchy metadata is present', () => {
+    const chunks: ChunkPreviewItem[] = [
+      chunk(0, 0, 10, 'a'.repeat(50)),
+      chunk(1, 10, 20, 'b'.repeat(50)),
+    ]
+    const s = computeHierarchyReviewSignals(chunks)
+    expect(s.active).toBe(false)
+    expect(Array.from(s.missingNodeKeyIndices)).toEqual([])
+    expect(Array.from(s.missingFamilyKeyIndices)).toEqual([])
+    expect(Array.from(s.missingPrevSiblingIndices)).toEqual([])
+    expect(Array.from(s.missingNextSiblingIndices)).toEqual([])
+  })
+
+  it('computeHierarchyReviewSignals flags missing family keys when partially present', () => {
+    const chunks: ChunkPreviewItem[] = [
+      chunk(0, 0, 10, 'a'.repeat(50), { hierarchy_node_key: 'n0', hierarchy_family_key: 'f' }),
+      chunk(1, 10, 20, 'b'.repeat(50), { hierarchy_node_key: 'n1' }),
+      chunk(2, 20, 30, 'c'.repeat(50), { hierarchy_node_key: 'n2', hierarchy_family_key: 'f' }),
+    ]
+    const s = computeHierarchyReviewSignals(chunks)
+    expect(s.active).toBe(true)
+    expect(Array.from(s.missingNodeKeyIndices)).toEqual([])
+    expect(Array.from(s.missingFamilyKeyIndices).sort((a, b) => a - b)).toEqual([1])
+  })
+
+  it('computeHierarchyReviewSignals flags missing sibling links for middle chunks', () => {
+    const chunks: ChunkPreviewItem[] = [
+      chunk(0, 0, 10, 'a'.repeat(50), {
+        hierarchy_node_key: 'n0',
+        hierarchy_family_key: 'f',
+        hierarchy_next_sibling_key: 'n1',
+      }),
+      chunk(1, 10, 20, 'b'.repeat(50), {
+        hierarchy_node_key: 'n1',
+        hierarchy_family_key: 'f',
+        hierarchy_prev_sibling_key: 'n0',
+        // missing next
+      }),
+      chunk(2, 20, 30, 'c'.repeat(50), {
+        hierarchy_node_key: 'n2',
+        hierarchy_family_key: 'f',
+        hierarchy_prev_sibling_key: 'n1',
+      }),
+    ]
+    const s = computeHierarchyReviewSignals(chunks)
+    expect(s.active).toBe(true)
+    expect(Array.from(s.missingPrevSiblingIndices)).toEqual([])
+    expect(Array.from(s.missingNextSiblingIndices).sort((a, b) => a - b)).toEqual([1])
+  })
+})

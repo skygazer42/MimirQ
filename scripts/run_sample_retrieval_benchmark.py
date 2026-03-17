@@ -57,6 +57,21 @@ def _normalize_expected_ids(raw: Any) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def _family_key(meta: dict[str, Any], *, chunk_id: str) -> str:
+    """
+    Best-effort hierarchy family key extractor.
+
+    This benchmark is intended to be dependency-free and deterministic, so we
+    treat a missing family key as "self family" (chunk_id).
+    """
+    for key in ("family_collapse_key", "hierarchy_family_key", "parent_id", "parent_node_id"):
+        raw = meta.get(key) if isinstance(meta, dict) else None
+        s = str(raw or "").strip()
+        if s:
+            return s
+    return str(chunk_id or "").strip() or "unknown"
+
+
 def _validate_fixture(payload: dict[str, Any]) -> None:
     schema = str(payload.get("schema") or "").strip()
     if schema != _FIXTURE_SCHEMA:
@@ -161,8 +176,11 @@ def _evaluate_query(
     tenant_id: uuid.UUID,
     question: str,
     expected_chunk_ids: list[str],
+    expected_family_keys: list[str] | None,
     top_k: int,
     retrieval_mode: str,
+    chunk_doc_ids: dict[str, str] | None = None,
+    chunk_family_keys: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     t0 = time.perf_counter()
     rows = retriever._hybrid_search(  # noqa: SLF001 - benchmark harness intentionally uses retriever internals.
@@ -177,12 +195,19 @@ def _evaluate_query(
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
 
     ranked: list[str] = []
+    ranked_docs: list[str] = []
+    ranked_families: list[str] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         cid = str(row.get("chunk_id") or "").strip()
         if cid:
             ranked.append(cid)
+            doc_id = str((chunk_doc_ids or {}).get(cid) or "").strip()
+            if doc_id:
+                ranked_docs.append(doc_id)
+            fam = str((chunk_family_keys or {}).get(cid) or cid).strip() or cid
+            ranked_families.append(fam)
 
     expected_set = set(expected_chunk_ids)
     hit = 1.0 if any(cid in expected_set for cid in ranked[:top_k]) else 0.0
@@ -194,13 +219,51 @@ def _evaluate_query(
             break
 
     ndcg = _ndcg_at_k_binary(ranked, expected_set, top_k)
+
+    expected_families = _normalize_expected_ids(list(expected_family_keys or []))
+    expected_family_set = set(expected_families)
+    ranked_families_k = ranked_families[:top_k]
+    ranked_family_unique: list[str] = []
+    seen_fams: set[str] = set()
+    for fid in ranked_families_k:
+        if fid in seen_fams:
+            continue
+        seen_fams.add(fid)
+        ranked_family_unique.append(fid)
+    family_hit = 1.0 if any(fid in expected_family_set for fid in ranked_family_unique) else 0.0
+
+    family_rr = 0.0
+    for idx, fid in enumerate(ranked_family_unique, start=1):
+        if fid in expected_family_set:
+            family_rr = 1.0 / float(idx)
+            break
+
+    family_ndcg = _ndcg_at_k_binary(ranked_family_unique, expected_family_set, top_k)
+
+    distinct_docs = len(set(ranked_docs))
+    distinct_fams = len(set(ranked_family_unique))
+    top_doc_share = 0.0
+    if ranked_docs:
+        top_doc_share = max(ranked_docs.count(d) for d in set(ranked_docs)) / float(len(ranked_docs))
+    top_family_share = 0.0
+    if ranked_families_k:
+        top_family_share = max(ranked_families_k.count(f) for f in set(ranked_families_k)) / float(len(ranked_families_k))
     return {
         "question": question,
         "expected_chunk_ids": expected_chunk_ids,
         "ranked_chunk_ids": ranked[:top_k],
+        "expected_family_keys": expected_families,
+        "ranked_family_keys": ranked_family_unique,
         "hit_at_k": round(float(hit), 6),
         "reciprocal_rank": round(float(rr), 6),
         "ndcg_at_k": round(float(ndcg), 6),
+        "family_hit_at_k": round(float(family_hit), 6),
+        "family_reciprocal_rank": round(float(family_rr), 6),
+        "family_ndcg_at_k": round(float(family_ndcg), 6),
+        "distinct_documents": int(distinct_docs),
+        "distinct_families": int(distinct_fams),
+        "top_doc_share": round(float(top_doc_share), 6),
+        "top_family_share": round(float(top_family_share), 6),
         "latency_ms": round(float(elapsed_ms), 3),
     }
 
@@ -280,6 +343,18 @@ def run_benchmark(
         dataset_id = _uuid_from_seed("dataset")
         docs = _build_documents(fixture=fixture_obj, tenant_id=tenant_id, dataset_id=dataset_id)
 
+        chunk_doc_ids: dict[str, str] = {}
+        chunk_family_keys: dict[str, str] = {}
+        for d in docs:
+            meta = getattr(d, "metadata", None) or {}
+            cid = str(meta.get("chunk_id") or getattr(d, "id", None) or "").strip()
+            if not cid:
+                continue
+            doc_id = str(meta.get("document_id") or "").strip()
+            if doc_id:
+                chunk_doc_ids[cid] = doc_id
+            chunk_family_keys[cid] = _family_key(meta, chunk_id=cid)
+
         retriever = HybridRetriever(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -295,13 +370,17 @@ def run_benchmark(
             qid = str(item.get("id") or f"q-{i+1}").strip()
             question = str(item.get("question") or "").strip()
             expected = _normalize_expected_ids(item.get("expected_chunk_ids"))
+            expected_families = _normalize_expected_ids([chunk_family_keys.get(cid) or cid for cid in expected])
             result = _evaluate_query(
                 retriever=retriever,
                 tenant_id=tenant_id,
                 question=question,
                 expected_chunk_ids=expected,
+                expected_family_keys=expected_families,
                 top_k=effective_top_k,
                 retrieval_mode=effective_mode,
+                chunk_doc_ids=chunk_doc_ids,
+                chunk_family_keys=chunk_family_keys,
             )
             result["id"] = qid
             cases.append(result)
@@ -312,6 +391,10 @@ def run_benchmark(
     hits = [float(x.get("hit_at_k") or 0.0) for x in cases]
     rrs = [float(x.get("reciprocal_rank") or 0.0) for x in cases]
     ndcgs = [float(x.get("ndcg_at_k") or 0.0) for x in cases]
+    fam_hits = [float(x.get("family_hit_at_k") or 0.0) for x in cases]
+    fam_rrs = [float(x.get("family_reciprocal_rank") or 0.0) for x in cases]
+    fam_ndcgs = [float(x.get("family_ndcg_at_k") or 0.0) for x in cases]
+    fam_counts = [int(x.get("distinct_families") or 0) for x in cases]
     latencies = [float(x.get("latency_ms") or 0.0) for x in cases]
 
     lat_sorted = sorted(latencies)
@@ -342,6 +425,10 @@ def run_benchmark(
             "hit_at_k": round(float(sum(hits) / len(hits)), 6) if hits else 0.0,
             "mrr": round(float(sum(rrs) / len(rrs)), 6) if rrs else 0.0,
             "ndcg_at_k": round(float(sum(ndcgs) / len(ndcgs)), 6) if ndcgs else 0.0,
+            "family_hit_at_k": round(float(sum(fam_hits) / len(fam_hits)), 6) if fam_hits else 0.0,
+            "family_mrr": round(float(sum(fam_rrs) / len(fam_rrs)), 6) if fam_rrs else 0.0,
+            "family_ndcg_at_k": round(float(sum(fam_ndcgs) / len(fam_ndcgs)), 6) if fam_ndcgs else 0.0,
+            "distinct_families_mean": round(float(statistics.mean(fam_counts)), 3) if fam_counts else 0.0,
             "avg_latency_ms": round(float(statistics.mean(latencies)), 3) if latencies else 0.0,
             "p95_latency_ms": round(float(p95_latency), 3),
         },

@@ -60,6 +60,117 @@ export function computeRoleIndices(chunks: ChunkPreviewItem[]) {
   return { parents, children }
 }
 
+export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
+  const missingNodeKeyIndices = new Set<number>()
+  const missingFamilyKeyIndices = new Set<number>()
+  const missingPrevSiblingIndices = new Set<number>()
+  const missingNextSiblingIndices = new Set<number>()
+  const basisValues = new Set<string>()
+
+  const raw = chunks || []
+  if (raw.length === 0) {
+    return {
+      active: false,
+      missingNodeKeyIndices,
+      missingFamilyKeyIndices,
+      missingPrevSiblingIndices,
+      missingNextSiblingIndices,
+      basisValues,
+    }
+  }
+
+  const sorted = [...raw].sort((a, b) => {
+    const sa = Number(a.start_index) || 0
+    const sb = Number(b.start_index) || 0
+    if (sa !== sb) return sa - sb
+    const ea = Number(a.end_index) || sa
+    const eb = Number(b.end_index) || sb
+    if (ea !== eb) return ea - eb
+    return (Number(a.index) || 0) - (Number(b.index) || 0)
+  })
+
+  let anyNodeKey = false
+  let anyFamilyKey = false
+  let anySiblingLinks = false
+
+  const nodeKeysByIndex = new Map<number, string>()
+  const familyKeysByIndex = new Map<number, string>()
+  const prevKeysByIndex = new Map<number, string>()
+  const nextKeysByIndex = new Map<number, string>()
+
+  for (const c of sorted) {
+    const idx = Number(c.index)
+    if (!Number.isFinite(idx)) continue
+    const meta = (c.metadata || {}) as Record<string, any>
+
+    const basis = typeof meta.hierarchy_basis === 'string' ? meta.hierarchy_basis.trim() : ''
+    if (basis) basisValues.add(basis)
+
+    const nodeKey = typeof meta.hierarchy_node_key === 'string' ? meta.hierarchy_node_key.trim() : ''
+    if (nodeKey) {
+      anyNodeKey = true
+      nodeKeysByIndex.set(idx, nodeKey)
+    }
+
+    const familyKey = typeof meta.hierarchy_family_key === 'string' ? meta.hierarchy_family_key.trim() : ''
+    if (familyKey) {
+      anyFamilyKey = true
+      familyKeysByIndex.set(idx, familyKey)
+    }
+
+    const prevKeyRaw = meta.hierarchy_prev_sibling_key ?? meta.prev_chunk_key
+    const nextKeyRaw = meta.hierarchy_next_sibling_key ?? meta.next_chunk_key
+    const prevKey = typeof prevKeyRaw === 'string' ? prevKeyRaw.trim() : ''
+    const nextKey = typeof nextKeyRaw === 'string' ? nextKeyRaw.trim() : ''
+    if (prevKey) {
+      anySiblingLinks = true
+      prevKeysByIndex.set(idx, prevKey)
+    }
+    if (nextKey) {
+      anySiblingLinks = true
+      nextKeysByIndex.set(idx, nextKey)
+    }
+  }
+
+  // Only flag missing hierarchy fields if the document provides *any* hierarchy metadata.
+  // This keeps the UI signal meaningful for legacy datasets / chunkers.
+  if (anyNodeKey) {
+    for (const c of sorted) {
+      const idx = Number(c.index)
+      if (!Number.isFinite(idx)) continue
+      if (!nodeKeysByIndex.get(idx)) missingNodeKeyIndices.add(idx)
+    }
+  }
+
+  if (anyFamilyKey) {
+    for (const c of sorted) {
+      const idx = Number(c.index)
+      if (!Number.isFinite(idx)) continue
+      if (!familyKeysByIndex.get(idx)) missingFamilyKeyIndices.add(idx)
+    }
+  }
+
+  if (anySiblingLinks && sorted.length > 1) {
+    for (let i = 0; i < sorted.length; i += 1) {
+      const idx = Number(sorted[i]?.index)
+      if (!Number.isFinite(idx)) continue
+      const expectPrev = i > 0
+      const expectNext = i < sorted.length - 1
+      if (expectPrev && !prevKeysByIndex.get(idx)) missingPrevSiblingIndices.add(idx)
+      if (expectNext && !nextKeysByIndex.get(idx)) missingNextSiblingIndices.add(idx)
+    }
+  }
+
+  return {
+    active: anyNodeKey || anyFamilyKey || anySiblingLinks,
+    missingNodeKeyIndices,
+    missingFamilyKeyIndices,
+    missingPrevSiblingIndices,
+    missingNextSiblingIndices,
+    basisValues,
+  }
+}
+
 export function computeCoverageSignals(
   chunks: ChunkPreviewItem[],
   options?: { strategy?: string }

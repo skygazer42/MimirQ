@@ -24,6 +24,25 @@ X-User-ID: {{user_id}}
   }
 }
 
+### Retrieval explain (hierarchy recall overlay)
+POST {{base_url}}/api/v1/retrieval/explain
+Content-Type: application/json
+X-Tenant-ID: {{tenant_id}}
+X-User-ID: {{user_id}}
+
+{
+  "query": "为什么同一段落上下文经常检索不到？",
+  "retrieval_only": true,
+  "rag_config": {
+    "retrieval_profile": "hierarchy_hybrid_ce",
+    "retrieval_mode": "hybrid",
+    "top_k": 20,
+    "score_threshold": 0.0,
+    "hierarchy_parent_depth": 1,
+    "hierarchy_sibling_window": 1
+  }
+}
+
 ### Retrieval config hash
 POST {{base_url}}/api/v1/retrieval/config-hash
 Content-Type: application/json
@@ -41,4 +60,3 @@ X-User-ID: {{user_id}}
   },
   "include_runtime_defaults": true
 }
-

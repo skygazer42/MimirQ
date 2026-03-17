@@ -79,6 +79,32 @@ def _stable_citation_key(cit: Any) -> str | None:
     return f"{dk}:{idx}"
 
 
+def _family_key(obj: Any) -> str | None:
+    """
+    Best-effort hierarchy family key extractor.
+
+    Notes:
+    - Citations may carry `family_collapse_key`/`hierarchy_family_key` when hierarchy
+      recall overlay is enabled.
+    - Reference sources may optionally carry the same keys (added by newer pipelines
+      or stored in regression bundles).
+    """
+    d = _coerce_dict(obj)
+    for key in (
+        "family_collapse_key",
+        "hierarchy_family_key",
+        "parent_id",
+        "parent_node_id",
+    ):
+        raw = d.get(key)
+        if raw is None:
+            continue
+        s = str(raw).strip()
+        if s:
+            return s
+    return None
+
+
 def _quote_signature(text: Any, *, max_chars: int = 120) -> str | None:
     """
     Produce a small, normalized quote signature used for best-effort matching
@@ -250,6 +276,10 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     hit_at_5: bool | None = None
     hit_at_10: bool | None = None
     hit_at_20: bool | None = None
+    retrieval_doc_recall: float | None = None
+    retrieval_doc_hit: bool | None = None
+    retrieval_family_recall: float | None = None
+    retrieval_family_hit: bool | None = None
     if reference_sources:
         ref_total = len(list(reference_sources or []))
         matched_refs = sum(1 for src in (reference_sources or []) if _ref_source_matched(src))
@@ -295,6 +325,27 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         hit_at_5 = _hit_at(5)
         hit_at_10 = _hit_at(10)
         hit_at_20 = _hit_at(20)
+
+        # Document-level recall: unique evidence document ids hit by retrieval.
+        ref_doc_set = {str(_coerce_dict(s).get("document_id") or "").strip() for s in (reference_sources or [])}
+        ref_doc_set = {d for d in ref_doc_set if d}
+        cit_doc_set = {str(_coerce_dict(c).get("document_id") or "").strip() for c in citations_ranked}
+        cit_doc_set = {d for d in cit_doc_set if d}
+        if ref_doc_set:
+            matched_docs = int(len(ref_doc_set & cit_doc_set))
+            retrieval_doc_recall = round(float(matched_docs) / max(1, int(len(ref_doc_set))), 4)
+            retrieval_doc_hit = bool(matched_docs > 0)
+
+        # Family-level recall: unique evidence families hit by retrieval. This is only
+        # computable when reference_sources carry family keys (optional).
+        ref_fams = [_family_key(s) for s in (reference_sources or [])]
+        ref_fam_set = {k for k in ref_fams if k}
+        if ref_fam_set:
+            cit_fams = [_family_key(c) for c in citations_ranked]
+            cit_fam_set = {k for k in cit_fams if k}
+            matched_fams = int(len(ref_fam_set & cit_fam_set))
+            retrieval_family_recall = round(float(matched_fams) / max(1, int(len(ref_fam_set))), 4)
+            retrieval_family_hit = bool(matched_fams > 0)
 
     top_rel = item.get("top_relevance_score")
     try:
@@ -352,6 +403,10 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "retrieval_hit_at_5": hit_at_5,
         "retrieval_hit_at_10": hit_at_10,
         "retrieval_hit_at_20": hit_at_20,
+        "retrieval_doc_recall": retrieval_doc_recall,
+        "retrieval_doc_hit": retrieval_doc_hit,
+        "retrieval_family_recall": retrieval_family_recall,
+        "retrieval_family_hit": retrieval_family_hit,
         "faithfulness_det": faithfulness_det,
         "expected_refusal": expected_refusal,
         "reasoning_hops_count": int(len(reasoning_hops)),
@@ -417,12 +472,6 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_hit_at_5": meta.get("retrieval_hit_at_5"),
         "retrieval_hit_at_10": meta.get("retrieval_hit_at_10"),
         "retrieval_hit_at_20": meta.get("retrieval_hit_at_20"),
-        "reasoning_hops_count": meta.get("reasoning_hops_count"),
-        "evidence_chain_steps": meta.get("evidence_chain_steps"),
-        "multihop_enabled": meta.get("multihop_enabled"),
-        "multihop_path_completeness": meta.get("multihop_path_completeness"),
-        "multihop_order_consistency": meta.get("multihop_order_consistency"),
-        "multihop_chain_hit": meta.get("multihop_chain_hit"),
         # Answer-level deterministic gate signals (best-effort; may be null in retrieval-only mode).
         "faithfulness_det": meta.get("faithfulness_det"),
         "expected_refusal": meta.get("expected_refusal"),

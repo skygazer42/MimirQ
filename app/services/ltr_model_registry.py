@@ -294,8 +294,10 @@ class LTRRegisteredModel:
 def register_model(
     *,
     model_bytes: bytes,
-    manifest_bytes: bytes,
-    actor_id: str | None,
+    manifest_bytes: bytes | None = None,
+    _manifest_bytes: bytes | None = None,
+    actor_id: str | None = None,
+    _actor_id: str | None = None,
 ) -> LTRRegisteredModel:
     """
     Register an LTR model artifact into the file-based registry.
@@ -304,9 +306,12 @@ def register_model(
     - Registration is content-addressed: model_id == sha256(model_bytes)
     - A manifest is required for safety/reproducibility.
     """
+    manifest_bytes0 = manifest_bytes if manifest_bytes is not None else _manifest_bytes
+    actor_id0 = actor_id if actor_id is not None else _actor_id
+
     if not isinstance(model_bytes, (bytes, bytearray)) or not model_bytes:
         raise ValueError("model_bytes is required")
-    if not isinstance(manifest_bytes, (bytes, bytearray)) or not manifest_bytes:
+    if not isinstance(manifest_bytes0, (bytes, bytearray)) or not manifest_bytes0:
         raise ValueError("manifest_bytes is required")
 
     with _LOCK:
@@ -314,7 +319,7 @@ def register_model(
         model_id = model_sha
 
         try:
-            manifest_obj = json.loads(manifest_bytes.decode("utf-8"))
+            manifest_obj = json.loads(bytes(manifest_bytes0).decode("utf-8"))
         except Exception as exc:
             raise ValueError("invalid manifest JSON") from exc
         if not isinstance(manifest_obj, dict):
@@ -337,7 +342,7 @@ def register_model(
             "model_sha256": model_sha,
             "size_bytes": int(len(model_bytes)),
             "created_at": _now_utc_iso(),
-            "created_by": (str(actor_id) if actor_id else None),
+            "created_by": (str(actor_id0) if actor_id0 else None),
             "feature_spec_version": int(spec_version),
             "feature_schema": str(manifest_clean.get("feature_schema") or ""),
             "feature_names": list(manifest_clean.get("feature_names") or []),
@@ -353,7 +358,7 @@ def register_model(
             model_sha256=model_sha,
             size_bytes=int(len(model_bytes)),
             created_at=str(meta.get("created_at") or ""),
-            created_by=(str(actor_id) if actor_id else None),
+            created_by=(str(actor_id0) if actor_id0 else None),
             feature_spec_version=int(spec_version),
             feature_schema=str(manifest_clean.get("feature_schema") or ""),
             feature_names=list(manifest_clean.get("feature_names") or []),

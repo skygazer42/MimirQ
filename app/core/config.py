@@ -680,6 +680,14 @@ class Settings(BaseSettings):
     RETRIEVAL_OVERFETCH_MULTIPLIER: int = 4
     # Hard cap for the over-fetched k (0 disables).
     RETRIEVAL_OVERFETCH_MAX_K: int = 50
+    # Optional hierarchy-aware recall overlay. Safe-off defaults preserve legacy retrieval behavior.
+    HIERARCHY_RECALL_ENABLED: bool = False
+    HIERARCHY_RECALL_FAMILY_COLLAPSE: bool = False
+    HIERARCHY_RECALL_FAMILY_AGGREGATION: str = "combined"  # frequency | score | combined
+    HIERARCHY_RECALL_TREE_DEDUP: bool = False
+    HIERARCHY_RECALL_PARENT_DEPTH: int = 0
+    HIERARCHY_RECALL_SIBLING_WINDOW: int = 0
+    HIERARCHY_RECALL_OVERFETCH_FACTOR: int = 4
     # Retrieval contract mode (opt-in behavior packs).
     # - "" (default): no contract override
     # - deterministic_recall: force deterministic fallback-first safeguards for empty evidence
@@ -1808,6 +1816,26 @@ class Settings(BaseSettings):
             )
         if int(getattr(self, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1) < 1:
             raise ValueError("RETRIEVAL_OVERFETCH_MULTIPLIER must be >= 1")
+        hierarchy_family_aggregation = str(
+            getattr(self, "HIERARCHY_RECALL_FAMILY_AGGREGATION", "combined") or "combined"
+        ).strip().lower()
+        valid_hierarchy_family_aggregation = {"frequency", "score", "combined"}
+        if hierarchy_family_aggregation not in valid_hierarchy_family_aggregation:
+            raise ValueError(
+                "HIERARCHY_RECALL_FAMILY_AGGREGATION must be one of: "
+                + ", ".join(sorted(valid_hierarchy_family_aggregation))
+            )
+        if self.HIERARCHY_RECALL_FAMILY_AGGREGATION != hierarchy_family_aggregation:
+            self.HIERARCHY_RECALL_FAMILY_AGGREGATION = hierarchy_family_aggregation
+        hierarchy_parent_depth = int(getattr(self, "HIERARCHY_RECALL_PARENT_DEPTH", 0) or 0)
+        if hierarchy_parent_depth < 0 or hierarchy_parent_depth > 8:
+            raise ValueError("HIERARCHY_RECALL_PARENT_DEPTH must be between 0 and 8")
+        hierarchy_sibling_window = int(getattr(self, "HIERARCHY_RECALL_SIBLING_WINDOW", 0) or 0)
+        if hierarchy_sibling_window < 0 or hierarchy_sibling_window > 16:
+            raise ValueError("HIERARCHY_RECALL_SIBLING_WINDOW must be between 0 and 16")
+        hierarchy_overfetch_factor = int(getattr(self, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 0)
+        if hierarchy_overfetch_factor < 1 or hierarchy_overfetch_factor > 32:
+            raise ValueError("HIERARCHY_RECALL_OVERFETCH_FACTOR must be between 1 and 32")
         if int(getattr(self, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_OVERFETCH_MAX_K must be >= 0")
         auth_boost = float(getattr(self, "RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX", 0.0) or 0.0)
@@ -2022,6 +2050,9 @@ class Settings(BaseSettings):
             "coverage80",
             "hybrid_ce",
             "grounded_strict",
+            "hierarchy_recall20",
+            "hierarchy_hybrid_ce",
+            "hierarchy_grounded_strict",
         }
         chat_default_profile = str(getattr(self, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower()
         if chat_default_profile not in valid_retrieval_profiles:

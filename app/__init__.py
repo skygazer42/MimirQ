@@ -4,8 +4,10 @@ MimirQ backend application.
 Core backend service for knowledge base management and RAG chat.
 """
 
+import datetime as _datetime
 import os
 import sys
+from datetime import timezone
 
 
 def _ensure_pkg_resources_available() -> None:
@@ -60,7 +62,15 @@ def _preload_conda_libstdcxx() -> None:
         return
 
 
+def _ensure_datetime_utc_available() -> None:
+    """Backfill ``datetime.UTC`` for Python 3.10 runtimes."""
+
+    if not hasattr(_datetime, "UTC"):
+        _datetime.UTC = timezone.utc
+
+
 _ensure_pkg_resources_available()
 _preload_conda_libstdcxx()
+_ensure_datetime_utc_available()
 
 __version__ = "1.0.0"

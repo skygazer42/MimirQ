@@ -145,6 +145,12 @@ def test_precheck_suggests_pipeline_options(monkeypatch, tmp_path) -> None:
     assert md_rule.get("governance_profile_ref") == "builtin:wiki_longform"
     assert md_rule.get("chunk_strategy") == "markdown_header"
 
+    md_hier = next((r for r in policy.get("rules") or [] if r.get("id") == "markdown-hierarchy-md"), None)
+    assert md_hier is not None
+    assert md_hier.get("enabled") is False
+    assert md_hier.get("governance_profile_ref") == "builtin:wiki_longform"
+    assert md_hier.get("chunk_strategy") == "markdown_hierarchy"
+
     chat_rule = next((r for r in policy.get("rules") or [] if r.get("id") == "chat-exports-txt"), None)
     assert chat_rule is not None
     assert chat_rule.get("governance_profile_ref") == "builtin:chat_exports"
@@ -154,6 +160,12 @@ def test_precheck_suggests_pipeline_options(monkeypatch, tmp_path) -> None:
     assert txt_rule is not None
     assert txt_rule.get("governance_profile_ref") == "builtin:wiki_longform"
     assert txt_rule.get("chunk_strategy") == "semantic_sentence"
+
+    txt_hier = next((r for r in policy.get("rules") or [] if r.get("id") == "text-hierarchy-txt"), None)
+    assert txt_hier is not None
+    assert txt_hier.get("enabled") is False
+    assert txt_hier.get("governance_profile_ref") == "builtin:wiki_longform"
+    assert txt_hier.get("chunk_strategy") == "text_hierarchy"
 
     table_csv = next((r for r in policy.get("rules") or [] if r.get("id") == "tables-csv-tag"), None)
     assert table_csv is not None
@@ -198,4 +210,3 @@ def test_precheck_suggests_pipeline_options(monkeypatch, tmp_path) -> None:
             replace=False,
         )
     assert exc.value.status_code == 409
-

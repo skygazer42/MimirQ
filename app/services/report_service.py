@@ -21,6 +21,7 @@ from app.api.schemas.report import (
     DatasetChunkQualityMetricsOut,
     DatasetGovernanceAuditOut,
     DatasetGovernanceMetricsOut,
+    DatasetHierarchyRecallSummaryOut,
     DatasetKGStatsOut,
     DatasetMustRecallSummaryOut,
     DatasetParseRiskDocumentOut,
@@ -560,6 +561,46 @@ def _aggregate_must_recall_summary(
     )
 
 
+def _aggregate_hierarchy_recall_summary(
+    *,
+    latest_regression_summary: dict[str, Any] | None,
+) -> DatasetHierarchyRecallSummaryOut | None:
+    summary = latest_regression_summary if isinstance(latest_regression_summary, dict) else {}
+    if not summary:
+        return None
+
+    def _as_ratio(*keys: str) -> float | None:
+        for key in keys:
+            if key not in summary:
+                continue
+            raw = summary.get(key)
+            if raw is None:
+                continue
+            try:
+                v = float(raw)
+            except Exception:
+                continue
+            v = min(1.0, max(0.0, v))
+            return round(v, 6)
+        return None
+
+    doc_hit_rate = _as_ratio("retrieval_doc_hit_rate", "retrieval_doc_hit")
+    family_hit_rate = _as_ratio("retrieval_family_hit_rate", "retrieval_family_hit")
+    doc_recall = _as_ratio("retrieval_doc_recall")
+    family_recall = _as_ratio("retrieval_family_recall")
+
+    if doc_hit_rate is None and family_hit_rate is None and doc_recall is None and family_recall is None:
+        return None
+
+    return DatasetHierarchyRecallSummaryOut(
+        doc_hit_rate=doc_hit_rate,
+        family_hit_rate=family_hit_rate,
+        doc_recall=doc_recall,
+        family_recall=family_recall,
+        status="available",
+    )
+
+
 class ReportService:
     @staticmethod
     def build_dataset_report(
@@ -963,6 +1004,7 @@ class ReportService:
         # Latest regression run summary (best-effort; retrieval-only runs are included).
         latest_regression_run: DatasetRegressionRunSummaryOut | None = None
         must_recall_summary: DatasetMustRecallSummaryOut | None = None
+        hierarchy_recall_summary: DatasetHierarchyRecallSummaryOut | None = None
         try:
             from app.models.evaluation import RagasRegressionRun
 
@@ -988,9 +1030,13 @@ class ReportService:
                 must_recall_summary = _aggregate_must_recall_summary(
                     latest_regression_summary=row_summary,
                 )
+                hierarchy_recall_summary = _aggregate_hierarchy_recall_summary(
+                    latest_regression_summary=row_summary,
+                )
         except Exception:
             latest_regression_run = None
             must_recall_summary = None
+            hierarchy_recall_summary = None
 
         # Governance metrics aggregated from document metadata (best-effort).
         governance_metrics: DatasetGovernanceMetricsOut | None = None
@@ -1098,5 +1144,6 @@ class ReportService:
             kg_stats=kg_stats,
             latest_regression_run=latest_regression_run,
             must_recall_summary=must_recall_summary,
+            hierarchy_recall_summary=hierarchy_recall_summary,
             precheck_summary=precheck_summary,
         )

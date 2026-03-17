@@ -50,12 +50,29 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
     retrieval_contract = capsule.get("retrieval_contract") if isinstance(capsule.get("retrieval_contract"), dict) else {}
     must_recall = capsule.get("must_recall") if isinstance(capsule.get("must_recall"), dict) else {}
 
+    # Prefer must-recall proof inside retrieval_trace when present; this keeps replay requests
+    # self-contained even when the capsule-level must_recall summary is compact.
+    proof: dict[str, Any] = {}
+    trace = capsule.get("retrieval_trace") if isinstance(capsule.get("retrieval_trace"), dict) else {}
+    if isinstance(trace, dict):
+        contract_diag = trace.get("contract_diagnostics") if isinstance(trace.get("contract_diagnostics"), dict) else {}
+        mr = contract_diag.get("must_recall") if isinstance(contract_diag, dict) and isinstance(contract_diag.get("must_recall"), dict) else {}
+        p = mr.get("proof") if isinstance(mr, dict) and isinstance(mr.get("proof"), dict) else {}
+        proof = dict(p) if isinstance(p, dict) else {}
+
+    required_source_keys = [str(v) for v in (proof.get("required_source_keys") or []) if str(v).strip()] if isinstance(proof, dict) else []
+    required_anchor_fields = [str(v) for v in (proof.get("required_anchor_fields") or []) if str(v).strip()] if isinstance(proof, dict) else []
+    if not required_anchor_fields:
+        required_anchor_fields = [str(v) for v in (must_recall.get("required_anchor_fields") or []) if str(v).strip()]
+
     replay_request = {
         "query": str(capsule.get("query_for_retrieval") or ""),
         "rag_config": {
             "retrieval_mode": str(retrieval_summary.get("retrieval_mode") or ""),
             "retrieval_contract_mode": str(retrieval_contract.get("mode") or ""),
             "must_recall": bool(must_recall.get("enabled")),
+            "must_recall_expected_source_keys": required_source_keys,
+            "must_recall_required_anchor_fields": required_anchor_fields,
         },
         "expected_citation_hashes": [str(v) for v in (capsule.get("citation_hashes") or []) if str(v).strip()],
     }

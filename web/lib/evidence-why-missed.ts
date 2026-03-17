@@ -7,6 +7,8 @@ export interface WhyMissedReferenceHints {
   document_hit_rank?: number
   /** Rank (1-based) of the first citation that matches (document_id, chunk_index). */
   chunk_index_hit_rank?: number
+  /** Rank (1-based) of the first citation that matches the reference's hierarchy family key. */
+  family_hit_rank?: number
 }
 
 export interface WhyMissedRetrievalInfo {
@@ -83,6 +85,7 @@ export function buildWhyMissedReport(args: {
   const citationByChunkId = new Map<string, { citation: Citation; rank: number }>()
   const docHitRank = new Map<string, number>()
   const indexHitRank = new Map<string, number>()
+  const familyHitRank = new Map<string, number>()
   for (let i = 0; i < citations.length; i++) {
     const c = citations[i] as any
     const rank = i + 1
@@ -102,6 +105,13 @@ export function buildWhyMissedReport(args: {
       const key = `${docId}:${chunkIndex}`
       if (!indexHitRank.has(key)) indexHitRank.set(key, rank)
     }
+
+    const fam =
+      asNonEmptyString(c?.family_collapse_key) ??
+      asNonEmptyString(c?.hierarchy_family_key) ??
+      asNonEmptyString(c?.parent_id) ??
+      null
+    if (fam && !familyHitRank.has(fam)) familyHitRank.set(fam, rank)
   }
 
   const rows: WhyMissedReferenceReportRow[] = []
@@ -127,6 +137,15 @@ export function buildWhyMissedReport(args: {
         const iRank = indexHitRank.get(`${docId}:${chunkIndex}`)
         if (iRank) hints.chunk_index_hit_rank = iRank
       }
+    }
+    const refFam =
+      asNonEmptyString((ref as any)?.family_collapse_key) ??
+      asNonEmptyString((ref as any)?.hierarchy_family_key) ??
+      asNonEmptyString((ref as any)?.parent_id) ??
+      null
+    if (refFam) {
+      const fRank = familyHitRank.get(refFam)
+      if (fRank) hints.family_hit_rank = fRank
     }
 
     let status: WhyMissedReferenceStatus = 'unknown'

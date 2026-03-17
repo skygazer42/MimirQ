@@ -126,14 +126,20 @@ class UserService:
         db.commit()
 
     @staticmethod
-    def get_current_tenant_id(db: Session, *, user_id: str) -> UUID | None:
+    def get_current_tenant_id(
+        db: Session,
+        *,
+        user_id: str | None = None,
+        _user_id: str | None = None,
+    ) -> UUID | None:
         """
         Best-effort current tenant selection for token issuance.
 
         Prefers an explicit TenantMember marked as is_current; otherwise falls back to the most-recent
         membership row. Returns None when no membership exists.
         """
-        uid = str(user_id or "").strip()
+        uid_raw = user_id if user_id is not None else _user_id
+        uid = str(uid_raw or "").strip()
         if not uid:
             return None
 

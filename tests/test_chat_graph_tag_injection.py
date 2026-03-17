@@ -118,3 +118,63 @@ def test_chat_graph_injects_tag_docs_into_state(monkeypatch):  # noqa: ANN001
     assert isinstance(st.get("tag_meta"), dict)
     assert st["tag_meta"].get("enabled") is True
 
+
+def test_chat_graph_passes_hierarchy_recall_fields_into_state(monkeypatch):  # noqa: ANN001
+    from app.api.v1.chat import chat as chat_endpoint
+
+    tenant_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+
+    import app.api.v1.chat as chat_mod
+
+    monkeypatch.setattr(
+        chat_mod,
+        "filter_allowed_document_ids",
+        lambda _db, _tenant_id, _account_id, doc_ids: doc_ids,
+        raising=True,
+    )
+
+    import app.services.chat_tag_service as tag_mod
+
+    monkeypatch.setattr(
+        tag_mod,
+        "build_chat_tag_context_docs",
+        lambda db, *, tenant_id, document_ids, question: ([], {"enabled": False, "used": False, "returned": 0}),
+        raising=True,
+    )
+
+    import app.rag.pipelines.langgraph as lg_mod
+
+    captured: dict[str, object] = {}
+
+    def _fake_invoke(state, config=None, context=None):  # noqa: ANN001
+        captured["state"] = state
+        return {"citations": [], "answer": "ok", "metrics": {}}
+
+    monkeypatch.setattr(lg_mod.rag_workflow, "invoke", _fake_invoke, raising=False)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db()
+    app.dependency_overrides[get_tenant_id] = lambda: tenant_id
+    app.dependency_overrides[get_current_account_id] = lambda: "test-account"
+
+    app.post("/api/v1/chat")(chat_endpoint)
+
+    client = TestClient(app)
+    res = client.post(
+        "/api/v1/chat",
+        json={
+            "message": "Summarize the section layout.",
+            "document_ids": [str(doc_id)],
+            "stream": False,
+            "rag_config": {"use_graph": True, "retrieval_profile": "hierarchy_recall20"},
+        },
+    )
+    assert res.status_code == 200
+
+    st = captured.get("state")
+    assert isinstance(st, dict)
+    assert st.get("retrieval_profile") == "hierarchy_recall20"
+    assert st.get("enable_hierarchy_recall") is True
+    assert st.get("hierarchy_family_collapse") is True
+    assert st.get("hierarchy_overfetch_factor") == 4

@@ -5,13 +5,14 @@ import json
 import subprocess
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
 def _utc_iso_timestamp() -> str:
-    return datetime.now(UTC).isoformat()
+    # `datetime.UTC` is only available on Python 3.11+.
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _read_env_file(path: Path) -> dict[str, str]:

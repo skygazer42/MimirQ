@@ -4,10 +4,21 @@ from typing import Any
 
 PRODUCTION_RETRIEVAL_PROFILE = "hybrid_ce"
 STRICT_GROUNDED_RETRIEVAL_PROFILE = "grounded_strict"
-RECALL_FIRST_RETRIEVAL_PROFILES = {"recall20", "recall50", "coverage80"}
+HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE = "hierarchy_hybrid_ce"
+HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE = "hierarchy_grounded_strict"
+HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE = "hierarchy_recall20_expand"
+RECALL_FIRST_RETRIEVAL_PROFILES = {
+    "recall20",
+    "recall50",
+    "coverage80",
+    "hierarchy_recall20",
+    HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE,
+}
 SUPPORTED_RETRIEVAL_PROFILES = set(RECALL_FIRST_RETRIEVAL_PROFILES) | {
     PRODUCTION_RETRIEVAL_PROFILE,
     STRICT_GROUNDED_RETRIEVAL_PROFILE,
+    HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE,
+    HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE,
 }
 
 
@@ -21,6 +32,17 @@ def normalize_retrieval_profile(profile: Any) -> str | None:
 def is_recall_first_profile(profile: Any) -> bool:
     normalized = normalize_retrieval_profile(profile)
     return bool(normalized in RECALL_FIRST_RETRIEVAL_PROFILES)
+
+
+def _apply_hierarchy_overlay_defaults(out: dict[str, Any]) -> dict[str, Any]:
+    out["enable_hierarchy_recall"] = True
+    out["hierarchy_family_collapse"] = True
+    out["hierarchy_family_aggregation"] = "combined"
+    out["hierarchy_tree_dedup"] = True
+    out["hierarchy_parent_depth"] = 0
+    out["hierarchy_sibling_window"] = 0
+    out["hierarchy_overfetch_factor"] = 4
+    return out
 
 
 def apply_retrieval_profile_overrides(
@@ -70,6 +92,20 @@ def apply_retrieval_profile_overrides(
         out["score_threshold"] = 0.0
         return out
 
+    if normalized == "hierarchy_recall20":
+        out["top_k"] = max(int(out["top_k"] or 0), 20)
+        out["score_threshold"] = 0.0
+        return _apply_hierarchy_overlay_defaults(out)
+
+    if normalized == HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE:
+        out["top_k"] = max(int(out["top_k"] or 0), 20)
+        out["score_threshold"] = 0.0
+        out = _apply_hierarchy_overlay_defaults(out)
+        # Default expansion: add parent + adjacent siblings after retrieval/rerank.
+        out["hierarchy_parent_depth"] = 1
+        out["hierarchy_sibling_window"] = 1
+        return out
+
     if normalized == PRODUCTION_RETRIEVAL_PROFILE:
         out["retrieval_mode"] = "hybrid"
         out["top_k"] = max(int(out["top_k"] or 0), 20)
@@ -79,6 +115,16 @@ def apply_retrieval_profile_overrides(
         out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
         out["enable_weight_rerank"] = False
         return out
+
+    if normalized == HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE:
+        out["retrieval_mode"] = "hybrid"
+        out["top_k"] = max(int(out["top_k"] or 0), 20)
+        out["score_threshold"] = 0.0
+        out["enable_reranker"] = True
+        out["reranker_provider"] = "cross_encoder"
+        out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
+        out["enable_weight_rerank"] = False
+        return _apply_hierarchy_overlay_defaults(out)
 
     if normalized == STRICT_GROUNDED_RETRIEVAL_PROFILE:
         out["retrieval_mode"] = "hybrid"
@@ -92,14 +138,31 @@ def apply_retrieval_profile_overrides(
         out["visible_evidence_only"] = True
         return out
 
+    if normalized == HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE:
+        out["retrieval_mode"] = "hybrid"
+        out["top_k"] = max(int(out["top_k"] or 0), 20)
+        out["score_threshold"] = 0.0
+        out["enable_reranker"] = True
+        out["reranker_provider"] = "cross_encoder"
+        out["reranker_top_n"] = max(int(out["reranker_top_n"] or 0), int(out["top_k"] or 0), 20)
+        out["enable_weight_rerank"] = False
+        out["retrieval_contract_mode"] = "evidence_strict"
+        out["visible_evidence_only"] = True
+        return _apply_hierarchy_overlay_defaults(out)
+
     raise ValueError(
-        "retrieval_profile must be one of: recall20, recall50, coverage80, hybrid_ce, grounded_strict"
+        "retrieval_profile must be one of: "
+        "recall20, recall50, coverage80, hybrid_ce, grounded_strict, "
+        "hierarchy_recall20, hierarchy_recall20_expand, hierarchy_hybrid_ce, hierarchy_grounded_strict"
     )
 
 
 __all__ = [
     "PRODUCTION_RETRIEVAL_PROFILE",
     "STRICT_GROUNDED_RETRIEVAL_PROFILE",
+    "HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE",
+    "HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE",
+    "HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE",
     "RECALL_FIRST_RETRIEVAL_PROFILES",
     "SUPPORTED_RETRIEVAL_PROFILES",
     "apply_retrieval_profile_overrides",

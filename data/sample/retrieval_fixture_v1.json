@@ -13,7 +13,8 @@
       "metadata": {
         "source": "platform.md",
         "chunk_index": 0,
-        "pipeline_hash": "sample-v1"
+        "pipeline_hash": "sample-v1",
+        "family_collapse_key": "doc-platform:rollout"
       }
     },
     {
@@ -23,7 +24,8 @@
       "metadata": {
         "source": "database.md",
         "chunk_index": 0,
-        "pipeline_hash": "sample-v1"
+        "pipeline_hash": "sample-v1",
+        "family_collapse_key": "doc-database:postgres"
       }
     },
     {
@@ -33,7 +35,8 @@
       "metadata": {
         "source": "cache.md",
         "chunk_index": 0,
-        "pipeline_hash": "sample-v1"
+        "pipeline_hash": "sample-v1",
+        "family_collapse_key": "doc-cache:redis"
       }
     },
     {
@@ -43,7 +46,8 @@
       "metadata": {
         "source": "retrieval.md",
         "chunk_index": 0,
-        "pipeline_hash": "sample-v1"
+        "pipeline_hash": "sample-v1",
+        "family_collapse_key": "doc-retrieval:retrieval-basics"
       }
     },
     {
@@ -53,7 +57,8 @@
       "metadata": {
         "source": "retrieval.md",
         "chunk_index": 1,
-        "pipeline_hash": "sample-v1"
+        "pipeline_hash": "sample-v1",
+        "family_collapse_key": "doc-retrieval:retrieval-basics"
       }
     }
   ],

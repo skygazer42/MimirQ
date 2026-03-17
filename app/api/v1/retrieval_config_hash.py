@@ -54,10 +54,55 @@ def _runtime_flags() -> dict[str, Any]:
         "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
         "colbert_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
         "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
+        "hierarchy_recall_enabled": bool(getattr(settings, "HIERARCHY_RECALL_ENABLED", False)),
+        "hierarchy_family_collapse": bool(getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", False)),
+        "hierarchy_family_aggregation": str(
+            getattr(settings, "HIERARCHY_RECALL_FAMILY_AGGREGATION", "combined") or "combined"
+        ),
+        "hierarchy_tree_dedup": bool(getattr(settings, "HIERARCHY_RECALL_TREE_DEDUP", False)),
+        "hierarchy_parent_depth": int(getattr(settings, "HIERARCHY_RECALL_PARENT_DEPTH", 0) or 0),
+        "hierarchy_sibling_window": int(getattr(settings, "HIERARCHY_RECALL_SIBLING_WINDOW", 0) or 0),
+        "hierarchy_overfetch_factor": int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4),
     }
 
 
 def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bool) -> dict[str, Any]:
+    hierarchy_enabled = (
+        bool(getattr(settings, "HIERARCHY_RECALL_ENABLED", False))
+        if rag_config.enable_hierarchy_recall is None
+        else bool(rag_config.enable_hierarchy_recall)
+    )
+    hierarchy_family_collapse = (
+        bool(getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", False))
+        if rag_config.hierarchy_family_collapse is None
+        else bool(rag_config.hierarchy_family_collapse)
+    )
+    hierarchy_family_aggregation = (
+        str(getattr(settings, "HIERARCHY_RECALL_FAMILY_AGGREGATION", "combined") or "combined").strip().lower()
+        if rag_config.hierarchy_family_aggregation is None
+        else str(rag_config.hierarchy_family_aggregation or "").strip().lower()
+    )
+    hierarchy_tree_dedup = (
+        bool(getattr(settings, "HIERARCHY_RECALL_TREE_DEDUP", False))
+        if rag_config.hierarchy_tree_dedup is None
+        else bool(rag_config.hierarchy_tree_dedup)
+    )
+    hierarchy_parent_depth = (
+        int(getattr(settings, "HIERARCHY_RECALL_PARENT_DEPTH", 0) or 0)
+        if rag_config.hierarchy_parent_depth is None
+        else int(rag_config.hierarchy_parent_depth or 0)
+    )
+    hierarchy_sibling_window = (
+        int(getattr(settings, "HIERARCHY_RECALL_SIBLING_WINDOW", 0) or 0)
+        if rag_config.hierarchy_sibling_window is None
+        else int(rag_config.hierarchy_sibling_window or 0)
+    )
+    hierarchy_overfetch_factor = (
+        int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4)
+        if rag_config.hierarchy_overfetch_factor is None
+        else int(rag_config.hierarchy_overfetch_factor or 0)
+    )
+
     cfg: dict[str, Any] = {
         "retrieval_profile": rag_config.retrieval_profile,
         "retrieval_mode": rag_config.retrieval_mode,
@@ -81,6 +126,13 @@ def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bo
         "query_rewrite_strategy": getattr(rag_config, "query_rewrite_strategy", None),
         "sparse_retrieval_enabled": getattr(rag_config, "sparse_retrieval_enabled", None),
         "sparse_retrieval_provider": getattr(rag_config, "sparse_retrieval_provider", None),
+        "enable_hierarchy_recall": bool(hierarchy_enabled),
+        "hierarchy_family_collapse": bool(hierarchy_family_collapse),
+        "hierarchy_family_aggregation": hierarchy_family_aggregation or "combined",
+        "hierarchy_tree_dedup": bool(hierarchy_tree_dedup),
+        "hierarchy_parent_depth": int(hierarchy_parent_depth),
+        "hierarchy_sibling_window": int(hierarchy_sibling_window),
+        "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
         "visible_evidence_only": bool(rag_config.visible_evidence_only),
     }
     if include_runtime_defaults:

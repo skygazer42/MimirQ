@@ -419,8 +419,8 @@ def prepare_ltr_rollout(
         if register_candidate:
             registered = register_model(
                 model_bytes=candidate_model_path.read_bytes(),
-                manifest_bytes=candidate_manifest_path.read_bytes(),
-                actor_id=user_id,
+                _manifest_bytes=candidate_manifest_path.read_bytes(),
+                _actor_id=user_id,
             )
             registered_model_id = str(getattr(registered, "model_id", "") or "") or None
 

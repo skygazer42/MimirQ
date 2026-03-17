@@ -43,6 +43,18 @@ function formatDeltaPct(deltaRatio: number | null) {
   return v > 0 ? `+${v}%` : `${v}%`
 }
 
+function extractHierarchyBasis(preview: ChunkPreviewResponse): string[] {
+  const bases = new Set<string>()
+  for (const c of preview?.chunks || []) {
+    const meta = (c as any)?.metadata
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) continue
+    const basis = typeof (meta as any).hierarchy_basis === 'string' ? String((meta as any).hierarchy_basis).trim() : ''
+    if (!basis) continue
+    bases.add(basis)
+  }
+  return Array.from(bases).sort()
+}
+
 export function ChunkCompareDialog(props: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -75,6 +87,9 @@ export function ChunkCompareDialog(props: Readonly<{
     if (!key) return null
     return getCachedPreview(key)
   }, [baselineKey, getCachedPreview])
+
+  const currentHierarchyBasis = useMemo(() => extractHierarchyBasis(current), [current])
+  const baselineHierarchyBasis = useMemo(() => (baseline ? extractHierarchyBasis(baseline) : []), [baseline])
 
   const diff = useMemo(() => {
     if (!baseline) return null
@@ -128,6 +143,7 @@ export function ChunkCompareDialog(props: Readonly<{
                 </Select>
                 <div className="text-xs text-muted-foreground flex-1">
                   当前（B）：{current.chunk_strategy} · {current.params?.chunk_size}/{current.params?.chunk_overlap} · {current.total_chunks} chunks
+                  {currentHierarchyBasis.length ? ` · hierarchy_basis=${currentHierarchyBasis.join(',')}` : ''}
                 </div>
               </div>
 
@@ -220,6 +236,7 @@ export function ChunkCompareDialog(props: Readonly<{
                 <div className="text-[11px] text-muted-foreground">
                   基线（A）来源：{baselineMeta.strategy} · {baselineMeta.chunkSize}/{baselineMeta.chunkOverlap} · {baselineMeta.durationMs}ms
                   {baselineMeta.cacheHit ? ' · Hit Cache' : ''}
+                  {baselineHierarchyBasis.length ? ` · hierarchy_basis=${baselineHierarchyBasis.join(',')}` : ''}
                 </div>
               ) : null}
 

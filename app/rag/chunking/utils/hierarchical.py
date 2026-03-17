@@ -8,8 +8,12 @@ Two-level chunking:
 Returns chunk data with positions for frontend highlighting.
 """
 
+from __future__ import annotations
+
 import re
-import uuid
+from typing import Any
+
+from app.rag.core.hashing import stable_hash
 
 
 def _estimate_tokens(text: str) -> int:
@@ -22,6 +26,73 @@ _LIST_RE = re.compile(r"^\s*(?:[-*+]|(?:\d{1,3}[.)]))\s+")
 _BLOCKQUOTE_RE = re.compile(r"^\s*>")
 _CODE_FENCE_RE = re.compile(r"^\s*```")
 _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
+
+
+def _stable_markdown_node_key(*, level: str, start: int, end: int, text: str, parent_key: str | None = None) -> str:
+    seed = "|".join(
+        [
+            str(level or ""),
+            str(parent_key or ""),
+            str(int(start)),
+            str(int(end)),
+            stable_hash(str(text or ""), length=None),
+        ]
+    )
+    return f"md:{stable_hash(seed, length=32)}"
+
+
+def apply_sibling_hierarchy_links(
+    items: list[dict[str, Any]],
+    *,
+    key_field: str = "hierarchy_node_key",
+    index_field: str = "hierarchy_sibling_index",
+    prev_field: str = "hierarchy_prev_sibling_key",
+    next_field: str = "hierarchy_next_sibling_key",
+    overwrite: bool = False,
+) -> None:
+    keys = [str(item.get(key_field) or "").strip() or None for item in items]
+    total = len(items)
+    for idx, item in enumerate(items):
+        prev_key = keys[idx - 1] if idx > 0 else None
+        next_key = keys[idx + 1] if idx < (total - 1) else None
+        if overwrite or item.get(index_field) is None:
+            item[index_field] = int(idx)
+        if overwrite or item.get(prev_field) is None:
+            item[prev_field] = prev_key
+        if overwrite or item.get(next_field) is None:
+            item[next_field] = next_key
+
+
+def apply_sequence_hierarchy_metadata(
+    metas: list[dict[str, Any]],
+    *,
+    document_id: str,
+    basis: str = "chunk_sequence",
+    level: str = "chunk",
+) -> None:
+    if not metas:
+        return
+
+    for idx, meta in enumerate(metas):
+        if not isinstance(meta, dict):
+            continue
+        chunk_index = meta.get("chunk_index")
+        try:
+            chunk_index_int = int(chunk_index) if chunk_index is not None else int(idx)
+        except Exception:
+            chunk_index_int = int(idx)
+
+        node_key = str(meta.get("hierarchy_node_key") or meta.get("chunk_key") or f"{document_id}:{chunk_index_int}").strip()
+        parent_key = str(meta.get("hierarchy_parent_key") or meta.get("parent_id") or "").strip() or None
+
+        meta.setdefault("hierarchy_basis", str(basis or "chunk_sequence"))
+        meta.setdefault("hierarchy_level", str(level or "chunk"))
+        meta.setdefault("hierarchy_node_key", node_key)
+        if parent_key is not None and meta.get("hierarchy_parent_key") is None:
+            meta["hierarchy_parent_key"] = parent_key
+        meta.setdefault("hierarchy_family_key", parent_key or node_key)
+
+    apply_sibling_hierarchy_links(metas, overwrite=False)
 
 
 def _split_paragraphs(text: str) -> list[tuple[str, int, int]]:
@@ -154,8 +225,9 @@ def hierarchical_chunk_markdown(markdown: str) -> dict[str, list[dict]]:
         if not p_text.strip():
             continue
 
-        para_id = str(uuid.uuid4())
-        paragraph_chunks.append({
+        para_node_key = _stable_markdown_node_key(level="paragraph", start=start, end=end, text=p_text)
+        para_id = para_node_key
+        paragraph_chunk = {
             "id": para_id,
             "level": "paragraph",
             "index": p_idx,
@@ -163,15 +235,29 @@ def hierarchical_chunk_markdown(markdown: str) -> dict[str, list[dict]]:
             "start": start,
             "end": end,
             "tokens_est": _estimate_tokens(p_text),
-        })
+            "hierarchy_basis": "markdown_hierarchy",
+            "hierarchy_level": "paragraph",
+            "hierarchy_node_key": para_node_key,
+            "hierarchy_family_key": para_node_key,
+            "hierarchy_parent_key": None,
+        }
+        paragraph_chunks.append(paragraph_chunk)
 
         # Split paragraph into sentences
         sentences = _split_sentences(p_text, base_offset=start)
+        paragraph_sentences: list[dict[str, Any]] = []
         for s_idx, (s_text, s_start, s_end) in enumerate(sentences):
             if not s_text.strip():
                 continue
-            sentence_chunks.append({
-                "id": str(uuid.uuid4()),
+            sent_node_key = _stable_markdown_node_key(
+                level="sentence",
+                start=s_start,
+                end=s_end,
+                text=s_text,
+                parent_key=para_node_key,
+            )
+            sentence_chunk = {
+                "id": sent_node_key,
                 "level": "sentence",
                 "index": s_idx,
                 "parent_id": para_id,
@@ -179,9 +265,27 @@ def hierarchical_chunk_markdown(markdown: str) -> dict[str, list[dict]]:
                 "start": s_start,
                 "end": s_end,
                 "tokens_est": _estimate_tokens(s_text),
-            })
+                "hierarchy_basis": "markdown_hierarchy",
+                "hierarchy_level": "sentence",
+                "hierarchy_node_key": sent_node_key,
+                "hierarchy_family_key": para_node_key,
+                "hierarchy_parent_key": para_node_key,
+            }
+            sentence_chunks.append(sentence_chunk)
+            paragraph_sentences.append(sentence_chunk)
+
+        apply_sibling_hierarchy_links(paragraph_sentences, overwrite=True)
+
+    apply_sibling_hierarchy_links(paragraph_chunks, overwrite=True)
 
     return {
         "paragraphs": paragraph_chunks,
         "sentences": sentence_chunks,
     }
+
+
+__all__ = [
+    "apply_sequence_hierarchy_metadata",
+    "apply_sibling_hierarchy_links",
+    "hierarchical_chunk_markdown",
+]

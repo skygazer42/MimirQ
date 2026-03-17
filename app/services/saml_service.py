@@ -367,7 +367,7 @@ def exchange_saml_response(
     user, groups = _resolve_user_identity(db, assertion, provider)
     UserService.mark_login(db, user)
 
-    tenant_id = UserService.get_current_tenant_id(db, user_id=str(user.id))
+    tenant_id = UserService.get_current_tenant_id(db, _user_id=str(user.id))
     extra_claims: dict[str, Any] = {}
     normalized_groups = [group for group in groups if group]
     if normalized_groups:

@@ -10,6 +10,8 @@ import re
 import uuid
 from typing import Any
 
+from app.rag.core.hashing import stable_hash
+
 _HEX32_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 
 
@@ -271,4 +273,114 @@ def normalize_section_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     return meta
 
 
-__all__ = ["infer_chunk_structure", "normalize_image_metadata", "normalize_section_metadata"]
+def ensure_hierarchy_overlay_metadata(
+    meta: dict[str, Any],
+    *,
+    document_id: str,
+    chunk_index: int,
+    total_chunks: int | None = None,
+) -> dict[str, Any]:
+    """
+    Ensure lightweight hierarchy metadata exists for retrieval-time family/adjacency expansion.
+
+    This is intentionally metadata-only: it does not change retrieval ranking/selection behavior.
+    """
+    if not isinstance(meta, dict):
+        return {}
+
+    doc_id = str(document_id or meta.get("document_id") or "").strip()
+    idx = max(0, int(chunk_index))
+    total = int(total_chunks) if total_chunks is not None else None
+    if total is not None and total < 0:
+        total = 0
+
+    chunk_key = str(meta.get("chunk_key") or "").strip() or (f"{doc_id}:{idx}" if doc_id else str(idx))
+    meta.setdefault("chunk_key", chunk_key)
+
+    node_key = str(meta.get("hierarchy_node_key") or "").strip() or chunk_key
+    meta["hierarchy_node_key"] = node_key
+
+    # Respect explicit hierarchy_parent_key=None emitted by chunkers (e.g. parent nodes in
+    # parent_child / markdown hierarchy). Only fall back to legacy parent_id fields when the
+    # hierarchy_parent_key field is absent entirely.
+    if "hierarchy_parent_key" in meta:
+        parent_key_raw = meta.get("hierarchy_parent_key")
+    else:
+        parent_key_raw = meta.get("parent_id") or meta.get("parent_node_id")
+    parent_key = str(parent_key_raw or "").strip()
+    meta["hierarchy_parent_key"] = (parent_key if parent_key else None)
+
+    level = str(meta.get("hierarchy_level") or "").strip().lower()
+    if not level:
+        role = str(meta.get("chunk_role") or "").strip().lower()
+        if role in {"parent", "child", "paragraph", "sentence"}:
+            level = role
+        elif parent_key:
+            level = "child"
+        else:
+            level = "chunk"
+    meta["hierarchy_level"] = level
+
+    basis = str(meta.get("hierarchy_basis") or "").strip().lower()
+    if not basis:
+        strategy = str(meta.get("chunk_strategy") or "").strip().lower()
+        if strategy == "parent_child":
+            basis = "parent_child"
+        elif strategy == "hierarchical_markdown":
+            basis = "markdown_structure"
+        else:
+            basis = "chunk_sequence"
+    meta["hierarchy_basis"] = basis
+
+    family_key = str(meta.get("hierarchy_family_key") or "").strip()
+    if not family_key:
+        if parent_key:
+            family_key = stable_hash(f"hf:{doc_id}:{parent_key}", length=32)
+        else:
+            family_key = node_key
+    meta["hierarchy_family_key"] = family_key
+
+    if meta.get("hierarchy_sibling_index") is None:
+        meta["hierarchy_sibling_index"] = idx
+
+    prev_idx = meta.get("prev_chunk_index")
+    if prev_idx is None and idx > 0:
+        prev_idx = idx - 1
+    try:
+        prev_idx_i = int(prev_idx) if prev_idx is not None else None
+    except (TypeError, ValueError):
+        prev_idx_i = None
+    if prev_idx_i is not None and prev_idx_i >= 0:
+        meta.setdefault("prev_chunk_index", prev_idx_i)
+        prev_key = str(meta.get("prev_chunk_key") or "").strip() or (f"{doc_id}:{prev_idx_i}" if doc_id else "")
+        if prev_key:
+            meta.setdefault("prev_chunk_key", prev_key)
+            meta.setdefault("hierarchy_prev_sibling_key", prev_key)
+    else:
+        meta.setdefault("hierarchy_prev_sibling_key", None)
+
+    next_idx = meta.get("next_chunk_index")
+    if next_idx is None and total is not None and (idx + 1) < total:
+        next_idx = idx + 1
+    try:
+        next_idx_i = int(next_idx) if next_idx is not None else None
+    except (TypeError, ValueError):
+        next_idx_i = None
+    if next_idx_i is not None and next_idx_i >= 0:
+        meta.setdefault("next_chunk_index", next_idx_i)
+        next_key = str(meta.get("next_chunk_key") or "").strip() or (f"{doc_id}:{next_idx_i}" if doc_id else "")
+        if next_key:
+            meta.setdefault("next_chunk_key", next_key)
+            meta.setdefault("hierarchy_next_sibling_key", next_key)
+    else:
+        meta.setdefault("hierarchy_next_sibling_key", None)
+
+    return meta
+
+
+__all__ = [
+    "ensure_hierarchy_overlay_metadata",
+    "infer_chunk_structure",
+    "normalize_image_metadata",
+    "normalize_section_metadata",
+]

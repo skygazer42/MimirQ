@@ -81,7 +81,7 @@ class ParsingContentResponse(BaseModel):
     stats: dict[str, int] | None = Field(default=None)
     parse_duration_sec: float | None = Field(default=None)
     pdf_quality: dict[str, Any] | None = Field(default=None)
-    quality_gate: "ParsingQualityGate" | None = Field(default=None)
+    quality_gate: ParsingQualityGate | None = Field(default=None)
 
 
 class ParsingContentUpdateRequest(BaseModel):

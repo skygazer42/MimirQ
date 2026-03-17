@@ -148,7 +148,8 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
         if origin:
             expanded.add(origin)
 
-    for origin in expanded:
+    # Iterate over a snapshot; we may add derived origins while expanding.
+    for origin in tuple(expanded):
         parsed = urlparse(origin)
         scheme = (parsed.scheme or "").lower().strip()
         host = (parsed.hostname or "").lower().strip()

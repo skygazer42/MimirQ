@@ -139,6 +139,50 @@ Claim verifier 模式选择建议：
 
 ---
 
+## 2.2 Hierarchy Recall Overlay（层级召回）快速定位
+
+当你遇到“chunk 命中不稳定，但其实命中的是同一段落/同一章节附近”的问题时，可以用 hierarchy recall overlay 做结构化的 recall 稳定性增强（不改变解析/索引存储模型，属于 retrieval overlay）。
+
+### 如何开启
+
+两种方式（二选一）：
+
+1) 用 profile 一键开启（推荐做 ablation / 复现）：
+- `rag_config.retrieval_profile=hierarchy_recall20`
+- `rag_config.retrieval_profile=hierarchy_recall20_expand`
+- `rag_config.retrieval_profile=hierarchy_hybrid_ce`
+- `rag_config.retrieval_profile=hierarchy_grounded_strict`
+
+2) 在任意 profile 上显式开启（适合做局部对比）：
+- `rag_config.enable_hierarchy_recall=true`
+- 可配套：
+  - `hierarchy_family_collapse`
+  - `hierarchy_family_aggregation`（`frequency|score|combined`）
+  - `hierarchy_tree_dedup`
+  - `hierarchy_overfetch_factor`
+  - `hierarchy_parent_depth` / `hierarchy_sibling_window`（上下文扩展）
+
+### 重点看哪些字段
+
+在 `/api/v1/retrieval/explain`：
+- 顶层 `hierarchy_recall`：快速确认是否启用以及关键 knobs 生效情况。
+- `query_debug.hierarchy_recall`：包含 `tree_dedup_meta` 与 `context_expansion_*` 的详细诊断信息。
+
+在 Evidence API（`/api/v1/rag/evidence/retrieve`）返回的引用里：
+- `citations[*].retrieval_role`
+  - `main`：主召回候选（应承担“主证据”职责）
+  - `hierarchy_parent` / `hierarchy_sibling`：层级上下文扩展的“补充上下文”（用于补齐前后文，不应成为 must-recall 的唯一锚点）
+
+### 常见现象解释
+
+- `family_collapse=true` 后 top-k 变“少”：
+  - 这是预期行为，同一 family 的重复候选会被折叠。
+  - 建议结合 `hierarchy_overfetch_factor`（或增大 `top_k`）保证最终可见候选数充足。
+- `context_expansion_attempted=true` 但 `context_expansion_used=false`：
+  - 常见原因：没有找到可用的 parent/sibling chunk，或扩展后被 tree-dedup / budget 丢弃。
+- 开启扩展后 must-recall anchor-field 误判：
+  - 必须保证 `main` 引用仍然包含必要锚点字段（span/page/char range 等）；层级扩展引用是“context-only”，不会替代主证据。
+
 ## 3) 常见故障分层诊断
 
 ### A. 召回缺失（应命中的 chunk 没出现）

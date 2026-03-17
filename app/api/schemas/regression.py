@@ -16,6 +16,8 @@ from app.rag.core.text import normalize_retrieval_mode
 
 from .base import OrmModel
 
+HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
+
 
 class ReferenceSource(BaseModel):
     """A human-verified evidence pointer for a regression case."""
@@ -23,6 +25,17 @@ class ReferenceSource(BaseModel):
     document_id: UUID = Field(..., description="Evidence document id")
     chunk_id: UUID = Field(..., description="Evidence chunk id")
     chunk_index: int | None = Field(default=None, ge=0, description="0-based chunk index (optional)")
+    # Optional hierarchy-aware keys (best-effort; used for family-level recall metrics).
+    family_collapse_key: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Hierarchy family collapse key (optional; enables family-level recall evaluation)",
+    )
+    hierarchy_family_key: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Raw hierarchy family key (optional; accepted for compatibility)",
+    )
 
     # Optional audit/debug fields (best-effort; do not gate correctness).
     page_number: int | None = Field(default=None, ge=1, description="1-based page number (optional)")
@@ -179,6 +192,16 @@ class RagasRegressionRunCreateRequest(BaseModel):
     multi_query_count: int | None = Field(default=None, ge=1, le=8)
     multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
+    enable_hierarchy_recall: bool | None = Field(default=None, description="Enable hierarchy-aware recall overlay")
+    hierarchy_family_collapse: bool | None = Field(default=None, description="Collapse same-family hits after recall")
+    hierarchy_family_aggregation: Literal["frequency", "score", "combined"] | None = Field(
+        default=None,
+        description="Cross-query family aggregation strategy",
+    )
+    hierarchy_tree_dedup: bool | None = Field(default=None, description="Enable ancestor/child tree-style dedup")
+    hierarchy_parent_depth: int | None = Field(default=None, ge=0, le=8, description="Max parent expansion depth")
+    hierarchy_sibling_window: int | None = Field(default=None, ge=0, le=16, description="Max sibling expansion window")
+    hierarchy_overfetch_factor: int | None = Field(default=None, ge=1, le=32, description="Overfetch multiplier before collapse")
     enable_query_rewrite: bool | None = Field(default=None, description="Enable bounded query rewrite before retrieval")
     query_rewrite_strategy: str | None = Field(default=None, description="Override query rewrite strategy id")
     query_rewrite_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
@@ -243,6 +266,26 @@ class RagasRegressionRunCreateRequest(BaseModel):
         if raw == "linear":
             return "linear"
         raise ValueError("fusion_strategy must be one of: linear, rrf, budgeted_rrf, weighted")
+
+    @field_validator("hierarchy_family_aggregation", mode="before")
+    @classmethod
+    def _normalize_hierarchy_family_aggregation(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError(
+                "hierarchy_family_aggregation must be one of: "
+                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+            )
+        raw = v.strip().lower()
+        if not raw:
+            return None
+        if raw not in HIERARCHY_FAMILY_AGGREGATION_VALUES:
+            raise ValueError(
+                "hierarchy_family_aggregation must be one of: "
+                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+            )
+        return raw
 
     @field_validator("query_rewrite_strategy", mode="before")
     @classmethod

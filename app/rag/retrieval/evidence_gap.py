@@ -41,6 +41,7 @@ def detect_evidence_gap(
     anchor_eval = evaluate_evidence_anchor_expectations(
         citations=citations_norm,
         required_fields=req_anchor_fields,
+        exclude_retrieval_role_prefixes=["hierarchy_"],
     )
     anchor_missing_any = int(anchor_eval.get("missing_any") or 0)
     if anchor_missing_any > 0:

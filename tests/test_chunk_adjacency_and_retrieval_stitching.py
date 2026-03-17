@@ -68,6 +68,15 @@ def test_chunk_asset_stage_sets_prev_next_adjacency_metadata():  # noqa: ANN001
         expected_next_key = f"{document_id}:{i + 1}" if i < (len(out) - 1) else None
         assert meta.get("prev_chunk_key") == expected_prev_key
         assert meta.get("next_chunk_key") == expected_next_key
+        assert meta.get("hierarchy_sibling_index") == i
+        assert meta.get("hierarchy_prev_sibling_key") == expected_prev_key
+        assert meta.get("hierarchy_next_sibling_key") == expected_next_key
+        assert meta.get("hierarchy_basis") == "chunk_sequence"
+        assert meta.get("hierarchy_level") == "chunk"
+        assert meta.get("hierarchy_node_key") == f"{document_id}:{i}"
+        assert meta.get("hierarchy_family_key") == f"{document_id}:{i}"
+        assert meta.get("hierarchy_prev_sibling_key") == expected_prev_key
+        assert meta.get("hierarchy_next_sibling_key") == expected_next_key
 
 
 def test_retrieval_stitching_orders_contiguous_chunks(monkeypatch):  # noqa: ANN001
@@ -94,4 +103,3 @@ def test_retrieval_stitching_orders_contiguous_chunks(monkeypatch):  # noqa: ANN
     stitched = retriever._stitch_results_for_continuity(results)
     stitched_ids = [r.get("chunk_id") for r in stitched]
     assert stitched_ids == ["a1", "a2", "a3", "b5", "b6"]
-

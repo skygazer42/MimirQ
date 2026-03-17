@@ -187,9 +187,14 @@ def export_dataset_report_bundle_zip(
         connector_runs_limit=int(connector_runs_limit or 0),
     )
 
-    report_obj = report.model_dump(mode="json")
+    report_obj_raw = report.model_dump(mode="json")
+    report_obj = report_obj_raw
     if bool(redact):
-        report_obj = _scrub_report_for_redaction(report_obj)
+        report_obj = _scrub_report_for_redaction(report_obj_raw)
+        # Keep safe aggregate summaries that are useful for shareable audit bundles.
+        for key in ("must_recall_summary", "hierarchy_recall_summary"):
+            if report_obj_raw.get(key) is not None:
+                report_obj[key] = report_obj_raw.get(key)
 
     report_json = json.dumps(report_obj, ensure_ascii=False, separators=(",", ":"))
 
