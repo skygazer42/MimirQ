@@ -135,6 +135,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/saml/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saml Metadata */
+        get: operations["saml_metadata_api_v1_auth_saml_metadata_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/upload": {
         parameters: {
             query?: never;
@@ -3279,6 +3296,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evidence/training-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Training Dataset
+         * @description Export a dataset-scoped training dataset assembled from feedback + evidence.
+         *
+         *     Output format:
+         *     - `jsonl`: one stable row per feedback/evidence record
+         *     - `csv`: flattened export with nested JSON columns
+         */
+        get: operations["export_training_dataset_api_v1_evidence_training_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evidence/suites/{suite_id}/export-ltr-training": {
         parameters: {
             query?: never;
@@ -3302,6 +3343,57 @@ export interface paths {
         get: operations["export_evidence_suite_ltr_training_bundle_api_v1_evidence_suites__suite_id__export_ltr_training_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/capsules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Persist Evidence Capsule */
+        post: operations["persist_evidence_capsule_api_v1_evidence_capsules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/capsules/{capsule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Evidence Capsule */
+        get: operations["get_evidence_capsule_api_v1_evidence_capsules__capsule_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/evidence/capsules/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Evidence Capsule Payload */
+        post: operations["verify_evidence_capsule_payload_api_v1_evidence_capsules_verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4813,6 +4905,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/connectors/configs/{config_id}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reconcile Connector Config
+         * @description Reconcile connector-managed documents for a saved config using the last known local source set.
+         *
+         *     Single-node scope:
+         *     - dry-run: show stale / disabled / missing refs
+         *     - apply: disable stale docs and re-enable matching disabled docs
+         */
+        post: operations["reconcile_connector_config_api_v1_connectors_configs__config_id__reconcile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/connectors/scheduled/tick": {
         parameters: {
             query?: never;
@@ -5062,6 +5178,57 @@ export interface paths {
          * @description Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly.
          */
         post: operations["prompt_preview_api_v1_rag_prompt_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/retrieval/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Retrieval Profiles */
+        get: operations["get_retrieval_profiles_api_v1_retrieval_profiles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/retrieval/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Explain Retrieval */
+        post: operations["explain_retrieval_api_v1_retrieval_explain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/retrieval/config-hash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Get Retrieval Config Hash */
+        post: operations["get_retrieval_config_hash_api_v1_retrieval_config_hash_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5569,6 +5736,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/observability/cache/datasets/{dataset_id}/invalidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Invalidate Dataset Cache Namespace Endpoint */
+        post: operations["invalidate_dataset_cache_namespace_endpoint_api_v1_observability_cache_datasets__dataset_id__invalidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/periodic-jobs/freshness": {
         parameters: {
             query?: never;
@@ -5607,6 +5791,7 @@ export interface paths {
          *     - Broker health (ping)
          *     - Queue depth
          *     - Active worker count (heartbeat-based, aggregated)
+         *     - Recent standardized job outcomes (best-effort)
          */
         get: operations["get_task_queue_observability_snapshot_api_v1_observability_task_queue_snapshot_get"];
         put?: never;
@@ -5677,6 +5862,40 @@ export interface paths {
         get: operations["get_index_audit_api_v1_observability_index_audit_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/index-drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Index Drift */
+        get: operations["list_index_drift_api_v1_observability_index_drift_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/index-drift/{item_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Index Drift */
+        post: operations["resolve_index_drift_api_v1_observability_index_drift__item_id__resolve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6586,6 +6805,14 @@ export interface components {
         ChatRAGConfig: {
             /** Retrieval Profile */
             retrieval_profile?: string | null;
+            /** Retrieval Contract Mode */
+            retrieval_contract_mode?: string | null;
+            /** Must Recall */
+            must_recall?: boolean | null;
+            /** Must Recall Expected Source Keys */
+            must_recall_expected_source_keys?: string[] | null;
+            /** Must Recall Required Anchor Fields */
+            must_recall_required_anchor_fields?: string[] | null;
             /** Intent Router */
             intent_router?: boolean | null;
             /** Intent Router Policy */
@@ -6608,6 +6835,20 @@ export interface components {
             multi_query_temperature?: number | null;
             /** Multi Query Max Chars */
             multi_query_max_chars?: number | null;
+            /** Enable Hierarchy Recall */
+            enable_hierarchy_recall?: boolean | null;
+            /** Hierarchy Family Collapse */
+            hierarchy_family_collapse?: boolean | null;
+            /** Hierarchy Family Aggregation */
+            hierarchy_family_aggregation?: ("frequency" | "score" | "combined") | null;
+            /** Hierarchy Tree Dedup */
+            hierarchy_tree_dedup?: boolean | null;
+            /** Hierarchy Parent Depth */
+            hierarchy_parent_depth?: number | null;
+            /** Hierarchy Sibling Window */
+            hierarchy_sibling_window?: number | null;
+            /** Hierarchy Overfetch Factor */
+            hierarchy_overfetch_factor?: number | null;
             /** Top K */
             top_k?: number;
             /** Score Threshold */
@@ -6977,6 +7218,8 @@ export interface components {
             content: string;
             /** Length */
             length: number;
+            /** Hierarchy Basis */
+            hierarchy_basis?: string | null;
             /** Tokens Est */
             tokens_est?: number | null;
             /** Start Index */
@@ -7357,6 +7600,14 @@ export interface components {
             retrieval_role?: string | null;
             /** Neighbor Of */
             neighbor_of?: string | null;
+            /** Hierarchy Basis */
+            hierarchy_basis?: string | null;
+            /** Hierarchy Family Key */
+            hierarchy_family_key?: string | null;
+            /** Family Collapse Key */
+            family_collapse_key?: string | null;
+            /** Family Hit */
+            family_hit?: boolean | null;
             /** Doc Pipeline Key */
             doc_pipeline_key?: string | null;
             /** Pipeline Hash */
@@ -8268,6 +8519,30 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** DatasetCacheInvalidationResponse */
+        DatasetCacheInvalidationResponse: {
+            /** Dataset Id */
+            dataset_id: string;
+            /** Previous Corpus Cache Token */
+            previous_corpus_cache_token?: string | null;
+            /** Current Corpus Cache Token */
+            current_corpus_cache_token?: string | null;
+            /**
+             * Invalidated At
+             * Format: date-time
+             */
+            invalidated_at: string;
+            /**
+             * Evidence Post Rerank Memory Cleared
+             * @default false
+             */
+            evidence_post_rerank_memory_cleared: boolean;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
         /** DatasetCategoryAssignmentRequest */
         DatasetCategoryAssignmentRequest: {
             /** Category Ids */
@@ -8844,6 +9119,29 @@ export interface components {
             ingestion: components["schemas"]["DatasetHealthIngestionSummary"];
         };
         /**
+         * DatasetHierarchyRecallSummaryOut
+         * @description Best-effort hierarchy-recall counters derived from latest regression run summary.
+         *
+         *     Notes:
+         *     - These are objective aggregate metrics from retrieval-only evaluation (0..1).
+         *     - Values may be missing on legacy regression runs (best-effort).
+         */
+        DatasetHierarchyRecallSummaryOut: {
+            /** Doc Hit Rate */
+            doc_hit_rate?: number | null;
+            /** Family Hit Rate */
+            family_hit_rate?: number | null;
+            /** Doc Recall */
+            doc_recall?: number | null;
+            /** Family Recall */
+            family_recall?: number | null;
+            /**
+             * Status
+             * @default unavailable
+             */
+            status: string;
+        };
+        /**
          * DatasetIngestionStats
          * @description Lightweight dataset ingestion stats for dashboards.
          */
@@ -9019,6 +9317,34 @@ export interface components {
             /** Items */
             items: components["schemas"]["DatasetOut"][];
         };
+        /**
+         * DatasetMustRecallSummaryOut
+         * @description Best-effort must-recall summary counters derived from latest regression run summary.
+         */
+        DatasetMustRecallSummaryOut: {
+            /** Pass Rate */
+            pass_rate?: number | null;
+            /**
+             * Cases Total
+             * @default 0
+             */
+            cases_total: number;
+            /**
+             * Cases Passed
+             * @default 0
+             */
+            cases_passed: number;
+            /**
+             * Cases Failed
+             * @default 0
+             */
+            cases_failed: number;
+            /**
+             * Status
+             * @default unavailable
+             */
+            status: string;
+        };
         /** DatasetOut */
         DatasetOut: {
             /**
@@ -9061,6 +9387,74 @@ export interface components {
             default_prompt_ab_experiment_key?: string | null;
             chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+        };
+        /** DatasetParseRiskDocumentOut */
+        DatasetParseRiskDocumentOut: {
+            /** Document Id */
+            document_id: string;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+        };
+        /**
+         * DatasetParseRiskSummaryOut
+         * @description Best-effort parse-risk summary derived from document parse_quality metadata.
+         */
+        DatasetParseRiskSummaryOut: {
+            /**
+             * Total Documents
+             * @default 0
+             */
+            total_documents: number;
+            /**
+             * Used Documents
+             * @default 0
+             */
+            used_documents: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Low Threshold
+             * @default 0.35
+             */
+            low_threshold: number;
+            /**
+             * Considered Documents
+             * @default 0
+             */
+            considered_documents: number;
+            /**
+             * High Risk Documents
+             * @default 0
+             */
+            high_risk_documents: number;
+            /**
+             * Medium Risk Documents
+             * @default 0
+             */
+            medium_risk_documents: number;
+            /**
+             * Healthy Documents
+             * @default 0
+             */
+            healthy_documents: number;
+            /**
+             * High Risk Ratio
+             * @default 0
+             */
+            high_risk_ratio: number;
+            /**
+             * Recommendation
+             * @default no_parse_quality_metadata
+             */
+            recommendation: string;
+            /** Top Low Quality Documents */
+            top_low_quality_documents?: components["schemas"]["DatasetParseRiskDocumentOut"][];
         };
         /**
          * DatasetPermissionEnum
@@ -9936,6 +10330,36 @@ export interface components {
              */
             p99: number;
         };
+        /**
+         * DatasetProfileRecallRiskHint
+         * @description Best-effort recall-risk hints derived from lightweight profile signals.
+         *
+         *     Hints are advisory and must not block ingest/indexing.
+         */
+        DatasetProfileRecallRiskHint: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Severity
+             * @default warning
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "error";
+            /** Observed */
+            observed?: {
+                [key: string]: unknown;
+            };
+            /** Target */
+            target?: {
+                [key: string]: unknown;
+            };
+            /** Message */
+            message?: string | null;
+            /** Suggestions */
+            suggestions?: string[];
+        };
         /** DatasetProfileScanRunCreateRequest */
         DatasetProfileScanRunCreateRequest: {
             /**
@@ -10144,6 +10568,8 @@ export interface components {
             };
             /** Findings */
             findings?: components["schemas"]["DatasetProfileFindingSummary"][];
+            /** Recall Risk Hints */
+            recall_risk_hints?: components["schemas"]["DatasetProfileRecallRiskHint"][];
             /** Chunk Targets */
             chunk_targets?: components["schemas"]["DatasetProfileTargetCheck"][];
             latest_scan_run?: components["schemas"]["DatasetProfileScanRunSummary"] | null;
@@ -10250,12 +10676,28 @@ export interface components {
             multi_query_temperature?: number | null;
             /** Multi Query Max Chars */
             multi_query_max_chars?: number | null;
+            /** Enable Hierarchy Recall */
+            enable_hierarchy_recall?: boolean | null;
+            /** Hierarchy Family Collapse */
+            hierarchy_family_collapse?: boolean | null;
+            /** Hierarchy Family Aggregation */
+            hierarchy_family_aggregation?: ("frequency" | "score" | "combined") | null;
+            /** Hierarchy Tree Dedup */
+            hierarchy_tree_dedup?: boolean | null;
+            /** Hierarchy Parent Depth */
+            hierarchy_parent_depth?: number | null;
+            /** Hierarchy Sibling Window */
+            hierarchy_sibling_window?: number | null;
+            /** Hierarchy Overfetch Factor */
+            hierarchy_overfetch_factor?: number | null;
             /** Top K */
             top_k?: number | null;
             /** Score Threshold */
             score_threshold?: number | null;
             /** Retrieval Mode */
             retrieval_mode?: string | null;
+            /** Retrieval Contract Mode */
+            retrieval_contract_mode?: string | null;
             /** Alpha */
             alpha?: number | null;
             /** Fusion Strategy */
@@ -10354,12 +10796,35 @@ export interface components {
             governance_metrics?: components["schemas"]["DatasetGovernanceMetricsOut"] | null;
             governance_audit?: components["schemas"]["DatasetGovernanceAuditOut"] | null;
             chunk_quality_metrics?: components["schemas"]["DatasetChunkQualityMetricsOut"] | null;
+            parse_risk_summary?: components["schemas"]["DatasetParseRiskSummaryOut"] | null;
             kg_stats?: components["schemas"]["DatasetKGStatsOut"] | null;
             latest_regression_run?: components["schemas"]["DatasetRegressionRunSummaryOut"] | null;
+            must_recall_summary?: components["schemas"]["DatasetMustRecallSummaryOut"] | null;
+            hierarchy_recall_summary?: components["schemas"]["DatasetHierarchyRecallSummaryOut"] | null;
             /** Precheck Summary */
             precheck_summary?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** DatasetTableRoutingPolicyAudit */
+        DatasetTableRoutingPolicyAudit: {
+            /**
+             * Version
+             * @default 1
+             */
+            version: string;
+            /** Table Extensions */
+            table_extensions?: string[];
+            /** Global Defaults */
+            global_defaults?: {
+                [key: string]: boolean;
+            };
+            /** Dataset Pipeline Defaults */
+            dataset_pipeline_defaults?: {
+                [key: string]: boolean;
+            };
+            /** Rules */
+            rules?: components["schemas"]["IngestionRuleTableRoutingAudit"][];
         };
         /** DatasetTablesListResponse */
         DatasetTablesListResponse: {
@@ -10995,6 +11460,10 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
+            /** Index Operation */
+            index_operation?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * DocumentChunkUpdateRequest
@@ -11604,6 +12073,11 @@ export interface components {
              */
             table_store_auto_route?: boolean | null;
             /**
+             * Table Store Sidecar Exclusive Routing
+             * @description When true, parser-emitted table segments are TAG-sidecar only (excluded from vector/BM25 indexing).
+             */
+            table_store_sidecar_exclusive_routing?: boolean | null;
+            /**
              * Table Store Auto Row Threshold
              * @description In auto-route mode, route to TAG when estimated rows >= threshold (0 disables)
              */
@@ -12031,6 +12505,54 @@ export interface components {
              * @default false
              */
             filter_page_header_footer: boolean;
+        };
+        /** EvidenceCapsuleGetResponse */
+        EvidenceCapsuleGetResponse: {
+            /** Capsule Id */
+            capsule_id: string;
+            /** Capsule Hash */
+            capsule_hash: string;
+            /** Capsule */
+            capsule: {
+                [key: string]: unknown;
+            };
+        };
+        /** EvidenceCapsulePersistRequest */
+        EvidenceCapsulePersistRequest: {
+            /** Capsule */
+            capsule: {
+                [key: string]: unknown;
+            };
+            /** Capsule Id */
+            capsule_id?: string | null;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
+        };
+        /** EvidenceCapsulePersistResponse */
+        EvidenceCapsulePersistResponse: {
+            /** Capsule Id */
+            capsule_id: string;
+            /** Capsule Hash */
+            capsule_hash: string;
+            /** Path */
+            path: string;
+            /**
+             * Overwritten
+             * @default false
+             */
+            overwritten: boolean;
+        };
+        /** EvidenceCapsuleVerifyResponse */
+        EvidenceCapsuleVerifyResponse: {
+            /** Capsule Id */
+            capsule_id?: string | null;
+            /** Valid */
+            valid: boolean;
+            /** Reason */
+            reason: string;
         };
         /** EvidenceCoverageBucket */
         EvidenceCoverageBucket: {
@@ -12649,6 +13171,10 @@ export interface components {
             abstain_reason?: string | null;
             /** Retrieval Trace */
             retrieval_trace?: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence Capsule */
+            evidence_capsule?: {
                 [key: string]: unknown;
             } | null;
             /** Query Debug */
@@ -13616,6 +14142,67 @@ export interface components {
              */
             milvus_orphan_ids_sample: string[];
         };
+        /** IndexDriftItemResponse */
+        IndexDriftItemResponse: {
+            /** Id */
+            id: string;
+            /** Tenant Id */
+            tenant_id: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Document Id */
+            document_id?: string | null;
+            /** Chunk Id */
+            chunk_id?: string | null;
+            /** Operation */
+            operation: string;
+            /** Channel */
+            channel: string;
+            /** Strictness */
+            strictness: string;
+            /** Status */
+            status: string;
+            /** Reason */
+            reason: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+            /** Reconcile Task Id */
+            reconcile_task_id?: string | null;
+            /**
+             * Replay Count
+             * @default 0
+             */
+            replay_count: number;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Last Replayed At */
+            last_replayed_at?: string | null;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /** Resolved By */
+            resolved_by?: string | null;
+            /** Resolution Note */
+            resolution_note?: string | null;
+        };
+        /** IndexDriftListResponse */
+        IndexDriftListResponse: {
+            /** Schema */
+            schema: string;
+            /** Items */
+            items?: components["schemas"]["IndexDriftItemResponse"][];
+        };
+        /** IndexDriftResolveRequest */
+        IndexDriftResolveRequest: {
+            /**
+             * Resolution Note
+             * @default
+             */
+            resolution_note: string;
+        };
         /** IngestionDashboardSummaryResponse */
         IngestionDashboardSummaryResponse: {
             /** Window Hours */
@@ -13747,6 +14334,18 @@ export interface components {
             /** Items */
             items?: components["schemas"]["IngestionPolicyVersion"][];
         };
+        /** IngestionPolicyWithAudit */
+        IngestionPolicyWithAudit: {
+            /**
+             * Version
+             * @description Policy schema version
+             * @default 1
+             */
+            version: string;
+            /** Rules */
+            rules?: components["schemas"]["IngestionRule-Output"][];
+            table_routing_policy_audit: components["schemas"]["DatasetTableRoutingPolicyAudit"];
+        };
         /** IngestionPreprocessConfig */
         IngestionPreprocessConfig: {
             /**
@@ -13870,6 +14469,25 @@ export interface components {
             extensions?: string[];
             /** Filename Regex */
             filename_regex?: string | null;
+        };
+        /** IngestionRuleTableRoutingAudit */
+        IngestionRuleTableRoutingAudit: {
+            /** Rule Id */
+            rule_id: string;
+            /** Rule Name */
+            rule_name: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Match Extensions */
+            match_extensions?: string[];
+            /**
+             * Table Rule Match
+             * @default false
+             */
+            table_rule_match: boolean;
+            table_store_enabled: components["schemas"]["TableRoutingSettingAudit"];
+            table_store_auto_route: components["schemas"]["TableRoutingSettingAudit"];
+            table_store_sidecar_exclusive_routing: components["schemas"]["TableRoutingSettingAudit"];
         };
         /** IngestionRunCompareResponse */
         IngestionRunCompareResponse: {
@@ -15813,6 +16431,72 @@ export interface components {
              */
             documents: number;
         };
+        /** PlannerCandidateOut */
+        PlannerCandidateOut: {
+            /** Candidate Id */
+            candidate_id?: string | null;
+            /** Score */
+            score?: number | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Penalty Score */
+            penalty_score?: number | null;
+            /** Penalties */
+            penalties?: string[];
+            join?: components["schemas"]["PlannerJoinProvenanceOut"] | null;
+            /** Selected Tables */
+            selected_tables?: string[];
+        };
+        /** PlannerDiagnosticsOut */
+        PlannerDiagnosticsOut: {
+            /** Strategy */
+            strategy?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Joins */
+            joins?: components["schemas"]["PlannerJoinProvenanceOut"][];
+            /** Selected Tables */
+            selected_tables?: string[];
+            /** Candidates */
+            candidates?: components["schemas"]["PlannerCandidateOut"][];
+            /** Ambiguous */
+            ambiguous?: boolean | null;
+            /** Ambiguity Gap */
+            ambiguity_gap?: number | null;
+            /** Strict Ambiguity */
+            strict_ambiguity?: boolean | null;
+            /** Aggregation */
+            aggregation?: string | null;
+            /** Aggregation Column */
+            aggregation_column?: string | null;
+            /** Group By */
+            group_by?: {
+                [key: string]: unknown;
+            } | null;
+            /** Order By */
+            order_by?: {
+                [key: string]: unknown;
+            } | null;
+            /** Limit */
+            limit?: number | null;
+            /** Sql Fingerprint */
+            sql_fingerprint?: string | null;
+        };
+        /** PlannerJoinProvenanceOut */
+        PlannerJoinProvenanceOut: {
+            /** Left Table */
+            left_table: string;
+            /** Left Column */
+            left_column: string;
+            /** Right Table */
+            right_table: string;
+            /** Right Column */
+            right_column: string;
+            /** Confidence */
+            confidence?: number | null;
+            /** Reason */
+            reason?: string | null;
+        };
         /** PreprocessStepLog */
         PreprocessStepLog: {
             /** Id */
@@ -16937,6 +17621,10 @@ export interface components {
             reference_sources: components["schemas"]["ReferenceSource"][];
             /** Tags */
             tags?: string[];
+            /** Reasoning Hops */
+            reasoning_hops?: string[];
+            /** Evidence Chain */
+            evidence_chain?: components["schemas"]["ReferenceSource"][];
         };
         /** RagasRegressionCaseCreateRequest */
         RagasRegressionCaseCreateRequest: {
@@ -16971,6 +17659,16 @@ export interface components {
              * @description Tags (optional)
              */
             tags?: string[];
+            /**
+             * Reasoning Hops
+             * @description Optional multi-hop reasoning steps (ordered).
+             */
+            reasoning_hops?: string[];
+            /**
+             * Evidence Chain
+             * @description Optional multi-hop evidence chain (ordered reference sources).
+             */
+            evidence_chain?: components["schemas"]["ReferenceSource"][];
             /**
              * Extra
              * @description Extension fields (optional)
@@ -17033,6 +17731,10 @@ export interface components {
             reference_sources?: components["schemas"]["ReferenceSource"][];
             /** Tags */
             tags?: string[];
+            /** Reasoning Hops */
+            reasoning_hops?: string[];
+            /** Evidence Chain */
+            evidence_chain?: components["schemas"]["ReferenceSource"][];
             /** Extra */
             extra?: {
                 [key: string]: unknown;
@@ -17068,6 +17770,10 @@ export interface components {
             reference_sources?: components["schemas"]["ReferenceSource"][] | null;
             /** Tags */
             tags?: string[] | null;
+            /** Reasoning Hops */
+            reasoning_hops?: string[] | null;
+            /** Evidence Chain */
+            evidence_chain?: components["schemas"]["ReferenceSource"][] | null;
             /** Extra */
             extra?: {
                 [key: string]: unknown;
@@ -17102,6 +17808,10 @@ export interface components {
             }[];
             /** Scores */
             scores?: {
+                [key: string]: unknown;
+            };
+            /** Meta */
+            meta?: {
                 [key: string]: unknown;
             };
             /**
@@ -17163,6 +17873,41 @@ export interface components {
             multi_query_temperature?: number | null;
             /** Multi Query Max Chars */
             multi_query_max_chars?: number | null;
+            /**
+             * Enable Hierarchy Recall
+             * @description Enable hierarchy-aware recall overlay
+             */
+            enable_hierarchy_recall?: boolean | null;
+            /**
+             * Hierarchy Family Collapse
+             * @description Collapse same-family hits after recall
+             */
+            hierarchy_family_collapse?: boolean | null;
+            /**
+             * Hierarchy Family Aggregation
+             * @description Cross-query family aggregation strategy
+             */
+            hierarchy_family_aggregation?: ("frequency" | "score" | "combined") | null;
+            /**
+             * Hierarchy Tree Dedup
+             * @description Enable ancestor/child tree-style dedup
+             */
+            hierarchy_tree_dedup?: boolean | null;
+            /**
+             * Hierarchy Parent Depth
+             * @description Max parent expansion depth
+             */
+            hierarchy_parent_depth?: number | null;
+            /**
+             * Hierarchy Sibling Window
+             * @description Max sibling expansion window
+             */
+            hierarchy_sibling_window?: number | null;
+            /**
+             * Hierarchy Overfetch Factor
+             * @description Overfetch multiplier before collapse
+             */
+            hierarchy_overfetch_factor?: number | null;
             /**
              * Enable Query Rewrite
              * @description Enable bounded query rewrite before retrieval
@@ -17512,6 +18257,16 @@ export interface components {
              */
             chunk_index?: number | null;
             /**
+             * Family Collapse Key
+             * @description Hierarchy family collapse key (optional; enables family-level recall evaluation)
+             */
+            family_collapse_key?: string | null;
+            /**
+             * Hierarchy Family Key
+             * @description Raw hierarchy family key (optional; accepted for compatibility)
+             */
+            hierarchy_family_key?: string | null;
+            /**
              * Page Number
              * @description 1-based page number (optional)
              */
@@ -17651,6 +18406,106 @@ export interface components {
             truncated_after: boolean;
             /** Buckets */
             buckets?: components["schemas"]["RegressionRunSliceBucketDiff"][];
+        };
+        /** RetrievalConfigHashRequest */
+        RetrievalConfigHashRequest: {
+            rag_config?: components["schemas"]["ChatRAGConfig"];
+            /**
+             * Include Runtime Defaults
+             * @default true
+             */
+            include_runtime_defaults: boolean;
+        };
+        /** RetrievalConfigHashResponse */
+        RetrievalConfigHashResponse: {
+            /**
+             * Schema
+             * @default mimirq.retrieval_config_hash.v1
+             */
+            schema: string;
+            /** Hash */
+            hash: string;
+            /** Fingerprint */
+            fingerprint?: {
+                [key: string]: unknown;
+            };
+            /** Effective Config */
+            effective_config?: {
+                [key: string]: unknown;
+            };
+        };
+        /** RetrievalExplainRequest */
+        RetrievalExplainRequest: {
+            /** Query */
+            query: string;
+            /** History */
+            history?: components["schemas"]["HistoryMessage"][];
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Document Ids */
+            document_ids?: string[];
+            rag_config?: components["schemas"]["ChatRAGConfig"];
+            /**
+             * Retrieval Only
+             * @default true
+             */
+            retrieval_only: boolean;
+            /**
+             * Top Citations Limit
+             * @default 5
+             */
+            top_citations_limit: number;
+        };
+        /** RetrievalExplainResponse */
+        RetrievalExplainResponse: {
+            /**
+             * Schema
+             * @default mimirq.retrieval_explain.v1
+             */
+            schema: string;
+            /**
+             * Retrieval Only
+             * @default true
+             */
+            retrieval_only: boolean;
+            /** Query For Retrieval */
+            query_for_retrieval: string;
+            /** Channels */
+            channels?: {
+                [key: string]: unknown;
+            };
+            /** Hierarchy Recall */
+            hierarchy_recall?: {
+                [key: string]: unknown;
+            };
+            /** Candidate Counts */
+            candidate_counts?: {
+                [key: string]: number;
+            };
+            /** Top Citations */
+            top_citations?: {
+                [key: string]: unknown;
+            }[];
+            /** Rerank */
+            rerank?: {
+                [key: string]: unknown;
+            };
+            /** Stage Timings */
+            stage_timings?: {
+                [key: string]: number;
+            };
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
+            /** Query Debug */
+            query_debug?: {
+                [key: string]: unknown;
+            };
+            /** Retrieval Trace */
+            retrieval_trace?: {
+                [key: string]: unknown;
+            };
         };
         /** RetrievePreviewRequest */
         RetrievePreviewRequest: {
@@ -18042,6 +18897,21 @@ export interface components {
             /** Sql */
             sql?: string | null;
             data?: components["schemas"]["TableQueryResponse"] | null;
+            /** Sql Generation Mode */
+            sql_generation_mode?: string | null;
+            /** Schema Link Diagnostics */
+            schema_link_diagnostics?: {
+                [key: string]: unknown;
+            } | null;
+            planner_diagnostics?: components["schemas"]["PlannerDiagnosticsOut"] | null;
+            /** Join Provenance */
+            join_provenance?: components["schemas"]["PlannerJoinProvenanceOut"][] | null;
+            /** Sql Fingerprint */
+            sql_fingerprint?: string | null;
+            /** Planner Execution Mismatch */
+            planner_execution_mismatch?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** TableAssetOut */
         TableAssetOut: {
@@ -18082,6 +18952,12 @@ export interface components {
             sample_rows?: {
                 [key: string]: unknown;
             }[];
+            /** Row Source Table */
+            row_source_table?: string | null;
+            /** Row Source Sync Token */
+            row_source_sync_token?: string | null;
+            /** Row Source Pk Hash Col */
+            row_source_pk_hash_col?: string | null;
         };
         /** TableColumnOut */
         TableColumnOut: {
@@ -18112,6 +18988,16 @@ export interface components {
              * @default false
              */
             truncated: boolean;
+        };
+        /** TableRoutingSettingAudit */
+        TableRoutingSettingAudit: {
+            /** Value */
+            value: boolean;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "rule_pipeline_patch" | "dataset_pipeline_default" | "global_default";
         };
         /** TaskQueueObservabilitySnapshotResponse */
         TaskQueueObservabilitySnapshotResponse: {
@@ -18149,6 +19035,10 @@ export interface components {
              * @default 0
              */
             poll_interval_sec: number;
+            /** Recent Job Outcomes */
+            recent_job_outcomes?: {
+                [key: string]: unknown;
+            }[];
             /** Error */
             error?: string | null;
         };
@@ -18682,6 +19572,41 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     ready_api_v1_health_ready_get: {
@@ -18702,6 +19627,41 @@ export interface operations {
                     "application/json": components["schemas"]["ReadyResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     get_meta_api_v1_meta_get: {
@@ -18721,6 +19681,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MetaResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -18745,6 +19740,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18779,6 +19809,41 @@ export interface operations {
                     "application/json": components["schemas"]["AuthResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18795,8 +19860,8 @@ export interface operations {
             query?: never;
             header?: {
                 authorization?: string | null;
-                "x-user-id"?: string;
-                "x-tenant-id"?: string;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -18811,6 +19876,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["UserPublic"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18845,6 +19945,107 @@ export interface operations {
                     "application/json": components["schemas"]["SamlExchangeResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    saml_metadata_api_v1_auth_saml_metadata_get: {
+        parameters: {
+            query?: {
+                provider_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18860,9 +20061,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -18882,6 +20083,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18897,9 +20133,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -18919,6 +20155,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -18934,9 +20205,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -18955,6 +20226,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentBatchUploadResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -18983,9 +20289,9 @@ export interface operations {
                 order_dir?: "asc" | "desc";
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -19000,6 +20306,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19020,9 +20361,9 @@ export interface operations {
                 max_depth?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -19037,6 +20378,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentFolderTreeResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19059,9 +20435,9 @@ export interface operations {
                 q?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -19076,6 +20452,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentStats"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19098,9 +20509,9 @@ export interface operations {
                 max_docs_per_group?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -19115,6 +20526,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentDuplicateList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19137,9 +20583,9 @@ export interface operations {
                 all_versions?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19157,6 +20603,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19172,9 +20653,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19185,6 +20666,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19207,9 +20723,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19227,6 +20743,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentTimelineResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19242,9 +20793,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19262,6 +20813,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentAccessInfo"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19277,9 +20863,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19301,6 +20887,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentAccessInfo"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19318,9 +20939,9 @@ export interface operations {
                 max_chars?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19338,6 +20959,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentParsedContentResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19353,9 +21009,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19372,6 +21028,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentVersionList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19395,9 +21086,9 @@ export interface operations {
                 sample_limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19415,6 +21106,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentVersionDiff"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19430,9 +21156,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19451,6 +21177,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19466,9 +21227,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19480,6 +21241,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19508,9 +21304,9 @@ export interface operations {
                 all_versions?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19528,6 +21324,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentChunkList"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19543,9 +21374,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19566,6 +21397,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentChunkSchema"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19591,9 +21457,9 @@ export interface operations {
                 all_versions?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19611,6 +21477,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentChunkMatchList"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19626,9 +21527,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19647,6 +21548,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentChunkSchema"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19662,9 +21598,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19676,6 +21612,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19696,9 +21667,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19721,6 +21692,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentChunkSchema"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19736,9 +21742,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19756,6 +21762,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentChunkSchema"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -19772,9 +21813,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19793,6 +21834,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentChunkSchema"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19808,9 +21884,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19832,6 +21908,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentChunkReembedResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19847,9 +21958,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19871,6 +21982,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentQAGenerateResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19886,9 +22032,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19910,6 +22056,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19925,9 +22106,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19949,6 +22130,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19964,9 +22180,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -19984,6 +22200,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentLifecycleMetadata"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -19999,9 +22250,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -20023,6 +22274,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentLifecycleMetadata"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20038,9 +22324,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20059,6 +22345,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentBatchUserMetadataPatchResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20093,6 +22414,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20108,9 +22464,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -20127,6 +22483,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentStatus"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20143,9 +22534,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -20162,6 +22553,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentStatus"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20181,9 +22607,9 @@ export interface operations {
                 skip_if_unchanged?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -20201,6 +22627,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentStatus"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20216,9 +22677,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20237,6 +22698,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20253,9 +22749,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20274,6 +22770,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20290,9 +22821,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20311,6 +22842,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20327,9 +22893,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20349,6 +22915,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentBatchLifecycleResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20364,9 +22965,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20386,6 +22987,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentBatchDeleteResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20401,9 +23037,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20423,6 +23059,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentBatchRetryResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20438,9 +23109,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20460,6 +23131,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentBatchRetryResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20475,9 +23181,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20497,6 +23203,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentBatchAccessUpdateResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20512,9 +23253,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20533,6 +23274,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentBatchMoveResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20565,6 +23341,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20596,6 +23407,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20611,9 +23457,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20633,6 +23479,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentParsePreview"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20648,9 +23529,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20669,6 +23550,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentDetail"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20694,9 +23610,9 @@ export interface operations {
                 use_parse_cache?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20715,6 +23631,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChunkPreviewResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20740,9 +23691,9 @@ export interface operations {
                 use_parse_cache?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20762,6 +23713,41 @@ export interface operations {
                     "application/json": components["schemas"]["ChunkPreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20777,9 +23763,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20799,6 +23785,41 @@ export interface operations {
                     "application/json": components["schemas"]["BatchUploadResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20814,9 +23835,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 batch_id: string;
@@ -20833,6 +23854,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["BatchTaskStatus"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20853,9 +23909,9 @@ export interface operations {
                 status?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20870,6 +23926,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DocumentList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20886,9 +23977,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -20908,6 +23999,41 @@ export interface operations {
                     "application/json": components["schemas"]["DocumentDetail"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20926,9 +24052,9 @@ export interface operations {
                 image_caption_enabled?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -20945,6 +24071,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ParsingContentResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -20961,9 +24122,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -20981,6 +24142,41 @@ export interface operations {
                     "application/json": components["schemas"]["ParsingContentResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -20996,9 +24192,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -21020,6 +24216,41 @@ export interface operations {
                     "application/json": components["schemas"]["ParsingContentResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21035,9 +24266,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -21048,6 +24279,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21073,9 +24339,9 @@ export interface operations {
                 include_global?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -21090,6 +24356,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChunkPresetListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -21106,9 +24407,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -21128,6 +24429,41 @@ export interface operations {
                     "application/json": components["schemas"]["ChunkPresetResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21143,9 +24479,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 preset_id: string;
@@ -21167,6 +24503,41 @@ export interface operations {
                     "application/json": components["schemas"]["ChunkPresetResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21182,9 +24553,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 preset_id: string;
@@ -21195,6 +24566,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21215,9 +24621,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -21237,6 +24643,41 @@ export interface operations {
                     "application/json": components["schemas"]["ChatResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21252,9 +24693,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -21274,6 +24715,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21292,9 +24768,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -21309,6 +24785,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversationList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -21325,9 +24836,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -21347,6 +24858,41 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationSchema"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21362,9 +24908,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21375,6 +24921,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21395,9 +24976,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21419,6 +25000,41 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationSchema"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21437,9 +25053,9 @@ export interface operations {
                 include_citations?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21456,6 +25072,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -21475,9 +25126,9 @@ export interface operations {
                 before?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21494,6 +25145,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversationDetail"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -21514,9 +25200,9 @@ export interface operations {
                 max_bytes?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21534,6 +25220,41 @@ export interface operations {
                     "application/json": components["schemas"]["RagTraceListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21549,9 +25270,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21569,6 +25290,41 @@ export interface operations {
                     "application/json": components["schemas"]["ConversationSummaryResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21584,9 +25340,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21597,6 +25353,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21617,9 +25408,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21636,6 +25427,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConversationSummaryUpdateResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -21656,9 +25482,9 @@ export interface operations {
                 include_values?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21676,6 +25502,41 @@ export interface operations {
                     "application/json": components["schemas"]["CheckpointListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21691,9 +25552,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21704,6 +25565,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21726,9 +25622,9 @@ export interface operations {
                 include_values?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 conversation_id: string;
@@ -21747,6 +25643,41 @@ export interface operations {
                     "application/json": components["schemas"]["CheckpointDetailResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21762,9 +25693,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -21781,6 +25712,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetIngestionStats"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -21804,9 +25770,9 @@ export interface operations {
                 include_descendants?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -21821,6 +25787,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -21837,9 +25838,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -21859,6 +25860,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21874,9 +25910,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -21894,6 +25930,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21909,9 +25980,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -21922,6 +25993,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21942,9 +26048,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -21966,6 +26072,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -21981,9 +26122,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22001,6 +26142,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetCategoryAssignmentResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22016,9 +26192,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22040,6 +26216,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetCategoryAssignmentResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22055,9 +26266,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22075,6 +26286,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetConfigExport"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22090,9 +26336,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22114,6 +26360,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22129,9 +26410,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22153,6 +26434,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22173,9 +26489,9 @@ export interface operations {
                 dry_run?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22193,6 +26509,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPurgeResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22208,9 +26559,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22225,8 +26576,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IngestionPolicy-Output"];
+                    "application/json": components["schemas"]["IngestionPolicyWithAudit"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22243,9 +26629,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22267,6 +26653,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionPolicy-Output"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22282,9 +26703,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22302,6 +26723,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionPolicyVersionListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22317,9 +26773,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22341,6 +26797,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionPolicy-Output"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22356,9 +26847,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22380,6 +26871,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionPolicyImportResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22395,9 +26921,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22415,6 +26941,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22430,9 +26991,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22450,6 +27011,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetProfileSummary"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22465,9 +27061,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22484,6 +27080,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetHealthResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22503,9 +27134,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22523,6 +27154,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetProfileFindingListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22546,9 +27212,9 @@ export interface operations {
                 preview_max_chars?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22565,6 +27231,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetProfileDocumentListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22584,9 +27285,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22604,6 +27305,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetProfileScanRunListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22619,9 +27355,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22643,6 +27379,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetProfileScanRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22658,9 +27429,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22679,6 +27450,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetProfileScanRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22694,9 +27500,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22713,6 +27519,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22732,9 +27573,9 @@ export interface operations {
                 redact?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22751,6 +27592,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22779,9 +27655,9 @@ export interface operations {
                 gzip?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22798,6 +27674,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22819,9 +27730,9 @@ export interface operations {
                 include_sensitive?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22838,6 +27749,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -22857,9 +27803,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22877,6 +27823,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPrecheckScanRunListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22892,9 +27873,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22916,6 +27897,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPrecheckScanRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22931,9 +27947,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22952,6 +27968,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPrecheckScanRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -22967,9 +28018,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -22987,6 +28038,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetPrecheckSummary"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23006,9 +28092,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23027,6 +28113,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetPrecheckFindingListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23048,9 +28169,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23069,6 +28190,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPrecheckFindingListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23084,9 +28240,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23105,6 +28261,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPrecheckScanRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23120,9 +28311,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23140,6 +28331,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23159,9 +28385,9 @@ export interface operations {
                 prefer_artifact?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23180,6 +28406,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPrecheckSamplesResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23195,9 +28456,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23215,6 +28476,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetPrecheckNearDupResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23234,9 +28530,9 @@ export interface operations {
                 base_scan_run_id: string;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23255,6 +28551,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetPrecheckDiffResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23272,9 +28603,9 @@ export interface operations {
                 max_names_per_bucket?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23292,6 +28623,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetPrecheckIngestionSuggestionResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23311,9 +28677,9 @@ export interface operations {
                 replace?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23332,6 +28698,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionPolicyImportResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23347,9 +28748,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23367,6 +28768,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23386,9 +28822,9 @@ export interface operations {
                 redact?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23406,6 +28842,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23431,9 +28902,9 @@ export interface operations {
                 include_sample_rows?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23450,6 +28921,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetTablesListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23469,9 +28975,9 @@ export interface operations {
                 include_sample_rows?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23490,6 +28996,41 @@ export interface operations {
                     "application/json": components["schemas"]["TableAssetOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23507,9 +29048,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23527,6 +29068,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TableQueryResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23546,9 +29122,9 @@ export interface operations {
                 include_sql?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23571,6 +29147,41 @@ export interface operations {
                     "application/json": components["schemas"]["TableQueryResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23589,9 +29200,9 @@ export interface operations {
                 include_sql?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23614,6 +29225,41 @@ export interface operations {
                     "application/json": components["schemas"]["TableAskResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23629,9 +29275,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23653,6 +29299,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TableQueryResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23676,9 +29357,9 @@ export interface operations {
                 q?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23696,6 +29377,41 @@ export interface operations {
                     "application/json": components["schemas"]["DbCatalogTablesListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23711,9 +29427,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23731,6 +29447,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DbCatalogTableDetailOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23754,9 +29505,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -23774,6 +29525,41 @@ export interface operations {
                     "application/json": components["schemas"]["DbProfileSnapshotListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23789,9 +29575,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -23806,6 +29592,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetCategoryTreeResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23822,9 +29643,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -23844,6 +29665,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetCategoryOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23859,9 +29715,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 category_id: string;
@@ -23872,6 +29728,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23892,9 +29783,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 category_id: string;
@@ -23916,6 +29807,41 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetCategoryOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -23931,9 +29857,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 category_id: string;
@@ -23954,6 +29880,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetCategoryOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -23983,9 +29944,9 @@ export interface operations {
                 max_entity_links?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24000,6 +29961,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGGraphResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24031,9 +30027,9 @@ export interface operations {
                 max_entity_links?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24048,6 +30044,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGGraphResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24073,9 +30104,9 @@ export interface operations {
                 pipeline_hash?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24090,6 +30121,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGGraphNode"][];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24110,9 +30176,9 @@ export interface operations {
                 pipeline_hash?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24127,6 +30193,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGStatsResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24146,9 +30247,9 @@ export interface operations {
                 document_ids?: string[] | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24163,6 +30264,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24197,6 +30333,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24216,9 +30387,9 @@ export interface operations {
                 document_ids?: string[] | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24233,6 +30404,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24265,9 +30471,9 @@ export interface operations {
                 gzip?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24282,6 +30488,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24302,9 +30543,9 @@ export interface operations {
                 pipeline_hash?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 event_id: string;
@@ -24321,6 +30562,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGEventDetailResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24343,9 +30619,9 @@ export interface operations {
                 max_neighbors?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 entity_id: string;
@@ -24363,6 +30639,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGEntityDetailResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24378,9 +30689,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 entity_id: string;
@@ -24398,6 +30709,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGEntityAliasesResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24413,9 +30759,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 entity_id: string;
@@ -24437,6 +30783,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGEntityAliasItem"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24452,9 +30833,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 entity_id: string;
@@ -24472,6 +30853,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGEntityAliasesResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24493,9 +30909,9 @@ export interface operations {
                 min_similarity?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 entity_id: string;
@@ -24513,6 +30929,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGEntityAliasSuggestionsResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24528,9 +30979,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24550,6 +31001,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGEntityMergePreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24565,9 +31051,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24582,6 +31068,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGPredicateOntologyListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24598,9 +31119,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24620,6 +31141,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGPredicateOntologyItem"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24635,9 +31191,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 predicate_id: string;
@@ -24655,6 +31211,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGPredicateOntologyListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24670,9 +31261,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 predicate_id: string;
@@ -24694,6 +31285,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGPredicateOntologyItem"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24709,9 +31335,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24731,6 +31357,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGEntityMergeResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24746,9 +31407,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24768,6 +31429,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGEntitySplitResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24783,9 +31479,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 action_id: string;
@@ -24802,6 +31498,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGEntityResolutionUndoResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24820,9 +31551,9 @@ export interface operations {
                 prune_orphan_entities?: boolean | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -24839,6 +31570,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGDeleteResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -24870,9 +31636,9 @@ export interface operations {
                 prompt_ab_experiment_key?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 document_id: string;
@@ -24890,6 +31656,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGExtractResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24905,9 +31706,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -24927,6 +31728,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGSearchResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24945,9 +31781,9 @@ export interface operations {
                 async_mode?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -24969,6 +31805,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceReferenceRepairResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -24989,9 +31860,9 @@ export interface operations {
                 include_archived?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25006,6 +31877,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceSuiteList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25022,9 +31928,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25044,6 +31950,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceSuiteOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25059,9 +32000,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25079,6 +32020,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceSuiteOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25094,9 +32070,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25118,6 +32094,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceSuiteOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25137,9 +32148,9 @@ export interface operations {
                 heatmap_top_n?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25156,6 +32167,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceSuiteDashboardOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25179,9 +32225,9 @@ export interface operations {
                 include_existing?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25198,6 +32244,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceHardcaseDiscoveryOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25219,9 +32300,9 @@ export interface operations {
                 slice_top_n?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25238,6 +32319,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceReferenceDriftAuditOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25259,9 +32375,9 @@ export interface operations {
                 slice_top_n?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -25278,6 +32394,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceReferenceDriftAuditOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25298,9 +32449,9 @@ export interface operations {
                 status?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25318,6 +32469,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceItemList"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25333,9 +32519,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25357,6 +32543,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceItemOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25374,9 +32595,9 @@ export interface operations {
                 max_items?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25398,6 +32619,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceItemImportResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25413,9 +32669,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 item_id: string;
@@ -25437,6 +32693,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceItemOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25452,9 +32743,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 item_id: string;
@@ -25471,6 +32762,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceItemOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25487,9 +32813,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 item_id: string;
@@ -25506,6 +32832,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceItemOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25522,9 +32883,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 item_id: string;
@@ -25542,6 +32903,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceItemOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25557,9 +32953,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25576,6 +32972,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceSuiteSyncRegressionResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25594,9 +33025,9 @@ export interface operations {
                 include_archived_items?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25613,6 +33044,118 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["EvidenceSuiteExportV1"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_training_dataset_api_v1_evidence_training_export_get: {
+        parameters: {
+            query: {
+                /** @description Dataset id to export */
+                dataset_id: string;
+                /** @description jsonl or csv */
+                format?: string;
+                include_feedback?: boolean;
+                include_evidence?: boolean;
+                include_archived_evidence?: boolean;
+                max_rows_per_source?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25633,9 +33176,9 @@ export interface operations {
                 max_items?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 suite_id: string;
@@ -25653,6 +33196,255 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    persist_evidence_capsule_api_v1_evidence_capsules_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceCapsulePersistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceCapsulePersistResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_evidence_capsule_api_v1_evidence_capsules__capsule_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                capsule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceCapsuleGetResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_evidence_capsule_payload_api_v1_evidence_capsules_verify_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceCapsulePersistRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceCapsuleVerifyResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25668,9 +33460,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25685,6 +33477,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LTRModelListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25701,9 +33528,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25723,6 +33550,41 @@ export interface operations {
                     "application/json": components["schemas"]["LTRModelRegisterResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25738,9 +33600,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25760,6 +33622,41 @@ export interface operations {
                     "application/json": components["schemas"]["LTRModelActivateResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25775,9 +33672,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25792,6 +33689,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LTRModelActivateResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25808,9 +33740,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25825,6 +33757,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SystemSettings"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25841,9 +33808,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25863,6 +33830,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25878,9 +33880,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25895,6 +33897,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25911,9 +33948,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25933,6 +33970,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -25948,9 +34020,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -25965,6 +34037,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GovernanceRulePackListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -25995,9 +34102,9 @@ export interface operations {
                 order_dir?: "asc" | "desc";
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -26014,6 +34121,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StaleDocumentsByDatasetResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26034,9 +34176,9 @@ export interface operations {
                 conversation_id?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26051,6 +34193,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagasRunList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26067,9 +34244,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26089,6 +34266,41 @@ export interface operations {
                     "application/json": components["schemas"]["RagasRunSchema"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26107,9 +34319,9 @@ export interface operations {
                 include_contexts?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -26126,6 +34338,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagasRunDetail"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26146,9 +34393,9 @@ export interface operations {
                 dataset_id?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26163,6 +34410,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagasRegressionCaseList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26179,9 +34461,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26201,6 +34483,41 @@ export interface operations {
                     "application/json": components["schemas"]["RagasRegressionCaseOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26216,9 +34533,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 case_id: string;
@@ -26229,6 +34546,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26249,9 +34601,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 case_id: string;
@@ -26273,6 +34625,41 @@ export interface operations {
                     "application/json": components["schemas"]["RagasRegressionCaseOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26290,9 +34677,9 @@ export interface operations {
                 dataset_id: string;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26307,6 +34694,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26323,9 +34745,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26345,6 +34767,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26360,9 +34817,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26382,6 +34839,41 @@ export interface operations {
                     "application/json": components["schemas"]["SyntheticHardcaseGenerateResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26400,9 +34892,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26417,6 +34909,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagasRegressionRunList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26433,9 +34960,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26454,6 +34981,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagasRegressionRunSchema"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26480,9 +35042,9 @@ export interface operations {
                 max_candidates?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26497,6 +35059,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagasRegressionRunLeaderboardResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26516,9 +35113,9 @@ export interface operations {
                 include_contexts?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -26535,6 +35132,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagasRegressionRunDetail"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26564,9 +35196,9 @@ export interface operations {
                 download?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -26583,6 +35215,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26608,9 +35275,9 @@ export interface operations {
                 dataset_id?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26625,6 +35292,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26644,9 +35346,9 @@ export interface operations {
                 base_run_id: string;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -26663,6 +35365,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagasRegressionRunDiffResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26684,9 +35421,9 @@ export interface operations {
                 redact?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -26704,6 +35441,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26719,9 +35491,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26741,6 +35513,41 @@ export interface operations {
                     "application/json": components["schemas"]["TestGenResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26756,9 +35563,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26777,6 +35584,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGSearchDiagnosticsResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26798,9 +35640,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26815,6 +35657,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KGSearchDiagnosticsRunList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26831,9 +35708,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -26851,6 +35728,41 @@ export interface operations {
                     "application/json": components["schemas"]["KGSearchDiagnosticsRunDetail"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26866,9 +35778,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26887,6 +35799,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TestGenResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26908,9 +35855,9 @@ export interface operations {
                 is_active?: boolean | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26925,6 +35872,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PromptTemplateList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -26941,9 +35923,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -26963,6 +35945,41 @@ export interface operations {
                     "application/json": components["schemas"]["PromptTemplateOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -26978,9 +35995,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 template_id: string;
@@ -26998,6 +36015,41 @@ export interface operations {
                     "application/json": components["schemas"]["PromptTemplateOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27013,9 +36065,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 template_id: string;
@@ -27037,6 +36089,41 @@ export interface operations {
                     "application/json": components["schemas"]["PromptTemplateOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27052,9 +36139,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 template_id: string;
@@ -27065,6 +36152,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27085,9 +36207,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 template_id: string;
@@ -27109,6 +36231,41 @@ export interface operations {
                     "application/json": components["schemas"]["PromptTemplateOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27124,9 +36281,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 template_id: string;
@@ -27143,6 +36300,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PromptTemplateOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27165,9 +36357,9 @@ export interface operations {
                 is_active?: boolean | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27182,6 +36374,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagConfigTemplateList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27198,9 +36425,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27220,6 +36447,41 @@ export interface operations {
                     "application/json": components["schemas"]["RagConfigTemplateOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27235,9 +36497,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 template_id: string;
@@ -27255,6 +36517,41 @@ export interface operations {
                     "application/json": components["schemas"]["RagConfigTemplateOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27270,9 +36567,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 template_id: string;
@@ -27294,6 +36591,41 @@ export interface operations {
                     "application/json": components["schemas"]["RagConfigTemplateOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27309,9 +36641,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 template_id: string;
@@ -27332,6 +36664,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagConfigTemplateOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27355,9 +36722,9 @@ export interface operations {
                 max_rating?: number | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27372,6 +36739,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MessageFeedbackList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27388,9 +36790,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27409,6 +36811,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MessageFeedbackOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27432,9 +36869,9 @@ export interface operations {
                 max_rating?: number | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27449,6 +36886,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MessageFeedbackEnrichedList"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27465,9 +36937,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 feedback_id: string;
@@ -27489,6 +36961,41 @@ export interface operations {
                     "application/json": components["schemas"]["RagasRegressionCaseOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27504,9 +37011,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 feedback_id: string;
@@ -27528,6 +37035,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceItemOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27543,9 +37085,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27560,6 +37102,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PipelineCapabilitiesResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27580,9 +37157,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27597,6 +37174,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GovernanceProfileListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27613,9 +37225,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27635,6 +37247,41 @@ export interface operations {
                     "application/json": components["schemas"]["GovernanceProfileOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27650,9 +37297,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 profile_ref: string;
@@ -27670,6 +37317,41 @@ export interface operations {
                     "application/json": components["schemas"]["GovernanceProfileOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27685,9 +37367,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 profile_ref: string;
@@ -27698,6 +37380,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27718,9 +37435,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 profile_ref: string;
@@ -27742,6 +37459,41 @@ export interface operations {
                     "application/json": components["schemas"]["GovernanceProfileOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27757,9 +37509,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 profile_ref: string;
@@ -27777,6 +37529,41 @@ export interface operations {
                     "application/json": components["schemas"]["GovernanceProfileResolvedResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27792,9 +37579,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27814,6 +37601,41 @@ export interface operations {
                     "application/json": components["schemas"]["GovernanceProfileImportResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27829,9 +37651,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 profile_ref: string;
@@ -27848,6 +37670,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -27864,9 +37721,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 profile_ref: string;
@@ -27884,6 +37741,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27899,9 +37791,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27921,6 +37813,41 @@ export interface operations {
                     "application/json": components["schemas"]["ParsePreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27936,9 +37863,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27958,6 +37885,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionPreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -27973,9 +37935,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -27995,6 +37957,41 @@ export interface operations {
                     "application/json": components["schemas"]["PipelineChunkPreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28010,9 +38007,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28032,6 +38029,41 @@ export interface operations {
                     "application/json": components["schemas"]["CleanPreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28047,9 +38079,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28069,6 +38101,41 @@ export interface operations {
                     "application/json": components["schemas"]["GovernanceCommonLinesLearnResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28084,9 +38151,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28106,6 +38173,41 @@ export interface operations {
                     "application/json": components["schemas"]["GovernanceAnalyzeResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28121,9 +38223,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28138,6 +38240,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CleanRulesResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28154,9 +38291,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28176,6 +38313,41 @@ export interface operations {
                     "application/json": components["schemas"]["KeywordExtractResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28191,9 +38363,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28213,6 +38385,41 @@ export interface operations {
                     "application/json": components["schemas"]["LLMCleanPreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28228,9 +38435,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28249,6 +38456,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ZipWithImagesResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28279,15 +38521,50 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorInfo"][];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     validate_connector_config_api_v1_connectors_validate_post: {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28306,6 +38583,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConnectorValidateResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28326,9 +38638,9 @@ export interface operations {
                 dataset_id?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28343,6 +38655,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConnectorRunListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28359,9 +38706,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28381,6 +38728,41 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28396,9 +38778,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28415,6 +38797,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConnectorRunOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28431,9 +38848,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28450,6 +38867,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConnectorRunOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28466,9 +38918,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28486,6 +38938,41 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28501,9 +38988,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28520,6 +39007,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConnectorRunOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28542,9 +39064,9 @@ export interface operations {
                 enabled?: boolean | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28559,6 +39081,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConnectorConfigListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28575,9 +39132,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28597,6 +39154,41 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorConfigOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28612,9 +39204,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 config_id: string;
@@ -28636,6 +39228,41 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorConfigOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28651,9 +39278,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 config_id: string;
@@ -28664,6 +39291,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -28684,9 +39346,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 config_id: string;
@@ -28704,6 +39366,115 @@ export interface operations {
                     "application/json": components["schemas"]["ConnectorRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_connector_config_api_v1_connectors_configs__config_id__reconcile_post: {
+        parameters: {
+            query?: {
+                /** @description Apply the reconcile plan; default is dry-run */
+                apply?: boolean;
+                sample_limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                config_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28719,9 +39490,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28736,6 +39507,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28758,9 +39564,9 @@ export interface operations {
                 kind?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28775,6 +39581,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IngestionRunListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28791,9 +39632,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28811,6 +39652,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28826,9 +39702,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28845,6 +39721,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -28861,9 +39772,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28881,6 +39792,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28896,9 +39842,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28917,6 +39863,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionRunCompareResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28932,9 +39913,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 run_id: string;
@@ -28952,6 +39933,41 @@ export interface operations {
                     "application/json": components["schemas"]["IngestionRunOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -28967,9 +39983,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -28989,6 +40005,41 @@ export interface operations {
                     "application/json": components["schemas"]["RetrievePreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29004,9 +40055,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29026,6 +40077,41 @@ export interface operations {
                     "application/json": components["schemas"]["ImageIndexResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29041,9 +40127,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29063,6 +40149,41 @@ export interface operations {
                     "application/json": components["schemas"]["ImageSearchResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29078,9 +40199,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29100,6 +40221,41 @@ export interface operations {
                     "application/json": components["schemas"]["EvidenceRetrieveResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29115,9 +40271,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29137,6 +40293,242 @@ export interface operations {
                     "application/json": components["schemas"]["PromptPreviewResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_retrieval_profiles_api_v1_retrieval_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    explain_retrieval_api_v1_retrieval_explain_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetrievalExplainRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrievalExplainResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_retrieval_config_hash_api_v1_retrieval_config_hash_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetrievalConfigHashRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetrievalConfigHashResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29152,9 +40544,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29169,6 +40561,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SimilarityCollectionsResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29185,9 +40612,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29207,6 +40634,41 @@ export interface operations {
                     "application/json": components["schemas"]["SimilarityCalculateResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29225,9 +40687,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29242,6 +40704,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TenantGroupListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29258,9 +40755,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29280,6 +40777,41 @@ export interface operations {
                     "application/json": components["schemas"]["TenantGroupOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29295,9 +40827,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 group_id: string;
@@ -29315,6 +40847,41 @@ export interface operations {
                     "application/json": components["schemas"]["TenantGroupOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29330,9 +40897,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 group_id: string;
@@ -29343,6 +40910,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29363,9 +40965,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 group_id: string;
@@ -29387,6 +40989,41 @@ export interface operations {
                     "application/json": components["schemas"]["TenantGroupOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29405,9 +41042,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 group_id: string;
@@ -29425,6 +41062,41 @@ export interface operations {
                     "application/json": components["schemas"]["TenantGroupMemberListResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29440,9 +41112,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 group_id: string;
@@ -29463,6 +41135,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TenantGroupMembersUpdateResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29479,9 +41186,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 group_id: string;
@@ -29502,6 +41209,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TenantGroupMembersUpdateResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29521,9 +41263,9 @@ export interface operations {
                 limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -29538,6 +41280,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TenantMemberListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29554,9 +41331,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 user_id: string;
@@ -29577,6 +41354,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TenantMemberOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29609,6 +41421,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29639,6 +41486,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29671,6 +41553,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29689,7 +41606,7 @@ export interface operations {
                 count?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path?: never;
@@ -29705,6 +41622,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29721,7 +41673,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path?: never;
@@ -29744,6 +41696,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29759,7 +41746,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -29777,6 +41764,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29793,7 +41815,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -29818,6 +41840,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29833,7 +41890,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -29852,6 +41909,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29867,7 +41959,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -29891,6 +41983,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29910,7 +42037,7 @@ export interface operations {
                 count?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path?: never;
@@ -29926,6 +42053,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29942,7 +42104,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path?: never;
@@ -29965,6 +42127,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -29980,7 +42177,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -29999,6 +42196,41 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -30014,7 +42246,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -30038,6 +42270,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30058,9 +42325,9 @@ export interface operations {
                 connector_runs_limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -30077,6 +42344,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DatasetReportOut"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30096,9 +42398,9 @@ export interface operations {
                 connector_runs_limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -30115,6 +42417,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30136,9 +42473,9 @@ export interface operations {
                 redact?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -30155,6 +42492,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30176,9 +42548,9 @@ export interface operations {
                 redact?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -30195,6 +42567,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30216,9 +42623,9 @@ export interface operations {
                 redact?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path: {
                 dataset_id: string;
@@ -30235,6 +42642,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30254,9 +42696,9 @@ export interface operations {
                 max_bytes?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30271,6 +42713,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagMetricsSummaryResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30292,9 +42769,9 @@ export interface operations {
                 max_bytes?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30309,6 +42786,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagQueryAnalyticsResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30328,9 +42840,9 @@ export interface operations {
                 max_bytes?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30345,6 +42857,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30364,9 +42911,9 @@ export interface operations {
                 max_bytes?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30381,6 +42928,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagCostAttributionResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30397,9 +42979,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30414,6 +42996,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DepsDiagnosticsResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30435,9 +43052,9 @@ export interface operations {
                 max_bytes?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30452,6 +43069,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagTraceBundleResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30475,9 +43127,9 @@ export interface operations {
                 max_bytes?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30492,6 +43144,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RagTraceBundleDiffResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30508,9 +43195,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30525,6 +43212,111 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OpsConfigSnapshotResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invalidate_dataset_cache_namespace_endpoint_api_v1_observability_cache_datasets__dataset_id__invalidate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCacheInvalidationResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30541,9 +43333,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30558,6 +43350,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PeriodicJobFreshnessResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30577,9 +43404,9 @@ export interface operations {
                 force_refresh?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30594,6 +43421,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TaskQueueObservabilitySnapshotResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30610,9 +43472,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30627,6 +43489,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SloSnapshotResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30648,9 +43545,9 @@ export interface operations {
                 dataset_id?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30665,6 +43562,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IngestionDashboardSummaryResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30690,9 +43622,9 @@ export interface operations {
                 sample_limit?: number;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30707,6 +43639,189 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IndexAuditResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_index_drift_api_v1_observability_index_drift_get: {
+        parameters: {
+            query?: {
+                /** @description Optional dataset UUID filter */
+                dataset_id?: string | null;
+                /** @description open | resolved | all */
+                status?: string;
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexDriftListResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_index_drift_api_v1_observability_index_drift__item_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexDriftResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexDriftItemResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30734,9 +43849,9 @@ export interface operations {
                 include_sensitive?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30751,6 +43866,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuditLogListResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30784,9 +43934,9 @@ export interface operations {
                 gzip?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30801,6 +43951,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30824,9 +44009,9 @@ export interface operations {
                 dry_run?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30841,6 +44026,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuditLogPurgeResponse"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30871,9 +44091,9 @@ export interface operations {
                 gzip?: boolean;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30888,6 +44108,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30904,9 +44159,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30921,6 +44176,41 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30937,9 +44227,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30954,6 +44244,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChatTokenQuotaStatus"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -30970,9 +44295,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -30987,6 +44312,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TenantQuotaSummary"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -31007,9 +44367,9 @@ export interface operations {
                 until?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -31024,6 +44384,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChatTokenUsageSummary"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -31044,9 +44439,9 @@ export interface operations {
                 until?: string | null;
             };
             header?: {
-                "x-tenant-id"?: string;
+                "x-tenant-id"?: string | null;
                 authorization?: string | null;
-                "x-user-id"?: string;
+                "x-user-id"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -31061,6 +44456,41 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChatCostUsageSummary"];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
