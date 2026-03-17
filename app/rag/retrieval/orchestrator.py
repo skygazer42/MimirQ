@@ -13,6 +13,7 @@ It is intentionally usable without the LangGraph orchestration layer.
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import json
 import time
@@ -21,8 +22,6 @@ from typing import Any
 from uuid import UUID
 
 from langchain_core.documents import Document
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
 
 from app.core.config import settings
 from app.core.utils import parse_csv
@@ -48,8 +47,6 @@ from app.rag.core.text import (
     parse_json_from_text,
     should_rewrite_query,
 )
-from app.rag.engine import get_rag_engine
-from app.rag.kg.pipeline import kg_search
 from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_retrieval_preset
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
@@ -85,6 +82,55 @@ from app.services.hardcase_discovery_service import (
 )
 
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
+
+
+def get_rag_engine():  # noqa: ANN201
+    """
+    Indirection for tests/monkeypatching while keeping module imports lightweight.
+
+    (Many unit tests patch `app.rag.retrieval.orchestrator.get_rag_engine`.)
+    """
+
+    from app.rag.engine import get_rag_engine as _get_rag_engine
+
+    return _get_rag_engine()
+
+
+def _get_langchain_text_pipeline_primitives() -> tuple[Any, Any]:
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_core.prompts import ChatPromptTemplate
+
+    return ChatPromptTemplate, StrOutputParser
+
+
+def _get_kg_search() -> Any:
+    from app.rag.kg.pipeline import kg_search
+
+    return kg_search
+
+
+async def kg_search(  # noqa: ANN201
+    *,
+    query: str,
+    tenant_id: UUID | None = None,
+    document_ids: list[UUID] | None = None,
+    dataset_id: UUID | None = None,
+    account_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Thin wrapper around the KG pipeline search, kept as a module attribute so tests
+    can monkeypatch it without importing the KG module.
+    """
+
+    fn = _get_kg_search()
+    result = await fn(
+        query=query,
+        tenant_id=tenant_id,
+        document_ids=document_ids,
+        dataset_id=dataset_id,
+        account_id=account_id,
+    )
+    return result if isinstance(result, dict) else {}
 
 
 def _build_history_text(history: list[dict[str, str]] | None) -> str:
@@ -279,6 +325,289 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
 
 def _is_recall_profile(profile: str | None) -> bool:
     return is_recall_first_profile(profile)
+
+
+def _resolve_hierarchy_family_collapse_key(meta: dict[str, Any]) -> str:
+    for k in ("hierarchy_family_key", "parent_id", "parent_node_id"):
+        v = meta.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ""
+
+
+def _doc_base_score(meta: dict[str, Any]) -> float:
+    for k in ("query_expansion_base_score", "retrieval_score", "score"):
+        v = meta.get(k)
+        if v is None:
+            continue
+        try:
+            return float(v or 0.0)
+        except Exception:
+            continue
+    return 0.0
+
+
+def _build_hierarchy_family_features(docs_by_query: list[list[Document]]) -> dict[str, dict[str, Any]]:
+    """
+    Aggregate family-level features across query variants (PII-safe; does not return ids in outputs).
+    """
+    variant_hits: dict[str, int] = {}
+    doc_hits: dict[str, int] = {}
+    best_rank: dict[str, int] = {}
+    best_score: dict[str, float] = {}
+
+    for docs_i in docs_by_query or []:
+        seen_in_variant: set[str] = set()
+        for rank, d in enumerate(docs_i or [], 1):
+            meta = d.metadata or {}
+            family_key = _resolve_hierarchy_family_collapse_key(meta)
+            if not family_key:
+                continue
+            seen_in_variant.add(family_key)
+            doc_hits[family_key] = int(doc_hits.get(family_key, 0) or 0) + 1
+            if family_key not in best_rank or rank < int(best_rank.get(family_key) or 0):
+                best_rank[family_key] = int(rank)
+            score = _doc_base_score(meta)
+            if family_key not in best_score or float(score) > float(best_score.get(family_key) or 0.0):
+                best_score[family_key] = float(score)
+        for fk in seen_in_variant:
+            variant_hits[fk] = int(variant_hits.get(fk, 0) or 0) + 1
+
+    out: dict[str, dict[str, Any]] = {}
+    all_keys = set(variant_hits) | set(doc_hits) | set(best_rank) | set(best_score)
+    for fk in all_keys:
+        out[fk] = {
+            "variant_hits": int(variant_hits.get(fk, 0) or 0),
+            "doc_hits": int(doc_hits.get(fk, 0) or 0),
+            "best_rank": int(best_rank.get(fk, 0) or 0),
+            "best_score": float(best_score.get(fk, 0.0) or 0.0),
+        }
+    return out
+
+
+def _apply_hierarchy_family_aggregation(
+    docs: list[Document],
+    *,
+    family_features: dict[str, dict[str, Any]],
+    strategy: str,
+) -> tuple[list[Document], dict[str, Any]]:
+    if not docs:
+        return docs, {"enabled": False, "reason": "no_docs"}
+    if not family_features:
+        return docs, {"enabled": False, "reason": "no_families"}
+
+    strat = str(strategy or "").strip().lower()
+    if strat not in {"frequency", "score", "combined"}:
+        return docs, {"enabled": False, "reason": "invalid_strategy"}
+
+    def _family_key(d: Document) -> str:
+        meta = d.metadata or {}
+        return _resolve_hierarchy_family_collapse_key(meta)
+
+    def _family_sort_key(fk: str) -> tuple[float, float, float, str]:
+        feats = family_features.get(fk) if fk else None
+        feats = feats if isinstance(feats, dict) else {}
+        vhits = int(feats.get("variant_hits") or 0)
+        brank = int(feats.get("best_rank") or 0) or 1_000_000
+        bscore = float(feats.get("best_score") or 0.0)
+
+        if strat == "frequency":
+            return (-float(vhits), float(brank), -float(bscore), fk)
+        if strat == "score":
+            return (-float(bscore), -float(vhits), float(brank), fk)
+        return (-float(vhits), -float(bscore), float(brank), fk)
+
+    before_ids = [str(getattr(d, "id", None) or (d.metadata or {}).get("chunk_id") or "") for d in docs]
+
+    ranked: list[tuple[tuple[float, float, float, str], float, int, str, Document]] = []
+    for i, d in enumerate(docs):
+        meta = d.metadata or {}
+        fk = _family_key(d)
+        fam_key = _family_sort_key(fk or "")
+        base = _doc_base_score(meta)
+        doc_id = str(getattr(d, "id", None) or meta.get("chunk_id") or "")
+        ranked.append((fam_key, -float(base), int(i), doc_id, d))
+
+    ranked.sort(key=lambda x: (x[0], x[1], x[2], x[3]))
+    out_docs = [d for *_rest, d in ranked]
+
+    after_ids = [str(getattr(d, "id", None) or (d.metadata or {}).get("chunk_id") or "") for d in out_docs]
+    moved = sum(1 for i, did in enumerate(after_ids) if i < len(before_ids) and did != before_ids[i])
+    top_changed = bool(before_ids) and bool(after_ids) and before_ids[0] != after_ids[0]
+
+    return out_docs, {
+        "enabled": True,
+        "strategy": strat,
+        "input_docs": int(len(docs)),
+        "families": int(len(family_features)),
+        "moved_positions": int(moved),
+        "top_changed": bool(top_changed),
+    }
+
+
+def _resolve_hierarchy_node_key(meta: dict[str, Any]) -> str:
+    for k in ("hierarchy_node_key", "chunk_key", "chunk_id"):
+        v = meta.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s:
+            return s
+    return ""
+
+
+def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str:
+    # Respect explicit hierarchy_parent_key=None emitted by chunkers. Only fall back to
+    # legacy parent_id fields when the hierarchy_parent_key field is absent entirely.
+    raw = meta.get("hierarchy_parent_key") if "hierarchy_parent_key" in meta else (meta.get("parent_id") or meta.get("parent_node_id"))
+    s = str(raw or "").strip()
+    return s if s else ""
+
+
+def _apply_hierarchy_tree_dedup(
+    primary: list[Document],
+    *,
+    refill: list[Document] | None,
+    top_k: int,
+    overfetch_factor: int,
+) -> tuple[list[Document], dict[str, Any]]:
+    """
+    Ancestor-wins tree deduplication for hierarchy-aware retrieval.
+
+    If we see both a node and any of its descendants, prefer the ancestor and drop
+    descendants to reclaim context slots (useful when hierarchical chunking returns
+    both parent + child content).
+
+    Notes:
+    - Best-effort only; bounded by a scan window of `top_k * overfetch_factor`.
+    - Keeps survivor order stable (does not reorder; only drops).
+    - Uses (hierarchy_node_key, hierarchy_parent_key) as the tree edge.
+    """
+    primary_list = [d for d in (primary or []) if d is not None]
+    if not primary_list:
+        return primary_list, {"enabled": False, "reason": "no_primary"}
+
+    try:
+        top_k_i = int(top_k or 0)
+    except Exception:
+        top_k_i = 0
+    if top_k_i <= 0:
+        return primary_list, {"enabled": False, "reason": "top_k_le_0"}
+
+    try:
+        factor = int(overfetch_factor or 1)
+    except Exception:
+        factor = 1
+    factor = max(1, factor)
+    max_candidates = max(int(top_k_i), int(top_k_i) * int(factor))
+
+    candidates: list[Document] = list(primary_list)
+    if refill:
+        candidates.extend([d for d in (refill or []) if d is not None])
+
+    seen_doc_keys: set[str] = set()
+    kept_doc_keys: set[str] = set()
+    kept_node_keys: set[str] = set()
+    order: list[str] = []
+
+    doc_by_key: dict[str, Document] = {}
+    node_by_doc_key: dict[str, str] = {}
+    parent_by_doc_key: dict[str, str] = {}
+    children_by_parent_node: dict[str, set[str]] = {}
+
+    dropped_as_descendant = 0
+    removed_by_ancestor = 0
+    scanned_unique = 0
+
+    def _remove_doc(doc_key: str) -> int:
+        nonlocal removed_by_ancestor
+        if doc_key not in kept_doc_keys:
+            return 0
+        kept_doc_keys.discard(doc_key)
+        removed_by_ancestor += 1
+
+        node_key = node_by_doc_key.get(doc_key) or ""
+        parent_key = parent_by_doc_key.get(doc_key) or ""
+
+        if parent_key:
+            kids = children_by_parent_node.get(parent_key)
+            if kids:
+                kids.discard(doc_key)
+                if not kids:
+                    children_by_parent_node.pop(parent_key, None)
+
+        if node_key:
+            kept_node_keys.discard(node_key)
+            # Recursively remove descendants (handles >2-level trees when present).
+            for child_doc_key in list(children_by_parent_node.get(node_key, set())):
+                _remove_doc(child_doc_key)
+            children_by_parent_node.pop(node_key, None)
+        return 1
+
+    for doc in candidates:
+        if doc is None:
+            continue
+        dk = _doc_key(doc)
+        if dk in seen_doc_keys:
+            continue
+        seen_doc_keys.add(dk)
+        scanned_unique += 1
+        if scanned_unique > max_candidates:
+            break
+
+        meta = doc.metadata or {}
+        node_key = _resolve_hierarchy_node_key(meta)
+        parent_key = _resolve_hierarchy_parent_key(meta)
+        # Guard: some chunkers historically store parent_id=self on parent chunks.
+        if parent_key and node_key and parent_key == node_key:
+            parent_key = ""
+
+        if parent_key and parent_key in kept_node_keys:
+            dropped_as_descendant += 1
+            continue
+
+        doc_by_key[dk] = doc
+        node_by_doc_key[dk] = node_key
+        parent_by_doc_key[dk] = parent_key
+        kept_doc_keys.add(dk)
+        order.append(dk)
+        if node_key:
+            kept_node_keys.add(node_key)
+        if parent_key:
+            children_by_parent_node.setdefault(parent_key, set()).add(dk)
+
+        # If we just kept an ancestor, evict any previously kept descendants.
+        if node_key:
+            for child_doc_key in list(children_by_parent_node.get(node_key, set())):
+                _remove_doc(child_doc_key)
+            if not children_by_parent_node.get(node_key):
+                children_by_parent_node.pop(node_key, None)
+
+    out: list[Document] = []
+    for dk in order:
+        if dk not in kept_doc_keys:
+            continue
+        d = doc_by_key.get(dk)
+        if d is not None:
+            out.append(d)
+
+    out_sliced = out[: int(top_k_i)]
+    meta_out: dict[str, Any] = {
+        "enabled": True,
+        "top_k": int(top_k_i),
+        "overfetch_factor": int(factor),
+        "max_candidates": int(max_candidates),
+        "scanned_unique": int(scanned_unique),
+        "input_primary": int(len(primary_list)),
+        "input_refill": int(len(refill or [])) if refill else 0,
+        "output": int(len(out_sliced)),
+        "dropped_as_descendant": int(dropped_as_descendant),
+        "removed_by_ancestor": int(removed_by_ancestor),
+    }
+    return out_sliced, meta_out
 
 
 def _coverage_proxy_from_citations(citations: Any) -> dict[str, Any] | None:
@@ -932,12 +1261,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         rewrite_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
         rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
         try:
+            chat_prompt_template_cls, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             prompt_template = get_query_rewrite_prompt_template(rewrite_strategy_id)
-            rewrite_prompt = ChatPromptTemplate.from_template(prompt_template)
+            rewrite_prompt = chat_prompt_template_cls.from_template(prompt_template)
             rewrite_chain = (
                 rewrite_prompt
                 | rewrite_llm.bind(temperature=rewrite_temperature)
-                | StrOutputParser()
+                | str_output_parser_cls()
             )
             rw_start = time.time()
             rewritten = rewrite_chain.invoke({"history": history_text, "question": question})
@@ -1148,6 +1478,55 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             else (getattr(settings, "RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS", 500.0) or 500.0)
         ),
     )
+    hierarchy_recall_req = state.get("enable_hierarchy_recall")
+    hierarchy_recall_enabled = (
+        bool(hierarchy_recall_req)
+        if hierarchy_recall_req is not None
+        else bool(getattr(settings, "HIERARCHY_RECALL_ENABLED", False))
+    )
+    hierarchy_family_collapse_req = state.get("hierarchy_family_collapse")
+    hierarchy_family_collapse = (
+        bool(hierarchy_family_collapse_req)
+        if hierarchy_family_collapse_req is not None
+        else bool(getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", False))
+    )
+    hierarchy_family_aggregation = str(
+        state.get("hierarchy_family_aggregation")
+        if state.get("hierarchy_family_aggregation") is not None
+        else (getattr(settings, "HIERARCHY_RECALL_FAMILY_AGGREGATION", "combined") or "combined")
+    ).strip().lower() or "combined"
+    if hierarchy_family_aggregation not in {"frequency", "score", "combined"}:
+        hierarchy_family_aggregation = "combined"
+    hierarchy_tree_dedup_req = state.get("hierarchy_tree_dedup")
+    hierarchy_tree_dedup = (
+        bool(hierarchy_tree_dedup_req)
+        if hierarchy_tree_dedup_req is not None
+        else bool(getattr(settings, "HIERARCHY_RECALL_TREE_DEDUP", False))
+    )
+    hierarchy_parent_depth = max(
+        0,
+        int(
+            state.get("hierarchy_parent_depth")
+            if state.get("hierarchy_parent_depth") is not None
+            else (getattr(settings, "HIERARCHY_RECALL_PARENT_DEPTH", 0) or 0)
+        ),
+    )
+    hierarchy_sibling_window = max(
+        0,
+        int(
+            state.get("hierarchy_sibling_window")
+            if state.get("hierarchy_sibling_window") is not None
+            else (getattr(settings, "HIERARCHY_RECALL_SIBLING_WINDOW", 0) or 0)
+        ),
+    )
+    hierarchy_overfetch_factor = max(
+        1,
+        int(
+            state.get("hierarchy_overfetch_factor")
+            if state.get("hierarchy_overfetch_factor") is not None
+            else (getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4)
+        ),
+    )
 
     # Step 0.25: Deterministic intent router (optional).
     #
@@ -1281,6 +1660,20 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         ),
     )
     profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower()
+    if profile_applied.get("enable_hierarchy_recall") is not None:
+        hierarchy_recall_enabled = bool(profile_applied.get("enable_hierarchy_recall"))
+    if profile_applied.get("hierarchy_family_collapse") is not None:
+        hierarchy_family_collapse = bool(profile_applied.get("hierarchy_family_collapse"))
+    if profile_applied.get("hierarchy_family_aggregation") is not None:
+        hierarchy_family_aggregation = str(profile_applied.get("hierarchy_family_aggregation") or "combined").strip().lower() or "combined"
+    if profile_applied.get("hierarchy_tree_dedup") is not None:
+        hierarchy_tree_dedup = bool(profile_applied.get("hierarchy_tree_dedup"))
+    if profile_applied.get("hierarchy_parent_depth") is not None:
+        hierarchy_parent_depth = max(0, int(profile_applied.get("hierarchy_parent_depth") or 0))
+    if profile_applied.get("hierarchy_sibling_window") is not None:
+        hierarchy_sibling_window = max(0, int(profile_applied.get("hierarchy_sibling_window") or 0))
+    if profile_applied.get("hierarchy_overfetch_factor") is not None:
+        hierarchy_overfetch_factor = max(1, int(profile_applied.get("hierarchy_overfetch_factor") or 1))
 
     explicit_fusion_budgets = state.get("fusion_budgets") if isinstance(state.get("fusion_budgets"), dict) else None
     explicit_fusion_weights = state.get("fusion_weights") if isinstance(state.get("fusion_weights"), dict) else None
@@ -1320,6 +1713,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "k": int(profile_applied.get("top_k") or settings.RETRIEVAL_TOP_K),
         "score_threshold": float(profile_applied.get("score_threshold") or 0.0),
         "alpha": state.get("alpha", 0.6),
+        "retrieval_profile": profile_norm or None,
         # Optional: channel fusion override (used by Evidence API ablations / retrieval-only tuning).
         "fusion_strategy": state.get("fusion_strategy") or settings.RETRIEVAL_FUSION_STRATEGY,
         "fusion_budgets": state.get("fusion_budgets"),
@@ -1356,6 +1750,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "dataset_id": state.get("dataset_id"),
         "document_ids": state.get("document_ids"),
         "metadata_filter": state.get("metadata_filter"),
+        "enable_hierarchy_recall": bool(hierarchy_recall_enabled),
+        "hierarchy_family_collapse": bool(hierarchy_family_collapse),
+        "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
     }
 
     if profile_applied.get("retrieval_contract_mode") is not None:
@@ -1458,8 +1855,6 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             and (document_ids or dataset_id is not None)
             and (account_id is not None or dataset_id is None)
         ):
-            import asyncio
-
             coro = kg_search(
                 query=query_for_retrieval,
                 tenant_id=tenant_id,
@@ -1571,10 +1966,11 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         mq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
         multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
         try:
+            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             mq_chain = (
                 engine.multi_query_prompt  # type: ignore[attr-defined]
                 | mq_llm.bind(temperature=mq_temp)
-                | StrOutputParser()
+                | str_output_parser_cls()
             )
             mq_start = time.time()
             mq_raw = mq_chain.invoke({"query": query_for_retrieval, "n": mq_n})
@@ -1616,10 +2012,11 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         hyde_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
         hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
         try:
+            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
             hyde_chain = (
                 engine.hyde_prompt  # type: ignore[attr-defined]
                 | hyde_llm.bind(temperature=settings.HYDE_TEMPERATURE)
-                | StrOutputParser()
+                | str_output_parser_cls()
             )
             hyde_start = time.time()
             hyde_text = hyde_chain.invoke({"query": query_for_retrieval})
@@ -1663,10 +2060,11 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             dq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
             decompose_model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
             try:
+                _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
                 dq_chain = (
                     engine.decompose_prompt  # type: ignore[attr-defined]
                     | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
-                    | StrOutputParser()
+                    | str_output_parser_cls()
                 )
                 dq_start = time.time()
                 dq_raw = dq_chain.invoke({"query": query_for_retrieval, "n": dq_n})
@@ -1761,6 +2159,31 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             docs_i = engine._annotate_docs_with_role(docs_i or [], kind)  # type: ignore[attr-defined]
             dbg = getattr(r, "_last_debug_metrics", None)
             dbg = _sanitize_retriever_debug(dbg if isinstance(dbg, dict) else None)
+            if bool(hierarchy_recall_enabled) and docs_i:
+                family_keys: list[str] = []
+                for d in docs_i:
+                    meta = d.metadata or {}
+                    family_key = None
+                    for k in ("hierarchy_family_key", "parent_id", "parent_node_id"):
+                        v = meta.get(k)
+                        if v is None:
+                            continue
+                        s = str(v).strip()
+                        if s:
+                            family_key = s
+                            break
+                    if family_key:
+                        family_keys.append(family_key)
+                distinct_families = len(set(family_keys)) if family_keys else 0
+                duplicate_docs = max(0, len(family_keys) - distinct_families)
+                dbg2 = dict(dbg or {})
+                dbg2["hierarchy_family"] = {
+                    "docs": int(len(docs_i)),
+                    "docs_with_key": int(len(family_keys)),
+                    "distinct_families": int(distinct_families),
+                    "duplicate_docs": int(duplicate_docs),
+                }
+                dbg = dbg2
             return kind, (docs_i or []), None, time.time() - t0, dbg
         except Exception as exc:  # noqa: BLE001
             return kind, [], str(exc)[:200], time.time() - t0, None
@@ -1796,11 +2219,33 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     mq_diversify_selected_mq = 0
     mq_diversify_selected_non_mq = 0
     mq_diversify_fill_from_fused = 0
+    family_aggregation_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
+    family_features: dict[str, dict[str, Any]] = {}
+    tree_dedup_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
+    family_aggregation_enabled = bool(
+        hierarchy_recall_enabled and hierarchy_family_collapse and len(docs_by_query) > 1
+    )
+    if family_aggregation_enabled:
+        try:
+            family_features = _build_hierarchy_family_features(docs_by_query)
+        except Exception:
+            family_features = {}
 
+    docs_refill_pool: list[Document] = docs_by_query[0] if docs_by_query else []
     if len(docs_by_query) <= 1:
         docs = docs_by_query[0] if docs_by_query else []
     else:
         docs_fused_all = engine.fuse_docs_rrf(docs_by_query, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")  # type: ignore[attr-defined]
+        docs_refill_pool = docs_fused_all
+        if family_aggregation_enabled:
+            try:
+                docs_fused_all, family_aggregation_meta = _apply_hierarchy_family_aggregation(
+                    docs_fused_all,
+                    family_features=family_features,
+                    strategy=hierarchy_family_aggregation,
+                )
+            except Exception:
+                family_aggregation_meta = {"enabled": False, "reason": "exception"}
         if mq_diversify_enabled and mq_diversify_budget > 0:
             mq_lists: list[list[Document]] = []
             non_mq_lists: list[list[Document]] = []
@@ -1822,6 +2267,20 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     if len(mq_lists) > 1
                     else (mq_lists[0] or [])
                 )
+                if family_aggregation_enabled:
+                    try:
+                        docs_non_mq, _ = _apply_hierarchy_family_aggregation(
+                            docs_non_mq,
+                            family_features=family_features,
+                            strategy=hierarchy_family_aggregation,
+                        )
+                        docs_mq, _ = _apply_hierarchy_family_aggregation(
+                            docs_mq,
+                            family_features=family_features,
+                            strategy=hierarchy_family_aggregation,
+                        )
+                    except Exception:
+                        pass
 
                 want_non_mq = max(0, int(top_k) - int(mq_diversify_budget))
                 want_mq = int(mq_diversify_budget)
@@ -1868,6 +2327,17 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         else:
             docs = docs_fused_all
 
+    if bool(hierarchy_recall_enabled) and bool(hierarchy_tree_dedup) and docs:
+        try:
+            docs, tree_dedup_meta = _apply_hierarchy_tree_dedup(
+                docs,
+                refill=docs_refill_pool,
+                top_k=int(top_k),
+                overfetch_factor=int(hierarchy_overfetch_factor),
+            )
+        except Exception:
+            tree_dedup_meta = {"enabled": False, "reason": "exception"}
+
     docs = (docs or [])[: max(0, top_k)]
 
     # Optional: KG-assisted retrieval (inject KG-linked chunks as extra candidates).
@@ -1888,8 +2358,6 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
 
             kg_result = kg_result_cached
             if kg_result is None:
-                import asyncio
-
                 coro = kg_search(
                     query=query_for_retrieval,
                     tenant_id=tenant_id,
@@ -2680,6 +3148,154 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         post_rerank_error = str(exc)[:200]
         post_rerank_skip_reason = "error"
 
+    hierarchy_expand_attempted = False
+    hierarchy_expand_used = False
+    hierarchy_expand_error: str | None = None
+    hierarchy_expand_elapsed = 0.0
+    hierarchy_expand_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
+    try:
+        if (
+            bool(hierarchy_recall_enabled)
+            and bool(docs)
+            and (int(hierarchy_parent_depth) > 0 or int(hierarchy_sibling_window) > 0)
+        ):
+            hierarchy_expand_attempted = True
+            exp_start = time.time()
+
+            from app.rag.retrieval.hierarchy_expand import expand_hierarchy_context  # noqa: WPS433
+
+            # Version-aware expansion: only fetch hierarchy parents/siblings from the same
+            # active pipeline version as the retrieved anchors.
+            desired_pipeline_by_doc: dict[str, str] = {}
+            for d in docs or []:
+                if d is None:
+                    continue
+                meta = d.metadata or {}
+                doc_id = str(meta.get("document_id") or "").strip()
+                if not doc_id:
+                    continue
+                pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
+                if not pipeline_key:
+                    ph = str(meta.get("pipeline_hash") or "").strip()
+                    if ph:
+                        pipeline_key = f"{doc_id}:{ph}"
+                if pipeline_key:
+                    desired_pipeline_by_doc.setdefault(doc_id, pipeline_key)
+
+            def _fetch_by_key(pairs: set[tuple[str, str]]) -> dict[tuple[str, str], Document]:
+                if not pairs:
+                    return {}
+                from app.core.database import SessionLocal  # noqa: WPS433
+                from app.models.document import DocumentChunk  # noqa: WPS433
+                from sqlalchemy import or_  # noqa: WPS433
+
+                by_doc: dict[str, set[str]] = {}
+                for doc_id, node_key in pairs:
+                    doc_id_s = str(doc_id or "").strip()
+                    node_key_s = str(node_key or "").strip()
+                    if not doc_id_s or not node_key_s:
+                        continue
+                    by_doc.setdefault(doc_id_s, set()).add(node_key_s)
+
+                if not by_doc:
+                    return {}
+
+                db = SessionLocal()
+                try:
+                    out: dict[tuple[str, str], Document] = {}
+                    for doc_id_s, keys in by_doc.items():
+                        try:
+                            doc_uuid = UUID(doc_id_s)
+                        except Exception:
+                            continue
+                        keys_list = [k for k in keys if k]
+                        if not keys_list:
+                            continue
+
+                        q = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_uuid)
+                        if tenant_uuid:
+                            q = q.filter(DocumentChunk.tenant_id == tenant_uuid)
+                        q = q.filter(
+                            or_(
+                                DocumentChunk.doc_metadata["hierarchy_node_key"].astext.in_(keys_list),  # type: ignore[attr-defined]
+                                DocumentChunk.doc_metadata["chunk_key"].astext.in_(keys_list),  # type: ignore[attr-defined]
+                            )
+                        )
+
+                        for ck in q.all():
+                            meta = dict(getattr(ck, "doc_metadata", None) or {})
+                            desired = desired_pipeline_by_doc.get(str(ck.document_id))
+                            if desired:
+                                ck_key = str(meta.get("doc_pipeline_key") or "").strip()
+                                if not ck_key:
+                                    ph = str(meta.get("pipeline_hash") or "").strip()
+                                    if ph:
+                                        ck_key = f"{ck.document_id}:{ph}"
+                                if not ck_key or ck_key != desired:
+                                    continue
+
+                            cid = str(getattr(ck, "id", "") or "")
+                            meta.setdefault("tenant_id", str(getattr(ck, "tenant_id", "") or ""))
+                            meta.setdefault("document_id", str(getattr(ck, "document_id", "") or ""))
+                            meta.setdefault("chunk_id", cid)
+                            meta.setdefault("chunk_index", int(getattr(ck, "chunk_index", 0) or 0))
+                            page_number = getattr(ck, "page_number", None)
+                            if page_number is not None:
+                                meta.setdefault("page", int(page_number))
+                                meta.setdefault("page_number", int(page_number))
+                            start_char = getattr(ck, "start_char", None)
+                            end_char = getattr(ck, "end_char", None)
+                            if start_char is not None:
+                                meta.setdefault("start_char", int(start_char))
+                            if end_char is not None:
+                                meta.setdefault("end_char", int(end_char))
+                            if not meta.get("source"):
+                                meta["source"] = "unknown"
+
+                            node_key_s = str(meta.get("hierarchy_node_key") or meta.get("chunk_key") or "").strip()
+                            if not node_key_s:
+                                continue
+
+                            out[(str(ck.document_id), node_key_s)] = Document(
+                                page_content=str(getattr(ck, "content", None) or ""),
+                                metadata=meta,
+                                id=cid or meta.get("chunk_id"),
+                            )
+                    return out
+                finally:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
+
+            max_added = max(0, int(top_k) * (int(hierarchy_parent_depth) + (2 * int(hierarchy_sibling_window))))
+            max_added = min(400, max_added or 120)
+
+            expanded_docs, hierarchy_expand_meta = expand_hierarchy_context(
+                [d for d in (docs or []) if d is not None],
+                parent_depth=int(hierarchy_parent_depth),
+                sibling_window=int(hierarchy_sibling_window),
+                fetch_by_key=_fetch_by_key,
+                max_added_docs=int(max_added),
+            )
+            hierarchy_expand_elapsed = max(0.0, float(time.time() - exp_start))
+            retrieval_elapsed += float(hierarchy_expand_elapsed)
+
+            if isinstance(hierarchy_expand_meta, dict):
+                hierarchy_expand_meta = dict(hierarchy_expand_meta)
+            else:
+                hierarchy_expand_meta = {"enabled": False, "reason": "invalid_meta"}
+
+            if expanded_docs and int(hierarchy_expand_meta.get("added_docs") or 0) > 0:
+                docs = expanded_docs
+                hierarchy_expand_used = True
+            else:
+                hierarchy_expand_used = False
+    except Exception as exc:  # noqa: BLE001
+        hierarchy_expand_used = False
+        hierarchy_expand_error = str(exc)[:200]
+        hierarchy_expand_meta = {"enabled": False, "reason": "exception"}
+
     hard_fallback_enabled = bool(retrieval_contract_policy.get("hard_fallback_enabled"))
     hard_fallback_mode = str(retrieval_contract_policy.get("hard_fallback_mode") or "keyword").strip().lower() or "keyword"
     hard_fallback_top_k = max(1, int(retrieval_contract_policy.get("hard_fallback_top_k") or 1))
@@ -3012,6 +3628,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     must_recall_anchor_eval = evaluate_evidence_anchor_expectations(
         citations=[c for c in citations if isinstance(c, dict)],
         required_fields=must_recall_required_anchor_fields,
+        exclude_retrieval_role_prefixes=["hierarchy_"],
     )
     initial_missing_source_keys = list(must_recall_source_eval.get("missing_source_keys") or [])
     initial_anchor_missing_any = int(must_recall_anchor_eval.get("missing_any") or 0)
@@ -3093,6 +3710,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             after_anchor_eval = evaluate_evidence_anchor_expectations(
                 citations=[c for c in citations if isinstance(c, dict)],
                 required_fields=must_recall_required_anchor_fields,
+                exclude_retrieval_role_prefixes=["hierarchy_"],
             )
             after_missing_source_keys = list(after_source_eval.get("missing_source_keys") or [])
             after_anchor_missing_any = int(after_anchor_eval.get("missing_any") or 0)
@@ -3274,6 +3892,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["must_recall_passed"] = bool(must_recall_passed)
     metrics["must_recall_missing_source_keys"] = missing_source_keys[:40]
     metrics["must_recall_anchor_missing_counts"] = dict(must_recall_anchor_eval.get("missing_counts") or {})
+    metrics["must_recall_anchor_considered_citations"] = int(must_recall_anchor_eval.get("considered_citations") or 0)
+    metrics["must_recall_anchor_skipped_citations"] = int(must_recall_anchor_eval.get("skipped_citations") or 0)
+    metrics["must_recall_anchor_skipped_by_role"] = dict(must_recall_anchor_eval.get("skipped_by_role") or {})
     metrics["must_recall_fail_reasons"] = must_recall_fail_reasons[:12]
     metrics["must_recall_second_pass_enabled"] = bool(must_recall_second_pass_enabled)
     metrics["must_recall_second_pass_attempted"] = bool(must_recall_second_pass_attempted)
@@ -3443,6 +4064,20 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["multi_query_diversify_selected_mq"] = int(mq_diversify_selected_mq or 0)
     metrics["multi_query_diversify_selected_non_mq"] = int(mq_diversify_selected_non_mq or 0)
     metrics["multi_query_diversify_fill_from_fused"] = int(mq_diversify_fill_from_fused or 0)
+
+    metrics["hierarchy_recall_enabled"] = bool(hierarchy_recall_enabled)
+    metrics["hierarchy_family_collapse"] = bool(hierarchy_family_collapse)
+    metrics["hierarchy_family_aggregation"] = str(hierarchy_family_aggregation)
+    metrics["hierarchy_tree_dedup"] = bool(hierarchy_tree_dedup)
+    metrics["hierarchy_tree_dedup_meta"] = (dict(tree_dedup_meta) if isinstance(tree_dedup_meta, dict) else None)
+    metrics["hierarchy_parent_depth"] = int(hierarchy_parent_depth)
+    metrics["hierarchy_sibling_window"] = int(hierarchy_sibling_window)
+    metrics["hierarchy_overfetch_factor"] = int(hierarchy_overfetch_factor)
+    metrics["hierarchy_context_expansion_attempted"] = bool(hierarchy_expand_attempted)
+    metrics["hierarchy_context_expansion_used"] = bool(hierarchy_expand_used)
+    metrics["hierarchy_context_expansion_elapsed_sec"] = round(float(hierarchy_expand_elapsed or 0.0), 3)
+    metrics["hierarchy_context_expansion_error"] = hierarchy_expand_error
+    metrics["hierarchy_context_expansion_meta"] = (dict(hierarchy_expand_meta) if isinstance(hierarchy_expand_meta, dict) else None)
 
     metrics["hyde_enabled"] = bool(settings.ENABLE_HYDE)
     metrics["hyde_used"] = bool(hyde_used)
@@ -3661,6 +4296,21 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     query_debug["intent_router"] = intent_router_meta
     query_debug["adaptive_router"] = adaptive_router_meta
     query_debug["channel_budget_policy"] = channel_budget_policy_meta
+    query_debug["hierarchy_recall"] = {
+        "enabled": bool(hierarchy_recall_enabled),
+        "family_collapse": bool(hierarchy_family_collapse),
+        "family_aggregation": str(hierarchy_family_aggregation),
+        "tree_dedup": bool(hierarchy_tree_dedup),
+        "parent_depth": int(hierarchy_parent_depth),
+        "sibling_window": int(hierarchy_sibling_window),
+        "overfetch_factor": int(hierarchy_overfetch_factor),
+        "tree_dedup_meta": (dict(tree_dedup_meta) if isinstance(tree_dedup_meta, dict) else None),
+        "context_expansion_attempted": bool(hierarchy_expand_attempted),
+        "context_expansion_used": bool(hierarchy_expand_used),
+        "context_expansion_elapsed_sec": round(float(hierarchy_expand_elapsed or 0.0), 3),
+        "context_expansion_error": hierarchy_expand_error,
+        "context_expansion_meta": (dict(hierarchy_expand_meta) if isinstance(hierarchy_expand_meta, dict) else None),
+    }
     query_debug["contextual_followup"] = {
         "enabled": bool(contextual_followup_enabled),
         "attempted": bool(contextual_followup_attempted),
@@ -3986,6 +4636,15 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 "fill_from_fused": int(mq_diversify_fill_from_fused or 0),
             },
         },
+        "hierarchy_recall": {
+            "enabled": bool(hierarchy_recall_enabled),
+            "family_collapse": bool(hierarchy_family_collapse),
+            "family_aggregation": str(hierarchy_family_aggregation),
+            "tree_dedup": bool(hierarchy_tree_dedup),
+            "parent_depth": int(hierarchy_parent_depth),
+            "sibling_window": int(hierarchy_sibling_window),
+            "overfetch_factor": int(hierarchy_overfetch_factor),
+        },
         "kg_chunk_injection": {
             "enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
             "chunks_injected": int(kg_chunks_injected or 0),
@@ -4117,6 +4776,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "contextual_followup_max_query_chars": int(contextual_followup_max_query_chars),
             "contextual_followup_max_hops": int(contextual_followup_max_hops),
             "contextual_followup_latency_budget_ms": round(float(contextual_followup_latency_budget_ms), 3),
+            "hierarchy_recall_enabled": bool(hierarchy_recall_enabled),
+            "hierarchy_family_collapse": bool(hierarchy_family_collapse),
+            "hierarchy_family_aggregation": str(hierarchy_family_aggregation),
+            "hierarchy_tree_dedup": bool(hierarchy_tree_dedup),
+            "hierarchy_parent_depth": int(hierarchy_parent_depth),
+            "hierarchy_sibling_window": int(hierarchy_sibling_window),
+            "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
             "retrieval_hardcase_emit_enabled": bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False)),
             "rag_evidence_require_spans_enabled": bool(evidence_span_strict_enabled),
             "retrieval_parse_quality_low_threshold": float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35),

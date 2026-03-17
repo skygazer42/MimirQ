@@ -1,0 +1,58 @@
+{
+  "schema": "mimirq.retrieval_hierarchy_family_fixture.v1",
+  "cases": [
+    {
+      "id": "hierarchy_recall20_family_collapse_overfetch",
+      "retrieval_profile": "hierarchy_recall20",
+      "requested_k": 2,
+      "hierarchy_overfetch_factor": 2,
+      "results": [
+        {
+          "chunk_id": "c1",
+          "content": "family one / hit one",
+          "score": 0.9,
+          "metadata": {
+            "document_id": "doc-1",
+            "chunk_index": 1,
+            "hierarchy_family_key": "fam-1"
+          }
+        },
+        {
+          "chunk_id": "c2",
+          "content": "family one / hit two",
+          "score": 0.85,
+          "metadata": {
+            "document_id": "doc-1",
+            "chunk_index": 2,
+            "hierarchy_family_key": "fam-1"
+          }
+        },
+        {
+          "chunk_id": "c3",
+          "content": "family two / hit one",
+          "score": 0.8,
+          "metadata": {
+            "document_id": "doc-1",
+            "chunk_index": 3,
+            "hierarchy_family_key": "fam-2"
+          }
+        },
+        {
+          "chunk_id": "c4",
+          "content": "family three / hit one",
+          "score": 0.75,
+          "metadata": {
+            "document_id": "doc-1",
+            "chunk_index": 4,
+            "hierarchy_family_key": "fam-3"
+          }
+        }
+      ],
+      "expected": {
+        "search_k": 4,
+        "visible_chunk_ids": ["c1", "c3"],
+        "visible_family_keys": ["fam-1", "fam-2"]
+      }
+    }
+  ]
+}

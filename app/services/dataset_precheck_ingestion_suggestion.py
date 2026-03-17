@@ -79,6 +79,7 @@ def _rule(
     name: str,
     extensions: list[str],
     filename_regex: str | None = None,
+    enabled: bool = True,
     preprocess_steps: list[str] | None = None,
     parser_backend: str | None = None,
     chunk_strategy: str | None = None,
@@ -89,7 +90,7 @@ def _rule(
     return {
         "id": rid,
         "name": name,
-        "enabled": True,
+        "enabled": bool(enabled),
         "match": {"extensions": extensions, "filename_regex": filename_regex},
         "preprocess": {"enabled": bool(steps), "steps": steps},
         "parser_backend": parser_backend,
@@ -217,6 +218,17 @@ def build_ingestion_policy_suggestion(
         notes.append(f"检测到多 Sheet 表格：{many_sheet_spreadsheets}（建议拆分或结构化处理；避免一次性全量入库）")
     if merged_heavy_spreadsheets > 0:
         notes.append(f"检测到合并单元格占比较高的表格：{merged_heavy_spreadsheets}（建议表格专用转换/人工复核）")
+
+    by_file_type = summary.get("by_file_type") if isinstance(summary.get("by_file_type"), dict) else {}
+    md_total = _safe_int(by_file_type.get("md"))
+    txt_total = _safe_int(by_file_type.get("txt"))
+    if (md_total > 0 or txt_total > 0) and use_longform:
+        notes.append(
+            "可选：若你计划开启 hierarchy recall overlay（例如 profile=hierarchy_recall20_expand，或显式设置 "
+            "hierarchy_parent_depth/hierarchy_sibling_window），可在 ingestion_policy 中启用 "
+            "`markdown_hierarchy` / `text_hierarchy` 切块策略，以生成段落->句子两层结构，提升 parent/sibling "
+            "上下文扩展与 tree-dedup 的效果。"
+        )
 
     # Build rules (conservative defaults).
     rules: list[dict[str, Any]] = []
@@ -378,6 +390,20 @@ def build_ingestion_policy_suggestion(
             pipeline_patch=_pii_secrets_patch(enable_pii=("txt" in pii_types), enable_secrets=("txt" in secrets_types)),
         )
     )
+    # Optional (disabled by default): build a paragraph->sentence hierarchy for hierarchy-aware recall.
+    rules.append(
+        _rule(
+            rid="markdown-hierarchy-md",
+            name="Markdown（层级：段落->句子，可用于层级召回）",
+            enabled=False,
+            extensions=[".md"],
+            preprocess_steps=list(common_text_preprocess),
+            parser_backend="auto",
+            chunk_strategy="markdown_hierarchy",
+            governance_profile_ref=md_profile,
+            pipeline_patch=md_patch,
+        )
+    )
     rules.append(
         _rule(
             rid="markdown-md",
@@ -386,6 +412,21 @@ def build_ingestion_policy_suggestion(
             preprocess_steps=list(common_text_preprocess),
             parser_backend="auto",
             chunk_strategy="markdown_header",
+            governance_profile_ref=md_profile,
+            pipeline_patch=md_patch,
+        )
+    )
+    # Optional (disabled by default): build a paragraph->sentence hierarchy for hierarchy-aware recall.
+    # Keep it after chat-exports-txt so chat exports keep their tailored defaults even when enabled.
+    rules.append(
+        _rule(
+            rid="text-hierarchy-txt",
+            name="纯文本（层级：段落->句子，可用于层级召回）",
+            enabled=False,
+            extensions=[".txt"],
+            preprocess_steps=list(common_text_preprocess),
+            parser_backend="auto",
+            chunk_strategy="text_hierarchy",
             governance_profile_ref=md_profile,
             pipeline_patch=md_patch,
         )

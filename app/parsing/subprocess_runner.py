@@ -35,9 +35,9 @@ class SubprocessCancelledError(RuntimeError):
 SubprocessCancelled = SubprocessCancelledError
 
 
-def _get_subprocess_workdir(*, tenant_id: UUID) -> Path:
+def _get_subprocess_workdir(*, _tenant_id: UUID) -> Path:
     root = Path(getattr(settings, "UPLOAD_DIR", "uploads"))
-    return (root / str(tenant_id) / ".subprocess").resolve(strict=False)
+    return (root / str(_tenant_id) / ".subprocess").resolve(strict=False)
 
 
 async def _terminate_process_group(process: Any, *, grace_sec: float = 2.0) -> None:
@@ -128,7 +128,7 @@ async def run_subprocess_worker(
     - cancel_check(): e.g. document status changed to "cancelled"
     - asyncio.CancelledError(): upstream task/job aborted (e.g., arq Job.abort)
     """
-    workdir = _get_subprocess_workdir(tenant_id=tenant_id)
+    workdir = _get_subprocess_workdir(_tenant_id=tenant_id)
     workdir.mkdir(parents=True, exist_ok=True)
 
     run_id = uuid.uuid4().hex

@@ -56,7 +56,7 @@ def _build_client(  # noqa: ANN001
             # Keep test deterministic: treat parsed "pages" as chunks.
             return list(documents or [])
 
-    monkeypatch.setattr(chunker_factory, "get_chunker", lambda _strategy, _chunk_size, _chunk_overlap, **_: _Chunker(), raising=True)
+    monkeypatch.setattr(chunker_factory, "get_chunker", lambda *_, **__: _Chunker(), raising=True)
 
     async def _fake_run_subprocess_worker(*, tenant_id, payload, disconnect_check, timeout_sec):  # noqa: ANN001, ANN202
         await yield_control()
@@ -272,6 +272,49 @@ def test_documents_chunk_preview_review_signals_parent_child_basis(monkeypatch):
     assert rs.get("basis") == "child"
     assert rs.get("gap_indices") == [1]
     assert (rs.get("gap_before_by_index") or {}).get("1") == 50
+
+
+def test_documents_chunk_preview_exposes_optional_hierarchy_basis_field(monkeypatch):  # noqa: ANN001
+    from langchain_core.documents import Document
+
+    from app.rag.chunking.factory import chunker_factory
+
+    client = _build_client(monkeypatch)
+
+    class _Chunker:
+        def split_documents(self, documents):  # noqa: ANN001, ANN202
+            return [
+                Document(
+                    page_content="p" * 200,
+                    metadata={
+                        "page": 1,
+                        "start_char": 0,
+                        "hierarchy_basis": "parent_child",
+                        "hierarchy_level": "parent",
+                    },
+                ),
+                Document(
+                    page_content="c" * 100,
+                    metadata={
+                        "page": 1,
+                        "start_char": 50,
+                        "hierarchy_basis": "parent_child",
+                        "hierarchy_level": "child",
+                    },
+                ),
+            ]
+
+    monkeypatch.setattr(chunker_factory, "get_chunker", lambda *_, **__: _Chunker(), raising=True)
+
+    res = client.post(
+        "/api/v1/documents/chunk-preview?chunk_size=1000&chunk_overlap=200",
+        data={"parser_backend": "auto", "chunk_strategy": "parent_child"},
+        files={"file": ("doc.txt", b"hello world", "text/plain")},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["chunks"][0].get("hierarchy_basis") == "parent_child"
+    assert body["chunks"][1].get("hierarchy_basis") == "parent_child"
 
 
 def test_documents_chunk_preview_can_disable_original_text(monkeypatch):  # noqa: ANN001

@@ -111,6 +111,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const retrievalConfigHash = selected?.retrieval?.retrieval_config_hash || null
   const mainQuery = (selected?.retrieval?.per_query || []).find((q) => q?.kind === 'main') ?? (selected?.retrieval?.per_query || [])[0] ?? null
   const channels = (mainQuery?.retriever_debug as any)?.channels as Record<string, any> | null | undefined
+  const hierarchyRecall = (mainQuery?.retriever_debug as any)?.hierarchy_recall as Record<string, any> | null | undefined
   const rerankMeta = (channels as any)?.rerank as Record<string, any> | null | undefined
   const rerankSkipReason = rerankMeta?.skip_reason ? String(rerankMeta.skip_reason) : null
   const rerankError = rerankMeta?.error ? String(rerankMeta.error) : null
@@ -562,6 +563,56 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         </Badge>
                       )}
                     </div>
+
+                    {hierarchyRecall ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {hierarchyRecall.enabled == null ? null : (
+                          <Badge variant="soft" className="text-[10px]">
+                            hierarchy={hierarchyRecall.enabled ? 'on' : 'off'}
+                          </Badge>
+                        )}
+                        {hierarchyRecall.family_collapse == null ? null : (
+                          <Badge variant="soft" className="text-[10px]">
+                            family_collapse={String(Boolean(hierarchyRecall.family_collapse))}
+                          </Badge>
+                        )}
+                        {hierarchyRecall.family_aggregation ? (
+                          <Badge variant="soft" className="text-[10px]">
+                            family_aggregation={String(hierarchyRecall.family_aggregation)}
+                          </Badge>
+                        ) : null}
+                        {hierarchyRecall.tree_dedup == null ? null : (
+                          <Badge variant="soft" className="text-[10px]">
+                            tree_dedup={String(Boolean(hierarchyRecall.tree_dedup))}
+                          </Badge>
+                        )}
+                        {hierarchyRecall.overfetch_factor == null ? null : (
+                          <Badge variant="soft" className="text-[10px]">
+                            overfetch_factor={String(hierarchyRecall.overfetch_factor)}
+                          </Badge>
+                        )}
+                        {hierarchyRecall.parent_depth == null ? null : (
+                          <Badge variant="soft" className="text-[10px]">
+                            parent_depth={String(hierarchyRecall.parent_depth)}
+                          </Badge>
+                        )}
+                        {hierarchyRecall.sibling_window == null ? null : (
+                          <Badge variant="soft" className="text-[10px]">
+                            sibling_window={String(hierarchyRecall.sibling_window)}
+                          </Badge>
+                        )}
+                        {hierarchyRecall.context_expansion_used == null ? null : (
+                          <Badge variant="soft" className="text-[10px]">
+                            context_expansion_used={String(Boolean(hierarchyRecall.context_expansion_used))}
+                          </Badge>
+                        )}
+                        {hierarchyRecall.context_expansion_error ? (
+                          <Badge variant="soft" className="text-[10px]">
+                            context_expansion_error={String(hierarchyRecall.context_expansion_error)}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {(rerankSkipReason || rerankError) ? (
                       <div className="flex flex-wrap items-center gap-2">

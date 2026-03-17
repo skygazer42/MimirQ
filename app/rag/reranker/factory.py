@@ -259,6 +259,10 @@ def get_reranker(
         cache_key = _local_cache_key(
             "colbert",
             [
+                # Include the requested provider so a deterministic instance created as a
+                # fallback (hf -> deterministic) does not get merged with a "native"
+                # deterministic instance in the cache (the provider_health differs).
+                provider_name,
                 effective_provider_name,
                 resolved_model_name,
                 device,

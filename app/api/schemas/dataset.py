@@ -3,7 +3,7 @@ Dataset-related Pydantic schemas.
 Defines data models for dataset creation, update, and query endpoints.
 """
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -19,6 +19,8 @@ from .base import OrmModel
 from .document import DocumentPipelineOptions
 from .fls_policy import FlsPolicy
 from .ingestion_policy import IngestionPolicy
+
+HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
 
 
 class DatasetChunkTargetsV2(BaseModel):
@@ -79,6 +81,15 @@ class DatasetRAGDefaults(BaseModel):
     multi_query_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     multi_query_max_chars: int | None = Field(default=None, ge=0, le=2000)
 
+    # Optional hierarchy-aware recall overlay.
+    enable_hierarchy_recall: bool | None = None
+    hierarchy_family_collapse: bool | None = None
+    hierarchy_family_aggregation: Literal["frequency", "score", "combined"] | None = None
+    hierarchy_tree_dedup: bool | None = None
+    hierarchy_parent_depth: int | None = Field(default=None, ge=0, le=8)
+    hierarchy_sibling_window: int | None = Field(default=None, ge=0, le=16)
+    hierarchy_overfetch_factor: int | None = Field(default=None, ge=1, le=32)
+
     top_k: int | None = Field(default=None, ge=1, le=100)
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     retrieval_mode: str | None = None  # hybrid | vector | keyword | mmr | auto
@@ -129,6 +140,26 @@ class DatasetRAGDefaults(BaseModel):
                 + ", ".join(sorted(VALID_RETRIEVAL_CONTRACT_MODES))
             )
         return mode
+
+    @field_validator("hierarchy_family_aggregation", mode="before")
+    @classmethod
+    def _normalize_hierarchy_family_aggregation(cls, v):  # noqa: ANN001
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError(
+                "hierarchy_family_aggregation must be one of: "
+                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+            )
+        raw = v.strip().lower()
+        if not raw:
+            return None
+        if raw not in HIERARCHY_FAMILY_AGGREGATION_VALUES:
+            raise ValueError(
+                "hierarchy_family_aggregation must be one of: "
+                + ", ".join(HIERARCHY_FAMILY_AGGREGATION_VALUES)
+            )
+        return raw
 
     @model_validator(mode="after")
     def _validate_fusion_dicts(self) -> "DatasetRAGDefaults":

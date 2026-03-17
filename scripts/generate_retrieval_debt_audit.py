@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,7 @@ DEFAULT_TEMPLATE = REPO_ROOT / "docs" / "templates" / "retrieval_debt_audit_temp
 
 
 def _now_utc() -> datetime:
-    return datetime.now(UTC).replace(microsecond=0)
+    return datetime.now(timezone.utc).replace(microsecond=0)
 
 
 def _safe_json(path: Path) -> dict[str, Any]:
@@ -29,7 +29,7 @@ def _safe_json(path: Path) -> dict[str, Any]:
 def _age_days(path: Path, now: datetime) -> int | None:
     if not path.exists():
         return None
-    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+    mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
     delta = now - mtime
     return max(0, int(delta.total_seconds() // 86400))
 
@@ -116,6 +116,101 @@ def _render_unstable_profiles() -> tuple[str, dict[str, Any]]:
     return "\n".join(lines), {"profiles_flagged": len(rows)}
 
 
+def _render_hierarchy_recall_audit() -> tuple[str, dict[str, Any]]:
+    """
+    Best-effort structural audit for hierarchy-aware recall overlay.
+
+    Goal:
+    - Provide quick signals about whether hierarchy recall is available and "safe-by-default".
+    - Keep it deterministic: scan source files for expected knobs and guardrails.
+    """
+
+    checks: list[tuple[str, str, str]] = []
+    risk_signals = 0
+
+    profiles_path = REPO_ROOT / "app" / "rag" / "core" / "retrieval_profiles.py"
+    if not profiles_path.exists():
+        checks.append(("hierarchy_profiles_present", "warn", "retrieval_profiles.py missing"))
+        risk_signals += 1
+    else:
+        text = profiles_path.read_text(encoding="utf-8", errors="ignore")
+        has_profiles = all(k in text for k in ("hierarchy_recall20", "hierarchy_hybrid_ce", "hierarchy_grounded_strict"))
+        checks.append(
+            (
+                "hierarchy_profiles_present",
+                "ok" if has_profiles else "warn",
+                "found hierarchy profiles" if has_profiles else "missing one or more hierarchy_* profiles",
+            )
+        )
+        if not has_profiles:
+            risk_signals += 1
+
+        def _extract_int(pattern: str) -> int | None:
+            m = re.search(pattern, text)
+            if not m:
+                return None
+            try:
+                return int(m.group(1))
+            except Exception:
+                return None
+
+        parent_depth = _extract_int(r'out\["hierarchy_parent_depth"\]\s*=\s*(\d+)')
+        sibling_window = _extract_int(r'out\["hierarchy_sibling_window"\]\s*=\s*(\d+)')
+        if parent_depth is None or sibling_window is None:
+            checks.append(("hierarchy_overlay_safe_defaults", "warn", "could not detect default parent/sibling expansion"))
+            risk_signals += 1
+        else:
+            safe = int(parent_depth) == 0 and int(sibling_window) == 0
+            checks.append(
+                (
+                    "hierarchy_overlay_safe_defaults",
+                    "ok" if safe else "warn",
+                    f"parent_depth={parent_depth}, sibling_window={sibling_window}",
+                )
+            )
+            if not safe:
+                risk_signals += 1
+
+    orchestrator_path = REPO_ROOT / "app" / "rag" / "retrieval" / "orchestrator.py"
+    if not orchestrator_path.exists():
+        checks.append(("must_recall_anchor_excludes_hierarchy_context", "warn", "orchestrator.py missing"))
+        risk_signals += 1
+    else:
+        text = orchestrator_path.read_text(encoding="utf-8", errors="ignore")
+        ok = bool(re.search(r"exclude_retrieval_role_prefixes\s*=\s*\[\s*[\"']hierarchy_[\"']\s*\]", text))
+        checks.append(
+            (
+                "must_recall_anchor_excludes_hierarchy_context",
+                "ok" if ok else "warn",
+                "exclude_retrieval_role_prefixes=['hierarchy_'] detected" if ok else "missing anchor-field exclusion for hierarchy_*",
+            )
+        )
+        if not ok:
+            risk_signals += 1
+
+    eval_path = REPO_ROOT / "app" / "rag" / "evaluation" / "evidence_retrieve_gate.py"
+    if not eval_path.exists():
+        checks.append(("eval_summary_includes_doc_family_recall", "warn", "evidence_retrieve_gate.py missing"))
+        risk_signals += 1
+    else:
+        text = eval_path.read_text(encoding="utf-8", errors="ignore")
+        ok = "retrieval_doc_recall" in text and "retrieval_family_recall" in text
+        checks.append(
+            (
+                "eval_summary_includes_doc_family_recall",
+                "ok" if ok else "warn",
+                "doc/family recall metrics detected" if ok else "missing retrieval_doc_recall / retrieval_family_recall",
+            )
+        )
+        if not ok:
+            risk_signals += 1
+
+    lines = ["| check | status | observed |", "|---|---|---|"]
+    for name, status, observed in checks:
+        lines.append(f"| {name} | {status} | {observed} |")
+    return "\n".join(lines), {"risk_signals": int(risk_signals), "checks": int(len(checks))}
+
+
 def _render_todo_hotspots() -> tuple[str, dict[str, Any]]:
     roots = [REPO_ROOT / "app", REPO_ROOT / "scripts", REPO_ROOT / "tests", REPO_ROOT / "docs"]
     marker = re.compile(r"\\b(TODO|FIXME|HACK)\\b", flags=re.IGNORECASE)
@@ -149,6 +244,7 @@ def _build_summary(
     threshold_stats: dict[str, Any],
     flaky_stats: dict[str, Any],
     profile_stats: dict[str, Any],
+    hierarchy_stats: dict[str, Any],
     todo_stats: dict[str, Any],
 ) -> str:
     return "\n".join(
@@ -158,6 +254,7 @@ def _build_summary(
             f"| stale_threshold_files | {int(threshold_stats.get('stale_files') or 0)} |",
             f"| flaky_signal_files | {int(flaky_stats.get('files_with_signals') or 0)} |",
             f"| unstable_profiles_flagged | {int(profile_stats.get('profiles_flagged') or 0)} |",
+            f"| hierarchy_risk_signals | {int(hierarchy_stats.get('risk_signals') or 0)} |",
             f"| todo_hotspot_files | {int(todo_stats.get('files_with_todo') or 0)} |",
         ]
     )
@@ -168,6 +265,7 @@ def _build_action_queue(
     stale_files: int,
     flaky_files: int,
     unstable_profiles: int,
+    hierarchy_risk_signals: int,
     todo_files: int,
 ) -> str:
     items: list[str] = []
@@ -177,6 +275,8 @@ def _build_action_queue(
         items.append("- Triage flaky-test signals and convert unstable tests into deterministic fixtures.")
     if unstable_profiles > 0:
         items.append("- Re-validate profile compatibility and pin profile-specific guardrails.")
+    if hierarchy_risk_signals > 0:
+        items.append("- Audit hierarchy recall overlay defaults + guardrails before enabling it broadly.")
     if todo_files > 0:
         items.append("- Burn down top TODO hotspots with owner + due date.")
     if not items:
@@ -193,17 +293,20 @@ def generate_report(*, out_path: Path, template_path: Path, stale_days: int) -> 
     threshold_text, threshold_stats = _render_threshold_staleness(now=now, stale_days=stale_days)
     flaky_text, flaky_stats = _render_flaky_tests()
     profile_text, profile_stats = _render_unstable_profiles()
+    hierarchy_text, hierarchy_stats = _render_hierarchy_recall_audit()
     todo_text, todo_stats = _render_todo_hotspots()
     summary_text = _build_summary(
         threshold_stats=threshold_stats,
         flaky_stats=flaky_stats,
         profile_stats=profile_stats,
+        hierarchy_stats=hierarchy_stats,
         todo_stats=todo_stats,
     )
     action_queue = _build_action_queue(
         stale_files=int(threshold_stats.get("stale_files") or 0),
         flaky_files=int(flaky_stats.get("files_with_signals") or 0),
         unstable_profiles=int(profile_stats.get("profiles_flagged") or 0),
+        hierarchy_risk_signals=int(hierarchy_stats.get("risk_signals") or 0),
         todo_files=int(todo_stats.get("files_with_todo") or 0),
     )
 
@@ -213,6 +316,7 @@ def generate_report(*, out_path: Path, template_path: Path, stale_days: int) -> 
         .replace("{{threshold_staleness}}", threshold_text)
         .replace("{{flaky_tests}}", flaky_text)
         .replace("{{unstable_profiles}}", profile_text)
+        .replace("{{hierarchy_recall}}", hierarchy_text)
         .replace("{{todo_hotspots}}", todo_text)
         .replace("{{action_queue}}", action_queue)
     )

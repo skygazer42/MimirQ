@@ -29,4 +29,5 @@ def test_generate_retrieval_debt_audit_writes_markdown(tmp_path: Path) -> None:
     text = out.read_text(encoding="utf-8")
     assert "Retrieval Debt Audit" in text
     assert "Threshold Staleness" in text
+    assert "Hierarchy Recall Overlay" in text
     assert "TODO Hotspots" in text

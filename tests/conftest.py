@@ -87,6 +87,10 @@ def _disable_proxy_env_for_tests() -> None:
 _disable_proxy_env_for_tests()
 _patch_asyncio_threadsafe_wakeup_for_sandbox()
 
+# Ensure `app.__init__` runs early in the pytest process so it can backfill
+# `datetime.UTC` on Python 3.10 before any test modules import it.
+import app  # noqa: F401,E402
+
 
 def _integration_enabled() -> bool:
     return str(os.getenv("MIMIRQ_INTEGRATION_TESTS", "") or "").strip().lower() in {"1", "true", "yes", "y", "on"}

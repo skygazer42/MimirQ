@@ -44,6 +44,24 @@
   - Response：`params.strategy_params` 会回显 `child_ratio/min_child_size/child_size/child_overlap`，便于复现与审计。
   - UI：Chunk List 支持 `Flat / Hierarchy`；Hierarchy 会按 `metadata.parent_id` 折叠，并在卡片上标注 `PARENT/CHILD`。
 
+## Hierarchy Overlay Signals
+
+Chunk Preview 会把 hierarchy overlay 的轻量信号一起返回，目的是让你在入库前确认“结构有没有保住”，而不是只看 chunk 长度。
+
+当前约定：
+- `chunks[].hierarchy_basis`
+  - 顶层显式字段，方便 UI 直接分组/过滤
+  - 常见值：`parent_child`、`markdown_hierarchy`、`chunk_sequence`
+- `chunks[].metadata`
+  - 仍然保留完整 hierarchy metadata
+  - 关键字段包括 `hierarchy_level`、`hierarchy_node_key`、`hierarchy_family_key`、`hierarchy_parent_key`
+  - 若 chunk 存在连续兄弟关系，也会带 `hierarchy_sibling_index`、`hierarchy_prev_sibling_key`、`hierarchy_next_sibling_key`
+
+解释边界：
+- Preview 返回这些字段，不代表系统切换成“树数据库”
+- 这些字段主要用于后续的 family collapse、tree dedup、parent/sibling expansion 和 explain trace
+- 如果某个策略没有天然层级，后端会退化成 `chunk_sequence`，至少保证稳定 adjacency
+
 - `parser_backend`
   - 不同解析器会影响原文结构（尤其是 PDF/Office），建议先在「文档解析」页验证解析质量，再进行切块调参。
 
@@ -112,6 +130,7 @@
     - `upload_duration_ms`, `parse_duration_ms`, `governance_duration_ms`, `chunking_duration_ms`, `stats_duration_ms`
     - `quality_gate`（pass/warn/fail + reasons）、`recommendations`
     - `stats.coverage_ratio / overlap_waste_ratio / gap_count`（用于评估 overlap 与定位覆盖）
+    - `chunks[].hierarchy_basis`（可选；详尽 hierarchy 信息仍在 `chunks[].metadata`）
     - 同时会返回 `Server-Timing` header（用于浏览器 devtools 性能排查）
   - Form: `file`, `parser_backend`, `chunk_strategy`, `pipeline`（可选，JSON string）
 

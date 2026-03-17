@@ -100,6 +100,21 @@ class DatasetMustRecallSummaryOut(BaseModel):
     status: str = "unavailable"
 
 
+class DatasetHierarchyRecallSummaryOut(BaseModel):
+    """Best-effort hierarchy-recall counters derived from latest regression run summary.
+
+    Notes:
+    - These are objective aggregate metrics from retrieval-only evaluation (0..1).
+    - Values may be missing on legacy regression runs (best-effort).
+    """
+
+    doc_hit_rate: float | None = None
+    family_hit_rate: float | None = None
+    doc_recall: float | None = None
+    family_recall: float | None = None
+    status: str = "unavailable"
+
+
 class DatasetGovernanceAuditOut(BaseModel):
     """
     Dataset-level governance audit (best-effort).
@@ -248,6 +263,8 @@ class DatasetReportOut(BaseModel):
     latest_regression_run: DatasetRegressionRunSummaryOut | None = None
     # Optional: must-recall counters summarized from latest regression run (best-effort).
     must_recall_summary: DatasetMustRecallSummaryOut | None = None
+    # Optional: hierarchy recall counters summarized from latest regression run (best-effort).
+    hierarchy_recall_summary: DatasetHierarchyRecallSummaryOut | None = None
 
     # Optional: latest precheck summary snapshot for the dataset (best-effort).
     #

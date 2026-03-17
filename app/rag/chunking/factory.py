@@ -50,6 +50,7 @@ from app.rag.chunking.strategies import (
     ManuscriptChunker,
     MarkdownAwareChunker,
     MarkdownFrontmatterChunker,
+    MarkdownHierarchyChunker,
     # New splitters
     MarkdownHeaderChunker,
     MarkdownOutlineChunker,
@@ -87,6 +88,7 @@ from app.rag.chunking.strategies import (
     TerraformPlanChunker,
     TimelineEventsChunker,
     TOMLConfigChunker,
+    TextHierarchyChunker,
     TranscriptChunker,
     XMLFeedChunker,
     YAMLManifestChunker,
@@ -195,7 +197,9 @@ class ChunkerFactory:
         "markdown_header": MarkdownHeaderChunker,
         "markdown_outline": MarkdownOutlineChunker,
         "markdown_aware": MarkdownAwareChunker,
+        "markdown_hierarchy": MarkdownHierarchyChunker,
         "markdown": MarkdownHeaderChunker,  # Alias
+        "text_hierarchy": TextHierarchyChunker,
         "json": JSONChunker,
         "code": CodeChunker,
         "smart_code": SmartCodeChunker,

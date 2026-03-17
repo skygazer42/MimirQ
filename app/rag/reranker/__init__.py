@@ -1,65 +1,46 @@
 """
 Reranker module.
 
-Unified reranker architecture:
-- BaseReranker: top-level abstract base class
-- APIReranker: HTTP API-based reranker
-- DocumentReranker: document-level reranker
-
-API Rerankers:
-- OpenAIReranker: OpenAI-style API
-- DashScopeReranker: Alibaba Cloud DashScope
-
-Document Rerankers:
-- WeightedReranker: hybrid reranking (vector + keyword) [hybrid.py]
-- ParentChildReranker: parent/child reranking
-- LLMReranker: LLM-based reranking [llm_based.py]
-- KGReranker: knowledge graph reranking
+Exports are resolved lazily so callers can import a specific reranker submodule
+without pulling in every provider implementation and its optional dependencies.
 """
-from app.rag.reranker.base import APIReranker, BaseReranker, DocumentReranker
-from app.rag.reranker.dashscope import DashScopeReranker
-from app.rag.reranker.factory import get_rag_reranker, get_reranker
-from app.rag.reranker.hybrid import KeywordSetting, RerankMode, VectorSetting, WeightedReranker, Weights
-from app.rag.reranker.kg import KGReranker, get_kg_reranker
-from app.rag.reranker.llm_based import LLMReranker, LLMRerankResult, get_llm_reranker
-from app.rag.reranker.openai import OpenAIReranker
-from app.rag.reranker.parent_child import ParentChildReranker
-from app.rag.reranker.types import RerankCandidate, RerankResult
 
-__all__ = [
-    # Base classes
-    "BaseReranker",
-    "APIReranker",
-    "DocumentReranker",
-    
-    # API Rerankers
-    "OpenAIReranker",
-    "DashScopeReranker",
-    
-    # Document Rerankers
-    "WeightedReranker",
-    "ParentChildReranker",
-    "LLMReranker",
-    
-    # KG Reranker
-    "KGReranker",
-    "get_kg_reranker",
-    
-    # Types
-    "RerankCandidate",
-    "RerankResult",
-    "LLMRerankResult",
-    "Weights",
-    "VectorSetting",
-    "KeywordSetting",
-    "RerankMode",
-    
-    # Factory functions
-    "get_reranker",
-    "get_rag_reranker",  # Deprecated; kept for backward compatibility.
-    "get_llm_reranker",
-]
+from __future__ import annotations
+
+from importlib import import_module
+
+_EXPORTS: dict[str, tuple[str, str]] = {
+    "BaseReranker": ("app.rag.reranker.base", "BaseReranker"),
+    "APIReranker": ("app.rag.reranker.base", "APIReranker"),
+    "DocumentReranker": ("app.rag.reranker.base", "DocumentReranker"),
+    "OpenAIReranker": ("app.rag.reranker.openai", "OpenAIReranker"),
+    "DashScopeReranker": ("app.rag.reranker.dashscope", "DashScopeReranker"),
+    "WeightedReranker": ("app.rag.reranker.hybrid", "WeightedReranker"),
+    "ParentChildReranker": ("app.rag.reranker.parent_child", "ParentChildReranker"),
+    "LLMReranker": ("app.rag.reranker.llm_based", "LLMReranker"),
+    "KGReranker": ("app.rag.reranker.kg", "KGReranker"),
+    "get_kg_reranker": ("app.rag.reranker.kg", "get_kg_reranker"),
+    "RerankCandidate": ("app.rag.reranker.types", "RerankCandidate"),
+    "RerankResult": ("app.rag.reranker.types", "RerankResult"),
+    "LLMRerankResult": ("app.rag.reranker.llm_based", "LLMRerankResult"),
+    "Weights": ("app.rag.reranker.hybrid", "Weights"),
+    "VectorSetting": ("app.rag.reranker.hybrid", "VectorSetting"),
+    "KeywordSetting": ("app.rag.reranker.hybrid", "KeywordSetting"),
+    "RerankMode": ("app.rag.reranker.hybrid", "RerankMode"),
+    "get_reranker": ("app.rag.reranker.factory", "get_reranker"),
+    "get_rag_reranker": ("app.rag.reranker.factory", "get_rag_reranker"),
+    "get_llm_reranker": ("app.rag.reranker.llm_based", "get_llm_reranker"),
+}
 
 
-# Backward compatibility: keep old module-level factory functions (defined in factory.py).
-# This lets legacy code keep using `from app.rag.reranker import get_reranker`.
+def __getattr__(name: str):
+    target = _EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = target
+    value = getattr(import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
+
+
+__all__ = list(_EXPORTS)

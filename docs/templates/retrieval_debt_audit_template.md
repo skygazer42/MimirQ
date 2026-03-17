@@ -18,6 +18,10 @@ Generated At: {{generated_at}}
 
 {{unstable_profiles}}
 
+## Hierarchy Recall Overlay
+
+{{hierarchy_recall}}
+
 ## TODO Hotspots
 
 {{todo_hotspots}}

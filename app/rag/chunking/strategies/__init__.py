@@ -10,6 +10,8 @@ Available strategies:
 - llama_index: LlamaIndex-based chunking (disabled)
 - markdown_header: Markdown header-based chunking
 - markdown_aware: Enhanced markdown-aware chunking
+- markdown_hierarchy: Two-level paragraph/sentence hierarchy for Markdown
+- text_hierarchy: Two-level paragraph/sentence hierarchy for plain text
 - json: JSON structure-aware chunking
 - code: Programming language-aware chunking
 - smart_code: AST-like code chunking (Python)
@@ -116,6 +118,8 @@ from app.rag.chunking.strategies.markdown import (
     MarkdownAwareChunker,
     MarkdownHeaderChunker,
 )
+from app.rag.chunking.strategies.markdown_hierarchy import MarkdownHierarchyChunker
+from app.rag.chunking.strategies.text_hierarchy import TextHierarchyChunker
 from app.rag.chunking.strategies.markdown_frontmatter import MarkdownFrontmatterChunker
 from app.rag.chunking.strategies.markdown_outline import MarkdownOutlineChunker
 from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker
@@ -168,7 +172,9 @@ __all__ = [
     # New splitters
     "MarkdownHeaderChunker",
     "MarkdownAwareChunker",
+    "MarkdownHierarchyChunker",
     "MarkdownOutlineChunker",
+    "TextHierarchyChunker",
     "JSONChunker",
     "CodeChunker",
     "SmartCodeChunker",

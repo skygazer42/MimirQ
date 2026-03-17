@@ -1,6 +1,9 @@
 /**
  * ChunkPreview - 主入口组件（重构后）
  * 将 1059 行巨型组件拆分为模块化结构
+ *
+ * Notes:
+ * - A/B compare UI will surface per-run `metadata.hierarchy_basis` (when present) to avoid comparing incompatible bases.
  */
 'use client'
 

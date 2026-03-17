@@ -11,5 +11,8 @@ describe('retrieve preview panel source', () => {
     expect(src).toContain("const chunkId = String(hit.chunk_id || '')")
     expect(src).toContain("const clause = String(hit.policy_clause_number || '')")
     expect(src).toContain("const pathStr = String(hit.policy_path_str || '')")
+    expect(src).toContain("role.startsWith('hierarchy_')")
+    expect(src).toContain('family_hit')
+    expect(src).toContain('expanded')
   })
 })

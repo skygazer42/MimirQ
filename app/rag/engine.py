@@ -466,6 +466,13 @@ Requirements:
         multi_query_count: int | None = None,
         multi_query_temperature: float | None = None,
         multi_query_max_chars: int | None = None,
+        enable_hierarchy_recall: bool | None = None,
+        hierarchy_family_collapse: bool | None = None,
+        hierarchy_family_aggregation: str | None = None,
+        hierarchy_tree_dedup: bool | None = None,
+        hierarchy_parent_depth: int | None = None,
+        hierarchy_sibling_window: int | None = None,
+        hierarchy_overfetch_factor: int | None = None,
         alpha: float = 0.6,
         fusion_strategy: str | None = None,
         fusion_budgets: dict[str, int] | None = None,
@@ -820,6 +827,12 @@ Requirements:
                 rerank_top_n = int(profile_applied.get("reranker_top_n") or rerank_top_n or 0)
             if profile_applied.get("enable_weight_rerank") is not None:
                 enable_weight_rerank = bool(profile_applied.get("enable_weight_rerank"))
+            if profile_applied.get("enable_hierarchy_recall") is not None:
+                enable_hierarchy_recall = bool(profile_applied.get("enable_hierarchy_recall"))
+            if profile_applied.get("hierarchy_family_collapse") is not None:
+                hierarchy_family_collapse = bool(profile_applied.get("hierarchy_family_collapse"))
+            if profile_applied.get("hierarchy_overfetch_factor") is not None:
+                hierarchy_overfetch_factor = int(profile_applied.get("hierarchy_overfetch_factor") or 1)
             if profile_applied.get("retrieval_contract_mode") is not None:
                 retrieval_contract_mode = str(profile_applied.get("retrieval_contract_mode") or "").strip() or None
             if profile_applied.get("visible_evidence_only") is not None:
@@ -1179,6 +1192,7 @@ Requirements:
                 "document_ids": document_ids,
                 "metadata_filter": metadata_filter,
                 "retrieval_mode": mode_used,
+                "retrieval_profile": profile_norm or None,
                 "enable_weight_rerank": weight_rerank,
                 "vector_weight": vec_w,
                 "keyword_weight": kw_w,
@@ -1186,6 +1200,9 @@ Requirements:
                 "enable_reranker": rerank_on,
                 "reranker_provider": rerank_provider,
                 "reranker_top_n": rerank_top_n,
+                "enable_hierarchy_recall": bool(enable_hierarchy_recall),
+                "hierarchy_family_collapse": bool(hierarchy_family_collapse),
+                "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor or 1),
             }
             if is_recall_first_profile(profile_norm):
                 # Recall-first profiles: do not drop candidates due to dedup/diversity heuristics.

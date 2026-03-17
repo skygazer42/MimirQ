@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -115,7 +115,7 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
             self.filename = "demo.docx"
             self.file_type = "docx"
             self.status = "completed"
-            self.updated_at = datetime.now(UTC)
+            self.updated_at = datetime.now(timezone.utc)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -149,7 +149,7 @@ def test_dataset_tables_list_and_get(monkeypatch):  # noqa: ANN001
     import app.api.v1.dataset_tables as mod
 
     monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda _db, _tenant_id, _account_id, doc_ids: doc_ids, raising=True)
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
 
     # Query executor: stub.
     monkeypatch.setattr(
@@ -287,7 +287,7 @@ def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001
             self.filename = "demo.xlsx"
             self.file_type = "xlsx"
             self.status = "completed"
-            self.updated_at = datetime.now(UTC)
+            self.updated_at = datetime.now(timezone.utc)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -321,7 +321,7 @@ def test_dataset_tables_row_redaction_guard(monkeypatch):  # noqa: ANN001
 
     # Doc ACL: allow.
     monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda _db, _tenant_id, _account_id, doc_ids: doc_ids, raising=True)
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
 
     # Query executor: return sensitive strings.
     monkeypatch.setattr(
@@ -420,7 +420,7 @@ def test_dataset_tables_fls_masks_sample_rows_and_query_rows(monkeypatch):  # no
             self.filename = "demo.xlsx"
             self.file_type = "xlsx"
             self.status = "completed"
-            self.updated_at = datetime.now(UTC)
+            self.updated_at = datetime.now(timezone.utc)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -449,7 +449,7 @@ def test_dataset_tables_fls_masks_sample_rows_and_query_rows(monkeypatch):  # no
 
     # Doc ACL: allow.
     monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda _db, _tenant_id, _account_id, doc_ids: doc_ids, raising=True)
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
 
     # Query executor: return sensitive values.
     monkeypatch.setattr(
@@ -544,7 +544,7 @@ def test_dataset_tables_fls_emits_audit_event_when_applied(monkeypatch):  # noqa
             self.filename = "demo.xlsx"
             self.file_type = "xlsx"
             self.status = "completed"
-            self.updated_at = datetime.now(UTC)
+            self.updated_at = datetime.now(timezone.utc)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -643,7 +643,7 @@ def test_dataset_tables_list_includes_pdf_table_store_docs(monkeypatch):  # noqa
             self.filename = "demo.pdf"
             self.file_type = "pdf"
             self.status = "completed"
-            self.updated_at = datetime.now(UTC)
+            self.updated_at = datetime.now(timezone.utc)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -677,7 +677,7 @@ def test_dataset_tables_list_includes_pdf_table_store_docs(monkeypatch):  # noqa
     # Doc ACL: allow.
     import app.api.v1.dataset_tables as mod
 
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db([doc])
@@ -719,7 +719,7 @@ def test_dataset_tables_list_includes_db_row_sidecar_docs(monkeypatch):  # noqa:
             self.filename = "db_rows_demo.sqlite"
             self.file_type = "dbrows"
             self.status = "completed"
-            self.updated_at = datetime.now(UTC)
+            self.updated_at = datetime.now(timezone.utc)
             self.doc_metadata = {
                 "table_store": {
                     "version": "1",
@@ -758,7 +758,7 @@ def test_dataset_tables_list_includes_db_row_sidecar_docs(monkeypatch):  # noqa:
 
     import app.api.v1.dataset_tables as mod
 
-    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, _check_member=False: (set(doc_ids), set()), raising=True)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda _db, _tenant_id, _account_id, doc_ids, check_member=False: (set(doc_ids), set()), raising=True)
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db([doc])

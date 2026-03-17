@@ -19,6 +19,32 @@
 
 你需要的不是“看起来不错”，而是可量化、可回滚、可审计的配置。
 
+### Hierarchy Overlay（本波新增）
+
+这一波的 hierarchy 不是新的存储模型，也不是要求把所有文档重建成固定树数据库。
+MimirQ 当前做的是 retrieval-time overlay：
+- 继续复用现有 chunk / vector / BM25 / trace 体系
+- 在 chunk metadata 上补稳定的 hierarchy 键，供 recall-first profile、family collapse、tree dedup、parent/sibling expansion 复用
+- 不改变现有 parser backend 和主索引结构
+
+当前约定的核心字段：
+- `hierarchy_basis`：层级来源，例如 `parent_child`、`markdown_hierarchy`、`chunk_sequence`
+- `hierarchy_level`：节点级别，例如 `parent`、`child`、`paragraph`、`sentence`、`chunk`
+- `hierarchy_node_key`：稳定节点键
+- `hierarchy_family_key`：family collapse 的主键
+- `hierarchy_parent_key`：父节点键
+- `hierarchy_sibling_index` / `hierarchy_prev_sibling_key` / `hierarchy_next_sibling_key`：兄弟邻接信息
+
+family collapse key 的解析优先级：
+1. `hierarchy_family_key`
+2. `parent_id`
+3. 其他稳定 fallback（如 parent node key / `document_id:chunk_index`）
+
+这意味着：
+- parent-child 文档可以直接按 parent family 折叠
+- 普通线性 chunk 文档也能保留稳定 adjacency，后续做 sibling expansion
+- 没有 hierarchy metadata 的旧数据仍能通过 fallback 逻辑工作
+
 ---
 
 ## 1. 成功标准（建议）
@@ -116,6 +142,10 @@ MimirQ 提供 deterministic chunking regression fixtures（golden fixtures）：
    - 结果：回归难做、对比难做、缓存难做。
    - 正确：parent/child 关系应可复现（至少在同输入同版本下稳定）。
 
+4.1) **把 hierarchy overlay 当成新主索引**
+   - 结果：工程面会不必要膨胀，parser / index / retrieval / UI 一起重构，收益不成比例。
+   - 正确：优先把 hierarchy 当作 metadata contract，用于 recall control、trace 和 explain。
+
 5) **把 OCR 噪声当正文**
    - 水印/页眉页脚 OCR 重复会让检索看起来“有很多证据”，但全是噪声。
 
@@ -141,4 +171,3 @@ MimirQ 提供 deterministic chunking regression fixtures（golden fixtures）：
 
 - 结果“跳来跳去”：
   - 可启用相邻 chunk 拼接/排序（context stitching），并关注是否跨 `header_path` 边界。
-

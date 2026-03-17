@@ -14,6 +14,9 @@
   - 建议：配合 `parser_backend=docling`（表格/版式优先）或 DeepDoc/MinerU 等能输出位置标签的解析器。
 - **结构化 Markdown（标题层级清晰）**：`markdown_outline` 或 `markdown_header`
   - 目标：优先按标题边界切分，并保留 `header_path` / `outline_path`
+- **Markdown / 纯文本长文（需要层级召回）**：`markdown_hierarchy` / `text_hierarchy`
+  - 目标：生成「段落 -> 句子」两层节点，便于检索后做 parent/sibling 扩展、tree-dedup 与跨 query 聚合。
+  - 适用：开启 `enable_hierarchy_recall` 且希望“命中句子，补全段落上下文”的场景。
 - **FAQ / Q&A**：`qa_pairs` 或 `qa_markdown`
   - 目标：保证每组问答不被拆散
 - **合同/法律/制度条款**：`laws_structured`

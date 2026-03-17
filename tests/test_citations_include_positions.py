@@ -54,3 +54,25 @@ def test_build_citations_includes_policy_fields():  # noqa: ANN001
     assert c.get("policy_clause_number") == "第十二条"
     assert c.get("policy_path_str") == "第一章 总则 / 第十二条"
     assert c.get("parent_id") == "parent-12"
+
+
+def test_build_citations_includes_hierarchy_family_attribution():  # noqa: ANN001
+    docs = [
+        Document(
+            page_content="child chunk content",
+            metadata={
+                "document_id": "doc-1",
+                "source": "Doc 1",
+                "hierarchy_basis": "parent_child",
+                "hierarchy_family_key": "family-1",
+                "parent_id": "parent-1",
+            },
+        )
+    ]
+    out = build_citations_from_docs(docs, retrieval_elapsed_sec=0.123, retrieval_mode="vector", query="child")
+    assert len(out) == 1
+    c = out[0]
+    assert c.get("hierarchy_basis") == "parent_child"
+    assert c.get("hierarchy_family_key") == "family-1"
+    assert c.get("family_collapse_key") == "family-1"
+    assert c.get("family_hit") is True

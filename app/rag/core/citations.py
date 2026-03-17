@@ -203,6 +203,79 @@ def _build_snippet_and_span(
     return snippet, matched, int(start), int(end)
 
 
+def _build_snippet_from_span(
+    text: str,
+    query: str | None,
+    *,
+    span_start: int,
+    span_end: int,
+    max_chars: int = 220,
+) -> tuple[str, list[str]]:
+    """
+    Build a UI snippet anchored around a known local span (start/end in `text`).
+
+    This is used for hierarchy context expansion so parent citations can point at the
+    same evidence span as their anchor child (instead of the first query-term match).
+    """
+    max_chars = max(60, int(max_chars or 0))
+    raw = str(text or "")
+    if not raw.strip():
+        return "", []
+
+    try:
+        s = int(span_start)
+        e = int(span_end)
+    except Exception:
+        return "", []
+
+    s = max(0, min(s, len(raw)))
+    e = max(s, min(e, len(raw)))
+    if e <= s:
+        return "", []
+
+    terms = _extract_query_terms(query or "", max_terms=10) if query else []
+
+    before = max_chars // 3
+    desired_len = min(len(raw), max_chars)
+
+    # Keep the requested span inside the base window.
+    base_start = max(0, min(s - before, len(raw) - desired_len))
+    base_end = min(len(raw), base_start + desired_len)
+    if e > base_end:
+        base_start = max(0, min(e - desired_len, len(raw) - desired_len))
+        base_end = min(len(raw), base_start + desired_len)
+
+    # Prefer sentence-level boundaries for readability.
+    start = base_start
+    end = base_end
+    prev = _find_prev_boundary(raw, start=base_start, end=s)
+    if prev >= 0:
+        start = min(max(base_start, prev + 1), len(raw))
+    nxt = _find_next_boundary(raw, start=e, end=base_end)
+    if nxt is not None:
+        end = min(max(start, nxt + 1), len(raw))
+
+    snippet_raw = raw[start:end]
+    snippet = _collapse_ws(snippet_raw).strip() or _collapse_ws(raw[base_start:base_end])
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(raw):
+        snippet = snippet + "..."
+
+    matched: list[str] = []
+    snippet_folded = snippet_raw.casefold()
+    for t in terms:
+        if not t:
+            continue
+        if str(t).isascii():
+            if t.casefold() in snippet_folded:
+                matched.append(str(t))
+        else:
+            if str(t) in snippet_raw:
+                matched.append(str(t))
+    return snippet, matched
+
+
 _NIL_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
@@ -320,6 +393,9 @@ def build_citations_from_docs(
     query: str | None = None,
 ) -> list[dict[str, Any]]:
     citations: list[dict[str, Any]] = []
+    # Used for hierarchy span merging; keeps only per-chunk text already being used to
+    # build citations (so no extra DB calls or content retention outside this function).
+    raw_text_by_chunk_id: dict[str, str] = {}
     for doc in docs:
         meta = doc.metadata or {}
 
@@ -332,8 +408,18 @@ def build_citations_from_docs(
         retrieval_score = meta.get("retrieval_score")
         rerank_score_calibrated = meta.get("rerank_score_calibrated")
 
-        retrieval_role = meta.get("retrieval_role") or None
-        neighbor_of = meta.get("neighbor_of") or None
+        retrieval_role_raw = meta.get("retrieval_role")
+        retrieval_role = (
+            str(retrieval_role_raw).strip()
+            if retrieval_role_raw is not None and str(retrieval_role_raw).strip()
+            else None
+        )
+        neighbor_of_raw = meta.get("neighbor_of")
+        neighbor_of = (
+            str(neighbor_of_raw).strip()
+            if neighbor_of_raw is not None and str(neighbor_of_raw).strip()
+            else None
+        )
         is_tag = str(retrieval_role or "").strip().lower() == "tag" or str(meta.get("chunk_role") or "") == "tag_sql_result"
         is_image = (
             str(retrieval_role or "").strip().lower() == "image"
@@ -391,6 +477,12 @@ def build_citations_from_docs(
             formatted = _format_tag_table_store_summary(doc, meta=meta)
             if formatted:
                 effective_text = formatted
+
+        # Store the exact text used to build snippets/spans for this chunk id so we can
+        # re-anchor snippets when hierarchy expansion wants to "inherit" anchor spans.
+        chunk_id_s = str(chunk_id).strip() if chunk_id is not None else ""
+        if chunk_id_s:
+            raw_text_by_chunk_id.setdefault(chunk_id_s, str(effective_text or ""))
 
         tag_table_id = str(meta.get("table_id") or "").strip()
         if not tag_table_id and tag_payload:
@@ -461,6 +553,15 @@ def build_citations_from_docs(
         except Exception:
             chunk_index = None
 
+        hierarchy_basis = str(meta.get("hierarchy_basis") or "").strip() or None
+        hierarchy_family_key = str(meta.get("hierarchy_family_key") or "").strip() or None
+        family_collapse_key = hierarchy_family_key
+        if family_collapse_key is None:
+            family_collapse_key = str(meta.get("parent_id") or "").strip() or None
+        if family_collapse_key is None:
+            family_collapse_key = str(meta.get("parent_node_id") or "").strip() or None
+        family_hit = bool(family_collapse_key)
+
         citation: dict[str, Any] = {
             "chunk_id": chunk_id,
             "document_id": meta.get("document_id"),
@@ -491,6 +592,10 @@ def build_citations_from_docs(
             "policy_path": meta.get("policy_path"),
             "policy_path_str": meta.get("policy_path_str"),
             "parent_id": meta.get("parent_id"),
+            "hierarchy_basis": hierarchy_basis,
+            "hierarchy_family_key": hierarchy_family_key,
+            "family_collapse_key": family_collapse_key,
+            "family_hit": family_hit,
             "retrieval_role": retrieval_role,
             "neighbor_of": neighbor_of,
             # Useful for audit/debug and for versioned retrieval UIs.
@@ -743,4 +848,80 @@ def build_citations_from_docs(
         citation["citation_hash"] = stable_json_hash(citation, length=16)
 
         citations.append(citation)
+
+    # Hierarchy context expansion: parent nodes are pulled in "for context", but we
+    # still want their evidence spans to line up with the anchor chunk that caused
+    # the expansion. Otherwise the parent citation often points at the *first* query
+    # term match in the section, which may not be what the anchor retrieved.
+    try:
+        by_chunk: dict[str, dict[str, Any]] = {}
+        for c in citations:
+            if not isinstance(c, dict):
+                continue
+            cid = c.get("chunk_id")
+            if cid is None:
+                continue
+            by_chunk[str(cid).strip()] = c
+
+        def _to_int(v: Any) -> int | None:
+            try:
+                return int(v) if v is not None else None
+            except Exception:
+                return None
+
+        for c in citations:
+            if not isinstance(c, dict):
+                continue
+            rr = str(c.get("retrieval_role") or "").strip().lower()
+            if rr != "hierarchy_parent":
+                continue
+            neighbor = str(c.get("neighbor_of") or "").strip()
+            if not neighbor:
+                continue
+            anchor = by_chunk.get(neighbor)
+            if not isinstance(anchor, dict):
+                continue
+
+            # Keep merges within the same document.
+            doc_a = str(anchor.get("document_id") or "").strip()
+            doc_b = str(c.get("document_id") or "").strip()
+            if doc_a and doc_b and doc_a != doc_b:
+                continue
+
+            parent_start = _to_int(c.get("start_char"))
+            parent_end = _to_int(c.get("end_char"))
+            a_start = _to_int(anchor.get("evidence_start_char"))
+            a_end = _to_int(anchor.get("evidence_end_char"))
+            if parent_start is None or a_start is None or a_end is None or a_end <= a_start:
+                continue
+            if a_start < parent_start:
+                continue
+            if parent_end is not None and a_end > parent_end:
+                continue
+
+            c["evidence_start_char"] = int(a_start)
+            c["evidence_end_char"] = int(a_end)
+
+            # Best-effort: re-anchor the parent snippet around the inherited span so
+            # UI previews stay consistent with evidence pointers.
+            cid_s = str(c.get("chunk_id") or "").strip()
+            text = raw_text_by_chunk_id.get(cid_s)
+            if not text:
+                continue
+            local_s = int(a_start) - int(parent_start)
+            local_e = int(a_end) - int(parent_start)
+            snippet2, matched2 = _build_snippet_from_span(
+                text,
+                query,
+                span_start=local_s,
+                span_end=local_e,
+                max_chars=220,
+            )
+            if snippet2:
+                c["chunk_content"] = snippet2
+            if matched2:
+                c["matched_terms"] = matched2
+    except Exception:
+        pass
+
     return citations

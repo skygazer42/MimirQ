@@ -96,6 +96,13 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
             "document_ids": [str(doc_id)],
             "top_k": 5,
             "retrieval_mode": "vector",
+            "enable_hierarchy_recall": True,
+            "hierarchy_family_collapse": True,
+            "hierarchy_family_aggregation": "combined",
+            "hierarchy_tree_dedup": True,
+            "hierarchy_parent_depth": 1,
+            "hierarchy_sibling_window": 2,
+            "hierarchy_overfetch_factor": 4,
             "parse_repair_actions": {
                 "run_id": "parse-repair-001",
                 "actions": [
@@ -128,6 +135,15 @@ def test_orchestrator_emits_stable_retrieval_trace_schema(monkeypatch: pytest.Mo
         "parse_repair_actions",
     ):
         assert key in trace
+
+    hierarchy = trace.get("hierarchy_recall") or {}
+    assert hierarchy.get("enabled") is True
+    assert hierarchy.get("family_collapse") is True
+    assert hierarchy.get("family_aggregation") == "combined"
+    assert hierarchy.get("tree_dedup") is True
+    assert hierarchy.get("parent_depth") == 1
+    assert hierarchy.get("sibling_window") == 2
+    assert hierarchy.get("overfetch_factor") == 4
 
     # Retrieval trace is intentionally separate from query_debug: no raw question text.
     assert "original" not in trace

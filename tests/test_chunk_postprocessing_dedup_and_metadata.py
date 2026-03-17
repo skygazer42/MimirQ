@@ -46,7 +46,9 @@ def test_chunk_asset_stage_sets_chunk_key_and_content_hash():
 
     assert out.chunks[0].metadata["chunk_index"] == 0
     assert out.chunks[0].metadata["chunk_key"] == f"{doc_id}:0"
+    assert out.chunks[0].metadata["hierarchy_node_key"] == f"{doc_id}:0"
+    assert out.chunks[0].metadata["hierarchy_family_key"] == f"{doc_id}:0"
+    assert out.chunks[0].metadata["hierarchy_sibling_index"] == 0
     assert isinstance(out.chunks[0].metadata.get("content_hash"), str)
     assert out.chunks[0].metadata.get("content_hash_algo") == "sha256"
     assert out.chunks[0].metadata.get("content_len") == 5
-

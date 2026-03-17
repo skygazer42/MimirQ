@@ -64,3 +64,18 @@ def test_chat_rag_config_default_grounded_strict_projects_contract_fields(monkey
     assert cfg.retrieval_profile == "grounded_strict"
     assert cfg.retrieval_contract_mode == "evidence_strict"
     assert cfg.visible_evidence_only is True
+
+
+def test_chat_rag_config_hierarchy_profile_projects_hierarchy_fields() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(retrieval_profile="hierarchy_recall20")
+
+    assert cfg.retrieval_profile == "hierarchy_recall20"
+    assert cfg.enable_hierarchy_recall is True
+    assert cfg.hierarchy_family_collapse is True
+    assert cfg.hierarchy_family_aggregation == "combined"
+    assert cfg.hierarchy_tree_dedup is True
+    assert cfg.hierarchy_parent_depth == 0
+    assert cfg.hierarchy_sibling_window == 0
+    assert cfg.hierarchy_overfetch_factor == 4

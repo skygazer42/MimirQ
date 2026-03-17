@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session, aliased
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
-from app.rag.core.metadata import normalize_image_metadata
+from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata
+from app.rag.core.metadata import ensure_hierarchy_overlay_metadata, normalize_image_metadata
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.provenance import build_event_entity_provenance
@@ -66,6 +67,7 @@ def _ensure_chunk_metadata(
     content: str,
     document_id: UUID,
     chunk_index: int,
+    total_chunks: int | None = None,
 ) -> dict[str, Any]:
     """Ensure stable per-chunk metadata fields exist (used across DB/vector/BM25)."""
     if not isinstance(meta, dict):
@@ -81,6 +83,13 @@ def _ensure_chunk_metadata(
     if not isinstance(raw_hash, str) or not raw_hash.strip():
         meta["content_hash"] = hashlib.sha256(stripped.encode("utf-8", "ignore")).hexdigest()
         meta.setdefault("content_hash_algo", "sha256")
+
+    ensure_hierarchy_overlay_metadata(
+        meta,
+        document_id=str(document_id),
+        chunk_index=int(chunk_index),
+        total_chunks=(int(total_chunks) if total_chunks is not None else None),
+    )
 
     return meta
 
@@ -374,8 +383,10 @@ class Indexer:
         vector_docs: list[dict[str, Any]] = []
         extra_vector_docs: list[dict[str, Any]] = []
         chunk_ids: list[UUID] = []
+        prepared_chunks: list[tuple[ChunkInput, dict[str, Any], UUID]] = []
         embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
         field_aware_enabled = bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False
+        total_chunks = len(chunks)
         for idx, c in enumerate(chunks):
             meta = dict(c.metadata or {})
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
@@ -391,10 +402,26 @@ class Indexer:
                 meta.setdefault("embedding_context_prefix_enabled", True)
             if field_aware_enabled:
                 meta.setdefault("embedding_field_aware_enabled", True)
-            meta = _ensure_chunk_metadata(meta, content=c.content or "", document_id=document_id, chunk_index=idx)
+            meta = _ensure_chunk_metadata(
+                meta,
+                content=c.content or "",
+                document_id=document_id,
+                chunk_index=idx,
+                total_chunks=total_chunks,
+            )
             # Ensure every chunk has a stable UUID for cross-system linking.
             chunk_id = _safe_uuid(meta.get("chunk_id")) or uuid.uuid4()
             meta["chunk_id"] = str(chunk_id)
+            prepared_chunks.append((c, meta, chunk_id))
+
+        apply_sequence_hierarchy_metadata(
+            [meta for _, meta, _ in prepared_chunks],
+            document_id=str(document_id),
+            basis="chunk_sequence",
+            level="chunk",
+        )
+
+        for c, meta, chunk_id in prepared_chunks:
             chunk_ids.append(chunk_id)
             normalized_chunks.append(
                 ChunkInput(
@@ -1068,6 +1095,7 @@ class Indexer:
             raise ValueError(f"chunk_ids length {len(chunk_ids)} != chunks length {len(chunks)}")
 
         db_chunks: list[DocumentChunk] = []
+        total_chunks = len(chunks)
         for idx, (chunk, vector_id, chunk_id) in enumerate(zip(chunks, vector_ids, chunk_ids, strict=False)):
             meta = dict(chunk.metadata or {})
             normalize_image_metadata(meta)
@@ -1079,7 +1107,13 @@ class Indexer:
             pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
             if pipeline_hash:
                 meta.setdefault("doc_pipeline_key", f"{document_id}:{pipeline_hash}")
-            meta = _ensure_chunk_metadata(meta, content=chunk.content or "", document_id=document_id, chunk_index=idx)
+            meta = _ensure_chunk_metadata(
+                meta,
+                content=chunk.content or "",
+                document_id=document_id,
+                chunk_index=idx,
+                total_chunks=total_chunks,
+            )
             meta["chunk_id"] = str(chunk_id)
             page_number = (
                 _safe_int(chunk.page_number)
@@ -1126,6 +1160,7 @@ class Indexer:
             return
 
         bm25_docs: list[LCDocument] = []
+        total_chunks = len(db_chunks)
         for db_chunk in db_chunks:
             meta = dict(db_chunk.doc_metadata or {})
             normalize_image_metadata(meta)
@@ -1134,6 +1169,7 @@ class Indexer:
                 content=db_chunk.content or "",
                 document_id=document_id,
                 chunk_index=int(db_chunk.chunk_index or 0),
+                total_chunks=total_chunks,
             )
             meta.setdefault("index_kind", IndexKind.CHUNK.value)
             meta.setdefault("tenant_id", str(tenant_id))

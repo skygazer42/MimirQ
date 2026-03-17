@@ -53,3 +53,41 @@ async def test_retrieval_config_hash_endpoint_changes_when_knobs_change() -> Non
     )
 
     assert a.hash != b.hash
+
+
+@pytest.mark.asyncio
+async def test_retrieval_config_hash_endpoint_includes_hierarchy_recall_knobs() -> None:
+    import app.api.v1.retrieval_config_hash as api_mod
+
+    tenant_id = uuid.uuid4()
+
+    out = await api_mod.get_retrieval_config_hash(
+        body=api_mod.RetrievalConfigHashRequest(
+            rag_config={
+                "enable_hierarchy_recall": True,
+                "hierarchy_family_collapse": True,
+                "hierarchy_family_aggregation": "combined",
+                "hierarchy_tree_dedup": True,
+                "hierarchy_parent_depth": 1,
+                "hierarchy_sibling_window": 2,
+                "hierarchy_overfetch_factor": 4,
+            },
+        ),
+        tenant_id=tenant_id,
+        account_id="u",
+    )
+
+    effective = out.effective_config
+    assert effective.get("enable_hierarchy_recall") is True
+    assert effective.get("hierarchy_family_collapse") is True
+    assert effective.get("hierarchy_family_aggregation") == "combined"
+    assert effective.get("hierarchy_tree_dedup") is True
+    assert effective.get("hierarchy_parent_depth") == 1
+    assert effective.get("hierarchy_sibling_window") == 2
+    assert effective.get("hierarchy_overfetch_factor") == 4
+
+    fp_cfg = out.fingerprint.get("config") or {}
+    assert fp_cfg.get("enable_hierarchy_recall") is True
+    assert fp_cfg.get("hierarchy_family_collapse") is True
+    assert fp_cfg.get("hierarchy_family_aggregation") == "combined"
+    assert fp_cfg.get("hierarchy_tree_dedup") is True

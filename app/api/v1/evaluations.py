@@ -1277,7 +1277,7 @@ async def export_ragas_regression_run_bundle_api(
     return JSONResponse(content=bundle, headers=headers)
 
 
-@router.post("/ragas/regression/runs/purge", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/ragas/regression/runs/purge")
 def purge_ragas_regression_runs(
     retention_days: Annotated[int, Query(ge=1, le=3650, description='Delete runs older than N days')] = 90,
     max_delete: Annotated[int, Query(ge=1, le=5000, description='Max runs to delete in this call')] = 200,

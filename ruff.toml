@@ -1,5 +1,6 @@
 target-version = "py311"
 line-length = 120
+force-exclude = true
 
 extend-exclude = [
   ".git",
@@ -7,6 +8,7 @@ extend-exclude = [
   ".pytest_cache",
   ".ruff_cache",
   ".shared",
+  "docs",
   "uploads",
   "web",
 ]

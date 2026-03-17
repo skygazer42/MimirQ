@@ -94,6 +94,13 @@ def build_recall_obligation_ledger(
         0,
         _to_int((anchor_eval or {}).get("missing_any"), default=0) if isinstance(anchor_eval, dict) else 0,
     )
+    anchor_considered = _to_int((anchor_eval or {}).get("considered_citations"), default=0) if isinstance(anchor_eval, dict) else 0
+    anchor_skipped = _to_int((anchor_eval or {}).get("skipped_citations"), default=0) if isinstance(anchor_eval, dict) else 0
+    anchor_skipped_by_role = (
+        dict((anchor_eval or {}).get("skipped_by_role") or {})
+        if isinstance(anchor_eval, dict) and isinstance((anchor_eval or {}).get("skipped_by_role"), dict)
+        else {}
+    )
     required_total = int(len(source_obligations) + len(anchor_obligations))
     missing_total = int(source_missing + anchor_missing_fields)
     matched_total = max(0, required_total - missing_total)
@@ -114,6 +121,9 @@ def build_recall_obligation_ledger(
             "required": int(len(anchor_obligations)),
             "missing_fields": int(anchor_missing_fields),
             "missing_any": int(anchor_missing_any),
+            "considered_citations": int(max(0, anchor_considered)),
+            "skipped_citations": int(max(0, anchor_skipped)),
+            "skipped_by_role": dict(anchor_skipped_by_role),
             "obligations": anchor_obligations,
         },
     }
@@ -140,6 +150,31 @@ def build_must_recall_proof(
     )
     source_eval_obj = source_eval if isinstance(source_eval, dict) else {}
     anchor_eval_obj = anchor_eval if isinstance(anchor_eval, dict) else {}
+    required_source_keys_norm = normalize_source_keys(list(required_source_keys or []))
+    matched_by_required = (
+        dict(source_eval_obj.get("matched_by_required_source_key") or {})
+        if isinstance(source_eval_obj.get("matched_by_required_source_key"), dict)
+        else {}
+    )
+    matched_source_keys: list[str] = []
+    raw_matched = source_eval_obj.get("matched_source_keys")
+    if isinstance(raw_matched, list):
+        for v in raw_matched:
+            s = str(v or "").strip()
+            if not s:
+                continue
+            matched_source_keys.append(s)
+            if len(matched_source_keys) >= 200:
+                break
+    # Best-effort fallback: derive matched_source_keys from the required->matched map.
+    if not matched_source_keys and matched_by_required:
+        for key in required_source_keys_norm:
+            s = str(matched_by_required.get(key) or "").strip()
+            if not s:
+                continue
+            matched_source_keys.append(s)
+            if len(matched_source_keys) >= 200:
+                break
     reasons = [str(v) for v in (fail_reasons or []) if str(v).strip()][:16]
     proof = {
         "schema": MUST_RECALL_PROOF_SCHEMA_V1,
@@ -147,7 +182,9 @@ def build_must_recall_proof(
         "status": str(status or ""),
         "passed": bool(passed),
         "contract_fail_reason_taxonomy": str(contract_fail_reason_taxonomy or ""),
-        "required_source_keys": normalize_source_keys(list(required_source_keys or [])),
+        "required_source_keys": required_source_keys_norm,
+        "matched_source_keys": matched_source_keys,
+        "matched_by_required_source_key": dict(matched_by_required),
         "missing_source_keys": [
             str(v)
             for v in (source_eval_obj.get("missing_source_keys") or [])
@@ -158,6 +195,13 @@ def build_must_recall_proof(
         "anchor_missing_counts": (
             dict(anchor_eval_obj.get("missing_counts") or {})
             if isinstance(anchor_eval_obj.get("missing_counts"), dict)
+            else {}
+        ),
+        "anchor_considered_citations": max(0, _to_int(anchor_eval_obj.get("considered_citations"), default=0)),
+        "anchor_skipped_citations": max(0, _to_int(anchor_eval_obj.get("skipped_citations"), default=0)),
+        "anchor_skipped_by_role": (
+            dict(anchor_eval_obj.get("skipped_by_role") or {})
+            if isinstance(anchor_eval_obj.get("skipped_by_role"), dict)
             else {}
         ),
         "fail_reasons": reasons,

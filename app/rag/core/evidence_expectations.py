@@ -42,12 +42,20 @@ def evaluate_evidence_anchor_expectations(
     *,
     citations: list[dict[str, Any]] | None,
     required_fields: list[str] | tuple[str, ...] | None,
+    exclude_retrieval_role_prefixes: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     req = normalize_anchor_fields(list(required_fields or []))
+    prefixes = [
+        str(p or "").strip().lower()
+        for p in (exclude_retrieval_role_prefixes or [])
+        if str(p or "").strip()
+    ]
     if not req:
         return {
             "required_fields": [],
             "considered_citations": int(len(citations or [])),
+            "skipped_citations": 0,
+            "skipped_by_role": {},
             "missing_counts": {},
             "missing_any": 0,
             "passed": True,
@@ -57,10 +65,18 @@ def evaluate_evidence_anchor_expectations(
     missing_examples: list[dict[str, Any]] = []
     missing_any = 0
     considered = 0
+    skipped = 0
+    skipped_by_role: dict[str, int] = {}
 
     for item in citations or []:
         if not isinstance(item, dict):
             continue
+        if prefixes:
+            rr = str(item.get("retrieval_role") or "").strip().lower()
+            if rr and any(rr.startswith(p) for p in prefixes):
+                skipped += 1
+                skipped_by_role[rr] = int(skipped_by_role.get(rr, 0) or 0) + 1
+                continue
         considered += 1
         miss_fields: list[str] = []
         for f in req:
@@ -85,6 +101,8 @@ def evaluate_evidence_anchor_expectations(
     return {
         "required_fields": req,
         "considered_citations": int(considered),
+        "skipped_citations": int(skipped),
+        "skipped_by_role": dict(skipped_by_role),
         "missing_counts": missing_counts,
         "missing_any": int(missing_any),
         "missing_examples": missing_examples,
@@ -97,4 +115,3 @@ __all__ = [
     "normalize_anchor_fields",
     "evaluate_evidence_anchor_expectations",
 ]
-

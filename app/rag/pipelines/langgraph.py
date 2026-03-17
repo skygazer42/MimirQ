@@ -82,6 +82,13 @@ class RAGState(TypedDict, total=False):
     multi_query_count: int | None
     multi_query_temperature: float | None
     multi_query_max_chars: int | None
+    enable_hierarchy_recall: bool | None
+    hierarchy_family_collapse: bool | None
+    hierarchy_family_aggregation: str | None
+    hierarchy_tree_dedup: bool | None
+    hierarchy_parent_depth: int | None
+    hierarchy_sibling_window: int | None
+    hierarchy_overfetch_factor: int | None
     enable_query_rewrite: bool | None
     query_rewrite_strategy: str | None
     query_rewrite_temperature: float | None
@@ -953,6 +960,13 @@ def build_rag_state(
     multi_query_count: int | None = None,
     multi_query_temperature: float | None = None,
     multi_query_max_chars: int | None = None,
+    enable_hierarchy_recall: bool | None = None,
+    hierarchy_family_collapse: bool | None = None,
+    hierarchy_family_aggregation: str | None = None,
+    hierarchy_tree_dedup: bool | None = None,
+    hierarchy_parent_depth: int | None = None,
+    hierarchy_sibling_window: int | None = None,
+    hierarchy_overfetch_factor: int | None = None,
     enable_query_rewrite: bool | None = None,
     query_rewrite_strategy: str | None = None,
     query_rewrite_temperature: float | None = None,
@@ -1080,6 +1094,20 @@ def build_rag_state(
         reranker_top_n = int(profile_applied.get("reranker_top_n") or reranker_top_n or 0)
     if profile_applied.get("enable_weight_rerank") is not None:
         enable_weight_rerank = bool(profile_applied.get("enable_weight_rerank"))
+    if profile_applied.get("enable_hierarchy_recall") is not None:
+        enable_hierarchy_recall = bool(profile_applied.get("enable_hierarchy_recall"))
+    if profile_applied.get("hierarchy_family_collapse") is not None:
+        hierarchy_family_collapse = bool(profile_applied.get("hierarchy_family_collapse"))
+    if profile_applied.get("hierarchy_family_aggregation") is not None:
+        hierarchy_family_aggregation = str(profile_applied.get("hierarchy_family_aggregation") or "").strip() or None
+    if profile_applied.get("hierarchy_tree_dedup") is not None:
+        hierarchy_tree_dedup = bool(profile_applied.get("hierarchy_tree_dedup"))
+    if profile_applied.get("hierarchy_parent_depth") is not None:
+        hierarchy_parent_depth = int(profile_applied.get("hierarchy_parent_depth") or 0)
+    if profile_applied.get("hierarchy_sibling_window") is not None:
+        hierarchy_sibling_window = int(profile_applied.get("hierarchy_sibling_window") or 0)
+    if profile_applied.get("hierarchy_overfetch_factor") is not None:
+        hierarchy_overfetch_factor = int(profile_applied.get("hierarchy_overfetch_factor") or 1)
 
     return {
         "question": question,
@@ -1105,6 +1133,13 @@ def build_rag_state(
         "multi_query_count": multi_query_count,
         "multi_query_temperature": multi_query_temperature,
         "multi_query_max_chars": multi_query_max_chars,
+        "enable_hierarchy_recall": enable_hierarchy_recall,
+        "hierarchy_family_collapse": hierarchy_family_collapse,
+        "hierarchy_family_aggregation": hierarchy_family_aggregation,
+        "hierarchy_tree_dedup": hierarchy_tree_dedup,
+        "hierarchy_parent_depth": hierarchy_parent_depth,
+        "hierarchy_sibling_window": hierarchy_sibling_window,
+        "hierarchy_overfetch_factor": hierarchy_overfetch_factor,
         "enable_query_rewrite": enable_query_rewrite,
         "query_rewrite_strategy": query_rewrite_strategy,
         "query_rewrite_temperature": query_rewrite_temperature,

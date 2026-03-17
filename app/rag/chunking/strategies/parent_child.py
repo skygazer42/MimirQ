@@ -13,6 +13,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.hierarchical import apply_sibling_hierarchy_links
 from app.rag.core.hashing import stable_hash
 
 
@@ -61,6 +62,8 @@ class ParentChildChunker(BaseChunker):
 
     def split_documents(self, documents: list[Document]) -> list[Document]:
         chunks: list[Document] = []
+        parent_docs: list[Document] = []
+        child_docs_by_parent: dict[str, list[Document]] = {}
 
         for doc in documents:
             text = doc.page_content
@@ -96,14 +99,22 @@ class ParentChildChunker(BaseChunker):
                     "chunk_strategy": "parent_child",
                     "chunk_role": "parent",
                     "parent_id": parent_id,
+                    "hierarchy_basis": "parent_child",
+                    "hierarchy_level": "parent",
+                    "hierarchy_node_key": parent_id,
+                    "hierarchy_family_key": parent_id,
+                    "hierarchy_parent_key": None,
                     "child_chunk_size": self.child_size,
                     "child_chunk_overlap": self.child_overlap,
                 })
-                chunks.append(Document(page_content=parent_text, metadata=parent_metadata))
+                parent_doc = Document(page_content=parent_text, metadata=parent_metadata)
+                chunks.append(parent_doc)
+                parent_docs.append(parent_doc)
 
                 # Split parent into child chunks
                 child_texts = self.child_splitter.split_text(parent_text)
                 child_search_start = 0
+                parent_child_docs: list[Document] = []
 
                 for child_text in child_texts:
                     if not child_text.strip():
@@ -121,15 +132,38 @@ class ParentChildChunker(BaseChunker):
                     child_end = parent_start + child_rel_end
 
                     child_metadata = dict(doc.metadata or {})
+                    child_node_key = stable_hash(
+                        f"pc-child:{parent_id}:{child_start}:{child_end}:{stable_hash(child_text, length=None)}",
+                        length=32,
+                    )
                     child_metadata.update({
                         "start_char": child_start,
                         "end_char": child_end,
                         "chunk_strategy": "parent_child",
                         "chunk_role": "child",
                         "parent_id": parent_id,
+                        "hierarchy_basis": "parent_child",
+                        "hierarchy_level": "child",
+                        "hierarchy_node_key": child_node_key,
+                        "hierarchy_parent_key": parent_id,
+                        "hierarchy_family_key": parent_id,
                         "parent_start_char": parent_start,
                         "parent_end_char": parent_end,
                     })
-                    chunks.append(Document(page_content=child_text, metadata=child_metadata))
+                    child_doc = Document(page_content=child_text, metadata=child_metadata)
+                    chunks.append(child_doc)
+                    parent_child_docs.append(child_doc)
+
+                child_docs_by_parent[parent_id] = parent_child_docs
+
+        apply_sibling_hierarchy_links(
+            [d.metadata for d in parent_docs if isinstance(getattr(d, "metadata", None), dict)],
+            overwrite=True,
+        )
+        for siblings in child_docs_by_parent.values():
+            apply_sibling_hierarchy_links(
+                [d.metadata for d in siblings if isinstance(getattr(d, "metadata", None), dict)],
+                overwrite=True,
+            )
 
         return chunks

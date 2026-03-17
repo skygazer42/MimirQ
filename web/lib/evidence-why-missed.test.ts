@@ -10,12 +10,14 @@ describe('buildWhyMissedReport', () => {
         chunk_id: 'c1',
         chunk_index: 5,
         label: 'Doc1 chunk5',
+        family_collapse_key: 'f1',
       },
       {
         document_id: 'd2',
         chunk_id: 'c2',
         chunk_index: 1,
         label: 'Doc2 chunk1',
+        family_collapse_key: 'f2',
       },
     ] as any
 
@@ -26,6 +28,7 @@ describe('buildWhyMissedReport', () => {
         chunk_index: 5,
         hit_type: 'vector',
         retrieval_score: 0.2,
+        family_collapse_key: 'f1',
       },
       {
         document_id: 'd2',
@@ -33,6 +36,7 @@ describe('buildWhyMissedReport', () => {
         chunk_index: 1,
         hit_type: 'keyword',
         retrieval_score: 0.9,
+        family_collapse_key: 'f2',
       },
     ] as any
 
@@ -63,6 +67,6 @@ describe('buildWhyMissedReport', () => {
     // Even if the original chunk_id is missing, the same document+index might still show up.
     expect(r2?.hints?.document_hit_rank).toBe(2)
     expect(r2?.hints?.chunk_index_hit_rank).toBe(2)
+    expect(r2?.hints?.family_hit_rank).toBe(2)
   })
 })
-

@@ -38,6 +38,17 @@ def test_run_sample_retrieval_benchmark_writes_stable_report(tmp_path: Path) -> 
     assert 0.0 <= float(summary.get("hit_at_k") or 0.0) <= 1.0
     assert 0.0 <= float(summary.get("mrr") or 0.0) <= 1.0
     assert 0.0 <= float(summary.get("ndcg_at_k") or 0.0) <= 1.0
+    assert 0.0 <= float(summary.get("family_hit_at_k") or 0.0) <= 1.0
+    assert 0.0 <= float(summary.get("family_mrr") or 0.0) <= 1.0
+    assert 0.0 <= float(summary.get("family_ndcg_at_k") or 0.0) <= 1.0
+    assert float(summary.get("distinct_families_mean") or 0.0) >= 1.0
+
+    cases = payload.get("cases") or []
+    assert isinstance(cases, list) and cases
+    c0 = cases[0] if isinstance(cases[0], dict) else {}
+    assert "ranked_family_keys" in c0
+    assert int(c0.get("distinct_families") or 0) >= 1
+    assert 0.0 <= float(c0.get("top_family_share") or 0.0) <= 1.0
 
 
 def test_run_sample_retrieval_benchmark_respects_llm_mock_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

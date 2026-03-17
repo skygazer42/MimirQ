@@ -19,7 +19,7 @@ from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, Callba
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from pydantic import ConfigDict, Field, PrivateAttr
-from sqlalchemy import func, text, tuple_
+from sqlalchemy import func, or_, text, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -29,6 +29,7 @@ from app.models.document import DocumentChunk
 from app.rag.core.filters import match_metadata_filter
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.rag.core.retrieval_profiles import is_recall_first_profile
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
@@ -93,6 +94,10 @@ class HybridRetriever(BaseRetriever):
     # Metadata filtering
     metadata_filter: dict[str, Any] | None = None
     metadata_filter_enabled: bool = getattr(settings, "RETRIEVAL_METADATA_FILTER_ENABLED", True)
+    retrieval_profile: str | None = None
+    enable_hierarchy_recall: bool = False
+    hierarchy_family_collapse: bool = False
+    hierarchy_overfetch_factor: int = max(1, int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4))
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -200,8 +205,8 @@ class HybridRetriever(BaseRetriever):
     def _bm25_dataset_cache_version(
         self,
         *,
-        tenant_id: UUID | None,
-        dataset_id: UUID,
+        _tenant_id: UUID | None,
+        _dataset_id: UUID,
     ) -> str:
         """
         Return a stable dataset version string for BM25 cache invalidation.
@@ -209,7 +214,7 @@ class HybridRetriever(BaseRetriever):
         Cross-process goal: ingestion workers can "touch" the dataset row, and API instances
         observe the updated `updated_at` to invalidate their in-memory BM25 indices.
         """
-        tenant_uuid: UUID | None = tenant_id
+        tenant_uuid: UUID | None = _tenant_id
         if tenant_uuid is None:
             try:
                 tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
@@ -224,7 +229,7 @@ class HybridRetriever(BaseRetriever):
 
             row = (
                 db.query(Dataset.updated_at)
-                .filter(Dataset.tenant_id == tenant_uuid, Dataset.id == dataset_id)
+                .filter(Dataset.tenant_id == tenant_uuid, Dataset.id == _dataset_id)
                 .first()
             )
             updated_at = row[0] if row else None
@@ -1670,7 +1675,10 @@ class HybridRetriever(BaseRetriever):
 
         current_version: str | None = None
         if dataset_scope_id is not None:
-            current_version = self._bm25_dataset_cache_version(tenant_id=tenant_uuid, dataset_id=dataset_scope_id)
+            current_version = self._bm25_dataset_cache_version(
+                _tenant_id=tenant_uuid,
+                _dataset_id=dataset_scope_id,
+            )
             if current_version:
                 cached_version = self._bm25_cache_versions.get(cache_key)
                 if cached_version != current_version:
@@ -3261,6 +3269,7 @@ class HybridRetriever(BaseRetriever):
         results: list[dict[str, Any]],
         *,
         stats: dict[str, Any] | None = None,
+        _stats: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Vector store may return "trimmed" metadata (e.g., without img_id).
@@ -3271,18 +3280,19 @@ class HybridRetriever(BaseRetriever):
         if not results:
             return results
 
-        if stats is not None:
-            stats.clear()
-            stats["input_results"] = len(results)
-            stats["filtered_orphaned"] = 0
-            stats["filtered_acl"] = 0
-            stats["filtered_dataset"] = 0
-            stats["filtered_not_ready"] = 0
-            stats["filtered_embedding_space"] = 0
-            stats["filtered_pipeline_version"] = 0
-            stats["filtered_metadata_filter"] = 0
-            stats["output_results"] = 0
-            stats["exception"] = None
+        stats0 = _stats if _stats is not None else stats
+        if stats0 is not None:
+            stats0.clear()
+            stats0["input_results"] = len(results)
+            stats0["filtered_orphaned"] = 0
+            stats0["filtered_acl"] = 0
+            stats0["filtered_dataset"] = 0
+            stats0["filtered_not_ready"] = 0
+            stats0["filtered_embedding_space"] = 0
+            stats0["filtered_pipeline_version"] = 0
+            stats0["filtered_metadata_filter"] = 0
+            stats0["output_results"] = 0
+            stats0["exception"] = None
 
         db = SessionLocal()
         try:
@@ -3485,30 +3495,30 @@ class HybridRetriever(BaseRetriever):
 
                 # If we know tenant_id, treat unresolved results as stale (e.g. orphan vectors).
                 if ck is None and tenant_filter:
-                    if stats is not None:
-                        stats["filtered_orphaned"] = int(stats.get("filtered_orphaned", 0) or 0) + 1
+                    if stats0 is not None:
+                        stats0["filtered_orphaned"] = int(stats0.get("filtered_orphaned", 0) or 0) + 1
                     continue
 
                 if ck is not None:
                     # Enforce candidate-level dataset/ACL trimming once we know the resolved document_id.
                     doc_id_str = str(ck.document_id)
                     if allowed_docs_str is not None and doc_id_str not in allowed_docs_str:
-                        if stats is not None:
-                            stats["filtered_acl"] = int(stats.get("filtered_acl", 0) or 0) + 1
+                        if stats0 is not None:
+                            stats0["filtered_acl"] = int(stats0.get("filtered_acl", 0) or 0) + 1
                         continue
                     if dataset_filter is not None:
                         want = str(dataset_filter)
                         if doc_dataset_by_id.get(doc_id_str) != want:
-                            if stats is not None:
-                                stats["filtered_dataset"] = int(stats.get("filtered_dataset", 0) or 0) + 1
+                            if stats0 is not None:
+                                stats0["filtered_dataset"] = int(stats0.get("filtered_dataset", 0) or 0) + 1
                             continue
                     if getattr(ck, "disabled_at", None) is not None:
-                        if stats is not None:
-                            stats["filtered_not_ready"] = int(stats.get("filtered_not_ready", 0) or 0) + 1
+                        if stats0 is not None:
+                            stats0["filtered_not_ready"] = int(stats0.get("filtered_not_ready", 0) or 0) + 1
                         continue
                     if doc_ready_by_id and not doc_ready_by_id.get(doc_id_str, False):
-                        if stats is not None:
-                            stats["filtered_not_ready"] = int(stats.get("filtered_not_ready", 0) or 0) + 1
+                        if stats0 is not None:
+                            stats0["filtered_not_ready"] = int(stats0.get("filtered_not_ready", 0) or 0) + 1
                         continue
 
                     cid_str = str(ck.id)
@@ -3555,7 +3565,21 @@ class HybridRetriever(BaseRetriever):
                         meta["parser_backend"] = stored_meta.get("parser_backend")
                     if stored_meta.get("doc_type_kwd") and not meta.get("doc_type_kwd"):
                         meta["doc_type_kwd"] = stored_meta.get("doc_type_kwd")
-                    for key in ("header_path", "header_context", "chunk_strategy", "chunk_role", "parent_id"):
+                    for key in (
+                        "header_path",
+                        "header_context",
+                        "chunk_strategy",
+                        "chunk_role",
+                        "parent_id",
+                        "hierarchy_basis",
+                        "hierarchy_level",
+                        "hierarchy_node_key",
+                        "hierarchy_family_key",
+                        "hierarchy_parent_key",
+                        "hierarchy_sibling_index",
+                        "hierarchy_prev_sibling_key",
+                        "hierarchy_next_sibling_key",
+                    ):
                         if stored_meta.get(key) and not meta.get(key):
                             meta[key] = stored_meta.get(key)
 
@@ -3578,9 +3602,9 @@ class HybridRetriever(BaseRetriever):
                     if meta.get("score") is not None:
                         ck_space = str(meta.get("embedding_space_hash") or "").strip()
                         if ck_space and ck_space != embedding_space:
-                            if stats is not None:
-                                stats["filtered_embedding_space"] = (
-                                    int(stats.get("filtered_embedding_space", 0) or 0) + 1
+                            if stats0 is not None:
+                                stats0["filtered_embedding_space"] = (
+                                    int(stats0.get("filtered_embedding_space", 0) or 0) + 1
                                 )
                             continue
 
@@ -3594,9 +3618,9 @@ class HybridRetriever(BaseRetriever):
                             if ph:
                                 ck_key = f"{ck.document_id}:{ph}"
                         if not ck_key or ck_key != active_key:
-                            if stats is not None:
-                                stats["filtered_pipeline_version"] = (
-                                    int(stats.get("filtered_pipeline_version", 0) or 0) + 1
+                            if stats0 is not None:
+                                stats0["filtered_pipeline_version"] = (
+                                    int(stats0.get("filtered_pipeline_version", 0) or 0) + 1
                                 )
                             continue
 
@@ -3613,21 +3637,21 @@ class HybridRetriever(BaseRetriever):
                     blocked = int(mf_stats.get("blocked") or max(0, before - len(resolved)))
                     matched = int(mf_stats.get("matched") or len(resolved))
                     summary = mf_stats.get("summary") if isinstance(mf_stats.get("summary"), dict) else None
-                    if stats is not None:
-                        stats["filtered_metadata_filter"] = int(blocked)
-                        stats["metadata_filter_blocked"] = int(blocked)
-                        stats["metadata_filter_matched"] = int(matched)
+                    if stats0 is not None:
+                        stats0["filtered_metadata_filter"] = int(blocked)
+                        stats0["metadata_filter_blocked"] = int(blocked)
+                        stats0["metadata_filter_matched"] = int(matched)
                         if summary:
-                            stats["metadata_filter"] = summary
+                            stats0["metadata_filter"] = summary
                 except Exception:
                     pass
 
-            if stats is not None:
-                stats["output_results"] = len(resolved)
+            if stats0 is not None:
+                stats0["output_results"] = len(resolved)
             return resolved
         except Exception as exc:
-            if stats is not None:
-                stats["exception"] = str(exc)[:200]
+            if stats0 is not None:
+                stats0["exception"] = str(exc)[:200]
             return results
         finally:
             try:
@@ -3889,7 +3913,7 @@ class HybridRetriever(BaseRetriever):
 
         tenant_filter = self.tenant_id
 
-        # Group child hits by (document_id, parent_id).
+        # Group child hits by (document_id, family collapse key).
         child_groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
         parent_results: dict[tuple[str, str], dict[str, Any]] = {}
 
@@ -3899,18 +3923,18 @@ class HybridRetriever(BaseRetriever):
         for r in results:
             meta = r.get("metadata") or {}
             role = str(meta.get("chunk_role") or "").strip().lower()
-            parent_id = str(meta.get("parent_id") or meta.get("parent_node_id") or "").strip()
             doc_id = str(meta.get("document_id") or "").strip()
-            if not parent_id or not doc_id:
+            family_key = self._resolve_family_collapse_key(meta, result=r)
+            if not family_key or not doc_id:
                 continue
 
             cid = r.get("chunk_id") or meta.get("chunk_id")
             cid_str = str(cid) if cid else ""
 
             if role == "parent":
-                parent_results[(doc_id, parent_id)] = r
+                parent_results[(doc_id, family_key)] = r
             elif role == "child":
-                key = (doc_id, parent_id)
+                key = (doc_id, family_key)
                 child_groups.setdefault(key, []).append(r)
                 if cid_str:
                     child_chunk_ids_by_group.setdefault(key, set()).add(cid_str)
@@ -3964,28 +3988,33 @@ class HybridRetriever(BaseRetriever):
 
         if missing_keys:
             doc_ids: set[UUID] = set()
-            parent_ids: set[str] = set()
-            for doc_id, parent_id in missing_keys:
+            family_keys: set[str] = set()
+            for doc_id, family_key in missing_keys:
                 try:
                     doc_ids.add(UUID(doc_id))
                 except Exception:
                     continue
-                if parent_id:
-                    parent_ids.add(parent_id)
+                if family_key:
+                    family_keys.add(family_key)
 
-            if doc_ids and parent_ids:
+            if doc_ids and family_keys:
                 db = SessionLocal()
                 try:
                     q = db.query(DocumentChunk).filter(DocumentChunk.document_id.in_(list(doc_ids)))
                     if tenant_filter:
                         q = q.filter(DocumentChunk.tenant_id == tenant_filter)
-                    # JSONB lookup: metadata->>'chunk_role' == 'parent' and metadata->>'parent_id' in (...)
+                    # Prefer hierarchy_family_key and keep parent_id as a backward-compatible fallback.
                     q = q.filter(DocumentChunk.doc_metadata["chunk_role"].astext == "parent")  # type: ignore[attr-defined]
-                    q = q.filter(DocumentChunk.doc_metadata["parent_id"].astext.in_(list(parent_ids)))  # type: ignore[attr-defined]
+                    q = q.filter(
+                        or_(
+                            DocumentChunk.doc_metadata["hierarchy_family_key"].astext.in_(list(family_keys)),  # type: ignore[attr-defined]
+                            DocumentChunk.doc_metadata["parent_id"].astext.in_(list(family_keys)),  # type: ignore[attr-defined]
+                        )
+                    )
                     for ck in q.all():
                         meta = dict(getattr(ck, "doc_metadata", None) or {})
-                        pid = str(meta.get("parent_id") or "").strip()
-                        if not pid:
+                        family_key = self._resolve_family_collapse_key(meta)
+                        if not family_key:
                             continue
                         desired = desired_pipeline_by_doc.get(str(ck.document_id))
                         if desired:
@@ -3996,7 +4025,7 @@ class HybridRetriever(BaseRetriever):
                                     ck_key = f"{ck.document_id}:{ph}"
                             if not ck_key or ck_key != desired:
                                 continue
-                        fetched_parents[(str(ck.document_id), pid)] = ck
+                        fetched_parents[(str(ck.document_id), family_key)] = ck
                 except Exception:
                     fetched_parents = {}
                 finally:
@@ -4063,7 +4092,10 @@ class HybridRetriever(BaseRetriever):
                 role = str(meta.get("chunk_role") or "").strip().lower()
                 if role != "child":
                     continue
-                key = (str(meta.get("document_id") or "").strip(), str(meta.get("parent_id") or meta.get("parent_node_id") or "").strip())
+                key = (
+                    str(meta.get("document_id") or "").strip(),
+                    self._resolve_family_collapse_key(meta, result=r),
+                )
                 if key not in selected_keys or key in inserted:
                     continue
                 # Parent already present in results (e.g., neighbor expansion) -> don't duplicate.
@@ -4098,7 +4130,7 @@ class HybridRetriever(BaseRetriever):
             role = str(meta.get("chunk_role") or "").strip().lower()
             key = (
                 str(meta.get("document_id") or "").strip(),
-                str(meta.get("parent_id") or meta.get("parent_node_id") or "").strip(),
+                self._resolve_family_collapse_key(meta, result=r),
             )
 
             if role == "child" and key in to_replace:
@@ -4151,12 +4183,16 @@ class HybridRetriever(BaseRetriever):
                 raise ValueError("dataset_id is required when document_ids is empty")
 
         requested_k = max(1, int(self.k or 0))
+        hierarchy_family_collapse_enabled = self._should_apply_hierarchy_family_collapse()
+        hierarchy_overfetch_factor = max(1, int(self.hierarchy_overfetch_factor or 1))
         # When running in open scope (no explicit document_ids), we may drop candidates due to:
         # - document/dataset ACL (security trimming)
         # - active pipeline version trimming
         # - metadata filtering (post-enrichment, especially for dotted `document_user.*` keys)
         # Over-fetch to keep enough final results after trimming.
         search_k = requested_k
+        if hierarchy_family_collapse_enabled and hierarchy_overfetch_factor > 1:
+            search_k = max(search_k, requested_k * hierarchy_overfetch_factor)
         overfetch_enabled = False
         if not (self.document_ids or []):
             if self.tenant_id and (self.account_id or "").strip():
@@ -4183,6 +4219,9 @@ class HybridRetriever(BaseRetriever):
             "search_k": int(search_k),
             "fetch_k": int(fetch_k),
             "overfetch_enabled": bool(search_k > requested_k),
+            "retrieval_profile": str(self.retrieval_profile or "").strip().lower() or None,
+            "hierarchy_family_collapse_enabled": bool(hierarchy_family_collapse_enabled),
+            "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
             "overfetch_multiplier": int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1),
             "overfetch_cap_k": int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0),
             "query_normalization": {
@@ -4284,6 +4323,11 @@ class HybridRetriever(BaseRetriever):
         results = self._apply_governance_policy(results, stats=gov_stats)
         if gov_stats:
             debug["governance_policy"] = gov_stats
+
+        collapse_stats: dict[str, Any] = {}
+        results = self._collapse_results_by_family(results, stats=collapse_stats)
+        if collapse_stats:
+            debug["family_collapse"] = collapse_stats
 
         debug["final_results"] = len(results or [])
         stitch_enabled = bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False))
@@ -4581,6 +4625,79 @@ class HybridRetriever(BaseRetriever):
             return str(cid)
         content = str(result.get("content") or "")
         return f"content:{stable_hash(content)}"
+
+    def _resolve_family_collapse_key(self, meta: dict[str, Any], *, result: dict[str, Any] | None = None) -> str:
+        for key in ("hierarchy_family_key", "parent_id", "parent_node_id"):
+            value = str(meta.get(key) or "").strip()
+            if value:
+                return value
+
+        role = str(meta.get("chunk_role") or "").strip().lower()
+        if role == "parent":
+            for key in ("hierarchy_node_key", "chunk_key"):
+                value = str(meta.get(key) or "").strip()
+                if value:
+                    return value
+
+        doc_id = meta.get("document_id")
+        chunk_index = meta.get("chunk_index")
+        if doc_id is not None and chunk_index is not None:
+            return f"{doc_id}:{chunk_index}"
+
+        if result is not None:
+            chunk_id = result.get("chunk_id") or meta.get("chunk_id")
+            if chunk_id:
+                return str(chunk_id).strip()
+
+        return ""
+
+    def _should_apply_hierarchy_family_collapse(self) -> bool:
+        if not bool(self.enable_hierarchy_recall):
+            return False
+        if not bool(self.hierarchy_family_collapse):
+            return False
+        return bool(is_recall_first_profile(self.retrieval_profile))
+
+    def _collapse_results_by_family(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        stats: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        if stats is not None:
+            stats.clear()
+
+        enabled = self._should_apply_hierarchy_family_collapse()
+        if stats is not None:
+            stats["enabled"] = bool(enabled)
+            stats["retrieval_profile"] = str(self.retrieval_profile or "").strip().lower() or None
+            stats["input_results"] = len(results or [])
+
+        if not enabled or not results:
+            if stats is not None:
+                stats["output_results"] = len(results or [])
+                stats["collapsed_results"] = 0
+            return results
+
+        out: list[dict[str, Any]] = []
+        seen_keys: set[str] = set()
+        collapsed = 0
+        for r in results:
+            meta = r.get("metadata") or {}
+            family_key = self._resolve_family_collapse_key(meta, result=r)
+            if family_key and family_key in seen_keys:
+                collapsed += 1
+                continue
+            if family_key:
+                seen_keys.add(family_key)
+            out.append(r)
+
+        if stats is not None:
+            stats["output_results"] = len(out)
+            stats["collapsed_results"] = int(collapsed)
+            stats["distinct_families"] = len(seen_keys)
+
+        return out
 
     def _get_doc_id(self, result: dict[str, Any]) -> str:
         meta = result.get("metadata") or {}

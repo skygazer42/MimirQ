@@ -15,6 +15,10 @@ class Citation(TypedDict, total=False):
     document_name: str
     chunk_content: str
     page_number: Any
+    hierarchy_basis: str | None
+    hierarchy_family_key: str | None
+    family_collapse_key: str | None
+    family_hit: bool | None
     relevance_score: float
     vector_score: float
     bm25_score: float
@@ -49,4 +53,3 @@ class StreamEvent(TypedDict):
 
 class RAGPipeline(Protocol):
     def run(self, question: str, **kwargs: Any) -> PipelineResult: ...
-

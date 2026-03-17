@@ -944,6 +944,7 @@ class ChunkPreviewItem(BaseModel):
     index: int
     content: str
     length: int
+    hierarchy_basis: str | None = None
     # Approximate token count for UI display/stats (token-mode uses tiktoken when available).
     tokens_est: int | None = None
     start_index: int  # Start position in original text.
