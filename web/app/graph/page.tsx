@@ -6,7 +6,7 @@
  * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
 import { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
@@ -40,7 +40,7 @@ import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
-import { kgApi } from '@/lib/api-client'
+import { documentApi, kgApi } from '@/lib/api-client'
 import type {
   KGEntityAliasItem,
   KGEntityAliasSuggestionItem,
@@ -99,8 +99,47 @@ function bucketConfidence(conf: number | null): GraphConfBucket | null {
   return 'low'
 }
 
+function parseCsvList(value: string | null): string[] {
+  if (!value) return []
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function coerceBoundedInt(value: string | null, fallback: number, min: number, max: number): number {
+  const n = Math.floor(Number(value))
+  if (!Number.isFinite(n)) return fallback
+  return Math.min(max, Math.max(min, n))
+}
+
 export default function GraphPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const scopeParamKey = searchParams.toString()
+  const scope = useMemo(() => {
+    const sp = new URLSearchParams(scopeParamKey)
+    const directDocIds = [
+      ...parseCsvList(sp.get('document_ids')),
+      ...sp.getAll('document_id'),
+    ]
+      .map((s) => String(s || '').trim())
+      .filter(Boolean)
+
+    const uniqDocIds = Array.from(new Set(directDocIds))
+    const datasetId = (sp.get('dataset_id') || '').trim() || null
+    const pipelineHash = (sp.get('pipeline_hash') || '').trim() || null
+    const docLimit = coerceBoundedInt(sp.get('doc_limit'), 200, 1, 500)
+    const hasScope = uniqDocIds.length > 0 || Boolean(datasetId) || Boolean(pipelineHash)
+    return {
+      hasScope,
+      directDocIds: uniqDocIds,
+      datasetId,
+      pipelineHash,
+      docLimit,
+    }
+  }, [scopeParamKey])
+
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
   const [fileName, setFileName] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
@@ -113,6 +152,74 @@ export default function GraphPage() {
   const [includeRelationLinks, setIncludeRelationLinks] = useState(false)
   const [minSharedEvents, setMinSharedEvents] = useState(2)
   const maxEntityLinks = 1000
+
+  // Optional scope:
+  // - /graph?document_ids=a,b,c&pipeline_hash=... (direct scope)
+  // - /graph?dataset_id=...&doc_limit=200 (dataset scope; resolves to document ids client-side)
+  const [scopedDatasetDocIds, setScopedDatasetDocIds] = useState<string[] | null>(null)
+  const [scopedDatasetDocIdsLoading, setScopedDatasetDocIdsLoading] = useState(false)
+  const [scopeAutoLoaded, setScopeAutoLoaded] = useState(false)
+
+  const scopeDirectDocIdsKey = useMemo(() => scope.directDocIds.join(','), [scope.directDocIds])
+  const scopedDocumentIds: string[] | null = useMemo(() => {
+    if (scope.directDocIds.length > 0) return scope.directDocIds
+    if (scope.datasetId) return scopedDatasetDocIds
+    return null
+  }, [scope.datasetId, scopeDirectDocIdsKey, scopedDatasetDocIds])
+  const scopedDocumentIdsKey = useMemo(() => (scopedDocumentIds ? scopedDocumentIds.join(',') : ''), [scopedDocumentIds])
+  const scopeParams = useMemo(() => {
+    const document_ids = scopedDocumentIds && scopedDocumentIds.length > 0 ? scopedDocumentIds : undefined
+    const pipeline_hash = scope.pipelineHash ? scope.pipelineHash : undefined
+    if (!document_ids && !pipeline_hash) return null
+    return { document_ids, pipeline_hash }
+  }, [scopedDocumentIdsKey, scope.pipelineHash])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (scope.directDocIds.length > 0) {
+      setScopedDatasetDocIds(null)
+      setScopedDatasetDocIdsLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const datasetId = scope.datasetId
+    if (!datasetId) {
+      setScopedDatasetDocIds(null)
+      setScopedDatasetDocIdsLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setScopedDatasetDocIdsLoading(true)
+    ;(async () => {
+      try {
+        const list = await documentApi.list({
+          skip: 0,
+          limit: scope.docLimit,
+          dataset_id: datasetId,
+          order_by: 'created_at',
+          order_dir: 'desc',
+        })
+        const ids = Array.isArray(list.items)
+          ? list.items.map((d: any) => String(d?.id || '').trim()).filter(Boolean)
+          : []
+        if (!cancelled) setScopedDatasetDocIds(ids)
+      } catch {
+        if (!cancelled) setScopedDatasetDocIds([])
+      } finally {
+        if (!cancelled) setScopedDatasetDocIdsLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [scope.datasetId, scope.docLimit, scopeDirectDocIdsKey])
+
   const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
   const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
   const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
@@ -401,25 +508,27 @@ export default function GraphPage() {
     }
 
     let cancelled = false
-    setKgNodeDetail(null)
-    setKgNodeDetailLoading(true)
-    ;(async () => {
-      try {
-        const detail =
-          kind === 'entity' ? await kgApi.getEntity(selectedNode.id) : await kgApi.getEvent(selectedNode.id)
-        if (!cancelled) setKgNodeDetail(detail)
-      } catch (error) {
-        console.error('Fetch KG node detail failed:', error)
-        if (!cancelled) setKgNodeDetail(null)
+	    setKgNodeDetail(null)
+	    setKgNodeDetailLoading(true)
+	    ;(async () => {
+	      try {
+	        const detail =
+	          kind === 'entity'
+	            ? await kgApi.getEntity(selectedNode.id, scopeParams || undefined)
+	            : await kgApi.getEvent(selectedNode.id, scopeParams || undefined)
+	        if (!cancelled) setKgNodeDetail(detail)
+	      } catch (error) {
+	        console.error('Fetch KG node detail failed:', error)
+	        if (!cancelled) setKgNodeDetail(null)
       } finally {
         if (!cancelled) setKgNodeDetailLoading(false)
       }
     })()
 
-    return () => {
-      cancelled = true
-    }
-  }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind])
+	    return () => {
+	      cancelled = true
+	    }
+	  }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind, scopeParams])
 
   // Fetch entity resolution data (aliases + suggestions) when an entity is selected.
   useEffect(() => {
@@ -481,6 +590,18 @@ export default function GraphPage() {
     source: 'live' | 'mock' = 'live',
     opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
   ) => {
+    if (
+      source === 'live'
+      && scope.hasScope
+      && scope.datasetId
+      && scope.directDocIds.length === 0
+      && scopedDocumentIds === null
+      && scopedDatasetDocIdsLoading
+    ) {
+      toast.message('正在解析 dataset scope 的文档列表…')
+      return
+    }
+
     setIsLoading(true)
     try {
       const includeLinks = opts?.includeEntityLinks ?? includeEntityLinks
@@ -493,16 +614,18 @@ export default function GraphPage() {
         includeRelationLinks: source === 'live' ? includeRels : undefined,
         minSharedEvents: source === 'live' ? sharedThreshold : undefined,
         maxEntityLinks: source === 'live' ? maxEntityLinks : undefined,
+        documentIds: source === 'live' ? (scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined) : undefined,
+        pipelineHash: source === 'live' ? (scope.pipelineHash || undefined) : undefined,
       })
       setGraphData(data)
       setDataSource(source)
       setTraceReplay(null)
       setKgNodeDetail(null)
-      setFileName(source === 'mock' ? '示例数据' : 'Knowledge Base (Live)')
+      setFileName(source === 'mock' ? '示例数据' : (scopeParams ? 'Knowledge Base (Scoped)' : 'Knowledge Base (Live)'))
 
       if (source === 'live') {
         try {
-          const stats = await kgApi.getStats()
+          const stats = await kgApi.getStats(scopeParams || undefined)
           setKgStats(stats)
         } catch {
           setKgStats(null)
@@ -521,7 +644,34 @@ export default function GraphPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [includeEntityLinks, includeRelationLinks, maxEntityLinks, minSharedEvents, resetConnectMode, resetExplainMode, resetPathMode])
+  }, [
+    includeEntityLinks,
+    includeRelationLinks,
+    maxEntityLinks,
+    minSharedEvents,
+    resetConnectMode,
+    resetExplainMode,
+    resetPathMode,
+    scope.hasScope,
+    scope.datasetId,
+    scope.pipelineHash,
+    scopeDirectDocIdsKey,
+    scopedDatasetDocIdsLoading,
+    scopedDocumentIdsKey,
+    scopeParams,
+    scopedDocumentIds,
+  ])
+
+  useEffect(() => {
+    if (scopeAutoLoaded) return
+    if (!scope.hasScope) return
+
+    // If we need to resolve dataset -> document ids, wait for that first.
+    if (scope.datasetId && scope.directDocIds.length === 0 && scopedDocumentIds === null) return
+
+    setScopeAutoLoaded(true)
+    detachPromise(loadInitialData('live'))
+  }, [loadInitialData, scope.hasScope, scope.datasetId, scopeAutoLoaded, scopeDirectDocIdsKey, scopedDocumentIds])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -681,17 +831,19 @@ export default function GraphPage() {
     traceFileInputRef.current?.click()
   }
 
-  const handleExpandNode = useCallback(async () => {
-    if (!selectedNode) return
-    
-      setIsLoading(true)
-      try {
-      const newData = await GraphService.expandNode(selectedNode.id, {
-        includeEntityLinks: includeEntityLinks && dataSource === 'live',
-        includeRelationLinks: includeRelationLinks && dataSource === 'live',
-        minSharedEvents,
-        maxEntityLinks,
-      })
+	  const handleExpandNode = useCallback(async () => {
+	    if (!selectedNode) return
+	    
+	      setIsLoading(true)
+	      try {
+	      const newData = await GraphService.expandNode(selectedNode.id, {
+	        includeEntityLinks: includeEntityLinks && dataSource === 'live',
+	        includeRelationLinks: includeRelationLinks && dataSource === 'live',
+	        minSharedEvents,
+	        maxEntityLinks,
+	        documentIds: dataSource === 'live' ? (scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined) : undefined,
+	        pipelineHash: dataSource === 'live' ? (scope.pipelineHash || undefined) : undefined,
+	      })
        
        setGraphData(prev => {
         const existingNodeIds = new Set(prev.nodes.map(n => n.id))
@@ -707,10 +859,10 @@ export default function GraphPage() {
       })
     } catch (error) {
       console.error('Failed to expand node:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [selectedNode, includeEntityLinks, includeRelationLinks, minSharedEvents, maxEntityLinks, dataSource])
+	    } finally {
+	      setIsLoading(false)
+	    }
+	  }, [selectedNode, includeEntityLinks, includeRelationLinks, minSharedEvents, maxEntityLinks, dataSource, scopedDocumentIdsKey, scope.pipelineHash])
 
   const handleDeleteNode = useCallback(() => {
     if (!selectedNode) return
@@ -838,26 +990,32 @@ export default function GraphPage() {
 
     let cancelled = false
     setMergeSearchLoading(true)
-    const t = globalThis.window.setTimeout(() => {
-      ;(async () => {
-        try {
-          const rows = await kgApi.searchGraphNodes({ q, kind: 'entity', limit: 8 })
-          const currentId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
-          const filtered = (rows || []).filter((r) => String(r.id) !== currentId)
-          if (!cancelled) setMergeSearchResults(filtered)
-        } catch {
-          if (!cancelled) setMergeSearchResults([])
+	    const t = globalThis.window.setTimeout(() => {
+	      ;(async () => {
+	        try {
+	          const rows = await kgApi.searchGraphNodes({
+	            q,
+	            kind: 'entity',
+	            limit: 8,
+	            document_ids: scopeParams?.document_ids,
+	            pipeline_hash: scopeParams?.pipeline_hash,
+	          })
+	          const currentId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
+	          const filtered = (rows || []).filter((r) => String(r.id) !== currentId)
+	          if (!cancelled) setMergeSearchResults(filtered)
+	        } catch {
+	          if (!cancelled) setMergeSearchResults([])
         } finally {
           if (!cancelled) setMergeSearchLoading(false)
         }
       })()
     }, 250)
 
-    return () => {
-      cancelled = true
-      globalThis.window.clearTimeout(t)
-    }
-  }, [mergeOpen, mergeSearch, selectedNode])
+	    return () => {
+	      cancelled = true
+	      globalThis.window.clearTimeout(t)
+	    }
+	  }, [mergeOpen, mergeSearch, selectedNode, scopeParams])
 
   const selectMergeTarget = useCallback(
     async (node: KGGraphNode) => {
@@ -1333,6 +1491,8 @@ export default function GraphPage() {
     setIsLoading(true)
     try {
       const xml = await kgApi.exportGraphML({
+        document_ids: scopeParams?.document_ids,
+        pipeline_hash: scopeParams?.pipeline_hash,
         include_entity_links: includeEntityLinks,
         include_relation_links: includeRelationLinks,
         min_shared_events: minSharedEvents,
