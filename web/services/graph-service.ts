@@ -60,6 +60,8 @@ export class GraphService {
       includeRelationLinks?: boolean
       minSharedEvents?: number
       maxEntityLinks?: number
+      documentIds?: string[]
+      pipelineHash?: string
     } = {}
   ): Promise<GraphData> {
     if (options.preferMock) {
@@ -70,6 +72,8 @@ export class GraphService {
     // Try KG live graph first; fallback to mock data (so the page remains usable when KG is disabled).
     try {
       const data = await kgApi.getGraph({
+        document_ids: options.documentIds,
+        pipeline_hash: options.pipelineHash,
         include_entity_links: options.includeEntityLinks,
         include_relation_links: options.includeRelationLinks,
         min_shared_events: options.minSharedEvents,
@@ -98,6 +102,8 @@ export class GraphService {
       includeRelationLinks?: boolean
       minSharedEvents?: number
       maxEntityLinks?: number
+      documentIds?: string[]
+      pipelineHash?: string
     }
   ): Promise<GraphData> {
     // Prefer backend KG expansion for UUID-like nodes; otherwise fallback to mock expansion
@@ -105,6 +111,8 @@ export class GraphService {
       try {
         const data = await kgApi.expandGraph({
           node_id: nodeId,
+          document_ids: options?.documentIds,
+          pipeline_hash: options?.pipelineHash,
           max_events: 50,
           max_entities: 400,
           max_links: 5000,
