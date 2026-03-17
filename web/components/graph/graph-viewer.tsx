@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
+import { decorateLinksForDisplay } from '@/lib/graph-edge-display'
 import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
 import { Loader2 } from 'lucide-react'
 
@@ -57,23 +58,27 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   // 2. Convert link source/target objects back to IDs so d3 re-resolves them against the new node array
   // 3. Clear 3D-specific props or fixed positions
   const sanitizedData = useMemo(() => {
-    return {
-      nodes: data.nodes.map(node => {
-        // Destructure to remove 3D specific or fixed position props
-        const { fx, fy, fz, vz, vy, vx, z, ...rest } = node
-        return { ...rest }
-      }),
-      links: data.links.map(link => ({
-        ...link,
-        // Reset source/target to IDs if they are objects (from previous d3 simulation)
-        source: (typeof link.source === 'object' && link.source !== null && 'id' in link.source) 
-          ? (link.source).id 
-          : link.source,
-        target: (typeof link.target === 'object' && link.target !== null && 'id' in link.target)
-          ? (link.target).id
-          : link.target
-      }))
-    }
+    const nodes = data.nodes.map(node => {
+      // Destructure to remove 3D specific or fixed position props
+      const { fx, fy, fz, vz, vy, vx, z, ...rest } = node
+      return { ...rest }
+    })
+
+    const links = data.links.map(link => ({
+      ...link,
+      // Reset source/target to IDs if they are objects (from previous d3 simulation)
+      source: (typeof link.source === 'object' && link.source !== null && 'id' in link.source)
+        ? (link.source).id
+        : link.source,
+      target: (typeof link.target === 'object' && link.target !== null && 'id' in link.target)
+        ? (link.target).id
+        : link.target
+    }))
+
+    // Spread parallel links and draw self-loops deterministically.
+    decorateLinksForDisplay(links as any[])
+
+    return { nodes, links }
   }, [data])
   const isLargeGraph = useMemo(
     () =>
@@ -207,16 +212,43 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     }
 
     if (node.color) return node.color
+
+    // Keep events visually distinct (they tend to have longer labels and high degree).
+    const kind = String(node?.meta?.kind ?? '').trim()
+    if (kind === 'event') {
+      return '#6366f1' // Indigo 500
+    }
+
+    // Use a larger palette so type buckets remain visually distinct.
     const colors = [
-      '#6366f1', // Indigo 500
       '#ec4899', // Pink 500
       '#10b981', // Emerald 500
       '#f59e0b', // Amber 500
       '#8b5cf6', // Violet 500
       '#3b82f6', // Blue 500
+      '#06b6d4', // Cyan 500
+      '#84cc16', // Lime 500
+      '#f97316', // Orange 500
+      '#ef4444', // Red 500
+      '#14b8a6', // Teal 500
+      '#22c55e', // Green 500
+      '#eab308', // Yellow 500
+      '#0ea5e9', // Sky 500
+      '#a855f7', // Purple 500
+      '#fb7185', // Rose 400
+      '#4ade80', // Green 400
+      '#2dd4bf', // Teal 400
+      '#38bdf8', // Sky 400
+      '#f472b6', // Pink 400
+      '#c084fc', // Purple 400
+      '#facc15', // Yellow 400
+      '#a3e635', // Lime 400
+      '#67e8f9', // Cyan 300
+      '#f43f5e', // Rose 500
     ]
-    const index = typeof node.group === 'number' ? node.group : 0
-    return colors[index % colors.length]
+    const rawGroup = typeof node.group === 'number' ? node.group : 0
+    const idx = rawGroup > 0 ? (rawGroup - 1) % colors.length : 0
+    return colors[idx]
   }
 
   // Determine DAG mode based on layoutMode
@@ -256,6 +288,14 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           dagLevelDistance={50}
           
           // Link styling
+          linkCurvature={(link: any) => {
+            const v = link?.curvature
+            return typeof v === 'number' && Number.isFinite(v) ? v : 0
+          }}
+          linkCurveRotation={(link: any) => {
+            const v = link?.curveRotation
+            return typeof v === 'number' && Number.isFinite(v) ? v : 0
+          }}
           linkColor={(link: any) => {
              const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
              const linkKind = link?.meta?.kind || link?.kind
@@ -290,7 +330,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               if (linkKind === 'entity_entity') return 1
               return 1.5
            }}
-          linkDirectionalArrowLength={arrowLength}
+          linkDirectionalArrowLength={(link: any) => (link?.isSelfLoop ? 0 : arrowLength)}
           linkDirectionalArrowRelPos={1}
           linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
           cooldownTicks={cooldownTicks}
