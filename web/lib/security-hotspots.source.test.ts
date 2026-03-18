@@ -33,9 +33,11 @@ describe('security hotspot source guards', () => {
     expect(devDockerfile).toContain('RUN chown -R node:node /app')
     expect(devDockerfile).not.toContain('COPY --chown=node:node app ./app')
 
-    expect(prodDockerfile).toContain('RUN chown -R node:node /app')
-    expect(prodDockerfile).toContain('RUN chown -R node:node /app && \\')
-    expect(prodDockerfile).toContain('chmod -R a-w /app/package.json \\')
+    // Production image:
+    // - must run as non-root
+    // - avoid Dockerfile features with spotty support (e.g. COPY --chmod)
+    // - do not rely on expensive recursive chown/chmod over node_modules
+    expect(prodDockerfile).toContain('USER node')
     expect(prodDockerfile).not.toContain('--chmod=')
   })
 })
