@@ -31,9 +31,11 @@ interface GraphViewerProps {
     links: any[]
   }
   readonly onNodeClick?: (node: any) => void
+  readonly onLinkClick?: (link: any) => void
   readonly onBackgroundClick?: () => void
   readonly highlightedNodeIds?: Set<string>
   readonly highlightedLinkIds?: Set<string>
+  readonly selectedNodeId?: string | null
   readonly showEdgeLabels?: boolean
   readonly layoutMode?: LayoutMode
 }
@@ -41,9 +43,11 @@ interface GraphViewerProps {
 export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({ 
   data, 
   onNodeClick,
+  onLinkClick,
   onBackgroundClick,
   highlightedNodeIds = new Set(),
   highlightedLinkIds = new Set(),
+  selectedNodeId = null,
   showEdgeLabels = true,
   layoutMode = 'force'
 }, ref) => {
@@ -52,6 +56,31 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const { width, height } = useResizeObserver(containerRef)
   const [mounted, setMounted] = useState(false)
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+
+  const neighborSet = useMemo(() => {
+    if (!selectedNodeId) return null
+    const set = new Set<string>()
+    set.add(selectedNodeId)
+    for (const link of data.links) {
+      const src = typeof link.source === 'object' ? link.source?.id : link.source
+      const tgt = typeof link.target === 'object' ? link.target?.id : link.target
+      if (src === selectedNodeId) set.add(String(tgt))
+      if (tgt === selectedNodeId) set.add(String(src))
+    }
+    return set
+  }, [selectedNodeId, data.links])
+
+  const nodeDegreeMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const link of data.links) {
+      const src = typeof link.source === 'object' ? link.source?.id : link.source
+      const tgt = typeof link.target === 'object' ? link.target?.id : link.target
+      map.set(String(src), (map.get(String(src)) || 0) + 1)
+      map.set(String(tgt), (map.get(String(tgt)) || 0) + 1)
+    }
+    return map
+  }, [data.links])
 
   // Sanitize data to ensure fresh 2D simulation
   // 1. Clone nodes/links to break references (especially when switching from 3D)
@@ -300,10 +329,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
              const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
              const linkKind = link?.meta?.kind || link?.kind
               if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
-                 return '#f59e0b' // Amber 500 (Path Highlight)
+                 return '#f59e0b'
               }
               if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
-                 return '#38bdf8' // Sky 400 (Hover Highlight)
+                 return '#38bdf8'
               }
               if (highlightedNodeIds.size > 0) {
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source
@@ -313,8 +342,16 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 }
                 return '#e2e8f0' 
               }
+              if (selectedNodeId && !isLargeGraph) {
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                if (sourceId === selectedNodeId || targetId === selectedNodeId) {
+                  return '#e879a0'
+                }
+                return '#e2e8f0'
+              }
 
-              if (linkKind === 'entity_entity') return '#67e8f9' // cyan-300 清新青色
+              if (linkKind === 'entity_entity') return '#67e8f9'
               return '#cbd5e1'
            }}
           linkWidth={(link: any) => {
@@ -327,6 +364,12 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                  return 3
               }
               if (highlightedNodeIds.size > 0) return 1
+              if (selectedNodeId && !isLargeGraph) {
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                if (sourceId === selectedNodeId || targetId === selectedNodeId) return 2.5
+                return 0.5
+              }
               if (linkKind === 'entity_entity') return 1
               return 1.5
            }}
@@ -336,7 +379,13 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           cooldownTicks={cooldownTicks}
           cooldownTime={cooldownTime}
           onNodeClick={handleNodeClick}
+          onLinkClick={(link: any) => { onLinkClick?.(link) }}
           onBackgroundClick={onBackgroundClick}
+          onNodeHover={(node: any) => {
+            if (isLargeGraph) return
+            const id = node?.id ?? null
+            setHoveredNodeId((prev) => (prev === id ? prev : id))
+          }}
           onLinkHover={(link: any) => {
             const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
             setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
@@ -350,58 +399,93 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
             const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
             const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
-            const isDimmed = (highlightedNodeIds.size > 0 || highlightedLinkIds.size > 0) && !isHighlighted
-            
-            const label = node.label || node.id;
-            const fontSize = isHighlighted ? 14 / globalScale : 12 / globalScale;
-            
-            // Draw Node Circle
+            const isSelected = selectedNodeId === node.id
+            const isNeighbor = neighborSet ? neighborSet.has(node.id) : false
+            const isDimmed = (
+              ((highlightedNodeIds.size > 0 || highlightedLinkIds.size > 0) && !isHighlighted)
+              || (selectedNodeId && !isLargeGraph && !isSelected && !isNeighbor)
+            )
+            const isHovered = hoveredNodeId === node.id && !isLargeGraph
+
+            const rawLabel = node.label || node.id
+            const label = rawLabel.length > 16 ? rawLabel.substring(0, 15) + '\u2026' : rawLabel
+            const fontSize = (isHighlighted || isSelected) ? 14 / globalScale : 12 / globalScale
+
             const color = getNodeColor(node)
-            ctx.beginPath();
+            const degree = nodeDegreeMap.get(String(node.id)) || 0
             const baseRadius = isLargeGraph ? 4 : 5
-            const radius = isHighlighted ? baseRadius + 2 : baseRadius
-            ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI, false);
-            ctx.fillStyle = color;
-            ctx.fill();
-            
-            // Halo/Border for highlighted nodes
-            if (isHighlighted) {
-               ctx.strokeStyle = '#fff';
-               ctx.lineWidth = 4 / globalScale;
-               ctx.stroke();
-               
-               // Double border for path nodes
-               if (isPathNode) {
-                 ctx.strokeStyle = '#f59e0b'; // Amber border for path
-               } else {
-                 ctx.strokeStyle = color;
-               }
-               
-               ctx.lineWidth = 2 / globalScale;
-               ctx.stroke();
-            } else {
-               ctx.strokeStyle = '#fff';
-               ctx.lineWidth = 1.5 / globalScale;
-               ctx.stroke();
+            const degreeBonus = isLargeGraph ? 0 : Math.min(degree * 0.4, 4)
+            let radius = baseRadius + degreeBonus
+            if (isHighlighted || isSelected) radius += 2
+            if (isHovered) radius += 1
+
+            const nx = node.x || 0
+            const ny = node.y || 0
+
+            ctx.globalAlpha = isDimmed ? 0.35 : 1
+
+            if (isHovered && !isSelected) {
+              ctx.save()
+              ctx.beginPath()
+              ctx.arc(nx, ny, radius + 4, 0, 2 * Math.PI)
+              ctx.fillStyle = color
+              ctx.globalAlpha = 0.15
+              ctx.fill()
+              ctx.restore()
+              ctx.globalAlpha = isDimmed ? 0.35 : 1
             }
 
-            // Draw Label
-            const shouldShowLabel =
-              isHighlighted || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.2)))
-            
-            if (shouldShowLabel) {
-              ctx.font = `${isHighlighted ? 'bold ' : ''}${fontSize}px Sans-Serif`;
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              
-              // Text Shadow
-              ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-              ctx.lineWidth = 3 / globalScale;
-              ctx.strokeText(label, node.x || 0, (node.y || 0) + radius + 4);
-              
-              ctx.fillStyle = isDimmed ? '#94a3b8' : '#1e293b'; 
-              ctx.fillText(label, node.x || 0, (node.y || 0) + radius + 4);
+            ctx.beginPath()
+            ctx.arc(nx, ny, radius, 0, 2 * Math.PI, false)
+            ctx.fillStyle = color
+            ctx.fill()
+
+            if (isSelected) {
+              ctx.strokeStyle = '#fff'
+              ctx.lineWidth = 4 / globalScale
+              ctx.stroke()
+              ctx.beginPath()
+              ctx.arc(nx, ny, radius + 2 / globalScale, 0, 2 * Math.PI, false)
+              ctx.strokeStyle = '#E91E63'
+              ctx.lineWidth = 2.5 / globalScale
+              ctx.stroke()
+            } else if (isHighlighted) {
+              ctx.strokeStyle = '#fff'
+              ctx.lineWidth = 4 / globalScale
+              ctx.stroke()
+              ctx.beginPath()
+              ctx.arc(nx, ny, radius + 2 / globalScale, 0, 2 * Math.PI, false)
+              ctx.strokeStyle = isPathNode ? '#f59e0b' : color
+              ctx.lineWidth = 2 / globalScale
+              ctx.stroke()
+            } else if (isHovered) {
+              ctx.strokeStyle = '#333'
+              ctx.lineWidth = 2.5 / globalScale
+              ctx.stroke()
+            } else {
+              ctx.strokeStyle = '#fff'
+              ctx.lineWidth = 1.5 / globalScale
+              ctx.stroke()
             }
+
+            const shouldShowLabel =
+              isHighlighted || isSelected || isHovered
+              || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.2)))
+
+            if (shouldShowLabel) {
+              ctx.font = `${(isHighlighted || isSelected) ? 'bold ' : ''}${fontSize}px Sans-Serif`
+              ctx.textAlign = 'center'
+              ctx.textBaseline = 'middle'
+
+              ctx.strokeStyle = 'rgba(255,255,255,0.92)'
+              ctx.lineWidth = 3.5 / globalScale
+              ctx.strokeText(label, nx, ny + radius + 4)
+
+              ctx.fillStyle = isDimmed ? '#94a3b8' : '#1e293b'
+              ctx.fillText(label, nx, ny + radius + 4)
+            }
+
+            ctx.globalAlpha = 1
           }}
 
           // Custom Link Label Painting
@@ -410,53 +494,78 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             const start = link.source
             const end = link.target
 
-            // Check if source/target are objects (handled by d3) or raw strings
             if (typeof start !== 'object' || typeof end !== 'object') return
 
             const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
             const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
+            const isHoveredLink = hoveredLinkId != null && linkId === hoveredLinkId
+            const isAccent = isPathLink || isHoveredLink
 
-            if (!allowEdgeLabels && !isPathLink) return
-            if (globalScale < edgeLabelScale && !isPathLink) return
+            if (!allowEdgeLabels && !isAccent) return
+            if (globalScale < edgeLabelScale && !isAccent) return
 
             const label = link.label
             if (!label) return
 
-            // Fallback to 0 if coords missing
             const x1 = start.x || 0
             const y1 = start.y || 0
             const x2 = end.x || 0
             const y2 = end.y || 0
 
-            // Calculate middle point
             const textPos = { x: x1 + (x2 - x1) / 2, y: y1 + (y2 - y1) / 2 }
 
-            const relLink = { x: x2 - x1, y: y2 - y1 };
-            const maxTextLength = Math.sqrt(Math.pow(relLink.x, 2) + Math.pow(relLink.y, 2)) - 8;
+            const relLink = { x: x2 - x1, y: y2 - y1 }
+            const maxTextLength = Math.sqrt(relLink.x ** 2 + relLink.y ** 2) - 8
 
-            let textAngle = Math.atan2(relLink.y, relLink.x);
-            if (textAngle > Math.PI / 2) textAngle = -(Math.PI - textAngle);
-            if (textAngle < -Math.PI / 2) textAngle = -(-Math.PI - textAngle);
+            let textAngle = Math.atan2(relLink.y, relLink.x)
+            if (textAngle > Math.PI / 2) textAngle = -(Math.PI - textAngle)
+            if (textAngle < -Math.PI / 2) textAngle = -(-Math.PI - textAngle)
 
-            const fontSize = isPathLink ? 12/globalScale : 10 / globalScale;
-            ctx.font = `${isPathLink ? 'bold ':''}${fontSize}px Sans-Serif`;
-            
-            const textWidth = ctx.measureText(label).width;
-            if (textWidth > maxTextLength) return;
+            const fontSize = isAccent ? 12 / globalScale : 11 / globalScale
+            ctx.font = `${isAccent ? 'bold ' : ''}${fontSize}px Sans-Serif`
 
-            ctx.save();
-            ctx.translate(textPos.x, textPos.y);
-            ctx.rotate(textAngle);
+            const textWidth = ctx.measureText(label).width
+            if (textWidth > maxTextLength) return
 
-            ctx.fillStyle = isPathLink ? '#f59e0b' : 'rgba(255, 255, 255, 0.8)';
-            ctx.fillRect(-textWidth / 2 - 2, -fontSize / 2 - 1, textWidth + 4, fontSize + 2);
+            ctx.save()
+            ctx.translate(textPos.x, textPos.y)
+            ctx.rotate(textAngle)
 
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = isPathLink ? '#ffffff' : '#64748b'; 
-            ctx.fillText(label, 0, 0);
-            
-            ctx.restore();
+            const padX = 4
+            const padY = 2
+            const rx = 3 / globalScale
+            const bx = -textWidth / 2 - padX
+            const by = -fontSize / 2 - padY
+            const bw = textWidth + padX * 2
+            const bh = fontSize + padY * 2
+
+            ctx.beginPath()
+            ctx.moveTo(bx + rx, by)
+            ctx.lineTo(bx + bw - rx, by)
+            ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + rx)
+            ctx.lineTo(bx + bw, by + bh - rx)
+            ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - rx, by + bh)
+            ctx.lineTo(bx + rx, by + bh)
+            ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - rx)
+            ctx.lineTo(bx, by + rx)
+            ctx.quadraticCurveTo(bx, by, bx + rx, by)
+            ctx.closePath()
+
+            if (isPathLink) {
+              ctx.fillStyle = '#f59e0b'
+            } else if (isHoveredLink) {
+              ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
+            } else {
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+            }
+            ctx.fill()
+
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'middle'
+            ctx.fillStyle = isPathLink ? '#ffffff' : isHoveredLink ? '#0c4a6e' : '#475569'
+            ctx.fillText(label, 0, 0)
+
+            ctx.restore()
           }}
         />
       )}

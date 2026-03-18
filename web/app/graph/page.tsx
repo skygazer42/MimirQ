@@ -35,6 +35,8 @@ import {
 import { Upload, Share2, Info, RefreshCw, ZoomIn, ZoomOut, Maximize, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, PlayCircle, Layout, Link as LinkIcon, Lightbulb, Box, BoxSelect } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { KnowledgeGraph3D } from '@/components/graph/force-graph-3d'
+import { GraphLegend } from '@/components/graph/graph-legend'
+import { GraphStatsBar } from '@/components/graph/graph-stats-bar'
 import { parseGraphML, GraphData, type GraphNode } from '@/lib/graph-parser'
 import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
@@ -144,6 +146,8 @@ export default function GraphPage() {
   const [fileName, setFileName] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [selectedLink, setSelectedLink] = useState<any | null>(null)
+  const [isLinkDetailOpen, setIsLinkDetailOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [deleteNodeOpen, setDeleteNodeOpen] = useState(false)
   const [deleteNodeTarget, setDeleteNodeTarget] = useState<{ id: string; label: string } | null>(null)
@@ -1135,6 +1139,7 @@ export default function GraphPage() {
       // Escape (Close panels, reset modes)
       if (e.key === 'Escape') {
         if (isDetailOpen) setIsDetailOpen(false)
+        if (isLinkDetailOpen) { setIsLinkDetailOpen(false); setSelectedLink(null) }
         if (isPathMode) resetPathMode()
         if (isConnectMode) resetConnectMode()
         if (isExplainMode) resetExplainMode()
@@ -1160,6 +1165,7 @@ export default function GraphPage() {
   }, [
     selectedNode,
     isDetailOpen,
+    isLinkDetailOpen,
     isPathMode,
     isConnectMode,
     isExplainMode,
@@ -1382,7 +1388,17 @@ export default function GraphPage() {
     if (!isExplainMode) {
         setSelectedNode(node)
         setIsDetailOpen(true)
+        setIsLinkDetailOpen(false)
+        setSelectedLink(null)
     }
+  }
+
+  const handleLinkClick = (link: any) => {
+    if (isPathMode || isConnectMode || isExplainMode) return
+    setSelectedLink(link)
+    setIsLinkDetailOpen(true)
+    setIsDetailOpen(false)
+    setSelectedNode(null)
   }
 
   const calculatePath = useCallback(
@@ -1982,9 +1998,11 @@ export default function GraphPage() {
                 ref={graphRef as React.RefObject<GraphViewerRef>}
                 data={displayGraphData} 
                 onNodeClick={handleNodeClick}
-                onBackgroundClick={() => setIsDetailOpen(false)}
+                onLinkClick={handleLinkClick}
+                onBackgroundClick={() => { setIsDetailOpen(false); setIsLinkDetailOpen(false); setSelectedLink(null) }}
                 highlightedNodeIds={highlightedNodeIds}
                 highlightedLinkIds={highlightedLinkIds}
+                selectedNodeId={selectedNode?.id ?? null}
                 showEdgeLabels={showEdgeLabels}
                 layoutMode={layoutMode}
                 />
@@ -2024,6 +2042,22 @@ export default function GraphPage() {
              </div>
            )}
 
+          {/* Entity Type Legend (Bottom Left) */}
+          {displayGraphData.nodes.length > 0 && !isExplainMode && (
+            <GraphLegend
+              nodes={displayGraphData.nodes}
+              activeTypeFilters={entityTypeFilters}
+              onToggleTypeFilter={(type) => {
+                setEntityTypeFilters((prev) => {
+                  const set = new Set(prev)
+                  if (set.has(type)) set.delete(type)
+                  else set.add(type)
+                  return Array.from(set)
+                })
+              }}
+            />
+          )}
+
 	          {/* Explainability Panel (Bottom Left) */}
 		          {isExplainMode && (
 		            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card rounded-2xl shadow-strong border border-border overflow-hidden">
@@ -2059,6 +2093,17 @@ export default function GraphPage() {
                    )
                  })}
                </div>
+            </div>
+          )}
+
+          {/* Graph Stats Bar */}
+          {displayGraphData.nodes.length > 0 && (
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
+              <GraphStatsBar
+                nodeCount={displayGraphData.nodes.length}
+                linkCount={displayGraphData.links.length}
+                entityTypeCount={availableEntityTypes.length}
+              />
             </div>
           )}
 
@@ -2413,6 +2458,132 @@ export default function GraphPage() {
                 </div>
               </>
             )}
+          </div>
+
+          {/* Link Detail Panel (Right) */}
+          <div
+            className={cn(
+              "absolute top-4 right-4 bottom-24 w-80 bg-card rounded-2xl shadow-strong border border-border transform transition-transform duration-200 ease-out z-20 flex flex-col overflow-hidden",
+              isLinkDetailOpen && selectedLink ? "translate-x-0" : "translate-x-[120%]"
+            )}
+          >
+            {selectedLink && (() => {
+              const srcObj = selectedLink.source
+              const tgtObj = selectedLink.target
+              const srcLabel = typeof srcObj === 'object' ? (srcObj?.label || srcObj?.id || '') : String(srcObj)
+              const tgtLabel = typeof tgtObj === 'object' ? (tgtObj?.label || tgtObj?.id || '') : String(tgtObj)
+              const kind = String(selectedLink?.meta?.kind ?? selectedLink?.kind ?? '').trim()
+              const predicate = String(selectedLink?.meta?.predicate ?? selectedLink?.predicate ?? selectedLink?.label ?? '').trim()
+              const confidence = selectedLink?.meta?.confidence ?? selectedLink?.confidence ?? selectedLink?.weight
+              const confNum = Number(confidence)
+              const confStr = Number.isFinite(confNum) ? confNum.toFixed(3) : null
+              const docId = String(selectedLink?.meta?.document_id ?? '').trim()
+              const chunkId = String(selectedLink?.meta?.chunk_id ?? '').trim()
+              const eventId = String(selectedLink?.meta?.event_id ?? '').trim()
+              const page = String(selectedLink?.meta?.page ?? selectedLink?.meta?.page_number ?? '').trim()
+              const sharedEvents = String(selectedLink?.meta?.shared_events ?? '').trim()
+
+              const kindLabel = kind === 'entity_relation' ? 'Relation (triple)'
+                : kind === 'event_entity' ? 'Evidence (event → entity)'
+                : kind === 'entity_entity' ? 'Co-occurrence (entity ↔ entity)'
+                : kind || 'Link'
+
+              return (
+                <>
+                  <div className="p-5 border-b border-border flex items-start justify-between bg-card">
+                    <div className="flex-1 min-w-0">
+                      <h2 className="font-bold text-sm text-foreground mb-2">Relationship</h2>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-lg p-2.5 border border-border">
+                        <span className="truncate font-medium text-foreground" title={srcLabel}>{srcLabel}</span>
+                        <span className="text-primary font-semibold flex-shrink-0">→</span>
+                        <span className="truncate text-primary font-medium" title={predicate}>{predicate || 'RELATED'}</span>
+                        <span className="text-primary font-semibold flex-shrink-0">→</span>
+                        <span className="truncate font-medium text-foreground" title={tgtLabel}>{tgtLabel}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setIsLinkDetailOpen(false); setSelectedLink(null) }}
+                      aria-label="关闭边详情面板"
+                      className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg p-1 transition-colors ml-2 flex-shrink-0"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-5 space-y-4">
+                    <div className="space-y-3">
+                      <div className="bg-muted rounded-xl p-3 border border-border">
+                        <span className="block text-[10px] font-medium text-muted-foreground mb-1">Type</span>
+                        <span className="block text-sm text-foreground">{kindLabel}</span>
+                      </div>
+                      {predicate && (
+                        <div className="bg-muted rounded-xl p-3 border border-border">
+                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Predicate</span>
+                          <span className="block text-sm text-foreground">{predicate}</span>
+                        </div>
+                      )}
+                      {confStr && (
+                        <div className="bg-muted rounded-xl p-3 border border-border">
+                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Confidence</span>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${Math.round(confNum * 100)}%`,
+                                  backgroundColor: confNum >= 0.8 ? '#22c55e' : confNum >= 0.5 ? '#f59e0b' : '#ef4444'
+                                }}
+                              />
+                            </div>
+                            <span className="text-xs font-mono text-foreground">{confStr}</span>
+                          </div>
+                        </div>
+                      )}
+                      {sharedEvents && sharedEvents !== '0' && (
+                        <div className="bg-muted rounded-xl p-3 border border-border">
+                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Shared Events</span>
+                          <span className="block text-sm text-foreground">{sharedEvents}</span>
+                        </div>
+                      )}
+                    </div>
+                    {(docId || chunkId || eventId || page) && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-3 flex items-center gap-2">
+                          <FileText className="w-3 h-3" />
+                          Provenance
+                        </h3>
+                        <div className="space-y-3">
+                          {docId && (
+                            <div className="bg-muted rounded-xl p-3 border border-border">
+                              <span className="block text-[10px] font-medium text-muted-foreground mb-1">Document</span>
+                              <span className="block text-xs font-mono text-foreground break-all">{docId}</span>
+                            </div>
+                          )}
+                          {eventId && (
+                            <div className="bg-muted rounded-xl p-3 border border-border">
+                              <span className="block text-[10px] font-medium text-muted-foreground mb-1">Event</span>
+                              <span className="block text-xs font-mono text-foreground break-all">{eventId}</span>
+                            </div>
+                          )}
+                          {chunkId && (
+                            <div className="bg-muted rounded-xl p-3 border border-border">
+                              <span className="block text-[10px] font-medium text-muted-foreground mb-1">Chunk</span>
+                              <span className="block text-xs font-mono text-foreground break-all">{chunkId}</span>
+                            </div>
+                          )}
+                          {page && (
+                            <div className="bg-muted rounded-xl p-3 border border-border">
+                              <span className="block text-[10px] font-medium text-muted-foreground mb-1">Page</span>
+                              <span className="block text-sm text-foreground">{page}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
 
