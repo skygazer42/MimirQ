@@ -84,6 +84,40 @@ def _derive_hint(
     return None
 
 
+def _sanitize_json(value: Any, *, _depth: int = 0) -> Any:
+    """
+    Best-effort JSON sanitization for exception payloads.
+
+    Notes:
+    - Pydantic v2 validation errors can include non-JSON-serializable objects
+      (e.g. `ValueError` instances) inside error `ctx`.
+    - Our error responses should never crash while rendering JSON.
+    """
+    if _depth >= 10:
+        return str(value)
+
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for k, v in value.items():
+            # Never call user-defined __str__/__repr__ when formatting dict keys; keep
+            # the sanitizer itself exception-safe.
+            if isinstance(k, (str, int, float, bool, type(None))):
+                key = str(k)
+            else:
+                key = object.__repr__(k)
+            out[key] = _sanitize_json(v, _depth=_depth + 1)
+        return out
+
+    if isinstance(value, (list, tuple, set)):
+        return [_sanitize_json(v, _depth=_depth + 1) for v in value]
+
+    # Fallback: stringify unknown objects (exceptions, UUIDs, etc).
+    return str(value)
+
+
 class ErrorResponse(BaseModel):
     error: str
     message: str
@@ -355,13 +389,14 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     request_id = get_request_id(request)
+    errors = _sanitize_json(exc.errors())
     # FastAPI default 422 payload is a list under "detail"; keep it available for callers.
     return JSONResponse(
         status_code=HTTP_422_UNPROCESSABLE_CONTENT,
         content=ErrorResponse(
             error="VALIDATION_ERROR",
             message="Validation error",
-            detail={"errors": exc.errors()},
+            detail={"errors": errors},
             request_id=request_id,
         ).model_dump(exclude_none=True),
     )

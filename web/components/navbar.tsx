@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { MessageSquare, Database, Layers, History, Settings, FileText, Share2, Plus, Scissors, BarChart3, Wand2, ShieldCheck, Activity, User, LogIn, LogOut, PanelLeftClose, PanelLeftOpen, Coins, ChevronRight } from 'lucide-react'
+import { Braces, MessageSquare, Database, Activity, Layers, History, Settings, FileText, FileSearch, Share2, GitCompare, Plus, Scissors, BarChart3, Star, Wand2, ShieldCheck, Hash, AlertTriangle, Grid3X3, SlidersHorizontal, User, Users, LogIn, LogOut, PanelLeftClose, PanelLeftOpen, Coins } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -22,14 +22,8 @@ type MenuItem = {
   href: string
 }
 
-type MenuSection = {
-  title: string
-  items: MenuItem[]
-  collapsible?: boolean
-  defaultCollapsed?: boolean
-}
-
-const menuSections: MenuSection[] = [
+// 导航信息架构：按「核心 → 入库流程 → 知识库管理 → 分析工具 → 系统」分组，降低认知负担。
+const menuSections: Array<{ title: string; items: MenuItem[] }> = [
   {
     title: '核心',
     items: [
@@ -38,35 +32,48 @@ const menuSections: MenuSection[] = [
     ],
   },
   {
-    title: '数据',
+    title: '入库流程',
     items: [
-      { icon: Layers, label: '数据集', href: '/datasets' },
-      { icon: Database, label: '知识库', href: '/knowledge' },
-      { icon: Share2, label: '知识图谱', href: '/graph' },
+      { icon: FileText, label: '文档解析', href: '/parsing' },
+      { icon: ShieldCheck, label: '数据治理', href: '/data-governance' },
+      { icon: Braces, label: '治理配置', href: '/data-governance/profiles' },
+      { icon: Hash, label: 'Common Lines 学习', href: '/data-governance/common-lines' },
+      { icon: Scissors, label: '切块预览', href: '/chunk-preview' },
     ],
   },
   {
-    title: '工具',
-    collapsible: true,
-    defaultCollapsed: true,
+    title: '知识库管理',
     items: [
-      { icon: FileText, label: '文档解析', href: '/parsing' },
-      { icon: Scissors, label: '切块预览', href: '/chunk-preview' },
-      { icon: ShieldCheck, label: '数据治理', href: '/data-governance' },
+      { icon: Layers, label: '数据集', href: '/datasets' },
+      { icon: Database, label: '知识库', href: '/knowledge' },
+      { icon: Activity, label: '入库监控', href: '/knowledge/ingestion' },
+      { icon: AlertTriangle, label: '隔离队列', href: '/knowledge/quarantine' },
+      { icon: Star, label: '反馈质检', href: '/knowledge/feedback' },
+    ],
+  },
+  {
+    title: '分析工具',
+    items: [
+      { icon: Grid3X3, label: 'RAG 可视化', href: '/knowledge/similarity' },
+      { icon: Share2, label: '知识图谱', href: '/graph' },
+      { icon: GitCompare, label: 'KG 快照', href: '/graph/snapshots' },
+      { icon: FileSearch, label: 'KG 诊断', href: '/graph/diagnostics' },
       { icon: BarChart3, label: 'RAGAS 评测', href: '/evaluations' },
+      { icon: SlidersHorizontal, label: '检索消融', href: '/evaluations/ablations' },
       { icon: FileText, label: '报告中心', href: '/reports' },
       { icon: Wand2, label: '提示词', href: '/prompts' },
     ],
   },
   {
     title: '系统',
-    collapsible: true,
-    defaultCollapsed: true,
     items: [
-      { icon: Settings, label: '设置', href: '/settings' },
       { icon: Activity, label: '诊断', href: '/diagnostics' },
       { icon: Coins, label: '用量/配额', href: '/usage' },
       { icon: ShieldCheck, label: '审计日志', href: '/audit' },
+      { icon: ShieldCheck, label: '访问审查', href: '/access-review' },
+      { icon: User, label: '成员权限', href: '/settings/rbac' },
+      { icon: Users, label: '组管理', href: '/settings/groups' },
+      { icon: Settings, label: '设置', href: '/settings' },
     ],
   },
 ]
@@ -108,13 +115,6 @@ export function Navbar({
   const firstActionRef = useRef<HTMLButtonElement | null>(null)
   const prevIsSidebarOpenRef = useRef<boolean | null>(null)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {}
-    for (const s of menuSections) {
-      if (s.collapsible && s.defaultCollapsed) initial[s.title] = true
-    }
-    return initial
-  })
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
   const pathname = usePathname()
@@ -307,107 +307,96 @@ export function Navbar({
         aria-label="主导航"
         aria-hidden={!isSidebarOpen}
         className={cn(
-          'peer flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-border/50 flex flex-col transition-all duration-200 ease-out z-50',
-          'fixed inset-y-0 left-0 md:relative',
-          isSidebarOpen ? 'w-[240px] translate-x-0' : 'w-[240px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
+          'peer flex-shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col transition-transform duration-200 ease-out z-50',
+          'fixed inset-y-0 left-0 md:relative', // Mobile: fixed, Desktop: relative
+          isSidebarOpen ? 'w-[280px] translate-x-0' : 'w-[280px] -translate-x-full md:w-0 md:translate-x-0 md:overflow-hidden'
         )}
       >
-        {/* Logo */}
-        <div className="h-12 px-4 border-b border-sidebar-border flex items-center gap-2.5">
-          <Link href="/" className="flex items-center gap-2.5 group rounded-md focus-ring">
-            <div className="size-7 rounded-lg bg-primary text-primary-foreground flex items-center justify-center transition-all duration-150 group-hover:shadow-glow">
-              <span className="text-primary-foreground font-bold text-sm">M</span>
+        {/* Logo 区域 */}
+        <div className="h-16 px-6 border-b border-sidebar-border flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
+            <div className="size-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center shadow-sm border border-primary/20 transition-colors duration-200 group-hover:border-primary/30">
+              <span className="text-primary-foreground font-bold text-lg">M</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[13px] font-semibold text-foreground leading-none tracking-tight">MimirQ</span>
-              <span className="text-2xs text-muted-foreground font-medium mt-0.5">Knowledge Base</span>
+              <span className="font-semibold text-foreground leading-none">MimirQ</span>
+              <span className="text-[10px] text-muted-foreground font-medium mt-1">智能知识库</span>
             </div>
           </Link>
         </div>
 
-        {/* New Chat */}
-        <div className="px-3 pt-3 pb-1">
+        {/* 新对话按钮 */}
+        <div className="p-4 pb-2">
           <Button
             ref={firstActionRef}
-            variant="outline"
-            size="sm"
-            className="w-full justify-start gap-2"
+            className={cn(
+              "w-full justify-start gap-2 h-11 rounded-2xl font-semibold transition-colors duration-200",
+              "bg-card border border-border shadow-sm text-foreground",
+              "hover:bg-accent hover:border-border",
+              "active:bg-accent/80"
+            )}
             onClick={() => {
               router.push('/')
               closeSidebarOnMobile()
             }}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-4 w-4" />
             <span>新对话</span>
           </Button>
         </div>
 
-        {/* Navigation */}
-        <div className="flex-1 min-h-0 px-2 py-2 overflow-y-auto overscroll-contain custom-scrollbar">
+        {/* 导航菜单 */}
+        {/* Allow internal scroll so items are never clipped on short viewports. */}
+        <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
           <div className="space-y-4">
-            {menuSections.map((section) => {
-              const isCollapsed = section.collapsible && collapsedSections[section.title]
-              const hasActiveChild = section.items.some((item) => isActiveRoute(pathname, item.href))
-              const showItems = !isCollapsed || hasActiveChild
+            {menuSections.map((section) => (
+              <div key={section.title} className="space-y-1">
+                <p className="px-3 text-[11px] font-semibold text-muted-foreground mb-2 uppercase">
+                  {section.title}
+                </p>
+                {section.items.map((item) => {
+                  const Icon = item.icon
+                  const isActive = isActiveRoute(pathname, item.href)
 
-              return (
-                <div key={section.title} className="space-y-0.5">
-                  {section.collapsible ? (
-                    <button
-                      type="button"
-                      onClick={() => setCollapsedSections((prev) => ({ ...prev, [section.title]: !prev[section.title] }))}
-                      className="w-full flex items-center justify-between px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider hover:text-muted-foreground transition-colors duration-150"
-                    >
-                      <span>{section.title}</span>
-                      <ChevronRight className={cn("h-3 w-3 transition-transform duration-150", !isCollapsed && "rotate-90")} />
-                    </button>
-                  ) : (
-                    <p className="px-2.5 pb-1 text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wider">
-                      {section.title}
-                    </p>
-                  )}
-                  {showItems && section.items.map((item) => {
-                    const Icon = item.icon
-                    const isActive = isActiveRoute(pathname, item.href)
-
-                    return (
+                  return (
+                    <div key={item.href}>
                       <Link
-                        key={item.href}
                         href={item.href}
                         prefetch
                         onClick={closeSidebarOnMobile}
                         aria-current={isActive ? 'page' : undefined}
                         className={cn(
-                          'relative flex items-center gap-2.5 px-2.5 h-8 rounded-md text-[13px] transition-all duration-150 group focus-ring',
+                          'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
+                          "before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-transparent",
                           isActive
-                            ? 'bg-accent text-foreground font-medium border-l-2 border-primary -ml-px'
-                            : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+                            ? 'bg-muted text-foreground font-medium before:bg-primary/80'
+                            : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                         )}
                       >
                         <Icon
                           className={cn(
-                            "h-4 w-4 shrink-0 transition-colors duration-150",
-                            isActive ? "text-primary" : "text-muted-foreground/60 group-hover:text-foreground"
+                            "h-4 w-4 transition-colors",
+                            isActive ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"
                           )}
                         />
-                        <span className="truncate">{item.label}</span>
+                        <span className="text-sm">{item.label}</span>
                       </Link>
-                    )
-                  })}
-                </div>
-              )
-            })}
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-3 border-t border-border/50">
+        {/* 底部信息 */}
+        <div className="p-4 border-t border-sidebar-border bg-background/60">
           <div className="flex items-center gap-2">
             <button
               type="button"
               aria-label={isAuthenticated ? "打开设置" : "前往登录 / 注册"}
               title={isAuthenticated ? "打开设置" : "前往登录 / 注册"}
-              className="flex-1 flex items-center gap-2.5 p-2 rounded-md hover:bg-accent transition-colors duration-150 group text-left focus-ring"
+              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-accent transition-colors duration-200 border border-transparent hover:border-border group text-left focus-ring"
               onClick={() => {
                 if (isAuthenticated) {
                   router.push('/settings')
@@ -417,19 +406,20 @@ export function Navbar({
                 closeSidebarOnMobile()
               }}
             >
-              <div className="relative size-8 shrink-0">
-                <div className="absolute inset-0 rounded-md bg-muted flex items-center justify-center text-muted-foreground group-hover:text-foreground transition-colors duration-150">
-                  <User className="h-4 w-4" />
+              <div className="relative w-10 h-10 flex-shrink-0">
+                <div className="absolute inset-0 rounded-xl border border-border bg-muted/50 shadow-sm group-hover:border-primary/30 transition-colors duration-200" />
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground group-hover:text-primary transition-colors">
+                  <User className="h-5 w-5" />
                 </div>
                 {isAuthenticated && (
-                  <div className="absolute -right-0.5 -bottom-0.5 size-2.5 bg-success border-2 border-sidebar rounded-full" />
+                  <div className="absolute -right-0.5 -bottom-0.5 size-3 bg-success border-2 border-background rounded-full" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-medium text-foreground truncate">
+                <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
                   {user?.username || user?.email || (isDevMode ? '开发模式' : '未登录')}
                 </p>
-                <p className="text-2xs text-muted-foreground truncate leading-tight">
+                <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
                   {isAuthenticated ? user?.email || '在线' : '本地开发环境'}
                 </p>
               </div>
@@ -601,10 +591,10 @@ export function Navbar({
         aria-label={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
         className={cn(
-          'fixed bottom-4 z-50 size-8 rounded-md shadow-soft bg-card border border-border/50 text-muted-foreground hover:text-foreground transition-all duration-150',
+          'fixed bottom-4 z-50 size-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-colors duration-200 ease-out sm:size-10 supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)]',
           isSidebarOpen
-            ? 'left-[224px] opacity-0 pointer-events-none md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto'
-            : 'left-4 opacity-100'
+            ? 'left-[260px] opacity-0 pointer-events-none md:peer-hover:opacity-100 md:peer-hover:pointer-events-auto md:peer-focus-within:opacity-100 md:peer-focus-within:pointer-events-auto md:hover:opacity-100 md:hover:pointer-events-auto md:focus-visible:opacity-100 md:focus-visible:pointer-events-auto'
+            : 'left-4 opacity-100 supports-[padding:env(safe-area-inset-left)]:left-[calc(env(safe-area-inset-left)+1rem)]'
         )}
         onClick={() => setSidebarOpen(!isSidebarOpen)}
       >

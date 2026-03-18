@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BarChart3, Download, GitCompare, PlayCircle, RefreshCcw, Trophy } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -165,36 +165,36 @@ export function RetrievalAblationsPage() {
     const hasTarget = items.some((r) => _stableId(r.id) === _stableId(selectedTargetRunId))
     if (!hasBase) setSelectedBaseRunId(items?.[0]?.id || '')
     if (!hasTarget) setSelectedTargetRunId(items?.[0]?.id || '')
-  }, [datasetId, runsByDataset])
+  }, [datasetId, runsByDataset, selectedBaseRunId, selectedTargetRunId])
 
-  async function loadDatasets(): Promise<void> {
+  const loadDatasets = useCallback(async (): Promise<void> => {
     setDatasetsLoading(true)
     try {
       const res = await datasetApi.list({ limit: 200 })
       const items = Array.isArray(res.items) ? res.items : []
       setDatasets(items)
-      if (!datasetId && items?.[0]?.id) setDatasetId(items[0].id)
+      setDatasetId((prev) => prev || items?.[0]?.id || '')
     } catch (err) {
       toast.error(formatApiError(err, '加载数据集失败'))
     } finally {
       setDatasetsLoading(false)
     }
-  }
+  }, [])
 
-  async function refreshRuns(): Promise<void> {
+  const refreshRuns = useCallback(async (): Promise<void> => {
     setRunsLoading(true)
     try {
       const res = await evaluationApi.listRegressionRuns({ limit: 80 })
       const items = Array.isArray(res.items) ? (res.items) : []
       setRuns(items)
-      if (!selectedBaseRunId && items?.[0]?.id) setSelectedBaseRunId(items[0].id)
-      if (!selectedTargetRunId && items?.[0]?.id) setSelectedTargetRunId(items[0].id)
+      setSelectedBaseRunId((prev) => prev || items?.[0]?.id || '')
+      setSelectedTargetRunId((prev) => prev || items?.[0]?.id || '')
     } catch (err) {
       toast.error(formatApiError(err, '拉取 runs 失败'))
     } finally {
       setRunsLoading(false)
     }
-  }
+  }, [])
 
   async function refreshLeaderboard(): Promise<void> {
     const ds = datasetId.trim()
@@ -319,7 +319,7 @@ export function RetrievalAblationsPage() {
   useEffect(() => {
     detachPromise(loadDatasets())
     detachPromise(refreshRuns())
-  }, [])
+  }, [loadDatasets, refreshRuns])
 
   const leaderboardItems = leaderboard?.items
   const leaderboardRows: RegressionLeaderboardRow[] = Array.isArray(leaderboardItems) ? leaderboardItems : []

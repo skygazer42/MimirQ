@@ -160,19 +160,18 @@ export default function GraphPage() {
   const [scopedDatasetDocIdsLoading, setScopedDatasetDocIdsLoading] = useState(false)
   const [scopeAutoLoaded, setScopeAutoLoaded] = useState(false)
 
-  const scopeDirectDocIdsKey = useMemo(() => scope.directDocIds.join(','), [scope.directDocIds])
   const scopedDocumentIds: string[] | null = useMemo(() => {
     if (scope.directDocIds.length > 0) return scope.directDocIds
     if (scope.datasetId) return scopedDatasetDocIds
     return null
-  }, [scope.datasetId, scopeDirectDocIdsKey, scopedDatasetDocIds])
+  }, [scope.datasetId, scope.directDocIds, scopedDatasetDocIds])
   const scopedDocumentIdsKey = useMemo(() => (scopedDocumentIds ? scopedDocumentIds.join(',') : ''), [scopedDocumentIds])
   const scopeParams = useMemo(() => {
     const document_ids = scopedDocumentIds && scopedDocumentIds.length > 0 ? scopedDocumentIds : undefined
     const pipeline_hash = scope.pipelineHash ? scope.pipelineHash : undefined
     if (!document_ids && !pipeline_hash) return null
     return { document_ids, pipeline_hash }
-  }, [scopedDocumentIdsKey, scope.pipelineHash])
+  }, [scopedDocumentIds, scope.pipelineHash])
 
   useEffect(() => {
     let cancelled = false
@@ -218,7 +217,7 @@ export default function GraphPage() {
     return () => {
       cancelled = true
     }
-  }, [scope.datasetId, scope.docLimit, scopeDirectDocIdsKey])
+  }, [scope.datasetId, scope.docLimit, scope.directDocIds])
 
   const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
   const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
@@ -654,10 +653,9 @@ export default function GraphPage() {
     resetPathMode,
     scope.hasScope,
     scope.datasetId,
+    scope.directDocIds,
     scope.pipelineHash,
-    scopeDirectDocIdsKey,
     scopedDatasetDocIdsLoading,
-    scopedDocumentIdsKey,
     scopeParams,
     scopedDocumentIds,
   ])
@@ -671,7 +669,7 @@ export default function GraphPage() {
 
     setScopeAutoLoaded(true)
     detachPromise(loadInitialData('live'))
-  }, [loadInitialData, scope.hasScope, scope.datasetId, scopeAutoLoaded, scopeDirectDocIdsKey, scopedDocumentIds])
+  }, [loadInitialData, scope.hasScope, scope.datasetId, scope.directDocIds, scopeAutoLoaded, scopedDocumentIds])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -862,7 +860,7 @@ export default function GraphPage() {
 	    } finally {
 	      setIsLoading(false)
 	    }
-	  }, [selectedNode, includeEntityLinks, includeRelationLinks, minSharedEvents, maxEntityLinks, dataSource, scopedDocumentIdsKey, scope.pipelineHash])
+		  }, [selectedNode, includeEntityLinks, includeRelationLinks, minSharedEvents, maxEntityLinks, dataSource, scopedDocumentIds, scope.pipelineHash])
 
   const handleDeleteNode = useCallback(() => {
     if (!selectedNode) return

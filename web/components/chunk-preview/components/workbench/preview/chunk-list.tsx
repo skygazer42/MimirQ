@@ -543,6 +543,7 @@ export function ChunkList() {
     collapsedGroups,
   ])
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: displayRows.length,
     getScrollElement: () => scrollRef.current,

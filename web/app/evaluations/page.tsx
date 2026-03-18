@@ -6,7 +6,7 @@
  * Tab 2: 回归测试（基于测试用例）
  */
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
@@ -94,38 +94,34 @@ function EvaluationsPageContent() {
     }
   }, [searchParams])
 
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     try {
       const res = await chatApi.listConversations({ limit: 100 })
       setConversations(res.items || [])
-      if (!selectedConversationId && res.items?.[0]?.id) {
-        setSelectedConversationId(res.items[0].id)
-      }
+      setSelectedConversationId((prev) => prev || res.items?.[0]?.id || '')
     } catch (e) {
       console.error('Failed to load conversations', e)
     }
-  }
+  }, [])
 
-  const loadRuns = async (conversationId?: string) => {
+  const loadRuns = useCallback(async (conversationId?: string) => {
     try {
       const res = await evaluationApi.listRagasRuns({
         limit: 50,
         conversation_id: conversationId || undefined,
       })
       setRuns(res.items || [])
-      if (!selectedRunId && res.items?.[0]?.id) {
-        setSelectedRunId(res.items[0].id)
-      }
+      setSelectedRunId((prev) => prev || res.items?.[0]?.id || '')
     } catch (e) {
       console.error('Failed to load runs', e)
     }
-  }
+  }, [])
 
   // Initial data
   useEffect(() => {
     setIsLoading(true)
     Promise.all([loadConversations(), loadRuns()]).finally(() => setIsLoading(false))
-  }, [])
+  }, [loadConversations, loadRuns])
 
   // When switching conversation, focus run list on that conversation
   useEffect(() => {
@@ -133,7 +129,7 @@ function EvaluationsPageContent() {
     setSelectedRunId('')
     setRunDetail(null)
     loadRuns(selectedConversationId)
-  }, [selectedConversationId])
+  }, [loadRuns, selectedConversationId])
 
   // Poll run detail
   useEffect(() => {

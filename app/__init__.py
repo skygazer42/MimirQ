@@ -28,7 +28,10 @@ def _ensure_pkg_resources_available() -> None:
     #   - DistributionNotFound
     #   - get_distribution(<name>).version
     try:
+        import importlib
+        import re
         from importlib import metadata as _metadata
+        from importlib import resources as _resources
         from types import ModuleType, SimpleNamespace
     except ImportError:
         return
@@ -43,9 +46,73 @@ def _ensure_pkg_resources_available() -> None:
             raise DistributionNotFoundError(dist_name) from e
         return SimpleNamespace(version=v)
 
+    _dist_name_split_re = re.compile(r"[<>=!~;\s]")
+
+    def _normalize_pkg_name(package_or_requirement) -> str:
+        try:
+            name = package_or_requirement.__name__
+        except AttributeError:
+            name = None
+        if name:
+            return str(name)
+        raw = str(package_or_requirement or "").strip()
+        if not raw:
+            return raw
+        # Accept common forms like:
+        # - "foo"
+        # - "foo>=1.2"
+        # - "foo ; python_version < '3.12'"
+        return _dist_name_split_re.split(raw, 1)[0].strip()
+
+    def resource_stream(package_or_requirement, resource_name: str):  # noqa: ANN001
+        """
+        Best-effort `pkg_resources.resource_stream` compatibility.
+
+        Some deps still use it to access bundled data files (stopwords, models, etc).
+        """
+        pkg_name = _normalize_pkg_name(package_or_requirement)
+        if not pkg_name:
+            raise FileNotFoundError(resource_name)
+        try:
+            pkg = importlib.import_module(pkg_name)
+        except ModuleNotFoundError as e:
+            # Only fallback for the top-level package itself. If a dependency inside
+            # the package failed to import, surface the original error.
+            if e.name != pkg_name:
+                raise
+            pkg = importlib.import_module(pkg_name.replace("-", "_"))
+
+        # `importlib.resources` requires a *package*, but callers sometimes pass a module
+        # like "jieba._compat" (common pattern: pkg_resources.resource_stream(__name__, ...)).
+        # Walk up to the nearest parent package.
+        if not hasattr(pkg, "__path__"):
+            parent_name = getattr(pkg, "__name__", "") or pkg_name
+            while "." in parent_name:
+                parent_name = parent_name.rsplit(".", 1)[0]
+                try:
+                    parent = importlib.import_module(parent_name)
+                except ModuleNotFoundError as e:
+                    if e.name != parent_name:
+                        raise
+                    continue
+                if hasattr(parent, "__path__"):
+                    pkg = parent
+                    break
+        try:
+            return _resources.files(pkg).joinpath(resource_name).open("rb")
+        except (TypeError, AttributeError):
+            # Fallback for older resource loaders.
+            return _resources.open_binary(pkg.__name__, resource_name)
+
+    def resource_string(package_or_requirement, resource_name: str) -> bytes:  # noqa: ANN001
+        with resource_stream(package_or_requirement, resource_name) as fh:
+            return fh.read()
+
     shim = ModuleType("pkg_resources")
     shim.DistributionNotFound = DistributionNotFoundError  # type: ignore[attr-defined]
     shim.get_distribution = get_distribution  # type: ignore[attr-defined]
+    shim.resource_stream = resource_stream  # type: ignore[attr-defined]
+    shim.resource_string = resource_string  # type: ignore[attr-defined]
     sys.modules.setdefault("pkg_resources", shim)
 
 

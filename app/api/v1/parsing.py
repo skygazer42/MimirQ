@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import re
 import time
 import uuid
@@ -280,17 +281,50 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
             return ds
 
     # Create a new one (ONLY_ME).
-    ds = DatasetService.create_dataset(
-        db=db,
-        tenant_id=tenant_id,
-        name="Parsing Workspace",
-        description="Auto-created for /parsing (drafts & parsed markdown)",
-        permission=DatasetPermissionEnum.ONLY_ME,
-        owner_id=account_id,
-        partial_members=[],
-    )
+    #
+    # IMPORTANT:
+    # Dataset names are unique per tenant, so a constant name would conflict across users
+    # when auth uses dynamic account ids (e.g. smoke tests, JWT users). Use a stable
+    # owner-scoped suffix to avoid collisions while keeping the name readable.
+    owner_raw = str(account_id or "").strip()
+    owner_tag = hashlib.sha1(owner_raw.encode("utf-8")).hexdigest()[:8] if owner_raw else "anon"
+    dataset_name = f"Parsing Workspace [{owner_tag}]"
+
+    try:
+        ds = DatasetService.create_dataset(
+            db=db,
+            tenant_id=tenant_id,
+            name=dataset_name,
+            description="Auto-created for /parsing (drafts & parsed markdown)",
+            permission=DatasetPermissionEnum.ONLY_ME,
+            owner_id=account_id,
+            partial_members=[],
+        )
+    except HTTPException as exc:
+        # Race condition (or a pre-existing dataset created manually): if a dataset with this
+        # name already exists for the same owner, re-use it instead of surfacing a 409.
+        if int(getattr(exc, "status_code", 0) or 0) == 409:
+            ds = (
+                db.query(Dataset)
+                .filter(
+                    Dataset.tenant_id == tenant_id,
+                    Dataset.owner_id == account_id,
+                    Dataset.name == dataset_name,
+                )
+                .first()
+            )
+            if ds:
+                meta = dict(getattr(ds, "dataset_metadata", None) or {})
+                meta["parsing_workspace"] = True
+                meta["parsing_workspace_owner_tag"] = owner_tag
+                ds.dataset_metadata = meta
+                db.commit()
+                db.refresh(ds)
+                return ds
+        raise
     meta = dict(getattr(ds, "dataset_metadata", None) or {})
     meta["parsing_workspace"] = True
+    meta["parsing_workspace_owner_tag"] = owner_tag
     ds.dataset_metadata = meta
     db.commit()
     db.refresh(ds)
