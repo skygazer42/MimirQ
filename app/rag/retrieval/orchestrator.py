@@ -40,6 +40,11 @@ from app.rag.core.query_rewrite_strategy import (
 )
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides, is_recall_first_profile
+from app.rag.core.temporal import (
+    apply_recency_boost,
+    detect_temporal_intent,
+    fetch_document_updated_ts,
+)
 from app.rag.core.text import (
     build_abstain_followup,
     guess_retrieval_mode,
@@ -1232,6 +1237,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     intent_router_meta: dict[str, Any] = {"enabled": False, "used": False}
     adaptive_router_meta: dict[str, Any] = {"enabled": False, "used": False}
     channel_budget_policy_meta: dict[str, Any] = {"enabled": False, "used": False}
+    temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))
+    temporal_intent_meta: dict[str, Any] = {"detected": False, "reason_codes": []}
+    temporal_recency_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
 
     rewrite_enabled_req = state.get("enable_query_rewrite")
     rewrite_enabled = bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
@@ -1280,6 +1288,12 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             rewrite_elapsed = 0.0
 
         rewrite_used = query_for_retrieval != question
+
+    if temporal_intent_enabled:
+        try:
+            temporal_intent_meta = detect_temporal_intent(query_for_retrieval)
+        except Exception as exc:  # noqa: BLE001
+            temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
 
     # Capture caller intent before any routing/presets apply (kept for trace/metrics).
     requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
@@ -1958,7 +1972,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     mq_temp = settings.MULTI_QUERY_TEMPERATURE if state.get("multi_query_temperature") is None else float(state.get("multi_query_temperature") or 0.0)
     mq_max_chars = settings.MULTI_QUERY_MAX_CHARS if state.get("multi_query_max_chars") is None else int(state.get("multi_query_max_chars") or 0)
 
-    mq_n = max(0, min(int(mq_n or 0), 8))
+    mq_cap = max(0, int(getattr(settings, "MULTI_QUERY_COUNT_CAP", 8) or 8))
+    mq_n = max(0, min(int(mq_n or 0), int(mq_cap)))
     mq_temp = min(2.0, max(0.0, float(mq_temp or 0.0)))
     mq_max_chars = max(0, int(mq_max_chars or 0))
 
@@ -2030,6 +2045,42 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             hyde_text = ""
             hyde_elapsed = 0.0
             hyde_used = False
+
+    step_back_enabled = bool(getattr(settings, "ENABLE_STEP_BACK_QUERY", False))
+    step_back_elapsed = 0.0
+    step_back_used = False
+    step_back_model_used = None
+    step_back_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+    step_back_query = ""
+    step_back_max_chars = max(0, int(getattr(settings, "STEP_BACK_MAX_CHARS", 0) or 0))
+    step_back_temp = min(2.0, max(0.0, float(getattr(settings, "STEP_BACK_TEMPERATURE", 0.2) or 0.0)))
+    step_back_output_max = max(0, int(getattr(settings, "STEP_BACK_OUTPUT_MAX_CHARS", 0) or 0))
+    if step_back_enabled and step_back_max_chars > 0 and len(query_for_retrieval) <= step_back_max_chars:
+        sb_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+        step_back_model_used = getattr(sb_llm, "model_name", None) or getattr(sb_llm, "model", None)
+        try:
+            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
+            sb_chain = (
+                engine.step_back_prompt  # type: ignore[attr-defined]
+                | sb_llm.bind(temperature=step_back_temp)
+                | str_output_parser_cls()
+            )
+            sb_start = time.time()
+            sb_raw = sb_chain.invoke({"query": query_for_retrieval})
+            step_back_elapsed = time.time() - sb_start
+            step_back_query = (sb_raw or "").strip().strip('"').strip()
+            if step_back_output_max > 0 and len(step_back_query) > step_back_output_max:
+                step_back_query = step_back_query[:step_back_output_max] + "..."
+            if step_back_query and step_back_query != query_for_retrieval:
+                step_back_parse_meta = {"ok": True, "method": "text", "error": None}
+            else:
+                step_back_query = ""
+                step_back_parse_meta = {"ok": False, "method": "text", "error": "empty_or_duplicate"}
+        except Exception as exc:  # noqa: BLE001
+            step_back_query = ""
+            step_back_elapsed = 0.0
+            step_back_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+    step_back_used = bool(step_back_query)
 
     decompose_elapsed = 0.0
     decompose_used = False
@@ -2117,6 +2168,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         retrieval_queries.append(("clause", q))
     for q in multi_queries:
         retrieval_queries.append(("mq", q))
+    if step_back_used and step_back_query:
+        retrieval_queries.append(("step_back", step_back_query))
     for q in sub_questions:
         retrieval_queries.append(("subq", q))
     if hyde_used and hyde_text:
@@ -2326,6 +2379,51 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 docs = docs_fused_all
         else:
             docs = docs_fused_all
+
+    # Optional: Temporal intent + recency-aware rerank (deterministic, feature-flagged).
+    if temporal_intent_enabled and docs:
+        try:
+            temporal_boost_enabled = bool(
+                getattr(settings, "RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED", True)
+            )
+            if bool(temporal_intent_meta.get("detected")) and bool(temporal_boost_enabled):
+                max_docs = max(0, int(getattr(settings, "RAG_TEMPORAL_INTENT_MAX_DOCS", 200) or 200))
+                doc_ids: list[str] = []
+                seen_doc_ids: set[str] = set()
+                for d in docs:
+                    meta = getattr(d, "metadata", None)
+                    meta = meta if isinstance(meta, dict) else {}
+                    did = meta.get("document_id")
+                    did_s = str(did).strip() if did is not None else ""
+                    if not did_s:
+                        continue
+                    if did_s in seen_doc_ids:
+                        continue
+                    seen_doc_ids.add(did_s)
+                    doc_ids.append(did_s)
+                    if max_docs and len(doc_ids) >= max_docs:
+                        break
+
+                updated_ts = fetch_document_updated_ts(
+                    doc_ids,
+                    tenant_id=state.get("tenant_id"),
+                    dataset_id=state.get("dataset_id"),
+                    max_docs=max_docs,
+                )
+                docs, temporal_recency_meta = apply_recency_boost(
+                    docs,
+                    updated_ts_by_document_id=updated_ts,
+                    boost_max=float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0),
+                    window_days=int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180),
+                )
+            else:
+                temporal_recency_meta = {
+                    "enabled": bool(temporal_boost_enabled),
+                    "used": False,
+                    "reason": "not_detected",
+                }
+        except Exception as exc:  # noqa: BLE001
+            temporal_recency_meta = {"enabled": True, "used": False, "reason": f"exception:{str(exc)[:160]}"}
 
     if bool(hierarchy_recall_enabled) and bool(hierarchy_tree_dedup) and docs:
         try:
@@ -3856,6 +3954,12 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["retrieval_profile_requested"] = (
         str(requested_retrieval_profile).strip().lower() if requested_retrieval_profile is not None else None
     )
+    metrics["temporal_intent_enabled"] = bool(temporal_intent_enabled)
+    metrics["temporal_intent_detected"] = bool(temporal_intent_meta.get("detected"))
+    metrics["temporal_intent_reason_codes"] = list(temporal_intent_meta.get("reason_codes") or [])
+    metrics["temporal_recency_rerank"] = (
+        dict(temporal_recency_meta) if isinstance(temporal_recency_meta, dict) else None
+    )
     metrics["retrieval_contract_mode"] = retrieval_contract_mode or None
     metrics["retrieval_contract_policy"] = dict(retrieval_contract_policy or {})
     metrics["retrieval_contract_deterministic_recall"] = bool(contract_deterministic_recall)
@@ -4073,6 +4177,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["multi_query_diversify_selected_mq"] = int(mq_diversify_selected_mq or 0)
     metrics["multi_query_diversify_selected_non_mq"] = int(mq_diversify_selected_non_mq or 0)
     metrics["multi_query_diversify_fill_from_fused"] = int(mq_diversify_fill_from_fused or 0)
+    metrics["step_back_enabled"] = bool(step_back_enabled)
+    metrics["step_back_used"] = bool(step_back_used)
+    metrics["step_back_elapsed_sec"] = round(step_back_elapsed, 3)
+    metrics["step_back_model_used"] = step_back_model_used
+    metrics["step_back_parse_ok"] = bool(step_back_parse_meta.get("ok"))
+    metrics["step_back_parse_method"] = step_back_parse_meta.get("method")
+    metrics["step_back_parse_error"] = step_back_parse_meta.get("error")
 
     metrics["hierarchy_recall_enabled"] = bool(hierarchy_recall_enabled)
     metrics["hierarchy_family_collapse"] = bool(hierarchy_family_collapse)
@@ -4280,6 +4391,10 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         expansions_dbg.append({"kind": "clause", "expanded_text": q, "source_rule_id": "policy:clause_ref", "weight": 1.0})
     for q in multi_queries:
         expansions_dbg.append({"kind": "mq", "expanded_text": q, "source_rule_id": "llm:multi_query", "weight": 1.0})
+    if step_back_used and step_back_query:
+        expansions_dbg.append(
+            {"kind": "step_back", "expanded_text": step_back_query, "source_rule_id": "llm:step_back", "weight": 1.0}
+        )
     for q in sub_questions:
         expansions_dbg.append({"kind": "subq", "expanded_text": q, "source_rule_id": "llm:decompose", "weight": 1.0})
     if hyde_used and hyde_text:
@@ -4308,6 +4423,14 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     query_debug["intent_router"] = intent_router_meta
     query_debug["adaptive_router"] = adaptive_router_meta
     query_debug["channel_budget_policy"] = channel_budget_policy_meta
+    query_debug["temporal_intent"] = {
+        "enabled": bool(temporal_intent_enabled),
+        "detected": bool(temporal_intent_meta.get("detected")),
+        "reason_codes": list(temporal_intent_meta.get("reason_codes") or []),
+        "recency_rerank": (
+            dict(temporal_recency_meta) if isinstance(temporal_recency_meta, dict) else None
+        ),
+    }
     query_debug["hierarchy_recall"] = {
         "enabled": bool(hierarchy_recall_enabled),
         "family_collapse": bool(hierarchy_family_collapse),
@@ -4603,6 +4726,15 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 "parse_method": multi_query_parse_meta.get("method"),
                 "parse_error": multi_query_parse_meta.get("error"),
             },
+            "step_back": {
+                "enabled": bool(step_back_enabled),
+                "used": bool(step_back_used),
+                "elapsed_sec": round(float(step_back_elapsed or 0.0), 3),
+                "model_used": step_back_model_used,
+                "parse_ok": bool(step_back_parse_meta.get("ok")),
+                "parse_method": step_back_parse_meta.get("method"),
+                "parse_error": step_back_parse_meta.get("error"),
+            },
             "hyde": {
                 "enabled": bool(settings.ENABLE_HYDE),
                 "used": bool(hyde_used),
@@ -4829,6 +4961,12 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         ),
                     ),
                 },
+            },
+            "step_back": {
+                "enabled": bool(step_back_enabled),
+                "temperature": float(step_back_temp or 0.0),
+                "max_chars": int(step_back_max_chars or 0),
+                "output_max_chars": int(step_back_output_max or 0),
             },
             "query_rewrite": {
                 "enabled": bool(rewrite_enabled),

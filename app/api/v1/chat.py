@@ -72,6 +72,7 @@ from app.services.rag_config_template_resolver import (
 )
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 from app.services.rag_trace_service import list_rag_traces
+from app.services.structured_memory_service import build_structured_memory_context, extract_structured_memory_for_turn
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ def _prepare_chat_cache_lookup(
     history: list[Any],
     enable_long_term_memory: bool,
     long_term_messages: list[dict],
+    enable_structured_memory: bool,
     question: str,
     rag_config: dict[str, Any],
     prompt_config: dict[str, Any],
@@ -132,7 +134,7 @@ def _prepare_chat_cache_lookup(
     if not document_ids and dataset_id is None:
         return True, None, "missing_scope"
     if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
-        if history or enable_long_term_memory or long_term_messages:
+        if history or enable_long_term_memory or long_term_messages or enable_structured_memory:
             return True, None, "history_not_empty"
     try:
         cache_key, skip_reason = resolve_chat_response_cache_key(
@@ -193,6 +195,7 @@ async def _persist_chat_stream_turn_background(
     ip: str | None,
     user_agent: str | None,
     enable_summary_memory: bool,
+    enable_structured_memory: bool,
 ) -> None:
     """
     Best-effort async background persistence for streaming chat.
@@ -219,6 +222,18 @@ async def _persist_chat_stream_turn_background(
                 stored = bool(set_cached_chat_response(cache_key, cache_payload))
                 metrics2.setdefault("chat_cache_store_ok", stored)
 
+            message_metadata = {**(metrics2 or {}), "request_id": str(request_id)}
+            if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+                try:
+                    message_metadata["structured_memory"] = extract_structured_memory_for_turn(
+                        user_text=str(question or ""),
+                        assistant_text=str(content or ""),
+                        max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                        max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                    )
+                except Exception:
+                    pass
+
             assistant_message = Message(
                 id=assistant_message_id,
                 tenant_id=tenant_id,
@@ -227,7 +242,7 @@ async def _persist_chat_stream_turn_background(
                 content=content or "",
                 citations=citations if isinstance(citations, list) else [],
                 token_count=num_tokens_from_string(content or ""),
-                message_metadata={**(metrics2 or {}), "request_id": str(request_id)},
+                message_metadata=message_metadata,
             )
             db2.add(assistant_message)
 
@@ -381,6 +396,44 @@ def _retrieve_long_term_messages(
             }
         )
     return enriched_history
+
+
+def _retrieve_structured_memory_records(
+    *,
+    db: Session,
+    conversation_id: UUID,
+    tenant_id: UUID,
+    max_messages: int,
+) -> list[dict[str, Any]]:
+    """
+    Retrieve structured memory records stored in Message.message_metadata.
+
+    Notes:
+    - Best-effort: only assistant messages can carry records (we write them there).
+    - Keeps DB reads bounded by max_messages.
+    """
+    lim = max(0, int(max_messages or 0))
+    if lim <= 0:
+        return []
+    rows = (
+        db.query(Message.message_metadata)
+        .filter(
+            Message.conversation_id == conversation_id,
+            Message.tenant_id == tenant_id,
+            Message.role == "assistant",
+        )
+        .order_by(Message.created_at.desc())
+        .limit(lim)
+        .all()
+    )
+    out: list[dict[str, Any]] = []
+    for (meta,) in rows:
+        if not isinstance(meta, dict):
+            continue
+        rec = meta.get("structured_memory")
+        if isinstance(rec, dict):
+            out.append(rec)
+    return out
 
 
 @router.post("", response_model=ChatResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -738,6 +791,25 @@ async def chat(
             summary_text = None
         if summary_text:
             history_for_llm = [{"role": "system", "content": summary_text}] + history_for_llm
+    # Optional: structured memory injection (entities/facts), stored per assistant turn in message_metadata.
+    if bool(getattr(request, "enable_structured_memory", False)) and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)) and conversation_id:
+        try:
+            records = _retrieve_structured_memory_records(
+                db=db,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                max_messages=int(getattr(settings, "STRUCTURED_MEMORY_LOOKBACK_MESSAGES", 80) or 80),
+            )
+            ctx = build_structured_memory_context(
+                records=records,
+                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                max_chars=int(getattr(settings, "STRUCTURED_MEMORY_MAX_CONTEXT_CHARS", 1200) or 1200),
+            )
+        except Exception:
+            ctx = ""
+        if ctx:
+            history_for_llm = [{"role": "system", "content": ctx}] + history_for_llm
 
     metrics_data: dict = {}
     structured_data = None
@@ -761,6 +833,7 @@ async def chat(
         history=request.history,
         enable_long_term_memory=bool(request.enable_long_term_memory),
         long_term_messages=long_term_messages,
+        enable_structured_memory=bool(getattr(request, "enable_structured_memory", False)),
         question=request.message,
         rag_config=rag_cfg,
         prompt_config=prompt_cfg,
@@ -1069,6 +1142,22 @@ async def chat(
             stored = bool(set_cached_chat_response(cache_key, cache_payload))
             metrics_data.setdefault("chat_cache_store_ok", stored)
 
+        message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
+        if (
+            bool(getattr(request, "enable_structured_memory", False))
+            and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False))
+        ):
+            try:
+                message_metadata["structured_memory"] = extract_structured_memory_for_turn(
+                    user_text=str(request.message or ""),
+                    assistant_text=str(full_response or ""),
+                    max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                    max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                )
+            except Exception:
+                # Best-effort: never block chat persistence on memory extraction.
+                pass
+
         assistant_message = Message(
             id=assistant_message_id,
             tenant_id=tenant_id,
@@ -1077,7 +1166,7 @@ async def chat(
             content=full_response,
             citations=citations_data,
             token_count=num_tokens_from_string(full_response or ""),
-            message_metadata={**(metrics_data or {}), "request_id": str(request_id)},
+            message_metadata=message_metadata,
         )
         db.add(assistant_message)
 
@@ -1380,6 +1469,7 @@ async def stream_chat(
         client_ip = getattr(getattr(http_request, "client", None), "host", None)
         user_agent = http_request.headers.get("user-agent")
         enable_summary_memory = bool(getattr(request, "enable_summary_memory", False))
+        enable_structured_memory = bool(getattr(request, "enable_structured_memory", False))
 
         # Send an immediate SSE frame so clients/proxies don't see an idle connection.
         yield ": keepalive\n\n"
@@ -1507,6 +1597,28 @@ async def stream_chat(
                 summary_text = None
             if summary_text:
                 history_for_llm = [{"role": "system", "content": summary_text}] + history_for_llm
+        if (
+            bool(getattr(request, "enable_structured_memory", False))
+            and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False))
+            and conversation_id
+        ):
+            try:
+                records = _retrieve_structured_memory_records(
+                    db=db,
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    max_messages=int(getattr(settings, "STRUCTURED_MEMORY_LOOKBACK_MESSAGES", 80) or 80),
+                )
+                ctx = build_structured_memory_context(
+                    records=records,
+                    max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                    max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                    max_chars=int(getattr(settings, "STRUCTURED_MEMORY_MAX_CONTEXT_CHARS", 1200) or 1200),
+                )
+            except Exception:
+                ctx = ""
+            if ctx:
+                history_for_llm = [{"role": "system", "content": ctx}] + history_for_llm
 
         # Optional: chat response cache (Redis, best-effort).
         cache_key: str | None = None
@@ -1527,6 +1639,7 @@ async def stream_chat(
             history=request.history,
             enable_long_term_memory=bool(request.enable_long_term_memory),
             long_term_messages=long_term_messages,
+            enable_structured_memory=bool(getattr(request, "enable_structured_memory", False)),
             question=request.message,
             rag_config=rag_cfg,
             prompt_config=prompt_cfg,
@@ -1653,9 +1766,22 @@ async def stream_chat(
                             ip=client_ip,
                             user_agent=user_agent,
                             enable_summary_memory=enable_summary_memory,
+                            enable_structured_memory=enable_structured_memory,
                         )
                     )
                 return
+
+            message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
+            if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+                try:
+                    message_metadata["structured_memory"] = extract_structured_memory_for_turn(
+                        user_text=str(request.message or ""),
+                        assistant_text=str(answer_text or ""),
+                        max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                        max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                    )
+                except Exception:
+                    pass
 
             assistant_message = Message(
                 id=assistant_message_id,
@@ -1665,7 +1791,7 @@ async def stream_chat(
                 content=answer_text,
                 citations=citations_data,
                 token_count=num_tokens_from_string(answer_text or ""),
-                message_metadata={**(metrics_data or {}), "request_id": str(request_id)},
+                message_metadata=message_metadata,
             )
             db.add(assistant_message)
 
@@ -1961,12 +2087,25 @@ async def stream_chat(
                                 cache_key=cache_key,
                                 cache_eligible=False,
                                 structured_data=structured_data,
-                                ip=client_ip,
-                                user_agent=user_agent,
-                                enable_summary_memory=enable_summary_memory,
+                                    ip=client_ip,
+                                    user_agent=user_agent,
+                                    enable_summary_memory=enable_summary_memory,
+                                    enable_structured_memory=enable_structured_memory,
+                                )
                             )
-                        )
                     return
+
+                message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
+                if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+                    try:
+                        message_metadata["structured_memory"] = extract_structured_memory_for_turn(
+                            user_text=str(request.message or ""),
+                            assistant_text=str(full_response or ""),
+                            max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                            max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                        )
+                    except Exception:
+                        pass
 
                 assistant_message = Message(
                     id=assistant_message_id,
@@ -1976,7 +2115,7 @@ async def stream_chat(
                     content=full_response,
                     citations=citations_data,
                     token_count=num_tokens_from_string(full_response or ""),
-                    message_metadata={**(metrics_data or {}), "request_id": str(request_id)},
+                    message_metadata=message_metadata,
                 )
                 db.add(assistant_message)
 
@@ -2308,12 +2447,25 @@ async def stream_chat(
                             cache_key=cache_key,
                             cache_eligible=False,
                             structured_data=structured_data,
-                            ip=client_ip,
-                            user_agent=user_agent,
-                            enable_summary_memory=enable_summary_memory,
+                                ip=client_ip,
+                                user_agent=user_agent,
+                                enable_summary_memory=enable_summary_memory,
+                                enable_structured_memory=enable_structured_memory,
+                            )
                         )
-                    )
                 return
+
+            message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
+            if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+                try:
+                    message_metadata["structured_memory"] = extract_structured_memory_for_turn(
+                        user_text=str(request.message or ""),
+                        assistant_text=str(full_response or ""),
+                        max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                        max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                    )
+                except Exception:
+                    pass
 
             assistant_message = Message(
                 id=assistant_message_id,
@@ -2323,7 +2475,7 @@ async def stream_chat(
                 content=full_response,
                 citations=citations_data,
                 token_count=num_tokens_from_string(full_response or ""),
-                message_metadata={**(metrics_data or {}), "request_id": str(request_id)}
+                message_metadata=message_metadata,
             )
             db.add(assistant_message)
 

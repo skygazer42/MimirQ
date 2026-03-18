@@ -196,6 +196,17 @@ async def kg_search(
                             getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
                         ),
                         "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+                        # GraphRAG-like global search (community summaries) is optional and must be part
+                        # of the cache key to avoid mixing results across feature toggles.
+                        "KG_COMMUNITY_ENABLED": bool(getattr(settings, "KG_COMMUNITY_ENABLED", False)),
+                        "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN": bool(
+                            getattr(settings, "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN", True)
+                        ),
+                        "KG_COMMUNITY_MAX_EVENTS": int(getattr(settings, "KG_COMMUNITY_MAX_EVENTS", 0) or 0),
+                        "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT": int(
+                            getattr(settings, "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT", 0) or 0
+                        ),
+                        "KG_COMMUNITY_MIN_EDGE_WEIGHT": float(getattr(settings, "KG_COMMUNITY_MIN_EDGE_WEIGHT", 0.0) or 0.0),
                         "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(
                             getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0
                         ),

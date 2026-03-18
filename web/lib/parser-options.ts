@@ -85,6 +85,13 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
     badge: 'OCR',
   },
   {
+    value: 'qianfan_ocr',
+    label: 'Qianfan-OCR（外部）',
+    description: 'Qianfan-OCR · 端到端文档解析（支持 Layout-as-Thought，需自建服务）',
+    icon: 'deepseekocr',
+    badge: 'OCR',
+  },
+  {
     value: 'markitdown',
     label: 'MarkItDown',
     description: '微软 MarkItDown，多种格式转 Markdown',
@@ -110,6 +117,8 @@ function normalizeParserValue(value?: string) {
   if (normalized === 'olm-ocr') return 'olmocr'
   if (normalized === 'olmocr-pdf') return 'olmocr'
   if (normalized === 'deepseek-ocr') return 'deepseek_ocr'
+  if (normalized === 'qianfan-ocr') return 'qianfan_ocr'
+  if (normalized === 'qianfanocr') return 'qianfan_ocr'
   if (normalized === 'etl-4llm') return 'etl4llm'
   if (normalized === 'bisheng-unstructured') return 'etl4llm'
   if (normalized === 'bishengunstructured') return 'etl4llm'

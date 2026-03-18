@@ -224,6 +224,12 @@ def _build_pdf_fallback_candidates() -> list[str]:
     if deepseek_ocr_ok:
         candidates.append("deepseek_ocr")
 
+    qianfan_ocr_ok = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool(
+        (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
+    )
+    if qianfan_ocr_ok:
+        candidates.append("qianfan_ocr")
+
     etl4llm_ok = bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
         (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
     )

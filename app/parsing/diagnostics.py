@@ -80,6 +80,7 @@ def _filter_available_backends(file_ext: str, *, parser_factory: ParserFactory) 
             "auto",
             "docling",
             "deepseek_ocr",
+            "qianfan_ocr",
             "etl4llm",
             "mineru",
             "deepdoc",
@@ -132,6 +133,7 @@ def suggest_parser_backends(
         priority = [
             "auto",
             "deepseek_ocr",
+            "qianfan_ocr",
             "etl4llm",
             "mineru",
             "deepdoc",
@@ -191,4 +193,3 @@ __all__ = [
     "sample_pdf_text_pages",
     "suggest_parser_backends",
 ]
-

@@ -44,6 +44,9 @@ def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
     deepseek_ocr_ok = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(
         (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
     )
+    qianfan_ocr_ok = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool(
+        (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
+    )
 
     if score >= 0.8 and not is_scanned:
         if getattr(settings, "DOCLING_ENABLED", False):
@@ -61,6 +64,8 @@ def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
             return "mineru"
         if deepseek_ocr_ok:
             return "deepseek_ocr"
+        if qianfan_ocr_ok:
+            return "qianfan_ocr"
         if etl4llm_ok:
             return "etl4llm"
         if settings.DEEPDOC_ENABLED:
@@ -81,6 +86,8 @@ def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
         return "deepdoc"
     if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
         return "mineru"
+    if qianfan_ocr_ok:
+        return "qianfan_ocr"
     if _magicpdf_available():
         return "magicpdf"
     if settings.MARKITDOWN_ENABLED:

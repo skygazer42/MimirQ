@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
 import SpriteText from "three-spritetext"
@@ -8,6 +8,13 @@ import { Loader2 } from "lucide-react"
 
 import { getCssHslColor } from "@/lib/css-vars"
 import { buildGraphLinkProvenanceTooltipHtml } from "@/lib/graph-provenance"
+import { buildTypeColorMap, EVENT_COLOR, NODE_COLOR_PALETTE } from "./graph-viewer"
+
+function hashCode(s: string): number {
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0
+  return h
+}
 
 // Dynamic import to avoid SSR issues with Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
@@ -72,6 +79,20 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: Readonly<
     [onNodeClick]
   )
 
+  const typeColorMap = useMemo(() => buildTypeColorMap(data.nodes), [data.nodes])
+
+  const getNodeColor = useCallback((node: any) => {
+    if (node.color) return node.color
+    const kind = String(node?.meta?.kind ?? '').trim()
+    if (kind === 'event') return EVENT_COLOR
+    const type = String(node?.meta?.type ?? node?.type ?? '').trim()
+    if (type && typeColorMap.has(type)) return typeColorMap.get(type)!
+    if (typeof node.group === 'number' && node.group > 0) {
+      return NODE_COLOR_PALETTE[(node.group - 1) % NODE_COLOR_PALETTE.length]
+    }
+    return NODE_COLOR_PALETTE[Math.abs(hashCode(node.id || '')) % NODE_COLOR_PALETTE.length]
+  }, [typeColorMap])
+
   if (!mounted) return null
 
   const isDark = resolvedTheme === "dark"
@@ -92,7 +113,7 @@ export function KnowledgeGraph3D({ data, onNodeClick, width, height }: Readonly<
       
       // Node Styling
       nodeLabel="label"
-      nodeColor={(node: any) => node.color || primaryColor}
+      nodeColor={(node: any) => getNodeColor(node)}
       nodeRelSize={6}
       nodeOpacity={0.9}
       nodeResolution={16}

@@ -12,6 +12,7 @@ function normalizeBackend(value?: string): string {
   if (normalized === 'pymupdf' || normalized === 'fitz') return 'basic'
   if (normalized === 'magic-pdf') return 'magicpdf'
   if (normalized === 'deepseek-ocr' || normalized === 'deepseekocr') return 'deepseek_ocr'
+  if (normalized === 'qianfan-ocr' || normalized === 'qianfanocr') return 'qianfan_ocr'
   if (normalized === 'etl-4llm') return 'etl4llm'
   if (normalized === 'pan-doc') return 'pandoc'
   if (normalized === 'marker-pdf') return 'marker'
@@ -38,6 +39,7 @@ const PDF_BACKENDS = new Set([
   'mineru',
   'deepdoc',
   'deepseek_ocr',
+  'qianfan_ocr',
   'etl4llm',
   'markitdown',
   'docling',

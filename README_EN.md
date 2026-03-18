@@ -101,7 +101,7 @@ Real-time document chunking preview — no more black-box processing. Multiple c
 
 **🔄 Multi-Modal Document Parsing**
 
-Supports PDF, Markdown, HTML, TXT and more. Integrates PyMuPDF, MinerU, ETL4LLM, Marker, PaddleOCR-VL, olmOCR as parsing backends, extensible by design.
+Supports PDF, Markdown, HTML, TXT and more. Integrates PyMuPDF, MinerU, ETL4LLM, Marker, PaddleOCR-VL, olmOCR, Qianfan-OCR as parsing backends, extensible by design.
 
 </td>
     <td>
@@ -218,7 +218,7 @@ User Query → Query Embedding → Hybrid Retrieval Top-K (Vector + BM25 + SPLAD
 | **Frontend** | Next.js 14 (App Router) · React 19 · TypeScript · Tailwind CSS · shadcn/ui · Zustand · TanStack Query · Radix UI · Recharts · react-force-graph |
 | **Backend** | FastAPI · Python 3.11+ · LangChain 1.x · LangGraph · SQLAlchemy · Alembic · arq Worker · RAGAS |
 | **Retrieval** | Milvus (default) / FAISS / Chroma · BM25 · SPLADE · ColBERT · LTR · RRF Fusion |
-| **Parsing** | PyMuPDF · MinerU · ETL4LLM · Marker · Docling · PaddleOCR-VL · olmOCR |
+| **Parsing** | PyMuPDF · MinerU · ETL4LLM · Marker · Docling · PaddleOCR-VL · olmOCR · Qianfan-OCR |
 | **Storage** | PostgreSQL 15 · Redis 7 · MinIO · etcd |
 | **Deployment** | Docker Compose · Helm / K8s · Prometheus · Grafana · GitHub Actions CI |
 
@@ -282,7 +282,7 @@ MimirQ supports multiple deployment modes for different scenarios:
 | **Lite Mode** | `make up-lite` | Chroma/FAISS instead of Milvus, no MinIO — quick evaluation |
 | **Dev Mode** | `make up-infra` | Infrastructure only, run backend/frontend locally |
 | **Helm / K8s** | `helm install` | Production-grade with HPA, PDB, CronJob, PrometheusRule |
-| **Parser Extensions** | `make up-etl4llm` | Enable ETL4LLM / Marker / MinerU / PaddleOCR-VL parsers |
+| **Parser Extensions** | `make up-etl4llm` | Enable ETL4LLM / Marker / MinerU / PaddleOCR-VL / Qianfan-OCR parsers |
 
 <details>
 <summary><b>Production Deployment Tips</b></summary>
