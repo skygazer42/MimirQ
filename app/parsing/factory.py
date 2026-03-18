@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from app.parsing.parsers.paddle_vl_parser import PaddleVLParser
     from app.parsing.parsers.pandoc_parser import PandocParser
     from app.parsing.parsers.pdf_parser import PDFParser
+    from app.parsing.parsers.qianfan_ocr_parser import QianfanOCRParser
 
 
 class ParserFactory:
@@ -46,6 +47,7 @@ class ParserFactory:
         "marker",
         "paddle_vl",
         "olmocr",
+        "qianfan_ocr",
         "mineru",
         "deepdoc",
         "deepseek_ocr",
@@ -107,6 +109,7 @@ class ParserFactory:
         self._marker_parser: MarkerParser | None = None
         self._paddle_vl_parser: PaddleVLParser | None = None
         self._olmocr_parser: OlmocrParser | None = None
+        self._qianfan_ocr_parser: QianfanOCRParser | None = None
         self._mineru_parser: MinerUParser | None = None
         self._deepdoc_parser: DeepDocParser | None = None
         self._deepseek_ocr_parser: DeepSeekOCRParser | None = None
@@ -123,6 +126,8 @@ class ParserFactory:
             logger.debug("[pdf] PaddleOCR-VL parser available (requires selection)")
         if bool(getattr(settings, "OLMOCR_ENABLED", False)) and bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip()):
             logger.debug("[pdf] olmOCR parser available (requires selection)")
+        if bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()):
+            logger.debug("[pdf] Qianfan-OCR parser available (requires selection)")
         if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
             logger.debug("[pdf] MinerU parser available (requires selection)")
         if settings.DEEPDOC_ENABLED:
@@ -283,6 +288,16 @@ class ParserFactory:
                 raise ValueError("olmOCR parser requires OLMOCR_API_URL.")
             return "olmocr"
 
+        if normalized == "qianfan_ocr":
+            if not bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)):
+                raise ValueError(
+                    "Qianfan-OCR parser is not enabled. "
+                    "Please set QIANFAN_OCR_ENABLED=True and configure QIANFAN_OCR_API_URL."
+                )
+            if not bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()):
+                raise ValueError("Qianfan-OCR parser requires QIANFAN_OCR_API_URL.")
+            return "qianfan_ocr"
+
         if normalized == "mineru":
             if not (settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)):
                 raise ValueError(
@@ -400,7 +415,7 @@ class ParserFactory:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
             # Some parsers need dataset/document ids to produce stable artifacts.
-            if backend in {"marker", "paddle_vl", "olmocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+            if backend in {"marker", "paddle_vl", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 documents = parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -505,7 +520,7 @@ class ParserFactory:
             else:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
-            if selected_backend in {"marker", "paddle_vl", "olmocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+            if selected_backend in {"marker", "paddle_vl", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 return parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -603,7 +618,7 @@ class ParserFactory:
         file_ext = (file_ext or "").strip().lower()
 
         # PDF advanced backends (may fail to import due to binary deps or external services); fall back to basic PyMuPDF.
-        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "paddle_vl", "olmocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
+        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "paddle_vl", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
             logger.warning(
                 "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
                 backend,
@@ -769,6 +784,14 @@ class ParserFactory:
                 logger.info("[pdf] Initializing olmOCR parser (external service)")
                 self._olmocr_parser = OlmocrParser()
             return self._olmocr_parser
+
+        if backend == "qianfan_ocr":
+            if self._qianfan_ocr_parser is None:
+                from app.parsing.parsers.qianfan_ocr_parser import QianfanOCRParser
+
+                logger.info("[pdf] Initializing Qianfan-OCR parser (external service)")
+                self._qianfan_ocr_parser = QianfanOCRParser()
+            return self._qianfan_ocr_parser
 
         if backend == "mineru":
             if self._mineru_parser is None:

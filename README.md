@@ -101,7 +101,7 @@
 
 **🔄 多模态文档解析**
 
-支持 PDF、Markdown、HTML、TXT 等格式。集成 PyMuPDF、MinerU、ETL4LLM、Marker、PaddleOCR-VL、olmOCR 等多种解析后端，可按需扩展。
+支持 PDF、Markdown、HTML、TXT 等格式。集成 PyMuPDF、MinerU、ETL4LLM、Marker、PaddleOCR-VL、olmOCR、Qianfan-OCR 等多种解析后端，可按需扩展。
 
 </td>
     <td>
@@ -218,7 +218,7 @@ Milvus 十亿级向量检索、PostgreSQL 持久化、OpenAI 兼容接口。Dock
 | **前端** | Next.js 14 (App Router) · React 19 · TypeScript · Tailwind CSS · shadcn/ui · Zustand · TanStack Query · Radix UI · Recharts · react-force-graph |
 | **后端** | FastAPI · Python 3.11+ · LangChain 1.x · LangGraph · SQLAlchemy · Alembic · arq Worker · RAGAS |
 | **检索** | Milvus (默认) / FAISS / Chroma · BM25 · SPLADE · ColBERT · LTR · RRF Fusion |
-| **解析** | PyMuPDF · MinerU · ETL4LLM · Marker · Docling · PaddleOCR-VL · olmOCR |
+| **解析** | PyMuPDF · MinerU · ETL4LLM · Marker · Docling · PaddleOCR-VL · olmOCR · Qianfan-OCR |
 | **存储** | PostgreSQL 15 · Redis 7 · MinIO · etcd |
 | **部署** | Docker Compose · Helm / K8s · Prometheus · Grafana · GitHub Actions CI |
 
@@ -282,7 +282,7 @@ MimirQ 提供多种部署方式，适应从开发到生产的各种场景：
 | **轻量模式** | `make up-lite` | Chroma/FAISS 替代 Milvus，无需 MinIO，适合快速体验 |
 | **开发模式** | `make up-infra` | 仅基础设施，后端/前端本地运行 |
 | **Helm / K8s** | `helm install` | 生产级部署，含 HPA、PDB、CronJob、PrometheusRule |
-| **解析器扩展** | `make up-etl4llm` | 启用 ETL4LLM / Marker / MinerU / PaddleOCR-VL 等解析器 |
+| **解析器扩展** | `make up-etl4llm` | 启用 ETL4LLM / Marker / MinerU / PaddleOCR-VL / Qianfan-OCR 等解析器 |
 
 <details>
 <summary><b>生产部署建议</b></summary>

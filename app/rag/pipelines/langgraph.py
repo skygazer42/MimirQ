@@ -11,6 +11,7 @@ import hashlib
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, TypedDict
@@ -33,7 +34,12 @@ from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.checkpointer.factory import get_checkpointer
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.conversation import format_history_text
+from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
+from app.rag.core.sentence_citations import (
+    render_sentence_citations_inline,
+    render_sentence_citations_markdown,
+)
 from app.rag.core.text import (
     extract_evidence_text,
     parse_json_from_text,
@@ -369,6 +375,52 @@ def _generate_node(state: RAGState) -> RAGState:
         metrics["context_evidence_min_sentence_chars"] = (
             int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
         )
+        faithfulness_meta: dict[str, Any] = {
+            "score": None,
+            "supported_claims": 0,
+            "total_claims": 0,
+            "unsupported_claims": [],
+            "method": "claim_support_ratio",
+        }
+        if bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
+            evidence_text = "\n".join(
+                [
+                    str(getattr(d, "page_content", "") or "")
+                    for d in (state.get("docs") or [])
+                    if str(getattr(d, "page_content", "") or "").strip()
+                ]
+            )
+            max_evidence_chars = max(
+                0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000)
+            )
+            if max_evidence_chars and len(evidence_text) > max_evidence_chars:
+                evidence_text = evidence_text[:max_evidence_chars]
+            faithfulness_meta = compute_faithfulness_score(
+                answer=str(answer or ""),
+                evidence_text=evidence_text,
+                max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
+                verifier_mode=(
+                    str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap").strip().lower()
+                ),
+                verifier_enable_contradiction_check=bool(
+                    getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
+                ),
+                use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+                nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+                nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+                nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+            )
+        metrics["sentence_citations_count"] = 0
+        metrics["sentence_citations"] = []
+        metrics["sentence_citations_inline_enabled"] = bool(getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False))
+        metrics["sentence_citations_inline_used"] = False
+        metrics["sentence_citations_inline_count"] = 0
+        metrics["faithfulness_score_enabled"] = bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True))
+        metrics["faithfulness_score_method"] = str(faithfulness_meta.get("method") or "claim_support_ratio")
+        metrics["faithfulness_score"] = faithfulness_meta.get("score")
+        metrics["faithfulness_supported_claims"] = int(faithfulness_meta.get("supported_claims") or 0)
+        metrics["faithfulness_total_claims"] = int(faithfulness_meta.get("total_claims") or 0)
+        metrics["faithfulness_unsupported_claims"] = list(faithfulness_meta.get("unsupported_claims") or [])
 
         base = 0.0
         base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
@@ -545,6 +597,72 @@ def _generate_node(state: RAGState) -> RAGState:
         except Exception:
             claim_evidence = []
 
+    faithfulness_meta: dict[str, Any] = {
+        "score": None,
+        "supported_claims": 0,
+        "total_claims": 0,
+        "unsupported_claims": [],
+        "method": "claim_support_ratio",
+    }
+    if bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
+        evidence_text = "\n".join(
+            [
+                str(getattr(d, "page_content", "") or "")
+                for d in (state.get("docs") or [])
+                if str(getattr(d, "page_content", "") or "").strip()
+            ]
+        )
+        max_evidence_chars = max(
+            0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000)
+        )
+        if max_evidence_chars and len(evidence_text) > max_evidence_chars:
+            evidence_text = evidence_text[:max_evidence_chars]
+        faithfulness_meta = compute_faithfulness_score(
+            answer=str(answer or ""),
+            evidence_text=evidence_text,
+            max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
+            verifier_mode=claim_verifier_mode,
+            verifier_enable_contradiction_check=bool(claim_verifier_enable_contradiction_check),
+            use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+            nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+            nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+            nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+        )
+
+    sentence_citations_inline_enabled = bool(getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False))
+    sentence_citations_inline_used = False
+    sentence_citations_inline_count = 0
+    sentence_citations_inline_style = str(
+        getattr(settings, "SENTENCE_CITATIONS_INLINE_STYLE", "appendix") or "appendix"
+    ).strip().lower() or "appendix"
+    if sentence_citations_inline_style not in {"appendix", "inline"}:
+        sentence_citations_inline_style = "appendix"
+    sentence_citations_inline_fallback_reason: str | None = None
+
+    if (
+        not bool(state.get("structured_output"))
+        and sentence_citations_inline_enabled
+        and sentence_citations_inline_style == "inline"
+    ):
+        if claim_check_mode == "text":
+            inline_text, rendered_count = render_sentence_citations_inline(
+                claim_evidence,
+                max_items=max(0, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8)),
+                max_evidence_per_claim=max(
+                    1, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM", 2) or 2)
+                ),
+            )
+            if inline_text:
+                answer = inline_text
+                sentence_citations_inline_used = True
+                sentence_citations_inline_count = int(rendered_count or 0)
+            else:
+                sentence_citations_inline_style = "appendix"
+                sentence_citations_inline_fallback_reason = "inline_render_empty"
+        else:
+            sentence_citations_inline_style = "appendix"
+            sentence_citations_inline_fallback_reason = "claim_check_not_text"
+
     # Append cited images as inline Markdown to the answer (non-structured output only, configurable)
     if not bool(state.get("structured_output")) and bool(settings.SHOW_IMAGE_IN_ANSWER) and settings.IMAGE_APPEND_MAX > 0:
         citations = state.get("citations") or []
@@ -564,7 +682,27 @@ def _generate_node(state: RAGState) -> RAGState:
             parts = ["\n\n---\n\n### Related Images\n"]
             for i, url in enumerate(image_urls, 1):
                 parts.append(f"![Referenced Image {i}]({url})")
-            answer = (answer or "") + "\n\n".join(parts) + "\n"
+            images_md = "\n\n".join(parts) + "\n"
+            images_md_safe = redact_text(images_md) if pii_on else images_md
+            answer = (answer or "") + images_md_safe
+
+    if (
+        not bool(state.get("structured_output"))
+        and sentence_citations_inline_enabled
+        and sentence_citations_inline_style == "appendix"
+    ):
+        suffix_md, rendered_count = render_sentence_citations_markdown(
+            claim_evidence,
+            max_items=max(0, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8)),
+            max_evidence_per_claim=max(
+                1, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM", 2) or 2)
+            ),
+        )
+        if suffix_md:
+            suffix_md_safe = redact_text(suffix_md) if pii_on else suffix_md
+            answer = (answer or "") + suffix_md_safe
+            sentence_citations_inline_used = True
+            sentence_citations_inline_count = int(rendered_count or 0)
 
     metrics = dict(state.get("metrics") or {})
     metrics["generation_elapsed_sec"] = round(generation_elapsed, 3)
@@ -599,6 +737,19 @@ def _generate_node(state: RAGState) -> RAGState:
         "model_name": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
     }
     metrics["claim_evidence"] = claim_evidence
+    metrics["sentence_citations_count"] = int(len(claim_evidence or []))
+    metrics["sentence_citations"] = claim_evidence
+    metrics["sentence_citations_inline_enabled"] = bool(sentence_citations_inline_enabled)
+    metrics["sentence_citations_inline_style"] = str(sentence_citations_inline_style)
+    metrics["sentence_citations_inline_used"] = bool(sentence_citations_inline_used)
+    metrics["sentence_citations_inline_count"] = int(sentence_citations_inline_count or 0)
+    metrics["sentence_citations_inline_fallback_reason"] = sentence_citations_inline_fallback_reason
+    metrics["faithfulness_score_enabled"] = bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True))
+    metrics["faithfulness_score_method"] = str(faithfulness_meta.get("method") or "claim_support_ratio")
+    metrics["faithfulness_score"] = faithfulness_meta.get("score")
+    metrics["faithfulness_supported_claims"] = int(faithfulness_meta.get("supported_claims") or 0)
+    metrics["faithfulness_total_claims"] = int(faithfulness_meta.get("total_claims") or 0)
+    metrics["faithfulness_unsupported_claims"] = list(faithfulness_meta.get("unsupported_claims") or [])
     metrics["visible_evidence_only_enabled"] = bool(strict_visible)
     metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
     base = generation_elapsed
@@ -794,6 +945,126 @@ def generate_task(state: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _run_corrective_loop(
+    state: dict[str, Any],
+    *,
+    retrieve_fn: Callable[[dict[str, Any]], dict[str, Any]],
+    generate_fn: Callable[[dict[str, Any]], dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    Minimal CRAG-like loop (feature-flagged):
+    - If retrieval abstains (weak/empty evidence): retry with a recall-first profile.
+    - If answer faithfulness is low: retry retrieval + generation once (bounded).
+
+    This is intentionally conservative:
+    - small number of attempts
+    - deterministic overrides (profile + multi-query)
+    - metrics include a compact corrective summary for debugging.
+    """
+    corrective_enabled = bool(getattr(settings, "RAG_CORRECTIVE_ENABLED", False))
+    max_attempts_raw = int(getattr(settings, "RAG_CORRECTIVE_MAX_ATTEMPTS", 2) or 2)
+    max_attempts = max(1, min(max_attempts_raw, 3))
+    min_faithfulness = float(getattr(settings, "RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE", 0.75) or 0.75)
+    min_faithfulness = min(1.0, max(0.0, float(min_faithfulness)))
+
+    # Second-pass retrieval overrides (best-effort).
+    second_profile = str(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_PROFILE", "recall50") or "recall50").strip().lower()
+    if second_profile not in {"recall20", "recall50", "coverage80", "hierarchy_recall20", "hierarchy_recall20_expand"}:
+        second_profile = "recall50"
+    second_enable_mq = bool(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY", True))
+    second_mq_count = int(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT", 5) or 5)
+    second_mq_count = max(0, min(second_mq_count, int(getattr(settings, "MULTI_QUERY_COUNT_CAP", 8) or 8)))
+
+    base_state = dict(state or {})
+    metrics0 = dict(base_state.get("metrics") or {})
+    attempt_summaries: list[dict[str, Any]] = []
+    reason_codes: list[str] = []
+    used = False
+
+    last_state: dict[str, Any] = dict(base_state)
+
+    if not corrective_enabled or max_attempts <= 1:
+        last_state = retrieve_fn(dict(base_state))
+        last_state = generate_fn(dict(last_state))
+        return last_state
+
+    for attempt in range(1, max_attempts + 1):
+        attempt_state = dict(base_state)
+        attempt_metrics = dict(metrics0)
+        attempt_metrics["corrective_attempt"] = int(attempt)
+        attempt_state["metrics"] = attempt_metrics
+
+        if attempt > 1:
+            used = True
+            attempt_state["retrieval_profile"] = second_profile
+            if second_enable_mq:
+                attempt_state["enable_multi_query"] = True
+                attempt_state["multi_query_count"] = int(second_mq_count)
+
+        retrieved = retrieve_fn(attempt_state)
+        last_state = dict(retrieved or {})
+        metrics_r = dict(last_state.get("metrics") or {})
+        metrics0 = metrics_r
+
+        attempt_summary: dict[str, Any] = {
+            "attempt": int(attempt),
+            "retrieval_profile": last_state.get("retrieval_profile"),
+            "top_k": last_state.get("top_k"),
+            "retrieval_mode": metrics_r.get("retrieval_mode") or last_state.get("retrieval_mode"),
+            "abstain_triggered": bool(last_state.get("abstain_triggered")),
+        }
+
+        if bool(last_state.get("abstain_triggered")) and attempt < max_attempts:
+            if "abstain" not in reason_codes:
+                reason_codes.append("abstain")
+            attempt_summaries.append(attempt_summary)
+            continue
+
+        generated = generate_fn(last_state)
+        last_state = dict(generated or {})
+        metrics_g = dict(last_state.get("metrics") or {})
+        metrics0 = metrics_g
+
+        faithfulness_score = metrics_g.get("faithfulness_score")
+        attempt_summary.update(
+            {
+                "faithfulness_score": faithfulness_score,
+                "claim_check_removed": metrics_g.get("claim_check_removed"),
+                "claim_check_total": metrics_g.get("claim_check_total"),
+            }
+        )
+        attempt_summaries.append(attempt_summary)
+
+        low_faithfulness = False
+        try:
+            if faithfulness_score is not None:
+                low_faithfulness = float(faithfulness_score) < float(min_faithfulness)
+        except Exception:
+            low_faithfulness = False
+
+        if low_faithfulness and attempt < max_attempts:
+            if "faithfulness_lt_min" not in reason_codes:
+                reason_codes.append("faithfulness_lt_min")
+            continue
+
+        break
+
+    # Attach a compact summary for debugging (PII-safe).
+    metrics_final = dict(last_state.get("metrics") or {})
+    metrics_final["corrective_enabled"] = bool(corrective_enabled)
+    metrics_final["corrective_used"] = bool(used)
+    metrics_final["corrective_max_attempts"] = int(max_attempts)
+    metrics_final["corrective_reason_codes"] = list(reason_codes or [])[:8]
+    metrics_final["corrective_attempts"] = attempt_summaries[:3]
+    metrics_final["corrective_second_pass"] = {
+        "retrieval_profile": second_profile,
+        "enable_multi_query": bool(second_enable_mq),
+        "multi_query_count": int(second_mq_count),
+    }
+    last_state["metrics"] = metrics_final
+    return last_state
+
+
 @entrypoint(checkpointer=_get_checkpointer(), store=get_langgraph_store(), context_schema=RAGRuntimeContext)
 def rag_workflow(state: dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> dict[str, Any]:
     """
@@ -818,10 +1089,11 @@ def rag_workflow(state: dict[str, Any], runtime: Runtime[RAGRuntimeContext]) -> 
     if metrics:
         state["metrics"] = metrics
 
-    state = retrieve_task(state).result()
-
-    # Execute generation task
-    state = generate_task(state).result()
+    state = _run_corrective_loop(
+        state,
+        retrieve_fn=lambda s: retrieve_task(s).result(),
+        generate_fn=lambda s: generate_task(s).result(),
+    )
 
     return state
 

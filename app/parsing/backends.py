@@ -17,6 +17,9 @@ _BACKEND_ALIASES: dict[str, str] = {
     # DeepSeek OCR (SiliconFlow)
     "deepseek-ocr": "deepseek_ocr",
     "deepseekocr": "deepseek_ocr",
+    # Qianfan OCR
+    "qianfan-ocr": "qianfan_ocr",
+    "qianfanocr": "qianfan_ocr",
     # ETL4LLM (layout/table/image-aware parsing service)
     "etl4llm": "etl4llm",
     "etl-4llm": "etl4llm",

@@ -200,6 +200,8 @@ def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
     # Enable paddle_vl and provide a convert endpoint.
     monkeypatch.setattr(settings, "PADDLE_VL_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "PADDLE_VL_API_URL", "http://paddlevl.local/convert", raising=False)
+    monkeypatch.setattr(settings, "QIANFAN_OCR_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "QIANFAN_OCR_API_URL", "http://qianfan.local/convert", raising=False)
 
     # Avoid real DB/Milvus connectivity in unit tests.
     import app.core.database as db_module
@@ -244,3 +246,7 @@ def test_settings_status_probes_paddlevl_health(monkeypatch):  # noqa: ANN001
     assert paddle.get("enabled") is True
     assert paddle.get("available") is True
     assert (paddle.get("health") or {}).get("pipeline_version") == "v1.5"
+
+    qianfan = parsers.get("qianfan_ocr") or {}
+    assert qianfan.get("enabled") is True
+    assert qianfan.get("available") is True

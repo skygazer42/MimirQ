@@ -25,6 +25,13 @@ __all__ = ["select_embedding_model", "test_embedding_model_status", "DEFAULT_EMB
 
 
 def __getattr__(name: str):
+    if name == "core":
+        # Some tests/monkeypatches resolve dotted paths like "app.rag.core.*" by
+        # attribute-walking the package. Provide a lazy import hook so those paths
+        # remain stable even when `app.rag` is re-imported in isolation.
+        import importlib
+
+        return importlib.import_module("app.rag.core")
     if name == "retriever":
         # Some tests/monkeypatches resolve dotted paths like "app.rag.retriever.*" by
         # attribute-walking the package. Provide a lazy import hook so those paths
@@ -45,7 +52,6 @@ def __getattr__(name: str):
 
         return DEFAULT_EMBED_MODELS
     raise AttributeError(name)
-
 
 
 

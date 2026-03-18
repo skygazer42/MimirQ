@@ -9479,7 +9479,7 @@ async def preview_document(
                     path = Path(raw).resolve(strict=False)
                     if not path.exists():
                         continue
-                    if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".etl4llm", ".marker", ".paddlevl"}):
+                    if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".qianfan_ocr", ".etl4llm", ".marker", ".paddlevl", ".olmocr"}):
                         continue
                     path.relative_to(tenant_root)
                 except Exception:

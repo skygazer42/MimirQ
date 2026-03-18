@@ -105,6 +105,24 @@ def test_choose_pdf_backend_scanned_prefers_deepseek_ocr_when_enabled(monkeypatc
     assert choose_pdf_backend(quality, None) == "deepseek_ocr"
 
 
+def test_choose_pdf_backend_scanned_prefers_qianfan_ocr_when_enabled(monkeypatch: pytest.MonkeyPatch):
+    _set_flags(
+        monkeypatch,
+        MINERU_ENABLED=False,
+        MINERU_API_TOKEN="",
+        MINERU_LOCAL_SERVER_URL="",
+        DEEPSEEK_OCR_ENABLED=False,
+        SILICONFLOW_API_KEY="",
+        QIANFAN_OCR_ENABLED=True,
+        QIANFAN_OCR_API_URL="http://localhost:2090/convert",
+        ETL4LLM_ENABLED=True,
+        ETL4LLM_API_URL="http://localhost:10001/v1/etl4llm/predict",
+        DEEPDOC_ENABLED=True,
+    )
+    quality = {"score": 0.2, "is_scanned": True}
+    assert choose_pdf_backend(quality, None) == "qianfan_ocr"
+
+
 def test_choose_pdf_backend_high_quality_prefers_etl4llm_when_docling_disabled(monkeypatch: pytest.MonkeyPatch):
     _set_flags(
         monkeypatch,

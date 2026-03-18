@@ -472,6 +472,14 @@ class Settings(BaseSettings):
     OLMOCR_API_URL: str = ""
     OLMOCR_TIMEOUT_SEC: int = 1800
 
+    # Qianfan-OCR (PDF/Image -> Markdown external service; optional)
+    QIANFAN_OCR_ENABLED: bool = False
+    # Full endpoint URL, e.g. http://localhost:2090/convert (depends on your Qianfan-OCR wrapper service).
+    QIANFAN_OCR_API_URL: str = ""
+    QIANFAN_OCR_TIMEOUT_SEC: int = 1800
+    # Whether to request Layout-as-Thought mode from the external service.
+    QIANFAN_OCR_LAYOUT_AS_THOUGHT: bool = False
+
     # PDF quality OCR validation (used by parse-preview scoring)
     RAPIDOCR_ENABLED: bool = False
 
@@ -1135,6 +1143,9 @@ class Settings(BaseSettings):
     QUERY_REWRITE_MAX_CHARS: int = 120
     ENABLE_MULTI_QUERY: bool = False
     MULTI_QUERY_COUNT: int = 3
+    # Safety cap for LLM-generated multi-query fanout (prevents accidental 100+ queries).
+    # Set this to 40+ only when you have explicit retrieval budgets/parallelism configured.
+    MULTI_QUERY_COUNT_CAP: int = 8
     MULTI_QUERY_TEMPERATURE: float = 0.2
     MULTI_QUERY_MAX_CHARS: int = 200
     # Multi-query diversification: cap how many final top_k citations can come from `mq` query variants.
@@ -1145,11 +1156,38 @@ class Settings(BaseSettings):
     HYDE_TEMPERATURE: float = 0.2
     HYDE_MAX_CHARS: int = 200
     HYDE_OUTPUT_MAX_CHARS: int = 800
+    ENABLE_STEP_BACK_QUERY: bool = False
+    STEP_BACK_TEMPERATURE: float = 0.2
+    STEP_BACK_MAX_CHARS: int = 200
+    STEP_BACK_OUTPUT_MAX_CHARS: int = 300
     ENABLE_QUERY_DECOMPOSITION: bool = False
     QUERY_DECOMPOSITION_MAX_SUBQUESTIONS: int = 3
     QUERY_DECOMPOSITION_TEMPERATURE: float = 0.2
     QUERY_DECOMPOSITION_MIN_CHARS: int = 60
     QUERY_DECOMPOSITION_MAX_CHARS: int = 400
+    # Temporal intelligence (optional): detect "latest/current/as-of" intent and apply a small
+    # recency-aware boost to retrieved documents (re-ranking only; no filtering).
+    RAG_TEMPORAL_INTENT_ENABLED: bool = False
+    RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED: bool = True
+    RAG_TEMPORAL_INTENT_MAX_DOCS: int = 200
+    # Online faithfulness proxy (claim support ratio against retrieved evidence text).
+    FAITHFULNESS_SCORE_ENABLED: bool = True
+    FAITHFULNESS_SCORE_MAX_CLAIMS: int = 24
+    FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS: int = 24_000
+    SENTENCE_CITATIONS_INLINE_ENABLED: bool = False
+    # appendix (default): add a compact "Sentence Citations" section at the end of the answer
+    # inline: rewrite the answer into one-claim-per-line with inline citation brackets
+    SENTENCE_CITATIONS_INLINE_STYLE: str = "appendix"  # appendix | inline
+    SENTENCE_CITATIONS_INLINE_MAX_ITEMS: int = 8
+    SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM: int = 2
+    # Corrective RAG (CRAG-like) loop: retry retrieval with a recall-first profile when
+    # evidence is weak (abstain) or answer faithfulness is low. Default off.
+    RAG_CORRECTIVE_ENABLED: bool = False
+    RAG_CORRECTIVE_MAX_ATTEMPTS: int = 2
+    RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE: float = 0.75
+    RAG_CORRECTIVE_SECOND_PASS_PROFILE: str = "recall50"
+    RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY: bool = True
+    RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT: int = 5
     # When enabled, use a deterministic heuristic decomposition fallback when LLM decomposition
     # is unavailable/fails. Keeps "no LLM" deployments usable.
     QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED: bool = True
@@ -1283,6 +1321,45 @@ class Settings(BaseSettings):
     VISION_LLM_TEMPERATURE: float = Field(
         default=0.0,
         validation_alias=AliasChoices("MIMIRQ_VISION_LLM_TEMPERATURE", "VISION_LLM_TEMPERATURE"),
+    )
+    # Vision-native RAG (VLM-as-Reader): use a VLM to read retrieved image evidence
+    # and inject extracted text into the RAG context.
+    #
+    # Notes:
+    # - Requires VISION_LLM_ENABLED=true and valid VISION_LLM_* config.
+    # - Disabled by default to keep out-of-the-box deployments lightweight.
+    VISION_RAG_READER_ENABLED: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("MIMIRQ_VISION_RAG_READER_ENABLED", "VISION_RAG_READER_ENABLED"),
+    )
+    VISION_RAG_READER_MAX_IMAGES: int = Field(
+        default=2,
+        validation_alias=AliasChoices("MIMIRQ_VISION_RAG_READER_MAX_IMAGES", "VISION_RAG_READER_MAX_IMAGES"),
+    )
+    VISION_RAG_READER_MAX_IMAGE_BYTES: int = Field(
+        default=3_000_000,
+        validation_alias=AliasChoices("MIMIRQ_VISION_RAG_READER_MAX_IMAGE_BYTES", "VISION_RAG_READER_MAX_IMAGE_BYTES"),
+    )
+    VISION_RAG_READER_MAX_OUTPUT_CHARS: int = Field(
+        default=1500,
+        validation_alias=AliasChoices("MIMIRQ_VISION_RAG_READER_MAX_OUTPUT_CHARS", "VISION_RAG_READER_MAX_OUTPUT_CHARS"),
+    )
+    # Optional: generate the final answer directly with the Vision LLM when image evidence is present.
+    # This is closer to "Vision-native RAG" but can be more expensive than VLM-as-Reader.
+    VISION_RAG_GENERATION_ENABLED: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("MIMIRQ_VISION_RAG_GENERATION_ENABLED", "VISION_RAG_GENERATION_ENABLED"),
+    )
+    VISION_RAG_GENERATION_MAX_IMAGES: int = Field(
+        default=2,
+        validation_alias=AliasChoices("MIMIRQ_VISION_RAG_GENERATION_MAX_IMAGES", "VISION_RAG_GENERATION_MAX_IMAGES"),
+    )
+    VISION_RAG_GENERATION_MAX_IMAGE_BYTES: int = Field(
+        default=3_000_000,
+        validation_alias=AliasChoices(
+            "MIMIRQ_VISION_RAG_GENERATION_MAX_IMAGE_BYTES",
+            "VISION_RAG_GENERATION_MAX_IMAGE_BYTES",
+        ),
     )
     MARKITDOWN_ENABLED: bool = False
     # Pandoc Office/HTML -> Markdown parser (optional; requires system pandoc)
@@ -1435,6 +1512,23 @@ class Settings(BaseSettings):
     KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS: int = 120
     KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS: int = 140
     KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS: float = 0.05
+    # KG global-search (GraphRAG-like) community detection + community/global summaries.
+    #
+    # Important:
+    # - This runs on the *recall subgraph* (events/entities recalled for the query), not the whole dataset.
+    # - Default OFF to preserve backward-compatible KG behavior and latency.
+    KG_COMMUNITY_ENABLED: bool = False
+    # Only run community detection when the query-mode classifier saw explicit global/overview intent.
+    # This avoids adding latency to normal factoid queries that still route to "global" by fallback.
+    KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN: bool = True
+    KG_COMMUNITY_MAX_EVENTS: int = 200
+    KG_COMMUNITY_MAX_ENTITIES_PER_EVENT: int = 12
+    KG_COMMUNITY_MIN_EDGE_WEIGHT: float = 2.0
+    KG_COMMUNITY_LABEL_PROPAGATION_ITERS: int = 25
+    KG_COMMUNITY_MAX_COMMUNITIES: int = 12
+    KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY: int = 12
+    KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY: int = 6
+    KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS: int = 3200
     # Entity resolution (Wave15): merge/split actions may optionally update KG entity vectors.
     #
     # Why off by default:
@@ -1489,6 +1583,13 @@ class Settings(BaseSettings):
     LONG_TERM_MEMORY_MAX_MESSAGES: int = 200
     MEMORY_STORE_TYPE: str = "memory"  # memory | sqlite
     MEMORY_SQLITE_PATH: str = "./data/memory.db"
+    # Structured memory (entity memory + lightweight fact memory), stored per assistant turn in
+    # Message.message_metadata to avoid schema migrations for a first iteration.
+    STRUCTURED_MEMORY_ENABLED: bool = False
+    STRUCTURED_MEMORY_LOOKBACK_MESSAGES: int = 80
+    STRUCTURED_MEMORY_MAX_ENTITIES: int = 20
+    STRUCTURED_MEMORY_MAX_FACTS: int = 8
+    STRUCTURED_MEMORY_MAX_CONTEXT_CHARS: int = 1200
     # Short-term memory management
     SHORT_TERM_MEMORY_MAX_TOKENS: int = 4000
     SHORT_TERM_MEMORY_STRATEGY: str = "last"  # first | last

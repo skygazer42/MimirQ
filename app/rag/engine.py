@@ -25,6 +25,7 @@ from app.core.utils import parse_csv
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.claim_evidence import build_claim_evidence_map
 from app.rag.core.conversation import format_history_text
+from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.core.query_rewrite_strategy import (
@@ -32,6 +33,15 @@ from app.rag.core.query_rewrite_strategy import (
     get_query_rewrite_prompt_template,
 )
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides, is_recall_first_profile
+from app.rag.core.sentence_citations import (
+    render_sentence_citations_inline,
+    render_sentence_citations_markdown,
+)
+from app.rag.core.temporal import (
+    apply_recency_boost,
+    detect_temporal_intent,
+    fetch_document_updated_ts,
+)
 from app.rag.core.text import (
     build_abstain_followup,
     extract_evidence_text,
@@ -43,6 +53,11 @@ from app.rag.core.text import (
     should_rewrite_query,
     split_into_claims,
     verify_claim_with_fallback,
+)
+from app.rag.core.vision_reader import (
+    build_vision_image_blocks,
+    build_vision_reader_context_docs,
+    stream_vision_chat_completions_tokens,
 )
 from app.rag.kg.pipeline import kg_search
 from app.rag.policy.intent_router import route_retrieval_preset
@@ -190,6 +205,21 @@ Requirements:
 {query}
 
 [Hypothetical Passage]"""
+        )
+
+        # Step-Back: abstract a concrete question into a broader retrieval query.
+        self.step_back_prompt = ChatPromptTemplate.from_template(
+            """You are a knowledge base retrieval assistant. Rewrite the following "Retrieval Query" into one broader, higher-level "step-back query" that captures background principles relevant to the same topic.
+Requirements:
+1) Output plain text only, one concise question
+2) Keep key entities/domain constraints from the original query
+3) Do not answer the question and do not output JSON/Markdown
+4) Avoid returning the original query verbatim
+
+[Retrieval Query]
+{query}
+
+[Step-Back Query]"""
         )
 
         # Query Decomposition: split complex questions into sub-queries (optional).
@@ -601,6 +631,9 @@ Requirements:
                     pass
 
             t_all_start = time.time()
+            temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))
+            temporal_intent_meta: dict[str, Any] = {"detected": False, "reason_codes": []}
+            temporal_recency_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
             query_for_retrieval = question
             rewrite_elapsed = 0.0
             rewrite_used = False
@@ -1020,7 +1053,8 @@ Requirements:
                 else int(multi_query_max_chars or 0)
             )
 
-            mq_n = max(0, min(int(mq_n or 0), 8))
+            mq_cap = max(0, int(getattr(settings, "MULTI_QUERY_COUNT_CAP", 8) or 8))
+            mq_n = max(0, min(int(mq_n or 0), int(mq_cap)))
             mq_temp = min(2.0, max(0.0, float(mq_temp or 0.0)))
             mq_max_chars = max(0, int(mq_max_chars or 0))
 
@@ -1090,6 +1124,41 @@ Requirements:
                     hyde_text = ""
                     hyde_elapsed = 0.0
                     hyde_used = False
+
+            step_back_enabled = bool(getattr(settings, "ENABLE_STEP_BACK_QUERY", False))
+            step_back_elapsed = 0.0
+            step_back_used = False
+            step_back_model_used = None
+            step_back_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+            step_back_query = ""
+            step_back_max_chars = max(0, int(getattr(settings, "STEP_BACK_MAX_CHARS", 0) or 0))
+            step_back_temp = min(2.0, max(0.0, float(getattr(settings, "STEP_BACK_TEMPERATURE", 0.2) or 0.0)))
+            step_back_output_max = max(0, int(getattr(settings, "STEP_BACK_OUTPUT_MAX_CHARS", 0) or 0))
+            if step_back_enabled and step_back_max_chars > 0 and len(query_for_retrieval) <= step_back_max_chars:
+                sb_llm = self.models.get("fast") or llm
+                step_back_model_used = getattr(sb_llm, "model_name", None) or getattr(sb_llm, "model", None)
+                try:
+                    sb_chain = (
+                        self.step_back_prompt
+                        | sb_llm.bind(temperature=step_back_temp)
+                        | StrOutputParser()
+                    )
+                    sb_start = time.time()
+                    sb_raw = await sb_chain.ainvoke({"query": query_for_retrieval})
+                    step_back_elapsed = time.time() - sb_start
+                    step_back_query = (sb_raw or "").strip().strip('"').strip()
+                    if step_back_output_max > 0 and len(step_back_query) > step_back_output_max:
+                        step_back_query = step_back_query[:step_back_output_max] + "..."
+                    if step_back_query and step_back_query != query_for_retrieval:
+                        step_back_parse_meta = {"ok": True, "method": "text", "error": None}
+                    else:
+                        step_back_query = ""
+                        step_back_parse_meta = {"ok": False, "method": "text", "error": "empty_or_duplicate"}
+                except Exception as exc:  # noqa: BLE001
+                    step_back_query = ""
+                    step_back_elapsed = 0.0
+                    step_back_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+            step_back_used = bool(step_back_query)
 
             decompose_elapsed = 0.0
             decompose_used = False
@@ -1232,6 +1301,8 @@ Requirements:
                 retrieval_queries.append(("clause", q))
             for q in multi_queries:
                 retrieval_queries.append(("mq", q))
+            if step_back_used and step_back_query:
+                retrieval_queries.append(("step_back", step_back_query))
             for q in sub_questions:
                 retrieval_queries.append(("subq", q))
             if hyde_used and hyde_text:
@@ -1551,6 +1622,44 @@ Requirements:
             if image_docs:
                 docs = (image_docs or []) + (docs or [])
 
+            # Optional: Vision-native RAG (VLM-as-Reader) - read retrieved images and inject extracted text.
+            vision_reader_docs: list[Document] = []
+            vision_reader_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+            if image_docs:
+                try:
+                    if bool(getattr(settings, "VISION_RAG_READER_ENABLED", False)):
+                        # Only show progress when the feature is actually enabled.
+                        if bool(getattr(settings, "VISION_LLM_ENABLED", False)):
+                            yield {"type": "event", "data": {"message": "正在使用视觉模型读取图片证据（VLM-as-Reader）..."}}
+                        # Reuse the same privacy knob as the main generation: if PII redaction is enabled,
+                        # avoid sending raw identifiers to external vision providers.
+                        pii_on_for_vision = bool(pii_redaction_enabled())
+                        q_for_vision = redact_text(question or "") if pii_on_for_vision else (question or "")
+                        vision_reader_docs, vision_reader_meta = await build_vision_reader_context_docs(
+                            image_docs=image_docs,
+                            question=q_for_vision,
+                            tenant_id=tenant_id,
+                            http_client=self.http_async_client,
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    vision_reader_docs = []
+                    vision_reader_meta = {
+                        "enabled": bool(getattr(settings, "VISION_RAG_READER_ENABLED", False)),
+                        "used": False,
+                        "reason": f"vision_reader_exception:{str(exc)[:160]}",
+                    }
+
+            if vision_reader_docs:
+                docs = (vision_reader_docs or []) + (docs or [])
+
+            # Optional: Vision-native RAG (Vision generation) - generate the final answer with a VLM when
+            # image evidence is present. Default off.
+            vision_generation_meta: dict[str, Any] = {
+                "enabled": bool(getattr(settings, "VISION_RAG_GENERATION_ENABLED", False)),
+                "used": False,
+                "reason": "not_run",
+            }
+
             # Optional: TAG bridge - inject bounded table query results as extra context.
             tag_docs: list[Document] = []
             tag_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
@@ -1581,6 +1690,59 @@ Requirements:
 
             if tag_docs:
                 docs = (tag_docs or []) + (docs or [])
+
+            # Optional: Temporal intent + recency-aware rerank (deterministic, feature-flagged).
+            #
+            # This does NOT filter documents; it only applies a small additive boost to more
+            # recently updated documents when the query indicates freshness intent ("latest", "as of", "最新"...).
+            if temporal_intent_enabled and docs:
+                try:
+                    temporal_intent_meta = detect_temporal_intent(query_for_retrieval)
+                    temporal_boost_enabled = bool(
+                        getattr(settings, "RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED", True)
+                    )
+                    if bool(temporal_intent_meta.get("detected")) and bool(temporal_boost_enabled) and tenant_id is not None:
+                        # Extract candidate document ids (bounded).
+                        doc_ids: list[str] = []
+                        seen_doc_ids: set[str] = set()
+                        max_docs = max(
+                            0, int(getattr(settings, "RAG_TEMPORAL_INTENT_MAX_DOCS", 200) or 200)
+                        )
+                        for d in docs:
+                            meta = getattr(d, "metadata", None)
+                            meta = meta if isinstance(meta, dict) else {}
+                            did = meta.get("document_id")
+                            did_s = str(did).strip() if did is not None else ""
+                            if not did_s:
+                                continue
+                            if did_s in seen_doc_ids:
+                                continue
+                            seen_doc_ids.add(did_s)
+                            doc_ids.append(did_s)
+                            if max_docs and len(doc_ids) >= max_docs:
+                                break
+
+                        updated_ts = fetch_document_updated_ts(
+                            doc_ids,
+                            tenant_id=tenant_id,
+                            dataset_id=dataset_id,
+                            max_docs=max_docs,
+                        )
+                        docs, temporal_recency_meta = apply_recency_boost(
+                            docs,
+                            updated_ts_by_document_id=updated_ts,
+                            boost_max=float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0),
+                            window_days=int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180),
+                        )
+                    else:
+                        temporal_recency_meta = {
+                            "enabled": bool(temporal_boost_enabled),
+                            "used": False,
+                            "reason": "not_detected_or_missing_scope",
+                        }
+                except Exception as exc:  # noqa: BLE001
+                    temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
+                    temporal_recency_meta = {"enabled": True, "used": False, "reason": "exception"}
 
             yield {
                 "type": "event",
@@ -1708,6 +1870,43 @@ Requirements:
                 t_total = time.time() - t_all_start
                 answer_chars = len(full_response or "")
                 answer_tokens = num_tokens_from_string(full_response or "")
+                faithfulness_meta: dict[str, Any] = {
+                    "score": None,
+                    "supported_claims": 0,
+                    "total_claims": 0,
+                    "unsupported_claims": [],
+                    "method": "claim_support_ratio",
+                }
+                if bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
+                    evidence_text = "\n".join(
+                        [
+                            str(getattr(d, "page_content", "") or "")
+                            for d in (docs or [])
+                            if str(getattr(d, "page_content", "") or "").strip()
+                        ]
+                    )
+                    max_evidence_chars = max(
+                        0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000)
+                    )
+                    if max_evidence_chars and len(evidence_text) > max_evidence_chars:
+                        evidence_text = evidence_text[:max_evidence_chars]
+                    faithfulness_meta = compute_faithfulness_score(
+                        answer=str(full_response or ""),
+                        evidence_text=evidence_text,
+                        max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
+                        verifier_mode=(
+                            str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap")
+                            .strip()
+                            .lower()
+                        ),
+                        verifier_enable_contradiction_check=bool(
+                            getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
+                        ),
+                        use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+                        nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+                        nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+                        nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+                    )
                 done_payload = {
                     "type": "done",
                     "data": {
@@ -1751,6 +1950,13 @@ Requirements:
                             "multi_query_used": bool(multi_query_used),
                             "multi_query_count": len(multi_queries),
                             "multi_query_elapsed_sec": round(multi_query_elapsed, 3),
+                            "step_back_enabled": bool(step_back_enabled),
+                            "step_back_used": bool(step_back_used),
+                            "step_back_elapsed_sec": round(step_back_elapsed, 3),
+                            "step_back_model_used": step_back_model_used,
+                            "step_back_parse_ok": bool(step_back_parse_meta.get("ok")),
+                            "step_back_parse_method": step_back_parse_meta.get("method"),
+                            "step_back_parse_error": step_back_parse_meta.get("error"),
                             "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
                             "kg_query_expansion_used": bool(kg_query_expansion_used),
                             "kg_query_expansion_entities_total": int(kg_query_expansion_entities_total),
@@ -1776,6 +1982,30 @@ Requirements:
                             "image_reason": image_meta.get("reason"),
                             "image_hits": int(image_meta.get("hits") or 0),
                             "image_docs_returned": int(image_meta.get("returned") or 0),
+                            "vision_reader_enabled": bool(vision_reader_meta.get("enabled")),
+                            "vision_reader_used": bool(vision_reader_meta.get("used")),
+                            "vision_reader_reason": vision_reader_meta.get("reason"),
+                            "vision_reader_attempted": int(vision_reader_meta.get("attempted") or 0),
+                            "vision_reader_docs_returned": int(vision_reader_meta.get("returned") or 0),
+                            "vision_reader_model": vision_reader_meta.get("model"),
+                            "vision_generation_enabled": bool(vision_generation_meta.get("enabled")),
+                            "vision_generation_used": bool(vision_generation_meta.get("used")),
+                            "vision_generation_reason": vision_generation_meta.get("reason"),
+                            "vision_generation_returned_images": int(vision_generation_meta.get("returned_images") or 0),
+                            "vision_generation_model": vision_generation_meta.get("model"),
+                            "faithfulness_score_enabled": bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)),
+                            "faithfulness_score_method": str(faithfulness_meta.get("method") or "claim_support_ratio"),
+                            "faithfulness_score": faithfulness_meta.get("score"),
+                            "faithfulness_supported_claims": int(faithfulness_meta.get("supported_claims") or 0),
+                            "faithfulness_total_claims": int(faithfulness_meta.get("total_claims") or 0),
+                            "faithfulness_unsupported_claims": list(faithfulness_meta.get("unsupported_claims") or []),
+                            "sentence_citations_count": 0,
+                            "sentence_citations": [],
+                            "sentence_citations_inline_enabled": bool(
+                                getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False)
+                            ),
+                            "sentence_citations_inline_used": False,
+                            "sentence_citations_inline_count": 0,
                             "abstain_enabled": bool(abstain_enabled),
                             "abstain_triggered": True,
                             "abstain_reason": abstain_reason,
@@ -2055,6 +2285,12 @@ Requirements:
                                 "budget": int(mq_diversify_budget or 0) if mq_diversify_enabled else 0,
                             },
                         },
+                        "step_back": {
+                            "enabled": bool(step_back_enabled),
+                            "temperature": float(step_back_temp or 0.0),
+                            "max_chars": int(step_back_max_chars or 0),
+                            "output_max_chars": int(step_back_output_max or 0),
+                        },
                         "query_rewrite": {
                             "enabled": bool(rewrite_enabled),
                             "strategy_id": rewrite_strategy_id if rewrite_enabled else None,
@@ -2112,6 +2348,13 @@ Requirements:
                     "multi_query_diversify_selected_mq": int(mq_diversify_selected_mq or 0),
                     "multi_query_diversify_selected_non_mq": int(mq_diversify_selected_non_mq or 0),
                     "multi_query_diversify_fill_from_fused": int(mq_diversify_fill_from_fused or 0),
+                    "step_back_enabled": bool(step_back_enabled),
+                    "step_back_used": bool(step_back_used),
+                    "step_back_elapsed_sec": round(step_back_elapsed, 3),
+                    "step_back_model_used": step_back_model_used,
+                    "step_back_parse_ok": bool(step_back_parse_meta.get("ok")),
+                    "step_back_parse_method": step_back_parse_meta.get("method"),
+                    "step_back_parse_error": step_back_parse_meta.get("error"),
                     "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
                     "kg_query_expansion_used": bool(kg_query_expansion_used),
                     "kg_query_expansion_entities_total": int(kg_query_expansion_entities_total),
@@ -2162,6 +2405,15 @@ Requirements:
                     "chunks_injected": int(kg_chunks_injected or 0),
                     "used_cached_result": bool(kg_result_cached),
                 },
+                "multimodal": {
+                    "modality": str(multimodal_modality or "text"),
+                    "reasons": list(multimodal_reasons or []),
+                    "image": dict(image_meta) if isinstance(image_meta, dict) else None,
+                    "vision_reader": dict(vision_reader_meta) if isinstance(vision_reader_meta, dict) else None,
+                    "vision_generation": (
+                        dict(vision_generation_meta) if isinstance(vision_generation_meta, dict) else None
+                    ),
+                },
                 "tag": tag_meta,
                 "citations": citations[: min(len(citations), int(top_k or 5))],
                 "rag_config_template": rag_config_template if isinstance(rag_config_template, dict) else None,
@@ -2207,14 +2459,106 @@ Requirements:
 
             pending = ""
             buffered_parts: list[str] | None = [] if claim_check_applied else None
-            async for token in chain.astream(
-                {
-                    "context": context_for_model,
-                    "history": history_for_model,
-                    "question": question_for_model,
-                    "format_instructions": format_instructions,
-                }
-            ):
+            generation_inputs = {
+                "context": context_for_model,
+                "history": history_for_model,
+                "question": question_for_model,
+                "format_instructions": format_instructions,
+            }
+
+            # Optional: Vision-native generation path (direct VLM answer generation).
+            token_stream = None
+            try:
+                vision_gen_enabled = bool(getattr(settings, "VISION_RAG_GENERATION_ENABLED", False))
+                if not bool(vision_gen_enabled):
+                    vision_generation_meta.update({"enabled": False, "used": False, "reason": "VISION_RAG_GENERATION_ENABLED=false"})
+                elif not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
+                    vision_generation_meta.update({"enabled": True, "used": False, "reason": "VISION_LLM_ENABLED=false"})
+                elif str(multimodal_modality or "text").strip().lower() != "image":
+                    vision_generation_meta.update(
+                        {"enabled": True, "used": False, "reason": f"skipped_modality:{multimodal_modality}"}
+                    )
+                elif not image_docs:
+                    vision_generation_meta.update({"enabled": True, "used": False, "reason": "no_image_docs"})
+                else:
+                    max_images = max(0, int(getattr(settings, "VISION_RAG_GENERATION_MAX_IMAGES", 2) or 2))
+                    max_bytes = max(
+                        1, int(getattr(settings, "VISION_RAG_GENERATION_MAX_IMAGE_BYTES", 3_000_000) or 3_000_000)
+                    )
+                    blocks, blocks_meta = await build_vision_image_blocks(
+                        image_docs=image_docs,
+                        tenant_id=tenant_id,
+                        max_images=max_images,
+                        max_image_bytes=max_bytes,
+                    )
+                    vision_generation_meta.update(
+                        {
+                            "enabled": True,
+                            "used": False,
+                            "reason": "no_images_loaded",
+                            "image_blocks": blocks_meta,
+                            "max_images": int(max_images),
+                            "max_image_bytes": int(max_bytes),
+                            "model": str(getattr(settings, "VISION_LLM_MODEL", "") or "").strip() or None,
+                        }
+                    )
+                    if blocks:
+                        # Render the selected prompt template into chat messages, then attach image blocks
+                        # to the last user message (OpenAI-compatible multipart content).
+                        try:
+                            rendered_msgs = current_prompt_template.format_messages(**generation_inputs)
+                        except Exception:
+                            rendered_msgs = []
+
+                        openai_msgs: list[dict[str, Any]] = []
+                        for m in rendered_msgs:
+                            role = str(getattr(m, "type", "") or "").strip().lower()
+                            if role == "human":
+                                role = "user"
+                            elif role == "ai":
+                                role = "assistant"
+                            elif role == "system":
+                                role = "system"
+                            else:
+                                role = "user"
+                            content = getattr(m, "content", "")
+                            openai_msgs.append({"role": role, "content": content})
+
+                        attached = False
+                        for i in range(len(openai_msgs) - 1, -1, -1):
+                            if str(openai_msgs[i].get("role") or "") != "user":
+                                continue
+                            c = openai_msgs[i].get("content")
+                            if isinstance(c, list):
+                                parts = list(c)
+                            else:
+                                parts = [{"type": "text", "text": str(c or "")}]
+                            parts.extend(blocks)
+                            openai_msgs[i]["content"] = parts
+                            attached = True
+                            break
+                        if not attached:
+                            openai_msgs.append({"role": "user", "content": [{"type": "text", "text": ""}] + blocks})
+
+                        vision_generation_meta.update({"used": True, "reason": "ok", "returned_images": int(len(blocks))})
+                        token_stream = stream_vision_chat_completions_tokens(
+                            http_client=self.http_async_client,
+                            messages=openai_msgs,
+                        )
+            except Exception as exc:  # noqa: BLE001
+                vision_generation_meta.update(
+                    {
+                        "enabled": bool(getattr(settings, "VISION_RAG_GENERATION_ENABLED", False)),
+                        "used": False,
+                        "reason": f"vision_generation_exception:{str(exc)[:160]}",
+                    }
+                )
+                token_stream = None
+
+            if token_stream is None:
+                token_stream = chain.astream(generation_inputs)
+
+            async for token in token_stream:
                 if not token:
                     continue
                 token_text = token if isinstance(token, str) else str(token)
@@ -2351,6 +2695,86 @@ Requirements:
                 except Exception:
                     claim_evidence = []
 
+            faithfulness_meta: dict[str, Any] = {
+                "score": None,
+                "supported_claims": 0,
+                "total_claims": 0,
+                "unsupported_claims": [],
+                "method": "claim_support_ratio",
+            }
+            if bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
+                evidence_text = "\n".join(
+                    [
+                        str(getattr(d, "page_content", "") or "")
+                        for d in (docs or [])
+                        if str(getattr(d, "page_content", "") or "").strip()
+                    ]
+                )
+                max_evidence_chars = max(
+                    0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000)
+                )
+                if max_evidence_chars and len(evidence_text) > max_evidence_chars:
+                    evidence_text = evidence_text[:max_evidence_chars]
+                faithfulness_meta = compute_faithfulness_score(
+                    answer=str(full_response or ""),
+                    evidence_text=evidence_text,
+                    max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
+                    verifier_mode=claim_verifier_mode,
+                    verifier_enable_contradiction_check=bool(claim_verifier_enable_contradiction_check),
+                    use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
+                    nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
+                    nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
+                    nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+                )
+
+            sentence_citations_inline_enabled = bool(
+                getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False)
+            )
+            sentence_citations_inline_used = False
+            sentence_citations_inline_count = 0
+            sentence_citations_inline_style = str(
+                getattr(settings, "SENTENCE_CITATIONS_INLINE_STYLE", "appendix") or "appendix"
+            ).strip().lower() or "appendix"
+            if sentence_citations_inline_style not in {"appendix", "inline"}:
+                sentence_citations_inline_style = "appendix"
+            sentence_citations_inline_fallback_reason: str | None = None
+
+            # Optional: inline per-claim citations (only safe when claim-check produced a claim list).
+            if (
+                not structured_output
+                and sentence_citations_inline_enabled
+                and sentence_citations_inline_style == "inline"
+            ):
+                if claim_check_mode == "text":
+                    inline_text, rendered_count = render_sentence_citations_inline(
+                        claim_evidence,
+                        max_items=max(
+                            0,
+                            int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8),
+                        ),
+                        max_evidence_per_claim=max(
+                            1,
+                            int(
+                                getattr(
+                                    settings,
+                                    "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM",
+                                    2,
+                                )
+                                or 2
+                            ),
+                        ),
+                    )
+                    if inline_text:
+                        full_response = inline_text
+                        sentence_citations_inline_used = True
+                        sentence_citations_inline_count = int(rendered_count or 0)
+                    else:
+                        sentence_citations_inline_style = "appendix"
+                        sentence_citations_inline_fallback_reason = "inline_render_empty"
+                else:
+                    sentence_citations_inline_style = "appendix"
+                    sentence_citations_inline_fallback_reason = "claim_check_not_text"
+
             # Step 4.5: Append cited images as inline Markdown (non-structured output only).
             if (
                 not structured_output
@@ -2380,6 +2804,26 @@ Requirements:
                     full_response += images_md_safe
                     if not claim_check_applied:
                         yield {"type": "token", "data": {"content": images_md_safe}}
+
+            if (
+                not structured_output
+                and sentence_citations_inline_enabled
+                and sentence_citations_inline_style == "appendix"
+            ):
+                suffix_md, rendered_count = render_sentence_citations_markdown(
+                    claim_evidence,
+                    max_items=max(0, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_ITEMS", 8) or 8)),
+                    max_evidence_per_claim=max(
+                        1, int(getattr(settings, "SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM", 2) or 2)
+                    ),
+                )
+                if suffix_md:
+                    suffix_md_safe = redact_text(suffix_md) if pii_on else suffix_md
+                    full_response += suffix_md_safe
+                    sentence_citations_inline_used = True
+                    sentence_citations_inline_count = int(rendered_count or 0)
+                    if not claim_check_applied:
+                        yield {"type": "token", "data": {"content": suffix_md_safe}}
 
             if claim_check_applied:
                 yield {"type": "token", "data": {"content": full_response}}
@@ -2467,6 +2911,20 @@ Requirements:
                 "claims_removed": int(claim_check_removed),
                 "removed_reasons": claim_check_removed_reasons,
             }
+            rag_trace_payload["faithfulness"] = {
+                "enabled": bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)),
+                "score": faithfulness_meta.get("score"),
+                "supported_claims": int(faithfulness_meta.get("supported_claims") or 0),
+                "total_claims": int(faithfulness_meta.get("total_claims") or 0),
+                "unsupported_claims": list(faithfulness_meta.get("unsupported_claims") or []),
+                "method": str(faithfulness_meta.get("method") or "claim_support_ratio"),
+                "sentence_citations_count": int(len(claim_evidence or [])),
+                "sentence_citations_inline_enabled": bool(sentence_citations_inline_enabled),
+                "sentence_citations_inline_style": str(sentence_citations_inline_style),
+                "sentence_citations_inline_used": bool(sentence_citations_inline_used),
+                "sentence_citations_inline_count": int(sentence_citations_inline_count or 0),
+                "sentence_citations_inline_fallback_reason": sentence_citations_inline_fallback_reason,
+            }
             # Prometheus SLI metrics (PII-safe; low-cardinality by default).
             try:
                 from app.rag.metrics_sli import observe_rag_sli
@@ -2528,6 +2986,12 @@ Requirements:
                         "docs_returned": len(docs),
                         "kg_chunks_injected": int(kg_chunks_injected or 0),
                         "recall_bucket": recall_bucket,
+                        "temporal_intent_enabled": bool(temporal_intent_enabled),
+                        "temporal_intent_detected": bool(temporal_intent_meta.get("detected")),
+                        "temporal_intent_reason_codes": list(temporal_intent_meta.get("reason_codes") or []),
+                        "temporal_recency_rerank": (
+                            dict(temporal_recency_meta) if isinstance(temporal_recency_meta, dict) else None
+                        ),
                         "distinct_documents": len({c.get("document_id") for c in citations if c.get("document_id")}),
                         "history_chars": len(history_text or ""),
                         "history_tokens": num_tokens_from_string(history_text or ""),
@@ -2545,6 +3009,17 @@ Requirements:
                         "image_reason": image_meta.get("reason"),
                         "image_hits": int(image_meta.get("hits") or 0),
                         "image_docs_returned": int(image_meta.get("returned") or 0),
+                        "vision_reader_enabled": bool(vision_reader_meta.get("enabled")),
+                        "vision_reader_used": bool(vision_reader_meta.get("used")),
+                        "vision_reader_reason": vision_reader_meta.get("reason"),
+                        "vision_reader_attempted": int(vision_reader_meta.get("attempted") or 0),
+                        "vision_reader_docs_returned": int(vision_reader_meta.get("returned") or 0),
+                        "vision_reader_model": vision_reader_meta.get("model"),
+                        "vision_generation_enabled": bool(vision_generation_meta.get("enabled")),
+                        "vision_generation_used": bool(vision_generation_meta.get("used")),
+                        "vision_generation_reason": vision_generation_meta.get("reason"),
+                        "vision_generation_returned_images": int(vision_generation_meta.get("returned_images") or 0),
+                        "vision_generation_model": vision_generation_meta.get("model"),
                         "context_limit_total_chars": int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0),
                         "context_limit_total_tokens": int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0),
                         "context_limit_per_chunk_chars": int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0),
@@ -2578,6 +3053,19 @@ Requirements:
                             "model_name": str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
                         },
                         "claim_evidence": claim_evidence,
+                        "sentence_citations_count": int(len(claim_evidence or [])),
+                        "sentence_citations": claim_evidence,
+                        "sentence_citations_inline_enabled": bool(sentence_citations_inline_enabled),
+                        "sentence_citations_inline_style": str(sentence_citations_inline_style),
+                        "sentence_citations_inline_used": bool(sentence_citations_inline_used),
+                        "sentence_citations_inline_count": int(sentence_citations_inline_count or 0),
+                        "sentence_citations_inline_fallback_reason": sentence_citations_inline_fallback_reason,
+                        "faithfulness_score_enabled": bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)),
+                        "faithfulness_score_method": str(faithfulness_meta.get("method") or "claim_support_ratio"),
+                        "faithfulness_score": faithfulness_meta.get("score"),
+                        "faithfulness_supported_claims": int(faithfulness_meta.get("supported_claims") or 0),
+                        "faithfulness_total_claims": int(faithfulness_meta.get("total_claims") or 0),
+                        "faithfulness_unsupported_claims": list(faithfulness_meta.get("unsupported_claims") or []),
                         "visible_evidence_only_enabled": bool(strict_visible),
                         "visible_evidence_only_requested": bool(visible_evidence_only),
                         "evidence_span_strict_enabled": bool(evidence_span_strict_enabled),
@@ -2620,6 +3108,13 @@ Requirements:
                         "multi_query_diversify_selected_mq": int(mq_diversify_selected_mq or 0),
                         "multi_query_diversify_selected_non_mq": int(mq_diversify_selected_non_mq or 0),
                         "multi_query_diversify_fill_from_fused": int(mq_diversify_fill_from_fused or 0),
+                        "step_back_enabled": bool(step_back_enabled),
+                        "step_back_used": bool(step_back_used),
+                        "step_back_elapsed_sec": round(step_back_elapsed, 3),
+                        "step_back_model_used": step_back_model_used,
+                        "step_back_parse_ok": bool(step_back_parse_meta.get("ok")),
+                        "step_back_parse_method": step_back_parse_meta.get("method"),
+                        "step_back_parse_error": step_back_parse_meta.get("error"),
                         "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
                         "kg_query_expansion_used": bool(kg_query_expansion_used),
                         "kg_query_expansion_entities_total": int(kg_query_expansion_entities_total),

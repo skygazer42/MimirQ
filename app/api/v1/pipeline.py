@@ -394,6 +394,14 @@ async def get_pipeline_capabilities(
                 notes = "Set DEEPSEEK_OCR_ENABLED=true."
             elif not api_key:
                 notes = "Configure SILICONFLOW_API_KEY."
+        elif b == "qianfan_ocr":
+            enabled = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
+            api_url = bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip())
+            available = bool(enabled and api_url)
+            if not enabled:
+                notes = "Set QIANFAN_OCR_ENABLED=true."
+            elif not api_url:
+                notes = "Configure QIANFAN_OCR_API_URL (e.g., http://localhost:2090/convert)."
         elif b == "markitdown":
             if not bool(getattr(settings, "MARKITDOWN_ENABLED", False)):
                 available = False

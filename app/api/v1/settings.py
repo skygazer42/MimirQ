@@ -1354,6 +1354,29 @@ async def get_system_status(
         "message": _configured_message(deepseek_enabled, deepseek_key, "missing api_key"),
     }
 
+    qianfan_enabled = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
+    qianfan_api_url = (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
+    qianfan_url_ok = bool(qianfan_api_url)
+    qianfan_entry: dict[str, object] = {
+        "enabled": qianfan_enabled,
+        "available": bool(qianfan_enabled and qianfan_url_ok),
+        "message": _configured_message(qianfan_enabled, qianfan_url_ok, _MISSING_API_URL_MESSAGE),
+    }
+    if qianfan_enabled and qianfan_url_ok:
+        health_url = _convert_service_url_to_health_url(qianfan_api_url)
+        data, err = _probe_http_json(health_url, timeout_sec=0.6)
+        if data is not None:
+            qianfan_entry["health"] = data
+            model_name = data.get("model")
+            mode = data.get("mode")
+            parts = [p for p in [model_name, mode] if isinstance(p, str) and p.strip()]
+            if parts:
+                qianfan_entry["message"] = f"configured ({', '.join(parts[:2])})"
+        else:
+            qianfan_entry["health"] = {"ok": False, "error": err}
+            qianfan_entry["message"] = "configured (health_unreachable)"
+    parsers["qianfan_ocr"] = qianfan_entry
+
     etl_enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
     etl_url = bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip())
     parsers["etl4llm"] = {
@@ -1393,6 +1416,24 @@ async def get_system_status(
             paddlevl_entry["message"] = "configured (health_unreachable)"
 
     parsers["paddle_vl"] = paddlevl_entry
+
+    olmocr_enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
+    olmocr_api_url = (getattr(settings, "OLMOCR_API_URL", "") or "").strip()
+    olmocr_url_ok = bool(olmocr_api_url)
+    olmocr_entry: dict[str, object] = {
+        "enabled": olmocr_enabled,
+        "available": bool(olmocr_enabled and olmocr_url_ok),
+        "message": _configured_message(olmocr_enabled, olmocr_url_ok, _MISSING_API_URL_MESSAGE),
+    }
+    if olmocr_enabled and olmocr_url_ok:
+        health_url = _convert_service_url_to_health_url(olmocr_api_url)
+        data, err = _probe_http_json(health_url, timeout_sec=0.6)
+        if data is not None:
+            olmocr_entry["health"] = data
+        else:
+            olmocr_entry["health"] = {"ok": False, "error": err}
+            olmocr_entry["message"] = "configured (health_unreachable)"
+    parsers["olmocr"] = olmocr_entry
 
     ok, msg = _check_import("docling")
     parsers["docling"] = {

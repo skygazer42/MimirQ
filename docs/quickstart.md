@@ -112,6 +112,23 @@ PADDLE_VL_ENABLED=true
 PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert
 ```
 
+### (可选) 启用 Qianfan-OCR（外部 OCR）
+
+Qianfan-OCR 建议以独立容器/服务运行，MimirQ 通过包装服务调用上游 OpenAI-compatible 视觉推理接口。
+
+```bash
+make up-qianfanocr
+```
+
+然后在 `docker/.env` 里配置：
+```env
+QIANFAN_OCR_ENABLED=true
+QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert
+# 包装服务上游（示例）
+QIANFAN_OCR_SERVER_URL=http://host.docker.internal:8000/v1
+QIANFAN_OCR_MODEL=baidu/Qianfan-OCR
+```
+
 ### (可选) 启用 MinerU（本地 FastAPI ZIP 模式）
 
 MinerU 建议以独立容器运行（依赖/模型较重），MimirQ 通过 HTTP 调用其 `/file_parse` 接口拿到 ZIP（Markdown + images）。

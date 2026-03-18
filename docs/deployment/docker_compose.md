@@ -5,7 +5,7 @@
 - `docker/docker-compose.yml`：主栈（`mimirq-api`/`mimirq-worker` + Postgres/Milvus/Redis/MinIO；默认不暴露基础设施端口）
 - `docker/docker-compose.lite.yml`：低资源栈（`mimirq-api`/`mimirq-worker` + Postgres/Redis；默认使用 Chroma 本地向量库，不启动 Milvus/MinIO）
 - `docker/docker-compose.infra.yml`：仅基础设施（暴露端口，便于本地后端调试）
-- `docker/docker-compose.parsers.yml`：可选外部解析服务（Marker/PaddleOCR-VL/MinerU/ETL4LLM），用 `-f` 叠加并通过 `--profile` 按需启用
+- `docker/docker-compose.parsers.yml`：可选外部解析服务（Marker/PaddleOCR-VL/olmOCR/Qianfan-OCR/MinerU/ETL4LLM），用 `-f` 叠加并通过 `--profile` 按需启用
 
 另外，前端服务 `web` 放在 `docker/docker-compose.web.yml`，默认不启动；需要时用 `-f` 叠加即可（或直接 `make up-web`）。
 

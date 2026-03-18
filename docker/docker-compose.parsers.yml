@@ -5,6 +5,7 @@
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile paddlevl up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile olmocr up -d --build
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile qianfanocr up -d --build
 #
 # For local backend development (infra only):
 #   docker compose -f docker/docker-compose.infra.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
@@ -120,6 +121,40 @@ services:
           "python",
           "-c",
           "import urllib.request; urllib.request.urlopen('http://localhost:2085/health').read()",
+        ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Qianfan-OCR wrapper service (optional; calls an OpenAI-compatible vision endpoint).
+  # Then set `QIANFAN_OCR_ENABLED=true` and `QIANFAN_OCR_API_URL=http://mimirq-qianfanocr:2090/convert` in docker/.env.
+  mimirq-qianfanocr:
+    profiles: ["qianfanocr"]
+    build:
+      context: ./qianfanocr
+    restart: unless-stopped
+    ports:
+      - "2090:2090"
+    environment:
+      TZ: Asia/Shanghai
+      # OpenAI-compatible upstream endpoint, e.g. http://host.docker.internal:8000/v1
+      QIANFAN_OCR_SERVER_URL: ${QIANFAN_OCR_SERVER_URL:-}
+      QIANFAN_OCR_SERVER_API_KEY: ${QIANFAN_OCR_SERVER_API_KEY:-}
+      QIANFAN_OCR_MODEL: ${QIANFAN_OCR_MODEL:-baidu/Qianfan-OCR}
+      QIANFAN_OCR_MAX_CONCURRENT_JOBS: ${QIANFAN_OCR_MAX_CONCURRENT_JOBS:-1}
+      QIANFAN_OCR_PAGE_CONCURRENCY: ${QIANFAN_OCR_PAGE_CONCURRENCY:-1}
+      QIANFAN_OCR_REQUEST_TIMEOUT_SEC: ${QIANFAN_OCR_REQUEST_TIMEOUT_SEC:-120}
+      QIANFAN_OCR_PDF_DPI: ${QIANFAN_OCR_PDF_DPI:-200}
+      QIANFAN_OCR_LAYOUT_AS_THOUGHT: ${QIANFAN_OCR_LAYOUT_AS_THOUGHT:-false}
+      QIANFAN_OCR_LAYOUT_TRIGGER: ${QIANFAN_OCR_LAYOUT_TRIGGER:-}
+      QIANFAN_OCR_PROMPT: ${QIANFAN_OCR_PROMPT:-}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:2090/health').read()",
         ]
       interval: 30s
       timeout: 20s

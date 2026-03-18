@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from app.core.config import settings
+from app.rag.kg.community import build_community_reports
 from app.rag.kg.search.config import ReturnType, SearchConfig
 from app.rag.kg.search.expand import ExpandSearcher
 from app.rag.kg.search.recall import RecallSearcher
@@ -18,6 +19,26 @@ class KGSearcher:
     def __init__(self):
         self.recall_searcher = RecallSearcher()
         self.expand_searcher = ExpandSearcher()
+
+    def _should_run_community_detection(self, *, config: SearchConfig, query_mode: str) -> tuple[bool, list[str]]:
+        """
+        Gate community detection so normal KG search stays fast by default.
+
+        Returns:
+            (should_run, reason_codes)
+        """
+        if not bool(getattr(settings, "KG_COMMUNITY_ENABLED", False)):
+            return False, ["disabled"]
+
+        if str(query_mode or "").strip().lower() != "global":
+            return False, [f"skipped_mode:{query_mode}"]
+
+        reasons = [str(x) for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()]
+        require_global_pattern = bool(getattr(settings, "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN", True))
+        if require_global_pattern and "global_pattern" not in set(reasons):
+            return False, ["missing_global_pattern"]
+
+        return True, ["enabled"]
 
     async def search(self, config: SearchConfig) -> dict[str, Any]:
         timeout_sec = float(getattr(settings, "KG_SEARCH_TIMEOUT_SEC", 0.0) or 0.0)
@@ -161,12 +182,95 @@ class KGSearcher:
                 }
             )
 
+        # Optional: community detection + global summary (GraphRAG-like "global search").
+        #
+        # Feature-flagged and deterministic. Runs only on the recall subgraph for this query.
+        community_meta: dict[str, Any] = {"enabled": False, "used": False, "reason_codes": []}
+        community_reports: list[dict[str, Any]] = []
+        global_summary: str = ""
+        should_run, why = self._should_run_community_detection(config=config, query_mode=query_mode)
+        community_meta["enabled"] = bool(getattr(settings, "KG_COMMUNITY_ENABLED", False))
+        community_meta["reason_codes"] = list(why)
+        if should_run:
+            t_comm = time.perf_counter()
+            chosen_event_ids: list[str] = []
+            try:
+                max_events = max(0, int(getattr(settings, "KG_COMMUNITY_MAX_EVENTS", 200) or 200))
+                event_scores = dict(getattr(expand_result, "event_scores", {}) or {})
+                scored = [(float(event_scores.get(eid, 0.0) or 0.0), str(eid)) for eid in (event_ids_total or [])]
+                scored.sort(key=lambda t: (-float(t[0]), str(t[1])))
+                chosen_event_ids = [eid for _s, eid in scored[:max_events]] if max_events else [eid for _s, eid in scored]
+
+                # Fetch event->entity ids mapping (best-effort; event ids are already scope-filtered).
+                ev_to_ents: dict[str, list[str]] = {}
+                if chosen_event_ids:
+                    from app.rag.kg.repository import EventRepository, get_session  # noqa: WPS433
+
+                    session = get_session()
+                    try:
+                        repo = EventRepository(session)
+                        assoc = repo.get_event_entities(chosen_event_ids, tenant_id=config.tenant_id)
+                        for ev_id, links in (assoc or {}).items():
+                            ent_ids = [
+                                str(getattr(link, "entity_id", "") or "").strip()
+                                for link in (links or [])
+                            ]
+                            ent_ids = [x for x in ent_ids if x]
+                            if ent_ids:
+                                ev_to_ents[str(ev_id)] = ent_ids
+                    finally:
+                        session.close()
+
+                community_reports, global_summary = build_community_reports(
+                    entities=list(expand_result.key_final or []),
+                    events=list(rerank_result.items or []),
+                    event_entities=ev_to_ents,
+                    max_entities_per_event=int(getattr(settings, "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT", 12) or 12),
+                    min_edge_weight=float(getattr(settings, "KG_COMMUNITY_MIN_EDGE_WEIGHT", 2.0) or 2.0),
+                    label_propagation_iters=int(getattr(settings, "KG_COMMUNITY_LABEL_PROPAGATION_ITERS", 25) or 25),
+                    max_communities=int(getattr(settings, "KG_COMMUNITY_MAX_COMMUNITIES", 12) or 12),
+                    max_entities_per_community=int(
+                        getattr(settings, "KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY", 12) or 12
+                    ),
+                    max_events_per_community=int(getattr(settings, "KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY", 6) or 6),
+                    global_summary_max_chars=int(
+                        getattr(settings, "KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS", 3200) or 3200
+                    ),
+                )
+                community_meta["used"] = True
+            except Exception as exc:  # noqa: BLE001
+                community_meta["used"] = False
+                community_meta["error"] = str(exc)[:200]
+            finally:
+                community_meta["elapsed_sec"] = round(float(time.perf_counter() - t_comm), 3)
+
+            if metrics_enabled:
+                try:
+                    log_metrics(
+                        {
+                            "event": "kg.search.community",
+                            "tenant_id": str(config.tenant_id) if config.tenant_id else None,
+                            "doc_count": int(doc_count),
+                            "query_mode": str(query_mode),
+                            "events_considered": int(len(chosen_event_ids)),
+                            "reports": int(len(community_reports or [])),
+                            "global_summary_chars": int(len(global_summary or "")),
+                            "elapsed_sec": float(community_meta.get("elapsed_sec") or 0.0),
+                        }
+                    )
+                except Exception:
+                    pass
+
+        stats.setdefault("community", community_meta)
+
         if config.return_type == ReturnType.EVENT:
             return {
                 "events": rerank_result.items,
                 "entities": list(expand_result.key_final or []),
                 "clues": combined_clues,
                 "stats": stats,
+                "community_reports": community_reports,
+                "global_summary": global_summary,
                 "query": {
                     "original": config.query,
                     "mode": str(query_mode),
@@ -182,4 +286,6 @@ class KGSearcher:
             "entities": list(expand_result.key_final or []),
             "clues": combined_clues,
             "stats": stats,
+            "community_reports": community_reports,
+            "global_summary": global_summary,
         }

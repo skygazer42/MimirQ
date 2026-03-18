@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -41,6 +41,7 @@ help:
 	@echo "  make up-paddlevl - docker compose up + PaddleOCR-VL parser (profile paddlevl)"
 	@echo "  make up-mineru - docker compose up + MinerU local API (profile mineru)"
 	@echo "  make up-olmocr - docker compose up + olmOCR parser (profile olmocr)"
+	@echo "  make up-qianfanocr - docker compose up + Qianfan-OCR parser (profile qianfanocr)"
 	@echo "  make up-dev    - alias of up (set UVICORN_RELOAD in docker/.env)"
 	@echo "  make up-dev-web - alias of up-web"
 	@echo "  make up-prod   - alias of up (set ENV=production/AUTH_MODE/SECRET_KEY in docker/.env)"
@@ -51,6 +52,7 @@ help:
 	@echo "  make infra-up-paddlevl - infra-up + PaddleOCR-VL parser (profile paddlevl)"
 	@echo "  make infra-up-mineru - infra-up + MinerU local API (profile mineru)"
 	@echo "  make infra-up-olmocr - infra-up + olmOCR parser (profile olmocr)"
+	@echo "  make infra-up-qianfanocr - infra-up + Qianfan-OCR parser (profile qianfanocr)"
 	@echo "  make infra-ps  - infra docker compose ps"
 	@echo "  make infra-down - stop infra only"
 	@echo "  make down      - docker compose down"
@@ -124,6 +126,9 @@ up-mineru:
 up-olmocr:
 	$(COMPOSE_PARSERS) --profile olmocr up -d --build
 
+up-qianfanocr:
+	$(COMPOSE_PARSERS) --profile qianfanocr up -d --build
+
 up-dev:
 	@$(MAKE) up
 
@@ -153,6 +158,9 @@ infra-up-mineru:
 
 infra-up-olmocr:
 	$(COMPOSE_INFRA_PARSERS) --profile olmocr up -d --build
+
+infra-up-qianfanocr:
+	$(COMPOSE_INFRA_PARSERS) --profile qianfanocr up -d --build
 
 infra-ps:
 	$(COMPOSE_INFRA) ps

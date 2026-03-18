@@ -1877,6 +1877,10 @@ class DocumentProcessorService:
                                 (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
                             ):
                                 candidates.append("deepseek_ocr")
+                            if bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool(
+                                (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
+                            ):
+                                candidates.append("qianfan_ocr")
                             if bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
                                 (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
                             ):
@@ -3586,7 +3590,7 @@ class DocumentProcessorService:
                 path = Path(raw).resolve(strict=False)
                 if not path.exists():
                     continue
-                if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".etl4llm", ".marker", ".paddlevl", ".olmocr", MIMIRQ_PARSE_DIRNAME}):
+                if not any(p in path.parts for p in {".magicpdf", ".deepseek_ocr", ".qianfan_ocr", ".etl4llm", ".marker", ".paddlevl", ".olmocr", MIMIRQ_PARSE_DIRNAME}):
                     continue
                 # Safety: only delete within this tenant's upload directory.
                 path.relative_to(tenant_root)

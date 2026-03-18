@@ -18,6 +18,12 @@ def test_normalize_parser_backend_deepseek_ocr_aliases():
     assert normalize_parser_backend("deepseekocr") == "deepseek_ocr"
 
 
+def test_normalize_parser_backend_qianfan_ocr_aliases():
+    assert normalize_parser_backend("qianfan-ocr") == "qianfan_ocr"
+    assert normalize_parser_backend("qianfan_ocr") == "qianfan_ocr"
+    assert normalize_parser_backend("qianfanocr") == "qianfan_ocr"
+
+
 def test_normalize_parser_backend_etl4llm_aliases():
     assert normalize_parser_backend("etl4llm") == "etl4llm"
     assert normalize_parser_backend("etl-4llm") == "etl4llm"

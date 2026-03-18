@@ -7,6 +7,36 @@ import { decorateLinksForDisplay } from '@/lib/graph-edge-display'
 import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
 import { Loader2 } from 'lucide-react'
 
+export const NODE_COLOR_PALETTE = [
+  '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#3b82f6',
+  '#06b6d4', '#84cc16', '#f97316', '#ef4444', '#14b8a6',
+  '#22c55e', '#eab308', '#0ea5e9', '#a855f7', '#fb7185',
+  '#4ade80', '#2dd4bf', '#38bdf8', '#f472b6', '#c084fc',
+  '#facc15', '#a3e635', '#67e8f9', '#f43f5e',
+]
+export const EVENT_COLOR = '#6366f1'
+
+function hashTypeToIndex(type: string): number {
+  let hash = 0
+  for (let i = 0; i < type.length; i++) {
+    hash = ((hash << 5) - hash + type.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash) % NODE_COLOR_PALETTE.length
+}
+
+export function buildTypeColorMap(nodes: readonly any[]): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const node of nodes) {
+    const kind = String(node?.meta?.kind ?? '').trim()
+    if (kind === 'event') continue
+    const type = String(node?.meta?.type ?? node?.type ?? '').trim() || 'unknown'
+    if (!map.has(type)) {
+      map.set(type, NODE_COLOR_PALETTE[hashTypeToIndex(type)])
+    }
+  }
+  return map
+}
+
 // Dynamically import ForceGraph2D via wrapper to handle Ref correctly
 const ForceGraph2DNoSSR = dynamic(
   () => import('./force-graph-2d-wrapper'),
@@ -81,6 +111,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     }
     return map
   }, [data.links])
+
+  const typeColorMap = useMemo(() => buildTypeColorMap(data.nodes), [data.nodes])
 
   // Sanitize data to ensure fresh 2D simulation
   // 1. Clone nodes/links to break references (especially when switching from 3D)
@@ -232,53 +264,26 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     }
   }, [onNodeClick])
 
-  const getNodeColor = (node: any) => {
-    // If specific nodes are highlighted (search or path), dim others
+  const getNodeColor = useCallback((node: any) => {
     const hasHighlights = highlightedNodeIds.size > 0
-    
     if (hasHighlights && !highlightedNodeIds.has(node.id)) {
-      return '#cbd5e1' // Dimmed color (slate-300)
+      return '#cbd5e1'
     }
 
     if (node.color) return node.color
 
-    // Keep events visually distinct (they tend to have longer labels and high degree).
     const kind = String(node?.meta?.kind ?? '').trim()
-    if (kind === 'event') {
-      return '#6366f1' // Indigo 500
+    if (kind === 'event') return EVENT_COLOR
+
+    const type = String(node?.meta?.type ?? node?.type ?? '').trim()
+    if (type && typeColorMap.has(type)) return typeColorMap.get(type)!
+
+    if (typeof node.group === 'number' && node.group > 0) {
+      return NODE_COLOR_PALETTE[(node.group - 1) % NODE_COLOR_PALETTE.length]
     }
 
-    // Use a larger palette so type buckets remain visually distinct.
-    const colors = [
-      '#ec4899', // Pink 500
-      '#10b981', // Emerald 500
-      '#f59e0b', // Amber 500
-      '#8b5cf6', // Violet 500
-      '#3b82f6', // Blue 500
-      '#06b6d4', // Cyan 500
-      '#84cc16', // Lime 500
-      '#f97316', // Orange 500
-      '#ef4444', // Red 500
-      '#14b8a6', // Teal 500
-      '#22c55e', // Green 500
-      '#eab308', // Yellow 500
-      '#0ea5e9', // Sky 500
-      '#a855f7', // Purple 500
-      '#fb7185', // Rose 400
-      '#4ade80', // Green 400
-      '#2dd4bf', // Teal 400
-      '#38bdf8', // Sky 400
-      '#f472b6', // Pink 400
-      '#c084fc', // Purple 400
-      '#facc15', // Yellow 400
-      '#a3e635', // Lime 400
-      '#67e8f9', // Cyan 300
-      '#f43f5e', // Rose 500
-    ]
-    const rawGroup = typeof node.group === 'number' ? node.group : 0
-    const idx = rawGroup > 0 ? (rawGroup - 1) % colors.length : 0
-    return colors[idx]
-  }
+    return NODE_COLOR_PALETTE[hashTypeToIndex(node.id || '')]
+  }, [highlightedNodeIds, typeColorMap])
 
   // Determine DAG mode based on layoutMode
   const getDagMode = () => {
@@ -422,36 +427,48 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             const nx = node.x || 0
             const ny = node.y || 0
 
-            ctx.globalAlpha = isDimmed ? 0.35 : 1
+            ctx.globalAlpha = isDimmed ? 0.3 : 1
 
-            if (isHovered && !isSelected) {
+            if ((isHovered || isSelected) && !isLargeGraph) {
               ctx.save()
+              const glowRadius = radius + (isSelected ? 6 : 5)
+              const glow = ctx.createRadialGradient(nx, ny, radius * 0.5, nx, ny, glowRadius)
+              glow.addColorStop(0, color + '40')
+              glow.addColorStop(1, color + '00')
               ctx.beginPath()
-              ctx.arc(nx, ny, radius + 4, 0, 2 * Math.PI)
-              ctx.fillStyle = color
-              ctx.globalAlpha = 0.15
+              ctx.arc(nx, ny, glowRadius, 0, 2 * Math.PI)
+              ctx.fillStyle = glow
+              ctx.globalAlpha = isSelected ? 0.7 : 0.5
               ctx.fill()
               ctx.restore()
-              ctx.globalAlpha = isDimmed ? 0.35 : 1
+              ctx.globalAlpha = isDimmed ? 0.3 : 1
             }
+
+            const grad = ctx.createRadialGradient(
+              nx - radius * 0.3, ny - radius * 0.3, radius * 0.1,
+              nx, ny, radius
+            )
+            grad.addColorStop(0, '#ffffff60')
+            grad.addColorStop(0.4, color)
+            grad.addColorStop(1, color + 'cc')
 
             ctx.beginPath()
             ctx.arc(nx, ny, radius, 0, 2 * Math.PI, false)
-            ctx.fillStyle = color
+            ctx.fillStyle = isLargeGraph ? color : grad
             ctx.fill()
 
             if (isSelected) {
               ctx.strokeStyle = '#fff'
-              ctx.lineWidth = 4 / globalScale
+              ctx.lineWidth = 3 / globalScale
               ctx.stroke()
               ctx.beginPath()
-              ctx.arc(nx, ny, radius + 2 / globalScale, 0, 2 * Math.PI, false)
+              ctx.arc(nx, ny, radius + 2.5 / globalScale, 0, 2 * Math.PI, false)
               ctx.strokeStyle = '#E91E63'
               ctx.lineWidth = 2.5 / globalScale
               ctx.stroke()
             } else if (isHighlighted) {
               ctx.strokeStyle = '#fff'
-              ctx.lineWidth = 4 / globalScale
+              ctx.lineWidth = 3 / globalScale
               ctx.stroke()
               ctx.beginPath()
               ctx.arc(nx, ny, radius + 2 / globalScale, 0, 2 * Math.PI, false)
@@ -459,12 +476,12 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               ctx.lineWidth = 2 / globalScale
               ctx.stroke()
             } else if (isHovered) {
-              ctx.strokeStyle = '#333'
+              ctx.strokeStyle = '#fff'
               ctx.lineWidth = 2.5 / globalScale
               ctx.stroke()
             } else {
-              ctx.strokeStyle = '#fff'
-              ctx.lineWidth = 1.5 / globalScale
+              ctx.strokeStyle = '#ffffff'
+              ctx.lineWidth = 2 / globalScale
               ctx.stroke()
             }
 
@@ -473,16 +490,17 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.2)))
 
             if (shouldShowLabel) {
-              ctx.font = `${(isHighlighted || isSelected) ? 'bold ' : ''}${fontSize}px Sans-Serif`
+              const labelY = ny + radius + (isLargeGraph ? 3 : 5)
+              ctx.font = `${(isHighlighted || isSelected || isHovered) ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
               ctx.textAlign = 'center'
               ctx.textBaseline = 'middle'
 
-              ctx.strokeStyle = 'rgba(255,255,255,0.92)'
-              ctx.lineWidth = 3.5 / globalScale
-              ctx.strokeText(label, nx, ny + radius + 4)
+              ctx.strokeStyle = 'rgba(255,255,255,0.94)'
+              ctx.lineWidth = 4 / globalScale
+              ctx.strokeText(label, nx, labelY)
 
               ctx.fillStyle = isDimmed ? '#94a3b8' : '#1e293b'
-              ctx.fillText(label, nx, ny + radius + 4)
+              ctx.fillText(label, nx, labelY)
             }
 
             ctx.globalAlpha = 1

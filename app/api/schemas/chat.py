@@ -502,6 +502,7 @@ class ChatRequest(BaseModel):
     structured_preset: str | None = None  # faq | summary | action_items | custom
     enable_long_term_memory: bool = False  # Enable long-term memory retrieval.
     enable_summary_memory: bool = False  # Enable persistent summary memory injection (when available).
+    enable_structured_memory: bool = False  # Enable structured memory (entities/facts) injection + persistence.
     prompt_template_id: UUID | None = None  # Custom prompt template ID.
     prompt_template_key: str | None = None  # Select latest version by key (optional).
     prompt_ab_experiment_key: str | None = None  # A/B experiment key (optional, stable per-user split).
