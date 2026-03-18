@@ -287,22 +287,22 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	  return (
 	    <div
 	      className={cn(
-	        'flex gap-3 px-2 group animate-fade-up motion-reduce:animate-none',
+	        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none',
 	        isUser ? 'justify-end' : 'justify-start'
 	      )}
 	    >
       {!isUser && (
-        <div className="flex-shrink-0 size-7 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center mt-0.5">
-          <Bot className="h-3.5 w-3.5 text-primary" />
+        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center shadow-sm mt-0.5">
+          <Bot className="h-4 w-4 text-primary" />
         </div>
       )}
 
 	      <div
 	        className={cn(
-	          'max-w-3xl relative text-sm transition-colors duration-150',
+	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-shadow duration-200 motion-reduce:transition-none',
 	          isUser
-	            ? 'bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-3'
-	            : 'text-foreground border-l-2 border-primary/30 pl-4 py-1'
+	            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-strong border border-primary/20 backdrop-blur-sm'
+	            : 'glass-card text-foreground rounded-2xl rounded-tl-sm hover:shadow-lg hover:shadow-primary/10'
 	        )}
 	      >
         {/* 思维链 / 步骤展示 */}
@@ -662,8 +662,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       </div>
 
       {isUser && (
-        <div className="flex-shrink-0 size-7 rounded-md bg-muted flex items-center justify-center mt-0.5">
-          <User className="h-3.5 w-3.5 text-muted-foreground" />
+        <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-md shadow-primary/20 mt-0.5">
+          <User className="h-4 w-4" />
         </div>
       )}
     </div>

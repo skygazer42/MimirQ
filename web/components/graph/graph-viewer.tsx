@@ -204,32 +204,47 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   }, [onNodeClick])
 
   const getNodeColor = (node: any) => {
+    // If specific nodes are highlighted (search or path), dim others
     const hasHighlights = highlightedNodeIds.size > 0
     
     if (hasHighlights && !highlightedNodeIds.has(node.id)) {
-      return '#334155'
+      return '#cbd5e1' // Dimmed color (slate-300)
     }
 
     if (node.color) return node.color
 
+    // Keep events visually distinct (they tend to have longer labels and high degree).
     const kind = String(node?.meta?.kind ?? '').trim()
     if (kind === 'event') {
-      return '#6366f1'
+      return '#6366f1' // Indigo 500
     }
 
+    // Use a larger palette so type buckets remain visually distinct.
     const colors = [
-      '#8b5cf6', // Violet
-      '#3b82f6', // Blue
-      '#10b981', // Emerald
-      '#f59e0b', // Amber
-      '#ef4444', // Red
-      '#ec4899', // Pink
-      '#06b6d4', // Cyan
-      '#84cc16', // Lime
-      '#f97316', // Orange
-      '#14b8a6', // Teal
-      '#a855f7', // Purple
-      '#0ea5e9', // Sky
+      '#ec4899', // Pink 500
+      '#10b981', // Emerald 500
+      '#f59e0b', // Amber 500
+      '#8b5cf6', // Violet 500
+      '#3b82f6', // Blue 500
+      '#06b6d4', // Cyan 500
+      '#84cc16', // Lime 500
+      '#f97316', // Orange 500
+      '#ef4444', // Red 500
+      '#14b8a6', // Teal 500
+      '#22c55e', // Green 500
+      '#eab308', // Yellow 500
+      '#0ea5e9', // Sky 500
+      '#a855f7', // Purple 500
+      '#fb7185', // Rose 400
+      '#4ade80', // Green 400
+      '#2dd4bf', // Teal 400
+      '#38bdf8', // Sky 400
+      '#f472b6', // Pink 400
+      '#c084fc', // Purple 400
+      '#facc15', // Yellow 400
+      '#a3e635', // Lime 400
+      '#67e8f9', // Cyan 300
+      '#f43f5e', // Rose 500
     ]
     const rawGroup = typeof node.group === 'number' ? node.group : 0
     const idx = rawGroup > 0 ? (rawGroup - 1) % colors.length : 0
@@ -246,16 +261,16 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-background">
+    <div ref={containerRef} className="w-full h-full relative bg-slate-50/50">
       {(!mounted || width === 0 || height === 0) ? (
-        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+        <div className="absolute inset-0 flex items-center justify-center text-slate-400">
 	           {mounted ? (
 	              <div className="flex flex-col items-center gap-2">
-	                 <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none text-primary" />
-	                 <span className="text-xs text-muted-foreground">Initializing...</span>
+	                 <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-sky-500" />
+	                 <span className="text-xs">Initializing Layout... ({Math.round(width)}x{Math.round(height)})</span>
 	              </div>
 	           ) : (
-	              <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none text-primary" />
+	              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none" />
 	           )}
         </div>
       ) : (
@@ -294,13 +309,13 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                 const targetId = typeof link.target === 'object' ? link.target.id : link.target
                 if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
-                  return 'rgba(148, 163, 184, 0.5)' 
+                  return '#94a3b8' 
                 }
-                return 'rgba(51, 65, 85, 0.2)' 
+                return '#e2e8f0' 
               }
 
-              if (linkKind === 'entity_entity') return 'rgba(99, 102, 241, 0.4)'
-              return 'rgba(100, 116, 139, 0.25)'
+              if (linkKind === 'entity_entity') return '#67e8f9' // cyan-300 清新青色
+              return '#cbd5e1'
            }}
           linkWidth={(link: any) => {
              const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
@@ -331,73 +346,62 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             node.fy = node.y;
           }}
           
+          // Custom Node Painting
           nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
             const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
             const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
             const isDimmed = (highlightedNodeIds.size > 0 || highlightedLinkIds.size > 0) && !isHighlighted
-            const kind = String(node?.meta?.kind ?? '').trim()
-            const isEvent = kind === 'event'
             
-            const label = node.label || node.id
-            const fontSize = isHighlighted ? 13 / globalScale : 11 / globalScale
+            const label = node.label || node.id;
+            const fontSize = isHighlighted ? 14 / globalScale : 12 / globalScale;
+            
+            // Draw Node Circle
             const color = getNodeColor(node)
-            const baseRadius = isLargeGraph ? 3.5 : 4.5
+            ctx.beginPath();
+            const baseRadius = isLargeGraph ? 4 : 5
             const radius = isHighlighted ? baseRadius + 2 : baseRadius
-            const x = node.x || 0
-            const y = node.y || 0
-
-            ctx.save()
-
-            if (isHighlighted && !isDimmed) {
-              ctx.shadowColor = color
-              ctx.shadowBlur = 12
-            }
-
-            if (isEvent) {
-              ctx.save()
-              ctx.translate(x, y)
-              ctx.rotate(Math.PI / 4)
-              const s = radius * 0.85
-              ctx.fillStyle = isDimmed ? '#1e293b' : color
-              ctx.globalAlpha = isDimmed ? 0.3 : 1
-              ctx.fillRect(-s, -s, s * 2, s * 2)
-              ctx.restore()
-            } else {
-              ctx.beginPath()
-              ctx.arc(x, y, radius, 0, 2 * Math.PI, false)
-              ctx.fillStyle = isDimmed ? '#1e293b' : color
-              ctx.globalAlpha = isDimmed ? 0.3 : 0.9
-              ctx.fill()
-            }
-
-            ctx.globalAlpha = 1
-            ctx.shadowBlur = 0
-
+            ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI, false);
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            // Halo/Border for highlighted nodes
             if (isHighlighted) {
-              ctx.beginPath()
-              ctx.arc(x, y, radius + 2, 0, 2 * Math.PI, false)
-              ctx.strokeStyle = isPathNode ? '#f59e0b' : color
-              ctx.lineWidth = 2 / globalScale
-              ctx.stroke()
+               ctx.strokeStyle = '#fff';
+               ctx.lineWidth = 4 / globalScale;
+               ctx.stroke();
+               
+               // Double border for path nodes
+               if (isPathNode) {
+                 ctx.strokeStyle = '#f59e0b'; // Amber border for path
+               } else {
+                 ctx.strokeStyle = color;
+               }
+               
+               ctx.lineWidth = 2 / globalScale;
+               ctx.stroke();
+            } else {
+               ctx.strokeStyle = '#fff';
+               ctx.lineWidth = 1.5 / globalScale;
+               ctx.stroke();
             }
 
+            // Draw Label
             const shouldShowLabel =
-              isHighlighted || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.0)))
+              isHighlighted || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.2)))
             
             if (shouldShowLabel) {
-              ctx.font = `${isHighlighted ? '600 ' : ''}${fontSize}px Inter, system-ui, sans-serif`
-              ctx.textAlign = 'center'
-              ctx.textBaseline = 'middle'
+              ctx.font = `${isHighlighted ? 'bold ' : ''}${fontSize}px Sans-Serif`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
               
-              ctx.strokeStyle = 'rgba(0,0,0,0.7)'
-              ctx.lineWidth = 2.5 / globalScale
-              ctx.strokeText(label, x, y + radius + 4)
+              // Text Shadow
+              ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+              ctx.lineWidth = 3 / globalScale;
+              ctx.strokeText(label, node.x || 0, (node.y || 0) + radius + 4);
               
-              ctx.fillStyle = isDimmed ? '#475569' : '#e2e8f0'
-              ctx.fillText(label, x, y + radius + 4)
+              ctx.fillStyle = isDimmed ? '#94a3b8' : '#1e293b'; 
+              ctx.fillText(label, node.x || 0, (node.y || 0) + radius + 4);
             }
-
-            ctx.restore()
           }}
 
           // Custom Link Label Painting
@@ -444,12 +448,12 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             ctx.translate(textPos.x, textPos.y);
             ctx.rotate(textAngle);
 
-            ctx.fillStyle = isPathLink ? 'rgba(245, 158, 11, 0.9)' : 'rgba(15, 23, 42, 0.8)';
-            ctx.fillRect(-textWidth / 2 - 3, -fontSize / 2 - 1, textWidth + 6, fontSize + 2);
+            ctx.fillStyle = isPathLink ? '#f59e0b' : 'rgba(255, 255, 255, 0.8)';
+            ctx.fillRect(-textWidth / 2 - 2, -fontSize / 2 - 1, textWidth + 4, fontSize + 2);
 
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = isPathLink ? '#ffffff' : '#94a3b8'; 
+            ctx.fillStyle = isPathLink ? '#ffffff' : '#64748b'; 
             ctx.fillText(label, 0, 0);
             
             ctx.restore();

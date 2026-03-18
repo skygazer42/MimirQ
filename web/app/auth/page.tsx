@@ -74,7 +74,7 @@ export default function AuthPage() {
             <div className="relative z-10 w-full max-w-md p-6">
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center mb-8 space-y-4">
-                    <div className="size-16 rounded-lg border border-border bg-card shadow-soft flex items-center justify-center">
+                    <div className="size-16 rounded-xl border border-border bg-card shadow-soft flex items-center justify-center">
                       <Sparkles className="size-8 text-primary" aria-hidden="true" />
                     </div>
                     <div className="text-center">
@@ -87,7 +87,7 @@ export default function AuthPage() {
                     </div>
                 </div>
 
-	                <div className="rounded-xl border border-border bg-card p-8 shadow-strong">
+	                <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
 	                    {oidcEnabled && (
 	                        <div className="mb-7 space-y-3">
                               {oidcProviders.length > 1 ? (
@@ -101,7 +101,7 @@ export default function AuthPage() {
                                         key={p.id}
                                         type="button"
                                         variant="secondary"
-                                        className="w-full h-10 rounded-lg justify-between"
+                                        className="w-full h-11 rounded-xl justify-between"
                                         disabled={isSubmitting || isSsoSubmitting}
                                         onClick={() => detachPromise(handleSso(p.id))}
                                       >
@@ -120,7 +120,7 @@ export default function AuthPage() {
                                 <Button
                                   type="button"
                                   variant="secondary"
-                                  className="w-full h-10 rounded-lg"
+                                  className="w-full h-11 rounded-xl"
                                   disabled={isSubmitting || isSsoSubmitting}
                                   onClick={() => detachPromise(handleSso(oidcProviders[0]?.id || 'default'))}
                                 >
@@ -148,7 +148,7 @@ export default function AuthPage() {
                       Enterprise SSO supports OIDC here and IdP-initiated SAML when configured by your administrator.
                     </p>
                     {/* Tab Switcher */}
-                    <div className="flex p-1 bg-background/40 rounded-lg mb-8 border border-border/50">
+                    <div className="flex p-1 bg-background/40 rounded-xl mb-8 border border-border/50">
                         <button
                             type="button"
                             className={cn(
@@ -291,7 +291,7 @@ export default function AuthPage() {
 
                         <Button
                             type="submit"
-                            className="w-full h-10 bg-primary hover:brightness-110 text-primary-foreground font-semibold rounded-lg shadow-soft transition-all duration-150"
+                            className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl shadow-md transition-colors duration-200 motion-reduce:transition-none motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98]"
                             disabled={isSubmitting}
                         >
 	                            {isSubmitting ? (

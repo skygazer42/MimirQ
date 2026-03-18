@@ -248,7 +248,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
       </div>
 
       {/* 嵌入 Pipeline Options Panel */}
-      <div className="border border-border/60 rounded-lg overflow-hidden">
+      <div className="border border-border/60 rounded-xl overflow-hidden">
         <div className="bg-muted/30 px-4 py-2 border-b border-border/60 text-xs font-medium text-muted-foreground">
           规则配置
         </div>
@@ -308,7 +308,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
       </div>
 
       {/* LLM 清洗 */}
-      <div className="border border-border rounded-lg p-4 bg-card">
+      <div className="border border-border rounded-xl p-4 bg-card">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" />
@@ -349,7 +349,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
       </div>
 
       {/* 差异对比 (简化版) */}
-      <div className="border border-border rounded-lg overflow-hidden">
+      <div className="border border-border rounded-xl overflow-hidden">
           <button
             onClick={() => setPreviewDiff(!previewDiff)}
             className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors"

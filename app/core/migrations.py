@@ -363,10 +363,15 @@ def apply_runtime_migrations(engine) -> None:
             'CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email);',
             'CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username);',
         ]
-        with engine.begin() as conn:
+        # Important: in PostgreSQL, once a statement errors inside a transaction,
+        # the whole transaction is marked as failed until rollback. Since these
+        # migrations are intentionally best-effort (we swallow errors), each DDL
+        # must run in its own transaction so one failure doesn't block the rest.
+        with engine.connect() as conn:
             for ddl in ddl_statements:
                 try:
-                    conn.execute(text(ddl))
+                    with conn.begin():
+                        conn.execute(text(ddl))
                 except SQLAlchemyError:
                     # Best-effort migrations should never block startup.
                     continue

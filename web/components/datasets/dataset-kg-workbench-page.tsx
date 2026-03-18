@@ -319,7 +319,7 @@ export default function DatasetKGWorkbenchPage() {
     if (docIds.length) qs.set('document_ids', docIds.join(','))
     if (effectivePipelineHash) qs.set('pipeline_hash', effectivePipelineHash)
     return `/graph${qs.toString() ? `?${qs.toString()}` : ''}`
-  }, [effectivePipelineHash, graphMaxDocs, scopedDocIds, scopedDocIdsKey])
+  }, [effectivePipelineHash, graphMaxDocs, scopedDocIds])
 
   const runQuickSearch = useCallback(async () => {
     const q = searchQuery.trim()
