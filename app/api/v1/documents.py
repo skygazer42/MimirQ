@@ -10317,6 +10317,8 @@ async def preview_chunking(
 
         # Build response.
         _stats_started = time.perf_counter()
+        from app.rag.chunking.quality_scorer import score_chunk_semantic_quality
+
         unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
         chunk_items: list[ChunkPreviewItem] = []
         chunk_ranges: list[tuple[int, int]] = []
@@ -10329,10 +10331,16 @@ async def preview_chunking(
         seen_hashes: set[str] = set()
         duplicate_count = 0
         auto_counts: Counter[str] = Counter()
+        semantic_quality_enabled = bool(include_chunks) or bool(include_review_signals)
+        semantic_quality_max_chunks = 512
+        prev_token_set: set[str] | None = None
+        needs_review_count = 0
 
         for idx, chunk in enumerate(chunks):
             content = chunk.page_content or ""
-            meta = chunk.metadata or {}
+            meta = chunk.metadata if isinstance(chunk.metadata, dict) else {}
+            if not isinstance(chunk.metadata, dict):
+                chunk.metadata = meta
             page_num = meta.get("page") or meta.get("page_number")
             page_index = meta.get("page_index")
             local_start = meta.get("start_char")
@@ -10388,6 +10396,19 @@ async def preview_chunking(
                     else estimate_tokens(content)
                 )
 
+            if semantic_quality_enabled and idx < semantic_quality_max_chunks:
+                with contextlib.suppress(Exception):
+                    scores, cur_token_set = score_chunk_semantic_quality(
+                        content,
+                        tokens_est=int(tokens_est or 0),
+                        prev_token_set=prev_token_set,
+                    )
+                    meta["semantic_quality"] = scores
+                    if bool(scores.get("needs_review")):
+                        meta["needs_review"] = True
+                        needs_review_count += 1
+                    prev_token_set = cur_token_set
+
             total_tokens_est += int(tokens_est or 0)
             if int(tokens_est or 0) > 0:
                 token_lengths.append(int(tokens_est or 0))
@@ -10422,6 +10443,9 @@ async def preview_chunking(
                     page_number=page_num,
                     metadata=chunk.metadata
                 ))
+
+        if semantic_quality_enabled and needs_review_count > 0:
+            warnings_out.append(f"{int(needs_review_count)} chunks flagged needs_review (semantic heuristics)")
 
         sorted_lengths = sorted(length_samples)
         # Token stats (always derived from per-chunk `tokens_est`, independent of `unit`).
@@ -11017,6 +11041,8 @@ async def preview_chunking_by_sha(
 
     # Build response.
     _stats_started = time.perf_counter()
+    from app.rag.chunking.quality_scorer import score_chunk_semantic_quality
+
     unit: Literal["chars", "tokens"] = "tokens" if resolved_chunk_strategy == "langchain_token" else "chars"
     chunk_items: list[ChunkPreviewItem] = []
     chunk_ranges: list[tuple[int, int]] = []
@@ -11029,10 +11055,16 @@ async def preview_chunking_by_sha(
     seen_hashes: set[str] = set()
     duplicate_count = 0
     auto_counts: Counter[str] = Counter()
+    semantic_quality_enabled = bool(include_chunks) or bool(include_review_signals)
+    semantic_quality_max_chunks = 512
+    prev_token_set: set[str] | None = None
+    needs_review_count = 0
 
     for idx, chunk in enumerate(chunks):
         content = chunk.page_content or ""
-        meta = chunk.metadata or {}
+        meta = chunk.metadata if isinstance(chunk.metadata, dict) else {}
+        if not isinstance(chunk.metadata, dict):
+            chunk.metadata = meta
         page_num = meta.get("page") or meta.get("page_number")
         page_index = meta.get("page_index")
         local_start = meta.get("start_char")
@@ -11079,6 +11111,19 @@ async def preview_chunking_by_sha(
                 else estimate_tokens(content)
             )
 
+        if semantic_quality_enabled and idx < semantic_quality_max_chunks:
+            with contextlib.suppress(Exception):
+                scores, cur_token_set = score_chunk_semantic_quality(
+                    content,
+                    tokens_est=int(tokens_est or 0),
+                    prev_token_set=prev_token_set,
+                )
+                meta["semantic_quality"] = scores
+                if bool(scores.get("needs_review")):
+                    meta["needs_review"] = True
+                    needs_review_count += 1
+                prev_token_set = cur_token_set
+
         total_tokens_est += int(tokens_est or 0)
         if int(tokens_est or 0) > 0:
             token_lengths.append(int(tokens_est or 0))
@@ -11113,6 +11158,9 @@ async def preview_chunking_by_sha(
                 page_number=page_num,
                 metadata=chunk.metadata
             ))
+
+    if semantic_quality_enabled and needs_review_count > 0:
+        warnings_out.append(f"{int(needs_review_count)} chunks flagged needs_review (semantic heuristics)")
 
     sorted_lengths = sorted(length_samples)
     # Token stats (always derived from per-chunk `tokens_est`, independent of `unit`).
