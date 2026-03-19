@@ -65,6 +65,13 @@ _SPECS: tuple[PeriodicJobSpec, ...] = (
         stale_after_hours=_DEFAULT_STALE_AFTER_HOURS,
     ),
     PeriodicJobSpec(
+        key="embedding_drift_daily",
+        action="observability.embedding_drift.daily",
+        resource_type="embedding_drift_report",
+        expected_interval_hours=_DAILY,
+        stale_after_hours=_DEFAULT_STALE_AFTER_HOURS,
+    ),
+    PeriodicJobSpec(
         key="evidence_drift_daily",
         action="evidence.drift_audit.daily",
         resource_type="evidence_drift_report",
@@ -187,4 +194,3 @@ __all__ = [
     "PERIODIC_JOB_FRESHNESS_SCHEMA_V1",
     "build_periodic_job_freshness_snapshot",
 ]
-
