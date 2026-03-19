@@ -8944,6 +8944,546 @@ def _finalize_jira_project_run(
         _sync_connector_config_from_run(db, run=run)
 
 
+def _get_jira_project_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
+    return (
+        db.query(ConnectorRun)
+        .options(selectinload(ConnectorRun.documents))
+        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+        .first()
+    )
+
+
+def _mark_jira_project_run_running(db: Session, *, run: ConnectorRun) -> None:
+    run.status = "running"
+    run.started_at = _now()
+    run.error_message = None
+    run.stats = dict(run.stats or {})
+    db.commit()
+    db.refresh(run)
+
+
+def _mark_jira_project_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
+    with contextlib.suppress(Exception):
+        run = (
+            db.query(ConnectorRun)
+            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+            .first()
+        )
+        if run is None:
+            return
+        run.status = "failed"
+        run.finished_at = _now()
+        run.error_message = str(exc)[:200]
+        db.commit()
+        with contextlib.suppress(Exception):
+            _sync_connector_config_from_run(db, run=run)
+
+
+def _persist_jira_project_skipped_boundary_duplicates(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    skipped_boundary_duplicates: int,
+) -> None:
+    stats = dict(run.stats or {})
+    stats["skipped_boundary_duplicates"] = int(skipped_boundary_duplicates)
+    run.stats = _finalize_connector_stats(stats)
+    db.commit()
+
+
+def _jira_project_search_params(
+    *,
+    jql: str,
+    start_at: int,
+    max_results: int,
+    custom_fields: list[str],
+) -> dict[str, Any]:
+    fields = ",".join(
+        [
+            "summary",
+            "description",
+            "updated",
+            "issuetype",
+            "priority",
+            "status",
+            "labels",
+            "comment",
+            "security",
+            "attachment",
+            *custom_fields,
+        ]
+    )
+    return {
+        "jql": jql,
+        "startAt": int(start_at),
+        "maxResults": int(max_results),
+        "fields": fields,
+        "expand": "renderedFields",
+    }
+
+
+def _jira_project_parse_search_payload(payload: object) -> tuple[int | None, list[object]]:
+    total_issues_available: int | None = None
+    issues: list[object] = []
+
+    if not isinstance(payload, dict):
+        return total_issues_available, issues
+
+    total_raw = payload.get("total")
+    if isinstance(total_raw, (int, float)) and not isinstance(total_raw, bool):
+        total_issues_available = max(0, int(total_raw))
+
+    issues_raw = payload.get("issues")
+    if isinstance(issues_raw, list):
+        issues = issues_raw
+
+    return total_issues_available, issues
+
+
+async def _jira_project_fetch_issue_page(
+    pool,
+    *,
+    search_url: str,
+    headers: dict[str, str],
+    jql: str,
+    start_at: int,
+    page_request_size: int,
+    custom_fields: list[str],
+) -> tuple[int | None, list[object]]:
+    params = _jira_project_search_params(
+        jql=jql,
+        start_at=start_at,
+        max_results=page_request_size,
+        custom_fields=custom_fields,
+    )
+    resp = await _jira_request(pool, "GET", search_url, params=params, headers=headers)
+    payload = resp.json() if resp is not None else {}
+    return _jira_project_parse_search_payload(payload)
+
+
+async def _process_jira_project_issue(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    issue: object,
+    base_url: str,
+    project_key: str,
+    cursor_last_modified: str,
+    cursor_last_modified_ids: set[str],
+    effective_mode: str,
+    include_comments: bool,
+    max_comments_per_issue: int,
+    include_attachments: bool,
+    max_attachments_per_issue: int,
+    max_total_attachments: int,
+    include_linked_artifacts: bool,
+    max_linked_artifacts_per_issue: int,
+    max_total_linked_artifacts: int,
+    parser_backend: str,
+    chunk_strategy: str,
+    pipeline: object,
+    access: object,
+    user_agent: object,
+    auth_headers: dict[str, str],
+    enable_source_acl: bool,
+    source_acl_mode: str,
+    source_acl_fallback_mode: str,
+    progress: dict[str, Any],
+    observed_issue_urls: set[str],
+) -> None:
+    created = int(progress.get("created") or 0)
+    failed = int(progress.get("failed") or 0)
+    processed = int(progress.get("processed") or 0)
+    created_doc_ids = list(progress.get("created_doc_ids") or [])
+    delta_acl_docs_updated = int(progress.get("delta_acl_docs_updated") or 0)
+    delta_acl_sources_updated = int(progress.get("delta_acl_sources_updated") or 0)
+    last_modified_seen = progress.get("last_modified_seen")
+    last_modified_ids_seen = set(progress.get("last_modified_ids_seen") or set())
+    attachments_processed = int(progress.get("attachments_processed") or 0)
+    attachments_created = int(progress.get("attachments_created") or 0)
+    removed_attachment_documents_disabled = int(progress.get("removed_attachment_documents_disabled") or 0)
+    linked_artifacts_processed = int(progress.get("linked_artifacts_processed") or 0)
+    linked_artifacts_created = int(progress.get("linked_artifacts_created") or 0)
+    removed_linked_artifact_documents_disabled = int(progress.get("removed_linked_artifact_documents_disabled") or 0)
+    skipped_boundary_duplicates = int(progress.get("skipped_boundary_duplicates") or 0)
+
+    issue_info = _build_jira_issue_info(
+        base_url=base_url,
+        issue=issue if isinstance(issue, dict) else {},
+    )
+    issue_key = str(issue_info.get("issue_key") or "")
+    issue_id = str(issue_info.get("issue_id") or "")
+    issue_url = str(issue_info.get("issue_url") or "")
+    updated = str(issue_info.get("updated") or "")
+    label = issue_url or issue_key or issue_id or "jira_issue"
+
+    if effective_mode == "incremental" and _should_skip_timestamp_boundary_item(
+        item_id=issue_id,
+        item_timestamp=updated,
+        cursor_timestamp=cursor_last_modified,
+        boundary_ids=cursor_last_modified_ids,
+    ):
+        skipped_boundary_duplicates += 1
+        progress["skipped_boundary_duplicates"] = skipped_boundary_duplicates
+        _persist_jira_project_skipped_boundary_duplicates(
+            db,
+            run=run,
+            skipped_boundary_duplicates=skipped_boundary_duplicates,
+        )
+        return
+
+    if updated:
+        last_modified_seen, last_modified_ids_seen = _advance_timestamp_boundary(
+            last_timestamp=last_modified_seen,
+            boundary_ids=last_modified_ids_seen,
+            item_timestamp=updated,
+            item_id=issue_id,
+        )
+
+    try:
+        if not issue_url:
+            raise ValueError("missing issue url")
+
+        observed_issue_urls.add(issue_url)
+
+        effective_access, acl_provenance, updated_existing = _resolve_jira_issue_acl(
+            db,
+            tenant_id=tenant_id,
+            run_id=run_id,
+            requested_by=requested_by,
+            run=run,
+            issue=issue if isinstance(issue, dict) else {},
+            issue_info=issue_info,
+            settings_map={
+                "access": access,
+                "enable_source_acl": enable_source_acl,
+                "include_comments": include_comments,
+                "max_comments_per_issue": max_comments_per_issue,
+                "source_acl_mode": source_acl_mode,
+                "source_acl_fallback_mode": source_acl_fallback_mode,
+                "base_url": base_url,
+                "project_key": project_key,
+            },
+        )
+        delta_acl_docs_updated += int(updated_existing)
+        if updated_existing:
+            delta_acl_sources_updated += 1
+
+        filename = f"{issue_key}.html" if issue_key else "jira-issue.html"
+        issue_html = _jira_render_issue_html(
+            base_url=base_url,
+            issue=issue if isinstance(issue, dict) else {},
+            include_comments=include_comments,
+            max_comments=max_comments_per_issue,
+        )
+        if not issue_html.strip():
+            raise ValueError("missing rendered issue html")
+
+        html_body = LocalHtmlIngestRequest(
+            html=issue_html,
+            source_url=issue_url,
+            dataset_id=run.dataset_id,
+            filename=filename,
+            parser_backend=str(parser_backend),
+            chunk_strategy=str(chunk_strategy),
+            pipeline=pipeline,  # type: ignore[arg-type]
+        )
+        doc = await _ingest_local_html_request(
+            background_tasks=None,
+            body=html_body,
+            tenant_id=tenant_id,
+            account_id=requested_by,
+            db=db,
+            ingestion_kind="upload_url",
+        )
+
+        _apply_document_access_from_config(
+            db,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            doc=doc,
+            access=effective_access,
+            connector_id="jira_project",
+        )
+
+        with contextlib.suppress(Exception):
+            meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+            if updated:
+                lm_iso = _normalize_datetime_utc_iso(updated) or updated
+                meta0["source_last_modified_at"] = lm_iso
+                meta0["source_last_modified_source"] = JIRA_UPDATED_SOURCE
+                meta0["source_last_modified_raw"] = meta0.get("source_last_modified_raw") or updated
+            if isinstance(acl_provenance, dict):
+                meta0["acl_provenance"] = dict(acl_provenance)
+            meta0["connector"] = {
+                "connector_id": "jira_project",
+                "base_url": base_url,
+                "project_key": project_key,
+                "issue_id": (issue_id or None),
+                "issue_key": (issue_key or None),
+                "issue_url": issue_url,
+                "last_modified": (updated or None),
+                "run_id": str(run.id),
+                "mode": effective_mode,
+            }
+            doc.doc_metadata = meta0
+            _apply_connector_identity_metadata(
+                doc=doc,
+                run=run,
+                connector_id="jira_project",
+                source_ref=(issue_key or issue_id or issue_url),
+                source_id=(issue_id or issue_key or issue_url),
+            )
+            db.commit()
+
+        db.add(
+            ConnectorRunDocument(
+                tenant_id=tenant_id,
+                run_id=run.id,
+                document_id=doc.id,
+                source_ref=(issue_key or issue_id or issue_url)[:1000] or None,
+                status="created",
+            )
+        )
+        created += 1
+        created_doc_ids.append(doc.id)
+
+        linked_artifacts = await _ingest_jira_issue_linked_artifacts(
+            db,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            issue=issue if isinstance(issue, dict) else {},
+            issue_info=issue_info,
+            effective_access=effective_access,
+            acl_provenance=acl_provenance,
+            settings_map={
+                "base_url": base_url,
+                "project_key": project_key,
+                "include_linked_artifacts": include_linked_artifacts,
+                "max_total_linked_artifacts": max_total_linked_artifacts,
+                "max_linked_artifacts_per_issue": max_linked_artifacts_per_issue,
+                "include_comments": include_comments,
+                "max_comments_per_issue": max_comments_per_issue,
+                "auth_headers": auth_headers,
+                "user_agent": user_agent,
+                "parser_backend": parser_backend,
+                "chunk_strategy": chunk_strategy,
+                "pipeline": pipeline,
+                "effective_mode": effective_mode,
+            },
+            progress={
+                "linked_artifacts_processed": linked_artifacts_processed,
+            },
+        )
+        linked_artifacts_processed += int(linked_artifacts.get("linked_artifacts_processed") or 0)
+        linked_artifacts_created += int(linked_artifacts.get("linked_artifacts_created") or 0)
+        created += int(linked_artifacts.get("linked_artifacts_created") or 0)
+        failed += int(linked_artifacts.get("failed") or 0)
+        created_doc_ids.extend(linked_artifacts.get("created_doc_ids") or [])
+        removed_linked_artifact_documents_disabled += int(linked_artifacts.get("removed_linked_artifact_documents_disabled") or 0)
+
+        attachments = await _ingest_jira_issue_attachments(
+            db,
+            run=run,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            issue=issue if isinstance(issue, dict) else {},
+            issue_info=issue_info,
+            effective_access=effective_access,
+            acl_provenance=acl_provenance,
+            settings_map={
+                "base_url": base_url,
+                "project_key": project_key,
+                "include_attachments": include_attachments,
+                "max_total_attachments": max_total_attachments,
+                "max_attachments_per_issue": max_attachments_per_issue,
+                "auth_headers": auth_headers,
+                "user_agent": user_agent,
+                "parser_backend": parser_backend,
+                "chunk_strategy": chunk_strategy,
+                "pipeline": pipeline,
+                "effective_mode": effective_mode,
+            },
+            progress={
+                "attachments_processed": attachments_processed,
+            },
+        )
+        attachments_processed += int(attachments.get("attachments_processed") or 0)
+        attachments_created += int(attachments.get("attachments_created") or 0)
+        created += int(attachments.get("attachments_created") or 0)
+        failed += int(attachments.get("failed") or 0)
+        created_doc_ids.extend(attachments.get("created_doc_ids") or [])
+        removed_attachment_documents_disabled += int(attachments.get("removed_attachment_documents_disabled") or 0)
+    except Exception as exc:  # noqa: BLE001
+        failed += 1
+        stats = dict(run.stats or {})
+        stats = _append_connector_error(stats, url=label, exc=exc)
+        run.stats = _finalize_connector_stats(stats)
+    finally:
+        processed += 1
+        progress.update(
+            {
+                "created": created,
+                "failed": failed,
+                "processed": processed,
+                "created_doc_ids": created_doc_ids,
+                "delta_acl_docs_updated": delta_acl_docs_updated,
+                "delta_acl_sources_updated": delta_acl_sources_updated,
+                "last_modified_seen": last_modified_seen,
+                "last_modified_ids_seen": last_modified_ids_seen,
+                "attachments_processed": attachments_processed,
+                "attachments_created": attachments_created,
+                "removed_attachment_documents_disabled": removed_attachment_documents_disabled,
+                "linked_artifacts_processed": linked_artifacts_processed,
+                "linked_artifacts_created": linked_artifacts_created,
+                "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
+                "skipped_boundary_duplicates": skipped_boundary_duplicates,
+            }
+        )
+        _persist_jira_project_progress(db, run=run, progress=progress)
+
+
+async def _process_jira_project_issues(
+    db: Session,
+    *,
+    run: ConnectorRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    requested_by: str,
+    settings_map: dict[str, Any],
+) -> tuple[dict[str, Any], set[str], bool]:
+    base_url = str(settings_map.get("base_url") or "")
+    project_key = str(settings_map.get("project_key") or "")
+    cursor_last_modified = str(settings_map.get("cursor_last_modified") or "")
+    cursor_last_modified_ids = set(settings_map.get("cursor_last_modified_ids") or set())
+    effective_mode = str(settings_map.get("effective_mode") or "")
+    max_issues = int(settings_map.get("max_issues") or 0)
+    page_size = int(settings_map.get("page_size") or 0)
+    include_comments = bool(settings_map.get("include_comments"))
+    max_comments_per_issue = int(settings_map.get("max_comments_per_issue") or 0)
+    custom_fields = list(settings_map.get("custom_fields") or [])
+    include_attachments = bool(settings_map.get("include_attachments"))
+    max_attachments_per_issue = int(settings_map.get("max_attachments_per_issue") or 0)
+    max_total_attachments = int(settings_map.get("max_total_attachments") or 0)
+    include_linked_artifacts = bool(settings_map.get("include_linked_artifacts"))
+    max_linked_artifacts_per_issue = int(settings_map.get("max_linked_artifacts_per_issue") or 0)
+    max_total_linked_artifacts = int(settings_map.get("max_total_linked_artifacts") or 0)
+    parser_backend = str(settings_map.get("parser_backend") or "auto")
+    chunk_strategy = str(settings_map.get("chunk_strategy") or "jira_ticket")
+    pipeline = settings_map.get("pipeline")
+    access = settings_map.get("access")
+    user_agent = settings_map.get("user_agent")
+    auth_headers = dict(settings_map.get("auth_headers") or {})
+    search_url = str(settings_map.get("search_url") or "")
+    headers = dict(settings_map.get("headers") or {})
+    jql = str(settings_map.get("jql") or "")
+
+    source_acl_mode = str(settings_map.get("source_acl_mode") or "disabled")
+    source_acl_fallback_mode = str(settings_map.get("source_acl_fallback_mode") or "partial_members")
+    enable_source_acl = bool(settings_map.get("enable_source_acl"))
+
+    progress: dict[str, Any] = {
+        "created": 0,
+        "failed": 0,
+        "processed": 0,
+        "created_doc_ids": [],
+        "delta_acl_docs_updated": 0,
+        "delta_acl_sources_updated": 0,
+        "last_modified_seen": None,
+        "last_modified_ids_seen": set(),
+        "attachments_processed": 0,
+        "attachments_created": 0,
+        "removed_attachment_documents_disabled": 0,
+        "linked_artifacts_processed": 0,
+        "linked_artifacts_created": 0,
+        "removed_linked_artifact_documents_disabled": 0,
+        "skipped_boundary_duplicates": 0,
+        "removed_issues_reconciled": 0,
+        "removed_documents_disabled": 0,
+    }
+    observed_issue_urls: set[str] = set()
+    listing_complete = False
+    total_issues_available: int | None = None
+
+    pool = get_http_client_pool()
+    start_at = 0
+
+    while int(progress.get("processed") or 0) < max_issues:
+        if _jira_project_run_cancelled(db, run=run):
+            break
+
+        processed = int(progress.get("processed") or 0)
+        page_request_size = int(min(page_size, max_issues - processed))
+        page_total, issues = await _jira_project_fetch_issue_page(
+            pool,
+            search_url=search_url,
+            headers=headers,
+            jql=jql,
+            start_at=start_at,
+            page_request_size=page_request_size,
+            custom_fields=custom_fields,
+        )
+        if page_total is not None:
+            total_issues_available = page_total
+
+        if not issues:
+            if total_issues_available is None or start_at >= total_issues_available:
+                listing_complete = True
+            break
+
+        for issue in issues:
+            if int(progress.get("processed") or 0) >= max_issues:
+                break
+            if _jira_project_run_cancelled(db, run=run):
+                break
+
+            await _process_jira_project_issue(
+                db,
+                run=run,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                requested_by=requested_by,
+                issue=issue,
+                base_url=base_url,
+                project_key=project_key,
+                cursor_last_modified=cursor_last_modified,
+                cursor_last_modified_ids=cursor_last_modified_ids,
+                effective_mode=effective_mode,
+                include_comments=include_comments,
+                max_comments_per_issue=max_comments_per_issue,
+                include_attachments=include_attachments,
+                max_attachments_per_issue=max_attachments_per_issue,
+                max_total_attachments=max_total_attachments,
+                include_linked_artifacts=include_linked_artifacts,
+                max_linked_artifacts_per_issue=max_linked_artifacts_per_issue,
+                max_total_linked_artifacts=max_total_linked_artifacts,
+                parser_backend=parser_backend,
+                chunk_strategy=chunk_strategy,
+                pipeline=pipeline,
+                access=access,
+                user_agent=user_agent,
+                auth_headers=auth_headers,
+                enable_source_acl=enable_source_acl,
+                source_acl_mode=source_acl_mode,
+                source_acl_fallback_mode=source_acl_fallback_mode,
+                progress=progress,
+                observed_issue_urls=observed_issue_urls,
+            )
+
+        start_at += int(len(issues))
+        if total_issues_available is not None and start_at >= total_issues_available:
+            listing_complete = True
+        if len(issues) < page_request_size:
+            listing_complete = True
+            break
+
+    return progress, observed_issue_urls, listing_complete
+
+
 async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for jira_project connector.
@@ -8954,24 +9494,15 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
     - Apply best-effort Jira source ACL inheritance from security level / comment visibility
     """
     db = SessionLocal()
+    run: ConnectorRun | None = None
     try:
-        run = (
-            db.query(ConnectorRun)
-            .options(selectinload(ConnectorRun.documents))
-            .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-            .first()
-        )
-        if not run:
+        run = _get_jira_project_run(db, run_id=run_id, tenant_id=tenant_id)
+        if run is None:
             return
         if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
             return
 
-        run.status = "running"
-        run.started_at = _now()
-        run.error_message = None
-        run.stats = dict(run.stats or {})
-        db.commit()
-        db.refresh(run)
+        _mark_jira_project_run_running(db, run=run)
 
         settings_map = _build_jira_project_run_settings(decrypt_connector_config_secrets(dict(run.config or {})))
         settings_map["jql"] = _build_jira_project_search_jql(
@@ -8981,375 +9512,19 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
             cursor_last_modified=str(settings_map.get("cursor_last_modified") or ""),
         )
 
-        base_url = str(settings_map.get("base_url") or "")
-        project_key = str(settings_map.get("project_key") or "")
-        cursor_last_modified = str(settings_map.get("cursor_last_modified") or "")
-        cursor_last_modified_ids = set(settings_map.get("cursor_last_modified_ids") or set())
-        effective_mode = str(settings_map.get("effective_mode") or "")
-        max_issues = int(settings_map.get("max_issues") or 0)
-        page_size = int(settings_map.get("page_size") or 0)
-        include_comments = bool(settings_map.get("include_comments"))
-        max_comments_per_issue = int(settings_map.get("max_comments_per_issue") or 0)
-        custom_fields = list(settings_map.get("custom_fields") or [])
-        include_attachments = bool(settings_map.get("include_attachments"))
-        max_attachments_per_issue = int(settings_map.get("max_attachments_per_issue") or 0)
-        max_total_attachments = int(settings_map.get("max_total_attachments") or 0)
-        include_linked_artifacts = bool(settings_map.get("include_linked_artifacts"))
-        max_linked_artifacts_per_issue = int(settings_map.get("max_linked_artifacts_per_issue") or 0)
-        max_total_linked_artifacts = int(settings_map.get("max_total_linked_artifacts") or 0)
-        parser_backend = str(settings_map.get("parser_backend") or "auto")
-        chunk_strategy = str(settings_map.get("chunk_strategy") or "jira_ticket")
-        pipeline = settings_map.get("pipeline")
-        access = settings_map.get("access")
-        user_agent = settings_map.get("user_agent")
-        auth_headers = dict(settings_map.get("auth_headers") or {})
-        search_url = str(settings_map.get("search_url") or "")
-        headers = dict(settings_map.get("headers") or {})
-        jql = str(settings_map.get("jql") or "")
-
-        created = 0
-        failed = 0
-        processed = 0
-        created_doc_ids: list[UUID] = []
-        delta_acl_docs_updated = 0
-        delta_acl_sources_updated = 0
-        last_modified_seen: str | None = None
-        last_modified_ids_seen: set[str] = set()
-        observed_issue_urls: set[str] = set()
-        removed_issues_reconciled = 0
-        removed_documents_disabled = 0
-        attachments_processed = 0
-        attachments_created = 0
-        removed_attachment_documents_disabled = 0
-        linked_artifacts_processed = 0
-        linked_artifacts_created = 0
-        removed_linked_artifact_documents_disabled = 0
-        skipped_boundary_duplicates = 0
-        listing_complete = False
-        total_issues_available: int | None = None
-
         run.stats = _finalize_connector_stats(_initialize_jira_project_run_stats(run=run, settings_map=settings_map))
         db.commit()
 
-        source_acl_mode = str(settings_map.get("source_acl_mode") or "disabled")
-        source_acl_fallback_mode = str(settings_map.get("source_acl_fallback_mode") or "partial_members")
-        enable_source_acl = bool(settings_map.get("enable_source_acl"))
-
-        pool = get_http_client_pool()
-        start_at = 0
-
-        while processed < max_issues:
-            try:
-                db.refresh(run)
-            except Exception:
-                pass
-            if str(run.status or "").lower() == "cancelled":
-                break
-
-            page_request_size = int(min(page_size, max_issues - processed))
-            params = {
-                "jql": jql,
-                "startAt": int(start_at),
-                "maxResults": page_request_size,
-                "fields": ",".join(
-                    [
-                        "summary",
-                        "description",
-                        "updated",
-                        "issuetype",
-                        "priority",
-                        "status",
-                        "labels",
-                        "comment",
-                        "security",
-                        "attachment",
-                        *custom_fields,
-                    ]
-                ),
-                "expand": "renderedFields",
-            }
-            resp = await _jira_request(pool, "GET", search_url, params=params, headers=headers)
-            data = resp.json() if resp is not None else {}
-            total_raw = data.get("total") if isinstance(data, dict) else None
-            if isinstance(total_raw, (int, float)) and not isinstance(total_raw, bool):
-                total_issues_available = max(0, int(total_raw))
-            issues = data.get("issues") if isinstance(data, dict) and isinstance(data.get("issues"), list) else []
-            if not issues:
-                if total_issues_available is None or start_at >= total_issues_available:
-                    listing_complete = True
-                break
-
-            for issue in issues:
-                if processed >= max_issues:
-                    break
-
-                try:
-                    db.refresh(run)
-                except Exception:
-                    pass
-                if str(run.status or "").lower() == "cancelled":
-                    break
-
-                issue_info = _build_jira_issue_info(
-                    base_url=base_url,
-                    issue=issue if isinstance(issue, dict) else {},
-                )
-                issue_key = str(issue_info.get("issue_key") or "")
-                issue_id = str(issue_info.get("issue_id") or "")
-                issue_url = str(issue_info.get("issue_url") or "")
-                updated = str(issue_info.get("updated") or "")
-
-                if effective_mode == "incremental" and _should_skip_timestamp_boundary_item(
-                    item_id=issue_id,
-                    item_timestamp=updated,
-                    cursor_timestamp=cursor_last_modified,
-                    boundary_ids=cursor_last_modified_ids,
-                ):
-                    skipped_boundary_duplicates += 1
-                    stats = dict(run.stats or {})
-                    stats["skipped_boundary_duplicates"] = int(skipped_boundary_duplicates)
-                    run.stats = _finalize_connector_stats(stats)
-                    db.commit()
-                    continue
-
-                if updated:
-                    last_modified_seen, last_modified_ids_seen = _advance_timestamp_boundary(
-                        last_timestamp=last_modified_seen,
-                        boundary_ids=last_modified_ids_seen,
-                        item_timestamp=updated,
-                        item_id=issue_id,
-                    )
-
-                if not issue_url:
-                    failed += 1
-                    stats = dict(run.stats or {})
-                    stats = _append_connector_error(stats, url=(issue_key or issue_id or "jira_issue"), exc=ValueError("missing issue url"))
-                    run.stats = _finalize_connector_stats(stats)
-                    db.commit()
-                    processed += 1
-                    continue
-
-                observed_issue_urls.add(issue_url)
-
-                try:
-                    effective_access, acl_provenance, updated_existing = _resolve_jira_issue_acl(
-                        db,
-                        tenant_id=tenant_id,
-                        run_id=run_id,
-                        requested_by=requested_by,
-                        run=run,
-                        issue=issue if isinstance(issue, dict) else {},
-                        issue_info=issue_info,
-                        settings_map={
-                            "access": access,
-                            "enable_source_acl": enable_source_acl,
-                            "include_comments": include_comments,
-                            "max_comments_per_issue": max_comments_per_issue,
-                            "source_acl_mode": source_acl_mode,
-                            "source_acl_fallback_mode": source_acl_fallback_mode,
-                            "base_url": base_url,
-                            "project_key": project_key,
-                        },
-                    )
-                    delta_acl_docs_updated += int(updated_existing)
-                    if updated_existing:
-                        delta_acl_sources_updated += 1
-
-                    filename = f"{issue_key}.html" if issue_key else "jira-issue.html"
-                    issue_html = _jira_render_issue_html(
-                        base_url=base_url,
-                        issue=issue if isinstance(issue, dict) else {},
-                        include_comments=include_comments,
-                        max_comments=max_comments_per_issue,
-                    )
-                    if not issue_html.strip():
-                        raise ValueError("missing rendered issue html")
-
-                    html_body = LocalHtmlIngestRequest(
-                        html=issue_html,
-                        source_url=issue_url,
-                        dataset_id=run.dataset_id,
-                        filename=filename,
-                        parser_backend=str(parser_backend),
-                        chunk_strategy=str(chunk_strategy),
-                        pipeline=pipeline,  # type: ignore[arg-type]
-                    )
-                    doc = await _ingest_local_html_request(
-                        background_tasks=None,
-                        body=html_body,
-                        tenant_id=tenant_id,
-                        account_id=requested_by,
-                        db=db,
-                        ingestion_kind="upload_url",
-                    )
-
-                    _apply_document_access_from_config(
-                        db,
-                        tenant_id=tenant_id,
-                        requested_by=requested_by,
-                        doc=doc,
-                        access=effective_access,
-                        connector_id="jira_project",
-                    )
-
-                    try:
-                        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
-                        if updated:
-                            lm_iso = _normalize_datetime_utc_iso(updated) or updated
-                            meta0["source_last_modified_at"] = lm_iso
-                            meta0["source_last_modified_source"] = JIRA_UPDATED_SOURCE
-                            meta0["source_last_modified_raw"] = meta0.get("source_last_modified_raw") or updated
-                        if isinstance(acl_provenance, dict):
-                            meta0["acl_provenance"] = dict(acl_provenance)
-                        meta0["connector"] = {
-                            "connector_id": "jira_project",
-                            "base_url": base_url,
-                            "project_key": project_key,
-                            "issue_id": (issue_id or None),
-                            "issue_key": (issue_key or None),
-                            "issue_url": issue_url,
-                            "last_modified": (updated or None),
-                            "run_id": str(run.id),
-                            "mode": effective_mode,
-                        }
-                        doc.doc_metadata = meta0
-                        _apply_connector_identity_metadata(
-                            doc=doc,
-                            run=run,
-                            connector_id="jira_project",
-                            source_ref=(issue_key or issue_id or issue_url),
-                            source_id=(issue_id or issue_key or issue_url),
-                        )
-                        db.commit()
-                    except Exception:
-                        pass
-
-                    db.add(
-                        ConnectorRunDocument(
-                            tenant_id=tenant_id,
-                            run_id=run.id,
-                            document_id=doc.id,
-                            source_ref=(issue_key or issue_id or issue_url)[:1000] or None,
-                            status="created",
-                        )
-                    )
-                    created += 1
-                    created_doc_ids.append(doc.id)
-
-                    linked_artifacts = await _ingest_jira_issue_linked_artifacts(
-                        db,
-                        run=run,
-                        tenant_id=tenant_id,
-                        requested_by=requested_by,
-                        issue=issue if isinstance(issue, dict) else {},
-                        issue_info=issue_info,
-                        effective_access=effective_access,
-                        acl_provenance=acl_provenance,
-                        settings_map={
-                            "base_url": base_url,
-                            "project_key": project_key,
-                            "include_linked_artifacts": include_linked_artifacts,
-                            "max_total_linked_artifacts": max_total_linked_artifacts,
-                            "max_linked_artifacts_per_issue": max_linked_artifacts_per_issue,
-                            "include_comments": include_comments,
-                            "max_comments_per_issue": max_comments_per_issue,
-                            "auth_headers": auth_headers,
-                            "user_agent": user_agent,
-                            "parser_backend": parser_backend,
-                            "chunk_strategy": chunk_strategy,
-                            "pipeline": pipeline,
-                            "effective_mode": effective_mode,
-                        },
-                        progress={
-                            "linked_artifacts_processed": linked_artifacts_processed,
-                        },
-                    )
-                    linked_artifacts_processed += int(linked_artifacts.get("linked_artifacts_processed") or 0)
-                    linked_artifacts_created += int(linked_artifacts.get("linked_artifacts_created") or 0)
-                    created += int(linked_artifacts.get("linked_artifacts_created") or 0)
-                    failed += int(linked_artifacts.get("failed") or 0)
-                    created_doc_ids.extend(linked_artifacts.get("created_doc_ids") or [])
-                    removed_linked_artifact_documents_disabled += int(
-                        linked_artifacts.get("removed_linked_artifact_documents_disabled") or 0
-                    )
-
-                    attachments = await _ingest_jira_issue_attachments(
-                        db,
-                        run=run,
-                        tenant_id=tenant_id,
-                        requested_by=requested_by,
-                        issue=issue if isinstance(issue, dict) else {},
-                        issue_info=issue_info,
-                        effective_access=effective_access,
-                        acl_provenance=acl_provenance,
-                        settings_map={
-                            "base_url": base_url,
-                            "project_key": project_key,
-                            "include_attachments": include_attachments,
-                            "max_total_attachments": max_total_attachments,
-                            "max_attachments_per_issue": max_attachments_per_issue,
-                            "auth_headers": auth_headers,
-                            "user_agent": user_agent,
-                            "parser_backend": parser_backend,
-                            "chunk_strategy": chunk_strategy,
-                            "pipeline": pipeline,
-                            "effective_mode": effective_mode,
-                        },
-                        progress={
-                            "attachments_processed": attachments_processed,
-                        },
-                    )
-                    attachments_processed += int(attachments.get("attachments_processed") or 0)
-                    attachments_created += int(attachments.get("attachments_created") or 0)
-                    created += int(attachments.get("attachments_created") or 0)
-                    failed += int(attachments.get("failed") or 0)
-                    created_doc_ids.extend(attachments.get("created_doc_ids") or [])
-                    removed_attachment_documents_disabled += int(
-                        attachments.get("removed_attachment_documents_disabled") or 0
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    failed += 1
-                    stats = dict(run.stats or {})
-                    stats = _append_connector_error(stats, url=(issue_url or issue_key or issue_id or "jira_issue"), exc=exc)
-                    run.stats = _finalize_connector_stats(stats)
-                finally:
-                    processed += 1
-                    _persist_jira_project_progress(
-                        db,
-                        run=run,
-                        progress={
-                            "processed": processed,
-                            "attachments_processed": attachments_processed,
-                            "linked_artifacts_processed": linked_artifacts_processed,
-                            "created": created,
-                            "attachments_created": attachments_created,
-                            "linked_artifacts_created": linked_artifacts_created,
-                            "failed": failed,
-                            "skipped_boundary_duplicates": skipped_boundary_duplicates,
-                            "created_doc_ids": created_doc_ids,
-                            "delta_acl_docs_updated": delta_acl_docs_updated,
-                            "delta_acl_sources_updated": delta_acl_sources_updated,
-                            "removed_issues_reconciled": removed_issues_reconciled,
-                            "removed_documents_disabled": removed_documents_disabled,
-                            "removed_attachment_documents_disabled": removed_attachment_documents_disabled,
-                            "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
-                            "last_modified_seen": last_modified_seen,
-                            "last_modified_ids_seen": last_modified_ids_seen,
-                        },
-                    )
-
-            start_at += int(len(issues))
-            if total_issues_available is not None and start_at >= total_issues_available:
-                listing_complete = True
-            if len(issues) < page_request_size:
-                listing_complete = True
-                break
-
+        progress, observed_issue_urls, listing_complete = await _process_jira_project_issues(
+            db,
+            run=run,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+            settings_map=settings_map,
+        )
         if _jira_project_run_cancelled(db, run=run):
-            _finalize_cancelled_jira_project_run(
-                db,
-                run=run,
-            )
+            _finalize_cancelled_jira_project_run(db, run=run)
             return
 
         _finalize_jira_project_run(
@@ -9359,47 +9534,18 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
             tenant_id=tenant_id,
             requested_by=requested_by,
             settings_map={
-                "effective_mode": effective_mode,
-                "base_url": base_url,
-                "project_key": project_key,
-                "enable_source_acl": enable_source_acl,
-                "source_acl_fallback_mode": source_acl_fallback_mode,
+                "effective_mode": str(settings_map.get("effective_mode") or ""),
+                "base_url": str(settings_map.get("base_url") or ""),
+                "project_key": str(settings_map.get("project_key") or ""),
+                "enable_source_acl": bool(settings_map.get("enable_source_acl")),
+                "source_acl_fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
             },
-            progress={
-                "created": created,
-                "failed": failed,
-                "created_doc_ids": created_doc_ids,
-                "delta_acl_docs_updated": delta_acl_docs_updated,
-                "delta_acl_sources_updated": delta_acl_sources_updated,
-                "removed_issues_reconciled": removed_issues_reconciled,
-                "removed_documents_disabled": removed_documents_disabled,
-                "attachments_processed": attachments_processed,
-                "attachments_created": attachments_created,
-                "removed_attachment_documents_disabled": removed_attachment_documents_disabled,
-                "linked_artifacts_processed": linked_artifacts_processed,
-                "linked_artifacts_created": linked_artifacts_created,
-                "removed_linked_artifact_documents_disabled": removed_linked_artifact_documents_disabled,
-                "skipped_boundary_duplicates": skipped_boundary_duplicates,
-                "last_modified_seen": last_modified_seen,
-                "last_modified_ids_seen": last_modified_ids_seen,
-            },
+            progress=progress,
             observed_issue_urls=observed_issue_urls,
             listing_complete=listing_complete,
         )
     except Exception as exc:  # noqa: BLE001
-        with contextlib.suppress(Exception):
-            run = (
-                db.query(ConnectorRun)
-                .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-                .first()
-            )
-            if run is not None:
-                run.status = "failed"
-                run.finished_at = _now()
-                run.error_message = str(exc)[:200]
-                db.commit()
-                with contextlib.suppress(Exception):
-                    _sync_connector_config_from_run(db, run=run)
+        _mark_jira_project_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
 
