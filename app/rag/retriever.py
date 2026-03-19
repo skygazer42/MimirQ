@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.stream_events import emit_stream_event
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.filters import match_metadata_filter
@@ -2697,6 +2698,8 @@ class HybridRetriever(BaseRetriever):
                 pass
             return cached[:top_k]
 
+        emit_stream_event("event", {"message": "正在召回候选…"}, dedupe_key="retrieval.recall")
+
         # MMR mode needs more candidates for diversity selection
         fetch_k = top_k * 2
         if retrieval_mode == "mmr":
@@ -3096,6 +3099,8 @@ class HybridRetriever(BaseRetriever):
             pass
 
         # 4) Reranking strategy
+        if merged_results:
+            emit_stream_event("event", {"message": "候选召回完成，正在重排…"}, dedupe_key="retrieval.rerank")
         if retrieval_mode == "mmr" and merged_results:
             merged_results = self._mmr_rerank(merged_results, query=query, top_k=top_k, lambda_mult=mmr_lambda)
         elif enable_weight_rerank and merged_results:

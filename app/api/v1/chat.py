@@ -36,6 +36,7 @@ from app.api.schemas.chat import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
+from app.core.stream_events import StreamEmitter, bind_stream_emitter, reset_stream_emitter
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
 from app.rag.core.text import parse_json_from_text
@@ -2175,6 +2176,7 @@ async def stream_chat(
 
             async def _produce() -> None:
                 nonlocal producer_exc
+                stream_emitter_token = bind_stream_emitter(StreamEmitter(queue=q, loop=asyncio.get_running_loop()))
                 try:
                     async for ev in engine.stream_chat(
                         question=request.message,
@@ -2236,6 +2238,7 @@ async def stream_chat(
                 except Exception as exc:  # noqa: BLE001
                     producer_exc = exc
                 finally:
+                    reset_stream_emitter(stream_emitter_token)
                     await q.put(None)
 
             producer_task = asyncio.create_task(_produce())
