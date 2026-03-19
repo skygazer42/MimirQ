@@ -77,6 +77,15 @@ function caseKey(item: any): string | null {
 export function KGDiagnosticsPage() {
   const [datasetId, setDatasetId] = useState('')
 
+  const [qualityDocLimit, setQualityDocLimit] = useState(200)
+  const [qualityPipelineHash, setQualityPipelineHash] = useState('')
+  const [qualityLoading, setQualityLoading] = useState(false)
+  const [qualityReport, setQualityReport] = useState<any | null>(null)
+  const qualityJson = useMemo(
+    () => prettyJson(qualityReport ?? { hint: '加载 KG extraction quality report（aggregate-only）' }),
+    [qualityReport]
+  )
+
   const [maxCases, setMaxCases] = useState(50)
   const [k, setK] = useState(10)
   const [autoExtractKg, setAutoExtractKg] = useState(true)
@@ -220,6 +229,28 @@ export function KGDiagnosticsPage() {
       else setDetailB(detail)
     } catch (err) {
       toast.error(formatApiError(err, `加载 run ${id.slice(0, 8)} 失败`))
+    }
+  }
+
+  async function loadQualityReport(): Promise<void> {
+    const ds = datasetId.trim()
+    if (!ds) {
+      toast.error('请输入 dataset_id')
+      return
+    }
+    setQualityLoading(true)
+    try {
+      const resp = await evaluationApi.getKgQualityReport({
+        dataset_id: ds,
+        document_limit: Math.max(1, Math.min(qualityDocLimit, 2000)),
+        pipeline_hash: qualityPipelineHash.trim() || undefined,
+      })
+      setQualityReport(resp ?? null)
+      toast.success('已拉取 KG quality report')
+    } catch (err) {
+      toast.error(formatApiError(err, '拉取 KG quality report 失败'))
+    } finally {
+      setQualityLoading(false)
     }
   }
 
@@ -450,6 +481,41 @@ export function KGDiagnosticsPage() {
         </div>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <Card className="lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardTitle className="text-base">KG Extraction Quality（aggregate）</CardTitle>
+              <Button variant="outline" size="sm" className="gap-2" onClick={loadQualityReport} disabled={qualityLoading}>
+                <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+                拉取
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1">
+                  <Label>document_limit</Label>
+                  <Input
+                    type="number"
+                    value={String(qualityDocLimit)}
+                    onChange={(e) => setQualityDocLimit(Number(e.target.value || 0))}
+                    min={1}
+                    max={2000}
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <Label>pipeline_hash（可选）</Label>
+                  <Input
+                    value={qualityPipelineHash}
+                    onChange={(e) => setQualityPipelineHash(e.target.value)}
+                    placeholder="留空 = active pipeline"
+                  />
+                </div>
+              </div>
+              <Textarea value={qualityJson} readOnly rows={10} className="font-mono text-xs" />
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="text-base">Runs（持久化）</CardTitle>
@@ -583,4 +649,3 @@ export function KGDiagnosticsPage() {
     </AppFrame>
   )
 }
-
