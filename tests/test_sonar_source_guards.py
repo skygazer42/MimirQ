@@ -56,7 +56,6 @@ def test_sonar_configs_keep_auto_analysis_legacy_exclusions_in_sync():
         "web/app/datasets/**/*",
         "web/components/rag-trace/**/*",
         "web/components/graph/**/*",
-        "web/components/chat/**/*",
         "web/components/chat-area.tsx",
         "web/lib/evidence-why-missed.ts",
         "web/lib/parsing-positions.ts",
