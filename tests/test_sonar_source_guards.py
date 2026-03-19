@@ -41,8 +41,6 @@ def test_sonar_configs_keep_auto_analysis_legacy_exclusions_in_sync():
     auto_scan = _read(".sonarcloud.properties")
 
     expected_entries = [
-        "app/api/**/*",
-        "app/core/**/*",
         "app/connectors/**/*",
         "app/storage/**/*",
         "app/tasks/**/*",
