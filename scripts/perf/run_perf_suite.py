@@ -7,17 +7,21 @@ import sys
 import time
 from collections import Counter
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 SUITE_NAME = "perf-v1"
 
 
 def _utc_compact_timestamp() -> str:
-    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -197,7 +201,8 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     case_results: list[dict[str, Any]] = []
-    with httpx.Client() as client:
+    # Avoid ambient proxy env (e.g. ALL_PROXY=socks://...) affecting local perf runs.
+    with httpx.Client(trust_env=False) as client:
         for case in cases:
             case_results.append(
                 _run_case(
@@ -211,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     payload = {
-        "ts": datetime.now(UTC).isoformat(),
+        "ts": datetime.now(timezone.utc).isoformat(),
         "suite": SUITE_NAME,
         "base_url": base_url,
         "llm_mock": llm_mock,

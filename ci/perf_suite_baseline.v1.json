@@ -1,0 +1,78 @@
+{
+  "base_url": "http://localhost:8000",
+  "cases": [
+    {
+      "errors_top": {},
+      "iterations": 10,
+      "latency_ms": {
+        "avg": 1.7980261996854097,
+        "count": 10,
+        "max": 3.194135999365244,
+        "min": 1.4631029989686795,
+        "p50": 1.5478644963877741,
+        "p95": 2.754847349569899,
+        "p99": 3.1062782694061752
+      },
+      "method": "GET",
+      "name": "health",
+      "ok_count": 10,
+      "ok_ratio": 1.0,
+      "path": "/api/v1/health",
+      "qps": 555.100157446893,
+      "status_codes": {
+        "200": 10
+      }
+    },
+    {
+      "errors_top": {},
+      "iterations": 10,
+      "latency_ms": {
+        "avg": 2.129683199018473,
+        "count": 10,
+        "max": 6.622476998018101,
+        "min": 1.4600279973819852,
+        "p50": 1.6235490002145525,
+        "p95": 4.507814950193273,
+        "p99": 6.199544588453137
+      },
+      "method": "GET",
+      "name": "ready",
+      "ok_count": 10,
+      "ok_ratio": 1.0,
+      "path": "/api/v1/health/ready",
+      "qps": 468.6611666952674,
+      "status_codes": {
+        "200": 10
+      }
+    },
+    {
+      "errors_top": {},
+      "iterations": 10,
+      "latency_ms": {
+        "avg": 1.8025256009423174,
+        "count": 10,
+        "max": 2.6311649999115616,
+        "min": 1.5005340028437786,
+        "p50": 1.6308970007230528,
+        "p95": 2.5555695025104797,
+        "p99": 2.616045900431345
+      },
+      "method": "GET",
+      "name": "meta",
+      "ok_count": 10,
+      "ok_ratio": 1.0,
+      "path": "/api/v1/meta",
+      "qps": 553.5552836157822,
+      "status_codes": {
+        "200": 10
+      }
+    }
+  ],
+  "iterations": 10,
+  "llm_mock": true,
+  "llm_mock_env": "1",
+  "llm_mock_env_error": null,
+  "suite": "perf-v1",
+  "timeout_sec": 2.0,
+  "ts": "2026-03-19T11:58:02.953160+00:00"
+}

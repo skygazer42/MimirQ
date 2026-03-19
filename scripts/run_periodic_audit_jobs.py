@@ -35,8 +35,8 @@ from app.core.database import SessionLocal
 from app.models.tenant import Tenant
 from app.services.periodic_audit_jobs import (
     run_daily_access_review_summary,
-    run_daily_evidence_drift_audit_report,
     run_daily_embedding_drift_report,
+    run_daily_evidence_drift_audit_report,
     run_daily_index_audit_report,
 )
 
