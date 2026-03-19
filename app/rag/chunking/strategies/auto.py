@@ -514,192 +514,93 @@ class AutoChunker(BaseChunker):
         file_type = str(meta.get("file_type", "") or "").strip().lower()
         text = doc.page_content or ""
 
-        if file_type in {"json"} or _looks_like_json(text):
+        def _json_case() -> bool:
+            return file_type in {"json"} or _looks_like_json(text)
+
+        def _build_json_chunker() -> BaseChunker:
             # JSON overlap is usually counterproductive; keep it at 0.
-            return JSONChunker(chunk_size=self.chunk_size, chunk_overlap=0), "json"
+            return JSONChunker(chunk_size=self.chunk_size, chunk_overlap=0)
 
-        if file_type in {"jsonl", "ndjson"} or looks_like_jsonl_records(text):
-            return self._jsonl, "jsonl_records"
+        cases = [
+            (_json_case, _build_json_chunker, "json"),
+            (lambda: file_type in {"jsonl", "ndjson"} or looks_like_jsonl_records(text), lambda: self._jsonl, "jsonl_records"),
+            (lambda: looks_like_maven_pom(text), lambda: self._maven_pom, "maven_pom"),
+            (lambda: looks_like_junit_xml(text), lambda: self._junit_xml, "junit_xml"),
+            (lambda: looks_like_sitemap_xml(text), lambda: self._sitemap_xml, "sitemap_xml"),
+            (lambda: file_type in {"rss", "atom"} or looks_like_xml_feed(text), lambda: self._xml_feed, "xml_feed"),
+            (lambda: file_type in {"graphql", "gql"} or looks_like_graphql_schema(text), lambda: self._graphql, "graphql_schema"),
+            (lambda: file_type in {"proto"} or looks_like_proto_schema(text), lambda: self._proto, "proto_schema"),
+            (lambda: file_type in {"tf", "hcl"} or looks_like_terraform_hcl(text), lambda: self._terraform, "terraform_hcl"),
+            (lambda: file_type == "csv" and looks_like_csv_rows(text), lambda: self._csv_rows, "csv_rows"),
+            (lambda: file_type == "csv" and looks_like_markdown_table(text), lambda: self._markdown_table, "markdown_table"),
+            (lambda: file_type in {"xlsx", "xls"} and looks_like_spreadsheet(text), lambda: self._spreadsheet, "spreadsheet_sheet"),
+            (lambda: file_type in {"xlsx", "xls"} and looks_like_markdown_table(text), lambda: self._markdown_table, "markdown_table"),
+            (lambda: looks_like_git_commit_log(text), lambda: self._git_commit_log, "git_commit_log"),
+            (lambda: looks_like_diff_patch(text), lambda: self._diff, "diff_patch"),
+            (lambda: looks_like_subtitles(text), lambda: self._subtitles, "subtitles"),
+            (lambda: looks_like_log_events(text), lambda: self._log_events, "log_events"),
+            (lambda: looks_like_stacktrace(text), lambda: self._stacktrace, "stacktrace"),
+            (lambda: looks_like_http_trace(text), lambda: self._http_trace, "http_trace"),
+            (lambda: looks_like_terraform_plan(text), lambda: self._terraform_plan, "terraform_plan"),
+            (lambda: looks_like_openapi_spec(text), lambda: self._openapi, "openapi_spec"),
+            (
+                lambda: file_type in {"yaml", "yml"} and looks_like_github_actions_workflow(text),
+                lambda: self._github_actions,
+                "github_actions",
+            ),
+            (
+                lambda: file_type in {"yaml", "yml"} and looks_like_docker_compose(text),
+                lambda: self._docker_compose,
+                "docker_compose",
+            ),
+            (lambda: file_type in {"yaml", "yml"} and looks_like_gitlab_ci(text), lambda: self._gitlab_ci, "gitlab_ci"),
+            (lambda: file_type in {"yaml", "yml"} and looks_like_ansible_playbook(text), lambda: self._ansible, "ansible_playbook"),
+            (lambda: file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text), lambda: self._yaml, "yaml_manifest"),
+            (lambda: file_type in {"toml"} or looks_like_toml_config(text), lambda: self._toml, "toml_config"),
+            (lambda: file_type in {"sql"} or looks_like_sql_schema(text), lambda: self._sql, "sql_schema"),
+            (lambda: looks_like_nginx_config(text), lambda: self._nginx, "nginx_config"),
+            (lambda: looks_like_dockerfile(text), lambda: self._dockerfile, "dockerfile"),
+            (lambda: file_type in {"mk"} or looks_like_makefile(text), lambda: self._makefile, "makefile"),
+            (lambda: looks_like_kv_config(text), lambda: self._kv_config, "kv_config"),
+            (lambda: looks_like_api_reference(text), lambda: self._api, "api_reference"),
+            (lambda: looks_like_changelog(text), lambda: self._changelog, "changelog"),
+            (lambda: looks_like_email_thread(text), lambda: self._email_thread, "email_thread"),
+            (lambda: looks_like_chat_history(text), lambda: self._chat, "chat_history"),
+            (lambda: looks_like_jira_ticket(text), lambda: self._jira, "jira_ticket"),
+            (lambda: looks_like_postmortem_report(text), lambda: self._postmortem, "postmortem_report"),
+            (lambda: looks_like_qa_pairs(text), lambda: self._qa_pairs, "qa_pairs"),
+            (lambda: looks_like_qa_markdown(text), lambda: self._qa_md, "qa_markdown"),
+            (lambda: looks_like_sop(text), lambda: self._sop, "sop_steps"),
+            (lambda: looks_like_glossary(text), lambda: self._glossary, "glossary"),
+            (lambda: looks_like_meeting_minutes(text), lambda: self._minutes, "meeting_minutes"),
+            (lambda: looks_like_timeline_events(text), lambda: self._timeline, "timeline_events"),
+            (lambda: looks_like_prd_spec(text), lambda: self._prd, "prd_spec"),
+            (lambda: looks_like_resume(text), lambda: self._resume, "resume_structured"),
+            (lambda: looks_like_presentation(text), lambda: self._slides, "presentation_slides"),
+            (lambda: looks_like_policy_manual(text), lambda: self._policy_manual, "policy_manual_structured"),
+            (lambda: looks_like_laws(text), lambda: self._laws, "laws_structured"),
+            (lambda: looks_like_paper(text), lambda: self._paper, "paper"),
+            (lambda: looks_like_book(text), lambda: self._book, "book_structured"),
+            (lambda: file_type in {"rst"} or looks_like_rst_sections(text), lambda: self._rst, "rst_sections"),
+            (lambda: file_type in {"adoc", "asciidoc"} or looks_like_asciidoc(text), lambda: self._asciidoc, "asciidoc_sections"),
+            (lambda: file_type in {"tex", "latex"} or looks_like_latex_sections(text), lambda: self._latex, "latex_sections"),
+            (lambda: file_type in {"org"} or looks_like_orgmode(text), lambda: self._orgmode, "orgmode_sections"),
+            (lambda: looks_like_mediawiki(text), lambda: self._mediawiki, "mediawiki_sections"),
+            (lambda: looks_like_html_sections(text), lambda: self._html, "html_sections"),
+            (lambda: looks_like_markdown_table(text), lambda: self._markdown_table, "markdown_table"),
+            (lambda: looks_like_outline(text), lambda: self._outline, "outline"),
+            (
+                lambda: file_type in {"md", "markdown"} and looks_like_markdown_frontmatter(text),
+                lambda: self._markdown_frontmatter,
+                "markdown_frontmatter",
+            ),
+            (lambda: file_type in {"md", "markdown"} or _looks_like_markdown(text), lambda: self._markdown, "markdown_aware"),
+            (lambda: looks_like_transcript(text), lambda: self._transcript, "transcript"),
+        ]
 
-        if looks_like_maven_pom(text):
-            return self._maven_pom, "maven_pom"
-
-        if looks_like_junit_xml(text):
-            return self._junit_xml, "junit_xml"
-
-        if looks_like_sitemap_xml(text):
-            return self._sitemap_xml, "sitemap_xml"
-
-        if file_type in {"rss", "atom"} or looks_like_xml_feed(text):
-            return self._xml_feed, "xml_feed"
-
-        if file_type in {"graphql", "gql"} or looks_like_graphql_schema(text):
-            return self._graphql, "graphql_schema"
-
-        if file_type in {"proto"} or looks_like_proto_schema(text):
-            return self._proto, "proto_schema"
-
-        if file_type in {"tf", "hcl"} or looks_like_terraform_hcl(text):
-            return self._terraform, "terraform_hcl"
-
-        if file_type == "csv":
-            if looks_like_csv_rows(text):
-                return self._csv_rows, "csv_rows"
-            if looks_like_markdown_table(text):
-                return self._markdown_table, "markdown_table"
-
-        if file_type in {"xlsx", "xls"}:
-            if looks_like_spreadsheet(text):
-                return self._spreadsheet, "spreadsheet_sheet"
-            if looks_like_markdown_table(text):
-                return self._markdown_table, "markdown_table"
-
-        if looks_like_git_commit_log(text):
-            return self._git_commit_log, "git_commit_log"
-
-        if looks_like_diff_patch(text):
-            return self._diff, "diff_patch"
-
-        if looks_like_subtitles(text):
-            return self._subtitles, "subtitles"
-
-        if looks_like_log_events(text):
-            return self._log_events, "log_events"
-
-        if looks_like_stacktrace(text):
-            return self._stacktrace, "stacktrace"
-
-        if looks_like_http_trace(text):
-            return self._http_trace, "http_trace"
-
-        if looks_like_terraform_plan(text):
-            return self._terraform_plan, "terraform_plan"
-
-        if looks_like_openapi_spec(text):
-            return self._openapi, "openapi_spec"
-
-        if file_type in {"yaml", "yml"} and looks_like_github_actions_workflow(text):
-            return self._github_actions, "github_actions"
-
-        if file_type in {"yaml", "yml"} and looks_like_docker_compose(text):
-            return self._docker_compose, "docker_compose"
-
-        if file_type in {"yaml", "yml"} and looks_like_gitlab_ci(text):
-            return self._gitlab_ci, "gitlab_ci"
-
-        if file_type in {"yaml", "yml"} and looks_like_ansible_playbook(text):
-            return self._ansible, "ansible_playbook"
-
-        if file_type in {"yaml", "yml"} or looks_like_yaml_manifest(text):
-            return self._yaml, "yaml_manifest"
-
-        if file_type in {"toml"} or looks_like_toml_config(text):
-            return self._toml, "toml_config"
-
-        if file_type in {"sql"} or looks_like_sql_schema(text):
-            return self._sql, "sql_schema"
-
-        if looks_like_nginx_config(text):
-            return self._nginx, "nginx_config"
-
-        if looks_like_dockerfile(text):
-            return self._dockerfile, "dockerfile"
-
-        if file_type in {"mk"} or looks_like_makefile(text):
-            return self._makefile, "makefile"
-
-        if looks_like_kv_config(text):
-            return self._kv_config, "kv_config"
-
-        if looks_like_api_reference(text):
-            return self._api, "api_reference"
-
-        if looks_like_changelog(text):
-            return self._changelog, "changelog"
-
-        if looks_like_email_thread(text):
-            return self._email_thread, "email_thread"
-
-        if looks_like_chat_history(text):
-            return self._chat, "chat_history"
-
-        if looks_like_jira_ticket(text):
-            return self._jira, "jira_ticket"
-
-        if looks_like_postmortem_report(text):
-            return self._postmortem, "postmortem_report"
-
-        if looks_like_qa_pairs(text):
-            return self._qa_pairs, "qa_pairs"
-
-        if looks_like_qa_markdown(text):
-            return self._qa_md, "qa_markdown"
-
-        if looks_like_sop(text):
-            return self._sop, "sop_steps"
-
-        if looks_like_glossary(text):
-            return self._glossary, "glossary"
-
-        if looks_like_meeting_minutes(text):
-            return self._minutes, "meeting_minutes"
-
-        if looks_like_timeline_events(text):
-            return self._timeline, "timeline_events"
-
-        if looks_like_prd_spec(text):
-            return self._prd, "prd_spec"
-
-        if looks_like_resume(text):
-            return self._resume, "resume_structured"
-
-        if looks_like_presentation(text):
-            return self._slides, "presentation_slides"
-
-        if looks_like_policy_manual(text):
-            return self._policy_manual, "policy_manual_structured"
-
-        if looks_like_laws(text):
-            return self._laws, "laws_structured"
-
-        if looks_like_paper(text):
-            return self._paper, "paper"
-
-        if looks_like_book(text):
-            return self._book, "book_structured"
-
-        if file_type in {"rst"} or looks_like_rst_sections(text):
-            return self._rst, "rst_sections"
-
-        if file_type in {"adoc", "asciidoc"} or looks_like_asciidoc(text):
-            return self._asciidoc, "asciidoc_sections"
-
-        if file_type in {"tex", "latex"} or looks_like_latex_sections(text):
-            return self._latex, "latex_sections"
-
-        if file_type in {"org"} or looks_like_orgmode(text):
-            return self._orgmode, "orgmode_sections"
-
-        if looks_like_mediawiki(text):
-            return self._mediawiki, "mediawiki_sections"
-
-        if looks_like_html_sections(text):
-            return self._html, "html_sections"
-
-        if looks_like_markdown_table(text):
-            return self._markdown_table, "markdown_table"
-
-        if looks_like_outline(text):
-            return self._outline, "outline"
-
-        if file_type in {"md", "markdown"} and looks_like_markdown_frontmatter(text):
-            return self._markdown_frontmatter, "markdown_frontmatter"
-
-        if file_type in {"md", "markdown"} or _looks_like_markdown(text):
-            return self._markdown, "markdown_aware"
-
-        if looks_like_transcript(text):
-            return self._transcript, "transcript"
+        for predicate, builder, selected in cases:
+            if predicate():
+                return builder(), selected
 
         # If the document is long enough, sentence-aware splitting tends to
         # reduce broken sentences and improves retrieval.
