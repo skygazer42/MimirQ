@@ -1,5 +1,5 @@
 """
-Email (.eml) parser adapter.
+Email (.eml/.msg) parser adapter.
 
 Phase 1 goals:
 - Extract key headers + body into Markdown.
@@ -22,6 +22,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from app.core.optional_deps import require_dependency
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.email")
@@ -139,22 +140,64 @@ class EmailParser:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
-        if file_path.suffix.lower() != ".eml":
-            raise ValueError(f"EmailParser supports only .eml, got: {file_path.suffix.lower()}")
+        ext = file_path.suffix.lower()
+        if ext not in {".eml", ".msg"}:
+            raise ValueError(f"EmailParser supports only .eml/.msg, got: {ext}")
 
-        raw = file_path.read_bytes()
-        try:
-            msg = BytesParser(policy=policy.default).parsebytes(raw)
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError(f"Failed to parse .eml: {exc.__class__.__name__}: {str(exc)[:200]}") from exc
+        if ext == ".eml":
+            raw = file_path.read_bytes()
+            try:
+                msg = BytesParser(policy=policy.default).parsebytes(raw)
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(f"Failed to parse .eml: {exc.__class__.__name__}: {str(exc)[:200]}") from exc
 
-        subject = _safe_header(msg, "Subject") or "Email"
-        sender = _safe_header(msg, "From")
-        to = _safe_header(msg, "To")
-        cc = _safe_header(msg, "Cc")
-        date = _safe_header(msg, "Date")
+            subject = _safe_header(msg, "Subject") or "Email"
+            sender = _safe_header(msg, "From")
+            to = _safe_header(msg, "To")
+            cc = _safe_header(msg, "Cc")
+            date = _safe_header(msg, "Date")
 
-        body, body_meta = _extract_body(msg)
+            body, body_meta = _extract_body(msg)
+            body_content_type = str(body_meta.get("body_content_type") or "none")
+            warnings = list(body_meta.get("warnings") or [])
+        else:
+            # .msg parsing requires an optional dependency (extract-msg).
+            extract_msg = require_dependency(
+                "extract_msg",
+                feature="email_msg_parser",
+                pip_name="extract-msg",
+            )
+            message_cls = getattr(extract_msg, "Message", None)
+            if message_cls is None:
+                raise RuntimeError("extract_msg.Message missing (unsupported extract-msg version)")
+
+            msg = message_cls(str(file_path))
+            try:
+                if callable(getattr(msg, "process", None)):
+                    msg.process()
+
+                subject = str(getattr(msg, "subject", "") or "").strip() or "Email"
+                sender = str(getattr(msg, "sender", "") or getattr(msg, "sender_email", "") or "").strip()
+                to = str(getattr(msg, "to", "") or "").strip()
+                cc = str(getattr(msg, "cc", "") or "").strip()
+                date = str(getattr(msg, "date", "") or "").strip()
+
+                body = str(getattr(msg, "body", "") or "").strip()
+                body_content_type = "text/plain" if body else "none"
+                warnings: list[str] = []
+                if not body:
+                    html_body = str(getattr(msg, "htmlBody", "") or getattr(msg, "html", "") or "").strip()
+                    if html_body:
+                        body = _strip_html(html_body)
+                        body_content_type = "text/html"
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(f"Failed to parse .msg: {exc.__class__.__name__}: {str(exc)[:200]}") from exc
+            finally:
+                try:
+                    msg.close()
+                except Exception:
+                    pass
+
         if not body.strip():
             logger.info("[email] parsed %s but body is empty", file_path.name)
 
@@ -179,12 +222,11 @@ class EmailParser:
 
         metadata = {
             "source": file_path.name,
-            "file_type": "eml",
+            "file_type": ext.lstrip("."),
             "parser_backend": "email",
             "email_subject": subject[:200],
-            "email_body_content_type": body_meta.get("body_content_type"),
-            "email_warnings": list(body_meta.get("warnings") or []),
+            "email_body_content_type": body_content_type,
+            "email_warnings": list(warnings or []),
         }
 
         return [Document(page_content=markdown, metadata=metadata)]
-

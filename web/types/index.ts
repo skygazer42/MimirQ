@@ -416,6 +416,33 @@ export interface RagMetricsSummaryResponse {
   timeseries: Record<string, any[]>
 }
 
+export interface OnlineQualitySummaryResponse {
+  enabled: boolean
+  path: string
+  window_minutes: number
+  bucket_minutes: number
+  truncated: boolean
+  record_count: number
+  sample_count: number
+  faithfulness_det_avg?: number | null
+  chunk_utilization_avg?: number | null
+  timeseries: Record<string, any[]>
+  alerts: Array<Record<string, any>>
+}
+
+export interface QuerysetHealthRunsResponse {
+  enabled: boolean
+  path: string
+  total: number
+  truncated: boolean
+  items: Array<Record<string, any>>
+  timeseries: Record<string, any[]>
+}
+
+export interface QuerysetHealthDiffResponse {
+  diff: Record<string, any>
+}
+
 export interface RagQueryAnalyticsResponse {
   enabled: boolean
   path: string
@@ -2369,6 +2396,7 @@ export interface RegressionRunCreate {
   case_ids?: string[]
   dataset_id?: string
   metrics?: string[]
+  use_llm_judge?: boolean
   skip_empty_contexts?: boolean
   max_cases?: number
   top_k?: number

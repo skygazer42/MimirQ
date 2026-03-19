@@ -44,18 +44,22 @@ Requirements:
 1. Generate {num_questions} questions
 2. Question types include: {question_types}
    - factual: Ask about specific information in the text
-   - reasoning: Requires understanding and reasoning to answer
+   - multi_hop: Requires combining 2+ pieces of information from the text
    - comparison: Compare different concepts or things in the text
+   - conditional: Ask "if/when" conditional questions based on the text
+   - unanswerable: Cannot be answered from the text; should be refused/abstained
 3. Questions should be clear, specific, and answerable from the text
-4. Each question should have a reference answer
+4. Each question should have a reference answer (except unanswerable)
+   - For unanswerable: expected_answer should be empty and expected_refusal=true
 
 Please return in JSON format as follows:
 {{
   "questions": [
     {{
       "question": "Question content",
-      "expected_answer": "Reference answer",
-      "question_type": "Question type"
+      "expected_answer": "Reference answer (empty string if unanswerable)",
+      "question_type": "factual|multi_hop|comparison|conditional|unanswerable",
+      "expected_refusal": false
     }}
   ]
 }}
@@ -204,8 +208,23 @@ def generate_questions_from_documents(
     Returns:
         Generated question list.
     """
+    allowed_types = {"factual", "multi_hop", "comparison", "conditional", "unanswerable"}
     if question_types is None:
-        question_types = ["factual", "reasoning", "comparison"]
+        question_types = ["factual", "multi_hop", "comparison"]
+    # Back-compat: "reasoning" -> "multi_hop".
+    normalized_types: list[str] = []
+    for t in question_types or []:
+        key = str(t or "").strip().lower()
+        if not key:
+            continue
+        if key == "reasoning":
+            key = "multi_hop"
+        if key not in allowed_types:
+            continue
+        if key not in normalized_types:
+            normalized_types.append(key)
+    if not normalized_types:
+        normalized_types = ["factual"]
     
     # Permission checks and document filtering.
     if document_ids:
@@ -278,20 +297,28 @@ def generate_questions_from_documents(
             result = chain.invoke({
                 "text": chunk.content[:2000],  # Limit length.
                 "num_questions": questions_per_chunk,
-                "question_types": ", ".join(question_types)
+                "question_types": ", ".join(normalized_types)
             })
             
             if isinstance(result, dict) and "questions" in result:
                 for q in result["questions"]:
+                    q_type = str(q.get("question_type") or "factual").strip().lower() or "factual"
+                    if q_type == "reasoning":
+                        q_type = "multi_hop"
+                    if q_type not in allowed_types:
+                        q_type = normalized_types[0] if normalized_types else "factual"
+                    expected_refusal = bool(q.get("expected_refusal")) or q_type == "unanswerable"
                     all_questions.append(GeneratedQuestion(
                         question=q.get("question", ""),
-                        expected_answer=q.get("expected_answer"),
+                        expected_answer=(None if expected_refusal else q.get("expected_answer")),
                         context=chunk.content[:500],
                         metadata={
                             "source_type": "document",
                             "source_id": str(chunk.document_id),
                             "chunk_id": str(chunk.id),
-                            "question_type": q.get("question_type", "factual")
+                            "question_type": q_type,
+                            "expected_refusal": expected_refusal,
+                            "reference_chunk_ids": [str(chunk.id)],
                         }
                     ))
         except Exception as e:

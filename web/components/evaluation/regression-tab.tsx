@@ -43,6 +43,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
     'response_relevancy',
   ])
   const [retrievalOnly, setRetrievalOnly] = useState(false)
+  const [useLlmJudge, setUseLlmJudge] = useState(false)
 
   // 运行历史
   const [runs, setRuns] = useState<RegressionRun[]>([])
@@ -159,6 +160,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
         case_ids: caseIds,
         dataset_id: selectedDatasetId,
         metrics: retrievalOnly ? [] : metricKeys,
+        use_llm_judge: Boolean(!retrievalOnly && useLlmJudge),
         skip_empty_contexts: true,
         max_cases: 50,
       }
@@ -266,12 +268,23 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                   onCheckedChange={(checked) => {
                     setRetrievalOnly(checked)
                     if (checked) {
+                      setUseLlmJudge(false)
                       setMetricKeys([])
                     } else if (!metricKeys.length) {
                       setMetricKeys(['faithfulness', 'response_relevancy'])
                     }
                   }}
                 />
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground">LLM-as-Judge（可选）</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">
+                    为每个 case 生成 llm_judge（score / reason / evidence_quotes；额外成本；检索-only 模式下不可用）。
+                  </div>
+                </div>
+                <Switch checked={useLlmJudge} disabled={retrievalOnly} onCheckedChange={(v) => setUseLlmJudge(Boolean(v))} />
               </div>
 
               <div>
@@ -355,11 +368,26 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                     onCheckedChange={(checked) => {
                       setRetrievalOnly(checked)
                       if (checked) {
+                        setUseLlmJudge(false)
                         setMetricKeys([])
                       } else if (!metricKeys.length) {
                         setMetricKeys(['faithfulness', 'response_relevancy'])
                       }
                     }}
+                  />
+                </div>
+
+                <div className="flex items-start justify-between gap-3 mt-4">
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground">LLM-as-Judge（可选）</div>
+                    <div className="text-[11px] text-muted-foreground mt-1">
+                      为每个 case 生成 llm_judge（score / reason / evidence_quotes；额外成本；检索-only 模式下不可用）。
+                    </div>
+                  </div>
+                  <Switch
+                    checked={useLlmJudge}
+                    disabled={retrievalOnly}
+                    onCheckedChange={(v) => setUseLlmJudge(Boolean(v))}
                   />
                 </div>
 
@@ -489,6 +517,63 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	                <div className="mt-3 text-xs text-muted-foreground">
 	                  items: {summary.items ?? '-'} · tokens: {summary.total_tokens ?? '-'} · cost: {summary.total_cost ?? '-'}
 	                </div>
+                  {(() => {
+                    const slices = (summary as any)?.retrieval_slices
+                    const pq = (slices as any)?.parse_quality?.buckets
+                    const cq = (slices as any)?.chunk_quality?.buckets
+                    const hasPq = Array.isArray(pq) && pq.length
+                    const hasCq = Array.isArray(cq) && cq.length
+                    if (!hasPq && !hasCq) return null
+
+                    const renderTable = (title: string, rows: any[]) => {
+                      const top = (rows || []).slice(0, 8)
+                      return (
+                        <div className="rounded-xl border border-border bg-muted/20 p-3">
+                          <div className="text-xs font-semibold text-foreground mb-2">{title}</div>
+                          <div className="overflow-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-muted-foreground border-b border-border/60">
+                                  <th className="text-left py-1 pr-2">bucket</th>
+                                  <th className="text-right py-1 pr-2">items</th>
+                                  <th className="text-right py-1 pr-2">recall</th>
+                                  <th className="text-right py-1 pr-2">mrr</th>
+                                  <th className="text-right py-1 pr-2">ndcg@10</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {top.map((r: any) => (
+                                  <tr key={String(r?.key || '')} className="border-b border-border/40">
+                                    <td className="py-1 pr-2 font-mono text-muted-foreground">{String(r?.key || '')}</td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">{String(r?.items ?? '—')}</td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">
+                                      {typeof r?.retrieval_recall === 'number' ? r.retrieval_recall.toFixed(3) : '—'}
+                                    </td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">
+                                      {typeof r?.retrieval_mrr === 'number' ? r.retrieval_mrr.toFixed(3) : '—'}
+                                    </td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">
+                                      {typeof r?.retrieval_ndcg_at_10 === 'number' ? r.retrieval_ndcg_at_10.toFixed(3) : '—'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div className="mt-4">
+                        <div className="text-sm font-semibold text-foreground mb-3">质量归因（Slices）</div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {hasPq ? renderTable('parse_quality → retrieval', pq as any[]) : null}
+                          {hasCq ? renderTable('chunk_quality → retrieval', cq as any[]) : null}
+                        </div>
+                      </div>
+                    )
+                  })()}
 	              </div>
 	            ) : (
 	              <div className="mt-4 text-sm text-muted-foreground">
@@ -543,6 +628,59 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                                   <span className="break-words">{String(v)}</span>
                                 </div>
                               ))}
+                            </div>
+                          </details>
+                        )
+                      })()}
+                      {(() => {
+                        const judge = (item as any)?.meta?.llm_judge
+                        if (!judge || typeof judge !== 'object') return null
+                        if (!Boolean((judge as any)?.enabled)) return null
+                        const overall = (judge as any)?.overall_score
+                        const modelUsed = (judge as any)?.model_used
+                        const parts: Array<{ key: string; obj: any }> = [
+                          { key: 'retrieval', obj: (judge as any)?.retrieval },
+                          { key: 'generation', obj: (judge as any)?.generation },
+                        ]
+                        return (
+                          <details className="mt-2">
+                            <summary className="text-[11px] text-muted-foreground cursor-pointer select-none">
+                              LLM Judge{typeof overall === 'number' ? ` (overall=${overall.toFixed(3)})` : ''}
+                            </summary>
+                            <div className="mt-2 space-y-2 text-[11px] text-muted-foreground">
+                              {modelUsed ? (
+                                <div className="font-mono text-[10px] text-muted-foreground">model: {String(modelUsed)}</div>
+                              ) : null}
+                              {parts.map(({ key, obj }) => {
+                                if (!obj || typeof obj !== 'object') return null
+                                const score = (obj as any)?.score
+                                const reason = (obj as any)?.reason
+                                const quotes = Array.isArray((obj as any)?.evidence_quotes)
+                                  ? ((obj as any)?.evidence_quotes as any[]).filter((x) => typeof x === 'string' && x)
+                                  : []
+                                return (
+                                  <div key={key} className="rounded-md border border-border/60 bg-muted/30 p-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-medium text-foreground/80">{key}</span>
+                                      <span className="tabular-nums">
+                                        {typeof score === 'number' ? score.toFixed(3) : '—'}
+                                      </span>
+                                    </div>
+                                    {typeof reason === 'string' && reason ? (
+                                      <div className="mt-1 text-muted-foreground">{reason}</div>
+                                    ) : null}
+                                    {quotes.length ? (
+                                      <div className="mt-2 space-y-1">
+                                        {quotes.slice(0, 3).map((q, i) => (
+                                          <div key={i} className="font-mono text-[10px] text-muted-foreground">
+                                            “{q}”
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                )
+                              })}
                             </div>
                           </details>
                         )

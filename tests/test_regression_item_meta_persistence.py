@@ -38,6 +38,8 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "slice_hit_type": None,
         "slice_modality": None,
         "slice_quality_bucket": None,
+        "slice_parse_quality": None,
+        "slice_chunk_quality": None,
         "slice_pipeline_hash": None,
         "multimodal_router": None,
         "tag_meta": None,
@@ -64,4 +66,5 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "explanations": None,
         "expected_refusal": None,
         "refusal_correct": None,
+        "llm_judge": None,
     }

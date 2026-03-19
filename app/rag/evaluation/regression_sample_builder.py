@@ -532,6 +532,8 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "slice_hit_type": meta.get("slice_hit_type"),
         "slice_modality": meta.get("slice_modality"),
         "slice_quality_bucket": meta.get("slice_quality_bucket"),
+        "slice_parse_quality": meta.get("slice_parse_quality"),
+        "slice_chunk_quality": meta.get("slice_chunk_quality"),
         "slice_pipeline_hash": meta.get("slice_pipeline_hash"),
         # Multi-modal injection/debug metadata (best-effort).
         "multimodal_router": meta.get("multimodal_router"),
@@ -560,4 +562,6 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "explanations": meta.get("explanations"),
         "expected_refusal": meta.get("expected_refusal"),
         "refusal_correct": meta.get("refusal_correct"),
+        # LLM-as-judge (optional; enabled per regression run).
+        "llm_judge": meta.get("llm_judge"),
     }

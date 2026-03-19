@@ -300,6 +300,187 @@ def format_unified_diff(old_text: str, new_text: str, *, fromfile: str, tofile: 
     return "".join(difflib.unified_diff(old_lines, new_lines, fromfile=str(fromfile), tofile=str(tofile)))
 
 
+# ==================== Query-set health integration (Gap9) ====================
+
+_QUERYSET_HEALTH_DIFF_SCHEMA_V1 = "mimirq.queryset_health_diff.v1"
+_QUERYSET_HEALTH_DEFAULT_POLICY: dict[str, float | int] = {
+    "hit_at_k_drop_threshold": 0.03,
+    "mrr_drop_threshold": 0.03,
+    "ndcg_drop_threshold": 0.03,
+    "p95_latency_regression_ms": 20.0,
+    "miss_rate_regression_threshold": 0.05,
+    "weak_hit_rate_regression_threshold": 0.08,
+    "weak_hit_rr_threshold": 0.2,
+    "hard_cases_limit": 5,
+}
+
+
+def _qs_as_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None or isinstance(value, bool):
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _qs_delta(current: float, baseline: float, *, digits: int) -> float:
+    return round(float(current) - float(baseline), int(digits))
+
+
+def _qs_hard_case_ids(snapshot: dict[str, Any], *, max_ids: int) -> list[str]:
+    risk = snapshot.get("risk") if isinstance(snapshot.get("risk"), dict) else {}
+    rows = risk.get("hard_cases") if isinstance(risk.get("hard_cases"), list) else []
+    out: list[str] = []
+    cap = max(1, int(max_ids or 1))
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        cid = str(row.get("id") or "").strip()
+        if not cid:
+            continue
+        if cid not in out:
+            out.append(cid)
+        if len(out) >= cap:
+            break
+    return out
+
+
+def _qs_flag_set(snapshot: dict[str, Any]) -> set[str]:
+    raw = snapshot.get("degradation_flags")
+    if not isinstance(raw, list):
+        return set()
+    out: set[str] = set()
+    for item in raw:
+        key = str(item or "").strip()
+        if key:
+            out.add(key)
+    return out
+
+
+def diff_queryset_health_snapshots(
+    *,
+    baseline: dict[str, Any],
+    current: dict[str, Any],
+    max_hard_case_ids: int = 20,
+) -> dict[str, Any]:
+    """
+    Minimal diff for `mimirq.queryset_health_snapshot.v1` snapshots.
+
+    Kept local to the gate script to avoid importing backend modules in CI runners.
+    """
+    base_metrics = baseline.get("metrics") if isinstance(baseline.get("metrics"), dict) else {}
+    curr_metrics = current.get("metrics") if isinstance(current.get("metrics"), dict) else {}
+    base_risk = baseline.get("risk") if isinstance(baseline.get("risk"), dict) else {}
+    curr_risk = current.get("risk") if isinstance(current.get("risk"), dict) else {}
+
+    metric_deltas = {
+        "hit_at_k_delta": _qs_delta(_qs_as_float(curr_metrics.get("hit_at_k")), _qs_as_float(base_metrics.get("hit_at_k")), digits=6),
+        "mrr_delta": _qs_delta(_qs_as_float(curr_metrics.get("mrr")), _qs_as_float(base_metrics.get("mrr")), digits=6),
+        "ndcg_at_k_delta": _qs_delta(_qs_as_float(curr_metrics.get("ndcg_at_k")), _qs_as_float(base_metrics.get("ndcg_at_k")), digits=6),
+        "p95_latency_ms_delta": _qs_delta(
+            _qs_as_float(curr_metrics.get("p95_latency_ms")),
+            _qs_as_float(base_metrics.get("p95_latency_ms")),
+            digits=3,
+        ),
+        "miss_rate_delta": _qs_delta(_qs_as_float(curr_risk.get("miss_rate")), _qs_as_float(base_risk.get("miss_rate")), digits=6),
+        "weak_hit_rate_delta": _qs_delta(
+            _qs_as_float(curr_risk.get("weak_hit_rate")),
+            _qs_as_float(base_risk.get("weak_hit_rate")),
+            digits=6,
+        ),
+    }
+
+    base_hash = str(baseline.get("policy_hash") or "").strip()
+    curr_hash = str(current.get("policy_hash") or "").strip()
+    policy_changed = bool((base_hash or curr_hash) and base_hash != curr_hash)
+
+    base_cases = set(_qs_hard_case_ids(baseline, max_ids=max_hard_case_ids))
+    curr_cases = set(_qs_hard_case_ids(current, max_ids=max_hard_case_ids))
+
+    base_flags = _qs_flag_set(baseline)
+    curr_flags = _qs_flag_set(current)
+
+    return {
+        "schema": _QUERYSET_HEALTH_DIFF_SCHEMA_V1,
+        "baseline_generated_at": str(baseline.get("generated_at") or ""),
+        "current_generated_at": str(current.get("generated_at") or ""),
+        "policy": {
+            "baseline_source": str(baseline.get("policy_source") or ""),
+            "current_source": str(current.get("policy_source") or ""),
+            "baseline_hash": base_hash,
+            "current_hash": curr_hash,
+            "changed": policy_changed,
+        },
+        "metric_deltas": metric_deltas,
+        "hard_case_drift": {
+            "added_ids": sorted(curr_cases - base_cases),
+            "removed_ids": sorted(base_cases - curr_cases),
+            "retained_ids": sorted(base_cases & curr_cases),
+        },
+        "degradation_flags_drift": {
+            "added_flags": sorted(curr_flags - base_flags),
+            "removed_flags": sorted(base_flags - curr_flags),
+            "retained_flags": sorted(base_flags & curr_flags),
+        },
+    }
+
+
+def _qs_resolve_policy(snapshot: dict[str, Any]) -> dict[str, float | int]:
+    raw = snapshot.get("policy") if isinstance(snapshot.get("policy"), dict) else {}
+    out: dict[str, float | int] = dict(_QUERYSET_HEALTH_DEFAULT_POLICY)
+    for k in out.keys():
+        if k not in raw:
+            continue
+        v = raw.get(k)
+        if k in {"hard_cases_limit"}:
+            try:
+                out[k] = int(v)
+            except Exception:
+                pass
+            continue
+        try:
+            out[k] = float(v)  # type: ignore[assignment]
+        except Exception:
+            pass
+    return out
+
+
+def compute_queryset_health_degradation_flags(
+    *,
+    baseline: dict[str, Any],
+    current: dict[str, Any],
+    policy: dict[str, float | int],
+) -> list[str]:
+    base_metrics = baseline.get("metrics") if isinstance(baseline.get("metrics"), dict) else {}
+    curr_metrics = current.get("metrics") if isinstance(current.get("metrics"), dict) else {}
+    base_risk = baseline.get("risk") if isinstance(baseline.get("risk"), dict) else {}
+    curr_risk = current.get("risk") if isinstance(current.get("risk"), dict) else {}
+
+    hit_at_k_delta = _qs_delta(_qs_as_float(curr_metrics.get("hit_at_k")), _qs_as_float(base_metrics.get("hit_at_k")), digits=6)
+    mrr_delta = _qs_delta(_qs_as_float(curr_metrics.get("mrr")), _qs_as_float(base_metrics.get("mrr")), digits=6)
+    ndcg_delta = _qs_delta(_qs_as_float(curr_metrics.get("ndcg_at_k")), _qs_as_float(base_metrics.get("ndcg_at_k")), digits=6)
+    p95_delta = _qs_delta(_qs_as_float(curr_metrics.get("p95_latency_ms")), _qs_as_float(base_metrics.get("p95_latency_ms")), digits=3)
+    miss_rate_delta = _qs_delta(_qs_as_float(curr_risk.get("miss_rate")), _qs_as_float(base_risk.get("miss_rate")), digits=6)
+    weak_hit_rate_delta = _qs_delta(_qs_as_float(curr_risk.get("weak_hit_rate")), _qs_as_float(base_risk.get("weak_hit_rate")), digits=6)
+
+    flags: list[str] = []
+    if hit_at_k_delta <= -float(policy.get("hit_at_k_drop_threshold") or 0.03):
+        flags.append("hit_at_k_drop")
+    if mrr_delta <= -float(policy.get("mrr_drop_threshold") or 0.03):
+        flags.append("mrr_drop")
+    if ndcg_delta <= -float(policy.get("ndcg_drop_threshold") or 0.03):
+        flags.append("ndcg_drop")
+    if p95_delta >= float(policy.get("p95_latency_regression_ms") or 20.0):
+        flags.append("p95_latency_regression")
+    if miss_rate_delta >= float(policy.get("miss_rate_regression_threshold") or 0.05):
+        flags.append("miss_rate_regression")
+    if weak_hit_rate_delta >= float(policy.get("weak_hit_rate_regression_threshold") or 0.08):
+        flags.append("weak_hit_rate_regression")
+
+    return flags
+
+
 def summarize_channel_attribution(items: list[dict[str, Any]] | None) -> dict[str, Any]:
     totals = {
         "vector": 0,
@@ -445,6 +626,8 @@ def render_regression_gate_markdown(report: dict[str, Any]) -> str:
     totals = attribution.get("totals") if isinstance(attribution.get("totals"), dict) else {}
     multihop = payload.get("multihop") if isinstance(payload.get("multihop"), dict) else {}
     failures = [str(x) for x in (payload.get("failures") or []) if str(x or "").strip()]
+    notes = [str(x) for x in (payload.get("notes") or []) if str(x or "").strip()]
+    qs = payload.get("queryset_health") if isinstance(payload.get("queryset_health"), dict) else {}
 
     lines = [
         "# Retrieval Regression Gate Report",
@@ -503,6 +686,36 @@ def render_regression_gate_markdown(report: dict[str, Any]) -> str:
                 "",
             ]
         )
+
+    if qs:
+        flags = qs.get("degradation_flags")
+        flags = [str(x) for x in (flags or []) if str(x or "").strip()] if isinstance(flags, list) else []
+        diff = qs.get("diff") if isinstance(qs.get("diff"), dict) else {}
+        deltas = diff.get("metric_deltas") if isinstance(diff.get("metric_deltas"), dict) else {}
+        lines.extend(
+            [
+                "## Query-set Health",
+                "",
+                f"- Policy: `{qs.get('policy') or ''}`",
+                f"- Degradation flags: `{', '.join(flags) if flags else 'none'}`",
+                "",
+                "| Delta metric | Value |",
+                "| --- | ---: |",
+                f"| hit_at_k_delta | {_coerce_float(deltas.get('hit_at_k_delta'))} |",
+                f"| mrr_delta | {_coerce_float(deltas.get('mrr_delta'))} |",
+                f"| ndcg_at_k_delta | {_coerce_float(deltas.get('ndcg_at_k_delta'))} |",
+                f"| p95_latency_ms_delta | {_coerce_float(deltas.get('p95_latency_ms_delta'))} |",
+                f"| miss_rate_delta | {_coerce_float(deltas.get('miss_rate_delta'))} |",
+                f"| weak_hit_rate_delta | {_coerce_float(deltas.get('weak_hit_rate_delta'))} |",
+                "",
+            ]
+        )
+
+    if notes:
+        lines.extend(["## Notes", ""])
+        for msg in notes:
+            lines.append(f"- {msg}")
+        lines.append("")
 
     if failures:
         lines.extend(["## Failures", ""])
@@ -830,6 +1043,28 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Write a compact regression gate Markdown artifact (optional)",
     )
 
+    # Gap9 (P2): Optional queryset-health gate integration.
+    p.add_argument(
+        "--queryset-health-baseline",
+        default="",
+        help="Baseline queryset health snapshot JSON path (optional; schema: mimirq.queryset_health_snapshot.v1)",
+    )
+    p.add_argument(
+        "--queryset-health-current",
+        default="",
+        help="Current queryset health snapshot JSON path (optional; defaults to artifacts/queryset_health.snapshot.json when present)",
+    )
+    p.add_argument(
+        "--queryset-health-policy",
+        default="fail",
+        help="Queryset health gate policy: warn|fail (default: %(default)s)",
+    )
+    p.add_argument(
+        "--queryset-health-diff-out",
+        default="",
+        help="Write computed queryset health diff JSON to a file (optional; schema: mimirq.queryset_health_diff.v1)",
+    )
+
     # Optional: generate structured thresholds (v2) from the run summary.
     p.add_argument(
         "--generate-thresholds-out",
@@ -1075,6 +1310,74 @@ def main() -> int:
 
         print(f"[regression_gate] run completed. summary keys={list(summary.keys())}")
 
+        # Optional: queryset health diff + gate (Gap9).
+        qs_section: dict[str, Any] | None = None
+        qs_failures: list[str] = []
+        qs_notes: list[str] = []
+        if str(getattr(args, "queryset_health_baseline", "") or "").strip():
+            baseline_path = Path(str(args.queryset_health_baseline or "")).expanduser()
+            _require(baseline_path.exists(), f"queryset health baseline snapshot not found: {baseline_path}")
+
+            current_path: Path | None = None
+            if str(getattr(args, "queryset_health_current", "") or "").strip():
+                current_path = Path(str(args.queryset_health_current or "")).expanduser()
+            else:
+                default_current = Path("artifacts/queryset_health.snapshot.json")
+                if default_current.exists():
+                    current_path = default_current
+
+            _require(
+                current_path is not None and current_path.exists(),
+                "queryset health current snapshot not found (set --queryset-health-current)",
+            )
+
+            baseline_obj = _load_json(baseline_path)
+            current_obj = _load_json(current_path)
+            _require(isinstance(baseline_obj, dict), f"baseline snapshot must be a JSON object: {baseline_path}")
+            _require(isinstance(current_obj, dict), f"current snapshot must be a JSON object: {current_path}")
+            baseline_snap = dict(baseline_obj)
+            current_snap = dict(current_obj)
+
+            qs_policy = str(getattr(args, "queryset_health_policy", "fail") or "fail").strip().lower()
+            _require(qs_policy in {"warn", "fail"}, "--queryset-health-policy must be warn|fail")
+
+            diff = diff_queryset_health_snapshots(baseline=baseline_snap, current=current_snap, max_hard_case_ids=20)
+            if str(getattr(args, "queryset_health_diff_out", "") or "").strip():
+                out_diff = Path(str(args.queryset_health_diff_out or "")).expanduser()
+                out_diff.parent.mkdir(parents=True, exist_ok=True)
+                write_json_file(out_diff, diff)
+                print(f"[regression_gate] wrote queryset health diff: {out_diff}")
+
+            policy = _qs_resolve_policy(current_snap)
+            degradation_flags = compute_queryset_health_degradation_flags(
+                baseline=baseline_snap,
+                current=current_snap,
+                policy=policy,
+            )
+
+            pol = diff.get("policy") if isinstance(diff.get("policy"), dict) else {}
+            if bool(pol.get("changed")):
+                msg = (
+                    "queryset policy changed "
+                    f"(baseline_hash={pol.get('baseline_hash')}, current_hash={pol.get('current_hash')})"
+                )
+                qs_notes.append(msg)
+
+            if degradation_flags:
+                msg = f"queryset health degraded: flags={degradation_flags}"
+                if qs_policy == "fail":
+                    qs_failures.append(msg)
+                else:
+                    qs_notes.append(msg)
+
+            qs_section = {
+                "baseline_path": str(baseline_path),
+                "current_path": str(current_path),
+                "policy": qs_policy,
+                "degradation_flags": degradation_flags,
+                "diff": diff,
+            }
+
         # Optional: emit generated thresholds from this run summary.
         if args.generate_thresholds_out:
             out_path = str(args.generate_thresholds_out or "").strip()
@@ -1105,17 +1408,23 @@ def main() -> int:
                 print(f"[regression_gate] wrote generated thresholds: {pth}")
 
         if not thresholds and not slice_thresholds:
+            overall_ok = len(qs_failures) == 0
+            overall_failures = list(qs_failures)
             report = build_regression_gate_report(
                 dataset_id=dataset_id,
                 run_id=str(run_id),
                 matched_case_count=len(matched_ids),
                 metrics=metrics,
                 thresholds_enabled=False,
-                ok=True,
-                failures=[],
+                ok=overall_ok,
+                failures=overall_failures,
                 detail=detail,
                 run_payload=run_payload,
             )
+            if qs_section:
+                report["queryset_health"] = qs_section
+            if qs_notes:
+                report["notes"] = list(qs_notes)
             if args.out_report_json:
                 out_json_path = Path(str(args.out_report_json or "").strip())
                 out_json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1126,10 +1435,16 @@ def main() -> int:
                 out_md_path.parent.mkdir(parents=True, exist_ok=True)
                 write_text_file(out_md_path, render_regression_gate_markdown(report))
                 print(f"[regression_gate] wrote report markdown: {out_md_path}")
-            print("[regression_gate] no thresholds set; PASS")
-            return 0
+            if overall_ok:
+                print("[regression_gate] no thresholds set; PASS")
+                return 0
+            for msg in overall_failures:
+                print(f"[regression_gate] FAIL: {msg}", file=sys.stderr)
+            return 1
 
         ok, failures = check_thresholds(summary=summary, thresholds=thresholds, slice_thresholds=slice_thresholds)
+        failures = list(failures or []) + list(qs_failures)
+        ok = bool(ok and not qs_failures)
         report = build_regression_gate_report(
             dataset_id=dataset_id,
             run_id=str(run_id),
@@ -1141,6 +1456,10 @@ def main() -> int:
             detail=detail,
             run_payload=run_payload,
         )
+        if qs_section:
+            report["queryset_health"] = qs_section
+        if qs_notes:
+            report["notes"] = list(qs_notes)
         if args.out_report_json:
             out_json_path = Path(str(args.out_report_json or "").strip())
             out_json_path.parent.mkdir(parents=True, exist_ok=True)

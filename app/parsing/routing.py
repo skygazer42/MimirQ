@@ -99,6 +99,7 @@ def route_pdf_backend(
     file_path: Path,
     requested: str | None,
     *,
+    quality: dict | None = None,
     sample_pages: int = 3,
     use_ocr_validation: bool | None = None,
 ) -> tuple[str, dict]:
@@ -108,5 +109,6 @@ def route_pdf_backend(
     from app.parsing.quality.scorer import score_pdf_quality
 
     use_ocr = settings.RAPIDOCR_ENABLED if use_ocr_validation is None else bool(use_ocr_validation)
-    quality = score_pdf_quality(file_path, sample_pages=sample_pages, use_ocr_validation=use_ocr)
+    if quality is None:
+        quality = score_pdf_quality(file_path, sample_pages=sample_pages, use_ocr_validation=use_ocr)
     return choose_pdf_backend(quality, requested), quality

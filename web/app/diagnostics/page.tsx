@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Copy, FileJson, FileText, RefreshCcw, Timer, Hash, FileSearch, Gauge, Package } from 'lucide-react'
+import { Activity, Copy, FileJson, FileText, RefreshCcw, Timer, Hash, FileSearch, Gauge, Package, BarChart3, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,9 @@ import { formatApiError } from '@/lib/api-errors'
 import { observabilityApi, ragApi } from '@/lib/api-client'
 import { API_BASE_URL, API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { formatFileSize } from '@/lib/utils'
-import type { PromptPreviewResponse } from '@/types'
+import type { OnlineQualitySummaryResponse, PromptPreviewResponse } from '@/types'
+
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 function prettyJson(value: unknown): string {
   try {
@@ -27,6 +29,19 @@ function prettyJson(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function formatTs(tsMs: number) {
+  try {
+    return new Date(tsMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return String(tsMs)
+  }
+}
+
+function fmtPercent(v?: number | null, digits = 1) {
+  if (v == null || !Number.isFinite(Number(v))) return '—'
+  return `${(Number(v) * 100).toFixed(digits)}%`
 }
 
 async function copyToClipboard(text = ''): Promise<void> {
@@ -136,6 +151,9 @@ export default function DiagnosticsPage() {
   const meta = useBackendMeta()
   const ready = useBackendReady()
 
+  const [onlineQuality, setOnlineQuality] = useState<OnlineQualitySummaryResponse | null>(null)
+  const [onlineQualityLoading, setOnlineQualityLoading] = useState(false)
+
   const [probeDatasetId, setProbeDatasetId] = useState('')
   const [probeDocumentIdsRaw, setProbeDocumentIdsRaw] = useState('')
   const [probeQuery, setProbeQuery] = useState('Summarize what you know about this dataset.')
@@ -173,13 +191,72 @@ export default function DiagnosticsPage() {
     API_LONG_TIMEOUT_MS,
   })
 
+  async function refreshOnlineQuality(): Promise<void> {
+    setOnlineQualityLoading(true)
+    try {
+      const res = await observabilityApi.getOnlineQualitySummary({
+        window_minutes: 240,
+        bucket_minutes: 5,
+      })
+      setOnlineQuality(res)
+    } catch (err) {
+      setOnlineQuality(null)
+      toast.error(formatApiError(err, '加载 Online Quality 失败（需要 ENABLE_METRICS_LOG + ONLINE_EVAL_ENABLED）'))
+    } finally {
+      setOnlineQualityLoading(false)
+    }
+  }
+
   useEffect(() => {
     setPerfSnapshot(takePerfSnapshot())
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      try {
+        setOnlineQualityLoading(true)
+        const res = await observabilityApi.getOnlineQualitySummary({
+          window_minutes: 240,
+          bucket_minutes: 5,
+        })
+        if (cancelled) return
+        setOnlineQuality(res)
+      } catch (err) {
+        if (cancelled) return
+        setOnlineQuality(null)
+      } finally {
+        if (!cancelled) setOnlineQualityLoading(false)
+      }
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const perfJson = useMemo(() => prettyJson(perfSnapshot ?? { error: 'perf snapshot not captured' }), [perfSnapshot])
   const driftJson = useMemo(() => prettyJson(driftSnapshot ?? { error: 'no drift snapshot yet' }), [driftSnapshot])
   const perfSuiteJson = useMemo(() => prettyJson(perfSuiteResult ?? { error: 'no perf suite run yet' }), [perfSuiteResult])
+
+  const onlineQualityChartData = useMemo(() => {
+    const ts = onlineQuality?.timeseries?.ts_ms || []
+    const samples = onlineQuality?.timeseries?.samples || []
+    const faith = onlineQuality?.timeseries?.faithfulness_det_avg || []
+    const util = onlineQuality?.timeseries?.chunk_utilization_avg || []
+    const out: Array<Record<string, any>> = []
+    for (let i = 0; i < ts.length; i++) {
+      const t = Number(ts[i] || 0)
+      out.push({
+        t,
+        time: formatTs(t),
+        samples: Number(samples[i] || 0),
+        faithfulness_det_avg: faith[i] == null ? null : Number(faith[i] || 0),
+        chunk_utilization_avg: util[i] == null ? null : Number(util[i] || 0),
+      })
+    }
+    return out
+  }, [onlineQuality?.timeseries])
 
   const probeDocumentIds = useMemo(() => {
     const raw = (probeDocumentIdsRaw || '').trim()
@@ -447,6 +524,136 @@ export default function DiagnosticsPage() {
           </CardHeader>
           <CardContent>
             <pre className="text-xs whitespace-pre-wrap break-words">{readyJson}</pre>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">Online Quality (sampled)</CardTitle>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => refreshOnlineQuality()}
+                disabled={onlineQualityLoading}
+                title="刷新"
+                aria-label="刷新"
+              >
+                <RefreshCcw className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={async () => copyToClipboard(prettyJson(onlineQuality))}
+                disabled={!onlineQuality}
+                title="复制"
+                aria-label="复制"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {onlineQuality?.enabled ? (
+              <>
+                <StatsGrid className="xl:grid-cols-4">
+                  <StatCard
+                    icon={Package}
+                    label="Samples"
+                    value={String(onlineQuality.sample_count ?? 0)}
+                    subValue={`window=${onlineQuality.window_minutes}m · bucket=${onlineQuality.bucket_minutes}m`}
+                    color="blue"
+                  />
+                  <StatCard
+                    icon={BarChart3}
+                    label="Faithfulness(det)"
+                    value={fmtPercent(onlineQuality.faithfulness_det_avg, 1)}
+                    subValue="avg"
+                    color="teal"
+                  />
+                  <StatCard
+                    icon={BarChart3}
+                    label="Chunk Utilization"
+                    value={fmtPercent(onlineQuality.chunk_utilization_avg, 1)}
+                    subValue="avg"
+                    color="sky"
+                  />
+                  <StatCard
+                    icon={AlertTriangle}
+                    label="Alerts"
+                    value={String((onlineQuality.alerts || []).length)}
+                    subValue="latest bucket"
+                    color={(onlineQuality.alerts || []).length ? 'red' : 'green'}
+                  />
+                </StatsGrid>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-border/60 p-3">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Faithfulness(det) trend</div>
+                    <div className="h-[220px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={onlineQualityChartData}>
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} domain={[0, 1]} />
+                          <Tooltip />
+                          <Line
+                            type="monotone"
+                            dataKey="faithfulness_det_avg"
+                            stroke="hsl(var(--info))"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border/60 p-3">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Chunk utilization trend</div>
+                    <div className="h-[220px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={onlineQualityChartData}>
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                          <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+                          <YAxis tick={{ fontSize: 10 }} domain={[0, 1]} />
+                          <Tooltip />
+                          <Line
+                            type="monotone"
+                            dataKey="chunk_utilization_avg"
+                            stroke="hsl(var(--primary))"
+                            strokeWidth={2}
+                            dot={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+
+                {(onlineQuality.alerts || []).length ? (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                    <div className="text-xs font-medium text-destructive mb-2">Alerts</div>
+                    <div className="space-y-1 text-[11px] text-muted-foreground">
+                      {(onlineQuality.alerts || []).slice(0, 6).map((a: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between gap-3">
+                          <span className="font-mono text-foreground/80">{String(a.metric || '')}</span>
+                          <span className="tabular-nums">
+                            {String(a.value ?? '—')} &lt; {String(a.threshold ?? '—')} · samples={String(a.samples ?? '—')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="text-xs text-muted-foreground">
+                未启用 Online Eval：需要 `ENABLE_METRICS_LOG=true` 且 `ONLINE_EVAL_ENABLED=true`（并产生 `event=online_eval` 记录）。
+              </div>
+            )}
           </CardContent>
         </Card>
 

@@ -4,6 +4,7 @@
  * RAGAS 评测页面 - 支持 Tab 切换
  * Tab 1: 对话评测（基于对话历史）
  * Tab 2: 回归测试（基于测试用例）
+ * Tab 3: Queryset Health（检索基准集健康度）
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
@@ -34,8 +35,9 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { RegressionTestTab } from '@/components/evaluation/regression-tab'
+import { QuerysetHealthTab } from '@/components/evaluation/queryset-health-tab'
 
-type TabType = 'conversation' | 'regression'
+type TabType = 'conversation' | 'regression' | 'queryset_health'
 
 const METRIC_OPTIONS = [
     { key: 'faithfulness', label: 'Faithfulness（忠实度）' },
@@ -89,7 +91,7 @@ function EvaluationsPageContent() {
   // Support deep-linking: /evaluations?tab=regression|conversation
   useEffect(() => {
     const tab = (searchParams.get('tab') || '').trim().toLowerCase()
-    if (tab === 'regression' || tab === 'conversation') {
+    if (tab === 'regression' || tab === 'conversation' || tab === 'queryset_health') {
       setActiveTab(tab as TabType)
     }
   }, [searchParams])
@@ -288,6 +290,19 @@ function EvaluationsPageContent() {
             >
               <TestTube2 className="w-4 h-4" />
               回归测试
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={isActiveTab('queryset_health') ? 'outline' : 'ghost'}
+              onClick={() => setActiveTab('queryset_health')}
+              className={cn(
+                'gap-2 rounded-lg',
+                isActiveTab('queryset_health') && 'bg-background/70 text-sky-600 dark:text-sky-400'
+              )}
+            >
+              <BarChart3 className="w-4 h-4" />
+              Queryset Health
             </Button>
           </div>
         }
@@ -538,8 +553,10 @@ function EvaluationsPageContent() {
             </div>
           </div>
           </div>
-        ) : (
+        ) : activeTab === 'regression' ? (
           <RegressionTestTab embedded />
+        ) : (
+          <QuerysetHealthTab embedded />
         )}
       </PageScaffold>
     </div>

@@ -1030,6 +1030,7 @@ async def create_ragas_regression_run(
             "dataset_id": str(request.dataset_id),
             "skip_empty_contexts": request.skip_empty_contexts,
             "max_cases": request.max_cases,
+            "use_llm_judge": bool(getattr(request, "use_llm_judge", False)),
             "rag_params": {
                 "retrieval_profile": request.retrieval_profile,
                 "enable_query_alias_expansion": request.enable_query_alias_expansion,
@@ -1077,6 +1078,7 @@ async def create_ragas_regression_run(
         case_ids=list(request.case_ids or []),
         dataset_id=request.dataset_id,
         metric_names=request.metrics,
+        use_llm_judge=bool(getattr(request, "use_llm_judge", False)),
         skip_empty_contexts=request.skip_empty_contexts,
         max_cases=request.max_cases,
         rag_params={
@@ -1475,38 +1477,174 @@ async def generate_test_cases_from_documents(
             question_types=request.question_types,
         )
 
-        # Convert to response format.
+        # Auto-save as regression cases when requested.
+        #
+        # Gap7 (P2): generated cases must carry `reference_sources` so they can be used for
+        # retrieval gates and regression slicing.
+        saved_case_ids: list[UUID] = []
+        if request.auto_save_as_cases and questions:
+            # Lazy imports (keeps endpoint import-time side effects low).
+            from app.models.document import Document as DBDocument
+
+            # Best-effort: infer dataset_id per question when request.dataset_id is omitted.
+            doc_ids: list[UUID] = []
+            for q in questions:
+                raw_doc = str((q.metadata or {}).get("source_id") or "").strip()
+                if not raw_doc:
+                    continue
+                try:
+                    doc_ids.append(UUID(raw_doc))
+                except Exception:
+                    continue
+
+            doc_to_dataset: dict[str, UUID | None] = {}
+            if doc_ids:
+                rows = (
+                    db.query(DBDocument.id, DBDocument.dataset_id)
+                    .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(set(doc_ids))))
+                    .all()
+                )
+                doc_to_dataset = {str(doc_id): (ds_id if ds_id is not None else None) for doc_id, ds_id in rows}
+
+            ds_cache: dict[UUID, Any] = {}
+
+            def _validate_reference_chunk_hit(
+                *,
+                question: str,
+                dataset_id: UUID,
+                chunk_id: UUID,
+            ) -> dict[str, Any]:
+                """
+                Best-effort vector recall validation for the reference chunk.
+
+                This is intentionally non-blocking: failures do not abort generation/saving.
+                """
+                top_k = 20
+                try:
+                    from app.rag.retriever import HybridRetriever
+
+                    retriever = HybridRetriever(
+                        k=top_k,
+                        retrieval_mode="vector",
+                        score_threshold=0.0,
+                        enable_reranker=False,
+                        enable_weight_rerank=False,
+                        dedup_enabled=False,
+                        max_chunks_per_doc=max(50, top_k),
+                        min_distinct_docs=0,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        dataset_id=dataset_id,
+                    )
+                    docs = retriever.get_relevant_documents(str(question or ""))
+                    rank: int | None = None
+                    for i, d in enumerate(docs or []):
+                        meta = getattr(d, "metadata", None) or {}
+                        if str(meta.get("chunk_id") or "").strip() == str(chunk_id):
+                            rank = int(i + 1)
+                            break
+                    return {"mode": "vector_topk", "top_k": top_k, "hit": bool(rank is not None), "rank": rank}
+                except Exception as exc:  # noqa: BLE001
+                    return {
+                        "mode": "vector_topk",
+                        "top_k": top_k,
+                        "hit": None,
+                        "reason": f"{type(exc).__name__}:{str(exc)[:160]}",
+                    }
+
+            for q in questions:
+                meta = dict(q.metadata or {})
+                doc_id_raw = str(meta.get("source_id") or "").strip()
+                chunk_ids_raw = meta.get("reference_chunk_ids") or [meta.get("chunk_id")]
+
+                # Resolve dataset_id for this case.
+                ds_id: UUID | None = request.dataset_id
+                if ds_id is None and doc_id_raw:
+                    ds_id = doc_to_dataset.get(doc_id_raw)
+
+                if ds_id is None:
+                    meta["auto_save"] = {"saved": False, "reason": "missing_dataset_id"}
+                    q.metadata = meta
+                    continue
+
+                # Governance: saving regression cases is a write operation.
+                if ds_id not in ds_cache:
+                    try:
+                        ds = DatasetService.get_dataset(db, tenant_id, ds_id)
+                        DatasetService.assert_dataset_writable(db, ds, account_id)
+                        ds_cache[ds_id] = ds
+                    except HTTPException as exc:
+                        meta["auto_save"] = {"saved": False, "reason": f"dataset_not_writable:{exc.detail}"}
+                        q.metadata = meta
+                        continue
+
+                # Build reference_sources payloads (doc_id + chunk_id).
+                ref_payloads: list[dict[str, Any]] = []
+                for cid_raw in (chunk_ids_raw or []):
+                    cid = str(cid_raw or "").strip()
+                    if not cid or not doc_id_raw:
+                        continue
+                    ref_payloads.append({"document_id": doc_id_raw, "chunk_id": cid})
+
+                # Normalize + enrich reference_sources (ACL + dataset scope + quote fallback).
+                try:
+                    reference_sources = _finalize_reference_sources(
+                        db,
+                        tenant_id=tenant_id,
+                        account_id=account_id,
+                        dataset_id=ds_id,
+                        reference_sources=ref_payloads,
+                    )
+                except HTTPException as exc:
+                    meta["auto_save"] = {"saved": False, "reason": f"invalid_reference_sources:{exc.detail}"}
+                    q.metadata = meta
+                    continue
+
+                # Best-effort embedding/vector validation.
+                try:
+                    if ref_payloads:
+                        chunk0 = UUID(str(ref_payloads[0].get("chunk_id")))
+                        meta["reference_validation"] = _validate_reference_chunk_hit(
+                            question=q.question,
+                            dataset_id=ds_id,
+                            chunk_id=chunk0,
+                        )
+                except Exception:
+                    pass
+
+                case = RagasRegressionCase(
+                    tenant_id=tenant_id,
+                    dataset_id=ds_id,
+                    # Keep retrieval dataset-scoped by default (do NOT scope to a single document).
+                    document_ids=[],
+                    question=q.question,
+                    expected_answer=q.expected_answer,
+                    reference_sources=reference_sources,
+                    tags=["auto_generated", "from_documents"],
+                    extra=meta,
+                    created_by=account_id,
+                )
+                db.add(case)
+                db.flush()
+                saved_case_ids.append(case.id)
+
+                meta["auto_save"] = {"saved": True, "case_id": str(case.id)}
+                q.metadata = meta
+
+            db.commit()
+
+        # Convert to response format (after auto-save, so metadata can include case ids).
         generated_questions = [
             GeneratedQuestion(
                 question=q.question,
                 expected_answer=q.expected_answer,
                 context=q.context,
                 source_type="document",
-                source_id=q.metadata.get("source_id", ""),
+                source_id=(q.metadata or {}).get("source_id", ""),
                 metadata=q.metadata,
             )
             for q in questions
         ]
-
-        # Auto-save as cases when requested.
-        saved_case_ids = []
-        if request.auto_save_as_cases:
-            for q in questions:
-                case = RagasRegressionCase(
-                    tenant_id=tenant_id,
-                    dataset_id=request.dataset_id,
-                    document_ids=[q.metadata.get("source_id")] if q.metadata.get("source_id") else [],
-                    question=q.question,
-                    expected_answer=q.expected_answer,
-                    tags=["auto_generated", "from_documents"],
-                    extra=q.metadata,
-                    created_by=account_id,
-                )
-                db.add(case)
-                db.flush()
-                saved_case_ids.append(case.id)
-            
-            db.commit()
 
         return TestGenResponse(
             status="completed",

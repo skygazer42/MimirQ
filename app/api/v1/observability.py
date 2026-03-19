@@ -77,6 +77,33 @@ class RagMetricsSummaryResponse(BaseModel):
     timeseries: dict[str, list[Any]] = {}
 
 
+class OnlineQualitySummaryResponse(BaseModel):
+    enabled: bool
+    path: str
+    window_minutes: int
+    bucket_minutes: int
+    truncated: bool
+    record_count: int
+    sample_count: int
+    faithfulness_det_avg: float | None = None
+    chunk_utilization_avg: float | None = None
+    timeseries: dict[str, list[Any]] = {}
+    alerts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class QuerysetHealthRunsResponse(BaseModel):
+    enabled: bool
+    path: str
+    total: int
+    truncated: bool = False
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    timeseries: dict[str, list[Any]] = Field(default_factory=dict)
+
+
+class QuerysetHealthDiffResponse(BaseModel):
+    diff: dict[str, Any] = Field(default_factory=dict)
+
+
 class RagQueryAnalyticsResponse(BaseModel):
     enabled: bool
     path: str
@@ -386,6 +413,189 @@ def get_rag_metrics_summary(
     summary = summarize_rag_metrics(tenant_id=str(tenant_id), window_minutes=window_minutes, max_bytes=max_bytes)
     # Dataclass -> dict (safe fields only by construction).
     return summary.__dict__
+
+
+@router.get(
+    "/online-quality/summary",
+    response_model=OnlineQualitySummaryResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def get_online_quality_summary(
+    window_minutes: Annotated[int, Query(ge=1, le=7 * 24 * 60)] = 60,
+    bucket_minutes: Annotated[int, Query(ge=1, le=60)] = 5,
+    max_bytes: Annotated[int, Query(ge=100000, le=50000000)] = 5_000_000,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Online quality snapshot (sampled, deterministic, PII-minimal).
+
+    This reads the shared metrics JSONL log and aggregates `event=="online_eval"` records.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+    from app.services.online_eval_service import summarize_online_quality
+
+    summary = summarize_online_quality(
+        tenant_id=str(tenant_id),
+        window_minutes=window_minutes,
+        bucket_minutes=bucket_minutes,
+        max_bytes=max_bytes,
+    )
+    return summary.__dict__
+
+
+@router.get(
+    "/queryset-health/runs",
+    response_model=QuerysetHealthRunsResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def list_queryset_health_runs(
+    limit: Annotated[int, Query(ge=1, le=500)] = 90,
+    profile_hash: Annotated[str | None, Query(description="Optional retrieval profile hash to filter history")] = None,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    List query-set health snapshots from the local history JSONL file.
+
+    This is intended for UI diagnostics and CI review. Data is PII-minimal by construction
+    (questions are clipped and bounded in the snapshot schema).
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from pathlib import Path
+
+    from app.core.config import settings
+    from app.services.queryset_health_service import load_queryset_health_history
+
+    path_str = str(getattr(settings, "QUERYSET_HEALTH_HISTORY_PATH", "./runs/queryset_health/history.jsonl") or "")
+    path = Path(path_str)
+
+    rows = load_queryset_health_history(path)
+    if profile_hash:
+        ph = str(profile_hash or "").strip()
+        if ph:
+            rows = [r for r in rows if isinstance(r, dict) and str(r.get("profile_hash") or "").strip() == ph]
+
+    total = int(len(rows))
+    cap = max(1, int(limit or 1))
+    truncated = total > cap
+    visible = rows[-cap:] if cap else rows
+
+    # Build a compact timeseries for charts (chronological order).
+    ts_rows = visible
+    ts_ms: list[int] = []
+    hit_at_k: list[float | None] = []
+    mrr: list[float | None] = []
+    ndcg: list[float | None] = []
+    p95_latency_ms: list[float | None] = []
+    miss_rate: list[float | None] = []
+    weak_hit_rate: list[float | None] = []
+    status: list[str] = []
+
+    def _to_ms(raw: Any) -> int:
+        ts = str(raw or "").strip()
+        if not ts:
+            return 0
+        try:
+            # fromisoformat does not accept trailing "Z".
+            if ts.endswith("Z"):
+                ts = ts[:-1] + "+00:00"
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return int(dt.timestamp() * 1000)
+        except Exception:
+            return 0
+
+    for r in ts_rows:
+        if not isinstance(r, dict):
+            continue
+        ts_ms.append(_to_ms(r.get("generated_at")))
+
+        metrics = r.get("metrics") if isinstance(r.get("metrics"), dict) else {}
+        risk = r.get("risk") if isinstance(r.get("risk"), dict) else {}
+
+        def _f(v: Any) -> float | None:
+            try:
+                if v is None or isinstance(v, bool):
+                    return None
+                return float(v)
+            except Exception:
+                return None
+
+        hit_at_k.append(_f(metrics.get("hit_at_k")))
+        mrr.append(_f(metrics.get("mrr")))
+        ndcg.append(_f(metrics.get("ndcg_at_k")))
+        p95_latency_ms.append(_f(metrics.get("p95_latency_ms")))
+        miss_rate.append(_f(risk.get("miss_rate")))
+        weak_hit_rate.append(_f(risk.get("weak_hit_rate")))
+        status.append(str(r.get("status") or "unknown"))
+
+    # Return newest-first list for the table.
+    items = list(reversed([dict(r) for r in visible if isinstance(r, dict)]))
+
+    return QuerysetHealthRunsResponse(
+        enabled=bool(path.exists()),
+        path=str(path),
+        total=total,
+        truncated=bool(truncated),
+        items=items,
+        timeseries={
+            "ts_ms": ts_ms,
+            "hit_at_k": hit_at_k,
+            "mrr": mrr,
+            "ndcg_at_k": ndcg,
+            "p95_latency_ms": p95_latency_ms,
+            "miss_rate": miss_rate,
+            "weak_hit_rate": weak_hit_rate,
+            "status": status,
+        },
+    )
+
+
+@router.get(
+    "/queryset-health/diff",
+    response_model=QuerysetHealthDiffResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def diff_queryset_health_runs(
+    baseline_generated_at: Annotated[str, Query(min_length=1, max_length=64)],
+    current_generated_at: Annotated[str, Query(min_length=1, max_length=64)],
+    max_hard_case_ids: Annotated[int, Query(ge=1, le=200)] = 20,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    _ensure_admin(db, tenant_id, account_id)
+
+    from pathlib import Path
+
+    from app.core.config import settings
+    from app.services.queryset_health_diff_service import diff_queryset_health_snapshots
+    from app.services.queryset_health_service import load_queryset_health_history
+
+    path_str = str(getattr(settings, "QUERYSET_HEALTH_HISTORY_PATH", "./runs/queryset_health/history.jsonl") or "")
+    path = Path(path_str)
+    rows = load_queryset_health_history(path)
+
+    base_ts = str(baseline_generated_at or "").strip()
+    curr_ts = str(current_generated_at or "").strip()
+    if not base_ts or not curr_ts:
+        raise HTTPException(status_code=400, detail="baseline_generated_at and current_generated_at are required")
+
+    baseline = next((r for r in rows if isinstance(r, dict) and str(r.get("generated_at") or "").strip() == base_ts), None)
+    current = next((r for r in rows if isinstance(r, dict) and str(r.get("generated_at") or "").strip() == curr_ts), None)
+    if baseline is None or current is None:
+        raise HTTPException(status_code=404, detail="baseline/current snapshot not found in history")
+
+    diff = diff_queryset_health_snapshots(baseline=baseline, current=current, max_hard_case_ids=int(max_hard_case_ids or 20))
+    return QuerysetHealthDiffResponse(diff=diff)
 
 
 @router.get("/rag-metrics/query-analytics", response_model=RagQueryAnalyticsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

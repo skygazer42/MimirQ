@@ -25,3 +25,14 @@ def test_select_best_parse_attempt_breaks_ties_by_score_then_content():
 
     assert select_best_parse_attempt(attempts)["backend"] == "c"
 
+
+def test_select_best_parse_attempt_can_use_competition_matrix_weights():
+    from app.parsing.quality.competition import select_best_parse_attempt  # noqa: WPS433
+
+    attempts = [
+        {"backend": "a", "grade": "warn", "parse_score": 0.9, "content_chars": 100, "text_score": 0.1},
+        {"backend": "b", "grade": "warn", "parse_score": 0.1, "content_chars": 100, "text_score": 0.9},
+    ]
+
+    best = select_best_parse_attempt(attempts, weights={"text": 1.0})
+    assert best["backend"] == "b"

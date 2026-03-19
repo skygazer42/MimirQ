@@ -5,11 +5,11 @@ This module sits *before* the parsing subprocess backends. It is meant to:
 - Fix obvious orientation issues (EXIF transpose) for standalone images
 - Optionally call external services for deskew/dewarp/watermark removal
 
-Phase 1 scope (per docs/plans/2026-03-19-model-based-deskew-watermark-removal.md):
-- Wire the preprocessing stage into the ingest pipeline behind feature flags
-- Provide a safe no-op default (disabled)
-- Provide a minimal implementation for image EXIF orientation fix
-- Provide scaffolding for external deskew backends (no heavy model deps in-process)
+Scope (per docs/plans/2026-03-19-model-based-deskew-watermark-removal.md):
+- Feature-flagged stage in ingest pipeline (disabled by default).
+- Lightweight orientation normalization (EXIF for images; rotation metadata for PDFs).
+- Optional external HTTP backends for deskew and watermark removal.
+- Best-effort PDF watermark annotation stripping (cheap path) before model-based removal.
 """
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import requests
-from PIL import Image, ImageOps
-
 from app.core.config import settings
+from app.parsing.preprocess.deskew import deskew_via_http
+from app.parsing.preprocess.orientation import fix_exif_orientation, normalize_pdf_rotation
+from app.parsing.preprocess.watermark import remove_watermark_via_http, strip_pdf_watermark_annotations
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.image_preprocess")
@@ -76,61 +76,6 @@ class ImagePreprocessResult:
         }
 
 
-def _maybe_fix_exif_orientation(*, input_path: Path, output_path: Path) -> tuple[bool, str]:
-    """
-    Returns (changed, note).
-
-    Uses EXIF orientation flag when present. This is lightweight and does not
-    require OCR/model deps.
-    """
-    try:
-        with Image.open(input_path) as img:
-            try:
-                orientation = int(img.getexif().get(274) or 1)
-            except Exception:
-                orientation = 1
-            if orientation == 1:
-                return False, "no_exif_rotation"
-
-            fixed = ImageOps.exif_transpose(img)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            fixed.save(output_path)
-            return True, f"exif_orientation={orientation}"
-    except Exception as exc:  # noqa: BLE001
-        return False, f"exif_failed:{exc.__class__.__name__}"
-
-
-def _maybe_deskew_via_paddle(*, input_path: Path, output_path: Path, url: str, timeout_sec: float) -> tuple[bool, str]:
-    """
-    Deskew via an external service.
-
-    Contract (best-effort):
-    - POST multipart form with file field "file"
-    - Response: image bytes (content-type image/*) or octet-stream
-    """
-    try:
-        file_bytes = input_path.read_bytes()
-        resp = requests.post(
-            url,
-            files={"file": (input_path.name, file_bytes, "application/octet-stream")},
-            timeout=timeout_sec,
-        )
-    except Exception as exc:  # noqa: BLE001
-        return False, f"deskew_http_failed:{exc.__class__.__name__}"
-
-    if resp.status_code >= 400:
-        return False, f"deskew_http_{resp.status_code}"
-    if not resp.content:
-        return False, "deskew_empty_response"
-
-    try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_bytes(resp.content)
-        return True, "deskew_ok"
-    except Exception as exc:  # noqa: BLE001
-        return False, f"deskew_write_failed:{exc.__class__.__name__}"
-
-
 def preprocess_image_document(
     *,
     input_path: Path,
@@ -140,9 +85,11 @@ def preprocess_image_document(
     """
     Preprocess a document file before parsing.
 
-    Phase 1:
-    - Standalone images: optional EXIF orientation fix + optional external deskew.
-    - PDFs: scaffolding only (no in-process rasterization/rewriting yet).
+    This stage runs before parsing backends and is guarded by feature flags.
+
+    Supported (best-effort):
+    - Standalone images: EXIF orientation fix + optional external deskew/watermark removal.
+    - PDFs: rotation normalization + optional external deskew/watermark removal + optional annotation stripping.
     """
     input_path = Path(input_path)
     ext = input_path.suffix.lower()
@@ -162,18 +109,207 @@ def preprocess_image_document(
     steps: list[ImagePreprocessStepLog] = []
     meta: dict[str, Any] = {"enabled": True}
 
-    # Best-effort: allow caller to pass pdf_quality for future skip logic.
+    sample_pages = int(getattr(settings, "PREPROCESS_SAMPLE_PAGES", 3) or 3)
+    skip_high_quality = bool(getattr(settings, "PREPROCESS_SKIP_HIGH_QUALITY", True))
+
+    # Best-effort: allow caller to pass pdf_quality for skip logic / meta.
     if isinstance(pdf_quality, dict):
         meta["pdf_quality_score"] = pdf_quality.get("score")
+        meta["pdf_is_scanned"] = bool(pdf_quality.get("is_scanned", False))
 
-    # PDF scaffolding (Phase 1 keeps this a no-op).
     if ext == ".pdf":
+        pdf_q = dict(pdf_quality) if isinstance(pdf_quality, dict) else None
+        if skip_high_quality and pdf_q is None:
+            try:
+                from app.parsing.quality.scorer import score_pdf_quality
+
+                pdf_q = score_pdf_quality(input_path, sample_pages=sample_pages, use_ocr_validation=False)
+                if isinstance(pdf_q, dict):
+                    meta["pdf_quality_score"] = pdf_q.get("score")
+                    meta["pdf_is_scanned"] = bool(pdf_q.get("is_scanned", False))
+            except Exception:
+                pdf_q = None
+
+        if skip_high_quality and isinstance(pdf_q, dict):
+            score = float(pdf_q.get("score", 0.0) or 0.0)
+            is_scanned = bool(pdf_q.get("is_scanned", False))
+            if score >= 0.8 and not is_scanned:
+                return ImagePreprocessResult(
+                    input_path=str(input_path),
+                    output_path=str(input_path),
+                    changed=False,
+                    steps=[
+                        ImagePreprocessStepLog(
+                            id="pdf_preprocess",
+                            applied=False,
+                            changed=False,
+                            note="skip_high_quality",
+                            elapsed_ms=0,
+                        )
+                    ],
+                    warnings=[],
+                    meta=meta,
+                )
+
+        run_id = _sanitize_run_id(document_id or input_path.stem or "preprocess")
+        artifact_root = (input_path.parent / ".mimirq_preprocess" / run_id).absolute()
+        artifact_root.mkdir(parents=True, exist_ok=True)
+
+        current = input_path
+        changed_any = False
+
+        # Step: PDF rotation normalization (cheap metadata-only fix).
+        t0 = time.perf_counter()
+        if bool(getattr(settings, "ORIENTATION_ENABLED", False)):
+            out_path = artifact_root / f"{input_path.stem}.oriented.pdf"
+            changed, note, info = normalize_pdf_rotation(input_path=current, output_path=out_path, sample_pages=sample_pages)
+            meta["pdf_rotation"] = info
+            if changed:
+                current = out_path
+                changed_any = True
+            steps.append(
+                ImagePreprocessStepLog(
+                    id="orientation",
+                    applied=True,
+                    changed=bool(changed),
+                    note=note,
+                    elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+                )
+            )
+        else:
+            steps.append(
+                ImagePreprocessStepLog(
+                    id="orientation",
+                    applied=False,
+                    changed=False,
+                    note="disabled",
+                    elapsed_ms=int(round((time.perf_counter() - t0) * 1000)),
+                )
+            )
+
+        # Step: deskew via external backend (optional).
+        t1 = time.perf_counter()
+        if bool(getattr(settings, "DESKEW_ENABLED", False)):
+            backend = str(getattr(settings, "DESKEW_BACKEND", "auto") or "auto").strip().lower()
+            url = str(getattr(settings, "DESKEW_PADDLE_URL", "") or "").strip()
+            timeout_sec = float(getattr(settings, "DESKEW_TIMEOUT_SEC", 60) or 60)
+            deskew_changed = False
+            note = "skipped"
+            if backend in {"auto", "paddle"} and url:
+                out_path = artifact_root / f"{input_path.stem}.deskew.pdf"
+                deskew_changed, note = deskew_via_http(
+                    input_path=current,
+                    output_path=out_path,
+                    url=url,
+                    timeout_sec=timeout_sec,
+                )
+                if deskew_changed:
+                    current = out_path
+                    changed_any = True
+            else:
+                note = "missing_backend_or_url"
+            steps.append(
+                ImagePreprocessStepLog(
+                    id="deskew",
+                    applied=True,
+                    changed=bool(deskew_changed),
+                    note=note,
+                    elapsed_ms=int(round((time.perf_counter() - t1) * 1000)),
+                )
+            )
+        else:
+            steps.append(
+                ImagePreprocessStepLog(
+                    id="deskew",
+                    applied=False,
+                    changed=False,
+                    note="disabled",
+                    elapsed_ms=int(round((time.perf_counter() - t1) * 1000)),
+                )
+            )
+
+        # Step: watermark removal (annotation strip + optional external backend).
+        if bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
+            t2 = time.perf_counter()
+            if bool(getattr(settings, "WATERMARK_PDF_ANNOT_STRIP_ENABLED", True)):
+                out_path = artifact_root / f"{input_path.stem}.dewatermark_annots.pdf"
+                changed, note, info = strip_pdf_watermark_annotations(
+                    input_path=current,
+                    output_path=out_path,
+                    sample_pages=sample_pages,
+                )
+                meta["pdf_watermark_annots"] = info
+                if changed:
+                    current = out_path
+                    changed_any = True
+                steps.append(
+                    ImagePreprocessStepLog(
+                        id="watermark_annots",
+                        applied=True,
+                        changed=bool(changed),
+                        note=note,
+                        elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
+                    )
+                )
+            else:
+                steps.append(
+                    ImagePreprocessStepLog(
+                        id="watermark_annots",
+                        applied=False,
+                        changed=False,
+                        note="disabled",
+                        elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
+                    )
+                )
+
+            t3 = time.perf_counter()
+            api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
+            timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
+            changed = False
+            note = "missing_api_url"
+            if api_url:
+                out_path = artifact_root / f"{input_path.stem}.dewatermark.pdf"
+                changed, note = remove_watermark_via_http(
+                    input_path=current,
+                    output_path=out_path,
+                    url=api_url,
+                    timeout_sec=timeout_sec,
+                )
+                if changed:
+                    current = out_path
+                    changed_any = True
+            else:
+                warnings.append("watermark_api_url_missing")
+            steps.append(
+                ImagePreprocessStepLog(
+                    id="watermark_removal",
+                    applied=True,
+                    changed=bool(changed),
+                    note=note,
+                    elapsed_ms=int(round((time.perf_counter() - t3) * 1000)),
+                )
+            )
+        else:
+            t2 = time.perf_counter()
+            steps.append(
+                ImagePreprocessStepLog(
+                    id="watermark_removal",
+                    applied=False,
+                    changed=False,
+                    note="disabled",
+                    elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
+                )
+            )
+
+        if changed_any and current != input_path:
+            meta["artifact_dir"] = str(artifact_root.resolve(strict=False))
+
         return ImagePreprocessResult(
             input_path=str(input_path),
-            output_path=str(input_path),
-            changed=False,
-            steps=[ImagePreprocessStepLog(id="pdf_preprocess", applied=False, changed=False, note="not_implemented_phase1")],
-            warnings=[],
+            output_path=str(current),
+            changed=bool(changed_any and current != input_path),
+            steps=steps,
+            warnings=warnings[:50],
             meta=meta,
         )
 
@@ -198,7 +334,8 @@ def preprocess_image_document(
     t0 = time.perf_counter()
     if bool(getattr(settings, "ORIENTATION_ENABLED", False)):
         out_path = artifact_root / f"{input_path.stem}.oriented{input_path.suffix.lower()}"
-        changed, note = _maybe_fix_exif_orientation(input_path=current, output_path=out_path)
+        changed, note, info = fix_exif_orientation(input_path=current, output_path=out_path)
+        meta["image_orientation"] = info
         if changed:
             current = out_path
             changed_any = True
@@ -232,7 +369,7 @@ def preprocess_image_document(
         note = "skipped"
         if backend in {"auto", "paddle"} and url:
             out_path = artifact_root / f"{input_path.stem}.deskew{input_path.suffix.lower()}"
-            deskew_changed, note = _maybe_deskew_via_paddle(
+            deskew_changed, note = deskew_via_http(
                 input_path=current,
                 output_path=out_path,
                 url=url,
@@ -263,19 +400,35 @@ def preprocess_image_document(
             )
         )
 
-    # Step: watermark removal (scaffolding only in Phase 1)
+    # Step: watermark removal (optional external backend).
     t2 = time.perf_counter()
     if bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
+        api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
+        timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
+        changed = False
+        note = "missing_api_url"
+        if api_url:
+            out_path = artifact_root / f"{input_path.stem}.dewatermark{input_path.suffix.lower()}"
+            changed, note = remove_watermark_via_http(
+                input_path=current,
+                output_path=out_path,
+                url=api_url,
+                timeout_sec=timeout_sec,
+            )
+            if changed:
+                current = out_path
+                changed_any = True
+        else:
+            warnings.append("watermark_api_url_missing")
         steps.append(
             ImagePreprocessStepLog(
                 id="watermark_removal",
-                applied=False,
-                changed=False,
-                note="not_implemented_phase1",
+                applied=True,
+                changed=bool(changed),
+                note=note,
                 elapsed_ms=int(round((time.perf_counter() - t2) * 1000)),
             )
         )
-        warnings.append("watermark_removal_not_implemented_phase1")
     else:
         steps.append(
             ImagePreprocessStepLog(
