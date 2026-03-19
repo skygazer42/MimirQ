@@ -678,6 +678,38 @@ def get_index_audit(
     )
 
 
+@router.get("/embedding-drift/snapshot", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def get_embedding_drift_snapshot(
+    dataset_id: Annotated[UUID | None, Query(description="Optional dataset_id scope")] = None,
+    document_id: Annotated[UUID | None, Query(description="Optional document_id scope")] = None,
+    sample_n: Annotated[int, Query(ge=1, le=2000, description="Max chunks sampled (bounded)")] = 200,
+    drift_threshold: Annotated[float, Query(ge=0.0, le=1.0, description="Cosine distance threshold")] = 0.05,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Embedding drift snapshot (admin-only, PII-safe).
+
+    Compares stored vectors with re-embedded vectors for a bounded sample of active chunks
+    and returns aggregate drift statistics. Output never includes chunk/document identifiers
+    or raw content.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.embedding_drift_monitor import run_embedding_drift_monitor
+
+    return run_embedding_drift_monitor(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+        sample_n=int(sample_n or 0),
+        drift_threshold=float(drift_threshold),
+    )
+
+
 @router.get("/index-drift", response_model=IndexDriftListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_index_drift(
     dataset_id: Annotated[UUID | None, Query(description='Optional dataset UUID filter')] = None,

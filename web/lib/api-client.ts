@@ -3331,6 +3331,16 @@ export const observabilityApi = {
     return data
   },
 
+  async getEmbeddingDriftSnapshot(params: {
+    dataset_id?: string
+    document_id?: string
+    sample_n?: number
+    drift_threshold?: number
+  } = {}): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.get('/observability/embedding-drift/snapshot', { params })
+    return data
+  },
+
   async invalidateDatasetCache(datasetId: string): Promise<Record<string, unknown>> {
     const { data } = await apiClient.post(
       `/observability/cache/datasets/${encodeURIComponent(datasetId)}/invalidate`

@@ -16,7 +16,7 @@ import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { useBackendReady } from '@/hooks/use-backend-ready'
 import { formatApiError } from '@/lib/api-errors'
-import { ragApi } from '@/lib/api-client'
+import { observabilityApi, ragApi } from '@/lib/api-client'
 import { API_BASE_URL, API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { formatFileSize } from '@/lib/utils'
 import type { PromptPreviewResponse } from '@/types'
@@ -143,6 +143,14 @@ export default function DiagnosticsPage() {
   const [probeLatencyMs, setProbeLatencyMs] = useState<number | null>(null)
   const [probeRunning, setProbeRunning] = useState(false)
 
+  const [driftDatasetId, setDriftDatasetId] = useState('')
+  const [driftDocumentId, setDriftDocumentId] = useState('')
+  const [driftSampleN, setDriftSampleN] = useState(200)
+  const [driftThreshold, setDriftThreshold] = useState(0.05)
+  const [driftSnapshot, setDriftSnapshot] = useState<Record<string, any> | null>(null)
+  const [driftLatencyMs, setDriftLatencyMs] = useState<number | null>(null)
+  const [driftRunning, setDriftRunning] = useState(false)
+
   const [perfSnapshot, setPerfSnapshot] = useState<PerfSnapshot | null>(null)
 
   const docsUrl = `${API_BASE_URL}/docs`
@@ -164,6 +172,7 @@ export default function DiagnosticsPage() {
   }, [])
 
   const perfJson = useMemo(() => prettyJson(perfSnapshot ?? { error: 'perf snapshot not captured' }), [perfSnapshot])
+  const driftJson = useMemo(() => prettyJson(driftSnapshot ?? { error: 'no drift snapshot yet' }), [driftSnapshot])
 
   const probeDocumentIds = useMemo(() => {
     const raw = (probeDocumentIdsRaw || '').trim()
@@ -208,6 +217,34 @@ export default function DiagnosticsPage() {
       toast.error(formatApiError(err, 'RAG prompt-preview failed'))
     } finally {
       setProbeRunning(false)
+    }
+  }
+
+  async function runEmbeddingDriftSnapshotProbe(): Promise<void> {
+    const datasetId = (driftDatasetId || '').trim()
+    const documentId = (driftDocumentId || '').trim()
+
+    const sampleN = Math.max(1, Math.min(2000, Math.trunc(Number(driftSampleN || 0) || 200)))
+    const threshold = Math.max(0, Math.min(1, Number(driftThreshold || 0.05) || 0.05))
+
+    setDriftRunning(true)
+    setDriftSnapshot(null)
+    setDriftLatencyMs(null)
+
+    const start = Date.now()
+    try {
+      const result = await observabilityApi.getEmbeddingDriftSnapshot({
+        dataset_id: datasetId || undefined,
+        document_id: documentId || undefined,
+        sample_n: sampleN,
+        drift_threshold: threshold,
+      })
+      setDriftLatencyMs(Math.max(0, Date.now() - start))
+      setDriftSnapshot(result as any)
+    } catch (err) {
+      toast.error(formatApiError(err, 'Embedding drift snapshot failed'))
+    } finally {
+      setDriftRunning(false)
     }
   }
 
@@ -563,6 +600,164 @@ export default function DiagnosticsPage() {
                   {String(probeResult?.query_for_retrieval || '(not run)')}
                 </pre>
               </div>
+	            </div>
+	          </CardContent>
+	        </Card>
+
+	        <Card className="md:col-span-2">
+	          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+	            <CardTitle className="text-sm">Embedding drift</CardTitle>
+	            <div className="flex items-center gap-1">
+	              <Button
+	                variant="ghost"
+	                size="icon"
+	                className="h-8 w-8"
+	                onClick={() => runEmbeddingDriftSnapshotProbe()}
+	                disabled={driftRunning}
+	                title="运行 embedding drift snapshot"
+	                aria-label="运行 embedding drift snapshot"
+	              >
+	                <Activity className="h-4 w-4" aria-hidden="true" />
+	              </Button>
+	              <Button
+	                variant="ghost"
+	                size="icon"
+	                className="h-8 w-8"
+	                onClick={async () => copyToClipboard(driftJson)}
+	                disabled={!driftSnapshot}
+	                title="复制 JSON"
+	                aria-label="复制 JSON"
+	              >
+	                <Copy className="h-4 w-4" aria-hidden="true" />
+	              </Button>
+	            </div>
+	          </CardHeader>
+	          <CardContent className="space-y-4">
+	            <div className="grid gap-3 md:grid-cols-4">
+	              <div className="space-y-1.5 md:col-span-2">
+	                <Label htmlFor="drift-dataset-id">dataset_id（可选）</Label>
+	                <Input
+	                  id="drift-dataset-id"
+	                  value={driftDatasetId}
+	                  onChange={(e) => setDriftDatasetId(e.target.value)}
+	                  placeholder="e.g. 9b2f…"
+	                />
+	              </div>
+	              <div className="space-y-1.5 md:col-span-2">
+	                <Label htmlFor="drift-document-id">document_id（可选）</Label>
+	                <Input
+	                  id="drift-document-id"
+	                  value={driftDocumentId}
+	                  onChange={(e) => setDriftDocumentId(e.target.value)}
+	                  placeholder="e.g. 3f1a…"
+	                />
+	              </div>
+	              <div className="space-y-1.5">
+	                <Label htmlFor="drift-sample-n">sample_n</Label>
+	                <Input
+	                  id="drift-sample-n"
+	                  value={String(driftSampleN)}
+	                  onChange={(e) => setDriftSampleN(Number.parseInt(e.target.value || '0', 10) || 0)}
+	                  inputMode="numeric"
+	                />
+	              </div>
+	              <div className="space-y-1.5">
+	                <Label htmlFor="drift-threshold">drift_threshold</Label>
+	                <Input
+	                  id="drift-threshold"
+	                  value={String(driftThreshold)}
+	                  onChange={(e) => setDriftThreshold(Number(e.target.value) || 0)}
+	                  inputMode="decimal"
+	                />
+	              </div>
+	            </div>
+
+	            <div className="flex items-center justify-between gap-3">
+	              <p className="text-xs text-muted-foreground">
+	                这个探针调用后端 `GET /api/v1/observability/embedding-drift/snapshot`（admin-only / PII-safe）。
+	              </p>
+	              <Button
+	                variant="outline"
+	                size="sm"
+	                onClick={() => runEmbeddingDriftSnapshotProbe()}
+	                disabled={driftRunning}
+	              >
+	                {driftRunning ? '运行中…' : 'Run'}
+	              </Button>
+	            </div>
+
+	            <StatsGrid className="xl:grid-cols-6">
+	              <StatCard
+	                icon={Timer}
+	                label="Latency (client)"
+	                value={driftLatencyMs == null ? '-' : `${driftLatencyMs}ms`}
+	                color="gray"
+	              />
+	              <StatCard
+	                icon={FileSearch}
+	                label="Sampled items"
+	                value={
+	                  typeof (driftSnapshot as any)?.sampled_items === 'number'
+	                    ? (driftSnapshot as any).sampled_items
+	                    : '-'
+	                }
+	                color="cyan"
+	              />
+	              <StatCard
+	                icon={Timer}
+	                label="Drift p95"
+	                value={
+	                  typeof (driftSnapshot as any)?.drift?.p95 === 'number'
+	                    ? `${(driftSnapshot as any).drift.p95.toFixed(4)}`
+	                    : '-'
+	                }
+	                color="orange"
+	              />
+	              <StatCard
+	                icon={Timer}
+	                label="Drift p99"
+	                value={
+	                  typeof (driftSnapshot as any)?.drift?.p99 === 'number'
+	                    ? `${(driftSnapshot as any).drift.p99.toFixed(4)}`
+	                    : '-'
+	                }
+	                color="orange"
+	              />
+	              <StatCard
+	                icon={Hash}
+	                label="Above threshold"
+	                value={
+	                  typeof (driftSnapshot as any)?.above_threshold?.ratio === 'number'
+	                    ? `${Math.round((driftSnapshot as any).above_threshold.ratio * 100)}%`
+	                    : '-'
+	                }
+	                color="red"
+	              />
+	              <StatCard
+	                icon={Hash}
+	                label="Space hash"
+	                value={String((driftSnapshot as any)?.current_embedding_space_hash || '-')}
+	                color="gray"
+	              />
+	            </StatsGrid>
+
+	            <div className="space-y-1.5">
+	              <div className="flex items-center justify-between gap-2">
+	                <p className="text-xs font-medium text-muted-foreground">Embedding drift snapshot (JSON)</p>
+	                <Button
+	                  variant="ghost"
+	                  size="sm"
+	                  className="h-7 px-2"
+	                  onClick={async () => copyToClipboard(driftJson)}
+	                  disabled={!driftSnapshot}
+	                >
+	                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+	                  <span className="sr-only">复制</span>
+	                </Button>
+	              </div>
+	              <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
+	                {driftJson}
+	              </pre>
 	            </div>
 	          </CardContent>
 	        </Card>
