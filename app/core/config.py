@@ -187,6 +187,16 @@ class Settings(BaseSettings):
     RETRIEVAL_CANDIDATE_CACHE_PREFIX: str = "rcand"
     RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES: int = 400_000
 
+    # Semantic cache (Milvus ANN + Redis payload; best-effort; safe by default).
+    # Stores retrieval outputs for *similar* queries within a strict (tenant/account/scope) boundary.
+    SEMANTIC_CACHE_ENABLED: bool = False
+    SEMANTIC_CACHE_TTL_SEC: int = 300
+    SEMANTIC_CACHE_SCORE_THRESHOLD: float = 0.95
+    SEMANTIC_CACHE_SEARCH_TOP_K: int = 5
+    SEMANTIC_CACHE_COLLECTION_NAME: str = "semantic_cache"
+    SEMANTIC_CACHE_REDIS_PREFIX: str = "semc"
+    SEMANTIC_CACHE_MAX_VALUE_BYTES: int = 400_000
+
     # Usage quotas (best-effort; disabled by default).
     # Applies per-tenant over a rolling time window.
     CHAT_ASSISTANT_TOKEN_QUOTA_ENABLED: bool = False
@@ -2013,6 +2023,34 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_CANDIDATE_CACHE_PREFIX must not contain whitespace")
         if self.RETRIEVAL_CANDIDATE_CACHE_PREFIX != cand_prefix:
             self.RETRIEVAL_CANDIDATE_CACHE_PREFIX = cand_prefix
+
+        if int(getattr(self, "SEMANTIC_CACHE_TTL_SEC", 0) or 0) < 0:
+            raise ValueError("SEMANTIC_CACHE_TTL_SEC must be >= 0")
+        if int(getattr(self, "SEMANTIC_CACHE_MAX_VALUE_BYTES", 0) or 0) < 0:
+            raise ValueError("SEMANTIC_CACHE_MAX_VALUE_BYTES must be >= 0")
+        sem_threshold = float(getattr(self, "SEMANTIC_CACHE_SCORE_THRESHOLD", 0.0) or 0.0)
+        if sem_threshold < 0.0 or sem_threshold > 1.0:
+            raise ValueError("SEMANTIC_CACHE_SCORE_THRESHOLD must be between 0 and 1")
+        if self.SEMANTIC_CACHE_SCORE_THRESHOLD != sem_threshold:
+            self.SEMANTIC_CACHE_SCORE_THRESHOLD = sem_threshold
+        if int(getattr(self, "SEMANTIC_CACHE_SEARCH_TOP_K", 0) or 0) < 1:
+            raise ValueError("SEMANTIC_CACHE_SEARCH_TOP_K must be >= 1")
+
+        sem_prefix = (getattr(self, "SEMANTIC_CACHE_REDIS_PREFIX", "") or "").strip()
+        if not sem_prefix:
+            raise ValueError("SEMANTIC_CACHE_REDIS_PREFIX must be non-empty")
+        if any(ch.isspace() for ch in sem_prefix):
+            raise ValueError("SEMANTIC_CACHE_REDIS_PREFIX must not contain whitespace")
+        if self.SEMANTIC_CACHE_REDIS_PREFIX != sem_prefix:
+            self.SEMANTIC_CACHE_REDIS_PREFIX = sem_prefix
+
+        sem_collection = (getattr(self, "SEMANTIC_CACHE_COLLECTION_NAME", "") or "").strip()
+        if not sem_collection:
+            raise ValueError("SEMANTIC_CACHE_COLLECTION_NAME must be non-empty")
+        if any(ch.isspace() for ch in sem_collection):
+            raise ValueError("SEMANTIC_CACHE_COLLECTION_NAME must not contain whitespace")
+        if self.SEMANTIC_CACHE_COLLECTION_NAME != sem_collection:
+            self.SEMANTIC_CACHE_COLLECTION_NAME = sem_collection
 
         if int(getattr(self, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0) < 0:
             raise ValueError("EVIDENCE_POST_RERANK_CACHE_TTL_SEC must be >= 0")
