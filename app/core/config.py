@@ -1522,6 +1522,10 @@ class Settings(BaseSettings):
     KG_SEARCH_CACHE_ENABLED: bool = False
     KG_SEARCH_CACHE_TTL_SEC: int = 30
     KG_SEARCH_CACHE_MAX_ENTRIES: int = 256
+    # KG quality diagnostics (best-effort; aggregate-only).
+    KG_QUALITY_LOW_CONFIDENCE_THRESHOLD: float = 0.30
+    # Upper bound for relation edges loaded into component analysis (0 disables component analysis).
+    KG_QUALITY_RELATION_EDGES_LIMIT: int = 50_000
     # KG query-mode routing (no GraphRAG dependency): auto -> local/global/drift.
     KG_SEARCH_QUERY_MODE_DEFAULT: str = "auto"  # auto | local | global | drift
     KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED: bool = True
@@ -2072,6 +2076,13 @@ class Settings(BaseSettings):
             raise ValueError("KG_SEARCH_CACHE_TTL_SEC must be >= 0")
         if int(getattr(self, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0) < 0:
             raise ValueError("KG_SEARCH_CACHE_MAX_ENTRIES must be >= 0")
+        kg_quality_low = float(getattr(self, "KG_QUALITY_LOW_CONFIDENCE_THRESHOLD", 0.30) or 0.30)
+        if not (0.0 <= kg_quality_low <= 1.0):
+            raise ValueError("KG_QUALITY_LOW_CONFIDENCE_THRESHOLD must be between 0 and 1")
+        if self.KG_QUALITY_LOW_CONFIDENCE_THRESHOLD != kg_quality_low:
+            self.KG_QUALITY_LOW_CONFIDENCE_THRESHOLD = kg_quality_low
+        if int(getattr(self, "KG_QUALITY_RELATION_EDGES_LIMIT", 0) or 0) < 0:
+            raise ValueError("KG_QUALITY_RELATION_EDGES_LIMIT must be >= 0")
         kg_query_mode_default = str(getattr(self, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto").strip().lower()
         if kg_query_mode_default not in {"auto", "local", "global", "drift"}:
             raise ValueError("KG_SEARCH_QUERY_MODE_DEFAULT must be one of: auto, local, global, drift")
