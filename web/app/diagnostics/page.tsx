@@ -151,6 +151,12 @@ export default function DiagnosticsPage() {
   const [driftLatencyMs, setDriftLatencyMs] = useState<number | null>(null)
   const [driftRunning, setDriftRunning] = useState(false)
 
+  const [perfSuiteIterations, setPerfSuiteIterations] = useState(10)
+  const [perfSuiteTimeoutSec, setPerfSuiteTimeoutSec] = useState(2.0)
+  const [perfSuiteResult, setPerfSuiteResult] = useState<Record<string, any> | null>(null)
+  const [perfSuiteLatencyMs, setPerfSuiteLatencyMs] = useState<number | null>(null)
+  const [perfSuiteRunning, setPerfSuiteRunning] = useState(false)
+
   const [perfSnapshot, setPerfSnapshot] = useState<PerfSnapshot | null>(null)
 
   const docsUrl = `${API_BASE_URL}/docs`
@@ -173,6 +179,7 @@ export default function DiagnosticsPage() {
 
   const perfJson = useMemo(() => prettyJson(perfSnapshot ?? { error: 'perf snapshot not captured' }), [perfSnapshot])
   const driftJson = useMemo(() => prettyJson(driftSnapshot ?? { error: 'no drift snapshot yet' }), [driftSnapshot])
+  const perfSuiteJson = useMemo(() => prettyJson(perfSuiteResult ?? { error: 'no perf suite run yet' }), [perfSuiteResult])
 
   const probeDocumentIds = useMemo(() => {
     const raw = (probeDocumentIdsRaw || '').trim()
@@ -245,6 +252,29 @@ export default function DiagnosticsPage() {
       toast.error(formatApiError(err, 'Embedding drift snapshot failed'))
     } finally {
       setDriftRunning(false)
+    }
+  }
+
+  async function runPerfSuiteProbe(): Promise<void> {
+    const iterations = Math.max(1, Math.min(200, Math.trunc(Number(perfSuiteIterations || 0) || 10)))
+    const timeoutSec = Math.max(0.05, Math.min(10, Number(perfSuiteTimeoutSec || 0) || 2.0))
+
+    setPerfSuiteRunning(true)
+    setPerfSuiteResult(null)
+    setPerfSuiteLatencyMs(null)
+
+    const start = Date.now()
+    try {
+      const result = await observabilityApi.runPerfSuite({
+        iterations,
+        timeout_sec: timeoutSec,
+      })
+      setPerfSuiteLatencyMs(Math.max(0, Date.now() - start))
+      setPerfSuiteResult(result as any)
+    } catch (err) {
+      toast.error(formatApiError(err, 'Perf suite run failed'))
+    } finally {
+      setPerfSuiteRunning(false)
     }
   }
 
@@ -758,15 +788,166 @@ export default function DiagnosticsPage() {
 	              <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
 	                {driftJson}
 	              </pre>
-	            </div>
-	          </CardContent>
-	        </Card>
+		            </div>
+		          </CardContent>
+		        </Card>
 
-	        <Card>
-	          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-	            <CardTitle className="text-sm">Perf Snapshot</CardTitle>
-	            <div className="flex items-center gap-1">
-	              <Button
+		        <Card className="md:col-span-2">
+		          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+		            <CardTitle className="text-sm">Perf Suite (API)</CardTitle>
+		            <div className="flex items-center gap-1">
+		              <Button
+		                variant="ghost"
+		                size="icon"
+		                className="h-8 w-8"
+		                onClick={() => runPerfSuiteProbe()}
+		                disabled={perfSuiteRunning}
+		                title="运行 perf suite"
+		                aria-label="运行 perf suite"
+		              >
+		                <Gauge className="h-4 w-4" aria-hidden="true" />
+		              </Button>
+		              <Button
+		                variant="ghost"
+		                size="icon"
+		                className="h-8 w-8"
+		                onClick={async () => copyToClipboard(perfSuiteJson)}
+		                disabled={!perfSuiteResult}
+		                title="复制 JSON"
+		                aria-label="复制 JSON"
+		              >
+		                <Copy className="h-4 w-4" aria-hidden="true" />
+		              </Button>
+		            </div>
+		          </CardHeader>
+		          <CardContent className="space-y-4">
+		            <div className="grid gap-3 md:grid-cols-4">
+		              <div className="space-y-1.5">
+		                <Label htmlFor="perf-suite-iters">iterations</Label>
+		                <Input
+		                  id="perf-suite-iters"
+		                  value={String(perfSuiteIterations)}
+		                  onChange={(e) => setPerfSuiteIterations(Number.parseInt(e.target.value || '0', 10) || 0)}
+		                  inputMode="numeric"
+		                />
+		              </div>
+		              <div className="space-y-1.5">
+		                <Label htmlFor="perf-suite-timeout">timeout_sec</Label>
+		                <Input
+		                  id="perf-suite-timeout"
+		                  value={String(perfSuiteTimeoutSec)}
+		                  onChange={(e) => setPerfSuiteTimeoutSec(Number(e.target.value) || 0)}
+		                  inputMode="decimal"
+		                />
+		              </div>
+		            </div>
+
+		            <div className="flex items-center justify-between gap-3">
+		              <p className="text-xs text-muted-foreground">
+		                这个探针调用后端 `POST /api/v1/observability/perf-suite/run`（admin-only / PII-safe），对比 baseline 做 p95/p99 回归门禁。
+		              </p>
+		              <Button variant="outline" size="sm" onClick={() => runPerfSuiteProbe()} disabled={perfSuiteRunning}>
+		                {perfSuiteRunning ? '运行中…' : 'Run'}
+		              </Button>
+		            </div>
+
+		            <StatsGrid className="xl:grid-cols-6">
+		              <StatCard
+		                icon={Timer}
+		                label="Latency (client)"
+		                value={perfSuiteLatencyMs == null ? '-' : `${perfSuiteLatencyMs}ms`}
+		                color="gray"
+		              />
+		              <StatCard
+		                icon={Activity}
+		                label="Strict gate"
+		                value={
+		                  typeof (perfSuiteResult as any)?.diff?.strict_gate?.passed === 'boolean'
+		                    ? ((perfSuiteResult as any).diff.strict_gate.passed ? 'PASSED' : 'FAILED')
+		                    : '-'
+		                }
+		                color={
+		                  typeof (perfSuiteResult as any)?.diff?.strict_gate?.passed === 'boolean'
+		                    ? ((perfSuiteResult as any).diff.strict_gate.passed ? 'teal' : 'red')
+		                    : 'gray'
+		                }
+		              />
+		              <StatCard
+		                icon={Hash}
+		                label="Regressions"
+		                value={
+		                  perfSuiteResult?.diff?.strict_gate && typeof (perfSuiteResult as any).diff.strict_gate.regressions === 'number'
+		                    ? (perfSuiteResult as any).diff.strict_gate.regressions
+		                    : '-'
+		                }
+		                color="orange"
+		              />
+		              <StatCard
+		                icon={Timer}
+		                label="Baseline ts"
+		                value={String((perfSuiteResult as any)?.baseline_ts || '-')}
+		                color="gray"
+		              />
+		              <StatCard
+		                icon={Timer}
+		                label="Run ts"
+		                value={String((perfSuiteResult as any)?.current_report?.ts || '-')}
+		                color="gray"
+		              />
+		            </StatsGrid>
+
+		            <div className="space-y-2">
+		              <p className="text-xs font-medium text-muted-foreground">Cases (p95 / p99)</p>
+		              {perfSuiteResult?.diff?.cases && typeof (perfSuiteResult as any).diff.cases === 'object' ? (
+		                <div className="space-y-1">
+		                  {Object.values((perfSuiteResult as any).diff.cases as Record<string, any>).map((row: any) => {
+		                    const name = String(row?.name || '')
+		                    const regressed = Boolean(row?.regressed)
+		                    const p95 = row?.p95 && typeof row.p95 === 'object' ? row.p95 : {}
+		                    const p99 = row?.p99 && typeof row.p99 === 'object' ? row.p99 : {}
+		                    return (
+		                      <div key={name} className="flex items-center justify-between gap-3 text-xs">
+		                        <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={name}>
+		                          {name || '(case)'}
+		                        </span>
+		                        <span className={`shrink-0 font-mono tabular-nums ${regressed ? 'text-destructive' : 'text-foreground/80'}`}>
+		                          p95 {p95?.baseline_ms ?? '-'}→{p95?.current_ms ?? '-'} · p99 {p99?.baseline_ms ?? '-'}→{p99?.current_ms ?? '-'}
+		                        </span>
+		                      </div>
+		                    )
+		                  })}
+		                </div>
+		              ) : (
+		                <div className="text-xs text-muted-foreground">暂无 perf suite 结果（点击 Run 触发）。</div>
+		              )}
+		            </div>
+
+		            <div className="space-y-1.5">
+		              <div className="flex items-center justify-between gap-2">
+		                <p className="text-xs font-medium text-muted-foreground">Perf suite run + diff (JSON)</p>
+		                <Button
+		                  variant="ghost"
+		                  size="sm"
+		                  className="h-7 px-2"
+		                  onClick={async () => copyToClipboard(perfSuiteJson)}
+		                  disabled={!perfSuiteResult}
+		                >
+		                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+		                  <span className="sr-only">复制</span>
+		                </Button>
+		              </div>
+		              <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
+		                {perfSuiteJson}
+		              </pre>
+		            </div>
+		          </CardContent>
+		        </Card>
+
+		        <Card>
+		          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+		            <CardTitle className="text-sm">Perf Snapshot</CardTitle>
+		            <div className="flex items-center gap-1">
+		              <Button
 	                variant="ghost"
 	                size="icon"
 	                className="h-8 w-8"

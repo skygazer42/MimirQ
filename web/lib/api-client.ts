@@ -3328,6 +3328,14 @@ export const observabilityApi = {
     return data
   },
 
+  async runPerfSuite(payload: { iterations?: number; timeout_sec?: number } = {}): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.post('/observability/perf-suite/run', {
+      iterations: payload.iterations ?? 10,
+      timeout_sec: payload.timeout_sec ?? 2.0,
+    })
+    return data
+  },
+
   async invalidateDatasetCache(datasetId: string): Promise<Record<string, unknown>> {
     const { data } = await apiClient.post(
       `/observability/cache/datasets/${encodeURIComponent(datasetId)}/invalidate`
