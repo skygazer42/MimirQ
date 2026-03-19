@@ -1,0 +1,86 @@
+name: Perf Nightly
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 03:00 UTC daily (11:00 Asia/Shanghai)
+    - cron: "0 3 * * *"
+
+concurrency:
+  group: perf-nightly
+  cancel-in-progress: true
+
+jobs:
+  perf-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+
+      - name: Install minimal deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir httpx
+
+      - name: Start retrieval-dev stack
+        run: |
+          docker compose -f docker/docker-compose.retrieval-dev.yml up -d --build
+
+      - name: Wait for API ready
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8000/api/v1/health/ready >/dev/null; then
+              echo "API ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API not ready in time"
+          docker compose -f docker/docker-compose.retrieval-dev.yml ps
+          docker compose -f docker/docker-compose.retrieval-dev.yml logs --tail=200 mimirq-api || true
+          exit 1
+
+      - name: Run perf suite
+        run: |
+          mkdir -p artifacts
+          python scripts/perf/run_perf_suite.py \
+            --llm-mock \
+            --base-url http://localhost:8000 \
+            --iterations 10 \
+            --timeout-sec 2.0 \
+            --out artifacts/perf_suite.current.json
+
+      - name: Diff vs baseline (strict gate)
+        run: |
+          python scripts/perf/diff_perf_suite_reports.py \
+            --baseline ci/perf_suite_baseline.v1.json \
+            --current artifacts/perf_suite.current.json \
+            --policy ci/perf_regression_policy.v1.json \
+            --out artifacts/perf_suite.diff.json \
+            --out-md artifacts/perf_suite.diff.md \
+            --strict
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-suite
+          path: |
+            artifacts/perf_suite.current.json
+            artifacts/perf_suite.diff.json
+            artifacts/perf_suite.diff.md
+
+      - name: Shutdown stack
+        if: always()
+        run: |
+          docker compose -f docker/docker-compose.retrieval-dev.yml down -v
+

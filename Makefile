@@ -230,7 +230,7 @@ web-api-ping:
 	cd web && pnpm run api-ping
 
 api-smoke:
-	$(COMPOSE) exec -T mimirq-api python scripts/api_smoke.py --base-url http://localhost:8000 --skip-llm-test --skip-mineru
+	$(COMPOSE) exec -T -w /app mimirq-api python scripts/api_smoke.py --base-url http://localhost:8000 --skip-llm-test --skip-mineru
 
 typecheck:
 	cd web && pnpm run typecheck
@@ -242,10 +242,10 @@ lint-py:
 	$(PY) -m ruff check app tests scripts main.py
 
 lint-py-docker:
-	$(COMPOSE) exec -T mimirq-api ruff check app scripts main.py
+	$(COMPOSE) exec -T -w /app mimirq-api ruff check app scripts main.py
 
 compileall-docker:
-	$(COMPOSE) exec -T mimirq-api python -m compileall -q app
+	$(COMPOSE) exec -T -w /app mimirq-api python -m compileall -q app
 
 audit-py:
 	pip-audit -r requirements.txt --no-deps --disable-pip --extra-index-url https://download.pytorch.org/whl/cpu
