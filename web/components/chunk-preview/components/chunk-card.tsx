@@ -100,6 +100,15 @@ export function ChunkCard({
   const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
   const chunkRole = (chunk.metadata)?.chunk_role as string | undefined
   const sectionLabel = useMemo(() => getChunkSectionLabel(chunk), [chunk])
+  const semanticQuality = ((chunk.metadata as any)?.semantic_quality || null) as
+    | { needs_review?: boolean; reasons?: string[] }
+    | null
+  const needsReview = Boolean((chunk.metadata as any)?.needs_review || semanticQuality?.needs_review)
+  const needsReviewTitle = useMemo(() => {
+    if (!needsReview) return undefined
+    const reasons = Array.isArray(semanticQuality?.reasons) ? semanticQuality?.reasons?.filter(Boolean) : []
+    return reasons.length > 0 ? `needs_review: ${reasons.join(', ')}` : 'needs_review'
+  }, [needsReview, semanticQuality?.reasons])
   const citationText = useMemo(() => {
     const name = (sourceFilename || '').trim() || 'document'
     const pageLabel = chunk.page_number == null ? '' : ` · P.${chunk.page_number}`
@@ -203,6 +212,14 @@ export function ChunkCard({
               title={typeof overlapPrev === 'number' ? `overlap_prev: ${overlapPrev}` : undefined}
             >
               OVR
+            </span>
+          ) : null}
+          {needsReview ? (
+            <span
+              className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
+              title={needsReviewTitle}
+            >
+              REVIEW
             </span>
           ) : null}
           {(() => {
