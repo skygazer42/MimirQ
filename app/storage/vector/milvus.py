@@ -974,6 +974,97 @@ class MilvusVectorStore:
 
         return existing
 
+    def fetch_vectors_by_ids(
+        self,
+        ids: list[str],
+        *,
+        max_ids_per_query: int = 128,
+        timeout: float | None = None,
+    ) -> dict[str, list[float]]:
+        """
+        Best-effort fetch of stored vectors by primary key.
+
+        Used by offline diagnostics (e.g. embedding drift monitor). This is intentionally
+        bounded and fail-open: returns an empty mapping on any failure.
+
+        Notes:
+        - Uses Milvus `query()` with an `id in [...]` expr.
+        - Batches by both item count and expr length to reduce server-side rejects.
+        """
+        raw_ids = [str(x) for x in (ids or []) if isinstance(x, str) and x.strip()]
+        if not raw_ids:
+            return {}
+
+        self._ensure_store()
+        assert self._store is not None
+
+        col = getattr(self._store, "col", None)
+        if col is None or not hasattr(col, "query"):
+            return {}
+
+        primary_field = str(getattr(self._store, "_primary_field", "id") or "id").strip() or "id"
+        vector_field = str(getattr(self._store, "_vector_field", "embedding") or "embedding").strip() or "embedding"
+
+        # De-dup while preserving stable ordering (helps reproducible audits).
+        seen: set[str] = set()
+        uniq: list[str] = []
+        for rid in raw_ids:
+            if rid in seen:
+                continue
+            seen.add(rid)
+            uniq.append(rid)
+
+        out: dict[str, list[float]] = {}
+        for batch in _chunk_in_list_values(
+            uniq,
+            field=primary_field,
+            max_expr_chars=_MILVUS_EXPR_MAX_CHARS,
+            max_items=int(max_ids_per_query or 0),
+        ):
+            items = [f"\"{_escape_milvus_string(str(x))}\"" for x in batch]
+            if not items:
+                continue
+            expr = f"{primary_field} in [{', '.join(items)}]"
+            try:
+                rows = col.query(  # type: ignore[call-arg]
+                    expr=expr,
+                    output_fields=[primary_field, vector_field],
+                    timeout=timeout,
+                )
+            except Exception:
+                return {}
+
+            if not isinstance(rows, list):
+                continue
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                pk = row.get(primary_field)
+                vec = row.get(vector_field)
+                if pk is None or vec is None:
+                    continue
+
+                vector: list[float] | None = None
+                if isinstance(vec, list):
+                    if all(isinstance(v, (int, float)) for v in vec):
+                        vector = [float(v) for v in vec]
+                elif isinstance(vec, tuple):
+                    if all(isinstance(v, (int, float)) for v in vec):
+                        vector = [float(v) for v in vec]
+                elif hasattr(vec, "tolist"):
+                    try:
+                        as_list = vec.tolist()  # type: ignore[attr-defined]
+                        if isinstance(as_list, list) and all(isinstance(v, (int, float)) for v in as_list):
+                            vector = [float(v) for v in as_list]
+                    except Exception:
+                        vector = None
+
+                if vector:
+                    out[str(pk)] = vector
+
+        return out
+
     def list_ids_by_dataset(
         self,
         *,
