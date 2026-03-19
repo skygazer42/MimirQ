@@ -29,6 +29,7 @@ from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.errors import ParsingError
 from app.parsing.preprocess.file_preprocessor import preprocess_file
+from app.parsing.preprocess.image_preprocess import preprocess_image_document
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend
@@ -1494,6 +1495,36 @@ class DocumentProcessorService:
             except Exception as exc:  # noqa: BLE001
                 # Fail closed: when preprocessing is enabled, it is part of ingestion correctness.
                 raise RuntimeError(f"preprocess_failed: {str(exc)[:200]}") from exc
+
+            # Optional: image-level preprocessing before parsing (deskew/orientation/watermark).
+            # This is disabled by default to keep baseline ingest behavior unchanged.
+            try:
+                if bool(getattr(settings, "IMAGE_PREPROCESS_ENABLED", False)):
+                    ext = file_path.suffix.lower()
+                    if ext == ".pdf" or ext in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
+                        t0 = time.perf_counter()
+                        with metrics_span("ingest.image_preprocess", file_ext=ext):
+                            result = preprocess_image_document(
+                                input_path=file_path,
+                                document_id=str(document_id) if document_id else None,
+                                pdf_quality=None,
+                            )
+                        _add_stage_duration("image_preprocess", (time.perf_counter() - t0) * 1000)
+                        # Persist a lightweight audit record for debugging/tuning (best-effort).
+                        try:
+                            next_meta = dict(db_document.doc_metadata or {})
+                            next_meta["image_preprocess"] = result.to_dict()
+                            db_document.doc_metadata = next_meta
+                            db.commit()
+                            db.refresh(db_document)
+                        except Exception:
+                            pass
+                        if bool(getattr(result, "changed", False)):
+                            out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
+                            preprocessed_temp_path = out_path
+                            file_path = out_path
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(f"image_preprocess_failed: {str(exc)[:200]}") from exc
 
             # Structured Table Store (TAG): optionally import table-like documents and skip chunk/vector ingestion.
             #

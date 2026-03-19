@@ -265,6 +265,11 @@ def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> dict[s
         # so RAGAS faithfulness wins when present.
         out["faithfulness"] = faith_det
 
+    for key in ("chunk_utilization", "chunk_attribution", "noise_sensitivity", "self_knowledge_ratio"):
+        v = _mean_float(key)
+        if v is not None:
+            out[key] = v
+
     labeled = 0
     correct = 0
     false_pos = 0

@@ -219,8 +219,11 @@ class PandocParser:
             pandoc_input = self._convert_via_libreoffice(file_path=file_path, artifact_root=artifact_root)
             ext = pandoc_input.suffix.lower()
 
-        # Office formats Pandoc can read directly (.docx/.pptx) with image extraction.
-        if ext not in {".docx", ".pptx"}:
+        # Formats Pandoc can read directly.
+        # Notes:
+        # - .docx/.pptx: Office formats (image extraction is common)
+        # - .epub/.rtf/.odt: common "document-like" formats (Phase1 coverage)
+        if ext not in {".docx", ".pptx", ".epub", ".rtf", ".odt"}:
             raise ValueError(f"Pandoc parser does not support: {file_path.suffix.lower()}")
 
         artifact_root.mkdir(parents=True, exist_ok=True)
@@ -239,4 +242,3 @@ class PandocParser:
             "pandoc_input": str(pandoc_input.name),
         }
         return [Document(page_content=markdown, metadata=metadata)]
-

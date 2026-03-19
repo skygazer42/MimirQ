@@ -54,6 +54,12 @@ def test_normalize_parser_backend_paddlevl_aliases():
     assert normalize_parser_backend("paddleocrvl") == "paddle_vl"
 
 
+def test_normalize_parser_backend_glm_ocr_aliases():
+    assert normalize_parser_backend("glm-ocr") == "glm_ocr"
+    assert normalize_parser_backend("glm_ocr") == "glm_ocr"
+    assert normalize_parser_backend("glmocr") == "glm_ocr"
+
+
 def test_normalize_parser_backend_olmocr_aliases():
     assert normalize_parser_backend("olmocr") == "olmocr"
     assert normalize_parser_backend("olm-ocr") == "olmocr"

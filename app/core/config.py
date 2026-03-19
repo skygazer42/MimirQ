@@ -398,6 +398,21 @@ class Settings(BaseSettings):
     # Static asset caching for upload-served images (GET /api/v1/documents/image/{id}).
     # 0 disables caching headers.
     ASSET_CACHE_MAX_AGE_SEC: int = 3600
+    # Optional: image-level preprocessing (deskew/orientation/watermark) before parsing.
+    # This is disabled by default to keep baseline ingest behavior unchanged.
+    IMAGE_PREPROCESS_ENABLED: bool = False
+    DESKEW_ENABLED: bool = False
+    # auto | paddle | skip
+    DESKEW_BACKEND: str = "auto"
+    # Example: http://localhost:9050/deskew (depends on your service wrapper).
+    DESKEW_PADDLE_URL: str = ""
+    DESKEW_TIMEOUT_SEC: int = 60
+    ORIENTATION_ENABLED: bool = False
+    # Watermark removal can be destructive; keep it off by default.
+    WATERMARK_REMOVAL_ENABLED: bool = False
+    # When enabled, skip preprocessing for high-quality PDFs (best-effort; requires pdf_quality score).
+    PREPROCESS_SKIP_HIGH_QUALITY: bool = True
+    PREPROCESS_SAMPLE_PAGES: int = 3
     # Image understanding (caption/OCR) for image chunks during ingest.
     # Conservative defaults: disabled unless explicitly enabled via pipeline metadata.
     IMAGE_CAPTION_ENABLED: bool = False
@@ -412,7 +427,7 @@ class Settings(BaseSettings):
     IMAGE_EMBEDDING_BATCH_SIZE: int = 8
     IMAGE_EMBEDDING_COLLECTION_NAME: str = "image_chunks"
     # Keep this aligned with parser_factory supported non-PDF formats.
-    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl"
+    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl,.epub,.rtf,.odt,.eml,.png,.jpg,.jpeg,.webp,.gif,.bmp"
 
     @property
     def allowed_extensions_list(self) -> list[str]:
@@ -491,6 +506,14 @@ class Settings(BaseSettings):
     # Display/audit only: expected service pipeline version/mode (not used by the backend parser directly).
     PADDLE_VL_PIPELINE_VERSION: str = "v1.5"
     PADDLE_VL_MODE: str = "doc_parser"
+
+    # GLM-OCR (PDF -> Markdown external service; optional)
+    GLM_OCR_ENABLED: bool = False
+    # Full endpoint URL, e.g. http://localhost:9040/convert (depends on your GLM-OCR wrapper service).
+    GLM_OCR_API_URL: str = ""
+    GLM_OCR_TIMEOUT_SEC: int = 600
+    # Display/audit only: expected service pipeline version/mode (not used by the backend parser directly).
+    GLM_OCR_PIPELINE_VERSION: str = "v0.9b"
 
     # olmOCR (PDF -> Markdown external service; optional)
     OLMOCR_ENABLED: bool = False
@@ -1414,6 +1437,7 @@ class Settings(BaseSettings):
     MAGIC_PDF_LANG: str = ""  # optional PaddleOCR language code, e.g. "ch"
     MAGIC_PDF_DEBUG: bool = False
     MAGIC_PDF_TIMEOUT_SEC: int = 600
+    MAGIC_PDF_FORMULA_ENABLED: bool = False
     MAGIC_PDF_KEEP_ARTIFACTS: bool = False
     # MagicPDF upstream config file path override (env var name used by magic-pdf).
     # - When empty, the backend generates a minimal config per run.

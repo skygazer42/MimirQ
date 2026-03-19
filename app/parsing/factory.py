@@ -21,12 +21,18 @@ PPTX_EXTENSION = '.pptx'
 XLSX_EXTENSION = '.xlsx'
 HTML_EXTENSION = '.html'
 JSON_EXTENSION = '.json'
+EML_EXTENSION = '.eml'
+EPUB_EXTENSION = '.epub'
+RTF_EXTENSION = '.rtf'
+ODT_EXTENSION = '.odt'
+IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'}
 
 if TYPE_CHECKING:
     from app.parsing.parsers.deepdoc_parser import DeepDocParser
     from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
     from app.parsing.parsers.docling_parser import DoclingParser
     from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
+    from app.parsing.parsers.glm_ocr_parser import GlmOCRParser
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
     from app.parsing.parsers.marker_parser import MarkerParser
     from app.parsing.parsers.markitdown_parser import MarkItDownParser
@@ -36,6 +42,8 @@ if TYPE_CHECKING:
     from app.parsing.parsers.pandoc_parser import PandocParser
     from app.parsing.parsers.pdf_parser import PDFParser
     from app.parsing.parsers.qianfan_ocr_parser import QianfanOCRParser
+    from app.parsing.parsers.email_parser import EmailParser
+    from app.parsing.parsers.image_parser import ImageParser
 
 
 class ParserFactory:
@@ -46,6 +54,7 @@ class ParserFactory:
         "basic",
         "marker",
         "paddle_vl",
+        "glm_ocr",
         "olmocr",
         "qianfan_ocr",
         "mineru",
@@ -99,15 +108,21 @@ class ParserFactory:
         HTML_EXTENSION,
         ".htm",
         JSON_EXTENSION,
+        EML_EXTENSION,
+        EPUB_EXTENSION,
+        RTF_EXTENSION,
+        ODT_EXTENSION,
     }
+    SUPPORTED_NON_PDF_EXTENSIONS = SUPPORTED_NON_PDF_EXTENSIONS | IMAGE_EXTENSIONS
     # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
-    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling"}
+    SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling", "email", "image"}
 
     def __init__(self):
         self._basic_pdf_parser: PDFParser | None = None
         self._marker_parser: MarkerParser | None = None
         self._paddle_vl_parser: PaddleVLParser | None = None
+        self._glm_ocr_parser: GlmOCRParser | None = None
         self._olmocr_parser: OlmocrParser | None = None
         self._qianfan_ocr_parser: QianfanOCRParser | None = None
         self._mineru_parser: MinerUParser | None = None
@@ -118,12 +133,16 @@ class ParserFactory:
         self._pandoc_parser: PandocParser | None = None
         self._docling_parser: DoclingParser | None = None
         self._magicpdf_parser: MagicPDFParser | None = None
+        self._email_parser: EmailParser | None = None
+        self._image_parser: ImageParser | None = None
 
         logger.debug("[pdf] Basic PyMuPDF parser available (lazy)")
         if bool(getattr(settings, "MARKER_ENABLED", False)) and bool((getattr(settings, "MARKER_API_URL", "") or "").strip()):
             logger.debug("[pdf] Marker parser available (requires selection)")
         if bool(getattr(settings, "PADDLE_VL_ENABLED", False)) and bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()):
             logger.debug("[pdf] PaddleOCR-VL parser available (requires selection)")
+        if bool(getattr(settings, "GLM_OCR_ENABLED", False)) and bool((getattr(settings, "GLM_OCR_API_URL", "") or "").strip()):
+            logger.debug("[pdf] GLM-OCR parser available (requires selection)")
         if bool(getattr(settings, "OLMOCR_ENABLED", False)) and bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip()):
             logger.debug("[pdf] olmOCR parser available (requires selection)")
         if bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()):
@@ -158,6 +177,7 @@ class ParserFactory:
             HTML_EXTENSION: None,
             ".htm": None,
             JSON_EXTENSION: None,
+            EML_EXTENSION: None,
         }
         for ext in sorted(self.PLAIN_TEXT_EXTENSIONS):
             self.parsers.setdefault(ext, TextParser())
@@ -174,6 +194,14 @@ class ParserFactory:
                 return "text"
             if file_ext == ".md":
                 return "markdown"
+            if file_ext == EML_EXTENSION:
+                # Keep .eml parsing deterministic and resilient to unrelated backend hints
+                # (e.g. when UI stores a global PDF backend preference).
+                return "email"
+            if file_ext in IMAGE_EXTENSIONS:
+                # Standalone images: treat as a first-class supported ingest type.
+                # Ignore unrelated backend hints and always route to the lightweight image adapter.
+                return "image"
             if file_ext not in self.SUPPORTED_NON_PDF_EXTENSIONS:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
@@ -187,6 +215,10 @@ class ParserFactory:
                 # Office/HTML defaults:
                 # - Prefer Pandoc for better image/table fidelity when enabled.
                 # - Prefer the built-in Excel Markdown renderer for .xlsx/.xls.
+                if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
+                    if bool(getattr(settings, "PANDOC_ENABLED", False)):
+                        return "pandoc"
+                    return "markitdown"
                 if file_ext in {XLSX_EXTENSION, ".xls"}:
                     return "excel"
                 if file_ext in {".doc", ".ppt"}:
@@ -220,6 +252,10 @@ class ParserFactory:
                 raise ValueError("csv backend supports only .csv")
             if normalized == "json" and file_ext != JSON_EXTENSION:
                 raise ValueError("json backend supports only .json")
+            if normalized == "email" and file_ext != EML_EXTENSION:
+                raise ValueError("email backend supports only .eml")
+            if normalized == "image" and file_ext not in IMAGE_EXTENSIONS:
+                raise ValueError(f"image backend supports only: {sorted(IMAGE_EXTENSIONS)}")
             if normalized == "docling":
                 if file_ext not in {DOCX_EXTENSION}:
                     raise ValueError("docling backend currently supports only .docx (non-PDF)")
@@ -277,6 +313,16 @@ class ParserFactory:
             if not bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()):
                 raise ValueError("PaddleOCR-VL parser requires PADDLE_VL_API_URL.")
             return "paddle_vl"
+
+        if normalized == "glm_ocr":
+            if not bool(getattr(settings, "GLM_OCR_ENABLED", False)):
+                raise ValueError(
+                    "GLM-OCR parser is not enabled. "
+                    "Please set GLM_OCR_ENABLED=True and configure GLM_OCR_API_URL."
+                )
+            if not bool((getattr(settings, "GLM_OCR_API_URL", "") or "").strip()):
+                raise ValueError("GLM-OCR parser requires GLM_OCR_API_URL.")
+            return "glm_ocr"
 
         if normalized == "olmocr":
             if not bool(getattr(settings, "OLMOCR_ENABLED", False)):
@@ -385,6 +431,10 @@ class ParserFactory:
                     parser = self._get_markitdown_parser()
                 elif backend == "pandoc":
                     parser = self._get_pandoc_parser()
+                elif backend == "email":
+                    parser = self._get_email_parser()
+                elif backend == "image":
+                    parser = self._get_image_parser()
                 elif backend == "excel":
                     from app.parsing.parsers.excel_parser import ExcelParser
 
@@ -415,7 +465,7 @@ class ParserFactory:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
             # Some parsers need dataset/document ids to produce stable artifacts.
-            if backend in {"marker", "paddle_vl", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+            if backend in {"marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 documents = parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -491,6 +541,10 @@ class ParserFactory:
                     parser = self._get_markitdown_parser()
                 elif selected_backend == "pandoc":
                     parser = self._get_pandoc_parser()
+                elif selected_backend == "email":
+                    parser = self._get_email_parser()
+                elif selected_backend == "image":
+                    parser = self._get_image_parser()
                 elif selected_backend == "excel":
                     from app.parsing.parsers.excel_parser import ExcelParser
 
@@ -520,7 +574,7 @@ class ParserFactory:
             else:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
-            if selected_backend in {"marker", "paddle_vl", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
+            if selected_backend in {"marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
                 return parser.parse(
                     file_path,
                     dataset_id=dataset_id,
@@ -618,7 +672,7 @@ class ParserFactory:
         file_ext = (file_ext or "").strip().lower()
 
         # PDF advanced backends (may fail to import due to binary deps or external services); fall back to basic PyMuPDF.
-        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "paddle_vl", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
+        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
             logger.warning(
                 "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
                 backend,
@@ -707,6 +761,9 @@ class ParserFactory:
                     from app.parsing.parsers.json_parser import JsonParser
 
                     return JsonParser().parse(file_path), "json"
+                if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
+                    if bool(getattr(settings, "PANDOC_ENABLED", False)):
+                        return self._get_pandoc_parser().parse(file_path), "pandoc"
                 if file_ext == ".pdf":
                     # Last-resort fallback: basic text extraction via PyMuPDF.
                     return self._get_pdf_parser("basic").parse(file_path), "basic"
@@ -776,6 +833,14 @@ class ParserFactory:
                 logger.info("[pdf] Initializing PaddleOCR-VL parser (external service)")
                 self._paddle_vl_parser = PaddleVLParser()
             return self._paddle_vl_parser
+
+        if backend == "glm_ocr":
+            if self._glm_ocr_parser is None:
+                from app.parsing.parsers.glm_ocr_parser import GlmOCRParser
+
+                logger.info("[pdf] Initializing GLM-OCR parser (external service)")
+                self._glm_ocr_parser = GlmOCRParser()
+            return self._glm_ocr_parser
 
         if backend == "olmocr":
             if self._olmocr_parser is None:
@@ -868,6 +933,24 @@ class ParserFactory:
             logger.info("[pandoc] Initializing parser for Office/HTML formats")
             self._pandoc_parser = PandocParser()
         return self._pandoc_parser
+
+    def _get_email_parser(self):
+        """Lazy init Email parser for .eml."""
+        if self._email_parser is None:
+            from app.parsing.parsers.email_parser import EmailParser
+
+            logger.info("[email] Initializing parser for .eml files")
+            self._email_parser = EmailParser()
+        return self._email_parser
+
+    def _get_image_parser(self):
+        """Lazy init Image parser for standalone image files."""
+        if self._image_parser is None:
+            from app.parsing.parsers.image_parser import ImageParser
+
+            logger.info("[image] Initializing parser for image files")
+            self._image_parser = ImageParser()
+        return self._image_parser
 
 
 _PARSER_FACTORY: ParserFactory | None = None

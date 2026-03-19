@@ -16,6 +16,36 @@ export const NODE_COLOR_PALETTE = [
 ]
 export const EVENT_COLOR = '#6366f1'
 
+export const EDGE_KIND_COLORS: Record<string, string> = {
+  entity_relation: '#3b82f6', // blue
+  event_entity: '#a855f7', // purple
+  entity_entity: '#22d3ee', // cyan
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(1, Math.max(0, value))
+}
+
+function getLinkKind(link: any): string {
+  return String(link?.meta?.kind ?? link?.kind ?? '').trim()
+}
+
+function getLinkConfidence(link: any): number | null {
+  const raw = link?.meta?.confidence ?? link?.confidence ?? link?.weight
+  const num = Number(raw)
+  return Number.isFinite(num) ? num : null
+}
+
+function confidenceToWidth(confidence: number | null, opts: { isLargeGraph: boolean }): number {
+  // Map [0..1] -> stroke width. Keep this bounded so large graphs remain readable.
+  const isLargeGraph = Boolean(opts?.isLargeGraph)
+  const c = confidence == null ? 0.55 : clamp01(confidence)
+  const base = isLargeGraph ? 0.45 : 0.75
+  const span = isLargeGraph ? 1.35 : 2.25
+  return base + c * span
+}
+
 function hashTypeToIndex(type: string): number {
   let hash = 0
   for (let i = 0; i < type.length; i++) {
@@ -332,7 +362,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           }}
           linkColor={(link: any) => {
              const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
-             const linkKind = link?.meta?.kind || link?.kind
+             const linkKind = getLinkKind(link)
+             const baseColor = EDGE_KIND_COLORS[linkKind] || '#cbd5e1'
               if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                  return '#f59e0b'
               }
@@ -351,17 +382,17 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                 const targetId = typeof link.target === 'object' ? link.target.id : link.target
                 if (sourceId === selectedNodeId || targetId === selectedNodeId) {
-                  return '#e879a0'
+                  return baseColor
                 }
                 return '#e2e8f0'
               }
 
-              if (linkKind === 'entity_entity') return '#67e8f9'
-              return '#cbd5e1'
+              return baseColor
            }}
           linkWidth={(link: any) => {
              const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
-             const linkKind = link?.meta?.kind || link?.kind
+             const confidence = getLinkConfidence(link)
+             const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
              if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                  return 4 
               }
@@ -372,11 +403,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               if (selectedNodeId && !isLargeGraph) {
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                 const targetId = typeof link.target === 'object' ? link.target.id : link.target
-                if (sourceId === selectedNodeId || targetId === selectedNodeId) return 2.5
+                if (sourceId === selectedNodeId || targetId === selectedNodeId) return Math.max(2.5, baseWidth + 0.6)
                 return 0.5
               }
-              if (linkKind === 'entity_entity') return 1
-              return 1.5
+              return Math.min(4, Math.max(0.5, baseWidth))
            }}
           linkDirectionalArrowLength={(link: any) => (link?.isSelfLoop ? 0 : arrowLength)}
           linkDirectionalArrowRelPos={1}

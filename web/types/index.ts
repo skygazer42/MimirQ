@@ -2401,6 +2401,7 @@ export interface RegressionItem {
   retrieved_contexts?: string[]
   citations: any[]
   scores: Record<string, any>
+  meta?: Record<string, any>
   created_at: string
 }
 
