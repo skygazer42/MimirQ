@@ -8,6 +8,7 @@ retention tasks with audit logging.
 Currently implemented:
 - Audit log retention (bounded purge), per tenant.
 - Regression run retention (bounded purge), per tenant.
+- Dataset document retention sweep (bounded), per tenant.
 
 Examples:
   # Dry-run (plan only) for default tenant
@@ -18,6 +19,12 @@ Examples:
 
   # Dry-run (plan only) for regression runs
   python scripts/run_retention_jobs.py --regression-runs --dry-run
+
+  # Dry-run dataset retention sweeps (Gap9) for datasets with enabled policy
+  python scripts/run_retention_jobs.py --dataset-retention --dry-run
+
+  # Execute dataset retention for one dataset (bounded)
+  python scripts/run_retention_jobs.py --dataset-retention --dataset-id <uuid> --execute --max-documents 200
 
   # Execute for all tenants (use with care)
   python scripts/run_retention_jobs.py --audit-logs --all-tenants --execute
@@ -34,12 +41,14 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.models.dataset import Dataset
 from app.models.tenant import Tenant
 from app.services.retention_jobs import (
     run_audit_log_retention,
     run_knowledge_asset_retention,
     run_regression_run_retention,
 )
+from app.services.retention_policy import parse_retention_policy_from_metadata, run_dataset_retention_sweep
 
 
 def _parse_uuid(value: str) -> UUID:
@@ -54,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--audit-logs", action="store_true", help="Run audit log retention")
     p.add_argument("--regression-runs", action="store_true", help="Run regression run retention")
     p.add_argument("--knowledge-assets", action="store_true", help="Run archived/disabled knowledge asset retention")
+    p.add_argument("--dataset-retention", action="store_true", help="Run dataset-level document retention sweeps (Gap9)")
 
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID to operate on")
@@ -65,18 +75,33 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--retention-days", type=int, default=90, help="Retention window in days (default: 90)")
     p.add_argument("--max-delete", type=int, default=100_000, help="Max rows to delete per tenant (default: 100000)")
-    p.add_argument("--dataset-id", type=_parse_uuid, default=None, help="Optional dataset UUID filter for knowledge assets")
+    p.add_argument("--dataset-id", type=_parse_uuid, default=None, help="Optional dataset UUID filter for dataset/knowledge assets")
     p.add_argument(
         "--lifecycle-state",
         choices=["archived", "disabled", "either"],
         default="either",
         help="Lifecycle state to purge for knowledge assets (default: either)",
     )
+    p.add_argument("--max-documents", type=int, default=200, help="Max documents to process per dataset sweep (default: 200)")
+    p.add_argument(
+        "--max-versions-pruned",
+        type=int,
+        default=0,
+        help="Max pipeline versions to prune per dataset sweep (default: 0, disabled)",
+    )
 
     args = p.parse_args(argv)
 
-    if (not bool(args.audit_logs)) and (not bool(args.regression_runs)) and (not bool(args.knowledge_assets)):
-        print("No job selected. Use --audit-logs, --regression-runs, and/or --knowledge-assets.", file=sys.stderr)
+    if (
+        (not bool(args.audit_logs))
+        and (not bool(args.regression_runs))
+        and (not bool(args.knowledge_assets))
+        and (not bool(args.dataset_retention))
+    ):
+        print(
+            "No job selected. Use --audit-logs, --regression-runs, --knowledge-assets, and/or --dataset-retention.",
+            file=sys.stderr,
+        )
         return 2
 
     dry_run = True
@@ -140,6 +165,31 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 results.append(res)
+            if bool(args.dataset_retention):
+                ds_query = db.query(Dataset.id, Dataset.dataset_metadata).filter(Dataset.tenant_id == tid)
+                if args.dataset_id is not None:
+                    ds_query = ds_query.filter(Dataset.id == args.dataset_id)
+                ds_rows = ds_query.order_by(Dataset.created_at.asc()).all()
+
+                for dsid, meta in ds_rows:
+                    meta_dict = meta if isinstance(meta, dict) else {}
+                    policy = parse_retention_policy_from_metadata(meta_dict)
+                    if policy is None or not bool(getattr(policy, "enabled", False)):
+                        continue
+                    res = asyncio.run(
+                        run_dataset_retention_sweep(
+                            db,
+                            tenant_id=tid,
+                            dataset_id=dsid,
+                            policy=policy,
+                            dry_run=bool(dry_run),
+                            max_documents=int(args.max_documents or 0),
+                            max_versions_pruned=int(args.max_versions_pruned or 0),
+                            actor_id="system:retention",
+                            now=ran_at,
+                        )
+                    )
+                    results.append(res)
         finally:
             db.close()
 

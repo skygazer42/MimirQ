@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from types import SimpleNamespace
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.api.dependencies.auth import get_current_account_id
+from app.api.dependencies.tenant import get_tenant_id
+from app.core.database import get_db
+from app.models.dataset import DatasetPermissionEnum
+
+
+class _DummyDB:
+    def commit(self) -> None:
+        return None
+
+    def refresh(self, _obj) -> None:  # noqa: ANN001
+        return None
+
+
+def _override_get_db():  # noqa: ANN202
+    yield _DummyDB()
+
+
+def test_retention_policy_metadata_helpers_round_trip() -> None:
+    from app.api.schemas.dataset import DatasetRetentionPolicy
+    from app.services.retention_policy import (
+        parse_retention_policy_from_metadata,
+        upsert_retention_policy_metadata,
+    )
+
+    meta: dict[str, object] = {}
+    policy = DatasetRetentionPolicy(enabled=True, action="archive", max_age_days=90, max_versions=3)
+
+    changed = upsert_retention_policy_metadata(meta, policy=policy, replace=True)
+    assert changed is True
+    parsed = parse_retention_policy_from_metadata(meta)
+    assert parsed is not None
+    assert parsed.enabled is True
+    assert parsed.action == "archive"
+    assert parsed.max_age_days == 90
+    assert parsed.max_versions == 3
+
+    # Idempotent
+    changed2 = upsert_retention_policy_metadata(meta, policy=policy, replace=True)
+    assert changed2 is False
+
+    # Remove only when replace=true
+    changed3 = upsert_retention_policy_metadata(meta, policy=None, replace=False)
+    assert changed3 is False
+    assert "retention_policy" in meta
+
+    changed4 = upsert_retention_policy_metadata(meta, policy=None, replace=True)
+    assert changed4 is True
+    assert "retention_policy" not in meta
+
+
+def test_create_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.datasets as ds_api
+    from app.api.schemas.dataset import DatasetOut
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    now = datetime.now(UTC)
+
+    dataset_obj = SimpleNamespace(
+        id=dataset_id,
+        tenant_id=tenant_id,
+        name="DS",
+        description=None,
+        permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+        owner_id="owner",
+        dataset_metadata={},
+        created_at=now,
+        updated_at=now,
+    )
+
+    monkeypatch.setattr(ds_api, "audit_log_event", lambda *_a, **_k: None, raising=False)
+
+    def _create_dataset(*, db, tenant_id, name, description, permission, owner_id, partial_members, partial_groups):  # noqa: ANN001
+        assert tenant_id == dataset_obj.tenant_id
+        assert owner_id == "owner"
+        assert permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS
+        return dataset_obj
+
+    monkeypatch.setattr(ds_api.DatasetService, "create_dataset", _create_dataset, raising=True)
+
+    def _override_get_tenant_id() -> uuid.UUID:
+        return tenant_id
+
+    def _override_get_current_account_id() -> str:
+        return "owner"
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/datasets", status_code=201, response_model=DatasetOut)(ds_api.create_dataset)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/datasets",
+        json={
+            "name": "DS",
+            "permission": "all_team_members",
+            "retention_policy": {"enabled": True, "action": "archive", "max_age_days": 90, "max_versions": 2},
+        },
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body.get("retention_policy", {}).get("enabled") is True
+    assert body.get("retention_policy", {}).get("action") == "archive"
+    assert body.get("retention_policy", {}).get("max_age_days") == 90
+    assert body.get("retention_policy", {}).get("max_versions") == 2
+
+    # Stored in datasets.metadata (best-effort).
+    stored = dict(getattr(dataset_obj, "dataset_metadata", None) or {})
+    assert stored.get("retention_policy", {}).get("enabled") is True
+
+
+def test_get_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.datasets as ds_api
+    from app.api.schemas.dataset import DatasetOut
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    now = datetime.now(UTC)
+
+    dataset_obj = SimpleNamespace(
+        id=dataset_id,
+        tenant_id=tenant_id,
+        name="DS",
+        description=None,
+        permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+        owner_id="owner",
+        dataset_metadata={"retention_policy": {"enabled": True, "action": "delete", "max_inactive_days": 30}},
+        created_at=now,
+        updated_at=now,
+    )
+
+    monkeypatch.setattr(ds_api.DatasetService, "get_dataset", lambda *_a, **_k: dataset_obj, raising=True)
+    monkeypatch.setattr(ds_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+
+    def _override_get_tenant_id() -> uuid.UUID:
+        return tenant_id
+
+    def _override_get_current_account_id() -> str:
+        return "owner"
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.get("/api/v1/datasets/{dataset_id}", response_model=DatasetOut)(ds_api.get_dataset)
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/datasets/{dataset_id}")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body.get("retention_policy", {}).get("enabled") is True
+    assert body.get("retention_policy", {}).get("action") == "delete"
+    assert body.get("retention_policy", {}).get("max_inactive_days") == 30
+
