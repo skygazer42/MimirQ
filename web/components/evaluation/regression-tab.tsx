@@ -526,6 +526,27 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	                          ))}
 	                        </div>
                       )}
+                      {(() => {
+                        const exps = (item as any)?.meta?.explanations
+                        if (!exps || typeof exps !== 'object') return null
+                        const entries = Object.entries(exps as Record<string, any>).filter(([, v]) => typeof v === 'string' && v)
+                        if (!entries.length) return null
+                        return (
+                          <details className="mt-2">
+                            <summary className="text-[11px] text-muted-foreground cursor-pointer select-none">
+                              解释
+                            </summary>
+                            <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                              {entries.map(([k, v]) => (
+                                <div key={k} className="flex gap-2">
+                                  <span className="font-medium text-foreground/80">{k}:</span>
+                                  <span className="break-words">{String(v)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )
+                      })()}
                     </div>
                   ))}
                 </div>

@@ -32,7 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Upload, Share2, Info, RefreshCw, ZoomIn, ZoomOut, Maximize, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, PlayCircle, Layout, Link as LinkIcon, Lightbulb, Box, BoxSelect } from 'lucide-react'
+import { Upload, Share2, Info, RefreshCw, ZoomIn, ZoomOut, Maximize, Maximize2, Minimize2, ChevronDown, ChevronUp, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, PlayCircle, Layout, Link as LinkIcon, Lightbulb, Box, BoxSelect } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { KnowledgeGraph3D } from '@/components/graph/force-graph-3d'
 import { GraphLegend } from '@/components/graph/graph-legend'
@@ -148,6 +148,7 @@ export default function GraphPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [selectedLink, setSelectedLink] = useState<any | null>(null)
   const [isLinkDetailOpen, setIsLinkDetailOpen] = useState(false)
+  const [selfLoopGroupExpanded, setSelfLoopGroupExpanded] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [deleteNodeOpen, setDeleteNodeOpen] = useState(false)
   const [deleteNodeTarget, setDeleteNodeTarget] = useState<{ id: string; label: string } | null>(null)
@@ -162,6 +163,7 @@ export default function GraphPage() {
   // - /graph?dataset_id=...&doc_limit=200 (dataset scope; resolves to document ids client-side)
   const [scopedDatasetDocIds, setScopedDatasetDocIds] = useState<string[] | null>(null)
   const [scopedDatasetDocIdsLoading, setScopedDatasetDocIdsLoading] = useState(false)
+  const [scopedDatasetPendingDocs, setScopedDatasetPendingDocs] = useState<number | null>(null)
   const [scopeAutoLoaded, setScopeAutoLoaded] = useState(false)
 
   const scopedDocumentIds: string[] | null = useMemo(() => {
@@ -183,6 +185,7 @@ export default function GraphPage() {
     if (scope.directDocIds.length > 0) {
       setScopedDatasetDocIds(null)
       setScopedDatasetDocIdsLoading(false)
+      setScopedDatasetPendingDocs(null)
       return () => {
         cancelled = true
       }
@@ -192,12 +195,14 @@ export default function GraphPage() {
     if (!datasetId) {
       setScopedDatasetDocIds(null)
       setScopedDatasetDocIdsLoading(false)
+      setScopedDatasetPendingDocs(null)
       return () => {
         cancelled = true
       }
     }
 
     setScopedDatasetDocIdsLoading(true)
+    setScopedDatasetPendingDocs(null)
     ;(async () => {
       try {
         const list = await documentApi.list({
@@ -207,12 +212,17 @@ export default function GraphPage() {
           order_by: 'created_at',
           order_dir: 'desc',
         })
-        const ids = Array.isArray(list.items)
-          ? list.items.map((d: any) => String(d?.id || '').trim()).filter(Boolean)
-          : []
+        const items = Array.isArray(list.items) ? list.items : []
+        const ids = items.map((d: any) => String(d?.id || '').trim()).filter(Boolean)
+        const pending = items.filter((d: any) => {
+          const st = String(d?.status || '').trim().toLowerCase()
+          return st === 'pending' || st === 'processing'
+        }).length
         if (!cancelled) setScopedDatasetDocIds(ids)
+        if (!cancelled) setScopedDatasetPendingDocs(pending)
       } catch {
         if (!cancelled) setScopedDatasetDocIds([])
+        if (!cancelled) setScopedDatasetPendingDocs(null)
       } finally {
         if (!cancelled) setScopedDatasetDocIdsLoading(false)
       }
@@ -305,10 +315,41 @@ export default function GraphPage() {
   const [traceReplay, setTraceReplay] = useState<RagTrace | null>(null)
 
   const graphRef = useRef<GraphViewerRef>(null)
+  const graphViewportRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const traceFileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const deferredSearchTerm = useDeferredValue(searchTerm)
+
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const handler = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+    handler()
+    document.addEventListener('fullscreenchange', handler)
+    return () => document.removeEventListener('fullscreenchange', handler)
+  }, [])
+
+  const toggleFullscreen = useCallback(async () => {
+    if (typeof document === 'undefined') return
+    try {
+      if (!document.fullscreenElement) {
+        await graphViewportRef.current?.requestFullscreen?.()
+      } else {
+        await document.exitFullscreen?.()
+      }
+    } catch {
+      toast.error('全屏切换失败')
+    }
+  }, [])
+
+  useEffect(() => {
+    // Reset per-link expanded state when the selection/panel changes.
+    setSelfLoopGroupExpanded(false)
+  }, [selectedLink, isLinkDetailOpen])
 
   const resetConnectMode = useCallback(() => {
     setIsConnectMode(false)
@@ -1977,7 +2018,7 @@ export default function GraphPage() {
         </header>
 
         {/* Graph Area */}
-        <div className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px]">
+        <div ref={graphViewportRef} className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px]">
           {/* Dot Pattern Background */}
           <div className="absolute inset-0 z-0 opacity-[0.4]" style={{
              backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', 
@@ -2046,6 +2087,7 @@ export default function GraphPage() {
           {displayGraphData.nodes.length > 0 && !isExplainMode && (
             <GraphLegend
               nodes={displayGraphData.nodes}
+              links={displayGraphData.links}
               activeTypeFilters={entityTypeFilters}
               onToggleTypeFilter={(type) => {
                 setEntityTypeFilters((prev) => {
@@ -2097,6 +2139,15 @@ export default function GraphPage() {
           )}
 
           {/* Graph Stats Bar */}
+          {dataSource === 'live' && typeof scopedDatasetPendingDocs === 'number' && scopedDatasetPendingDocs > 0 && (
+            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20">
+              <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 shadow-sm animate-pulse motion-reduce:animate-none">
+                <span className="text-[11px] font-medium text-primary">KG 构建中</span>
+                <span className="text-[10px] text-muted-foreground">待处理文档</span>
+                <span className="text-[10px] font-mono text-foreground">{scopedDatasetPendingDocs}</span>
+              </div>
+            </div>
+          )}
           {displayGraphData.nodes.length > 0 && (
             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
               <GraphStatsBar
@@ -2184,6 +2235,16 @@ export default function GraphPage() {
 	                  aria-label="显示或隐藏连线标签"
 	                >
                   <Type className="w-5 h-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleFullscreen}
+                  className={cn("rounded-xl", isFullscreen && "bg-primary/10 text-primary ring-2 ring-primary/20")}
+                  title={isFullscreen ? "退出全屏" : "全屏模式"}
+                  aria-label={isFullscreen ? "退出全屏模式" : "进入全屏模式"}
+                >
+                  {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
                 </Button>
              </div>
           </div>
@@ -2472,6 +2533,9 @@ export default function GraphPage() {
               const tgtObj = selectedLink.target
               const srcLabel = typeof srcObj === 'object' ? (srcObj?.label || srcObj?.id || '') : String(srcObj)
               const tgtLabel = typeof tgtObj === 'object' ? (tgtObj?.label || tgtObj?.id || '') : String(tgtObj)
+              const srcId = getGraphLinkEndpointId(srcObj)
+              const tgtId = getGraphLinkEndpointId(tgtObj)
+              const isSelfLoop = Boolean(srcId) && srcId === tgtId
               const kind = String(selectedLink?.meta?.kind ?? selectedLink?.kind ?? '').trim()
               const predicate = String(selectedLink?.meta?.predicate ?? selectedLink?.predicate ?? selectedLink?.label ?? '').trim()
               const confidence = selectedLink?.meta?.confidence ?? selectedLink?.confidence ?? selectedLink?.weight
@@ -2482,6 +2546,15 @@ export default function GraphPage() {
               const eventId = String(selectedLink?.meta?.event_id ?? '').trim()
               const page = String(selectedLink?.meta?.page ?? selectedLink?.meta?.page_number ?? '').trim()
               const sharedEvents = String(selectedLink?.meta?.shared_events ?? '').trim()
+
+              const selfLoopLinks = isSelfLoop
+                ? (displayGraphData.links || []).filter((l: any) => {
+                    const s = getGraphLinkEndpointId(l?.source)
+                    const t = getGraphLinkEndpointId(l?.target)
+                    return Boolean(s) && s === t && s === srcId
+                  })
+                : []
+              const showSelfLoopGroup = isSelfLoop && selfLoopLinks.length > 1
 
               const kindLabel = kind === 'entity_relation' ? 'Relation (triple)'
                 : kind === 'event_entity' ? 'Evidence (event → entity)'
@@ -2512,6 +2585,76 @@ export default function GraphPage() {
                   </div>
                   <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-5 space-y-4">
                     <div className="space-y-3">
+                      {showSelfLoopGroup && (
+                        <div className="bg-muted rounded-xl p-3 border border-border">
+                          <button
+                            type="button"
+                            onClick={() => setSelfLoopGroupExpanded((prev) => !prev)}
+                            className="w-full flex items-center justify-between gap-2 text-left"
+                            aria-expanded={selfLoopGroupExpanded}
+                          >
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-medium text-muted-foreground mb-1">Self-loop Group</div>
+                              <div className="text-sm font-medium text-foreground truncate">{srcLabel || srcId}</div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="text-[10px] font-mono text-muted-foreground">{selfLoopLinks.length}</span>
+                              {selfLoopGroupExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                            </div>
+                          </button>
+                          {selfLoopGroupExpanded && (
+                            <div className="mt-3 space-y-2">
+                              {selfLoopLinks.slice(0, 12).map((l: any, idx: number) => {
+                                const edgeId = String(l?.id ?? l?.meta?.id ?? '').trim()
+                                const edgeKind = String(l?.meta?.kind ?? l?.kind ?? '').trim()
+                                const edgePredicate = String(l?.meta?.predicate ?? l?.predicate ?? l?.label ?? '').trim()
+                                const createdAt = String(l?.meta?.created_at ?? l?.meta?.created ?? '').trim()
+                                const episodesRaw = l?.meta?.episodes ?? l?.meta?.episode_ids ?? l?.meta?.episode_count
+                                const episodes = Array.isArray(episodesRaw) ? String(episodesRaw.length) : (episodesRaw == null ? '' : String(episodesRaw))
+                                const fact = String(l?.meta?.fact ?? l?.meta?.quote ?? l?.meta?.text ?? '').trim()
+                                const secondary = [edgeKind, edgePredicate].filter(Boolean).join(' · ')
+                                return (
+                                  <div key={edgeId || `${edgePredicate}-${idx}`} className="rounded-lg border border-border bg-background/60 px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="text-xs font-medium text-foreground truncate">
+                                          {edgePredicate || edgeKind || 'self-loop'}
+                                        </div>
+                                        {secondary && <div className="text-[10px] text-muted-foreground truncate">{secondary}</div>}
+                                      </div>
+                                      {edgeId && <div className="text-[10px] font-mono text-muted-foreground">{edgeId.slice(0, 8)}</div>}
+                                    </div>
+                                    {(createdAt || episodes || fact) && (
+                                      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                                        {createdAt && (
+                                          <div className="truncate" title={createdAt}>
+                                            <span className="opacity-70">Created</span>: {createdAt}
+                                          </div>
+                                        )}
+                                        {episodes && (
+                                          <div className="truncate" title={episodes}>
+                                            <span className="opacity-70">Episodes</span>: {episodes}
+                                          </div>
+                                        )}
+                                        {fact && (
+                                          <div className="col-span-2 truncate" title={fact}>
+                                            <span className="opacity-70">Fact</span>: {fact}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                              {selfLoopLinks.length > 12 && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  仅显示前 12 条（共 {selfLoopLinks.length} 条）
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="bg-muted rounded-xl p-3 border border-border">
                         <span className="block text-[10px] font-medium text-muted-foreground mb-1">Type</span>
                         <span className="block text-sm text-foreground">{kindLabel}</span>
