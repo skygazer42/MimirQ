@@ -1710,6 +1710,64 @@ async def get_kg_search_diagnostics_run(
     return KGSearchDiagnosticsRunDetail(run=run, items=items)
 
 
+@router.get("/kg/quality/report", response_model=dict[str, Any], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def get_kg_quality_report(
+    dataset_id: Annotated[UUID, Query(..., description="Dataset ID (required)")],
+    document_limit: Annotated[int, Query(ge=1, le=2000, description="Max documents sampled for the report")] = 200,
+    pipeline_hash: Annotated[str | None, Query(min_length=1, max_length=200, description="Optional pipeline hash filter")] = None,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Aggregate KG extraction quality report for a dataset (PII-minimal).
+
+    This is intentionally best-effort and returns only aggregate statistics (counts/ratios).
+    """
+    if not bool(getattr(settings, "KG_ENABLED", False)):
+        raise HTTPException(status_code=503, detail=_DETAIL_KG_DISABLED)
+
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_readable(db, ds, account_id)
+
+    from app.models.document import Document as DBDocument  # noqa: WPS433
+    from app.services.document_access import filter_allowed_document_ids  # noqa: WPS433
+
+    # Sample most recently updated documents in the dataset.
+    rows = (
+        db.query(DBDocument.id)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.publication_status == "published",
+        )
+        .order_by(DBDocument.updated_at.desc())
+        .limit(int(document_limit))
+        .all()
+    )
+    doc_ids = [row[0] for row in rows if row and row[0] is not None]
+    allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, doc_ids)
+
+    from app.rag.kg.quality import build_kg_quality_report  # noqa: WPS433
+
+    report = build_kg_quality_report(
+        db,
+        tenant_id=tenant_id,
+        document_ids=list(allowed_doc_ids or []),
+        pipeline_hash=pipeline_hash,
+    )
+    # Include scope counts for UI diagnostics (no raw ids).
+    scope = {
+        "dataset_id": str(dataset_id),
+        "documents_sampled": int(len(doc_ids)),
+        "documents_allowed": int(len(allowed_doc_ids or [])),
+    }
+    report.setdefault("scope", scope)
+    return report
+
+
 @router.post("/ragas/test-gen/from-conversations", response_model=TestGenResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def generate_test_cases_from_conversations(
     request: TestGenFromConversationsRequest,

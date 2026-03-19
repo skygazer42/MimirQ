@@ -4015,6 +4015,15 @@ export const evaluationApi = {
     const { data } = await apiClient.get(`/evaluations/kg/search/diagnostics/runs/${runId}`)
     return data
   },
+
+  async getKgQualityReport(params: {
+    dataset_id: string
+    document_limit?: number
+    pipeline_hash?: string
+  }): Promise<any> {
+    const { data } = await apiClient.get('/evaluations/kg/quality/report', { params })
+    return data
+  },
 }
 
 // ==================== 提示词模板 API ====================
