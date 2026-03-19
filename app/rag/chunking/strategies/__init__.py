@@ -18,6 +18,7 @@ Available strategies:
 - outline: Numbered-outline aware chunking
 - transcript: Speaker-turn aware chunking
 - qa_pairs: Q/A-pair aware chunking
+- proposition: Proposition (sentence/unit) chunking baseline
 - paper: Academic paper section-aware chunking
 - manuscript: Content-aware preset for manuscripts
 - book_structured: Book chapter/part aware chunking
@@ -136,6 +137,7 @@ from app.rag.chunking.strategies.policy_manual_structured import PolicyManualStr
 from app.rag.chunking.strategies.postmortem_report import PostmortemReportChunker
 from app.rag.chunking.strategies.prd_spec import PRDSpecChunker
 from app.rag.chunking.strategies.presentation_slides import PresentationSlidesChunker
+from app.rag.chunking.strategies.proposition import PropositionChunker
 from app.rag.chunking.strategies.proto_schema import ProtoSchemaChunker
 from app.rag.chunking.strategies.qa_markdown import QAMarkdownChunker
 from app.rag.chunking.strategies.qa_pairs import QAPairsChunker
@@ -182,6 +184,7 @@ __all__ = [
     "OutlineChunker",
     "TranscriptChunker",
     "QAPairsChunker",
+    "PropositionChunker",
     "PaperChunker",
     "ManuscriptChunker",
     "BookStructuredChunker",
