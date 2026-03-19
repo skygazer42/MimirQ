@@ -5,7 +5,6 @@ from typing import Any
 from app.rag.core.claim_verifier import verify_claim
 from app.rag.core.text import is_claim_supported, split_into_claims
 
-
 _DUMMY_EVIDENCE_TOKENS = "dummy evidence tokens"
 
 

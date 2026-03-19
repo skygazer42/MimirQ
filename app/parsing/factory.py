@@ -22,6 +22,7 @@ XLSX_EXTENSION = '.xlsx'
 HTML_EXTENSION = '.html'
 JSON_EXTENSION = '.json'
 EML_EXTENSION = '.eml'
+MSG_EXTENSION = '.msg'
 EPUB_EXTENSION = '.epub'
 RTF_EXTENSION = '.rtf'
 ODT_EXTENSION = '.odt'
@@ -31,8 +32,10 @@ if TYPE_CHECKING:
     from app.parsing.parsers.deepdoc_parser import DeepDocParser
     from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
     from app.parsing.parsers.docling_parser import DoclingParser
+    from app.parsing.parsers.email_parser import EmailParser
     from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
     from app.parsing.parsers.glm_ocr_parser import GlmOCRParser
+    from app.parsing.parsers.image_parser import ImageParser
     from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
     from app.parsing.parsers.marker_parser import MarkerParser
     from app.parsing.parsers.markitdown_parser import MarkItDownParser
@@ -42,8 +45,6 @@ if TYPE_CHECKING:
     from app.parsing.parsers.pandoc_parser import PandocParser
     from app.parsing.parsers.pdf_parser import PDFParser
     from app.parsing.parsers.qianfan_ocr_parser import QianfanOCRParser
-    from app.parsing.parsers.email_parser import EmailParser
-    from app.parsing.parsers.image_parser import ImageParser
 
 
 class ParserFactory:
@@ -109,6 +110,7 @@ class ParserFactory:
         ".htm",
         JSON_EXTENSION,
         EML_EXTENSION,
+        MSG_EXTENSION,
         EPUB_EXTENSION,
         RTF_EXTENSION,
         ODT_EXTENSION,
@@ -178,6 +180,7 @@ class ParserFactory:
             ".htm": None,
             JSON_EXTENSION: None,
             EML_EXTENSION: None,
+            MSG_EXTENSION: None,
         }
         for ext in sorted(self.PLAIN_TEXT_EXTENSIONS):
             self.parsers.setdefault(ext, TextParser())
@@ -194,8 +197,8 @@ class ParserFactory:
                 return "text"
             if file_ext == ".md":
                 return "markdown"
-            if file_ext == EML_EXTENSION:
-                # Keep .eml parsing deterministic and resilient to unrelated backend hints
+            if file_ext in {EML_EXTENSION, MSG_EXTENSION}:
+                # Keep email parsing deterministic and resilient to unrelated backend hints
                 # (e.g. when UI stores a global PDF backend preference).
                 return "email"
             if file_ext in IMAGE_EXTENSIONS:
@@ -252,8 +255,8 @@ class ParserFactory:
                 raise ValueError("csv backend supports only .csv")
             if normalized == "json" and file_ext != JSON_EXTENSION:
                 raise ValueError("json backend supports only .json")
-            if normalized == "email" and file_ext != EML_EXTENSION:
-                raise ValueError("email backend supports only .eml")
+            if normalized == "email" and file_ext not in {EML_EXTENSION, MSG_EXTENSION}:
+                raise ValueError("email backend supports only .eml/.msg")
             if normalized == "image" and file_ext not in IMAGE_EXTENSIONS:
                 raise ValueError(f"image backend supports only: {sorted(IMAGE_EXTENSIONS)}")
             if normalized == "docling":
@@ -935,11 +938,11 @@ class ParserFactory:
         return self._pandoc_parser
 
     def _get_email_parser(self):
-        """Lazy init Email parser for .eml."""
+        """Lazy init Email parser for .eml/.msg."""
         if self._email_parser is None:
             from app.parsing.parsers.email_parser import EmailParser
 
-            logger.info("[email] Initializing parser for .eml files")
+            logger.info("[email] Initializing parser for email files")
             self._email_parser = EmailParser()
         return self._email_parser
 

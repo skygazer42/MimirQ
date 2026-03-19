@@ -387,6 +387,13 @@ class Settings(BaseSettings):
     PREVIEW_PARSE_CACHE_MAX_DOC_CHARS: int = 2_000_000
     # Manual cache-bust key for preview parse cache (include parser changes, model changes, etc.).
     PREVIEW_PARSE_CACHE_VERSION: str = "v1"
+    # Optional: persistent parse cache (MinIO) for ingestion (Opt11).
+    # Disabled by default; enable only when MinIO is configured and you want cross-run reuse.
+    PARSE_CACHE_ENABLED: bool = False
+    PARSE_CACHE_TTL_SEC: int = 7 * 24 * 3600
+    PARSE_CACHE_MAX_BYTES: int = 8_000_000
+    PARSE_CACHE_VERSION: str = "v1"
+    PARSE_CACHE_MINIO_PREFIX: str = "parse_cache"
     # ZIP extraction safety limits (for Markdown+images archives).
     ZIP_MAX_FILES: int = 2000
     ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: int = 500_000_000
@@ -410,9 +417,42 @@ class Settings(BaseSettings):
     ORIENTATION_ENABLED: bool = False
     # Watermark removal can be destructive; keep it off by default.
     WATERMARK_REMOVAL_ENABLED: bool = False
+    # Optional: external watermark-removal backend (image or pdf -> processed bytes).
+    WATERMARK_REMOVAL_API_URL: str = ""
+    WATERMARK_TIMEOUT_SEC: int = 120
+    # Best-effort: remove PDF watermark annotations before falling back to model-based removal.
+    WATERMARK_PDF_ANNOT_STRIP_ENABLED: bool = True
     # When enabled, skip preprocessing for high-quality PDFs (best-effort; requires pdf_quality score).
     PREPROCESS_SKIP_HIGH_QUALITY: bool = True
     PREPROCESS_SAMPLE_PAGES: int = 3
+    # Parsing post-processors (Opt2/4/6/8).
+    CROSS_PAGE_MERGE_ENABLED: bool = False
+    # Parse-then-correct via external VLM backend.
+    VLM_CORRECTION_ENABLED: bool = False
+    VLM_CORRECTION_API_URL: str = ""
+    VLM_CORRECTION_TIMEOUT_SEC: int = 60
+    VLM_CORRECTION_MAX_PAGES: int = 3
+    VLM_CORRECTION_MAX_CHARS: int = 40_000
+    VLM_CORRECTION_MIN_TABLE_QUALITY: float = 0.6
+    # Multi-parser competition matrix (Opt8) for workspace parsing selection.
+    PARSE_COMPETITION_MATRIX_ENABLED: bool = False
+    # JSON mapping like {"text":0.4,"table":0.3,"image":0.15,"reading_order":0.15}
+    PARSE_COMPETITION_MATRIX_WEIGHTS_JSON: str = ""
+    # Optional: VLM-backed inline image captions (Opt5).
+    # Disabled by default; requires an external HTTP backend.
+    IMAGE_CAPTION_VLM_ENABLED: bool = False
+    IMAGE_CAPTION_VLM_API_URL: str = ""
+    IMAGE_CAPTION_VLM_TIMEOUT_SEC: int = 60
+    IMAGE_CAPTION_VLM_MAX_IMAGES: int = 20
+    IMAGE_CAPTION_VLM_MAX_IMAGE_BYTES: int = 5_000_000
+    IMAGE_CAPTION_VLM_MAX_CAPTION_CHARS: int = 200
+    # Opt3: Formula OCR / LaTeX conversion (optional; external HTTP backend).
+    FORMULA_OCR_ENABLED: bool = False
+    FORMULA_OCR_API_URL: str = ""
+    FORMULA_OCR_TIMEOUT_SEC: int = 60
+    FORMULA_OCR_MAX_IMAGES: int = 12
+    FORMULA_OCR_MAX_IMAGE_BYTES: int = 5_000_000
+    FORMULA_OCR_MAX_LATEX_CHARS: int = 2000
     # Image understanding (caption/OCR) for image chunks during ingest.
     # Conservative defaults: disabled unless explicitly enabled via pipeline metadata.
     IMAGE_CAPTION_ENABLED: bool = False
@@ -427,7 +467,7 @@ class Settings(BaseSettings):
     IMAGE_EMBEDDING_BATCH_SIZE: int = 8
     IMAGE_EMBEDDING_COLLECTION_NAME: str = "image_chunks"
     # Keep this aligned with parser_factory supported non-PDF formats.
-    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl,.epub,.rtf,.odt,.eml,.png,.jpg,.jpeg,.webp,.gif,.bmp"
+    ALLOWED_EXTENSIONS: str = ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,.patch,.diff,.srt,.vtt,.mk,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.html,.htm,.json,.jsonl,.ndjson,.xml,.rss,.atom,.graphql,.gql,.proto,.tf,.hcl,.epub,.rtf,.odt,.eml,.msg,.png,.jpg,.jpeg,.webp,.gif,.bmp"
 
     @property
     def allowed_extensions_list(self) -> list[str]:
@@ -1170,6 +1210,15 @@ class Settings(BaseSettings):
     RETRIEVAL_MUST_RECALL_AUTO_REQUIRED_ANCHOR_FIELDS_ENABLED: bool = True
     # When false (default), omit raw question/query/snippets from metrics logs to reduce PII leakage.
     METRICS_LOG_INCLUDE_TEXT: bool = False
+    QUERYSET_HEALTH_HISTORY_PATH: str = "./runs/queryset_health/history.jsonl"
+
+    # Online evaluation (production sampling; PII-minimal by construction).
+    ONLINE_EVAL_ENABLED: bool = False
+    ONLINE_EVAL_SAMPLE_RATE: float = 0.05
+    ONLINE_EVAL_QUEUE_MAX: int = 500
+    ONLINE_EVAL_ALERT_MIN_SAMPLES_PER_BUCKET: int = 10
+    ONLINE_EVAL_ALERT_FAITHFULNESS_DET_MIN: float = 0.6
+    ONLINE_EVAL_ALERT_CHUNK_UTILIZATION_MIN: float = 0.12
 
     # Observability: simple anomaly detection (rolling baseline; PII-safe).
     # Used by query analytics to flag spikes in zero-hit/error rates.

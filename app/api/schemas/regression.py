@@ -175,6 +175,10 @@ class RagasRegressionRunCreateRequest(BaseModel):
         default_factory=lambda: ["faithfulness", "response_relevancy"],
         description="RAGAS metrics list",
     )
+    use_llm_judge: bool = Field(
+        default=False,
+        description="Enable LLM-as-judge (per-case {score, reason, evidence_quotes}; adds evaluation cost)",
+    )
     skip_empty_contexts: bool = Field(default=True, description="Skip cases without contexts (default: true)")
     max_cases: int = Field(default=50, ge=1, le=500, description="Max cases to run (default: 50)")
 

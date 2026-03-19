@@ -5,8 +5,8 @@ from uuid import uuid4
 
 
 def test_build_regression_sample_includes_reference_context_ids_and_abstain_meta():
-    from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
     from app.rag.core.hashing import stable_hash
+    from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
 
     ds = uuid4()
     doc_id = uuid4()
