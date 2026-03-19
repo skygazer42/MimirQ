@@ -2,7 +2,8 @@
 
 import type { Document } from '@/types'
 
-import { Database, Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
+import Link from 'next/link'
+import { Activity, AlertTriangle, Database, Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -479,6 +480,9 @@ export function KnowledgeDocumentsPanel({
                                             const TypeIcon = fileType.icon;
                                             const userTags = getUserTagsFromDocument(doc);
                                             const sourcePath = String((doc.metadata as any)?.source_path || '').trim();
+                                            const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score;
+                                            const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null;
+                                            const parseLow = parseScore !== null && parseScore < 0.35;
                                             return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="hover:bg-muted/20 transition-colors group">
 	                        <td className="px-3 py-3 align-middle">
 	                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={() => toggleDocSelection(doc.id)} aria-label={`选择文档 ${doc.filename}`}/>
@@ -496,6 +500,14 @@ export function KnowledgeDocumentsPanel({
                                 <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ', fileType.bg, fileType.border, fileType.color)} title={fileType.label}>
                                   {fileType.label}
                                 </span>
+                                {parseLow ? (
+                                  <span
+                                    className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+                                    title={`解析质量偏低 (score=${parseScore?.toFixed?.(3) ?? '—'})`}
+                                  >
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                  </span>
+                                ) : null}
                               </div>
                               {sourcePath ? (<button type="button" className="mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4" onClick={() => detachPromise(copyText(sourcePath, '已复制 Source Path'))} title="点击复制 Source Path">
                                   {sourcePath}
@@ -546,6 +558,12 @@ export function KnowledgeDocumentsPanel({
                               {String((doc.metadata as any)?.source_path || '').trim() ? (<DropdownMenuItem onSelect={() => detachPromise(copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path'))}>
                                   复制 Source Path
                                 </DropdownMenuItem>) : null}
+                              <DropdownMenuItem asChild>
+                                <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
+                                  <Activity className="mr-2 h-4 w-4" />
+                                  健康卡片
+                                </Link>
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => requestSingleDelete(doc)}>
                                 <Trash2 className="mr-2 h-4 w-4"/>
@@ -593,6 +611,9 @@ function DocumentCard({
   const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeMeta(doc)
   const TypeIcon = fileType.icon
+  const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score
+  const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null
+  const parseLow = parseScore !== null && parseScore < 0.35
 
   return (
     <Panel
@@ -625,6 +646,14 @@ function DocumentCard({
             <div className={cn('px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border', fileType.bg, fileType.color, fileType.border)}>
               {fileType.label}
             </div>
+            {parseLow ? (
+              <div
+                className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                title={`解析质量偏低 (score=${parseScore?.toFixed?.(3) ?? '—'})`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </div>
+            ) : null}
             {doc.disabled_at ? (
               <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-border/60 bg-muted/60 text-muted-foreground">
                 Disabled
@@ -705,6 +734,12 @@ function DocumentCard({
                   复制 Source Path
                 </DropdownMenuItem>
               ) : null}
+              <DropdownMenuItem asChild>
+                <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
+                  <Activity className="mr-2 h-4 w-4" />
+                  健康卡片
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
