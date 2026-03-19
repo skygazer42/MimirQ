@@ -219,6 +219,27 @@ class DatasetRAGDefaults(BaseModel):
         return self
 
 
+class DatasetRetentionPolicy(BaseModel):
+    """
+    Dataset-level retention policy (Gap9).
+
+    Stored in datasets.metadata.retention_policy.
+    """
+
+    enabled: bool = False
+    action: Literal["archive", "delete"] = "archive"
+    max_age_days: int | None = Field(default=None, ge=1, le=3650, description="Expire docs older than this many days")
+    max_inactive_days: int | None = Field(
+        default=None,
+        ge=1,
+        le=3650,
+        description="Expire docs with no recent activity (best-effort; uses updated_at fallback)",
+    )
+    max_versions: int | None = Field(default=None, ge=1, le=50, description="Keep at most N pipeline versions per doc")
+
+    model_config = ConfigDict(extra="ignore")
+
+
 class DatasetBase(BaseModel):
     name: str = Field(..., max_length=255)
     description: str | None = None
@@ -242,6 +263,7 @@ class DatasetBase(BaseModel):
     chunk_targets_v2: DatasetChunkTargetsV2 | None = None
     # Dataset-level pipeline defaults (governance/indexing). If omitted, tenant defaults apply.
     pipeline: DocumentPipelineOptions | None = None
+    retention_policy: DatasetRetentionPolicy | None = None
 
 
 class DatasetCreate(DatasetBase):
@@ -265,6 +287,7 @@ class DatasetUpdate(BaseModel):
     default_prompt_ab_experiment_key: str | None = None
     chunk_targets_v2: DatasetChunkTargetsV2 | None = None
     pipeline: DocumentPipelineOptions | None = None
+    retention_policy: DatasetRetentionPolicy | None = None
 
 
 class DatasetOut(OrmModel):
@@ -287,6 +310,7 @@ class DatasetOut(OrmModel):
     default_prompt_ab_experiment_key: str | None = None
     chunk_targets_v2: DatasetChunkTargetsV2 | None = None
     pipeline: DocumentPipelineOptions | None = None
+    retention_policy: DatasetRetentionPolicy | None = None
 
 
 class DatasetListResponse(BaseModel):
@@ -325,6 +349,7 @@ class DatasetConfigBundle(BaseModel):
     default_prompt_ab_experiment_key: str | None = None
     chunk_targets_v2: DatasetChunkTargetsV2 | None = None
     pipeline: DocumentPipelineOptions | None = None
+    retention_policy: DatasetRetentionPolicy | None = None
     ingestion_policy: IngestionPolicy | None = None
     fls_policy: FlsPolicy | None = None
 
