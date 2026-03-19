@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkCard } from '../../chunk-card'
 import { ChunkInspectorDialog } from '../../chunk-inspector-dialog'
+import { SemanticQualityHeatmapMini } from './semantic-quality-heatmap-mini'
 import type { ChunkPreviewItem } from '@/types'
 import { computeCoverageSignals, computeRoleIndices, fnv1a32, roughEstimateTokens } from '@/components/chunk-preview/utils/review-signals'
 import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
@@ -118,6 +119,7 @@ export function ChunkList() {
   const [onlyDisabled, setOnlyDisabled] = useState(false)
   const [onlyGap, setOnlyGap] = useState(false)
   const [onlyOverlap, setOnlyOverlap] = useState(false)
+  const [onlyNeedsReview, setOnlyNeedsReview] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const [inspectorIndex, setInspectorIndex] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -153,6 +155,7 @@ export function ChunkList() {
     setOnlyDisabled(false)
     setOnlyGap(false)
     setOnlyOverlap(false)
+    setOnlyNeedsReview(false)
     setInspectorOpen(false)
     setInspectorIndex(null)
   }, [previewData?.filename])
@@ -279,6 +282,18 @@ export function ChunkList() {
     [effectiveChunks, previewData?.chunk_strategy]
   )
 
+  const needsReviewIndices = useMemo(() => {
+    const out = new Set<number>()
+    for (const c of effectiveChunks || []) {
+      const idx = Number(c.index)
+      if (!Number.isFinite(idx)) continue
+      const meta = (c.metadata || {}) as Record<string, any>
+      const q = (meta.semantic_quality || {}) as Record<string, any>
+      if (meta.needs_review || q.needs_review) out.add(idx)
+    }
+    return out
+  }, [effectiveChunks])
+
   const selectedChunk = useMemo(() => {
     if (!effectiveChunks.length || selectedChunkIndex == null) return null
     return effectiveChunks[selectedChunkIndex] || null
@@ -337,6 +352,7 @@ export function ChunkList() {
         if (onlyDisabled && !disabledIndices.has(Number(chunk.index))) return false
         if (onlyGap && !coverageSignals.gapIndices.has(Number(chunk.index))) return false
         if (onlyOverlap && !coverageSignals.overlapIndices.has(Number(chunk.index))) return false
+        if (onlyNeedsReview && !needsReviewIndices.has(Number(chunk.index))) return false
 
         return true
       })
@@ -362,11 +378,13 @@ export function ChunkList() {
     onlyDisabled,
     onlyGap,
     onlyOverlap,
+    onlyNeedsReview,
     shortIndices,
     duplicateIndices,
     editedIndices,
     disabledIndices,
     coverageSignals,
+    needsReviewIndices,
   ])
 
   const matchCount = flatFilteredChunks.length
@@ -438,7 +456,8 @@ export function ChunkList() {
       onlyEdited ||
       onlyDisabled ||
       onlyGap ||
-      onlyOverlap
+      onlyOverlap ||
+      onlyNeedsReview
 
     type Group = {
       key: string
@@ -539,6 +558,7 @@ export function ChunkList() {
     onlyDisabled,
     onlyGap,
     onlyOverlap,
+    onlyNeedsReview,
     matchIndexSet,
     collapsedGroups,
   ])
@@ -581,7 +601,8 @@ export function ChunkList() {
       onlyEdited ||
       onlyDisabled ||
       onlyGap ||
-      onlyOverlap
+      onlyOverlap ||
+      onlyNeedsReview
     if (!hasFilter) return null
     return `${matchCount} / ${previewData?.total_chunks || 0}`
   }, [
@@ -598,6 +619,7 @@ export function ChunkList() {
     onlyDisabled,
     onlyGap,
     onlyOverlap,
+    onlyNeedsReview,
   ])
 
   const showVirtualized = Boolean(previewData?.chunks && displayRows.length > 0)
@@ -919,6 +941,8 @@ export function ChunkList() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            <SemanticQualityHeatmapMini chunks={effectiveChunks} />
+
             <Button
               type="button"
               variant={onlyShort ? 'secondary' : 'ghost'}
@@ -960,6 +984,17 @@ export function ChunkList() {
               title={coverageSignals.basis === 'child' ? 'Only OVR (child coverage)' : 'Only OVR'}
             >
               OVR {coverageSignals.overlapIndices.size}
+            </Button>
+            <Button
+              type="button"
+              variant={onlyNeedsReview ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={() => setOnlyNeedsReview((v) => !v)}
+              title="Only needs_review (semantic heuristics)"
+            >
+              <Code2 className="h-3.5 w-3.5 mr-1" />
+              REVIEW {needsReviewIndices.size}
             </Button>
             <Button
               type="button"
