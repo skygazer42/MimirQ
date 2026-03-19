@@ -37,6 +37,9 @@ class IndexingOptions:
     entity_vector_enabled: bool | None = None
     # When enabled, prefix chunk content with lightweight context (e.g. header_path) before embedding.
     embedding_context_prefix_enabled: bool | None = None
+    # When enabled, inject a short document/section-level context prefix before embedding (vector-only).
+    # This is a deterministic heuristic by default; does not change stored chunk.content (DB).
+    embedding_contextual_retrieval_enabled: bool | None = None
     # When enabled, store extra field-aware embeddings (title/heading) alongside body embeddings.
     embedding_field_aware_enabled: bool | None = None
 
