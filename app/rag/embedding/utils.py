@@ -86,3 +86,42 @@ def current_embedding_space_hash(*, length: int | None = 16) -> str:
 
     key = f"provider={provider}|model={model}|base_url={norm_base}"
     return hashstr(key, length=length)
+
+
+def embedding_space_hash_for_config(
+    *,
+    provider: str | None,
+    model: str | None,
+    base_url: str | None,
+    length: int | None = 16,
+) -> str:
+    """
+    Return a stable embedding-space hash for an explicit config tuple.
+
+    This is a utility for "blue-green" embedding migrations where we may need to
+    compute the space hash for a *shadow* embedding model without mutating global
+    settings (Gap5).
+    """
+    provider_raw = (provider or "openai_compatible").strip().lower()
+    mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, provider_raw)
+    model0 = (model or "").strip()
+    base = (base_url or "").strip()
+
+    norm_base = ""
+    if base:
+        try:
+            u = urlsplit(base)
+            norm_base = f"{u.scheme}://{u.netloc}{u.path}".rstrip("/")
+        except Exception:
+            norm_base = base.rstrip("/")
+
+    key = f"provider={mapped_provider}|model={model0}|base_url={norm_base}"
+    return hashstr(key, length=length)
+
+
+__all__ = [
+    "current_embedding_space_hash",
+    "embedding_space_hash_for_config",
+    "get_docker_safe_url",
+    "hashstr",
+]
