@@ -24,6 +24,85 @@ export type DocumentAccessUpdateRequest = import('./backend').DocumentAccessUpda
 export type DocumentFolderNode = import('./backend').DocumentFolderNode
 export type DocumentFolderTreeResponse = import('./backend').DocumentFolderTreeResponse
 
+export interface DocumentHealthParsing {
+  parser_backend?: string | null
+  parser_backend_requested?: string | null
+  parse_quality?: Record<string, any> | null
+  pdf_quality?: Record<string, any> | null
+
+  is_scanned?: boolean | null
+  page_count?: number | null
+
+  processed_at?: string | null
+}
+
+export interface DocumentHealthChunkCoverage {
+  sum_chunk_chars: number
+  covered_chars: number
+  coverage_ratio: number
+  overlap_waste_ratio: number
+  gap_count: number
+  largest_gap: number
+}
+
+export interface DocumentHealthSemanticQualitySummary {
+  sampled_chunks: number
+  needs_review: number
+  needs_review_ratio: number
+
+  mean_information_density?: number | null
+  mean_semantic_completeness?: number | null
+  mean_self_containedness?: number | null
+  mean_pronoun_ratio?: number | null
+
+  overall_histogram_10: number[]
+  note?: string | null
+}
+
+export interface DocumentHealthChunking {
+  chunk_strategy?: string | null
+  chunk_strategy_requested?: string | null
+
+  chunk_count: number
+  total_characters: number
+
+  coverage: DocumentHealthChunkCoverage
+  semantic_quality?: DocumentHealthSemanticQualitySummary | null
+}
+
+export interface DocumentHealthRetrievalHits {
+  enabled: boolean
+  available: boolean
+  path?: string | null
+  window_minutes: number
+  max_bytes: number
+  truncated: boolean
+
+  traces_scanned: number
+  traces_with_hits: number
+  citations_matched: number
+  unique_chunks_matched?: number | null
+  hit_rate?: number | null
+}
+
+export interface DocumentHealthCard {
+  document_id: string
+  dataset_id?: string | null
+  filename?: string | null
+  file_type?: string | null
+  file_size?: number | null
+  created_at?: string | null
+  updated_at?: string | null
+
+  generated_at: string
+  status?: string | null
+
+  parsing: DocumentHealthParsing
+  chunking: DocumentHealthChunking
+  kg?: Record<string, any> | null
+  retrieval_hits?: DocumentHealthRetrievalHits | null
+}
+
 // ==================== Connectors ====================
 
 // Backend may add connector ids over time; keep this open-ended.

@@ -2,7 +2,8 @@
 
 import type { Document } from '@/types'
 
-import { Database, Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
+import Link from 'next/link'
+import { Activity, AlertTriangle, Database, Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -580,6 +581,12 @@ export function KnowledgeDocumentsPanel({
                               {sourcePath ? (<DropdownMenuItem onSelect={buildCopyHandler(sourcePath, '已复制 Source Path')}>
                                   复制 Source Path
                                 </DropdownMenuItem>) : null}
+                              <DropdownMenuItem asChild>
+                                <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
+                                  <Activity className="mr-2 h-4 w-4" />
+                                  健康卡片
+                                </Link>
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={buildRequestSingleDeleteHandler(doc)}>
                                 <Trash2 className="mr-2 h-4 w-4"/>
@@ -627,6 +634,9 @@ function DocumentCard({
   const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeMeta(doc)
   const TypeIcon = fileType.icon
+  const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score
+  const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null
+  const parseLow = parseScore !== null && parseScore < 0.35
 
   return (
     <Panel
@@ -659,6 +669,14 @@ function DocumentCard({
             <div className={cn('px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border', fileType.bg, fileType.color, fileType.border)}>
               {fileType.label}
             </div>
+            {parseLow ? (
+              <div
+                className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                title={`解析质量偏低 (score=${parseScore?.toFixed?.(3) ?? '—'})`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5" />
+              </div>
+            ) : null}
             {doc.disabled_at ? (
               <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-border/60 bg-muted/60 text-muted-foreground">
                 Disabled
@@ -739,6 +757,12 @@ function DocumentCard({
                   复制 Source Path
                 </DropdownMenuItem>
               ) : null}
+              <DropdownMenuItem asChild>
+                <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
+                  <Activity className="mr-2 h-4 w-4" />
+                  健康卡片
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
