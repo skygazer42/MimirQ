@@ -33,6 +33,7 @@ from app.api.schemas.dataset import (
     DatasetOut,
     DatasetPurgeResponse,
     DatasetRAGDefaults,
+    DatasetRetentionPolicy,
     DatasetUpdate,
 )
 from app.api.schemas.dataset_category import DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse
@@ -87,6 +88,7 @@ from app.services.ingestion_policy import (
 )
 from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
+from app.services.retention_policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
 from app.services.report_html import render_dataset_profile_html
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
@@ -101,6 +103,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
     meta = getattr(ds, "dataset_metadata", None)
     if not isinstance(meta, dict):
@@ -111,6 +114,15 @@ def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
     if not any(v is not None for v in data.values()):
         return None
     return DocumentPipelineOptions(**data)
+
+
+def _dataset_retention_policy_out(ds: Dataset) -> DatasetRetentionPolicy | None:
+    meta = getattr(ds, "dataset_metadata", None)
+    if not isinstance(meta, dict):
+        return None
+    pol = parse_retention_policy_from_metadata(meta)
+    return pol if isinstance(pol, DatasetRetentionPolicy) else None
+
 
 def _dataset_ingestion_defaults(ds: Dataset) -> tuple[str | None, str | None]:
     meta = getattr(ds, "dataset_metadata", None)
@@ -512,6 +524,15 @@ def create_dataset(
             meta.pop("chunk_targets_v2", None)
         changed = True
 
+    # 7) Retention policy (lifecycle automation).
+    if payload.retention_policy is not None:
+        data = payload.retention_policy.model_dump(exclude_none=True)
+        if data:
+            meta["retention_policy"] = data
+        else:
+            meta.pop("retention_policy", None)
+        changed = True
+
     if changed:
         dataset.dataset_metadata = meta
         db.commit()
@@ -531,6 +552,7 @@ def create_dataset(
     ) = _dataset_rag_config_template_defaults_out(dataset)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(dataset)
+    retention_policy = _dataset_retention_policy_out(dataset)
 
     # Best-effort audit log (commit separately; never block response).
     audit_log_event(
@@ -570,6 +592,7 @@ def create_dataset(
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(dataset),
+        retention_policy=retention_policy,
     )
 
 
@@ -668,6 +691,7 @@ def list_datasets(
         ) = _dataset_rag_config_template_defaults_out(ds)
         prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
         chunk_targets_v2 = _dataset_chunk_targets_v2_out(ds)
+        retention_policy = _dataset_retention_policy_out(ds)
         results.append(DatasetOut(
             id=ds.id,
             tenant_id=ds.tenant_id,
@@ -688,6 +712,7 @@ def list_datasets(
             default_prompt_ab_experiment_key=prompt_ab_experiment_key,
             chunk_targets_v2=chunk_targets_v2,
             pipeline=_dataset_pipeline_out(ds),
+            retention_policy=retention_policy,
         ))
     return {"total": total, "items": results}
 
@@ -715,6 +740,7 @@ def get_dataset(
     ) = _dataset_rag_config_template_defaults_out(dataset)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(dataset)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(dataset)
+    retention_policy = _dataset_retention_policy_out(dataset)
     return DatasetOut(
         id=dataset.id,
         tenant_id=dataset.tenant_id,
@@ -735,6 +761,7 @@ def get_dataset(
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(dataset),
+        retention_policy=retention_policy,
     )
 
 
@@ -880,6 +907,9 @@ def update_dataset(
             meta.pop("chunk_targets_v2", None)
         changed = True
 
+    if "retention_policy" in payload.model_fields_set:
+        changed = upsert_retention_policy_metadata(meta, policy=payload.retention_policy, replace=True) or changed
+
     if changed:
         updated.dataset_metadata = meta
         db.commit()
@@ -899,6 +929,7 @@ def update_dataset(
     ) = _dataset_rag_config_template_defaults_out(updated)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(updated)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(updated)
+    retention_policy = _dataset_retention_policy_out(updated)
 
     audit_log_event(
         db,
@@ -938,6 +969,7 @@ def update_dataset(
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(updated),
+        retention_policy=retention_policy,
     )
 
 
@@ -973,6 +1005,7 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         chunk_targets_v2=_dataset_chunk_targets_v2_out(ds),
         pipeline=_dataset_pipeline_out(ds),
+        retention_policy=_dataset_retention_policy_out(ds),
         ingestion_policy=ingestion_policy,
         fls_policy=fls_policy,
     )
@@ -1119,6 +1152,9 @@ def import_dataset_config(
             meta.pop("chunk_targets_v2", None)
         changed = True
 
+    if replace or cfg.retention_policy is not None:
+        changed = upsert_retention_policy_metadata(meta, policy=cfg.retention_policy, replace=True) or changed
+
     # Ingestion policy
     if replace or cfg.ingestion_policy is not None:
         if cfg.ingestion_policy is not None:
@@ -1168,6 +1204,7 @@ def import_dataset_config(
     ) = _dataset_rag_config_template_defaults_out(ds)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(ds)
+    retention_policy = _dataset_retention_policy_out(ds)
 
     return DatasetOut(
         id=ds.id,
@@ -1189,6 +1226,7 @@ def import_dataset_config(
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(ds),
+        retention_policy=retention_policy,
     )
 
 
@@ -1255,6 +1293,7 @@ def clone_dataset(
     ) = _dataset_rag_config_template_defaults_out(created)
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(created)
     chunk_targets_v2 = _dataset_chunk_targets_v2_out(created)
+    retention_policy = _dataset_retention_policy_out(created)
 
     return DatasetOut(
         id=created.id,
@@ -1276,6 +1315,7 @@ def clone_dataset(
         default_prompt_ab_experiment_key=prompt_ab_experiment_key,
         chunk_targets_v2=chunk_targets_v2,
         pipeline=_dataset_pipeline_out(created),
+        retention_policy=retention_policy,
     )
 
 
