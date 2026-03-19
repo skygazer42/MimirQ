@@ -335,6 +335,20 @@ class DatasetCacheInvalidationResponse(BaseModel):
     note: str = ""
 
 
+class PerfSuiteRunRequest(BaseModel):
+    iterations: int = Field(default=10, ge=1, le=200, description="Iterations per case (bounded)")
+    timeout_sec: float = Field(default=2.0, ge=0.05, le=10.0, description="Timeout per request in seconds (bounded)")
+
+
+class PerfSuiteRunResponse(BaseModel):
+    schema: str
+    baseline_path: str
+    policy_path: str
+    baseline_ts: str = ""
+    current_report: dict[str, Any] = Field(default_factory=dict)
+    diff: dict[str, Any] = Field(default_factory=dict)
+
+
 def _serialize_index_drift_item(item: Any) -> dict[str, Any]:
     return {
         "id": str(getattr(item, "id", "") or ""),
@@ -708,6 +722,34 @@ def get_embedding_drift_snapshot(
         sample_n=int(sample_n or 0),
         drift_threshold=float(drift_threshold),
     )
+
+
+@router.post("/perf-suite/run", response_model=PerfSuiteRunResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def run_perf_suite(
+    payload: PerfSuiteRunRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Run a minimal, PII-safe perf suite and diff vs the checked-in baseline (admin-only).
+
+    Intended for ad-hoc diagnostics. Nightly gating is implemented in GitHub Actions.
+    """
+    _ensure_admin(db, tenant_id, account_id)
+
+    from app.services.perf_suite_run_service import run_minimal_perf_suite_report_and_diff
+
+    try:
+        return run_minimal_perf_suite_report_and_diff(
+            iterations=int(payload.iterations or 0),
+            timeout_sec=float(payload.timeout_sec or 0.0),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=f"perf baseline/policy not found: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"perf suite run failed: {exc}") from exc
 
 
 @router.get("/index-drift", response_model=IndexDriftListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
