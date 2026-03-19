@@ -143,6 +143,13 @@ class DocumentPipelineOptions(BaseModel):
         default=None,
         description="Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).",
     )
+    embedding_contextual_retrieval_enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Inject a short document/section-level context prefix before embedding (vector-only). "
+            "Does not change stored chunk content (DB)."
+        ),
+    )
     embedding_field_aware_enabled: bool | None = Field(
         default=None,
         description=(
