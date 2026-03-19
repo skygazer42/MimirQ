@@ -28,6 +28,26 @@ The payload currently records:
 
 Note: if you point `--base-url` at an already-running remote server, changing `LLM_MOCK_ENABLED` locally does not affect that server's configuration. To enforce mock behavior on the server side, set `LLM_MOCK_ENABLED=1` in the server process environment when starting it.
 
+## Diff vs baseline (regression gate)
+
+To gate p95/p99 latency regressions, use:
+
+```bash
+python scripts/perf/diff_perf_suite_reports.py \
+  --baseline ci/perf_suite_baseline.v1.json \
+  --current runs/perf/perf_suite.current.json \
+  --policy ci/perf_regression_policy.v1.json \
+  --out runs/perf/perf_suite.diff.json \
+  --out-md runs/perf/perf_suite.diff.md \
+  --strict
+```
+
+- `ci/perf_suite_baseline.v1.json`: checked-in baseline (update occasionally on a known-good run).
+- `ci/perf_regression_policy.v1.json`: default thresholds + per-case overrides.
+- `--strict`: exits non-zero when regressions are detected (CI-friendly).
+
+Nightly CI is defined in `.github/workflows/perf-nightly.yml` and uploads the current run + diff artifacts.
+
 ## Sample inputs
 
 - `corpora/sample_manifest.json`: placeholder corpus manifest for later ingest work.
