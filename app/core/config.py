@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     MILVUS_USER: str = ""
     MILVUS_PASSWORD: str = ""
     MILVUS_COLLECTION_NAME: str = "documents"
+    # Optional "shadow" Milvus collection for embedding blue-green migrations (Gap5).
+    # When configured alongside EMBEDDING_SHADOW_* and enabled, ingestion can dual-write
+    # vectors into both the primary and shadow collections.
+    MILVUS_SHADOW_COLLECTION_NAME: str = ""
     # Guardrail: avoid building extremely long Milvus expr like
     # `document_id in ["...","...",...]` which can exceed expr limits and hurt latency.
     # 0 disables.
@@ -299,6 +303,18 @@ class Settings(BaseSettings):
     EMBEDDING_API_MAX_RETRIES: int = 3
     EMBEDDING_API_RETRY_BACKOFF_SEC: float = 0.5
     EMBEDDING_API_RETRY_JITTER_SEC: float = 0.2
+
+    # Embedding blue-green migration (Gap5) — shadow embedding config (optional).
+    # When enabled, indexing dual-writes vectors into MILVUS_SHADOW_COLLECTION_NAME using
+    # this embedding config (while primary indexing continues to use EMBEDDING_*).
+    EMBEDDING_SHADOW_ENABLED: bool = False
+    EMBEDDING_SHADOW_PROVIDER: str = ""
+    EMBEDDING_SHADOW_MODEL: str = ""
+    EMBEDDING_SHADOW_API_KEY: str = ""
+    EMBEDDING_SHADOW_API_BASE: str = ""
+    # Redis progress tracking for embedding migration scripts (best-effort).
+    EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX: str = "embmig"
+    EMBEDDING_MIGRATION_PROGRESS_TTL_SEC: int = 7 * 24 * 3600
 
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE: int = 50_000_000
@@ -2001,6 +2017,57 @@ class Settings(BaseSettings):
             raise ValueError("EMBEDDING_API_RETRY_BACKOFF_SEC must be >= 0")
         if float(getattr(self, "EMBEDDING_API_RETRY_JITTER_SEC", 0.0) or 0.0) < 0:
             raise ValueError("EMBEDDING_API_RETRY_JITTER_SEC must be >= 0")
+
+        # Gap5: embedding blue-green migration / dual-write config validation.
+        shadow_enabled = bool(getattr(self, "EMBEDDING_SHADOW_ENABLED", False))
+        if shadow_enabled:
+            if str(getattr(self, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() != "milvus":
+                raise ValueError("EMBEDDING_SHADOW_ENABLED requires VECTOR_BACKEND=milvus")
+
+            shadow_model = str(getattr(self, "EMBEDDING_SHADOW_MODEL", "") or "").strip()
+            if not shadow_model:
+                raise ValueError("EMBEDDING_SHADOW_MODEL must be non-empty when EMBEDDING_SHADOW_ENABLED=true")
+            if self.EMBEDDING_SHADOW_MODEL != shadow_model:
+                self.EMBEDDING_SHADOW_MODEL = shadow_model
+
+            shadow_collection = str(getattr(self, "MILVUS_SHADOW_COLLECTION_NAME", "") or "").strip()
+            if not shadow_collection:
+                raise ValueError(
+                    "MILVUS_SHADOW_COLLECTION_NAME must be non-empty when EMBEDDING_SHADOW_ENABLED=true"
+                )
+            if any(ch.isspace() for ch in shadow_collection):
+                raise ValueError("MILVUS_SHADOW_COLLECTION_NAME must not contain whitespace")
+            primary_collection = str(getattr(self, "MILVUS_COLLECTION_NAME", "") or "").strip()
+            if primary_collection and primary_collection == shadow_collection:
+                raise ValueError("MILVUS_SHADOW_COLLECTION_NAME must differ from MILVUS_COLLECTION_NAME")
+            if self.MILVUS_SHADOW_COLLECTION_NAME != shadow_collection:
+                self.MILVUS_SHADOW_COLLECTION_NAME = shadow_collection
+
+            shadow_provider = str(getattr(self, "EMBEDDING_SHADOW_PROVIDER", "") or "").strip()
+            if shadow_provider and any(ch.isspace() for ch in shadow_provider):
+                raise ValueError("EMBEDDING_SHADOW_PROVIDER must not contain whitespace")
+            if self.EMBEDDING_SHADOW_PROVIDER != shadow_provider:
+                self.EMBEDDING_SHADOW_PROVIDER = shadow_provider
+
+            shadow_api_base = str(getattr(self, "EMBEDDING_SHADOW_API_BASE", "") or "").strip()
+            if shadow_api_base and any(ch.isspace() for ch in shadow_api_base):
+                raise ValueError("EMBEDDING_SHADOW_API_BASE must not contain whitespace")
+            if self.EMBEDDING_SHADOW_API_BASE != shadow_api_base:
+                self.EMBEDDING_SHADOW_API_BASE = shadow_api_base
+
+            shadow_api_key = str(getattr(self, "EMBEDDING_SHADOW_API_KEY", "") or "").strip()
+            if self.EMBEDDING_SHADOW_API_KEY != shadow_api_key:
+                self.EMBEDDING_SHADOW_API_KEY = shadow_api_key
+
+        prog_prefix = (getattr(self, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX", "") or "").strip()
+        if not prog_prefix:
+            raise ValueError("EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX must be non-empty")
+        if any(ch.isspace() for ch in prog_prefix):
+            raise ValueError("EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX must not contain whitespace")
+        if self.EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX != prog_prefix:
+            self.EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX = prog_prefix
+        if int(getattr(self, "EMBEDDING_MIGRATION_PROGRESS_TTL_SEC", 0) or 0) < 0:
+            raise ValueError("EMBEDDING_MIGRATION_PROGRESS_TTL_SEC must be >= 0")
 
         if int(getattr(self, "CHAT_RESPONSE_CACHE_TTL_SEC", 0) or 0) < 0:
             raise ValueError("CHAT_RESPONSE_CACHE_TTL_SEC must be >= 0")
