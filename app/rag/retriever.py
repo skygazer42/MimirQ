@@ -2618,74 +2618,104 @@ class HybridRetriever(BaseRetriever):
         elif keyword_strategy is not None:
             keyword_strategy["bm25_index_enabled"] = bool(bm25_index_enabled)
 
-        # Optional: retrieval candidate short TTL cache (Redis, best-effort).
+        # Optional caches (best-effort):
+        # - Retrieval candidate cache: exact match (Redis)
+        # - Semantic cache: ANN match (Milvus) + payload (Redis)
         cache_key: str | None = None
         cached = None
         cache_hit = False
         cache_eligible = bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False))
+
+        semantic_cache_eligible = bool(getattr(settings, "SEMANTIC_CACHE_ENABLED", False))
+        semantic_cache_hit = False
+        semantic_cached = None
+
+        corpus_cache_token: str | None = None
+        tenant_uuid = tenant_id or self.tenant_id
+        account_id0 = (self.account_id or "").strip()
+        dataset_id0 = str(self.dataset_id) if self.dataset_id is not None else None
+        pipeline_key = str(current_embedding_space_hash() or "") or None
+        doc_ids = [str(d) for d in (document_ids or [])]
+
         cache_meta: dict[str, Any] = {
             "enabled": bool(cache_eligible),
             "backend": "redis",
             "hit": False,
+            "semantic": {
+                "enabled": bool(semantic_cache_eligible),
+                "backend": "milvus+redis",
+                "hit": False,
+            },
         }
         if isinstance(self._last_channel_metrics, dict):
             self._last_channel_metrics["cache"] = cache_meta
+
+        # Shared scope checks (fail closed).
+        if tenant_uuid is None:
+            cache_eligible = False
+            semantic_cache_eligible = False
+            cache_meta["skip_reason"] = "missing_tenant"
+            cache_meta["semantic"]["skip_reason"] = "missing_tenant"
+        elif not account_id0:
+            cache_eligible = False
+            semantic_cache_eligible = False
+            cache_meta["skip_reason"] = "missing_account"
+            cache_meta["semantic"]["skip_reason"] = "missing_account"
+        elif not document_ids and self.dataset_id is None:
+            cache_eligible = False
+            semantic_cache_eligible = False
+            cache_meta["skip_reason"] = "missing_scope"
+            cache_meta["semantic"]["skip_reason"] = "missing_scope"
+
         if cache_eligible:
             ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
             if ttl <= 0:
                 cache_eligible = False
                 cache_meta["skip_reason"] = "ttl_zero"
 
-            tenant_uuid = tenant_id or self.tenant_id
-            account_id0 = (self.account_id or "").strip()
-            # Fail closed on ambiguous scope: only cache when we can bind to a strict tenant+account
-            # and a dataset/document scope boundary.
-            if tenant_uuid is None:
-                cache_eligible = False
-                cache_meta["skip_reason"] = "missing_tenant"
-            elif not account_id0:
-                cache_eligible = False
-                cache_meta["skip_reason"] = "missing_account"
-            elif not document_ids and self.dataset_id is None:
-                cache_eligible = False
-                cache_meta["skip_reason"] = "missing_scope"
+        if semantic_cache_eligible:
+            ttl = int(getattr(settings, "SEMANTIC_CACHE_TTL_SEC", 0) or 0)
+            if ttl <= 0:
+                semantic_cache_eligible = False
+                cache_meta["semantic"]["skip_reason"] = "ttl_zero"
 
-        if cache_eligible:
+        if cache_eligible or semantic_cache_eligible:
             try:
-                tenant_uuid = tenant_id or self.tenant_id
-                account_id0 = (self.account_id or "").strip()
-                dataset_id0 = str(self.dataset_id) if self.dataset_id is not None else None
-                pipeline_key = str(current_embedding_space_hash() or "") or None
-                doc_ids = [str(d) for d in (document_ids or [])]
                 corpus_cache_token = self._resolve_candidate_cache_corpus_token(
                     tenant_id=tenant_uuid,
                     document_ids=document_ids,
                 )
-                if not corpus_cache_token:
+            except Exception:
+                corpus_cache_token = None
+
+            if not corpus_cache_token:
+                if cache_eligible:
                     cache_eligible = False
                     cache_meta["skip_reason"] = "missing_corpus_cache_token"
-                else:
-                    cache_key = build_retrieval_candidate_cache_key(
-                        tenant_id=str(tenant_uuid),
-                        account_id=account_id0,
-                        dataset_id=dataset_id0,
-                        pipeline_key=pipeline_key,
-                        corpus_cache_token=corpus_cache_token,
-                        query=query,
-                        top_k=int(top_k or 0),
-                        score_threshold=float(score_threshold or 0.0),
-                        retrieval_mode=retrieval_mode,
-                        metadata_filter=full_metadata_filter if isinstance(full_metadata_filter, dict) else None,
-                        document_ids=doc_ids,
-                    )
+                if semantic_cache_eligible:
+                    semantic_cache_eligible = False
+                    cache_meta["semantic"]["skip_reason"] = "missing_corpus_cache_token"
 
-                    cached = get_cached_retrieval_candidates(cache_key) if cache_key else None
+        if cache_eligible:
+            try:
+                cache_key = build_retrieval_candidate_cache_key(
+                    tenant_id=str(tenant_uuid),
+                    account_id=account_id0,
+                    dataset_id=dataset_id0,
+                    pipeline_key=pipeline_key,
+                    corpus_cache_token=corpus_cache_token,
+                    query=query,
+                    top_k=int(top_k or 0),
+                    score_threshold=float(score_threshold or 0.0),
+                    retrieval_mode=retrieval_mode,
+                    metadata_filter=full_metadata_filter if isinstance(full_metadata_filter, dict) else None,
+                    document_ids=doc_ids,
+                )
+                cached = get_cached_retrieval_candidates(cache_key) if cache_key else None
             except Exception:
                 cached = None
                 cache_eligible = False
                 cache_meta["skip_reason"] = "lookup_error"
-        else:
-            cached = None
 
         if cached:
             cache_hit = True
@@ -2697,6 +2727,40 @@ class HybridRetriever(BaseRetriever):
             except Exception:
                 pass
             return cached[:top_k]
+
+        # Semantic cache (best-effort): lookup only after exact cache miss.
+        if semantic_cache_eligible and corpus_cache_token:
+            try:
+                from app.services.semantic_cache import get_cached_semantic_payload
+
+                semantic_cached, sem_meta = get_cached_semantic_payload(
+                    tenant_id=str(tenant_uuid),
+                    account_id=account_id0,
+                    dataset_id=dataset_id0,
+                    corpus_cache_token=str(corpus_cache_token),
+                    query=query,
+                    top_k=int(top_k or 0),
+                    score_threshold=float(score_threshold or 0.0),
+                    retrieval_mode=retrieval_mode,
+                    metadata_filter=full_metadata_filter if isinstance(full_metadata_filter, dict) else None,
+                    document_ids=doc_ids,
+                )
+                if isinstance(sem_meta, dict):
+                    cache_meta["semantic"].update(sem_meta)
+            except Exception:
+                semantic_cached = None
+                cache_meta["semantic"]["skip_reason"] = "lookup_error"
+
+        if semantic_cached:
+            semantic_cache_hit = True
+            try:
+                if isinstance(self._last_channel_metrics, dict):
+                    self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
+                    self._last_channel_metrics["cache"]["semantic"]["hit"] = True
+                    self._last_channel_metrics["cache"]["semantic"].pop("skip_reason", None)
+            except Exception:
+                pass
+            return semantic_cached[:top_k]
 
         emit_stream_event("event", {"message": "正在召回候选…"}, dedupe_key="retrieval.recall")
 
@@ -3262,6 +3326,31 @@ class HybridRetriever(BaseRetriever):
                 if isinstance(self._last_channel_metrics, dict):
                     self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
                     self._last_channel_metrics["cache"]["store_ok"] = stored
+            except Exception:
+                pass
+        if semantic_cache_eligible and (not semantic_cache_hit) and corpus_cache_token and out:
+            try:
+                from app.services.semantic_cache import set_cached_semantic_payload
+
+                stored = bool(
+                    set_cached_semantic_payload(
+                        tenant_id=str(tenant_uuid),
+                        account_id=account_id0,
+                        dataset_id=dataset_id0,
+                        corpus_cache_token=str(corpus_cache_token),
+                        query=query,
+                        top_k=int(top_k or 0),
+                        score_threshold=float(score_threshold or 0.0),
+                        retrieval_mode=retrieval_mode,
+                        metadata_filter=full_metadata_filter if isinstance(full_metadata_filter, dict) else None,
+                        document_ids=doc_ids,
+                        payload=out,
+                    )
+                )
+                if isinstance(self._last_channel_metrics, dict):
+                    self._last_channel_metrics.setdefault("cache", {})  # type: ignore[call-arg]
+                    self._last_channel_metrics["cache"].setdefault("semantic", {})  # type: ignore[call-arg]
+                    self._last_channel_metrics["cache"]["semantic"]["store_ok"] = stored
             except Exception:
                 pass
 
