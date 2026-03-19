@@ -9,6 +9,7 @@ Currently implemented:
 - Index audit summary (dataset-scoped, bounded)
 - Evidence reference drift audit summary (dataset-scoped, bounded)
 - Access review summary (tenant-scoped, bounded)
+- Embedding drift snapshot summary (tenant-scoped, bounded)
 
 Examples:
   # Dry-run (no audit write) for default tenant
@@ -35,6 +36,7 @@ from app.models.tenant import Tenant
 from app.services.periodic_audit_jobs import (
     run_daily_access_review_summary,
     run_daily_evidence_drift_audit_report,
+    run_daily_embedding_drift_report,
     run_daily_index_audit_report,
 )
 
@@ -51,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--index-audit", action="store_true", help="Run dataset index-audit report")
     p.add_argument("--evidence-drift-audit", action="store_true", help="Run evidence reference drift-audit report")
     p.add_argument("--access-review", action="store_true", help="Run daily access review summary (tenant-scoped)")
+    p.add_argument("--embedding-drift", action="store_true", help="Run embedding drift snapshot report (tenant-scoped)")
 
     scope = p.add_mutually_exclusive_group()
     scope.add_argument("--tenant-id", type=_parse_uuid, default=None, help="Tenant UUID to operate on")
@@ -73,12 +76,24 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--details-limit", type=int, default=0, help="Max drifted references returned when include-details (default: 0)")
     p.add_argument("--slice-top-n", type=int, default=20, help="Max buckets per slice (default: 20)")
 
+    # Embedding drift bounds.
+    p.add_argument("--drift-sample-n", type=int, default=200, help="Max chunks sampled for embedding drift (default: 200)")
+    p.add_argument("--drift-threshold", type=float, default=0.05, help="Cosine distance threshold for embedding drift (default: 0.05)")
+
     p.add_argument("--force", action="store_true", help="Write audit even if today's report already exists.")
 
     args = p.parse_args(argv)
 
-    if (not bool(args.index_audit)) and (not bool(args.evidence_drift_audit)) and (not bool(args.access_review)):
-        print("No job selected. Use --index-audit and/or --evidence-drift-audit and/or --access-review.", file=sys.stderr)
+    if (
+        (not bool(args.index_audit))
+        and (not bool(args.evidence_drift_audit))
+        and (not bool(args.access_review))
+        and (not bool(args.embedding_drift))
+    ):
+        print(
+            "No job selected. Use --index-audit and/or --evidence-drift-audit and/or --access-review and/or --embedding-drift.",
+            file=sys.stderr,
+        )
         return 2
 
     execute = bool(args.execute)
@@ -150,6 +165,21 @@ def main(argv: list[str] | None = None) -> int:
                     now=ran_at,
                 )
                 res["job"] = "evidence_drift_audit"
+                results.append(res)
+                ok = ok and bool(res.get("ok") is True)
+
+            if bool(args.embedding_drift):
+                res = run_daily_embedding_drift_report(
+                    db,
+                    tenant_id=tid,
+                    execute=bool(execute),
+                    force=bool(args.force),
+                    sample_n=int(args.drift_sample_n or 0),
+                    drift_threshold=float(args.drift_threshold),
+                    actor_id="system:periodic_audit",
+                    now=ran_at,
+                )
+                res["job"] = "embedding_drift"
                 results.append(res)
                 ok = ok and bool(res.get("ok") is True)
         finally:

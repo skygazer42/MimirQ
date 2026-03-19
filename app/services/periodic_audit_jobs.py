@@ -32,6 +32,7 @@ from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.tenant_group import TenantGroup, TenantGroupMember
 from app.services.audit_log_service import audit_log_event
+from app.services.embedding_drift_monitor import run_embedding_drift_monitor
 from app.services.evidence_drift_audit_service import audit_reference_sources_drift
 from app.services.index_audit_service import run_dataset_index_audit_internal
 
@@ -337,6 +338,109 @@ def run_daily_index_audit_report(
             actor_id=actor_id,
             action="observability.index_audit.daily",
             resource_type="index_audit_report",
+            resource_id=report_date,
+            details={k: v for k, v in summary.items() if k not in {"ok"}},
+        )
+        db.commit()
+        summary["dry_run"] = False
+        return summary
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        summary["ok"] = False
+        summary["dry_run"] = False
+        summary["audit_write_error"] = True
+        return summary
+
+
+def run_daily_embedding_drift_report(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    execute: bool,
+    force: bool = False,
+    dataset_id: UUID | None = None,
+    document_id: UUID | None = None,
+    sample_n: int = 200,
+    drift_threshold: float = 0.05,
+    actor_id: str | None = "system:periodic_audit",
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Generate a bounded embedding drift snapshot summary for one tenant.
+
+    If execute=True, writes exactly one audit log entry per tenant per day (unless --force).
+    """
+    now0 = now or datetime.now(UTC)
+    report_date = now0.date().isoformat()
+
+    if bool(execute) and (not bool(force)) and _audit_already_written(
+        db,
+        tenant_id=tenant_id,
+        action="observability.embedding_drift.daily",
+        resource_type="embedding_drift_report",
+        report_date=report_date,
+    ):
+        return {
+            "tenant_id": str(tenant_id),
+            "report_date": report_date,
+            "ran_at": _dt_to_json(now0),
+            "ok": True,
+            "skipped": True,
+            "skip_reason": "already_written",
+        }
+
+    try:
+        snap = run_embedding_drift_monitor(
+            db=db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            sample_n=int(sample_n or 0),
+            drift_threshold=float(drift_threshold),
+        )
+    except Exception:  # noqa: BLE001
+        snap = {
+            "schema": "mimirq.embedding_drift_snapshot.v1",
+            "ok": False,
+            "error": "snapshot_failed",
+        }
+
+    summary: dict[str, Any] = {
+        "tenant_id": str(tenant_id),
+        "report_date": report_date,
+        "ran_at": _dt_to_json(now0),
+        "ok": bool(snap.get("ok") is True),
+        "skipped": False,
+        "schema": str(snap.get("schema") or "mimirq.embedding_drift_snapshot.v1"),
+        "vector_backend": snap.get("vector_backend"),
+        "current_embedding_space_hash": snap.get("current_embedding_space_hash"),
+        "sample_n_requested": snap.get("sample_n_requested"),
+        "sample_n_used": snap.get("sample_n_used"),
+        "sampled_items": snap.get("sampled_items"),
+        "threshold": snap.get("threshold"),
+        "missing_vectors": snap.get("missing_vectors"),
+        "dim_mismatch": snap.get("dim_mismatch"),
+        "drift": snap.get("drift"),
+        "above_threshold": snap.get("above_threshold"),
+        "stored_embedding_space_hash_counts": snap.get("stored_embedding_space_hash_counts"),
+        "error": snap.get("error"),
+        "scope": snap.get("scope"),
+    }
+
+    if not bool(execute):
+        summary["dry_run"] = True
+        return summary
+
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            action="observability.embedding_drift.daily",
+            resource_type="embedding_drift_report",
             resource_id=report_date,
             details={k: v for k, v in summary.items() if k not in {"ok"}},
         )
@@ -669,4 +773,5 @@ __all__ = [
     "run_daily_evidence_drift_audit_report",
     "run_daily_access_review_summary",
     "run_daily_index_audit_report",
+    "run_daily_embedding_drift_report",
 ]
