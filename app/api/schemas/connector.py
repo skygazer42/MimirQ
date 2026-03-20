@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from typing import Any, Literal
+from urllib.parse import urlparse
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -353,8 +354,10 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
 
         if not self.base_url:
             raise ValueError("base_url is required")
-        if not (self.base_url.startswith("http://") or self.base_url.startswith("https://")):
-            raise ValueError("base_url must start with http:// or https://")
+        parsed = urlparse(self.base_url)
+        scheme = (parsed.scheme or "").lower().strip()
+        if scheme not in {"http", "https"} or not (parsed.netloc or "").strip():
+            raise ValueError("base_url must be an absolute URL with scheme http or https")
         if not self.space_key:
             raise ValueError("space_key is required")
         return self
@@ -431,8 +434,10 @@ class JiraProjectConnectorConfig(BaseModel):
 
         if not self.base_url:
             raise ValueError("base_url is required")
-        if not (self.base_url.startswith("http://") or self.base_url.startswith("https://")):
-            raise ValueError("base_url must start with http:// or https://")
+        parsed = urlparse(self.base_url)
+        scheme = (parsed.scheme or "").lower().strip()
+        if scheme not in {"http", "https"} or not (parsed.netloc or "").strip():
+            raise ValueError("base_url must be an absolute URL with scheme http or https")
         if not self.project_key:
             raise ValueError("project_key is required")
         return self

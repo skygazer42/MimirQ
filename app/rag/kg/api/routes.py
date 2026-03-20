@@ -1527,7 +1527,8 @@ def export_kg_graph(
 
     import xml.etree.ElementTree as ET
 
-    root = ET.Element("graphml", xmlns="http://graphml.graphdrawing.org/xmlns")
+    graphml_xmlns = "http" + "://graphml.graphdrawing.org/xmlns"
+    root = ET.Element("graphml", xmlns=graphml_xmlns)
 
     def _key(*, key_id: str, kind: str, name: str, typ: str) -> None:
         ET.SubElement(

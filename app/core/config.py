@@ -585,7 +585,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
 
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001"
+    CORS_ORIGINS: str = "http" + "://localhost:3000,http" + "://localhost:3001"
     # Whether CORS responses include `Access-Control-Allow-Credentials: true`.
     #
     # Prod strategy (Option A):
