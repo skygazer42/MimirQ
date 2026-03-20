@@ -37,7 +37,7 @@ _BOM_RE = re.compile(r"^\ufeff+")
 _NUMERIC_ONLY_RE = re.compile(r"^\s*[-+]?(?:\d+(?:\.\d+)?|\.\d+)\s*$")
 _MD_TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{3,}:?\s*$")
 _SQL_TABLE_REF_RE = re.compile(
-    r'\b(?:from|join)\s+(?:"([^"]+)"|([A-Za-z_]\w*))',
+    r'\b(?:from|join)\s+(?:"([^"]+)"|([A-Z_]\w*))',
     flags=re.IGNORECASE | re.ASCII,
 )
 _SQL_DISALLOWED_JOIN_RE = re.compile(r"(?i)\b(?:cross|natural)\s+join\b")
