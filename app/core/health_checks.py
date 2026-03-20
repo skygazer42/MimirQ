@@ -15,14 +15,14 @@ from typing import Any, Literal
 HealthMode = Literal["ready", "health"]
 
 
-def check_database(SessionLocal) -> tuple[dict[str, Any], bool]:  # noqa: N803
+def check_database(session_local) -> tuple[dict[str, Any], bool]:
     """Return (db_status, ok)."""
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
 
     ok = True
     db_status: dict[str, Any] = {"status": "disconnected"}
-    db = SessionLocal()
+    db = session_local()
     try:
         db.execute(text("SELECT 1"))
         db_status["status"] = "connected"

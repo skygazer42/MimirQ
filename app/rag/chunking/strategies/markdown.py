@@ -380,7 +380,7 @@ class MarkdownAwareChunker(BaseChunker):
 
         # Protect indented code blocks (4 spaces)
         protected = re.sub(
-            r'(?m)^(    .+\n)+',
+            r'(?m)^(?: {4}.+\n)+',
             replace_block,
             protected,
         )

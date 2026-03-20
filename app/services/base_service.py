@@ -36,7 +36,7 @@ class BaseService(Generic[ModelType]):
                 return db.query(cls.model).filter(cls.model.dataset_id == dataset_id).all()
     """
 
-    model: type[ModelType] = None  # Subclasses must set.
+    model: type[ModelType] | None = None  # Subclasses must set.
 
     @classmethod
     def get_by_id(
