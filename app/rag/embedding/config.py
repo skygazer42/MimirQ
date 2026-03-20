@@ -10,6 +10,12 @@ DEFAULT_BGE_M3_NAME = "BAAI/bge-m3"
 SILICONFLOW_EMBEDDINGS_URL = "https://api.siliconflow.cn/v1/embeddings"
 OLLAMA_EMBEDDINGS_URL = "http://localhost:11434/api/embed"
 
+# Environment variable names (not secrets themselves).
+SILICONFLOW_ENV_VAR = "SILICONFLOW_API_KEY"  # NOSONAR
+DASHSCOPE_ENV_VAR = "DASHSCOPE_API_KEY"  # NOSONAR
+OPENAI_ENV_VAR = "OPENAI_API_KEY"  # NOSONAR
+MODELSCOPE_ENV_VAR = "MODELSCOPE_ACCESS_TOKEN"  # NOSONAR
+
 
 class EmbedModelInfo(BaseModel):
     """Embedding model configuration.
@@ -42,21 +48,21 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         name=DEFAULT_BGE_M3_NAME,
         dimension=1024,
         base_url=SILICONFLOW_EMBEDDINGS_URL,
-        api_key="SILICONFLOW_API_KEY",
+        api_key=SILICONFLOW_ENV_VAR,
     ),
     "siliconflow/Pro/BAAI/bge-m3": EmbedModelInfo(
         model_id="siliconflow/Pro/BAAI/bge-m3",
         name="Pro/BAAI/bge-m3",
         dimension=1024,
         base_url=SILICONFLOW_EMBEDDINGS_URL,
-        api_key="SILICONFLOW_API_KEY",
+        api_key=SILICONFLOW_ENV_VAR,
     ),
     "siliconflow/Qwen/Qwen3-Embedding-0.6B": EmbedModelInfo(
         model_id="siliconflow/Qwen/Qwen3-Embedding-0.6B",
         name="Qwen/Qwen3-Embedding-0.6B",
         dimension=1024,
         base_url=SILICONFLOW_EMBEDDINGS_URL,
-        api_key="SILICONFLOW_API_KEY",
+        api_key=SILICONFLOW_ENV_VAR,
     ),
     # Ollama - Local embedding models
     "ollama/nomic-embed-text": EmbedModelInfo(
@@ -101,7 +107,7 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         name="text-embedding-v4",
         dimension=1024,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
-        api_key="DASHSCOPE_API_KEY",
+        api_key=DASHSCOPE_ENV_VAR,
     ),
     # OpenAI
     "openai/text-embedding-3-small": EmbedModelInfo(
@@ -109,14 +115,14 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         name="text-embedding-3-small",
         dimension=1536,
         base_url="https://api.openai.com/v1/embeddings",
-        api_key="OPENAI_API_KEY",
+        api_key=OPENAI_ENV_VAR,
     ),
     "openai/text-embedding-3-large": EmbedModelInfo(
         model_id="openai/text-embedding-3-large",
         name="text-embedding-3-large",
         dimension=3072,
         base_url="https://api.openai.com/v1/embeddings",
-        api_key="OPENAI_API_KEY",
+        api_key=OPENAI_ENV_VAR,
     ),
     # ModelScope (Alibaba)
     "modelscope/BAAI/bge-m3": EmbedModelInfo(
@@ -124,7 +130,7 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         name=DEFAULT_BGE_M3_NAME,
         dimension=1024,
         base_url="https://api-inference.modelscope.cn/v1/embeddings",
-        api_key="MODELSCOPE_ACCESS_TOKEN",
+        api_key=MODELSCOPE_ENV_VAR,
     ),
     # Local sentence-transformers models
     "local/BAAI/bge-m3": EmbedModelInfo(

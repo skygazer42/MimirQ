@@ -115,7 +115,7 @@ async def create_prompt_template(
     return template
 
 
-@router.get("", response_model=PromptTemplateList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_prompt_templates(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,

@@ -69,7 +69,13 @@ def _normalize_capsule_id(value: str) -> str:
 
 def _capsule_path(capsule_id: str) -> Path:
     cid = _normalize_capsule_id(capsule_id)
-    return _store_dir() / f"{cid}.json"
+    root = _store_dir()
+    path = (root / f"{cid}.json").resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid_capsule_id") from exc
+    return path
 
 
 @router.post("/capsules", response_model=EvidenceCapsulePersistResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

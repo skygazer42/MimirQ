@@ -33,7 +33,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.post("/register", response_model=AuthResponse, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/register", status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
     user = UserService.create_user(
         db,
@@ -52,7 +52,7 @@ def register_user(payload: RegisterRequest, db: Annotated[Session, Depends(get_d
     )
 
 
-@router.post("/login", response_model=AuthResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/login", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def login_user(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -> AuthResponse:
     user = UserService.authenticate(db, payload.identifier, payload.password)
     UserService.mark_login(db, user)
@@ -67,7 +67,7 @@ def login_user(payload: LoginRequest, db: Annotated[Session, Depends(get_db)]) -
     )
 
 
-@router.get("/me", response_model=UserPublic, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/me", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_me(
     *,
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -79,7 +79,7 @@ def get_me(
     return user
 
 
-@router.post("/saml/exchange", response_model=SamlExchangeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/saml/exchange", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def saml_exchange(payload: SamlExchangeRequest, db: Annotated[Session, Depends(get_db)]) -> SamlExchangeResponse:
     return exchange_saml_response(
         db=db,

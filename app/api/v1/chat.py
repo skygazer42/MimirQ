@@ -2780,12 +2780,18 @@ async def list_conversations(
     total = query.count()
 
     # Fill the page with accessible conversations (avoid returning <limit when some are filtered).
+    try:
+        limit_eff = int(limit or 0)
+    except Exception:
+        limit_eff = 20
+    limit_eff = max(1, min(limit_eff, 200))
+
     ordered = query.order_by(Conversation.updated_at.desc())
-    batch_size = max(50, int(limit))
+    batch_size = max(50, limit_eff)
     raw_offset = int(skip)
     conversations: list[Conversation] = []
 
-    while len(conversations) < limit:
+    while len(conversations) < limit_eff:
         batch = ordered.offset(raw_offset).limit(batch_size).all()
         if not batch:
             break
@@ -2810,7 +2816,7 @@ async def list_conversations(
             )
 
         for conv in batch:
-            if len(conversations) >= limit:
+            if len(conversations) >= limit_eff:
                 break
             doc_ids = doc_ids_by_conversation_id.get(conv.id) or []
             if not doc_ids:
