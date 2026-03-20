@@ -343,18 +343,17 @@ export function KnowledgeWebCrawlDialog({
               />
             </div>
             <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">Constraints</div>
-              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={sameHostOnly}
-                  onChange={(e) => setSameHostOnly(e.target.checked)}
-                  className="accent-primary h-4 w-4"
-                />
-                Same host only
-              </label>
-            </div>
-          </div>
+	              <div className="text-sm font-medium text-foreground/80">Constraints</div>
+	              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+	                <input
+	                  type="checkbox"
+	                  checked={sameHostOnly}
+	                  onChange={(e) => setSameHostOnly(e.target.checked)}
+	                  className="accent-primary h-4 w-4"
+	                /><span>Same host only</span>
+	              </label>
+	            </div>
+	          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -382,35 +381,32 @@ export function KnowledgeWebCrawlDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Discovery options</div>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={useSitemaps}
-                    onChange={(e) => setUseSitemaps(e.target.checked)}
-                    className="accent-primary h-4 w-4"
-                  />
-                  Use sitemap.xml / robots Sitemap hints (faster)
-                </label>
-                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={respectRobots}
-                    onChange={(e) => setRespectRobots(e.target.checked)}
-                    className="accent-primary h-4 w-4"
-                  />
-                  Respect robots.txt (best-effort)
-                </label>
-                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={dedupCanonical}
-                    onChange={(e) => setDedupCanonical(e.target.checked)}
-                    className="accent-primary h-4 w-4"
-                  />
-                  Dedup by canonical link (best-effort)
-                </label>
-              </div>
+	              <div className="space-y-2">
+	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+	                  <input
+	                    type="checkbox"
+	                    checked={useSitemaps}
+	                    onChange={(e) => setUseSitemaps(e.target.checked)}
+	                    className="accent-primary h-4 w-4"
+	                  /><span>Use sitemap.xml / robots Sitemap hints (faster)</span>
+	                </label>
+	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+	                  <input
+	                    type="checkbox"
+	                    checked={respectRobots}
+	                    onChange={(e) => setRespectRobots(e.target.checked)}
+	                    className="accent-primary h-4 w-4"
+	                  /><span>Respect robots.txt (best-effort)</span>
+	                </label>
+	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+	                  <input
+	                    type="checkbox"
+	                    checked={dedupCanonical}
+	                    onChange={(e) => setDedupCanonical(e.target.checked)}
+	                    className="accent-primary h-4 w-4"
+	                  /><span>Dedup by canonical link (best-effort)</span>
+	                </label>
+	              </div>
               <div className="text-xs text-muted-foreground">
                 Tip: sitemap mode avoids fetching every page just to discover links; the connector still ingests each URL.
               </div>

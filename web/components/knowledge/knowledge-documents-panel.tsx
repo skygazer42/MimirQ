@@ -295,10 +295,7 @@ export function KnowledgeDocumentsPanel({
         else if (documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets) {
                 return (<div className="py-10">
           <EmptyState icon={Database} title="该数据集暂无文档" description={<span className="text-muted-foreground">
-                当前范围为{' '}
-                <span className="font-mono tabular-nums">
-                  {selectedDatasetLabel || selectedDatasetId}
-                </span>
+                当前范围为 <span className="font-mono tabular-nums">{selectedDatasetLabel || selectedDatasetId}</span>
                 。可切换到全部数据集查看其他文档，或通过顶部“导入/新增”上传/导入。
               </span>} className="bg-transparent shadow-none">
             <Button type="button" variant="outline" className="rounded-xl" onClick={onSwitchToAllDatasets}>
@@ -417,34 +414,34 @@ export function KnowledgeDocumentsPanel({
               </EmptyState>
             </div>);
                             }
-                            else if (viewMode === 'grid') {
-                                    return (<div role="list" aria-label="文档列表" style={{
-                                            height: `${docsGridVirtualizer.getTotalSize()}px`,
-                                            width: '100%',
-                                            position: 'relative',
-                                        }}>
-              {docsGridVirtualRows.map((virtualRow: any) => {
+	                            else if (viewMode === 'grid') {
+	                                    return (<div aria-label="文档列表" style={{
+	                                            height: `${docsGridVirtualizer.getTotalSize()}px`,
+	                                            width: '100%',
+	                                            position: 'relative',
+	                                        }}>
+	              {docsGridVirtualRows.map((virtualRow: any) => {
                                             const cols = Math.max(1, docGridColumns);
                                             const startIndex = virtualRow.index * cols;
                                             const rowDocs = filteredDocuments.slice(startIndex, startIndex + cols);
                                             const isLastRow = virtualRow.index === docGridRowCount - 1;
-                                            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={docsGridVirtualizer.measureElement} role="presentation" style={{
-                                                    position: 'absolute',
-                                                    top: 0,
-                                                    left: 0,
-                                                    width: '100%',
-                                                    transform: `translateY(${virtualRow.start}px)`,
-                                                }} className={isLastRow ? undefined : 'pb-5'}>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-                      {rowDocs.map((doc) => {
-                                                    const badge = getStatusBadge(doc.status);
-                                                    return (<div key={doc.id} role="listitem">
-                            <DocumentCard doc={doc} statusBadge={badge} statusBarClassName={statusBarClassName(badge.status)} onRequestDelete={requestSingleDelete} copyText={copyText} selected={selectedSet.has(doc.id)} onToggleSelect={() => toggleDocSelection(doc.id)}/>
-                          </div>);
-                                                })}
-                    </div>
-                  </div>);
-                                        })}
+	                                            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={docsGridVirtualizer.measureElement} style={{
+	                                                    position: 'absolute',
+	                                                    top: 0,
+	                                                    left: 0,
+	                                                    width: '100%',
+	                                                    transform: `translateY(${virtualRow.start}px)`,
+	                                                }} className={isLastRow ? undefined : 'pb-5'}>
+	                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+	                      {rowDocs.map((doc) => {
+	                                                    const badge = getStatusBadge(doc.status);
+	                                                    return (<div key={doc.id}>
+	                            <DocumentCard doc={doc} statusBadge={badge} statusBarClassName={statusBarClassName(badge.status)} onRequestDelete={requestSingleDelete} copyText={copyText} selected={selectedSet.has(doc.id)} onToggleSelect={() => toggleDocSelection(doc.id)}/>
+	                          </div>);
+	                                                })}
+	                    </div>
+	                  </div>);
+	                                        })}
             </div>);
                                 }
                                 else {
@@ -466,9 +463,9 @@ export function KnowledgeDocumentsPanel({
 	                  </tr>
 	                </thead>
 	                <tbody className="divide-y divide-border/60">
-	                  {docsTablePaddingTop > 0 ? (<tr aria-hidden="true">
-	                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingTop}px` }}/>
-	                    </tr>) : null}
+		                  {docsTablePaddingTop > 0 ? (<tr>
+		                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingTop}px` }}/>
+		                    </tr>) : null}
 
                   {docsTableVirtualRows.map((virtualRow: any) => {
                                             const doc = filteredDocuments[virtualRow.index];
@@ -557,9 +554,9 @@ export function KnowledgeDocumentsPanel({
                       </tr>);
                                         })}
 
-	                  {docsTablePaddingBottom > 0 ? (<tr aria-hidden="true">
-	                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }}/>
-	                    </tr>) : null}
+		                  {docsTablePaddingBottom > 0 ? (<tr>
+		                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingBottom}px` }}/>
+		                    </tr>) : null}
 	                </tbody>
 	              </table>
 	            </Panel>);

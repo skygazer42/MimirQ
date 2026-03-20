@@ -97,23 +97,26 @@ export function PdfViewer({
   useEffect(() => {
     // Important: measure the actual content width (max-w-4xl) instead of the scroll container width,
     // otherwise the computed scale will not match the rendered canvas and overlays will drift.
-    const container = contentRef.current
-    if (!container || !pdfDoc) return
+	    const container = contentRef.current
+	    if (!container || !pdfDoc) return
 
-    let raf = 0
-    const updateScale = () => {
-      if (!container || !pdfDoc) return
-      // Prefer the first page container width (clientWidth excludes borders),
-      // so the scale matches the canvas CSS size exactly.
-      const firstPage = pageRefs.current.get(0)
-      const width = (firstPage?.clientWidth || container.clientWidth) ?? 0
-      if (!width) return
-      pdfDoc.getPage(1).then((page) => {
-        const viewport = page.getViewport({ scale: 1 })
-        const nextScale = width / viewport.width
-        setScale((prev) => (Math.abs(prev - nextScale) > 0.01 ? nextScale : prev))
-      })
-    }
+	    let raf = 0
+	    const updateScale = async () => {
+	      if (!container || !pdfDoc) return
+	      // Prefer the first page container width (clientWidth excludes borders),
+	      // so the scale matches the canvas CSS size exactly.
+	      const firstPage = pageRefs.current.get(0)
+	      const width = (firstPage?.clientWidth || container.clientWidth) ?? 0
+	      if (!width) return
+	      try {
+	        const page = await pdfDoc.getPage(1)
+	        const viewport = page.getViewport({ scale: 1 })
+	        const nextScale = width / viewport.width
+	        setScale((prev) => (Math.abs(prev - nextScale) > 0.01 ? nextScale : prev))
+	      } catch {
+	        // ignore
+	      }
+	    }
 
     const handleResize = () => {
       if (raf) cancelAnimationFrame(raf)

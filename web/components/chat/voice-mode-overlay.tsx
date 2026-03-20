@@ -165,9 +165,11 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
         }
     }
 
-    if (!isOpen) return null
+	    if (!isOpen) {
+	        return null
+	    }
 
-	    return (
+		    return (
 	        <AnimatePresence>
 	            <motion.div
 	                initial={reduceMotion ? false : { opacity: 0 }}
@@ -175,7 +177,7 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
 	                exit={reduceMotion ? undefined : { opacity: 0 }}
 	                className="fixed inset-0 z-100 bg-background text-foreground flex flex-col items-center justify-center"
 	            >
-	                <canvas ref={canvasRef} className="absolute inset-0" aria-hidden="true" />
+		                <canvas ref={canvasRef} className="absolute inset-0" role="presentation" />
 
 	                <div className="relative z-10 flex flex-col items-center gap-8">
 	                    <div className="h-20 flex items-center justify-center">

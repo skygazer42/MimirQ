@@ -756,17 +756,17 @@ export default function KnowledgePage() {
 	              }}
 	              scopeSummary={
 	                <div className="flex flex-wrap items-center gap-2">
-	                  <span
-	                    className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground"
-	                    title={selectedDatasetId ? `dataset ${selectedDatasetId}` : 'all datasets'}
-	                  >
-	                    范围:
-	                    <span className="font-medium text-foreground ml-1">
-	                      {selectedDatasetId
-	                        ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
-	                        : '全部数据集'}
-	                    </span>
-	                  </span>
+		                  <span
+		                    className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground"
+		                    title={selectedDatasetId ? `dataset ${selectedDatasetId}` : 'all datasets'}
+		                  >
+		                    范围:{' '}
+		                    <span className="font-medium text-foreground ml-1">
+		                      {selectedDatasetId
+		                        ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
+		                        : '全部数据集'}
+		                    </span>
+		                  </span>
 
 	                  {selectedDatasetId && folderPath ? (
 	                    <span
@@ -777,13 +777,13 @@ export default function KnowledgePage() {
 	                    </span>
 	                  ) : null}
 
-	                  {statusFilter === 'all' ? null : (
-	                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
-	                      状态:
-	                      <span className="ml-1 font-medium text-foreground">
-	                        {(() => {
-    if (statusFilter === 'completed') {
-        return '已就绪';
+		                  {statusFilter === 'all' ? null : (
+		                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
+		                      状态:{' '}
+		                      <span className="ml-1 font-medium text-foreground">
+		                        {(() => {
+	    if (statusFilter === 'completed') {
+	        return '已就绪';
     }
     else if (statusFilter === 'processing') {
             return '处理中';
@@ -802,13 +802,13 @@ export default function KnowledgePage() {
                     </span>
 	                  )}
 
-	                  {lifecycleFilter === 'active' ? null : (
-	                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
-	                      生命周期:
-	                      <span className="ml-1 font-medium text-foreground">
-	                        {(() => {
-    if (lifecycleFilter === 'archived') {
-        return '已归档';
+		                  {lifecycleFilter === 'active' ? null : (
+		                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
+		                      生命周期:{' '}
+		                      <span className="ml-1 font-medium text-foreground">
+		                        {(() => {
+	    if (lifecycleFilter === 'archived') {
+	        return '已归档';
     }
     else if (lifecycleFilter === 'disabled') {
             return '已禁用';

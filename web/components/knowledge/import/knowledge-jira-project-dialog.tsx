@@ -336,23 +336,12 @@ export function KnowledgeJiraProjectDialog({
           <div className="rounded-xl border border-border/60 bg-muted/20 px-4 py-4 space-y-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/90">Source ACL（高级）</div>
-              <div className="text-xs text-muted-foreground">
-                启用后，Jira connector 会尝试继承 issue 的安全级别、角色和 comment 可见性，并按
-                {' '}
-                <code>tenant_groups.external_id</code>
-                {' '}
-                进行组匹配，例如
-                {' '}
-                <code>jira:policy:security-level/10001</code>
-                、
-                {' '}
-                <code>jira:role:developers</code>
-                {' '}
-                或
-                {' '}
-                <code>jira:group:jira-software-users</code>
-                。
-              </div>
+	              <div className="text-xs text-muted-foreground">
+	                启用后，Jira connector 会尝试继承 issue 的安全级别、角色和 comment 可见性，并按{' '}
+	                <code>tenant_groups.external_id</code> 进行组匹配，例如{' '}
+	                <code>jira:policy:security-level/10001</code>、<code>jira:role:developers</code> 或{' '}
+	                <code>jira:group:jira-software-users</code>。
+	              </div>
               <div className="text-xs text-muted-foreground">
                 为避免误开放访问，当前 UI 只暴露可解释的继承模式和回退策略；更危险的手工映射规则仍保持隐藏。
               </div>

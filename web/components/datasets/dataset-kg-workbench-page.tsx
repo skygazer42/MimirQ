@@ -108,7 +108,6 @@ export default function DatasetKGWorkbenchPage() {
   const [searchResults, setSearchResults] = useState<KGGraphNode[]>([])
 
   const scopedDocIds = useMemo(() => Array.from(selectedDocIds), [selectedDocIds])
-  const scopedDocIdsKey = useMemo(() => scopedDocIds.slice().sort().join(','), [scopedDocIds])
   const effectivePipelineHash = useMemo(() => pipelineHash.trim() || undefined, [pipelineHash])
 
   const steps = useMemo(
@@ -132,18 +131,18 @@ export default function DatasetKGWorkbenchPage() {
     if (!datasetId) return
     setDocsLoading(true)
     try {
-      const q = (query ?? '').trim()
-      const [ds, list] = await Promise.all([
-        datasetApi.get(datasetId),
-        documentApi.list({
-          skip: 0,
-          limit: 100,
-          dataset_id: datasetId,
-          q: q ? q : null,
-          order_by: 'created_at',
-          order_dir: 'desc',
-        }),
-      ])
+	      const q = (query ?? '').trim()
+	      const [ds, list] = await Promise.all([
+	        datasetApi.get(datasetId),
+	        documentApi.list({
+	          skip: 0,
+	          limit: 100,
+	          dataset_id: datasetId,
+	          q: q || null,
+	          order_by: 'created_at',
+	          order_dir: 'desc',
+	        }),
+	      ])
       setDataset(ds)
       setDocs(Array.isArray(list.items) ? list.items : [])
       setDocsTotal(Number(list.total || 0))
@@ -174,7 +173,7 @@ export default function DatasetKGWorkbenchPage() {
     setSelectedDocIds((prev) => {
       const next = new Set(prev)
       docs.forEach((d) => {
-        const id = String((d as any).id || '')
+        const id = String(d.id || '')
         if (id) next.add(id)
       })
       return next
@@ -312,14 +311,15 @@ export default function DatasetKGWorkbenchPage() {
     scopedDocIds,
   ])
 
-  const scopedGraphUrl = useMemo(() => {
-    const maxDocs = limitPositiveInt(graphMaxDocs, 50, { min: 1, max: 200 })
-    const docIds = scopedDocIds.slice(0, maxDocs)
-    const qs = new URLSearchParams()
-    if (docIds.length) qs.set('document_ids', docIds.join(','))
-    if (effectivePipelineHash) qs.set('pipeline_hash', effectivePipelineHash)
-    return `/graph${qs.toString() ? `?${qs.toString()}` : ''}`
-  }, [effectivePipelineHash, graphMaxDocs, scopedDocIds])
+	  const scopedGraphUrl = useMemo(() => {
+	    const maxDocs = limitPositiveInt(graphMaxDocs, 50, { min: 1, max: 200 })
+	    const docIds = scopedDocIds.slice(0, maxDocs)
+	    const qs = new URLSearchParams()
+	    if (docIds.length) qs.set('document_ids', docIds.join(','))
+	    if (effectivePipelineHash) qs.set('pipeline_hash', effectivePipelineHash)
+	    const query = qs.toString()
+	    return query ? `/graph?${query}` : '/graph'
+	  }, [effectivePipelineHash, graphMaxDocs, scopedDocIds])
 
   const runQuickSearch = useCallback(async () => {
     const q = searchQuery.trim()
@@ -361,14 +361,14 @@ export default function DatasetKGWorkbenchPage() {
     </span>
   )
 
-  return (
-    <AppFrame>
-      <PageScaffold
-        title={`KG Workbench${dataset?.name ? ` · ${dataset.name}` : ''}`}
-        badge="Dataset KG"
-        icon={Network}
-        iconColor="text-primary"
-        description={headerDescription}
+	  return (
+	    <AppFrame>
+	      <PageScaffold
+	        title={dataset?.name ? `KG Workbench · ${dataset.name}` : 'KG Workbench'}
+	        badge="Dataset KG"
+	        icon={Network}
+	        iconColor="text-primary"
+	        description={headerDescription}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" className="gap-2" onClick={() => router.push('/datasets')}>
@@ -463,21 +463,23 @@ export default function DatasetKGWorkbenchPage() {
                   </div>
                 </div>
 
-                <div className="max-h-[420px] overflow-y-auto overscroll-contain pr-1 space-y-1">
-                  {docsLoading ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-8 justify-center">
-                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
-                      加载中…
-                    </div>
-                  ) : docs.length === 0 ? (
-                    <div className="text-xs text-muted-foreground py-8 text-center">没有文档</div>
-                  ) : (
-                    docs.map((doc) => {
-                      const id = String((doc as any).id || '')
-                      const filename = String((doc as any).filename || (doc as any).name || id || '')
-                      const status = String((doc as any).status || '')
-                      const checked = selectedDocIds.has(id)
-                      const isExtracting = singleExtractingDocId === id
+	                <div className="max-h-[420px] overflow-y-auto overscroll-contain pr-1 space-y-1">
+	                  {docsLoading && (
+	                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-8 justify-center">
+	                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+	                      加载中…
+	                    </div>
+	                  )}
+	                  {!docsLoading && docs.length === 0 && (
+	                    <div className="text-xs text-muted-foreground py-8 text-center">没有文档</div>
+	                  )}
+	                  {!docsLoading && docs.length > 0 && (
+	                    docs.map((doc) => {
+	                      const id = String(doc.id || '')
+	                      const filename = String(doc.filename || id || '')
+	                      const status = String(doc.status || '')
+	                      const checked = selectedDocIds.has(id)
+	                      const isExtracting = singleExtractingDocId === id
 
                       return (
                         <label
@@ -502,8 +504,8 @@ export default function DatasetKGWorkbenchPage() {
                                 </Badge>
                               ) : null}
                             </div>
-                          </div>
-                          <div className="flex-shrink-0">
+	                          </div>
+	                          <div className="flex-shrink-0">
                             <Button
                               variant="outline"
                               size="sm"
@@ -523,11 +525,11 @@ export default function DatasetKGWorkbenchPage() {
                               Extract
                             </Button>
                           </div>
-                        </label>
-                      )
-                    })
-                  )}
-                </div>
+	                        </label>
+	                      )
+	                    })
+	                  )}
+	                </div>
               </Panel>
 
               <Panel className="space-y-3">

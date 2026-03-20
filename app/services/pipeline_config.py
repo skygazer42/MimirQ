@@ -94,7 +94,6 @@ def _sanitize_chunk_strategy_params(value: Any) -> dict[str, Any] | None:
             if len(v) > 500:
                 continue
             cleaned[key] = v
-            continue
         # No nested objects/lists.
 
     return cleaned or None
