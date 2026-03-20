@@ -18,7 +18,11 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
+from app.rag.chunking.utils.heading_parsing import (
+    normalize_spaces_lower,
+    parse_markdown_hash_heading,
+    strip_numbered_heading_prefix,
+)
 
 
 @dataclass(frozen=True)
@@ -44,48 +48,6 @@ class _Section:
     heading: _Heading | None
 
 
-def _norm(s: str) -> str:
-    return " ".join((s or "").strip().split()).lower()
-
-
-def _strip_numbered_prefix(text: str) -> str:
-    """
-    Strip common numbering prefixes like:
-      1.2 Summary
-      3) Timeline
-
-    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
-    """
-    s = str(text or "").lstrip()
-    if not s or not s[:1].isdigit():
-        return s
-
-    i = 0
-    while i < len(s) and s[i].isdigit():
-        i += 1
-
-    groups = 0
-    while groups < 3 and i < len(s) and s[i] == ".":
-        j = i + 1
-        if j >= len(s) or not s[j].isdigit():
-            break
-        while j < len(s) and s[j].isdigit():
-            j += 1
-        i = j
-        groups += 1
-
-    if i >= len(s):
-        return s
-    if not (s[i].isspace() or s[i] in ")."):
-        return s
-
-    while i < len(s) and (s[i].isspace() or s[i] in ")."):
-        i += 1
-    while i < len(s) and s[i].isspace():
-        i += 1
-    return s[i:]
-
-
 _SECTION_SYNONYMS: dict[str, list[str]] = {
     "summary": ["summary", "overview", "incident summary", "postmortem", "rca", "摘要", "总结", "概述", "事件概述", "复盘"],
     "impact": ["impact", "customer impact", "影响", "影响范围", "用户影响"],
@@ -100,7 +62,7 @@ _SECTION_SYNONYMS: dict[str, list[str]] = {
 _TITLE_TO_KEY: dict[str, str] = {}
 for k, vals in _SECTION_SYNONYMS.items():
     for v in vals:
-        _TITLE_TO_KEY[_norm(v)] = k
+        _TITLE_TO_KEY[normalize_spaces_lower(v)] = k
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -125,16 +87,16 @@ def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:
     if parsed is not None:
         level, title = parsed
         title = str(title).rstrip(":：").strip()
-        key = _TITLE_TO_KEY.get(_norm(title))
+        key = _TITLE_TO_KEY.get(normalize_spaces_lower(title))
         if key:
             return title, key, int(level)
         return None
 
-    s2 = _strip_numbered_prefix(s).strip()
+    s2 = strip_numbered_heading_prefix(s).strip()
     s2 = s2.rstrip(":：").strip()
     if not s2 or len(s2) > 80:
         return None
-    key = _TITLE_TO_KEY.get(_norm(s2))
+    key = _TITLE_TO_KEY.get(normalize_spaces_lower(s2))
     if key:
         return s2, key, 2
     return None
