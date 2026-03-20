@@ -36,7 +36,10 @@ _WS_RE = re.compile(r"\s+")
 _BOM_RE = re.compile(r"^\ufeff+")
 _NUMERIC_ONLY_RE = re.compile(r"^\s*[-+]?(?:\d+(?:\.\d+)?|\.\d+)\s*$")
 _MD_TABLE_SEP_CELL_RE = re.compile(r"^\s*:?-{3,}:?\s*$")
-_SQL_TABLE_REF_RE = re.compile(r'(?i)\b(?:from|join)\s+(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))')
+_SQL_TABLE_REF_RE = re.compile(
+    r'\b(?:from|join)\s+(?:"([^"]+)"|([A-Za-z_]\w*))',
+    flags=re.IGNORECASE | re.ASCII,
+)
 _SQL_DISALLOWED_JOIN_RE = re.compile(r"(?i)\b(?:cross|natural)\s+join\b")
 _SQL_LIST_SHEET_TABLES = "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sheet_%'"
 

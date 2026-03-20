@@ -41,9 +41,9 @@ class _Section:
 
 
 _MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
-_VERSION_RE = re.compile(
-    r"(?i)^\s*\[?(?P<version>unreleased|v?\d+\.\d+(?:\.\d+)?(?:[-+][0-9a-z.-]+)?)\]?\s*(?:-|–|—|:)?\s*(?P<rest>.*)$"
-)
+_RELEASE_TOKEN_RE = re.compile(r"(?i)^\s*\[?(?P<token>[^\]\s]+)\]?\s*(?P<rest>.*)$")
+_VERSION_TOKEN_RE = re.compile(r"(?i)^(?:unreleased|v?\d+\.\d+(?:\.\d+)?(?:[-+][0-9a-z.-]+)?)$")
+_RELEASE_REST_PREFIX_RE = re.compile(r"^\s*(?:-|–|—|:)\s*")
 _DATE_RE = re.compile(r"\b(?P<date>\d{4}-\d{2}-\d{2})\b")
 
 
@@ -76,14 +76,15 @@ def _iter_release_headings(text: str) -> list[_ReleaseHeading]:
             continue
 
         norm = _normalize_heading(line)
-        vm = _VERSION_RE.match(norm)
-        if not vm:
+        tm = _RELEASE_TOKEN_RE.match(norm)
+        if not tm:
             continue
 
-        version = (vm.group("version") or "").strip()
-        if not version:
+        token = (tm.group("token") or "").strip()
+        if not token or not _VERSION_TOKEN_RE.match(token):
             continue
-        rest = (vm.group("rest") or "").strip()
+        version = token
+        rest = _RELEASE_REST_PREFIX_RE.sub("", (tm.group("rest") or "")).strip()
         date = None
         dm = _DATE_RE.search(rest)
         if dm:
@@ -198,4 +199,3 @@ class ChangelogChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

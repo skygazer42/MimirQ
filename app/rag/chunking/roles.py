@@ -37,7 +37,7 @@ _QA_RE = re.compile(r"(?im)^\s*Q[:：]\s+.+\n\s*A[:：]\s+.+", flags=re.M)
 
 # Markdown tables: header row + separator row (GitHub-flavored markdown).
 _MD_TABLE_ROW_RE = re.compile(r"(?m)^\s*\|?.+\|.+\|?\s*$")
-_MD_TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$")
+_MD_TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?\s*$")
 
 
 def _header_text(meta: Mapping[str, Any]) -> str:
