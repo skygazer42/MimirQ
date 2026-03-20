@@ -45,10 +45,10 @@ _STMT_START_RE = re.compile(
 _SEMICOLON_EOS_RE = re.compile(r"(?m);[ \t]*(?:--.*)?$")
 _OBJ_NAME_RE = re.compile(
     r"(?im)^\s*create\s+(?:or\s+replace\s+)?(?P<kind>table|view|function|procedure|trigger|index)\s+"
-    r"(?:if\s+not\s+exists\s+)?(?P<name>[`\"\\[]?[A-Za-z0-9_.$]+[`\"\\]]?(?:\.[`\"\\[]?[A-Za-z0-9_.$]+[`\"\\]]?)?)"
+    r"(?:if\s+not\s+exists\s+)?(?P<name>[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?(?:\.[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?)?)"
 )
 _ALTER_NAME_RE = re.compile(
-    r"(?im)^\s*alter\s+table\s+(?:if\s+exists\s+)?(?P<name>[`\"\\[]?[A-Za-z0-9_.$]+[`\"\\]]?(?:\.[`\"\\[]?[A-Za-z0-9_.$]+[`\"\\]]?)?)"
+    r"(?im)^\s*alter\s+table\s+(?:if\s+exists\s+)?(?P<name>[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?(?:\.[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?)?)"
 )
 
 
@@ -191,4 +191,3 @@ class SqlSchemaChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

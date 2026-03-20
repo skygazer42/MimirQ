@@ -335,7 +335,7 @@ def _format_stream_error_message(exc: Exception) -> str:
     raw = str(exc) or exc.__class__.__name__
     raw = " ".join(raw.split())
     raw = re.sub(r"sk-[A-Za-z0-9]{8,}", "sk-***", raw)
-    raw = re.sub(r"(?i)bearer\\s+[A-Za-z0-9\\-_.]{8,}", "Bearer ***", raw)
+    raw = re.sub(r"(?i)bearer\\s+[A-Z0-9\\-_.]{8,}", "Bearer ***", raw)
     status_code = getattr(exc, "status_code", None)
     if status_code and isinstance(status_code, int):
         raw = f"HTTP {status_code}: {raw}"

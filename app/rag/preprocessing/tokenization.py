@@ -24,7 +24,7 @@ def _tokenize_for_bm25_cached(text: str) -> tuple[str, ...]:
     return tuple(_tokenize_for_bm25_impl(text))
 
 
-_ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9_+./:\\\\-]{0,}[A-Za-z0-9+])")
+_ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][\\A-Za-z0-9_+./:-]*[A-Za-z0-9+]")
 _ASCII_PATH_SPLIT_RE = re.compile(r"[\\/]+")
 _ASCII_PART_SPLIT_RE = re.compile(r"[_\-.:]+")
 _CAMEL_SPLIT_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")

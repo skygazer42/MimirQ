@@ -44,7 +44,7 @@ class _Entry:
     key: str
 
 
-_TABLE_RE = re.compile(r"^\s*(?P<brackets>\[\[?)(?P<name>[^\]]{1,120})(?:\]\]?)\s*$")
+_TABLE_RE = re.compile(r"^\s*(?P<brackets>\[\[?)(?P<name>[^\]]{1,120})\]\]?\s*$")
 _KEY_RE = re.compile(r"^\s*(?P<key>[A-Za-z0-9_.-]{1,80})\s*=\s*(?P<val>.+?)\s*(?:#.*)?$")
 
 

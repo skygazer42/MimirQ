@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 _SQL_STRING_LITERAL_RE = re.compile(r"'(?:''|[^'])*'")
-_SQL_LONG_NUMBER_RE = re.compile(r"(?<![\w.])[-+]?(?:\d{5,})(?:\.\d+)?(?![\w.])")
+_SQL_LONG_NUMBER_RE = re.compile(r"(?<![\w.])[-+]?\d{5,}(?:\.\d+)?(?![\w.])")
 
 _CONNECTION_KEYS = {
     "host",

@@ -34,7 +34,7 @@ class _PlayBlock:
     hosts: str | None
 
 
-_PLAY_START_RE = re.compile(r"(?m)^(?P<indent>\s*)-\s*(?:(?:name|hosts)\s*:)\s*")
+_PLAY_START_RE = re.compile(r"(?m)^(?P<indent>\s*)-\s*(?:name|hosts)\s*:\s*")
 _NAME_RE = re.compile(r"(?m)^\s*name\s*:\s*(?P<val>.+?)\s*$")
 _HOSTS_RE = re.compile(r"(?m)^\s*hosts\s*:\s*(?P<val>.+?)\s*$")
 _TASKS_RE = re.compile(r"(?m)^\s*tasks\s*:\s*")

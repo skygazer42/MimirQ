@@ -40,7 +40,7 @@ _TOC_LINE_EN_RE = re.compile(
 )
 _CODE_FENCE_RE = re.compile(r"^\s*```")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
-_LIST_RE = re.compile(r"^\s*(?:[-*+]|(?:\d{1,3}[.)]))\s+")
+_LIST_RE = re.compile(r"^\s*(?:[-*+]|\d{1,3}[.)])\s+")
 _BLOCKQUOTE_RE = re.compile(r"^\s*>")
 # Markdown pipe tables can omit leading/trailing pipes (e.g. "a | b").
 # Treat such lines as "structural" to avoid unwrap/noise filters mangling tables.

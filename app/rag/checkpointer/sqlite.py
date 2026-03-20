@@ -52,7 +52,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
     ) -> None:
         super().__init__(serde=serde)
         # Validate table_prefix to prevent SQL injection
-        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", table_prefix):
+        if not re.match(r"^[A-Za-z_]\w*$", table_prefix, flags=re.ASCII):
             raise ValueError(
                 f"Invalid table_prefix '{table_prefix}': must be alphanumeric with underscores only"
             )

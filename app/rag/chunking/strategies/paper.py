@@ -93,7 +93,7 @@ _CN_SECTIONS: dict[str, str] = {
 }
 
 _RE_EN_HEADING = re.compile(
-    r"^(?:(?P<num>\d{1,2}(?:\.\d{1,2}){0,3})\s+)?(?P<title>[A-Za-z][A-Za-z /-]{2,50})\s*[:：]?\s*$",
+    r"^(?:(?P<num>\d{1,2}(?:\.\d{1,2}){0,3})\s+)?(?P<title>[A-Z][A-Z /-]{2,50})\s*[:：]?\s*$",
     flags=re.IGNORECASE,
 )
 _RE_CN_HEADING = re.compile(
@@ -242,4 +242,3 @@ class PaperChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

@@ -39,11 +39,11 @@ class _Section:
 
 
 _RE_EN_STEP = re.compile(
-    r"^\s*(?:step)\s*(?P<num>\d{1,3})\s*[:：.\-]?\s*(?P<title>.+?)?\s*$",
+    r"^\s*step\s*(?P<num>\d{1,3})\s*[:：.\-]?\s*(?P<title>.+?)?\s*$",
     flags=re.IGNORECASE,
 )
 _RE_CN_STEP = re.compile(
-    r"^\s*(?:步骤)\s*(?P<num>[0-9一二三四五六七八九十百千]{1,4})\s*[:：.\-]?\s*(?P<title>.+?)?\s*$"
+    r"^\s*步骤\s*(?P<num>[0-9一二三四五六七八九十百千]{1,4})\s*[:：.\-]?\s*(?P<title>.+?)?\s*$"
 )
 
 
@@ -182,4 +182,3 @@ class SOPStepsChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

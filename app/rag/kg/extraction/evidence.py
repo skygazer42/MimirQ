@@ -15,7 +15,7 @@ import unicodedata
 from dataclasses import dataclass
 
 _WS_RE = re.compile(r"\s+")
-_SENTENCE_BREAK_RE = re.compile(r"[。！？!?。\n\r]")
+_SENTENCE_BREAK_RE = re.compile(r"[。！？!?\n\r]")
 _EDGE_STRIP_CHARS = " \t\r\n,.;:!?，。；：！？、\"'`“”‘’()（）[]【】"
 
 

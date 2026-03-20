@@ -16,7 +16,7 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.rag.core.hashing import stable_json_hash
 
-_QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}")
+_QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
 
 

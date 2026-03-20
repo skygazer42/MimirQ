@@ -45,7 +45,7 @@ class _Section:
 
 
 _MD_HEADING_RE = re.compile(r"^\s*(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$")
-_NUMBERED_PREFIX_RE = re.compile(r"^\s*(?:\d+(?:\.\d+){0,3}[\).\s]+)\s*")
+_NUMBERED_PREFIX_RE = re.compile(r"^\s*\d+(?:\.\d+){0,3}[\).\s]+\s*")
 _COLON_SUFFIX_RE = re.compile(r"\s*[:：]\s*$")
 
 
@@ -212,4 +212,3 @@ class PostmortemReportChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

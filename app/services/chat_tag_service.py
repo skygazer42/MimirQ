@@ -39,7 +39,7 @@ from app.services.table_tag_service import (
     score_schema_link_diagnostics,
 )
 
-_TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}")
+_TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
 _TABLE_INTENT_RE = re.compile(
     r"(?i)\b(select|where|group\s+by|order\s+by|limit|sum|avg|count|min|max|distinct)\b"
     r"|统计|汇总|求和|平均|最大|最小|排名|Top\s*\d+|前\s*\d+|多少|几条|筛选|过滤|分组|占比"

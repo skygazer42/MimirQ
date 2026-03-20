@@ -22,7 +22,7 @@ def _estimate_tokens(text: str) -> int:
 
 
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
-_LIST_RE = re.compile(r"^\s*(?:[-*+]|(?:\d{1,3}[.)]))\s+")
+_LIST_RE = re.compile(r"^\s*(?:[-*+]|\d{1,3}[.)])\s+")
 _BLOCKQUOTE_RE = re.compile(r"^\s*>")
 _CODE_FENCE_RE = re.compile(r"^\s*```")
 _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
