@@ -232,6 +232,38 @@ export function KnowledgeDocumentsPanel({
     }
   }, [])
 
+  const buildCopyHandler = useCallback(
+    (text: string, okMsg: string) => () => detachPromise(copyText(text, okMsg)),
+    [copyText],
+  )
+
+  const buildToggleDocSelectionHandler = useCallback(
+    (docId: string) => () => toggleDocSelection(docId),
+    [toggleDocSelection],
+  )
+
+  const buildRequestSingleDeleteHandler = useCallback(
+    (doc: Document) => () => requestSingleDelete(doc),
+    [requestSingleDelete],
+  )
+
+  const renderGridDocCard = (doc: Document) => {
+    const badge = getStatusBadge(doc.status)
+    return (
+      <div key={doc.id}>
+        <DocumentCard
+          doc={doc}
+          statusBadge={badge}
+          statusBarClassName={statusBarClassName(badge.status)}
+          onRequestDelete={requestSingleDelete}
+          copyText={copyText}
+          selected={selectedSet.has(doc.id)}
+          onToggleSelect={buildToggleDocSelectionHandler(doc.id)}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
       <AlertDialog
@@ -433,12 +465,7 @@ export function KnowledgeDocumentsPanel({
 	                                                    transform: `translateY(${virtualRow.start}px)`,
 	                                                }} className={isLastRow ? undefined : 'pb-5'}>
 	                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-	                      {rowDocs.map((doc) => {
-	                                                    const badge = getStatusBadge(doc.status);
-	                                                    return (<div key={doc.id}>
-	                            <DocumentCard doc={doc} statusBadge={badge} statusBarClassName={statusBarClassName(badge.status)} onRequestDelete={requestSingleDelete} copyText={copyText} selected={selectedSet.has(doc.id)} onToggleSelect={() => toggleDocSelection(doc.id)}/>
-	                          </div>);
-	                                                })}
+	                      {rowDocs.map(renderGridDocCard)}
 	                    </div>
 	                  </div>);
 	                                        })}
@@ -467,21 +494,21 @@ export function KnowledgeDocumentsPanel({
 		                      <td colSpan={tableColumnCount} className="p-0" style={{ height: `${docsTablePaddingTop}px` }}/>
 		                    </tr>) : null}
 
-                  {docsTableVirtualRows.map((virtualRow: any) => {
-                                            const doc = filteredDocuments[virtualRow.index];
-                                            if (!doc)
-                                                return null;
-                                            const badge = getStatusBadge(doc.status);
+	                  {docsTableVirtualRows.map((virtualRow: any) => {
+	                                            const doc = filteredDocuments[virtualRow.index];
+	                                            if (!doc)
+	                                                return null;
+	                                            const badge = getStatusBadge(doc.status);
                                             const fileType = getFileTypeMeta(doc);
                                             const TypeIcon = fileType.icon;
                                             const userTags = getUserTagsFromDocument(doc);
-                                            const sourcePath = String((doc.metadata as any)?.source_path || '').trim();
-                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="hover:bg-muted/20 transition-colors group">
-	                        <td className="px-3 py-3 align-middle">
-	                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={() => toggleDocSelection(doc.id)} aria-label={`选择文档 ${doc.filename}`}/>
-	                        </td>
-                        <td className="px-4 py-3 font-medium text-foreground">
-                          <div className="flex items-start gap-3">
+	                                            const sourcePath = String((doc.metadata as any)?.source_path || '').trim();
+	                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="hover:bg-muted/20 transition-colors group">
+		                        <td className="px-3 py-3 align-middle">
+		                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={buildToggleDocSelectionHandler(doc.id)} aria-label={`选择文档 ${doc.filename}`}/>
+		                        </td>
+	                        <td className="px-4 py-3 font-medium text-foreground">
+	                          <div className="flex items-start gap-3">
                             <div className={cn('mt-0.5 p-1.5 rounded-md border', fileType.bg, fileType.border, fileType.color)}>
                               <TypeIcon className="w-4 h-4"/>
                             </div>
@@ -490,16 +517,16 @@ export function KnowledgeDocumentsPanel({
                                 <span className="truncate max-w-[260px]" title={doc.filename}>
                                   {doc.filename}
                                 </span>
-                                <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ', fileType.bg, fileType.border, fileType.color)} title={fileType.label}>
-                                  {fileType.label}
-                                </span>
-                              </div>
-                              {sourcePath ? (<button type="button" className="mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4" onClick={() => detachPromise(copyText(sourcePath, '已复制 Source Path'))} title="点击复制 Source Path">
-                                  {sourcePath}
-                                </button>) : null}
-                            </div>
-                          </div>
-                        </td>
+	                                <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ', fileType.bg, fileType.border, fileType.color)} title={fileType.label}>
+	                                  {fileType.label}
+	                                </span>
+	                              </div>
+	                              {sourcePath ? (<button type="button" className="mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4" onClick={buildCopyHandler(sourcePath, '已复制 Source Path')} title="点击复制 Source Path">
+	                                  {sourcePath}
+	                                </button>) : null}
+	                            </div>
+	                          </div>
+	                        </td>
 	                        {showDatasetColumn ? (<td className="px-4 py-3 align-middle">
 	                            {doc.dataset_id ? (<span className="text-xs text-muted-foreground truncate block max-w-[180px]" title={doc.dataset_id}>
 	                                {datasetLabelById?.[doc.dataset_id] ?? doc.dataset_id}
@@ -528,23 +555,23 @@ export function KnowledgeDocumentsPanel({
 	                              </IconButton>}/>
 
                           <DropdownMenu>
-	                            <DropdownMenuTrigger asChild>
+                            <DropdownMenuTrigger asChild>
 	                              <IconButton label="更多操作" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity', 'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100')}>
 	                                <MoreVertical className="h-4 w-4"/>
 	                              </IconButton>
 	                            </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, '已复制文档 ID'))}>
+                              <DropdownMenuItem onSelect={buildCopyHandler(doc.id, '已复制文档 ID')}>
                                 复制文档 ID
                               </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, '已复制文件名'))}>
+                              <DropdownMenuItem onSelect={buildCopyHandler(doc.filename, '已复制文件名')}>
                                 复制文件名
                               </DropdownMenuItem>
-                              {String((doc.metadata as any)?.source_path || '').trim() ? (<DropdownMenuItem onSelect={() => detachPromise(copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path'))}>
+                              {sourcePath ? (<DropdownMenuItem onSelect={buildCopyHandler(sourcePath, '已复制 Source Path')}>
                                   复制 Source Path
                                 </DropdownMenuItem>) : null}
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => requestSingleDelete(doc)}>
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={buildRequestSingleDeleteHandler(doc)}>
                                 <Trash2 className="mr-2 h-4 w-4"/>
                                 删除文档
                               </DropdownMenuItem>

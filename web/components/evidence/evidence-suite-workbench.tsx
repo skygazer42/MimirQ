@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { BarChart3, Copy, Download, FileUp, Loader2, Plus, RefreshCw, Search, ShieldCheck, TestTube2, X } from 'lucide-react'
 
@@ -68,6 +69,97 @@ type EvidenceImportPack = {
 
 const RETRIEVAL_PROFILE_VALUES = ['recall50', 'coverage80', 'recall20'] as const
 const CREATE_ITEM_TAB_VALUES = ['retrieve', 'import'] as const
+
+type ErrBadgeEntry = [string, number]
+
+function compareErrBadgeEntry(a: ErrBadgeEntry, b: ErrBadgeEntry): number {
+  return Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0]))
+}
+
+function buildErrBadges(errKinds: Record<string, number>): ErrBadgeEntry[] {
+  const out: ErrBadgeEntry[] = []
+  for (const [k, v0] of Object.entries(errKinds || {})) {
+    const key = String(k || '').trim()
+    const n = Number(v0) || 0
+    if (!key || n <= 0) continue
+    out.push([key, n])
+  }
+  out.sort(compareErrBadgeEntry)
+  return out.slice(0, 4)
+}
+
+function heatmapCellBg(v: number, ratio: number): string {
+  if (v === 0) return 'bg-muted/20'
+  if (ratio >= 0.75) return 'bg-primary/30'
+  if (ratio >= 0.5) return 'bg-primary/20'
+  if (ratio >= 0.25) return 'bg-primary/10'
+  return 'bg-primary/5'
+}
+
+function renderLanguageXFileTypeHeatmap(hm: any): ReactNode {
+  const x = Array.isArray(hm?.x) ? hm.x : []
+  const y = Array.isArray(hm?.y) ? hm.y : []
+  const z = Array.isArray(hm?.z) ? hm.z : []
+
+  let max = 0
+  for (const row of z) {
+    if (!Array.isArray(row)) continue
+    for (const v of row) {
+      const n = Number(v) || 0
+      if (n > max) max = n
+    }
+  }
+
+  const cols = x.length
+  const xNodes: ReactNode[] = []
+  for (const ft of x) {
+    const ftLabel = String(ft ?? '')
+    xNodes.push(
+      <div key={`hm-x:${ftLabel}`} className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate">
+        {ftLabel}
+      </div>,
+    )
+  }
+
+  const rowNodes: ReactNode[] = []
+  for (let rowIdx = 0; rowIdx < y.length; rowIdx++) {
+    const langLabel = String(y[rowIdx] ?? '')
+    const row = Array.isArray(z[rowIdx]) ? z[rowIdx] : []
+    const cells: ReactNode[] = []
+    for (let colIdx = 0; colIdx < x.length; colIdx++) {
+      const ftLabel = String(x[colIdx] ?? '')
+      const v = Number(row?.[colIdx] ?? 0) || 0
+      const ratio = max > 0 ? v / max : 0
+      const cellBg = heatmapCellBg(v, ratio)
+      cells.push(
+        <div
+          key={`hm-cell:${langLabel}:${ftLabel}`}
+          className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}
+        >
+          {v}
+        </div>,
+      )
+    }
+
+    rowNodes.push(
+      <div key={`hm-row:${langLabel}`} className="contents">
+        <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">{langLabel}</div>
+        {cells}
+      </div>,
+    )
+  }
+
+  return (
+    <div
+      className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60"
+      style={{ gridTemplateColumns: `120px repeat(${cols}, minmax(72px, 1fr))` }}
+    >
+      <div className="bg-muted/40 px-2 py-1 text-[11px] font-mono text-muted-foreground">lang \\ ft</div>
+      {xNodes}
+      {rowNodes}
+    </div>
+  )
+}
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -377,6 +469,11 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     }
   }, [])
 
+  const buildCopyHandler = useCallback(
+    (label: string, text: string) => () => detachPromise(copyText(label, text)),
+    [copyText],
+  )
+
   const handleConvertFeedbackToEvidence = useCallback(async (feedbackId: string, questionHash?: string) => {
     if (!selectedSuiteId) return
     const fid = String(feedbackId || '').trim()
@@ -401,6 +498,12 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       setConvertingFeedbackId('')
     }
   }, [hardcaseTags, loadHardcases, loadItems, selectedSuiteId])
+
+  const buildConvertFeedbackHandler = useCallback(
+    (feedbackId: string, questionHash?: string) => () =>
+      detachPromise(handleConvertFeedbackToEvidence(feedbackId, questionHash)),
+    [handleConvertFeedbackToEvidence],
+  )
 
   useEffect(() => {
     detachPromise(loadDataset())
@@ -1503,18 +1606,55 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                     if (hardcaseRes.enabled) {
                         if ((hardcaseRes.candidates || []).length) {
                             return ((hardcaseRes.candidates || []).map((cand) => {
-                                const qh = String(cand.question_hash || '').trim();
-                                const fbIds = Array.isArray(cand.feedback_ids) ? cand.feedback_ids : [];
-                                const reqIds = Array.isArray(cand.request_ids) ? cand.request_ids : [];
-                                const errKinds = (cand.retrieval_error_kinds || {}) as Record<string, number>;
-                                const errBadges = Object.entries(errKinds)
-                                    .filter(([k, v]) => k && Number(v) > 0)
-                                    .sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])))
-                                    .slice(0, 4);
-	                                const tmpl = cand.rag_config_template ?? null;
-	                                const tmplKey = tmpl ? String(tmpl?.template_key || '').trim() : '';
-	                                const tmplVer = tmpl && Number.isFinite(Number(tmpl?.version)) ? Number(tmpl.version) : null;
-	                                const tmplPatch = tmpl ? String(tmpl?.patch_hash || '').trim() : '';
+	                                const qh = String(cand.question_hash || '').trim();
+	                                const fbIds = Array.isArray(cand.feedback_ids) ? cand.feedback_ids : [];
+	                                const reqIds = Array.isArray(cand.request_ids) ? cand.request_ids : [];
+	                                const errKinds = (cand.retrieval_error_kinds || {}) as Record<string, number>;
+	                                const errBadges = buildErrBadges(errKinds);
+	                                const errBadgeNodes: ReactNode[] = [];
+	                                for (const [k, v] of errBadges) {
+	                                    errBadgeNodes.push((<Badge key={k} variant="outline" className="font-mono">
+	                                  {k}:{v}
+	                                </Badge>));
+	                                }
+
+	                                const fbIdNodes: ReactNode[] = [];
+	                                if (fbIds.length) {
+	                                    for (const fid0 of fbIds.slice(0, 8)) {
+	                                        const fid = String(fid0);
+	                                        fbIdNodes.push((<div key={fid} className="inline-flex items-center gap-1.5">
+	                                    <Badge variant="outline" className="font-mono text-[10px]">
+	                                      {String(fid).slice(0, 8)}
+	                                    </Badge>
+	                                    <Button variant="outline" size="icon" className="size-7" aria-label="复制 feedback_id" onClick={buildCopyHandler('feedback_id', String(fid))}>
+	                                      <Copy className="size-3.5" aria-hidden="true"/>
+	                                    </Button>
+	                                    <Button size="sm" className="h-7 px-2 text-xs" onClick={buildConvertFeedbackHandler(String(fid), qh)} disabled={!selectedSuiteId || Boolean(convertingFeedbackId)}>
+	                                      {convertingFeedbackId === String(fid) ? (<Loader2 className="size-3.5 animate-spin motion-reduce:animate-none mr-1.5" aria-hidden="true"/>) : null}
+	                                      转为 draft
+	                                    </Button>
+	                                  </div>));
+	                                    }
+	                                }
+
+	                                const reqIdNodes: ReactNode[] = [];
+	                                if (reqIds.length) {
+	                                    for (const rid0 of reqIds.slice(0, 6)) {
+	                                        const rid = String(rid0);
+	                                        reqIdNodes.push((<div key={rid} className="inline-flex items-center gap-1.5">
+	                                    <Badge variant="secondary" className="font-mono text-[10px]">
+	                                      {String(rid).slice(0, 10)}
+	                                    </Badge>
+	                                    <Button variant="outline" size="icon" className="size-7" aria-label="复制 request_id" onClick={buildCopyHandler('request_id', String(rid))}>
+	                                      <Copy className="size-3.5" aria-hidden="true"/>
+	                                    </Button>
+	                                  </div>));
+	                                    }
+	                                }
+		                                const tmpl = cand.rag_config_template ?? null;
+		                                const tmplKey = tmpl ? String(tmpl?.template_key || '').trim() : '';
+		                                const tmplVer = tmpl && Number.isFinite(Number(tmpl?.version)) ? Number(tmpl.version) : null;
+		                                const tmplPatch = tmpl ? String(tmpl?.patch_hash || '').trim() : '';
 	                                const tmplVerLabel = tmplVer === null ? '' : `@${tmplVer}`;
 	                                const tmplLabel = tmplKey ? `${tmplKey}${tmplVerLabel}` : '';
 	                                return (<Panel key={qh || JSON.stringify(cand)} className="p-3">
@@ -1523,15 +1663,15 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                             <div className="text-[11px] text-muted-foreground">question_hash</div>
                             <div className="mt-0.5 font-mono text-sm break-all">{qh || '(missing)'}</div>
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <Badge variant="outline" className="font-mono tabular-nums">
-                              cluster {cand.cluster_size ?? 0}
-                            </Badge>
-                            <Button variant="outline" size="icon" className="size-8" aria-label="复制 question_hash" onClick={() => detachPromise(copyText('question_hash', qh))} disabled={!qh}>
-                              <Copy className="size-4" aria-hidden="true"/>
-                            </Button>
-                          </div>
-                        </div>
+	                          <div className="flex items-center gap-2 flex-shrink-0">
+	                            <Badge variant="outline" className="font-mono tabular-nums">
+	                              cluster {cand.cluster_size ?? 0}
+	                            </Badge>
+	                            <Button variant="outline" size="icon" className="size-8" aria-label="复制 question_hash" onClick={buildCopyHandler('question_hash', qh)} disabled={!qh}>
+	                              <Copy className="size-4" aria-hidden="true"/>
+	                            </Button>
+	                          </div>
+	                        </div>
 
                         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground font-mono tabular-nums">
                           {cand.retrieval_config_hash ? (<Badge variant="secondary" className="font-mono">
@@ -1540,15 +1680,13 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                               cfg -
                             </Badge>)}
 
-                          {typeof cand.citations_count === 'number' ? (<Badge variant="outline" className="font-mono">
-                              cites {cand.citations_count}
-                            </Badge>) : null}
+	                          {typeof cand.citations_count === 'number' ? (<Badge variant="outline" className="font-mono">
+	                              cites {cand.citations_count}
+	                            </Badge>) : null}
 
-                          {errBadges.length ? (errBadges.map(([k, v]) => (<Badge key={k} variant="outline" className="font-mono">
-                                {k}:{v}
-                              </Badge>))) : (<Badge variant="outline" className="font-mono">
-                              errors 0
-                            </Badge>)}
+	                          {errBadges.length ? errBadgeNodes : (<Badge variant="outline" className="font-mono">
+	                              errors 0
+	                            </Badge>)}
 
                           {tmplLabel ? (<Badge variant="outline" className="font-mono">
                               tmpl {tmplLabel}
@@ -1563,37 +1701,19 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                         </div>
 
                         <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <div className="text-[11px] text-muted-foreground mb-1">feedback_ids (sample)</div>
-                            <div className="flex flex-wrap gap-2">
-                              {fbIds.length ? (fbIds.slice(0, 8).map((fid) => (<div key={fid} className="inline-flex items-center gap-1.5">
-                                    <Badge variant="outline" className="font-mono text-[10px]">
-                                      {String(fid).slice(0, 8)}
-                                    </Badge>
-                                    <Button variant="outline" size="icon" className="size-7" aria-label="复制 feedback_id" onClick={() => detachPromise(copyText('feedback_id', String(fid)))}>
-                                      <Copy className="size-3.5" aria-hidden="true"/>
-                                    </Button>
-                                    <Button size="sm" className="h-7 px-2 text-xs" onClick={() => detachPromise(handleConvertFeedbackToEvidence(String(fid), qh))} disabled={!selectedSuiteId || Boolean(convertingFeedbackId)}>
-                                      {convertingFeedbackId === String(fid) ? (<Loader2 className="size-3.5 animate-spin motion-reduce:animate-none mr-1.5" aria-hidden="true"/>) : null}
-                                      转为 draft
-                                    </Button>
-                                  </div>))) : (<div className="text-xs text-muted-foreground">-</div>)}
-                            </div>
-                          </div>
+	                          <div>
+	                            <div className="text-[11px] text-muted-foreground mb-1">feedback_ids (sample)</div>
+	                            <div className="flex flex-wrap gap-2">
+	                              {fbIds.length ? fbIdNodes : (<div className="text-xs text-muted-foreground">-</div>)}
+	                            </div>
+	                          </div>
 
-                          <div>
-                            <div className="text-[11px] text-muted-foreground mb-1">request_ids (sample)</div>
-                            <div className="flex flex-wrap gap-2">
-                              {reqIds.length ? (reqIds.slice(0, 6).map((rid) => (<div key={rid} className="inline-flex items-center gap-1.5">
-                                    <Badge variant="secondary" className="font-mono text-[10px]">
-                                      {String(rid).slice(0, 10)}
-                                    </Badge>
-                                    <Button variant="outline" size="icon" className="size-7" aria-label="复制 request_id" onClick={() => detachPromise(copyText('request_id', String(rid)))}>
-                                      <Copy className="size-3.5" aria-hidden="true"/>
-                                    </Button>
-                                  </div>))) : (<div className="text-xs text-muted-foreground">-</div>)}
-                            </div>
-                          </div>
+	                          <div>
+	                            <div className="text-[11px] text-muted-foreground mb-1">request_ids (sample)</div>
+	                            <div className="flex flex-wrap gap-2">
+	                              {reqIds.length ? reqIdNodes : (<div className="text-xs text-muted-foreground">-</div>)}
+	                            </div>
+	                          </div>
                         </div>
                       </Panel>);
                             }));
@@ -1809,65 +1929,18 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                         </Panel>
                       </div>
 
-                      <Panel className="p-3">
-                        <div className="text-xs font-medium text-muted-foreground mb-2">
-                          Heatmap: language × file_type (unique items)
-                        </div>
-                        {dashboardCoverage.heatmaps?.['language_x_file_type'] ? (<div className="overflow-x-auto">
-                            {(() => {
-                            const hm = dashboardCoverage.heatmaps['language_x_file_type'];
-                            const x = hm?.x || [];
-                            const y = hm?.y || [];
-                            const z = hm?.z || [];
-                            let max = 0;
-                            for (const row of z) {
-                                for (const v of row) {
-                                    const n = Number(v) || 0;
-                                    if (n > max)
-                                        max = n;
-                                }
-                            }
-                            const cols = x.length;
-                            return (<div className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60" style={{ gridTemplateColumns: `120px repeat(${cols}, minmax(72px, 1fr))` }}>
-                                  <div className="bg-muted/40 px-2 py-1 text-[11px] font-mono text-muted-foreground">
-                                    lang \\ ft
-                                  </div>
-                                  {x.map((ft) => (<div key={`hm-x:${ft}`} className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate">
-                                      {ft}
-                                    </div>))}
-                                  {y.map((lang, rowIdx) => (<div key={`hm-row:${lang}`} className="contents">
-                                      <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">
-                                        {lang}
-                                      </div>
-                                      {x.map((ft, colIdx) => {
-                                        const v = Number(z?.[rowIdx]?.[colIdx] ?? 0) || 0;
-                                        const ratio = max > 0 ? v / max : 0;
-                                        const cellBg = (() => {
-                                            if (v === 0) {
-                                                return 'bg-muted/20';
-                                            }
-                                            else if (ratio >= 0.75) {
-                                                    return 'bg-primary/30';
-                                                }
-                                                else if (ratio >= 0.5) {
-                                                        return 'bg-primary/20';
-                                                    }
-                                                    else if (ratio >= 0.25) {
-                                                            return 'bg-primary/10';
-                                                        }
-                                                        else {
-                                                            return 'bg-primary/5';
-                                                        }
-                                        })();
-                                        return (<div key={`hm-cell:${lang}:${ft}`} className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}>
-                                            {v}
-                                          </div>);
-                                    })}
-                                </div>))}
-                            </div>);
-                        })()}
-                      </div>) : (<div className="text-xs text-muted-foreground">No heatmap data.</div>)}
-                  </Panel>
+	                      <Panel className="p-3">
+	                        <div className="text-xs font-medium text-muted-foreground mb-2">
+	                          Heatmap: language × file_type (unique items)
+	                        </div>
+	                        {dashboardCoverage.heatmaps?.['language_x_file_type'] ? (
+	                          <div className="overflow-x-auto">
+	                            {renderLanguageXFileTypeHeatmap(dashboardCoverage.heatmaps['language_x_file_type'])}
+	                          </div>
+	                        ) : (
+	                          <div className="text-xs text-muted-foreground">No heatmap data.</div>
+	                        )}
+	                  </Panel>
                     </>) : (<div className="text-sm text-muted-foreground text-pretty">No coverage data.</div>)}
                 </>);
         }
