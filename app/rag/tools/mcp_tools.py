@@ -15,6 +15,7 @@ Usage:
 
 
 import ast
+import asyncio
 import contextlib
 import logging
 import math
@@ -154,7 +155,7 @@ async def search_documents(
         }
 
 
-async def get_document_content(
+def _get_document_content_sync(
     document_id: str,
     page: int | None = None,
     *,
@@ -162,16 +163,6 @@ async def get_document_content(
     account_id: str | None = None,
     max_chars: int = 50_000,
 ) -> dict[str, Any]:
-    """
-    Get full content of a document.
-
-    Args:
-        document_id: Document ID
-        page: Optional page number
-
-    Returns:
-        Document content
-    """
     try:
         from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
         from app.models.document import Document as DBDocument
@@ -366,6 +357,34 @@ async def get_document_content(
             "document_id": document_id,
             "error": str(e),
         }
+
+
+async def get_document_content(
+    document_id: str,
+    page: int | None = None,
+    *,
+    dataset_id: str | None = None,
+    account_id: str | None = None,
+    max_chars: int = 50_000,
+) -> dict[str, Any]:
+    """
+    Get full content of a document.
+
+    Args:
+        document_id: Document ID
+        page: Optional page number
+
+    Returns:
+        Document content
+    """
+    return await asyncio.to_thread(
+        _get_document_content_sync,
+        document_id,
+        page,
+        dataset_id=dataset_id,
+        account_id=account_id,
+        max_chars=max_chars,
+    )
 
 
 # ============================================================================

@@ -8,6 +8,7 @@ Pattern: Generate -> Evaluate -> (Score < threshold) -> Optimize -> Evaluate -> 
 """
 
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -401,7 +402,7 @@ def create_ragas_evaluator(
             dataset = Dataset.from_dict(data)
 
             # Run evaluation
-            result = evaluate(dataset, metrics=[faithfulness, answer_relevancy])
+            result = await asyncio.to_thread(evaluate, dataset, metrics=[faithfulness, answer_relevancy])
 
             # Calculate overall score
             scores = {}

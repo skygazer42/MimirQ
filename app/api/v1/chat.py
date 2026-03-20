@@ -231,93 +231,104 @@ async def _persist_chat_stream_turn_background(
     Why: reduce tail latency for SSE by not blocking on DB commit after sending "done".
     Trade-off: if the worker crashes after responding, the assistant message might not be persisted.
     """
-    try:
-        from app.core.database import SessionLocal  # noqa: WPS433
+    should_update_summary = (
+        bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
+        and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+        and bool(enable_summary_memory)
+        and bool(conversation_id)
+    )
 
-        db2 = SessionLocal()
+    def _persist_sync() -> bool:
         try:
-            metrics2 = dict(metrics or {})
-            # Optional: store response in Redis cache (best-effort).
-            if cache_eligible and (not cache_hit) and cache_key and (content or "").strip():
-                cache_payload = jsonable_encoder(
-                    {
-                        "content": content,
-                        "citations": citations if isinstance(citations, list) else [],
-                        "metrics": metrics2,
-                        "structured_data": structured_data,
-                    }
-                )
-                stored = bool(set_cached_chat_response(cache_key, cache_payload))
-                metrics2.setdefault("chat_cache_store_ok", stored)
+            from app.core.database import SessionLocal  # noqa: WPS433
 
-            message_metadata = {**(metrics2 or {}), "request_id": str(request_id)}
-            if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
-                try:
-                    message_metadata["structured_memory"] = extract_structured_memory_for_turn(
-                        user_text=str(question or ""),
-                        assistant_text=str(content or ""),
-                        max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                        max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+            db2 = SessionLocal()
+            try:
+                metrics2 = dict(metrics or {})
+                # Optional: store response in Redis cache (best-effort).
+                if cache_eligible and (not cache_hit) and cache_key and (content or "").strip():
+                    cache_payload = jsonable_encoder(
+                        {
+                            "content": content,
+                            "citations": citations if isinstance(citations, list) else [],
+                            "metrics": metrics2,
+                            "structured_data": structured_data,
+                        }
                     )
+                    stored = bool(set_cached_chat_response(cache_key, cache_payload))
+                    metrics2.setdefault("chat_cache_store_ok", stored)
+
+                message_metadata = {**(metrics2 or {}), "request_id": str(request_id)}
+                if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+                    try:
+                        message_metadata["structured_memory"] = extract_structured_memory_for_turn(
+                            user_text=str(question or ""),
+                            assistant_text=str(content or ""),
+                            max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
+                            max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
+                        )
+                    except Exception:
+                        pass
+
+                assistant_message = Message(
+                    id=assistant_message_id,
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content=content or "",
+                    citations=citations if isinstance(citations, list) else [],
+                    token_count=num_tokens_from_string(content or ""),
+                    message_metadata=message_metadata,
+                )
+                db2.add(assistant_message)
+
+                audit_log_event(
+                    db2,
+                    tenant_id=tenant_id,
+                    actor_id=account_id,
+                    action=CHAT_STREAM_AUDIT_ACTION,
+                    resource_type="conversation",
+                    resource_id=str(conversation_id),
+                    request_id=str(request_id),
+                    ip=ip,
+                    user_agent=user_agent,
+                    details=build_chat_audit_details(
+                        question=question,
+                        document_count=int(document_count or 0),
+                        dataset_id=dataset_id_used,
+                        cache_hit=cache_hit,
+                    ),
+                )
+
+                conv = (
+                    db2.query(Conversation)
+                    .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
+                    .first()
+                )
+                if conv is not None:
+                    conv.message_count = int(conv.message_count or 0) + 1
+                    conv.updated_at = datetime.now(UTC).replace(tzinfo=None)
+
+                db2.commit()
+            finally:
+                try:
+                    db2.close()
                 except Exception:
                     pass
 
-            assistant_message = Message(
-                id=assistant_message_id,
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                role="assistant",
-                content=content or "",
-                citations=citations if isinstance(citations, list) else [],
-                token_count=num_tokens_from_string(content or ""),
-                message_metadata=message_metadata,
-            )
-            db2.add(assistant_message)
+            return True
+        except Exception:
+            return False
 
-            audit_log_event(
-                db2,
-                tenant_id=tenant_id,
-                actor_id=account_id,
-                action=CHAT_STREAM_AUDIT_ACTION,
-                resource_type="conversation",
-                resource_id=str(conversation_id),
-                request_id=str(request_id),
-                ip=ip,
-                user_agent=user_agent,
-                details=build_chat_audit_details(
-                    question=question,
-                    document_count=int(document_count or 0),
-                    dataset_id=dataset_id_used,
-                    cache_hit=cache_hit,
-                ),
-            )
-
-            conv = (
-                db2.query(Conversation)
-                .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
-                .first()
-            )
-            if conv is not None:
-                conv.message_count = int(conv.message_count or 0) + 1
-                conv.updated_at = datetime.now(UTC).replace(tzinfo=None)
-
-            db2.commit()
-        finally:
-            try:
-                db2.close()
-            except Exception:
-                pass
-
-        if (
-            bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
-            and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
-            and bool(enable_summary_memory)
-            and conversation_id
-        ):
-            with contextlib.suppress(Exception):
-                _spawn_background_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
-    except Exception:
+    ok = await asyncio.to_thread(_persist_sync)
+    if not ok:
         return
+
+    if should_update_summary:
+        with contextlib.suppress(Exception):
+            _spawn_background_task(
+                _auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id)
+            )
 
 
 def _format_stream_error_message(exc: Exception) -> str:

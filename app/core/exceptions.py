@@ -313,7 +313,7 @@ def get_request_id(request: Request) -> str | None:
     return request.headers.get("X-Request-ID") or getattr(request.state, "request_id", None)
 
 
-async def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONResponse:
+def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONResponse:
     request_id = get_request_id(request)
     logger.warning(
         "MimirQ exception: %s - %s (request_id=%s)",
@@ -333,7 +333,7 @@ async def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONRe
     )
 
 
-async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     request_id = get_request_id(request)
 
     error_code_map = {
@@ -387,7 +387,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     )
 
 
-async def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+def request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     request_id = get_request_id(request)
     errors = _sanitize_json(exc.errors())
     # FastAPI default 422 payload is a list under "detail"; keep it available for callers.
@@ -402,7 +402,7 @@ async def request_validation_exception_handler(request: Request, exc: RequestVal
     )
 
 
-async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     request_id = get_request_id(request)
     logger.error(
         "Unhandled exception (request_id=%s): %s\n%s",

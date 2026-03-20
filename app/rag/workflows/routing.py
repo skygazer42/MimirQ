@@ -200,7 +200,7 @@ class RoutingWorkflow(BaseWorkflow):
             )
 
 
-async def create_llm_classifier(
+def create_llm_classifier(
     llm: Any,
     routes: dict[str, str],
     default: str = "general",

@@ -237,6 +237,7 @@ class ParallelWorkflow(BaseWorkflow):
         """
         if not results:
             return {}
+        await asyncio.sleep(0)
 
         merged: dict[str, Any] = {}
         all_contexts: list[Any] = []
@@ -256,13 +257,14 @@ class ParallelWorkflow(BaseWorkflow):
         return merged
 
 
-async def create_multi_query_aggregator() -> Callable[[list[dict[str, Any]]], Awaitable[dict[str, Any]]]:
+def create_multi_query_aggregator() -> Callable[[list[dict[str, Any]]], Awaitable[dict[str, Any]]]:
     """
     Create an aggregator for multi-query retrieval.
 
     Deduplicates and ranks contexts from multiple queries.
     """
     async def aggregator(results: list[dict[str, Any]]) -> dict[str, Any]:
+        await asyncio.sleep(0)
         all_contexts = []
         seen_ids = set()
 

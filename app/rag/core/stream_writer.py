@@ -296,7 +296,7 @@ class StreamWriter(BaseStreamWriter):
             chunks.append(chunk)
         return chunks
 
-    async def drain(self) -> list[StreamChunk]:
+    def drain(self) -> list[StreamChunk]:
         """Drain all currently available chunks without waiting."""
         chunks = []
         while not self._queue.empty():

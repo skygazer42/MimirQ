@@ -234,7 +234,7 @@ class APIReranker(BaseReranker):
             if self._cb_failures >= threshold:
                 self._cb_open_until = now + float(reset_sec)
 
-    async def _ensure_session(self) -> None:
+    def _ensure_session(self) -> None:
         """Ensure the aiohttp session is available."""
         if self.session is None or self.session.closed:
             self.session = aiohttp.ClientSession(
@@ -284,7 +284,7 @@ class APIReranker(BaseReranker):
         if self._circuit_open():
             raise RuntimeError("reranker circuit is open")
 
-        await self._ensure_session()
+        self._ensure_session()
 
         all_scores: list[float] = []
         batch_size = max(1, int(batch_size))
@@ -342,7 +342,7 @@ class APIReranker(BaseReranker):
 
         payload = self._build_payload(query, documents, max_length)
 
-        await self._ensure_session()
+        self._ensure_session()
         assert self.session is not None
 
         await self._rate_limit_async()
