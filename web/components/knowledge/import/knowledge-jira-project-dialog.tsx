@@ -22,7 +22,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { connectorApi } from '@/lib/api-client'
 import { coerceOneOf } from '@/lib/one-of'
 import { buildJiraProjectRunPayload } from './knowledge-jira-project-dialog.payload'
-import { detachPromise } from '@/lib/utils'
+import { detachPromise, trimTrailingSlashes } from '@/lib/utils'
 
 
 type KnowledgeJiraProjectDialogProps = {
@@ -90,7 +90,7 @@ export function KnowledgeJiraProjectDialog({
   const hasManualAccessOverride = accessMode !== 'inherit'
 
   const handleSubmit = useCallback(async () => {
-    const trimmedBaseUrl = baseUrl.trim().replace(/\/+$/, '')
+    const trimmedBaseUrl = trimTrailingSlashes(baseUrl)
     const trimmedProjectKey = projectKey.trim().toUpperCase()
 
     if (!/^https?:\/\//i.test(trimmedBaseUrl)) {

@@ -5,6 +5,7 @@ import type {
   JiraProjectConnectorConfig,
   WebCrawlAuthConfig,
 } from '@/types'
+import { trimTrailingSlashes } from '@/lib/utils'
 
 type JiraSyncMode = 'auto' | 'full' | 'incremental'
 type JiraSourceAclFallbackMode = 'only_me' | 'partial_members'
@@ -53,7 +54,7 @@ function parseAccessMembers(raw: string): string[] {
 export function buildJiraProjectRunPayload(
   input: JiraProjectRunPayloadInput
 ): Extract<ConnectorRunCreateRequest, { connector_id: 'jira_project' }> {
-  const trimmedBaseUrl = input.baseUrl.trim().replace(/\/+$/, '')
+  const trimmedBaseUrl = trimTrailingSlashes(input.baseUrl)
   const trimmedProjectKey = input.projectKey.trim().toUpperCase()
   const trimmedJql = input.jql.trim()
   const trimmedUserAgent = input.userAgent.trim()

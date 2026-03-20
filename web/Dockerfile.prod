@@ -9,7 +9,19 @@ RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY package.json pnpm-lock.yaml ./
+COPY next.config.mjs tsconfig.json tailwind.config.ts postcss.config.mjs eslint.config.js next-env.d.ts vitest.config.ts .eslintrc.json ./
+COPY app ./app
+COPY components ./components
+COPY contexts ./contexts
+COPY hooks ./hooks
+COPY lib ./lib
+COPY public ./public
+COPY scripts ./scripts
+COPY services ./services
+COPY store ./store
+COPY types ./types
+COPY workers ./workers
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_API_TIMEOUT_MS=60000
 ARG NEXT_PUBLIC_API_LONG_TIMEOUT_MS=600000
