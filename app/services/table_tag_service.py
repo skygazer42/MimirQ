@@ -898,7 +898,7 @@ def _extract_question_limit(question: str, *, default_limit: int) -> int:
 
     patterns = [
         re.compile(r"(?i)\btop\s*(\d{1,4})\b"),
-        re.compile(r"前\s*(\d{1,4})\s*(条|行|个)?"),
+        re.compile(r"前\s*(\d{1,4})\s*[条行个]?"),
         re.compile(r"(?i)\blimit\s*(\d{1,4})\b"),
     ]
     for p in patterns:

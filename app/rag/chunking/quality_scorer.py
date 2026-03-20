@@ -34,7 +34,7 @@ _OPENING_TO_CLOSING = {
 _PRONOUN_EN_RE = re.compile(
     r"(?i)\b(it|this|that|these|those|they|them|their|its|here|there|above|below)\b"
 )
-_PRONOUN_ZH_RE = re.compile(r"(?:上述|下文|本节|本段|此处|这里|那里|这个|这些|那个|那些|其|该(?:文|段|节|项)?)")
+_PRONOUN_ZH_RE = re.compile(r"(?:上述|下文|本节|本段|此处|这里|那里|这个|这些|那个|那些|其|该[文段节项]?)")
 
 
 def _clamp01(value: float) -> float:
@@ -184,4 +184,3 @@ def score_chunk_semantic_quality(
 
 
 __all__ = ["score_chunk_semantic_quality"]
-
