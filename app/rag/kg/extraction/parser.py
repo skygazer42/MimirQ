@@ -7,7 +7,7 @@ import unicodedata
 
 class EntityValueParser:
     _ws_re = re.compile(r"\s+")
-    _edge_quote_re = re.compile(r"(?:^[\"'`“”‘’]+|[\"'`“”‘’]+$)")
+    _edge_quote_chars = "\"'`“”‘’"
     # Conservative edge punctuation stripping to reduce fragmentation:
     # - We only strip at the edges (not internal), so names like "node.js" are preserved.
     # - We intentionally do NOT strip '#'/'+' to avoid breaking names like "C#" / "C++".
@@ -98,7 +98,7 @@ class EntityValueParser:
         text = unicodedata.normalize("NFKC", str(name or ""))
         text = self._ws_re.sub(" ", text).strip()
         # Trim paired quotes at edges (keep internal punctuation like C++, node.js, e-mail).
-        text = self._edge_quote_re.sub("", text).strip()
+        text = text.strip(self._edge_quote_chars).strip()
 
         # Unwrap common paired wrappers (best-effort), e.g. "(Alice)" / "（Alice）".
         # This reduces fragmentation caused by LLM formatting artifacts.

@@ -26,14 +26,14 @@ class BoilerplateRemovalResult:
 _CODE_FENCE_RE = re.compile(r"^\s*```")
 _HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(?P<title>.+?)\s*$")
 _WS_RE = re.compile(r"\s+")
-_PUNCT_STRIP_RE = re.compile(r"(?:^[\s\-\u2013\u2014:：.。!！?？·•]+|[\s\-\u2013\u2014:：.。!！?？·•]+$)")
+_PUNCT_STRIP_CHARS = "-–—:：.。!！?？·•"
 
 
 def _normalize_heading(text: str) -> str:
     raw = (text or "").strip()
     if not raw:
         return ""
-    normalized = _PUNCT_STRIP_RE.sub("", raw).strip().casefold()
+    normalized = raw.strip(_PUNCT_STRIP_CHARS).strip().casefold()
     normalized = _WS_RE.sub(" ", normalized)
     return normalized
 

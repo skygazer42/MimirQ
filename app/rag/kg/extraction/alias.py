@@ -34,7 +34,7 @@ class AliasCandidate:
 
 
 _WS_RE = re.compile(r"\s+")
-_EDGE_PUNCT_RE = re.compile(r"(?:^[\"'`“”‘’]+|[\"'`“”‘’]+$)")
+_EDGE_PUNCT_CHARS = "\"'`“”‘’"
 _EN_CONNECTOR_WORDS = {
     # Keep this list short and conservative; it's only used to trim
     # leading context for patterns like "X of Y (ABBR)".
@@ -115,7 +115,7 @@ _CJK_NON_ABBREV_SUFFIXES: tuple[str, ...] = (
 def _clean_surface(text: str) -> str:
     s = unicodedata.normalize("NFKC", str(text or ""))
     s = _WS_RE.sub(" ", s).strip()
-    s = _EDGE_PUNCT_RE.sub("", s).strip()
+    s = s.strip(_EDGE_PUNCT_CHARS).strip()
     return s
 
 
