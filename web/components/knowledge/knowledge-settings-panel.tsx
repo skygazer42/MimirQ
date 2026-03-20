@@ -158,6 +158,10 @@ function formatConnectorSyncCapabilities(info: ConnectorInfo | undefined): strin
   return '全量'
 }
 
+function collectConnectorRunDocumentIds(documents: Array<{ document_id?: unknown }>): string[] {
+  return documents.map((d) => String(d?.document_id || '').trim()).filter(Boolean)
+}
+
 export function KnowledgeSettingsPanel({
   selectedDatasetId,
   connectorRuns,
@@ -649,16 +653,14 @@ export function KnowledgeSettingsPanel({
                               </button>
 
                               {expandedConnectorRunId === run.id ? (<div className="mt-2 rounded-lg border border-border/60 bg-background/40 p-3">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="text-xs font-medium text-foreground/80">Documents</div>
-                                    <Button type="button" variant="outline" size="sm" className="h-7 px-2 gap-1.5" onClick={() => {
-                                        const ids = documents
-                                            .map((d) => String(d?.document_id || '').trim())
-                                            .filter(Boolean);
-                                        detachPromise(copyText(ids.join('\n'), '已复制文档 ID 列表'));
-                                    }}>
-                                      <Copy className="h-3.5 w-3.5"/>
-                                      复制 IDs
+	                                    <div className="flex items-center justify-between gap-2">
+	                                      <div className="text-xs font-medium text-foreground/80">Documents</div>
+	                                      <Button type="button" variant="outline" size="sm" className="h-7 px-2 gap-1.5" onClick={() => {
+	                                        const ids = collectConnectorRunDocumentIds(documents);
+	                                        detachPromise(copyText(ids.join('\n'), '已复制文档 ID 列表'));
+	                                    }}>
+	                                        <Copy className="h-3.5 w-3.5"/>
+	                                        复制 IDs
                                     </Button>
                                   </div>
                                   <div className="mt-2 space-y-1">

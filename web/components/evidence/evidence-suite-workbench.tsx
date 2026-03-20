@@ -556,14 +556,14 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     const query = newQuery.trim()
     if (!query) return
 
-    let citations: Citation[] = []
-    let selected: string[] = []
-    let retrievalSnapshot: any = null
-    let ragSnapshot: any = { retrieval_profile: profile }
+	    let citations: Citation[] = []
+	    let selected: string[] = []
+	    let retrievalSnapshot: any = null
+	    let ragSnapshot: any
 
-    if (createItemTab === 'retrieve') {
-      citations = retrieveRes?.citations || []
-      selected = selectedChunkIds || []
+	    if (createItemTab === 'retrieve') {
+	      citations = retrieveRes?.citations || []
+	      selected = selectedChunkIds || []
       retrievalSnapshot = {
         ...retrieveRes,
         selected_chunk_ids: selected,
@@ -1340,10 +1340,10 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                 </div>
               ) : null}
 
-              {selectedItem && selectedItem.source_metadata && Object.keys(selectedItem.source_metadata).length ? (
-                <div>
-                  <div className="text-xs font-medium text-muted-foreground mb-1">Source Metadata</div>
-                  <Panel className="p-3">
+	              {selectedItem?.source_metadata && Object.keys(selectedItem.source_metadata).length ? (
+	                <div>
+	                  <div className="text-xs font-medium text-muted-foreground mb-1">Source Metadata</div>
+	                  <Panel className="p-3">
                     <ScrollArea className="h-[180px] pr-2">
                       <pre className="text-xs font-mono whitespace-pre-wrap break-words text-muted-foreground">
                         {JSON.stringify(selectedItem.source_metadata, null, 2)}
@@ -1511,12 +1511,13 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                                     .filter(([k, v]) => k && Number(v) > 0)
                                     .sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])))
                                     .slice(0, 4);
-                                const tmpl = (cand as any)?.rag_config_template || null;
-                                const tmplKey = tmpl ? String(tmpl?.template_key || '').trim() : '';
-                                const tmplVer = tmpl && Number.isFinite(Number(tmpl?.version)) ? Number(tmpl.version) : null;
-                                const tmplPatch = tmpl ? String(tmpl?.patch_hash || '').trim() : '';
-                                const tmplLabel = tmplKey ? `${tmplKey}${tmplVer === null ? '' : `@${tmplVer}`}` : '';
-                                return (<Panel key={qh || JSON.stringify(cand)} className="p-3">
+	                                const tmpl = cand.rag_config_template ?? null;
+	                                const tmplKey = tmpl ? String(tmpl?.template_key || '').trim() : '';
+	                                const tmplVer = tmpl && Number.isFinite(Number(tmpl?.version)) ? Number(tmpl.version) : null;
+	                                const tmplPatch = tmpl ? String(tmpl?.patch_hash || '').trim() : '';
+	                                const tmplVerLabel = tmplVer === null ? '' : `@${tmplVer}`;
+	                                const tmplLabel = tmplKey ? `${tmplKey}${tmplVerLabel}` : '';
+	                                return (<Panel key={qh || JSON.stringify(cand)} className="p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="text-[11px] text-muted-foreground">question_hash</div>
@@ -2035,81 +2036,89 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                 ) : null}
 
                 <Panel className="p-3">
-                  <ScrollArea className="h-[320px] pr-2">
-                    <div className="space-y-2">
-                      { }
-                      {retrieveRes ? (
-                        retrieveRanked.length ? (
-                          retrieveRanked.map((r) => {
-                            const c = r.citation
-                            const assistScore = r.score
-                            const hits = r.hits || []
-                            const chunkId = String(c.chunk_id || '')
-                            const checked = !!chunkId && selectedChunkIds.includes(chunkId)
-                            return (
-                              <div key={chunkId || `${c.document_id}:${c.chunk_index}`} className="rounded-lg border border-border/60 p-2">
-                                <div className="flex items-start gap-2">
-                                  <Checkbox
-                                    checked={checked}
-                                    onCheckedChange={() => toggleChunkSelection(chunkId, 'retrieve')}
-                                    aria-label="选择该引用"
-                                    disabled={!chunkId}
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <div className="text-xs font-mono text-foreground truncate">
-                                          {c.document_name || String(c.document_id).slice(0, 8)}
-                                        </div>
-                                        <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-                                          score {citationScoreLabel(c)}
-                                          {typeof c.page_number === 'number' ? ` · P.${c.page_number}` : null}
-                                          {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
-                                        </div>
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        {assistScore > 0 ? (
-                                          <Badge variant="secondary" className="font-mono text-[10px] tabular-nums">
-                                            hit {assistScore}
-                                          </Badge>
-                                        ) : null}
-                                        {chunkId ? (
-                                          <Badge variant="outline" className="font-mono text-[10px]">
-                                            {chunkId.slice(0, 8)}
-                                          </Badge>
-                                        ) : (
-                                          <Badge variant="destructive" className="font-mono text-[10px]">
-                                            missing chunk_id
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
-                                      {c.chunk_content}
-                                    </div>
-                                    {hits.length ? (
-                                      <div className="mt-2 flex flex-wrap gap-1">
-                                        {hits.slice(0, 4).map((h) => (
-                                          <Badge key={`hit:${chunkId || String(c.document_id)}:${h}`} variant="outline" className="text-[10px] font-mono">
-                                            {h}
-                                          </Badge>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })
-                        ) : (
-                          <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
-                        )
-                      ) : (
-                        <div className="text-sm text-muted-foreground text-pretty">运行检索后在此勾选 Ground Truth 引用。</div>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </Panel>
+	                  <ScrollArea className="h-[320px] pr-2">
+	                    <div className="space-y-2">
+	                      {!retrieveRes && (
+	                        <div className="text-sm text-muted-foreground text-pretty">
+	                          运行检索后在此勾选 Ground Truth 引用。
+	                        </div>
+	                      )}
+	                      {retrieveRes && retrieveRanked.length === 0 && (
+	                        <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
+	                      )}
+	                      {retrieveRes &&
+	                        retrieveRanked.length > 0 &&
+	                        retrieveRanked.map((r) => {
+	                          const c = r.citation
+	                          const assistScore = r.score
+	                          const hits = r.hits || []
+	                          const chunkId = String(c.chunk_id || '')
+	                          const checked = !!chunkId && selectedChunkIds.includes(chunkId)
+	                          return (
+	                            <div
+	                              key={chunkId || `${c.document_id}:${c.chunk_index}`}
+	                              className="rounded-lg border border-border/60 p-2"
+	                            >
+	                              <div className="flex items-start gap-2">
+	                                <Checkbox
+	                                  checked={checked}
+	                                  onCheckedChange={() => toggleChunkSelection(chunkId, 'retrieve')}
+	                                  aria-label="选择该引用"
+	                                  disabled={!chunkId}
+	                                />
+	                                <div className="min-w-0 flex-1">
+	                                  <div className="flex items-start justify-between gap-3">
+	                                    <div className="min-w-0">
+	                                      <div className="text-xs font-mono text-foreground truncate">
+	                                        {c.document_name || String(c.document_id).slice(0, 8)}
+	                                      </div>
+	                                      <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
+	                                        score {citationScoreLabel(c)}
+	                                        {typeof c.page_number === 'number' ? ` · P.${c.page_number}` : null}
+	                                        {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
+	                                      </div>
+	                                    </div>
+	                                    <div className="flex items-center gap-2">
+	                                      {assistScore > 0 ? (
+	                                        <Badge variant="secondary" className="font-mono text-[10px] tabular-nums">
+	                                          hit {assistScore}
+	                                        </Badge>
+	                                      ) : null}
+	                                      {chunkId ? (
+	                                        <Badge variant="outline" className="font-mono text-[10px]">
+	                                          {chunkId.slice(0, 8)}
+	                                        </Badge>
+	                                      ) : (
+	                                        <Badge variant="destructive" className="font-mono text-[10px]">
+	                                          missing chunk_id
+	                                        </Badge>
+	                                      )}
+	                                    </div>
+	                                  </div>
+	                                  <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
+	                                    {c.chunk_content}
+	                                  </div>
+	                                  {hits.length ? (
+	                                    <div className="mt-2 flex flex-wrap gap-1">
+	                                      {hits.slice(0, 4).map((h) => (
+	                                        <Badge
+	                                          key={`hit:${chunkId || String(c.document_id)}:${h}`}
+	                                          variant="outline"
+	                                          className="text-[10px] font-mono"
+	                                        >
+	                                          {h}
+	                                        </Badge>
+	                                      ))}
+	                                    </div>
+	                                  ) : null}
+	                                </div>
+	                              </div>
+	                            </div>
+	                          )
+	                        })}
+	                    </div>
+	                  </ScrollArea>
+	                </Panel>
               </TabsContent>
 
               <TabsContent value="import" className="mt-3 space-y-3">
@@ -2148,62 +2157,66 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
                 {importError ? <div className="text-xs text-destructive text-pretty">{importError}</div> : null}
 
                 <Panel className="p-3">
-                  <ScrollArea className="h-[320px] pr-2">
-                    <div className="space-y-2">
-                      { }
-                      {importPack ? (
-                        importCitations.length ? (
-                          importCitations.map((c) => {
-                            const chunkId = String(c.chunk_id || '')
-                            const checked = !!chunkId && importSelectedChunkIds.includes(chunkId)
-                            return (
-                              <div key={chunkId || `${c.document_id}:${c.chunk_index}`} className="rounded-lg border border-border/60 p-2">
-                                <div className="flex items-start gap-2">
-                                  <Checkbox
-                                    checked={checked}
-                                    onCheckedChange={() => toggleChunkSelection(chunkId, 'import')}
-                                    aria-label="选择该引用"
-                                    disabled={!chunkId}
-                                  />
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <div className="text-xs font-mono text-foreground truncate">
-                                          {c.document_name || String(c.document_id).slice(0, 8)}
-                                        </div>
-                                        <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-                                          score {citationScoreLabel(c)}
-                                          {typeof c.page_number === 'number' ? ` · P.${c.page_number}` : null}
-                                          {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
-                                        </div>
-                                      </div>
-                                      {chunkId ? (
-                                        <Badge variant="outline" className="font-mono text-[10px]">
-                                          {chunkId.slice(0, 8)}
-                                        </Badge>
-                                      ) : (
-                                        <Badge variant="destructive" className="font-mono text-[10px]">
-                                          missing chunk_id
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
-                                      {c.chunk_content}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )
-                          })
-                        ) : (
-                          <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
-                        )
-                      ) : (
-                        <div className="text-sm text-muted-foreground text-pretty">导入后在此勾选 Ground Truth 引用。</div>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </Panel>
+	                  <ScrollArea className="h-[320px] pr-2">
+	                    <div className="space-y-2">
+	                      {!importPack && (
+	                        <div className="text-sm text-muted-foreground text-pretty">
+	                          导入后在此勾选 Ground Truth 引用。
+	                        </div>
+	                      )}
+	                      {importPack && importCitations.length === 0 && (
+	                        <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
+	                      )}
+	                      {importPack &&
+	                        importCitations.length > 0 &&
+	                        importCitations.map((c) => {
+	                          const chunkId = String(c.chunk_id || '')
+	                          const checked = !!chunkId && importSelectedChunkIds.includes(chunkId)
+	                          return (
+	                            <div
+	                              key={chunkId || `${c.document_id}:${c.chunk_index}`}
+	                              className="rounded-lg border border-border/60 p-2"
+	                            >
+	                              <div className="flex items-start gap-2">
+	                                <Checkbox
+	                                  checked={checked}
+	                                  onCheckedChange={() => toggleChunkSelection(chunkId, 'import')}
+	                                  aria-label="选择该引用"
+	                                  disabled={!chunkId}
+	                                />
+	                                <div className="min-w-0 flex-1">
+	                                  <div className="flex items-start justify-between gap-3">
+	                                    <div className="min-w-0">
+	                                      <div className="text-xs font-mono text-foreground truncate">
+	                                        {c.document_name || String(c.document_id).slice(0, 8)}
+	                                      </div>
+	                                      <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
+	                                        score {citationScoreLabel(c)}
+	                                        {typeof c.page_number === 'number' ? ` · P.${c.page_number}` : null}
+	                                        {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
+	                                      </div>
+	                                    </div>
+	                                    {chunkId ? (
+	                                      <Badge variant="outline" className="font-mono text-[10px]">
+	                                        {chunkId.slice(0, 8)}
+	                                      </Badge>
+	                                    ) : (
+	                                      <Badge variant="destructive" className="font-mono text-[10px]">
+	                                        missing chunk_id
+	                                      </Badge>
+	                                    )}
+	                                  </div>
+	                                  <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
+	                                    {c.chunk_content}
+	                                  </div>
+	                                </div>
+	                              </div>
+	                            </div>
+	                          )
+	                        })}
+	                    </div>
+	                  </ScrollArea>
+	                </Panel>
               </TabsContent>
             </Tabs>
           </div>

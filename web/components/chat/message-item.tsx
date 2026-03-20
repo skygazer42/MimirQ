@@ -67,18 +67,19 @@ function maybeAttachImageAuthToken(url: string): string {
 }
 
 function getCitationRange(citation: Citation): { start: number; end: number } | undefined {
-  const start =
-    typeof citation.evidence_start_char === 'number'
-      ? citation.evidence_start_char
-      : typeof citation.start_char === 'number'
-        ? citation.start_char
-        : null
-  const end =
-    typeof citation.evidence_end_char === 'number'
-      ? citation.evidence_end_char
-      : typeof citation.end_char === 'number'
-        ? citation.end_char
-        : null
+  let start: number | null = null
+  if (typeof citation.evidence_start_char === 'number') {
+    start = citation.evidence_start_char
+  } else if (typeof citation.start_char === 'number') {
+    start = citation.start_char
+  }
+
+  let end: number | null = null
+  if (typeof citation.evidence_end_char === 'number') {
+    end = citation.evidence_end_char
+  } else if (typeof citation.end_char === 'number') {
+    end = citation.end_char
+  }
 
   return start != null && end != null && end > start ? { start, end } : undefined
 }

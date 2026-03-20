@@ -62,7 +62,7 @@ export function KnowledgeUrlImportDialog({
       return
     }
 
-    let normalizedUrl = nextUrl
+    let normalizedUrl: string
     try {
       // Keep this permissive (any valid absolute URL) and let the backend enforce policy.
       // This is primarily an inline UX guard so users don't submit empty/garbled text.

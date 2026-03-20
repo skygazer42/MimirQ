@@ -58,26 +58,9 @@ async function copyToClipboard(text: string) {
   if (!raw) return false
 
   try {
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return false
     await navigator.clipboard.writeText(raw)
     return true
-  } catch {
-    // ignore
-  }
-
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = raw
-    textarea.setAttribute('readonly', '')
-    textarea.style.position = 'fixed'
-    textarea.style.left = '0'
-    textarea.style.top = '0'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.focus()
-    textarea.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    return ok
   } catch {
     return false
   }
@@ -345,4 +328,3 @@ export function EvidenceViewerDialog({
     </Dialog>
   )
 }
-

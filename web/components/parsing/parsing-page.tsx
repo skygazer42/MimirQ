@@ -104,6 +104,54 @@ function countMarkdownHeadings(markdown: string) {
   return (md.match(/^#{1,6}\s+\S+/gm) || []).length
 }
 
+function bumpParsingProgress(prev: ParsedFile[], fileId: string): ParsedFile[] {
+  return prev.map((f) =>
+    f.id === fileId && f.status === 'parsing'
+      ? { ...f, progress: Math.min((f.progress || 0) + Math.random() * 15, 90) }
+      : f
+  )
+}
+
+function applyEditedMarkdown(
+  prev: ParsedFile[],
+  fileId: string,
+  targetRunId: string | undefined,
+  editedContent: string
+): ParsedFile[] {
+  return prev.map((f) => {
+    if (f.id !== fileId) return f
+
+    const runs =
+      targetRunId && f.runs
+        ? f.runs.map((run) =>
+            run.id === targetRunId
+              ? {
+                  ...run,
+                  cleanedMarkdown: editedContent,
+                  rawMarkdown: editedContent,
+                  blocks: [],
+                }
+              : run
+          )
+        : f.runs
+
+    return {
+      ...f,
+      markdownContent: editedContent,
+      runs,
+      stats: f.stats
+        ? {
+            ...f.stats,
+            charCount: editedContent.length,
+            lineCount: editedContent.split('\n').length,
+            headingCount: countMarkdownHeadings(editedContent),
+            blockCount: 0,
+          }
+        : undefined,
+    }
+  })
+}
+
 export default function ParsingPage() {
   const router = useRouter()
 
@@ -230,9 +278,8 @@ export default function ParsingPage() {
     return 'pending'
   }, [])
 
-  const getLibraryStatusBadge = (status?: FileStatus) => {
-    const s = (status || 'pending')
-    switch (s) {
+  const getLibraryStatusBadge = (status: FileStatus = 'pending') => {
+    switch (status) {
       case 'parsed':
         return { label: '已解析', cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' }
       case 'parsing':
@@ -484,7 +531,7 @@ export default function ParsingPage() {
 
       const libStatus = (libEntry.status || 'parsed') as FileStatus
 
-      let status: FileStatus = 'pending'
+	      let status: FileStatus
       let errorMessage: string | undefined
       let markdownContent: string | null = null
       let runs: ParseRun[] | undefined
@@ -1142,16 +1189,10 @@ export default function ParsingPage() {
       })
     }
 
-    const progressInterval = setInterval(() => {
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === fileId && f.status === 'parsing'
-            ? { ...f, progress: Math.min((f.progress || 0) + Math.random() * 15, 90) }
-            : f
-        )
-      )
-    }, 300)
-    parseProgressIntervalsRef.current.set(fileId, progressInterval)
+	    const progressInterval = setInterval(() => {
+	      setFiles((prev) => bumpParsingProgress(prev, fileId))
+	    }, 300)
+	    parseProgressIntervalsRef.current.set(fileId, progressInterval)
 
     const clearProgressInterval = () => {
       clearInterval(progressInterval)
@@ -1346,12 +1387,12 @@ export default function ParsingPage() {
     }
   }
 
-  const handleSelectRun = (runId: string) => {
-    if (!activeFile || !activeFile.runs?.length) return
-    const nextRun = activeFile.runs.find((run) => run.id === runId)
-    if (!nextRun) return
+	  const handleSelectRun = (runId: string) => {
+	    if (!activeFile) return
+	    const nextRun = activeFile.runs?.find((run) => run.id === runId)
+	    if (!nextRun) return
 
-    setFiles((prev) =>
+	    setFiles((prev) =>
       prev.map((f) =>
         f.id === activeFile.id
           ? {
@@ -1408,39 +1449,8 @@ export default function ParsingPage() {
     if (!activeFile) return
     const targetRunId = activeRun?.id ?? activeFile.activeRunId
 
-    // 更新文件内容
-    setFiles((prev) =>
-      prev.map((f) => {
-        if (f.id !== activeFile.id) return f
-        const runs = targetRunId
-          ? f.runs?.map((run) =>
-            run.id === targetRunId
-              ? {
-                ...run,
-                cleanedMarkdown: editedContent,
-                rawMarkdown: editedContent,
-                blocks: [],
-              }
-              : run
-          )
-          : f.runs
-
-        return {
-          ...f,
-          markdownContent: editedContent,
-          runs,
-          stats: f.stats
-            ? {
-              ...f.stats,
-              charCount: editedContent.length,
-              lineCount: editedContent.split('\n').length,
-              headingCount: countMarkdownHeadings(editedContent),
-              blockCount: 0,
-            }
-            : undefined,
-        }
-      })
-    )
+	    // 更新文件内容
+	    setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, editedContent))
 
     setRightPanelMode('markdown')
     setActiveBlockId(null)
@@ -1589,7 +1599,6 @@ export default function ParsingPage() {
 
                 {/* File List Header & Toolbar */}
                 <div
-                  role="presentation"
                   className={cn(
                     "px-4 py-3 border-b border-border/60 flex items-center justify-between z-10 sticky top-0",
                     "bg-card dark:bg-background/40"
@@ -1700,102 +1709,157 @@ export default function ParsingPage() {
                 {/* File List */}
                 <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-2 bg-card dark:bg-background/40">
                   <div className="min-h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
-	                    {(() => {
-    if (isLibraryLoaded) {
-        if (directFolders.length === 0 && visibleQueueFiles.length === 0 && visibleLibraryOnlyFiles.length === 0) {
-            return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-	                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
-	                          <FolderOpen className="w-6 h-6 text-muted-foreground"/>
-	                        </div>
-	                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">暂无文件</p>
-                        <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">拖拽文件到此处或点击上方按钮添加</p>
-                        {isQueueRehydrating ? (<p className="text-[11px] text-muted-foreground dark:text-muted-foreground mt-3">正在恢复队列…</p>) : null}
-                      </div>);
-        }
-        else {
-            return (<div className="space-y-1">
-                        {directFolders.map((folder) => {
-                    const stats = folderStatsById.get(folder.id);
-                    const latestTs = stats?.latestTs || Date.parse(folder.createdAt);
-                    return (<button key={folder.id} type="button" className={cn("flex w-full items-center gap-3 p-2.5 rounded-xl border border-transparent hover:bg-muted dark:hover:bg-muted/40 group transition-colors cursor-pointer relative text-left", dragOverFolderId === folder.id && "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800", activeFolderId === folder.id && "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800")} draggable onDragStart={(e) => {
-                            try {
-                                e.dataTransfer.setData('application/x-mimirq-folder', folder.id);
-                            }
-                            catch {
-                                // ignore
-                            }
-                            e.dataTransfer.effectAllowed = 'move';
-                        }} onClick={() => setActiveFolderId(folder.id)} onDragOver={(e) => handleFolderDragOver(e, folder.id)} onDragLeave={() => setDragOverFolderId(null)} onDrop={(e) => handleFolderDrop(e, folder.id)}>
-                              <div className="w-9 h-9 rounded-xl bg-muted dark:bg-muted text-muted-foreground dark:text-muted-foreground flex items-center justify-center flex-shrink-0">
-                                <FolderOpen className="w-4 h-4"/>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between">
-                                  <div className={cn("text-sm font-semibold truncate pr-6", activeFolderId === folder.id ? "text-foreground dark:text-foreground" : "text-foreground/80 dark:text-muted-foreground")}>
-                                    {folder.name}
+                    {isLibraryLoaded ? (
+                      directFolders.length === 0 &&
+                      visibleQueueFiles.length === 0 &&
+                      visibleLibraryOnlyFiles.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+                          <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
+                            <FolderOpen className="w-6 h-6 text-muted-foreground" />
+                          </div>
+                          <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">暂无文件</p>
+                          <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">
+                            拖拽文件到此处或点击上方按钮添加
+                          </p>
+                          {isQueueRehydrating ? (
+                            <p className="text-[11px] text-muted-foreground dark:text-muted-foreground mt-3">
+                              正在恢复队列…
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {directFolders.map((folder) => {
+                            const stats = folderStatsById.get(folder.id)
+                            const latestTs = stats?.latestTs || Date.parse(folder.createdAt)
+                            return (
+                              <button
+                                key={folder.id}
+                                type="button"
+                                className={cn(
+                                  "flex w-full items-center gap-3 p-2.5 rounded-xl border border-transparent hover:bg-muted dark:hover:bg-muted/40 group transition-colors cursor-pointer relative text-left",
+                                  dragOverFolderId === folder.id &&
+                                    "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800",
+                                  activeFolderId === folder.id &&
+                                    "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800"
+                                )}
+                                draggable
+                                onDragStart={(e) => {
+                                  try {
+                                    e.dataTransfer.setData('application/x-mimirq-folder', folder.id)
+                                  } catch {
+                                    // ignore
+                                  }
+                                  e.dataTransfer.effectAllowed = 'move'
+                                }}
+                                onClick={() => setActiveFolderId(folder.id)}
+                                onDragOver={(e) => handleFolderDragOver(e, folder.id)}
+                                onDragLeave={() => setDragOverFolderId(null)}
+                                onDrop={(e) => handleFolderDrop(e, folder.id)}
+                              >
+                                <div className="w-9 h-9 rounded-xl bg-muted dark:bg-muted text-muted-foreground dark:text-muted-foreground flex items-center justify-center flex-shrink-0">
+                                  <FolderOpen className="w-4 h-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between">
+                                    <div
+                                      className={cn(
+                                        "text-sm font-semibold truncate pr-6",
+                                        activeFolderId === folder.id
+                                          ? "text-foreground dark:text-foreground"
+                                          : "text-foreground/80 dark:text-muted-foreground"
+                                      )}
+                                    >
+                                      {folder.name}
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground dark:text-muted-foreground flex-shrink-0">
+                                      {Number.isFinite(latestTs) && latestTs > 0
+                                        ? new Date(latestTs).toLocaleString([], {
+                                            month: '2-digit',
+                                            day: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })
+                                        : ''}
+                                    </span>
                                   </div>
-                                  <span className="text-[10px] text-muted-foreground dark:text-muted-foreground flex-shrink-0">
-                                    {Number.isFinite(latestTs) && latestTs > 0
-                            ? new Date(latestTs).toLocaleString([], {
-                                month: '2-digit',
-                                day: '2-digit',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                            })
-                            : ''}
-                                  </span>
+                                  <div className="flex items-center gap-2 mt-1 min-h-[16px]">
+                                    <span className="text-[10px] text-muted-foreground dark:text-muted-foreground">
+                                      {stats?.count || 0} 项
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 mt-1 min-h-[16px]">
-                                  <span className="text-[10px] text-muted-foreground dark:text-muted-foreground">
-                                    {(stats?.count || 0)} 项
-                                  </span>
-                                </div>
-                              </div>
-                            </button>);
-                })}
-                        {/* Persisted library entries (with Cyber/Glass theme) */}
-	                        {visibleLibraryOnlyFiles.map((f) => (<FileQueueItem key={f.id} file={{
-                        id: f.id,
-                        name: f.filename,
-                        size: f.fileSize,
-                        status: f.status || 'parsed',
-                        parser: f.parser,
-                        duration: f.durationSec,
-                        folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined
-                    }} isActive={activeLibraryFileId === f.id} onClick={() => {
-                        setActiveFileId(null);
-                        setActiveLibraryFileId(f.id);
-                    }} onRemove={() => removeFile(f.id)}/>))}
+                              </button>
+                            )
+                          })}
 
-                        {/* Current session queue files */}
-                        {visibleQueueFiles.map(f => (<div key={f.id} role="presentation" draggable onDragStart={(e) => handleFileDragStart(e, f.id)}>
-                            <FileQueueItem file={{
-                        id: f.id,
-                        name: f.name,
-                        size: f.size,
-                        status: f.status,
-                        progress: f.progress,
-                        parser: f.parserLabel,
-                        folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
-                        sourcePath: f.sourcePath,
-                        error: f.error,
-                        duration: f.duration,
-                        pageCount: f.stats?.pageCount
-                    }} isActive={activeFileId === f.id} onClick={() => setActiveFileId(f.id)} onRemove={() => removeFile(f.id)} onRetry={f.status === 'error' ? () => parseFile(f.id) : undefined}/>
-                          </div>))}
-                      </div>);
-        }
-    }
-    else {
-        return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-	                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
-		                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin motion-reduce:animate-none"/>
-	                        </div>
-	                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">正在加载文档库…</p>
-	                        <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">首次进入或刷新时会稍等片刻</p>
-	                      </div>);
-    }
-})()}
+                          {/* Persisted library entries (with Cyber/Glass theme) */}
+                          {visibleLibraryOnlyFiles.map((f) => (
+                            <FileQueueItem
+                              key={f.id}
+                              file={{
+                                id: f.id,
+                                name: f.filename,
+                                size: f.fileSize,
+                                status: f.status || 'parsed',
+                                parser: f.parser,
+                                duration: f.durationSec,
+                                folderPathLabel:
+                                  f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
+                              }}
+                              isActive={activeLibraryFileId === f.id}
+                              onClick={() => {
+                                setActiveFileId(null)
+                                setActiveLibraryFileId(f.id)
+                              }}
+                              onRemove={() => removeFile(f.id)}
+                            />
+                          ))}
+
+                          {/* Current session queue files */}
+	                          {visibleQueueFiles.map((f) => (
+	                            <div
+	                              key={f.id}
+	                              draggable
+	                              onDragStart={(e) => handleFileDragStart(e, f.id)}
+	                            >
+                              <FileQueueItem
+                                file={{
+                                  id: f.id,
+                                  name: f.name,
+                                  size: f.size,
+                                  status: f.status,
+                                  progress: f.progress,
+                                  parser: f.parserLabel,
+                                  folderPathLabel:
+                                    f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
+                                  sourcePath: f.sourcePath,
+                                  error: f.error,
+                                  duration: f.duration,
+                                  pageCount: f.stats?.pageCount,
+                                }}
+                                isActive={activeFileId === f.id}
+                                onClick={() => setActiveFileId(f.id)}
+                                onRemove={() => removeFile(f.id)}
+                                onRetry={f.status === 'error' ? () => parseFile(f.id) : undefined}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
+                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin motion-reduce:animate-none" />
+                        </div>
+                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">
+                          正在加载文档库…
+                        </p>
+                        <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">
+                          首次进入或刷新时会稍等片刻
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1931,30 +1995,29 @@ export default function ParsingPage() {
                               </Button>
                             )}
 
-                            { }
-                            {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
-	                              activeLibrarySourceStatus === 'available' ? (
-	                                <Button
-	                                  size="sm"
-	                                  className="h-8 px-3 text-[11px] gap-1.5 rounded-full bg-sky-600 hover:bg-sky-700"
-	                                  onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, true)}
-	                                  title="恢复并开始解析"
-	                                >
-	                                  <Play className="w-3.5 h-3.5" />
-                                  继续解析
-                                </Button>
-	                              ) : (
-	                                <Button
-	                                  size="sm"
-	                                  className="h-8 px-3 text-[11px] gap-1.5 rounded-full bg-sky-600 hover:bg-sky-700"
-	                                  onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, true)}
-	                                  title="重新上传并开始解析"
-	                                >
-	                                  <Play className="w-3.5 h-3.5" />
-                                  上传并解析
-                                </Button>
-                              )
-                            ) : null}
+	                            {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' && (
+		                            activeLibrarySourceStatus === 'available' ? (
+		                              <Button
+		                                size="sm"
+		                                className="h-8 px-3 text-[11px] gap-1.5 rounded-full bg-sky-600 hover:bg-sky-700"
+		                                onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, true)}
+		                                title="恢复并开始解析"
+		                              >
+		                                <Play className="w-3.5 h-3.5" />
+		                                继续解析
+		                              </Button>
+		                            ) : (
+		                              <Button
+		                                size="sm"
+		                                className="h-8 px-3 text-[11px] gap-1.5 rounded-full bg-sky-600 hover:bg-sky-700"
+		                                onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, true)}
+		                                title="重新上传并开始解析"
+		                              >
+		                                <Play className="w-3.5 h-3.5" />
+		                                上传并解析
+		                              </Button>
+		                            )
+	                            )}
 
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -2622,11 +2685,11 @@ export default function ParsingPage() {
                   {visibleQueueFiles.length}
                 </div>
               </div>
-              <div className="space-y-1">
-                {visibleQueueFiles.map((f) => (
-                  <div key={f.id} role="presentation" draggable onDragStart={(e) => handleFileDragStart(e, f.id)}>
-                    <FileQueueItem
-                      file={{
+	              <div className="space-y-1">
+	                {visibleQueueFiles.map((f) => (
+	                  <div key={f.id} draggable onDragStart={(e) => handleFileDragStart(e, f.id)}>
+	                    <FileQueueItem
+	                      file={{
                         id: f.id,
                         name: f.name,
                         size: f.size,
