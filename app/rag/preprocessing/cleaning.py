@@ -1,6 +1,7 @@
 import re
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Any
 
 from app.core.regex_runtime import safe_subn as safe_regex_subn
 from app.rag.preprocessing.normalization import normalize_text
@@ -21,6 +22,25 @@ class CleaningResult:
     changed: bool
     # Per-regex-rule substitution counts (aligned with the input `rules` order).
     rule_hits: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CleaningOptions:
+    rules: Iterable[RegexRule] | None = None
+    regex_timeout_ms: int | None = None
+    normalize_line_endings: bool = True
+    trim_trailing_spaces: bool = True
+    collapse_blank_lines: bool = True
+    max_blank_lines: int = 1
+    remove_control_chars: bool = True
+    remove_toc_lines: bool = True
+    remove_noise_lines: bool = True
+    unwrap_lines: bool = True
+    remove_common_lines: bool = True
+    common_lines: set[str] | None = None
+    unwrap_max_line_length: int = 120
+    noise_min_chars: int = 2
+    noise_ratio_threshold: float = 0.2
 
 
 _TRAILING_SPACES_RE = re.compile(r"[ \t]+\n")
@@ -65,24 +85,23 @@ _PDF_BULLETS: tuple[str, ...] = (
 )
 
 
+def _resolve_cleaning_options(
+    *,
+    options: CleaningOptions | None,
+    legacy_overrides: dict[str, Any],
+) -> CleaningOptions:
+    if options is None:
+        return CleaningOptions(**legacy_overrides)
+    if not legacy_overrides:
+        return options
+    return replace(options, **legacy_overrides)
+
+
 def clean_markdown(
     markdown: str,
     *,
-    rules: Iterable[RegexRule] | None = None,
-    regex_timeout_ms: int | None = None,
-    normalize_line_endings: bool = True,
-    trim_trailing_spaces: bool = True,
-    collapse_blank_lines: bool = True,
-    max_blank_lines: int = 1,
-    remove_control_chars: bool = True,
-    remove_toc_lines: bool = True,
-    remove_noise_lines: bool = True,
-    unwrap_lines: bool = True,
-    remove_common_lines: bool = True,
-    common_lines: set[str] | None = None,
-    unwrap_max_line_length: int = 120,
-    noise_min_chars: int = 2,
-    noise_ratio_threshold: float = 0.2,
+    options: CleaningOptions | None = None,
+    **legacy_overrides: Any,
 ) -> CleaningResult:
     """
     Lightweight Markdown cleaning used for "data governance" before chunking.
@@ -91,6 +110,23 @@ def clean_markdown(
     - This is intentionally conservative (no semantic rewriting of Markdown).
     - More domain-specific transforms should be added as explicit RegexRule entries.
     """
+    clean_options = _resolve_cleaning_options(options=options, legacy_overrides=legacy_overrides)
+    rules = clean_options.rules
+    regex_timeout_ms = clean_options.regex_timeout_ms
+    normalize_line_endings = clean_options.normalize_line_endings
+    trim_trailing_spaces = clean_options.trim_trailing_spaces
+    collapse_blank_lines = clean_options.collapse_blank_lines
+    max_blank_lines = clean_options.max_blank_lines
+    remove_control_chars = clean_options.remove_control_chars
+    remove_toc_lines = clean_options.remove_toc_lines
+    remove_noise_lines = clean_options.remove_noise_lines
+    unwrap_lines = clean_options.unwrap_lines
+    remove_common_lines = clean_options.remove_common_lines
+    common_lines = clean_options.common_lines
+    unwrap_max_line_length = clean_options.unwrap_max_line_length
+    noise_min_chars = clean_options.noise_min_chars
+    noise_ratio_threshold = clean_options.noise_ratio_threshold
+
     original = markdown
     text = normalize_text(
         markdown,

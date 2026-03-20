@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import uuid
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -171,45 +172,104 @@ def _annotate_chat_cache_metrics(
     return out
 
 
+@dataclass(frozen=True)
+class ChatCacheLookupInput:
+    db: Session
+    tenant_id: UUID
+    account_id: str
+    dataset_id: UUID | None
+    document_ids: list[UUID]
+    history: list[Any]
+    enable_long_term_memory: bool
+    long_term_messages: list[dict]
+    enable_structured_memory: bool
+    question: str
+    rag_config: dict[str, Any]
+    prompt_config: dict[str, Any]
+    structured_output: bool
+    structured_preset: str | None
+    use_graph: bool
+
+
+@dataclass(frozen=True)
+class ChatStreamPersistInput:
+    tenant_id: UUID
+    conversation_id: UUID
+    account_id: str
+    assistant_message_id: UUID
+    request_id: str
+    question: str
+    document_count: int
+    content: str
+    citations: list
+    metrics: dict
+    dataset_id_used: UUID | None
+    cache_hit: bool
+    cache_key: str | None
+    cache_eligible: bool
+    structured_data: object | None
+    ip: str | None
+    user_agent: str | None
+    enable_summary_memory: bool
+    enable_structured_memory: bool
+
+
+def _resolve_chat_cache_lookup_input(
+    *,
+    options: ChatCacheLookupInput | None,
+    legacy_overrides: dict[str, Any],
+) -> ChatCacheLookupInput:
+    if options is None:
+        return ChatCacheLookupInput(**legacy_overrides)
+    if not legacy_overrides:
+        return options
+    return replace(options, **legacy_overrides)
+
+
+def _resolve_chat_stream_persist_input(
+    *,
+    options: ChatStreamPersistInput | None,
+    legacy_overrides: dict[str, Any],
+) -> ChatStreamPersistInput:
+    if options is None:
+        return ChatStreamPersistInput(**legacy_overrides)
+    if not legacy_overrides:
+        return options
+    return replace(options, **legacy_overrides)
+
+
 def _prepare_chat_cache_lookup(
     *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id: UUID | None,
-    document_ids: list[UUID],
-    history: list[Any],
-    enable_long_term_memory: bool,
-    long_term_messages: list[dict],
-    enable_structured_memory: bool,
-    question: str,
-    rag_config: dict[str, Any],
-    prompt_config: dict[str, Any],
-    structured_output: bool,
-    structured_preset: str | None,
-    use_graph: bool,
+    options: ChatCacheLookupInput | None = None,
+    **legacy_overrides: Any,
 ) -> tuple[bool, str | None, str | None]:
+    lookup = _resolve_chat_cache_lookup_input(options=options, legacy_overrides=legacy_overrides)
     cache_enabled = bool(getattr(settings, "CHAT_RESPONSE_CACHE_ENABLED", False))
     if not cache_enabled:
         return False, None, None
-    if not document_ids and dataset_id is None:
+    if not lookup.document_ids and lookup.dataset_id is None:
         return True, None, "missing_scope"
     if bool(getattr(settings, "CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", True)):
-        if history or enable_long_term_memory or long_term_messages or enable_structured_memory:
+        if (
+            lookup.history
+            or lookup.enable_long_term_memory
+            or lookup.long_term_messages
+            or lookup.enable_structured_memory
+        ):
             return True, None, "history_not_empty"
     try:
         cache_key, skip_reason = resolve_chat_response_cache_key(
-            db=db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=dataset_id,
-            document_ids=document_ids,
-            question=question,
-            rag_config=rag_config,
-            prompt_config=prompt_config,
-            structured_output=structured_output,
-            structured_preset=structured_preset,
-            use_graph=use_graph,
+            db=lookup.db,
+            tenant_id=lookup.tenant_id,
+            account_id=lookup.account_id,
+            dataset_id=lookup.dataset_id,
+            document_ids=lookup.document_ids,
+            question=lookup.question,
+            rag_config=lookup.rag_config,
+            prompt_config=lookup.prompt_config,
+            structured_output=lookup.structured_output,
+            structured_preset=lookup.structured_preset,
+            use_graph=lookup.use_graph,
         )
     except Exception:
         return True, None, "lookup_error"
@@ -238,25 +298,8 @@ async def _auto_update_summary_background(*, tenant_id: UUID, conversation_id: U
 
 async def _persist_chat_stream_turn_background(
     *,
-    tenant_id: UUID,
-    conversation_id: UUID,
-    account_id: str,
-    assistant_message_id: UUID,
-    request_id: str,
-    question: str,
-    document_count: int,
-    content: str,
-    citations: list,
-    metrics: dict,
-    dataset_id_used: UUID | None,
-    cache_hit: bool,
-    cache_key: str | None,
-    cache_eligible: bool,
-    structured_data: object | None,
-    ip: str | None,
-    user_agent: str | None,
-    enable_summary_memory: bool,
-    enable_structured_memory: bool,
+    options: ChatStreamPersistInput | None = None,
+    **legacy_overrides: Any,
 ) -> None:
     """
     Best-effort async background persistence for streaming chat.
@@ -264,6 +307,27 @@ async def _persist_chat_stream_turn_background(
     Why: reduce tail latency for SSE by not blocking on DB commit after sending "done".
     Trade-off: if the worker crashes after responding, the assistant message might not be persisted.
     """
+    persist_input = _resolve_chat_stream_persist_input(options=options, legacy_overrides=legacy_overrides)
+    tenant_id = persist_input.tenant_id
+    conversation_id = persist_input.conversation_id
+    account_id = persist_input.account_id
+    assistant_message_id = persist_input.assistant_message_id
+    request_id = persist_input.request_id
+    question = persist_input.question
+    document_count = persist_input.document_count
+    content = persist_input.content
+    citations = persist_input.citations
+    metrics = persist_input.metrics
+    dataset_id_used = persist_input.dataset_id_used
+    cache_hit = persist_input.cache_hit
+    cache_key = persist_input.cache_key
+    cache_eligible = persist_input.cache_eligible
+    structured_data = persist_input.structured_data
+    ip = persist_input.ip
+    user_agent = persist_input.user_agent
+    enable_summary_memory = persist_input.enable_summary_memory
+    enable_structured_memory = persist_input.enable_structured_memory
+
     should_update_summary = (
         bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
         and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))

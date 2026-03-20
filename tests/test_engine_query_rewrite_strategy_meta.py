@@ -24,8 +24,9 @@ async def test_engine_emits_query_rewrite_strategy_meta(monkeypatch: pytest.Monk
     """
     Query rewrite is versioned; the engine should emit a PII-safe (id, hash) in the rewrite event.
     """
+    from app.api.schemas.chat import ChatRAGConfig
     from app.core.config import settings
-    from app.rag.engine import RAGEngine
+    from app.rag.engine import RAGChatContext, RAGEngine
 
     # Keep things offline/deterministic.
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", True, raising=False)
@@ -86,14 +87,18 @@ async def test_engine_emits_query_rewrite_strategy_meta(monkeypatch: pytest.Monk
 
     agen = engine.stream_chat(
         question=question,
-        history=history,
-        tenant_id=uuid.uuid4(),
-        account_id="u",
-        document_ids=[doc_id],
-        top_k=5,
-        score_threshold=0.0,
-        retrieval_mode="vector",
-        request_id="test",
+        context=RAGChatContext(
+            history=history,
+            tenant_id=uuid.uuid4(),
+            account_id="u",
+            document_ids=[doc_id],
+            request_id="test",
+        ),
+        rag_config=ChatRAGConfig(
+            top_k=5,
+            score_threshold=0.0,
+            retrieval_mode="vector",
+        ),
     )
     try:
         rewrite_ev = None
@@ -108,4 +113,3 @@ async def test_engine_emits_query_rewrite_strategy_meta(monkeypatch: pytest.Monk
         assert isinstance(data.get("strategy_hash"), str) and len(data.get("strategy_hash") or "") >= 8
     finally:
         await agen.aclose()
-

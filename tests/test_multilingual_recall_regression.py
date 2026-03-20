@@ -26,12 +26,14 @@ def _mk_doc(*, chunk_id: str, document_id: str, text: str, tenant_id: uuid.UUID,
 def _ranked_ids(*, retriever, tenant_id: uuid.UUID, query: str, top_k: int = 3) -> list[str]:
     rows = retriever._hybrid_search(  # noqa: SLF001
         query=query,
-        top_k=top_k,
-        score_threshold=0.0,
-        document_ids=None,
-        tenant_id=tenant_id,
-        retrieval_mode="keyword",
-        metadata_filter=None,
+        options=retriever.HybridSearchOptions(
+            top_k=top_k,
+            score_threshold=0.0,
+            document_ids=None,
+            tenant_id=tenant_id,
+            retrieval_mode="keyword",
+            metadata_filter=None,
+        ),
     )
     out: list[str] = []
     for row in rows:

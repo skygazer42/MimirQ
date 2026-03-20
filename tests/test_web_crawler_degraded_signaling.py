@@ -1,5 +1,6 @@
 import pytest
 
+from app.services.web_crawler import WebCrawlOptions
 from tests.helpers.async_utils import yield_control
 
 
@@ -27,12 +28,13 @@ async def test_web_crawl_records_missing_dependency_in_errors(monkeypatch):
     monkeypatch.setattr(mod, "_get_lxml_html", lambda: None)
 
     res = await mod.crawl_site(
-        start_urls=["http://example.com"],
-        max_pages=1,
-        max_depth=1,
-        same_host_only=False,
-        include_patterns=[],
-        exclude_patterns=[],
+        options=WebCrawlOptions(
+            start_urls=["http://example.com"],
+            max_pages=1,
+            max_depth=1,
+            same_host_only=False,
+            include_patterns=[],
+            exclude_patterns=[],
+        )
     )
     assert any(e.get("dependency") == "lxml" and e.get("reason") == "dependency_missing" for e in res.errors)
-
