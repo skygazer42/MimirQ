@@ -11,7 +11,7 @@ import threading
 import time
 from collections import Counter, OrderedDict
 from dataclasses import dataclass, replace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 from uuid import UUID
 
 import jieba
@@ -79,7 +79,7 @@ def _resolve_hybrid_search_options(
         return HybridSearchOptions(**legacy_overrides)
     if not legacy_overrides:
         return options
-    return replace(options, **legacy_overrides)
+    return cast(HybridSearchOptions, replace(options, **legacy_overrides))
 
 
 class HybridRetriever(BaseRetriever):

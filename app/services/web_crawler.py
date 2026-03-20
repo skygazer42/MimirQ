@@ -15,7 +15,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
@@ -416,7 +416,7 @@ def _resolve_web_crawl_options(
         return WebCrawlOptions(**legacy_overrides)
     if not legacy_overrides:
         return options
-    return replace(options, **legacy_overrides)
+    return cast(WebCrawlOptions, replace(options, **legacy_overrides))
 
 
 async def crawl_site(
