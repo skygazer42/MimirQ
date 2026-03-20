@@ -19,6 +19,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_cn_prefixed_heading
 
 
 @dataclass(frozen=True)
@@ -38,22 +39,6 @@ class _Section:
 
 
 _ROMAN_CHARS = set("ivxlcdm")
-_CN_HEADING_NUM_CHARS = set("0123456789一二三四五六七八九十百千")
-
-
-def _parse_cn_prefixed_heading(line: str, *, suffixes: str) -> str | None:
-    s = (line or "").strip()
-    if not s.startswith("第"):
-        return None
-    i = 1
-    n = len(s)
-    while i < n and s[i] in _CN_HEADING_NUM_CHARS:
-        i += 1
-    if i == 1 or i >= n:
-        return None
-    if s[i] not in suffixes:
-        return None
-    return s[: i + 1]
 
 
 def _parse_en_num_simple(s: str, start: int) -> tuple[str, int] | None:
@@ -164,13 +149,13 @@ def _iter_headings(text: str) -> list[BookHeading]:
 
         kind: str | None = None
         level: int | None = None
-        if _parse_cn_prefixed_heading(line, suffixes="卷") is not None:
+        if parse_cn_prefixed_heading(line, suffixes="卷") is not None:
             kind, level = "volume", 1
-        elif _parse_cn_prefixed_heading(line, suffixes="部") is not None:
+        elif parse_cn_prefixed_heading(line, suffixes="部") is not None:
             kind, level = "part", 1
-        elif _parse_cn_prefixed_heading(line, suffixes="章回") is not None:
+        elif parse_cn_prefixed_heading(line, suffixes="章回") is not None:
             kind, level = "chapter", 2
-        elif _parse_cn_prefixed_heading(line, suffixes="节") is not None:
+        elif parse_cn_prefixed_heading(line, suffixes="节") is not None:
             kind, level = "section", 3
         elif (en := _parse_en_heading(line)) is not None:
             kind, level, _ = en

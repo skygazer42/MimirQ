@@ -20,6 +20,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_cn_prefixed_heading
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,6 @@ class _Section:
     heading: OutlineHeading | None
 
 
-_CN_HEADING_NUM_CHARS = set("0123456789一二三四五六七八九十百千")
 _CN_NUMERAL_CHARS = set("一二三四五六七八九十百千")
 _CN_PAREN_NUM_CHARS = set("0123456789一二三四五六七八九十")
 
@@ -85,21 +85,6 @@ def _parse_numeric_heading_level(line: str) -> int | None:
     if not title:
         return None
     return int(segs)
-
-
-def _parse_cn_prefixed_heading(line: str, *, suffixes: str) -> str | None:
-    s = (line or "").strip()
-    if not s.startswith("第"):
-        return None
-    i = 1
-    n = len(s)
-    while i < n and s[i] in _CN_HEADING_NUM_CHARS:
-        i += 1
-    if i == 1 or i >= n:
-        return None
-    if s[i] not in suffixes:
-        return None
-    return s[: i + 1]
 
 
 def _looks_like_cn_num_heading(line: str) -> bool:
@@ -188,7 +173,7 @@ def _iter_headings(text: str) -> list[OutlineHeading]:
         level: int | None = None
         if (lv := _parse_numeric_heading_level(line)) is not None:
             level = int(lv)
-        elif _parse_cn_prefixed_heading(line, suffixes="章节篇回") is not None:
+        elif parse_cn_prefixed_heading(line, suffixes="章节篇回") is not None:
             level = 1
         elif _looks_like_cn_num_heading(line):
             level = 1
