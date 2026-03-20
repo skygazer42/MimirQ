@@ -1531,7 +1531,7 @@ def _compute_chunk_preview_review_signals(
         trimmed = str(getattr(c, "content", "") or "").strip()
         if not trimmed:
             continue
-        digest = hashlib.sha1(trimmed.encode("utf-8")).hexdigest()
+        digest = hashlib.blake2b(trimmed.encode("utf-8"), digest_size=16).hexdigest()
         prev = seen.get(digest)
         if prev is not None:
             duplicate_indices.add(prev)

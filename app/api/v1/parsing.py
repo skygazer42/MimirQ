@@ -293,7 +293,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
     # when auth uses dynamic account ids (e.g. smoke tests, JWT users). Use a stable
     # owner-scoped suffix to avoid collisions while keeping the name readable.
     owner_raw = str(account_id or "").strip()
-    owner_tag = hashlib.sha1(owner_raw.encode("utf-8")).hexdigest()[:8] if owner_raw else "anon"
+    owner_tag = hashlib.blake2b(owner_raw.encode("utf-8"), digest_size=4).hexdigest() if owner_raw else "anon"
     dataset_name = f"Parsing Workspace [{owner_tag}]"
 
     try:

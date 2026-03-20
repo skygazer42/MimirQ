@@ -21,7 +21,7 @@ def simhash64(text: str) -> int:
 
     Notes:
     - Tokenization is intentionally simple (alnum/CJK runs).
-    - Hashing uses SHA-1 truncated to 64 bits for stability across processes.
+    - Hashing uses BLAKE2b truncated to 64 bits for stability across processes.
     """
     raw = (text or "").strip()
     if not raw:
@@ -34,8 +34,8 @@ def simhash64(text: str) -> int:
     weights = Counter(tokens)
     vec = [0] * 64
     for tok, w in weights.items():
-        digest = hashlib.sha1(tok.encode("utf-8", "ignore")).digest()
-        h = int.from_bytes(digest[:8], "big", signed=False)
+        digest = hashlib.blake2b(tok.encode("utf-8", "ignore"), digest_size=8).digest()
+        h = int.from_bytes(digest, "big", signed=False)
         weight = int(w) if w else 1
         for i in range(64):
             vec[i] += weight if (h >> i) & 1 else -weight
@@ -60,4 +60,3 @@ __all__ = [
     "simhash64",
     "simhash64_hex",
 ]
-
