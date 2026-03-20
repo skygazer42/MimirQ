@@ -13,7 +13,6 @@ The chunker:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,6 +20,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
 
 
 @dataclass(frozen=True)
@@ -36,9 +36,6 @@ class _Section:
     start: int
     end: int
     heading: MarkdownHeading | None
-
-
-_RE_MD_HEADING = re.compile(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$")
 
 
 def _iter_headings(text: str) -> list[MarkdownHeading]:
@@ -72,12 +69,10 @@ def _iter_headings(text: str) -> list[MarkdownHeading]:
         if in_fence:
             continue
 
-        m = _RE_MD_HEADING.match(stripped)
-        if not m:
+        parsed = parse_markdown_hash_heading(stripped)
+        if parsed is None:
             continue
-
-        marks = m.group("marks")
-        title = (m.group("title") or "").strip()
+        level, title = parsed
         if not title:
             continue
 
@@ -86,7 +81,7 @@ def _iter_headings(text: str) -> list[MarkdownHeading]:
                 start=line_start,
                 end=line_start + len(raw_line),
                 title=title,
-                level=len(marks),
+                level=int(level),
             )
         )
 
@@ -201,4 +196,3 @@ class MarkdownOutlineChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

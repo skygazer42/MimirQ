@@ -15,7 +15,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _PLAIN_URL_RE = re.compile(r"(?P<url>https?://[^\s<>()]+)")
 _MD_LINK_RE = re.compile(r"(\]\()(?P<url>\S+?)(\))")
-_TRAILING_PUNCT_RE = re.compile(r"[)\].,;:!?]+$")
+_TRAILING_URL_PUNCT = frozenset(")].,;:!?")
 
 _TRACKING_KEYS = frozenset(
     {
@@ -84,10 +84,13 @@ def normalize_urls(text: str, *, strip_tracking: bool = True) -> UrlNormalizeRes
         nonlocal changed
         url_body = raw_url
         suffix = ""
-        m = _TRAILING_PUNCT_RE.search(url_body)
-        if m:
-            suffix = m.group(0)
-            url_body = url_body[: -len(suffix)]
+        if url_body:
+            i = len(url_body)
+            while i > 0 and url_body[i - 1] in _TRAILING_URL_PUNCT:
+                i -= 1
+            if i < len(url_body):
+                suffix = url_body[i:]
+                url_body = url_body[:i]
         new = canonicalize_url(url_body, strip_tracking=strip_tracking)
         if new != url_body:
             changed += 1

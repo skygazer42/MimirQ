@@ -9,7 +9,6 @@ Offsets are preserved.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,29 +34,79 @@ class _Section:
     definition: _Def | None
 
 
-_DEF_RE = re.compile(
-    r"(?m)^\s*(?:extend\s+)?(?P<kind>type|input|enum|interface|union|scalar|directive|schema)\b\s*(?P<rest>.*)$",
-    re.IGNORECASE,
-)
-_NAME_RE = re.compile(r"^(?P<name>[A-Za-z_]\w*)\b")
-_DIRECTIVE_NAME_RE = re.compile(r"^@(?P<name>[A-Za-z_]\w*)\b")
+_KINDS = frozenset({"type", "input", "enum", "interface", "union", "scalar", "directive", "schema"})
+
+
+def _take_name_token(text: str) -> str | None:
+    s = str(text or "").lstrip()
+    if not s:
+        return None
+    first = s[0]
+    if not (first.isalpha() or first == "_"):
+        return None
+    i = 1
+    while i < len(s) and (s[i].isalnum() or s[i] == "_"):
+        i += 1
+    return s[:i] if i > 0 else None
+
+
+def _parse_def_line(line: str) -> tuple[str, str | None] | None:
+    """
+    Parse a top-level GraphQL definition line.
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    raw = str(line or "").strip()
+    if not raw or raw.startswith("#"):
+        return None
+
+    parts = raw.split(None, 1)
+    if not parts:
+        return None
+    first = parts[0].casefold()
+    rest = parts[1] if len(parts) > 1 else ""
+
+    if first == "extend":
+        parts2 = rest.strip().split(None, 1)
+        if not parts2:
+            return None
+        first = parts2[0].casefold()
+        rest = parts2[1] if len(parts2) > 1 else ""
+
+    kind = first
+    if kind not in _KINDS:
+        return None
+
+    name: str | None = None
+    if kind in {"type", "input", "enum", "interface", "union", "scalar"}:
+        name = _take_name_token(rest)
+    elif kind == "directive":
+        at = rest.find("@")
+        if at >= 0:
+            name = _take_name_token(rest[at + 1 :])
+    return kind, (name or None)
 
 
 def _iter_defs(text: str) -> list[_Def]:
     defs: list[_Def] = []
-    for m in _DEF_RE.finditer(text or ""):
-        kind = (m.group("kind") or "").strip().lower()
-        rest = (m.group("rest") or "").strip()
-        name: str | None = None
-        if kind in {"type", "input", "enum", "interface", "union", "scalar"}:
-            nm = _NAME_RE.match(rest)
-            if nm:
-                name = (nm.group("name") or "").strip() or None
-        elif kind == "directive":
-            nm = _DIRECTIVE_NAME_RE.match(rest)
-            if nm:
-                name = (nm.group("name") or "").strip() or None
-        defs.append(_Def(start=m.start(), end=m.end(), kind=kind, name=name, index=len(defs)))
+    offset = 0
+    for raw_line in (text or "").splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+        plain = raw_line.rstrip("\r\n")
+        parsed = _parse_def_line(plain)
+        if not parsed:
+            continue
+        kind, name = parsed
+        defs.append(
+            _Def(
+                start=int(line_start),
+                end=int(line_start + len(raw_line)),
+                kind=str(kind),
+                name=name,
+                index=len(defs),
+            )
+        )
 
     deduped: list[_Def] = []
     last_start = -1
@@ -154,4 +203,3 @@ class GraphQLSchemaChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

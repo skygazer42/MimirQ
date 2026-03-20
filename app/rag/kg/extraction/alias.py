@@ -80,12 +80,6 @@ _EN_AKA_RE = re.compile(
     flags=re.IGNORECASE | re.UNICODE,
 )
 
-# Exact trailing "(...)" for entity-name canonicalization.
-_TRAILING_PARENS_RE = re.compile(
-    r"^(?P<head>.+?)\s*[（(]\s*(?P<tail>[^()（）\n]{2,40}?)\s*[)）]\s*$",
-    flags=re.UNICODE,
-)
-
 _VERSION_LIKE_RE = re.compile(r"^(?:v|ver|version)?\d+(?:\.\d+){0,3}$", flags=re.IGNORECASE)
 _CJK_NON_ABBREV_SUFFIXES: tuple[str, ...] = (
     # Organization / institution suffixes (common in Chinese full names).
@@ -382,11 +376,39 @@ def split_trailing_parenthetical_alias(name: str) -> tuple[str, str] | None:
     raw = _clean_surface(name)
     if not raw:
         return None
-    m = _TRAILING_PARENS_RE.match(raw)
-    if not m:
+
+    # Parse a trailing parenthetical without regex to avoid S5852 hotspots.
+    # Accept both ASCII and fullwidth parentheses.
+    s = raw.strip()
+    if not s or s[-1] not in (")", "）"):
         return None
-    head = _clean_surface(m.group("head"))
-    tail = _clean_surface(m.group("tail"))
+
+    close = s[-1]
+    open_idx_ascii = s.rfind("(", 0, len(s) - 1)
+    open_idx_full = s.rfind("（", 0, len(s) - 1)
+    open_idx = max(open_idx_ascii, open_idx_full)
+    if open_idx < 0:
+        return None
+
+    open_ch = s[open_idx]
+    if open_ch == "(" and close != ")":
+        return None
+    if open_ch == "（" and close != "）":
+        return None
+
+    head_raw = s[:open_idx].strip()
+    tail_raw = s[open_idx + 1 : -1].strip()
+
+    # Keep tail bounded and exclude nested parentheses/newlines to reduce noise.
+    if not head_raw or not tail_raw:
+        return None
+    if not (2 <= len(tail_raw) <= 40):
+        return None
+    if any(ch in "()（）\n\r" for ch in tail_raw):
+        return None
+
+    head = _clean_surface(head_raw)
+    tail = _clean_surface(tail_raw)
     if not head or not tail:
         return None
     if head.casefold() == tail.casefold():

@@ -20,6 +20,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
 
 
 @dataclass(frozen=True)
@@ -39,8 +40,6 @@ class _Section:
 
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _CN_MOBILE_RE = re.compile(r"\b1[3-9]\d{9}\b")
-
-_MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
 
 _EN_SECTIONS: dict[str, str] = {
     "summary": "summary",
@@ -97,9 +96,10 @@ def _normalize_title(raw: str) -> str:
     if not t:
         return ""
     # Strip markdown heading marker if present.
-    m = _MD_HEADING_RE.match(t)
-    if m:
-        t = (m.group("title") or "").strip()
+    parsed = parse_markdown_hash_heading(t)
+    if parsed is not None:
+        _level, title = parsed
+        t = title
     # Strip numbering prefixes like "1." / "1)" / "一、"
     t = re.sub(r"^\s*(?:\d{1,3}[.、)）]\s*|[一二三四五六七八九十]{1,3}[、.]\s*)", "", t).strip()
     t = t.strip(":：").strip()

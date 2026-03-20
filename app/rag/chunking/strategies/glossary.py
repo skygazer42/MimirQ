@@ -11,7 +11,6 @@ The chunker tries to keep a full entry together and uses entry-level overlap.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,35 +27,101 @@ class _Entry:
     term: str
 
 
-_INLINE_ENTRY_RE = re.compile(
-    r"(?m)^\s*(?P<term>(?:[A-Za-z][A-Za-z0-9 _./+()-]{0,40}|[\u4e00-\u9fff]{2,20}))\s*[:：–—-]\s+(?P<def>.+?)\s*$"
-)
+_EN_TERM_ALLOWED_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _./+()-")
+
+
+def _is_all_cjk(s: str) -> bool:
+    t = str(s or "")
+    if not t:
+        return False
+    for ch in t:
+        code = ord(ch)
+        if not (0x4E00 <= code <= 0x9FFF):
+            return False
+    return True
+
+
+def _parse_inline_entry(line: str) -> str | None:
+    """
+    Best-effort parser for glossary lines like:
+      Term: definition...
+      术语：定义...
+      Term - definition...
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").strip()
+    if not s:
+        return None
+
+    sep_idx: int | None = None
+    sep_len = 1
+
+    # Prefer ':' / '：' since '-' often appears inside English terms.
+    idx_ascii = s.find(":")
+    idx_full = s.find("：")
+    if idx_ascii >= 0 and idx_full >= 0:
+        sep_idx = min(idx_ascii, idx_full)
+    elif idx_ascii >= 0:
+        sep_idx = idx_ascii
+    elif idx_full >= 0:
+        sep_idx = idx_full
+
+    if sep_idx is None:
+        for token in (" - ", " – ", " — "):
+            i = s.find(token)
+            if i >= 0 and (sep_idx is None or i < sep_idx):
+                sep_idx = i
+                sep_len = len(token)
+
+    if sep_idx is None or sep_idx <= 0:
+        return None
+
+    term = s[:sep_idx].strip()
+    definition = s[sep_idx + sep_len :].strip()
+    if not term or not definition:
+        return None
+
+    if len(term) > 60:
+        return None
+    if term.count(" ") > 6:
+        return None
+
+    # Chinese term
+    if _is_all_cjk(term) and (2 <= len(term) <= 20):
+        return term
+
+    # English-ish term
+    if not (term[:1].isascii() and term[:1].isalpha()):
+        return None
+    if any(ch not in _EN_TERM_ALLOWED_CHARS for ch in term):
+        return None
+    return term
 
 
 def _iter_entries(text: str) -> list[_Entry]:
     if not text:
         return []
 
-    matches = list(_INLINE_ENTRY_RE.finditer(text))
-    if len(matches) < 2:
+    starts: list[int] = []
+    terms: list[str] = []
+    offset = 0
+    for raw_line in (text or "").splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+        term = _parse_inline_entry(raw_line)
+        if not term:
+            continue
+        starts.append(int(line_start))
+        terms.append(term)
+
+    if len(starts) < 2:
         return []
 
     entries: list[_Entry] = []
-    for idx, m in enumerate(matches):
-        start = m.start()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-
-        term = (m.group("term") or "").strip()
-        if not term:
-            continue
-        if len(term) > 60:
-            continue
-
-        # Filter out obvious false positives (very long "term" segments).
-        if term.count(" ") > 6:
-            continue
-
-        entries.append(_Entry(start=start, end=end, term=term))
+    for idx, start in enumerate(starts):
+        end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
+        entries.append(_Entry(start=int(start), end=int(end), term=terms[idx]))
 
     return entries if len(entries) >= 2 else []
 

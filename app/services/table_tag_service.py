@@ -16,6 +16,7 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
+from app.rag.core.code_fence import extract_first_code_fence
 from app.services.table_join_stats import build_join_statistics_snapshot
 from app.services.table_schema_graph import (
     infer_schema_relationships_for_tables as infer_schema_relationships_from_graph,
@@ -26,7 +27,6 @@ from app.services.table_schema_graph import (
 )
 from app.services.table_sql_fingerprint import fingerprint_sql
 
-_FENCE_RE = re.compile(r"```(?:sql)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 _SCHEMA_TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
 _QUOTED_LITERAL_RE = re.compile(r"[\"“”'‘’]([^\"“”'‘’]{1,80})[\"“”'‘’]")
 _NUMERIC_LITERAL_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
@@ -73,9 +73,9 @@ def extract_sql(text: str) -> str:
     raw = str(text or "").strip()
     if not raw:
         return ""
-    m = _FENCE_RE.search(raw)
-    if m:
-        raw = (m.group(1) or "").strip()
+    inner = extract_first_code_fence(raw, allowed_info_strings={"", "sql"})
+    if inner:
+        raw = inner
     # Strip leading/trailing junk.
     raw = raw.strip().strip(";").strip()
     # Keep a sane max length (defense-in-depth).

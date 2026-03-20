@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any
 
+from app.rag.core.code_fence import extract_first_code_fence
 from app.rag.core.logging import get_logger
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
 
@@ -45,7 +46,6 @@ class BaseLLMClient(ABC):
         it is appended as a system message hint (no strict validation).
         """
         import json
-        import re
 
         enhanced_messages: list[LLMMessage] = []
         if response_schema:
@@ -61,11 +61,9 @@ class BaseLLMClient(ABC):
         )
 
         content = response.content.strip()
-        json_block_match = re.search(
-            r"```(?:json)?\s*\n(.*?)\n```", content, re.DOTALL | re.IGNORECASE
-        )
-        if json_block_match:
-            content = json_block_match.group(1).strip()
+        fenced = extract_first_code_fence(content, allowed_info_strings={"", "json"})
+        if fenced is not None:
+            content = fenced
 
         try:
             return json.loads(content)

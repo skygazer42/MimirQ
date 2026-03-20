@@ -43,8 +43,38 @@ class _Section:
     heading: WikiHeading | None
 
 
-_HEADING_RE = re.compile(r"^\s*(?P<eq>={2,6})\s*(?P<title>.+?)\s*(?P=eq)\s*$")
 _WIKI_HINT_RE = re.compile(r"(\[\[[^\]]+\]\])|(\{\{[^}]+\}\})")
+
+
+def _parse_wiki_heading(line: str) -> tuple[int, str] | None:
+    """
+    Parse a MediaWiki heading like:
+      == Heading ==
+      === Subheading ===
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    raw = str(line or "").rstrip("\r\n")
+    if not raw:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    i = 0
+    while i < len(s) and s[i] == "=":
+        i += 1
+    if i < 2 or i > 6:
+        return None
+    j = len(s)
+    while j > 0 and s[j - 1] == "=":
+        j -= 1
+    if (len(s) - j) != i:
+        return None
+    title = s[i:j].strip()
+    if not title:
+        return None
+    level = max(1, min(6, int(i) - 1))
+    return level, title
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -63,14 +93,10 @@ def _iter_lines(text: str) -> list[_Line]:
 def _iter_headings(text: str) -> list[WikiHeading]:
     headings: list[WikiHeading] = []
     for ln in _iter_lines(text):
-        m = _HEADING_RE.match(ln.text.rstrip("\r\n"))
-        if not m:
+        parsed = _parse_wiki_heading(ln.text)
+        if not parsed:
             continue
-        eq = m.group("eq") or ""
-        level = max(1, min(6, len(eq) - 1))
-        title = (m.group("title") or "").strip()
-        if not title:
-            continue
+        level, title = parsed
         headings.append(
             WikiHeading(
                 start=ln.start,

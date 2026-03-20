@@ -44,9 +44,49 @@ class _KV:
 
 
 _SECTION_RE = re.compile(r"^\s*\[(?P<name>[^\]]{1,80})\]\s*$")
-_KV_RE = re.compile(
-    r"^\s*(?:export\s+)?(?P<key>[A-Za-z_][A-Za-z0-9_.-]{0,63})\s*=\s*(?P<value>.*)$"
-)
+
+
+def _parse_kv_line(line: str) -> str | None:
+    """
+    Parse a key-value assignment line like:
+      KEY=VALUE
+      export KEY=VALUE
+
+    Returns the key or None.
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    raw = str(line or "").rstrip("\r\n")
+    if not raw:
+        return None
+    s = raw.lstrip()
+    if not s:
+        return None
+
+    low = s.casefold()
+    if low.startswith("export"):
+        rest = s[len("export") :]
+        if rest[:1].isspace():
+            s = rest.lstrip()
+
+    eq = s.find("=")
+    if eq <= 0:
+        return None
+    key = s[:eq].strip()
+    if not key or len(key) > 64:
+        return None
+    first = key[0]
+    if not (first == "_" or (first.isascii() and first.isalpha())):
+        return None
+    for ch in key[1:]:
+        if not ch.isascii():
+            return None
+        if ch.isalnum():
+            continue
+        if ch in "_.-":
+            continue
+        return None
+    return key
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -89,10 +129,7 @@ def _iter_kv(text: str, *, start: int, end: int) -> list[_KV]:
     lines = _iter_lines(text[start:end])
     kvs: list[_KV] = []
     for ln in lines:
-        m = _KV_RE.match(ln.text)
-        if not m:
-            continue
-        key = (m.group("key") or "").strip()
+        key = _parse_kv_line(ln.text)
         if not key:
             continue
         kvs.append(_KV(start=start + ln.start, end=start + ln.end, key=key))
@@ -107,7 +144,7 @@ def looks_like_kv_config(text: str) -> bool:
         return False
     kv_lines = 0
     for ln in raw_lines[:2000]:
-        if _KV_RE.match(ln):
+        if _parse_kv_line(ln):
             kv_lines += 1
     if kv_lines < 5:
         return False

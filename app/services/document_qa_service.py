@@ -13,7 +13,6 @@ Design notes:
 
 from __future__ import annotations
 
-import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -53,8 +52,47 @@ class DocumentQAGenerateResult:
     preview: list[dict[str, str]]
 
 
-_Q_RE = re.compile(r"^\s*(?:q|question|问|問題|问题)\s*[:：]\s*(.+?)\s*$", flags=re.IGNORECASE)
-_A_RE = re.compile(r"^\s*(?:a|answer|答)\s*[:：]\s*(.*)\s*$", flags=re.IGNORECASE)
+_Q_PREFIXES: tuple[str, ...] = ("question", "q", "问题", "問題", "问")
+_A_PREFIXES: tuple[str, ...] = ("answer", "a", "答")
+
+
+def _split_prefixed_field(line: str, *, prefixes: tuple[str, ...], require_value: bool) -> str | None:
+    """
+    Best-effort parsing for Q/A lines like:
+      Q: ...
+      Question: ...
+      问：...
+      A: ...
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").lstrip()
+    if not s:
+        return None
+
+    for prefix in prefixes:
+        p = str(prefix or "")
+        if not p:
+            continue
+
+        if p.isascii():
+            if len(s) < len(p) or s[: len(p)].casefold() != p.casefold():
+                continue
+        else:
+            if not s.startswith(p):
+                continue
+
+        rest = s[len(p) :].lstrip()
+        if not rest or rest[0] not in (":", "："):
+            continue
+        value = rest[1:].lstrip()
+
+        if require_value:
+            value = value.strip()
+            return value or None
+        return value.strip()
+
+    return None
 
 
 def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> list[QAPair]:
@@ -78,15 +116,15 @@ def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> list[QAPair]:
         if len(pairs) >= max_pairs:
             break
 
-        q_match = _Q_RE.match(line)
-        if q_match:
+        q_val = _split_prefixed_field(line, prefixes=_Q_PREFIXES, require_value=True)
+        if q_val is not None:
             # Flush previous.
             if question and saw_answer_prefix:
                 answer = "\n".join([a for a in answer_lines if a is not None]).strip()
                 if answer:
                     pairs.append(QAPair(question=question.strip(), answer=answer))
             # Start new.
-            question = (q_match.group(1) or "").strip()
+            question = q_val
             answer_lines = []
             saw_answer_prefix = False
             continue
@@ -94,10 +132,10 @@ def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> list[QAPair]:
         if question is None:
             continue
 
-        a_match = _A_RE.match(line)
-        if a_match:
+        a_val = _split_prefixed_field(line, prefixes=_A_PREFIXES, require_value=False)
+        if a_val is not None:
             saw_answer_prefix = True
-            rest = (a_match.group(1) or "").strip()
+            rest = a_val.strip()
             if rest:
                 answer_lines.append(rest)
             continue

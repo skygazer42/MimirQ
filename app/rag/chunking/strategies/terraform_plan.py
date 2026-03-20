@@ -27,21 +27,62 @@ class _ChangeBlock:
     action: str
 
 
-_CHANGE_RE = re.compile(r"(?m)^\s*#\s+(?P<addr>.+?)\s+will\s+be\s+(?P<action>.+?)\s*$")
 _PLAN_HINT_RE = re.compile(r"(?i)terraform\s+will\s+perform\s+the\s+following\s+actions|^\s*Plan:\s*\d+", re.MULTILINE)
 
 
+def _parse_change_line(line: str) -> tuple[str, str] | None:
+    """
+    Parse a change header line like:
+      # aws_instance.example will be created
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").strip()
+    if not s:
+        return None
+    s = s.lstrip()
+    if not s.startswith("#"):
+        return None
+    rest = s[1:].strip()
+    marker = " will be "
+    idx = rest.find(marker)
+    if idx <= 0:
+        return None
+    addr = rest[:idx].strip()
+    action = rest[idx + len(marker) :].strip()
+    if not addr or not action:
+        return None
+    return addr, action
+
+
 def _build_change_blocks(text: str) -> list[_ChangeBlock]:
-    matches = list(_CHANGE_RE.finditer(text or ""))
-    if not matches:
+    raw = text or ""
+    if not raw:
+        return []
+
+    starts: list[int] = []
+    addrs: list[str] = []
+    actions: list[str] = []
+    offset = 0
+    for raw_line in raw.splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+        parsed = _parse_change_line(raw_line)
+        if not parsed:
+            continue
+        addr, action = parsed
+        starts.append(int(line_start))
+        addrs.append(addr)
+        actions.append(action)
+
+    if not starts:
         return []
     blocks: list[_ChangeBlock] = []
-    for idx, m in enumerate(matches):
-        start = m.start()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        addr = (m.group("addr") or "").strip()[:300]
-        action = (m.group("action") or "").strip()[:80]
-        blocks.append(_ChangeBlock(start=start, end=end, index=int(idx), address=addr, action=action))
+    for idx, start in enumerate(starts):
+        end = starts[idx + 1] if idx + 1 < len(starts) else len(raw)
+        addr = (addrs[idx] or "").strip()[:300]
+        action = (actions[idx] or "").strip()[:80]
+        blocks.append(_ChangeBlock(start=int(start), end=int(end), index=int(idx), address=addr, action=action))
     return blocks
 
 

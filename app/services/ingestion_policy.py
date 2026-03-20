@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.governance_profile import GovernanceProfileOut
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPreprocessStep, IngestionRule
+from app.core.regex_safety import looks_like_nested_quantifier
 from app.services.governance_profiles_resolver import resolve_governance_profile_ref_effective
 
 RULE_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
@@ -36,7 +37,6 @@ MAX_PREPROCESS_STEPS = 20
 MAX_PIPELINE_PATCH_KEYS = 120
 
 _ALLOWED_RE_FLAG_BITS = int(re.IGNORECASE)
-_SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
 
 
 # Public allowlist of supported file preprocess step ids.
@@ -59,9 +59,7 @@ ALLOWED_PREPROCESS_STEP_IDS: set[str] = {
 
 
 def _is_suspicious_regex(pattern: str) -> bool:
-    if _SUSPICIOUS_NESTED_QUANTIFIER_RE.search(pattern):
-        return True
-    return False
+    return looks_like_nested_quantifier(pattern)
 
 
 def _normalize_extensions(raw: object) -> list[str]:

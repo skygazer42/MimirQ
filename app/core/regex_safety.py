@@ -17,31 +17,75 @@ DEFAULT_MAX_PATTERN_LEN = 600
 DEFAULT_MAX_REPL_LEN = 2000
 DEFAULT_ALLOWED_FLAG_BITS = int(re.IGNORECASE | re.MULTILINE | re.DOTALL)
 
-def _has_suspicious_nested_quantifier(pattern: str) -> bool:
-    """
-    Best-effort ReDoS guard.
 
-    Detect the most common nested-quantifier shape without using regex:
-      - "(...+...)+" / "(...*...)*"
-    This is intentionally conservative and does not attempt to parse full regex grammar.
+def looks_like_nested_quantifier(pattern: str) -> bool:
+    """
+    Detect a common nested-quantifier shape:
+      (...+ ...)+  or  (...* ...)*  (very rough)
+
+    This mirrors the previous regex-based heuristic:
+      \\([^)]*[+*][^)]*\\)[+*]
+
+    Notes:
+    - This is intentionally conservative and does not attempt to parse full regex grammar.
+    - It is used as a best-effort guardrail for *user-provided* patterns.
     """
     s = str(pattern or "")
-    i = 0
-    while True:
-        open_idx = s.find("(", i)
-        if open_idx < 0:
-            return False
-        close_idx = s.find(")", open_idx + 1)
-        if close_idx < 0:
-            return False
+    if not s:
+        return False
 
-        # Outer quantifier must exist.
-        if close_idx + 1 < len(s) and s[close_idx + 1] in {"+", "*"}:
-            inner = s[open_idx + 1 : close_idx]
-            if "+" in inner or "*" in inner:
+    i = 0
+    escaped = False
+    n = len(s)
+
+    while i < n:
+        ch = s[i]
+        if escaped:
+            escaped = False
+            i += 1
+            continue
+        if ch == "\\":
+            escaped = True
+            i += 1
+            continue
+
+        if ch != "(":
+            i += 1
+            continue
+
+        # Scan forward to the next unescaped ')', tracking whether the group
+        # contains an unescaped '+' or '*'.
+        j = i + 1
+        inner_escaped = False
+        inner_has_quant = False
+        while j < n:
+            cj = s[j]
+            if inner_escaped:
+                inner_escaped = False
+                j += 1
+                continue
+            if cj == "\\":
+                inner_escaped = True
+                j += 1
+                continue
+            if cj == ")":
+                break
+            if cj in {"+", "*"}:
+                inner_has_quant = True
+            j += 1
+
+        if j < n and s[j] == ")":
+            if inner_has_quant and j + 1 < n and s[j + 1] in {"+", "*"}:
                 return True
 
-        i = open_idx + 1
+        i = j + 1
+
+    return False
+
+
+def _has_suspicious_nested_quantifier(pattern: str) -> bool:
+    # Backwards-compatible private alias used by validate_regex_rules.
+    return looks_like_nested_quantifier(pattern)
 
 
 @dataclass(frozen=True)
@@ -99,10 +143,20 @@ def validate_regex_rules(
         return []
 
     if isinstance(rules, (str, bytes)):
-        raise RegexRulesValidationError("regex rules must be a list", errors=[RegexRuleViolation(index=-1, field="rules", code="type", message="expected list")])
+        raise RegexRulesValidationError(
+            "regex rules must be a list",
+            errors=[
+                RegexRuleViolation(index=-1, field="rules", code="type", message="expected list"),
+            ],
+        )
 
     if not isinstance(rules, Sequence):
-        raise RegexRulesValidationError("regex rules must be a list", errors=[RegexRuleViolation(index=-1, field="rules", code="type", message="expected list")])
+        raise RegexRulesValidationError(
+            "regex rules must be a list",
+            errors=[
+                RegexRuleViolation(index=-1, field="rules", code="type", message="expected list"),
+            ],
+        )
 
     items = list(rules)
     limit = max(0, int(max_rules or 0))
@@ -122,38 +176,58 @@ def validate_regex_rules(
 
         pat = str(pat_raw or "")
         if not pat.strip():
-            violations.append(RegexRuleViolation(index=idx, field="pattern", code="required", message="pattern is required"))
+            violations.append(
+                RegexRuleViolation(index=idx, field="pattern", code="required", message="pattern is required")
+            )
             continue
 
         if max_pattern_len and len(pat) > int(max_pattern_len):
             violations.append(
-                RegexRuleViolation(index=idx, field="pattern", code="too_long", message=f"max_len={int(max_pattern_len)}")
+                RegexRuleViolation(
+                    index=idx,
+                    field="pattern",
+                    code="too_long",
+                    message=f"max_len={int(max_pattern_len)}",
+                )
             )
             continue
 
         if _has_suspicious_nested_quantifier(pat):
-            violations.append(RegexRuleViolation(index=idx, field="pattern", code="unsafe", message="nested quantifier"))
+            violations.append(
+                RegexRuleViolation(index=idx, field="pattern", code="unsafe", message="nested quantifier")
+            )
             continue
 
         repl = str(repl_raw or "")
         if max_repl_len and len(repl) > int(max_repl_len):
             violations.append(
-                RegexRuleViolation(index=idx, field="repl", code="too_long", message=f"max_len={int(max_repl_len)}")
+                RegexRuleViolation(
+                    index=idx,
+                    field="repl",
+                    code="too_long",
+                    message=f"max_len={int(max_repl_len)}",
+                )
             )
             continue
 
         try:
             flags = int(flags_raw or 0)
         except (TypeError, ValueError):
-            violations.append(RegexRuleViolation(index=idx, field="flags", code="invalid", message="flags must be int"))
+            violations.append(
+                RegexRuleViolation(index=idx, field="flags", code="invalid", message="flags must be int")
+            )
             continue
 
         if flags < 0:
-            violations.append(RegexRuleViolation(index=idx, field="flags", code="invalid", message="flags must be >= 0"))
+            violations.append(
+                RegexRuleViolation(index=idx, field="flags", code="invalid", message="flags must be >= 0")
+            )
             continue
 
         if int(allowed_flag_bits) and (flags & ~int(allowed_flag_bits)):
-            violations.append(RegexRuleViolation(index=idx, field="flags", code="unsupported", message="unsupported flag bits"))
+            violations.append(
+                RegexRuleViolation(index=idx, field="flags", code="unsupported", message="unsupported flag bits")
+            )
             continue
 
         try:
@@ -179,5 +253,6 @@ __all__ = [
     "DEFAULT_MAX_RULES",
     "RegexRuleViolation",
     "RegexRulesValidationError",
+    "looks_like_nested_quantifier",
     "validate_regex_rules",
 ]

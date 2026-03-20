@@ -12,7 +12,6 @@ chunk_overlap while preserving offsets.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,13 +37,57 @@ class _Section:
     heading: StepHeading | None
 
 
-_RE_EN_STEP = re.compile(
-    r"^\s*step\s*(?P<num>\d{1,3})\s*[:：.\-]?\s*(?P<title>.+?)?\s*$",
-    flags=re.IGNORECASE,
-)
-_RE_CN_STEP = re.compile(
-    r"^\s*步骤\s*(?P<num>[0-9一二三四五六七八九十百千]{1,4})\s*[:：.\-]?\s*(?P<title>.+?)?\s*$"
-)
+_CN_STEP_NUM_CHARS = frozenset("0123456789一二三四五六七八九十百千")
+
+
+def _parse_step_heading(line: str) -> tuple[str, str | None] | None:
+    """
+    Parse a step heading line like:
+      Step 1: Title
+      步骤一：标题
+
+    Returns (num, title).
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").strip()
+    if not s:
+        return None
+
+    low = s.casefold()
+    if low.startswith("step"):
+        rest = s[len("step") :].strip()
+        if not rest:
+            return None
+        i = 0
+        while i < len(rest) and i < 3 and rest[i].isdigit():
+            i += 1
+        if i == 0:
+            return None
+        num = rest[:i]
+        tail = rest[i:].lstrip()
+        if tail[:1] in (":", "：", ".", "-"):
+            tail = tail[1:].lstrip()
+        title = tail.strip() or None
+        return num, title
+
+    if s.startswith("步骤"):
+        rest = s[len("步骤") :].strip()
+        if not rest:
+            return None
+        i = 0
+        while i < len(rest) and i < 4 and rest[i] in _CN_STEP_NUM_CHARS:
+            i += 1
+        if i == 0:
+            return None
+        num = rest[:i]
+        tail = rest[i:].lstrip()
+        if tail[:1] in (":", "：", ".", "-"):
+            tail = tail[1:].lstrip()
+        title = tail.strip() or None
+        return num, title
+
+    return None
 
 
 def _iter_steps(text: str) -> list[StepHeading]:
@@ -63,13 +106,11 @@ def _iter_steps(text: str) -> list[StepHeading]:
         if len(line) > 200:
             continue
 
-        m = _RE_CN_STEP.match(raw_line) or _RE_EN_STEP.match(raw_line)
-        if not m:
+        parsed = _parse_step_heading(line)
+        if not parsed:
             continue
 
-        num = (m.group("num") or "").strip()
-        title = (m.group("title") or "").strip() if m.groupdict().get("title") is not None else None
-        title = title or None
+        num, title = parsed
 
         steps.append(
             StepHeading(

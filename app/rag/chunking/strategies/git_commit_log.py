@@ -39,8 +39,6 @@ class _Section:
 
 
 _COMMIT_RE = re.compile(r"(?m)^\s*commit\s+(?P<sha>[0-9a-f]{7,40})\b")
-_AUTHOR_RE = re.compile(r"(?m)^\s*Author:\s*(?P<val>.+?)\s*$")
-_DATE_RE = re.compile(r"(?m)^\s*Date:\s*(?P<val>.+?)\s*$")
 
 
 def _iter_commits(text: str) -> list[_Commit]:
@@ -55,10 +53,23 @@ def _iter_commits(text: str) -> list[_Commit]:
         if not m:
             continue
         sha = (m.group("sha") or "").strip()
-        author_m = _AUTHOR_RE.search(chunk[:2000])
-        date_m = _DATE_RE.search(chunk[:2000])
-        author = (author_m.group("val") or "").strip()[:200] if author_m else None
-        date = (date_m.group("val") or "").strip()[:200] if date_m else None
+        author = None
+        date = None
+        for ln in chunk[:2000].splitlines()[:60]:
+            stripped = ln.strip()
+            if not stripped:
+                continue
+            low = stripped.casefold()
+            if author is None and low.startswith("author:"):
+                val = stripped[len("author:") :].strip()
+                author = val[:200] or None
+                continue
+            if date is None and low.startswith("date:"):
+                val = stripped[len("date:") :].strip()
+                date = val[:200] or None
+                continue
+            if author is not None and date is not None:
+                break
         commits.append(_Commit(start=start, end=end, index=len(commits), sha=sha, author=author, date=date))
     return commits
 

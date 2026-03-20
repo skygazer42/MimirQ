@@ -13,7 +13,6 @@ overlap when possible.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -42,27 +41,81 @@ _HEADER_KEYWORDS = [
     "时间",
 ]
 
-_HEADER_LINE_RE = re.compile(
-    r"(?m)^\s*(?P<key>" + "|".join(re.escape(k) for k in _HEADER_KEYWORDS) + r")\s*[:：]\s*(?P<val>.+?)\s*$",
-    flags=re.IGNORECASE,
-)
+_HEADER_KEYS = {str(k or "").strip().casefold() for k in _HEADER_KEYWORDS if str(k or "").strip()}
+_HEADER_START_KEYS = {"from", "发件人"}
 
-_HEADER_START_RE = re.compile(
-    r"(?m)^\s*(from|发件人)\s*[:：]\s*.+$",
-    flags=re.IGNORECASE,
-)
 
-_THREAD_SEPARATOR_RE = re.compile(
-    r"(?m)^\s*-{2,}\s*(?:original message|forwarded message|原始邮件|转发邮件)\s*-{2,}\s*$",
-    flags=re.IGNORECASE,
-)
+def _parse_header_line(line: str) -> tuple[str, str] | None:
+    """
+    Parse a header line like:
+      From: someone@example.com
+      发件人：xxx
 
-_ON_WROTE_RE = re.compile(
-    r"(?m)^\s*(?:on\s+.+\s+wrote:|在\s+.+\s+写道[:：]?)\s*$",
-    flags=re.IGNORECASE,
-)
+    Returns (key_cf, value) or None.
 
-_QUOTE_LINE_RE = re.compile(r"(?m)^\s*>+")
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").strip()
+    if not s:
+        return None
+
+    colon_ascii = s.find(":")
+    colon_full = s.find("：")
+    if colon_ascii == -1:
+        colon = colon_full
+    elif colon_full == -1:
+        colon = colon_ascii
+    else:
+        colon = min(colon_ascii, colon_full)
+
+    if colon <= 0:
+        return None
+
+    key = s[:colon].strip().casefold()
+    if key not in _HEADER_KEYS:
+        return None
+    val = s[colon + 1 :].strip()
+    if not val:
+        return None
+    return key, val
+
+
+def _looks_like_thread_separator_line(line: str) -> bool:
+    s = str(line or "").strip()
+    if not s:
+        return False
+    # Require some dashes to avoid false positives.
+    i = 0
+    while i < len(s) and s[i] == "-":
+        i += 1
+    if i < 2:
+        return False
+    low = s.casefold()
+    return ("original message" in low) or ("forwarded message" in low) or ("原始邮件" in s) or ("转发邮件" in s)
+
+
+def _looks_like_on_wrote_line(line: str) -> bool:
+    s = str(line or "").strip()
+    if not s:
+        return False
+
+    low = s.casefold()
+    if low.startswith("on ") and low.rstrip().endswith("wrote:") and (" wrote:" in low):
+        return True
+
+    # Chinese common quote header: 在 ... 写道:
+    if s.startswith("在") and ("写道" in s):
+        tail = s.rstrip()
+        return tail.endswith("写道") or tail.endswith("写道:") or tail.endswith("写道：")
+
+    return False
+
+
+def _has_quote_lines(text: str) -> bool:
+    for ln in str(text or "").splitlines():
+        if ln.lstrip().startswith(">"):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -73,7 +126,7 @@ class _Message:
 
 
 def _count_header_lines(lines: list[str]) -> int:
-    return sum(1 for ln in lines if _HEADER_LINE_RE.match(ln) is not None)
+    return sum(1 for ln in lines if _parse_header_line(ln) is not None)
 
 
 def _has_plausible_header_block(text: str, start: int) -> bool:
@@ -82,10 +135,10 @@ def _has_plausible_header_block(text: str, start: int) -> bool:
     if not lines:
         return False
     head = lines[:12]
-    header_lines = [ln for ln in head if _HEADER_LINE_RE.match(ln) is not None]
-    if len(header_lines) < 3:
+    header_pairs = [p for ln in head if (p := _parse_header_line(ln)) is not None]
+    if len(header_pairs) < 3:
         return False
-    keys = {(_HEADER_LINE_RE.match(ln).group("key") or "").strip().lower() for ln in header_lines}  # type: ignore[union-attr]
+    keys = {k for k, _v in header_pairs}
     # Require at least From + (Subject/To) for stability.
     has_from = any(k in {"from", "发件人"} for k in keys)
     has_subject_or_to = any(k in {"subject", "主题", "to", "收件人"} for k in keys)
@@ -98,11 +151,10 @@ def _extract_headers(message_text: str) -> dict[str, str]:
     for ln in lines[:40]:
         if not ln.strip():
             break
-        m = _HEADER_LINE_RE.match(ln)
-        if not m:
+        parsed = _parse_header_line(ln)
+        if parsed is None:
             continue
-        key = (m.group("key") or "").strip().lower()
-        val = (m.group("val") or "").strip()
+        key, val = parsed
         if not key or not val:
             continue
         if key in headers:
@@ -116,13 +168,24 @@ def _iter_messages(text: str) -> list[_Message]:
         return []
 
     candidates: list[int] = [0]
-    for m in _THREAD_SEPARATOR_RE.finditer(text):
-        candidates.append(m.start())
-    for m in _HEADER_START_RE.finditer(text):
-        if _has_plausible_header_block(text, m.start()):
-            candidates.append(m.start())
-    for m in _ON_WROTE_RE.finditer(text):
-        candidates.append(m.start())
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+        plain = raw_line.rstrip("\r\n")
+
+        if _looks_like_thread_separator_line(plain):
+            candidates.append(line_start)
+            continue
+
+        parsed = _parse_header_line(plain)
+        if parsed is not None and parsed[0] in _HEADER_START_KEYS:
+            if _has_plausible_header_block(text, line_start):
+                candidates.append(line_start)
+                continue
+
+        if _looks_like_on_wrote_line(plain):
+            candidates.append(line_start)
 
     starts = sorted({i for i in candidates if 0 <= i < len(text)})
     if len(starts) < 2:
@@ -156,7 +219,10 @@ def looks_like_email_thread(text: str) -> bool:
     if msgs:
         return True
     # Best-effort: many threads include separators even without full headers.
-    return bool(_THREAD_SEPARATOR_RE.search(text)) and bool(_HEADER_LINE_RE.search(text))
+    head = (text or "")[:50000]
+    has_sep = any(_looks_like_thread_separator_line(ln) for ln in head.splitlines())
+    has_headers = _count_header_lines(head.splitlines()[:120]) >= 3
+    return bool(has_sep and has_headers)
 
 
 class EmailThreadChunker(BaseChunker):
@@ -237,7 +303,7 @@ class EmailThreadChunker(BaseChunker):
                     meta["email_subjects"] = subjects
                 if froms:
                     meta["email_froms"] = froms
-                meta["email_has_quotes"] = bool(_QUOTE_LINE_RE.search(content))
+                meta["email_has_quotes"] = _has_quote_lines(content)
                 out.append(Document(page_content=content, metadata=meta))
 
                 # Message-level overlap.

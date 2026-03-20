@@ -9,6 +9,7 @@ at hunk boundaries (`@@ -a,b +c,d @@`) while preserving character offsets.
 from __future__ import annotations
 
 import re
+import shlex
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,9 +34,6 @@ class _Span:
     end: int
 
 
-_DIFF_HEADER_RE = re.compile(
-    r'(?m)^diff --git (?P<a>"?[^\t\n]+"?) (?P<b>"?[^\t\n]+"?)\s*$'
-)
 _HUNK_RE = re.compile(r"(?m)^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@.*$")
 
 
@@ -46,17 +44,53 @@ def _strip_quotes(s: str) -> str:
     return t
 
 
+def _parse_diff_header_line(line: str) -> tuple[str, str] | None:
+    """
+    Parse a unified diff header line:
+      diff --git a/path b/path
+      diff --git "a/path with spaces" "b/path with spaces"
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = (line or "").strip()
+    prefix = "diff --git "
+    if not s.startswith(prefix):
+        return None
+    rest = s[len(prefix) :].strip()
+    if not rest:
+        return None
+
+    try:
+        parts = shlex.split(rest)
+    except ValueError:
+        parts = rest.split()
+    if len(parts) < 2:
+        return None
+    return _strip_quotes(parts[0]), _strip_quotes(parts[1])
+
+
 def _iter_file_blocks(text: str) -> list[_FileBlock]:
-    matches = list(_DIFF_HEADER_RE.finditer(text or ""))
-    if not matches:
+    raw = text or ""
+    if not raw:
+        return []
+
+    headers: list[tuple[int, str, str]] = []
+    offset = 0
+    for raw_line in raw.splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+        parsed = _parse_diff_header_line(raw_line.rstrip("\r\n"))
+        if not parsed:
+            continue
+        a_path, b_path = parsed
+        headers.append((line_start, a_path, b_path))
+
+    if not headers:
         return []
 
     blocks: list[_FileBlock] = []
-    for idx, m in enumerate(matches):
-        start = m.start()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        a_path = _strip_quotes(m.group("a") or "")
-        b_path = _strip_quotes(m.group("b") or "")
+    for idx, (start, a_path, b_path) in enumerate(headers):
+        end = headers[idx + 1][0] if idx + 1 < len(headers) else len(raw)
         blocks.append(_FileBlock(start=start, end=end, index=idx, a_path=a_path, b_path=b_path))
     return blocks
 

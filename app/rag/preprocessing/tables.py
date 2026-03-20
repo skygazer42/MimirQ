@@ -24,21 +24,42 @@ class TableNormalizeResult:
 
 
 _CODE_FENCE_RE = re.compile(r"^\s*```")
-# Allow rows without leading/trailing pipes (common Markdown style).
-_TABLE_LINE_RE = re.compile(r"^(?P<prefix>[ \t]*)\|?\s*[^|]*(\|\s*[^|]*)+\|?\s*$")
 _SEP_CELL_RE = re.compile(r"^\s*:?-{3,}:?\s*$")
 
 
-def _split_table_row(line: str) -> tuple[str, list[str]]:
-    m = _TABLE_LINE_RE.match(line)
-    prefix = (m.group("prefix") if m else "") or ""
-    stripped = line.strip()
+def _try_parse_table_row(line: str) -> tuple[str, list[str]] | None:
+    """
+    Best-effort Markdown table-row parser.
+
+    We avoid regex here to keep runtime linear-time and to prevent ReDoS-style
+    security hotspots (python:S5852).
+    """
+    raw = str(line or "")
+    if not raw or "|" not in raw:
+        return None
+
+    # Preserve leading indentation.
+    i = 0
+    while i < len(raw) and raw[i] in (" ", "\t"):
+        i += 1
+    prefix = raw[:i]
+
+    stripped = raw.strip()
+    if not stripped:
+        return None
+
     inner = stripped
     if inner.startswith("|"):
         inner = inner[1:]
     if inner.endswith("|"):
         inner = inner[:-1]
+
+    # Require at least 2 cells.
+    if "|" not in inner:
+        return None
     cells = [c.strip() for c in inner.split("|")]
+    if len(cells) < 2:
+        return None
     return prefix, cells
 
 
@@ -87,30 +108,41 @@ def normalize_markdown_tables(text: str) -> TableNormalizeResult:
             i += 1
             continue
 
-        if not _TABLE_LINE_RE.match(line):
+        parsed = _try_parse_table_row(line)
+        if parsed is None:
             out.append(line)
             i += 1
             continue
 
         # Collect a contiguous table block.
         block_lines: list[str] = []
+        block_parsed: list[tuple[str, list[str]]] = []
         j = i
         while j < len(lines):
             ln = lines[j]
             if _CODE_FENCE_RE.match(ln):
                 break
-            if not _TABLE_LINE_RE.match(ln):
+            row = _try_parse_table_row(ln)
+            if row is None:
                 break
             block_lines.append(ln)
+            block_parsed.append(row)
             j += 1
 
         parsed_rows: list[tuple[str, list[str], bool]] = []
         max_cols = 0
-        for raw in block_lines:
-            prefix, cells = _split_table_row(raw)
+        for prefix, cells in block_parsed:
             is_sep = _is_separator_row(cells)
             parsed_rows.append((prefix, cells, is_sep))
             max_cols = max(max_cols, len(cells))
+
+        # Only normalize when the block resembles a real Markdown table
+        # (header + separator row). Otherwise we risk rewriting text that happens
+        # to contain pipes (e.g. "a | b").
+        if len(parsed_rows) < 2 or not any(is_sep for _p, _c, is_sep in parsed_rows):
+            out.extend(block_lines)
+            i = j
+            continue
 
         # Normalize rows.
         for (prefix, cells, is_sep), raw in zip(parsed_rows, block_lines, strict=False):

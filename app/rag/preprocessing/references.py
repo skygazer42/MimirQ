@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
+
 
 @dataclass(frozen=True)
 class ReferencesTrimResult:
@@ -31,7 +33,6 @@ _HEADING_TEXTS = frozenset(
         "\u5f15\u7528",
     }
 )
-_MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
 _CITATION_LINE_RE = re.compile(r"^\s*(?:\[\d{1,4}\]|\d{1,4}[.)]|\u3010\d{1,4}\u3011)\s+")
 _CITATION_TOKEN_RE = re.compile(r"(?:^|\s)(?:\[\d{1,4}\]|\d{1,4}[.)]|\u3010\d{1,4}\u3011)\s+")
 
@@ -59,9 +60,10 @@ def trim_references_section(
         if not stripped:
             continue
         title = stripped
-        m = _MD_HEADING_RE.match(stripped)
-        if m:
-            title = (m.group("title") or "").strip()
+        parsed_heading = parse_markdown_hash_heading(stripped)
+        if parsed_heading is not None:
+            _level, heading_title = parsed_heading
+            title = heading_title
 
         title_cf = title.casefold()
         if title_cf in _HEADING_TEXTS:

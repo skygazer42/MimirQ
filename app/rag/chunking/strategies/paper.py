@@ -17,7 +17,6 @@ chunk_overlap while preserving character offsets.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -92,15 +91,6 @@ _CN_SECTIONS: dict[str, str] = {
     "补充材料": "supplementary",
 }
 
-_RE_EN_HEADING = re.compile(
-    r"^(?:(?P<num>\d{1,2}(?:\.\d{1,2}){0,3})\s+)?(?P<title>[A-Z][A-Z /-]{2,50})\s*[:：]?\s*$",
-    flags=re.IGNORECASE,
-)
-_RE_CN_HEADING = re.compile(
-    r"^(?:(?P<num>\d{1,2}(?:\.\d{1,2}){0,3})\s*)?(?P<title>[\u4e00-\u9fff]{2,12})\s*[:：]?\s*$"
-)
-
-
 def _normalize_section(title: str) -> str | None:
     raw = (title or "").strip()
     if not raw:
@@ -108,8 +98,48 @@ def _normalize_section(title: str) -> str | None:
     if raw in _CN_SECTIONS:
         return _CN_SECTIONS[raw]
     lower = raw.lower().strip()
-    lower = re.sub(r"\s+", " ", lower)
+    lower = " ".join(lower.split())
     return _EN_SECTIONS.get(lower)
+
+
+def _strip_leading_number_prefix(line: str) -> str:
+    """
+    Strip common section numbering like:
+      1 Introduction
+      1.2.3 Methods
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").lstrip()
+    if not s or not s[:1].isdigit():
+        return s
+
+    i = 0
+    # First group: 1-2 digits.
+    digits = 0
+    while i < len(s) and digits < 2 and s[i].isdigit():
+        i += 1
+        digits += 1
+    if digits == 0:
+        return s
+
+    # Optional ".<digits>" groups (up to 3).
+    groups = 0
+    while groups < 3 and i < len(s) and s[i] == ".":
+        j = i + 1
+        d2 = 0
+        while j < len(s) and d2 < 2 and s[j].isdigit():
+            j += 1
+            d2 += 1
+        if d2 == 0:
+            break
+        i = j
+        groups += 1
+
+    # Skip trailing whitespace after numbering.
+    while i < len(s) and s[i].isspace():
+        i += 1
+    return s[i:]
 
 
 def _iter_headings(text: str) -> list[PaperHeading]:
@@ -128,12 +158,12 @@ def _iter_headings(text: str) -> list[PaperHeading]:
         if len(line) > 90:
             continue
 
-        title: str | None = None
-        m = _RE_CN_HEADING.match(line) or _RE_EN_HEADING.match(line)
-        if m is not None:
-            title = m.group("title")
+        # Best-effort heading extraction without regex. We rely on _normalize_section's
+        # tight mapping to keep false positives low.
+        candidate = _strip_leading_number_prefix(line).strip()
+        candidate = candidate.rstrip(":：").strip()
 
-        section = _normalize_section(title or "")
+        section = _normalize_section(candidate)
         if not section:
             continue
 

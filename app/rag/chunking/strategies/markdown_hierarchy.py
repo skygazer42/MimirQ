@@ -12,12 +12,12 @@ This is intentionally "overlay-first":
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
 from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
 
 
@@ -28,19 +28,19 @@ class _Heading:
     text: str
 
 
-_MD_HEADING_RE = re.compile(r"(?m)^[ \t]*(#{1,6})[ \t]+(.+?)[ \t]*$")
-
-
 def _iter_markdown_headings(text: str) -> list[_Heading]:
     out: list[_Heading] = []
-    for m in _MD_HEADING_RE.finditer(text or ""):
-        marker = (m.group(1) or "").strip()
-        title = (m.group(2) or "").strip()
-        if not marker or not title:
+    offset = 0
+    for raw_line in (text or "").splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+        parsed = parse_markdown_hash_heading(raw_line)
+        if parsed is None:
             continue
-        level = len(marker)
-        # Bound heading text to avoid bloating metadata.
-        out.append(_Heading(pos=int(m.start()), level=int(level), text=title[:200]))
+        level, title = parsed
+        if not title:
+            continue
+        out.append(_Heading(pos=int(line_start), level=int(level), text=str(title)[:200]))
     return out
 
 

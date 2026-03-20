@@ -21,6 +21,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
 
 
 @dataclass(frozen=True)
@@ -40,8 +41,6 @@ class _Section:
     heading: _ReleaseHeading | None
 
 
-_MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
-_RELEASE_TOKEN_RE = re.compile(r"(?i)^\s*\[?(?P<token>[^\]\s]+)\]?\s*(?P<rest>.*)$")
 _VERSION_TOKEN_RE = re.compile(r"(?i)^(?:unreleased|v?\d+\.\d+(?:\.\d+)?(?:[-+][0-9a-z.-]+)?)$")
 _RELEASE_REST_PREFIX_RE = re.compile(r"^\s*[-–—:]\s*")
 _DATE_RE = re.compile(r"\b(?P<date>\d{4}-\d{2}-\d{2})\b")
@@ -51,12 +50,52 @@ def _normalize_heading(raw: str) -> str:
     t = (raw or "").strip()
     if not t:
         return ""
-    m = _MD_HEADING_RE.match(t)
-    if m:
-        t = (m.group("title") or "").strip()
+
+    parsed = parse_markdown_hash_heading(t)
+    if parsed is not None:
+        _level, title = parsed
+        t = title
+
     # Strip leading "Changelog" labels sometimes present.
-    t = re.sub(r"(?i)^\s*changelog\s*[:：-]\s*", "", t).strip()
-    return t
+    s = t.strip()
+    low = s.casefold()
+    if low.startswith("changelog"):
+        rest = s[len("changelog") :].lstrip()
+        if rest[:1] in (":", "：", "-"):
+            s = rest[1:].strip()
+    return s
+
+
+def _split_release_token(text: str) -> tuple[str, str] | None:
+    """
+    Best-effort parser for release headings like:
+      [1.2.3] - 2024-01-01
+      v1.2.3
+      Unreleased
+
+    We intentionally avoid regex here to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = (text or "").strip()
+    if not s:
+        return None
+
+    if s.startswith("["):
+        close = s.find("]")
+        if close > 1:
+            token = s[1:close].strip()
+            rest = s[close + 1 :].strip()
+            return token, rest
+
+    parts = s.split(None, 1)
+    token = (parts[0] or "").strip()
+    if token.startswith("[") and token.endswith("]") and len(token) > 2:
+        token = token[1:-1].strip()
+    elif token.startswith("["):
+        token = token[1:].strip()
+    elif token.endswith("]"):
+        token = token[:-1].strip()
+    rest = parts[1].strip() if len(parts) > 1 else ""
+    return token, rest
 
 
 def _iter_release_headings(text: str) -> list[_ReleaseHeading]:
@@ -76,15 +115,15 @@ def _iter_release_headings(text: str) -> list[_ReleaseHeading]:
             continue
 
         norm = _normalize_heading(line)
-        tm = _RELEASE_TOKEN_RE.match(norm)
-        if not tm:
+        split = _split_release_token(norm)
+        if not split:
             continue
 
-        token = (tm.group("token") or "").strip()
+        token, rest_raw = split
         if not token or not _VERSION_TOKEN_RE.match(token):
             continue
         version = token
-        rest = _RELEASE_REST_PREFIX_RE.sub("", (tm.group("rest") or "")).strip()
+        rest = _RELEASE_REST_PREFIX_RE.sub("", rest_raw or "").strip()
         date = None
         dm = _DATE_RE.search(rest)
         if dm:
