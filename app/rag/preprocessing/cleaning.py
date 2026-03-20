@@ -1,7 +1,7 @@
 import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, cast
 
 from app.core.regex_runtime import safe_subn as safe_regex_subn
 from app.rag.preprocessing.normalization import normalize_text
@@ -94,7 +94,7 @@ def _resolve_cleaning_options(
         return CleaningOptions(**legacy_overrides)
     if not legacy_overrides:
         return options
-    return replace(options, **legacy_overrides)
+    return cast(CleaningOptions, replace(options, **legacy_overrides))
 
 
 def clean_markdown(

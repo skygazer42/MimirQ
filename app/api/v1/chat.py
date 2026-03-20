@@ -9,7 +9,7 @@ import re
 import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
@@ -223,7 +223,7 @@ def _resolve_chat_cache_lookup_input(
         return ChatCacheLookupInput(**legacy_overrides)
     if not legacy_overrides:
         return options
-    return replace(options, **legacy_overrides)
+    return cast(ChatCacheLookupInput, replace(options, **legacy_overrides))
 
 
 def _resolve_chat_stream_persist_input(
@@ -235,7 +235,7 @@ def _resolve_chat_stream_persist_input(
         return ChatStreamPersistInput(**legacy_overrides)
     if not legacy_overrides:
         return options
-    return replace(options, **legacy_overrides)
+    return cast(ChatStreamPersistInput, replace(options, **legacy_overrides))
 
 
 def _prepare_chat_cache_lookup(

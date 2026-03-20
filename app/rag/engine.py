@@ -124,7 +124,7 @@ _STREAM_RAG_CONFIG_KEYS = set(ChatRAGConfig.model_fields)
 
 def _pop_stream_chat_values(source: dict[str, Any], keys: set[str]) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for key in list(source):
+    for key in tuple(source):
         if key in keys:
             out[key] = source.pop(key)
     return out
