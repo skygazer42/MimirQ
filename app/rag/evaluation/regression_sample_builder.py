@@ -209,7 +209,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     # 2) doc_pipeline_key + chunk_index match (version-stable)
     # 3) quote signature substring match (fallback when ids drift)
     ref_set = set(reference_context_ids or [])
-    ret_list = list(retrieved_context_ids or [])
+    ret_list = retrieved_context_ids or []
     ret_set = set(ret_list)
 
     ref_keys: list[str] = []

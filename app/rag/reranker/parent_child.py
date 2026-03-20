@@ -49,7 +49,7 @@ class ParentChildReranker(DocumentReranker):
 
         # Pick the best representative per group.
         ranked: list[tuple[Document, float]] = []
-        for _, items in groups.items():
+        for items in groups.values():
             children = [d for d in items if (d.metadata or {}).get("chunk_role") == "child"]
             if children:
                 rep = max(children, key=lambda d: scores.get(id(d), 0.0))
@@ -70,4 +70,3 @@ class ParentChildReranker(DocumentReranker):
                 break
 
         return output
-

@@ -8439,7 +8439,7 @@ def _jira_render_issue_comment_article(*, idx: int, comment: dict, rendered_comm
         raw=comment.get("body"),
     )
     meta_html = _jira_comment_meta_html(comment)
-    return "<article>" f"<h3>Comment {idx}</h3>" f"{meta_html}" f"{body_html}" "</article>"
+    return f"<article><h3>Comment {idx}</h3>{meta_html}{body_html}</article>"
 
 
 def _jira_render_issue_comment_articles(*, fields: dict, rendered: dict, max_comments: int) -> list[str]:

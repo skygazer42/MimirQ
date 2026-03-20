@@ -40,7 +40,7 @@ _SSN_RE = re.compile(r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)")
 _CN_ID18_RE = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
 
 # Very permissive digit runs; validated by Luhn.
-_CREDIT_CARD_CANDIDATE_RE = re.compile(r"(?<!\d)(?:\d[ -]*?){13,19}(?!\d)")
+_CREDIT_CARD_CANDIDATE_RE = re.compile(r"(?<!\d)\d(?:[ -]*\d){12,18}(?!\d)")
 
 # Phone-ish patterns: validated loosely (length + digit ratio).
 _CN_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")

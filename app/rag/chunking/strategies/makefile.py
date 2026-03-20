@@ -35,7 +35,7 @@ class _Target:
     name: str
 
 
-_TARGET_RE = re.compile(r"^(?P<name>[A-Za-z0-9_./%:@+-]{1,80})\s*:(?![=])\s*(?P<deps>.*)$")
+_TARGET_RE = re.compile(r"^(?P<name>[A-Za-z0-9_./%:@+-]{1,80})\s*:(?!=)\s*(?P<deps>.*)$")
 
 
 def _iter_lines(text: str) -> list[_Line]:
