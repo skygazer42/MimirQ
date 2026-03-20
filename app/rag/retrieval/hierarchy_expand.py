@@ -36,7 +36,7 @@ def _doc_key(doc: Document) -> str:
     if cid:
         return str(cid)
     content = (doc.page_content or "").strip()
-    digest = hashlib.sha1(content.encode("utf-8", "ignore")).hexdigest() if content else "empty"
+    digest = hashlib.blake2b(content.encode("utf-8", "ignore"), digest_size=16).hexdigest() if content else "empty"
     return f"content:{digest}"
 
 
