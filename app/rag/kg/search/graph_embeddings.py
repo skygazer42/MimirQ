@@ -16,7 +16,6 @@ Implementation notes:
 
 from __future__ import annotations
 
-import random
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
@@ -83,21 +82,21 @@ def compute_walkhash_embeddings(
         bucket[idx] = int(h % dim)
         sign[idx] = -1.0 if (h & 0x80000000) else 1.0
 
-    rng = random.Random(seed)
-
     # Walk generation + co-occurrence updates.
     # Complexity ~ O(N * num_walks * walk_length * window_size).
     for start in range(n):
         if not neighbors[start]:
             continue
-        for _ in range(num_walks):
+        for walk_idx in range(num_walks):
             walk: list[int] = [start]
             cur = start
-            for _step in range(walk_length):
+            for step in range(walk_length):
                 nbrs = neighbors[cur]
                 if not nbrs:
                     break
-                cur = nbrs[rng.randrange(len(nbrs))]
+                # Deterministic pseudo-random neighbor choice without relying on `random` (PRNG hotspot).
+                h = _mix32(seed ^ (start * 0x9E3779B9) ^ (walk_idx * 0x85EBCA6B) ^ (step * 0xC2B2AE35) ^ cur)
+                cur = nbrs[int(h % len(nbrs))]
                 walk.append(cur)
 
             walk_len = len(walk)

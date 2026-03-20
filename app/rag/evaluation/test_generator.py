@@ -3,9 +3,6 @@ Test question generator.
 
 Generates test questions from documents or conversation history for RAGAS regression.
 """
-
-
-import random
 import re
 from collections import Counter
 from typing import Any
@@ -20,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
+from app.core.secure_random import secure_random_float01, secure_sample
 from app.core.utils import get_proxy_url
 from app.models.chat import Conversation, Message
 from app.models.document import Document as DBDocument
@@ -169,7 +167,7 @@ def _sample_diverse_chunks(
     
     # Combine randomness: 70% diversity, 30% random.
     combined_scores = [
-        0.7 * div + 0.3 * random.random()
+        0.7 * div + 0.3 * secure_random_float01()
         for div in diversity_scores
     ]
     
@@ -390,7 +388,7 @@ def generate_questions_from_conversations(
     
     # If many high-quality conversations, sample randomly.
     if len(high_quality_turns) > num_questions * 2:
-        high_quality_turns = random.sample(high_quality_turns, num_questions * 2)
+        high_quality_turns = secure_sample(high_quality_turns, num_questions * 2)
     
     # Prepare conversation text.
     conversation_text = "\n\n".join([
