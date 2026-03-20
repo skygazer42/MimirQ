@@ -5336,16 +5336,14 @@ class HybridRetriever(BaseRetriever):
 
             def _candidate_eligible(key: str) -> bool:
                 # Candidate must have at least one channel where it meets that channel's min score (if configured).
-                present = False
                 for ch, rmap in (("vector", v_rank), ("bm25", b_rank), ("lexical", l_rank), ("sparse", s_rank)):
                     rs = _rank_score(rmap, key)
                     if rs <= 0.0:
                         continue
-                    present = True
                     th = min_scores.get(ch)
                     if th is None or rs >= float(th):
                         return True
-                return False if present else False
+                return False
 
             for key in keys:
                 v_data = vector_norm.get(key, {}).get("data")

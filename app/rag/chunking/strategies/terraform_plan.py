@@ -48,7 +48,7 @@ def _build_change_blocks(text: str) -> list[_ChangeBlock]:
 def looks_like_terraform_plan(text: str) -> bool:
     if not text or len(text) < 120:
         return False
-    head = (text or "")[:200000]
+    head = text[:200000]
     if not _PLAN_HINT_RE.search(head):
         return False
     blocks = _build_change_blocks(text)

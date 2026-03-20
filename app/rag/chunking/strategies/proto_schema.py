@@ -99,7 +99,7 @@ def _extract_package(text: str) -> str | None:
 def looks_like_proto_schema(text: str) -> bool:
     if not text or len(text) < 120:
         return False
-    head = (text or "")[:10000].lower()
+    head = text[:10000].lower()
     if "syntax" in head and "proto" in head and _BLOCK_START_RE.search(text):
         return True
     blocks = _iter_blocks(text)
@@ -166,4 +166,3 @@ class ProtoSchemaChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

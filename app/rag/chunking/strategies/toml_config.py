@@ -122,7 +122,7 @@ def _iter_entries(text: str, *, start: int, end: int) -> list[_Entry]:
 def looks_like_toml_config(text: str) -> bool:
     if not text or len(text) < 120:
         return False
-    lowered = (text or "").lower()
+    lowered = text.lower()
     if "[tool." in lowered or "[project]" in lowered:
         return True
     if re.search(r"(?m)^\s*\[[^\]]+\]\s*$", text) and re.search(r"(?m)^\s*[A-Za-z0-9_.-]+\s*=\s*.+$", text):
@@ -255,4 +255,3 @@ class TOMLConfigChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

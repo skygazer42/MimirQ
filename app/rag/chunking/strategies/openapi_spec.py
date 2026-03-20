@@ -136,7 +136,7 @@ def _build_path_blocks(text: str) -> list[_PathBlock]:
 def looks_like_openapi_spec(text: str) -> bool:
     if not text or len(text) < 160:
         return False
-    head = (text or "")[:12000].lower()
+    head = text[:12000].lower()
     if "paths:" not in head:
         return False
     if "openapi:" not in head and "swagger:" not in head:
@@ -241,4 +241,3 @@ class OpenAPISpecChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

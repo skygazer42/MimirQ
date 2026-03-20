@@ -381,7 +381,7 @@ async def stream_dataset_precheck_scan_events(
                     break
                 await asyncio.sleep(1.0)
         except asyncio.CancelledError:
-            return
+            raise
 
     return StreamingResponse(
         gen(),

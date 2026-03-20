@@ -6,6 +6,7 @@ Goal: compare two RAGAS regression run summaries and return objective deltas for
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -25,7 +26,7 @@ def _as_float(v: Any) -> float | None:
             fv = float(v)
         except Exception:
             return None
-        if fv != fv:  # NaN
+        if math.isnan(fv):
             return None
         return fv
     return None

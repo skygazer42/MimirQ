@@ -67,7 +67,7 @@ def _build_testcase_blocks(text: str) -> list[_CaseBlock]:
 def looks_like_junit_xml(text: str) -> bool:
     if not text or len(text) < 80:
         return False
-    head = (text or "")[:200000]
+    head = text[:200000]
     if not _TESTSUITE_HINT_RE.search(head):
         return False
     if len(_TESTCASE_ANY_RE.findall(head)) < 2:

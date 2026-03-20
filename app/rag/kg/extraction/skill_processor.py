@@ -10,6 +10,7 @@ This complements event/entity extraction by capturing process knowledge:
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from app.rag.kg.utils import get_logger
@@ -60,7 +61,7 @@ def _clamp01(value: object, *, default: float) -> float:
         f = float(value)  # type: ignore[arg-type]
     except Exception:
         return float(default)
-    if f != f:  # NaN
+    if math.isnan(f):
         return float(default)
     return max(0.0, min(1.0, float(f)))
 

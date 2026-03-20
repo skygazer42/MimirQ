@@ -93,7 +93,7 @@ def _iter_records(text: str) -> list[_Record]:
 def looks_like_maven_pom(text: str) -> bool:
     if not text or len(text) < 120:
         return False
-    head = (text or "")[:20000].lower()
+    head = text[:20000].lower()
     if "<project" not in head:
         return False
     if "<modelversion" not in head and "<dependencies" not in head and "<dependency" not in head:

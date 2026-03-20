@@ -112,7 +112,7 @@ def _build_play_blocks(text: str) -> list[_PlayBlock]:
 def looks_like_ansible_playbook(text: str) -> bool:
     if not text or len(text) < 60:
         return False
-    head = (text or "")[:20000].lower()
+    head = text[:20000].lower()
     if "hosts:" not in head:
         return False
     if not _TASKS_RE.search(text[:200000]):
