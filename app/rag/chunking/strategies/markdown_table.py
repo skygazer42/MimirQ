@@ -10,7 +10,6 @@ Non-table text is chunked with a fallback RecursiveCharacterTextSplitter.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,9 +40,39 @@ class _Span:
     end: int
 
 
-_ALIGN_RE = re.compile(
-    r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$"
-)
+def _looks_like_align_row(line: str) -> bool:
+    """
+    Detect a Markdown table alignment row like:
+      | --- | :---: | ---: |
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").strip()
+    if not s or "|" not in s:
+        return False
+    inner = s
+    if inner.startswith("|"):
+        inner = inner[1:]
+    if inner.endswith("|"):
+        inner = inner[:-1]
+    if "|" not in inner:
+        return False
+    cells = [c.strip() for c in inner.split("|")]
+    if len(cells) < 2:
+        return False
+    for cell in cells:
+        c = (cell or "").strip()
+        if not c:
+            return False
+        if c.startswith(":"):
+            c = c[1:].strip()
+        if c.endswith(":"):
+            c = c[:-1].strip()
+        if len(c) < 3:
+            return False
+        if any(ch != "-" for ch in c):
+            return False
+    return True
 
 
 def _is_table_start(lines: list[_Line], i: int) -> bool:
@@ -53,7 +82,7 @@ def _is_table_start(lines: list[_Line], i: int) -> bool:
     b = lines[i + 1].text.rstrip("\r\n")
     if "|" not in a or "|" not in b:
         return False
-    return bool(_ALIGN_RE.match(b))
+    return _looks_like_align_row(b)
 
 
 def _iter_lines(text: str) -> list[_Line]:

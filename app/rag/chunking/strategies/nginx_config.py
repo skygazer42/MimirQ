@@ -33,8 +33,43 @@ class _Block:
 
 _SERVER_OPEN_RE = re.compile(r"(?m)^\s*server\s*\{")
 _BLOCK_OPEN_RE = re.compile(r"(?m)^\s*(?P<kind>http|server|location|upstream|map|events)\b(?P<rest>[^;{]*)\{\s*(?:#.*)?$")
-_SERVER_NAME_RE = re.compile(r"(?m)^\s*server_name\s+(?P<val>[^;#]+);")
-_LISTEN_RE = re.compile(r"(?m)^\s*listen\s+(?P<val>[^;#]+);")
+
+
+def _extract_directive_value(text: str, directive: str) -> str | None:
+    """
+    Extract a simple Nginx directive value like:
+      server_name example.com www.example.com;
+      listen 80;
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    raw = str(text or "")
+    d = str(directive or "").strip()
+    if not raw or not d:
+        return None
+    d_cf = d.casefold()
+
+    for ln in raw.splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#"):
+            continue
+        low = s.casefold()
+        if not low.startswith(d_cf):
+            continue
+        if len(s) > len(d) and not s[len(d)].isspace():
+            continue
+        rest = s[len(d) :].strip()
+        if not rest:
+            continue
+        if "#" in rest:
+            rest = rest.split("#", 1)[0].strip()
+        semi = rest.find(";")
+        if semi != -1:
+            rest = rest[:semi].strip()
+        rest = " ".join(rest.split())
+        return rest[:200] or None
+
+    return None
 
 
 def _find_matching_brace(text: str, start: int) -> int | None:
@@ -142,12 +177,8 @@ class NginxConfigChunker(BaseChunker):
                 server_names = None
                 listen = None
                 if b.kind == "server":
-                    m = _SERVER_NAME_RE.search(blk_text[:5000])
-                    if m:
-                        server_names = " ".join((m.group("val") or "").split())[:200] or None
-                    m = _LISTEN_RE.search(blk_text[:5000])
-                    if m:
-                        listen = " ".join((m.group("val") or "").split())[:200] or None
+                    server_names = _extract_directive_value(blk_text[:5000], "server_name")
+                    listen = _extract_directive_value(blk_text[:5000], "listen")
 
                 split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
                 for sd in split_docs:

@@ -70,4 +70,49 @@ def parse_cn_clause_marker(line: str) -> str | None:
     return s[: i + 1]
 
 
-__all__ = ["parse_cn_clause_marker", "parse_cn_prefixed_heading"]
+def parse_markdown_hash_heading(line: str) -> tuple[int, str] | None:
+    """
+    Parse a Markdown ATX heading like:
+      ### Title
+
+    Returns:
+        (level, title) where level is 1..6 and title is trimmed.
+
+    Notes:
+    - Allows up to 3 leading spaces (CommonMark).
+    - Requires at least one whitespace after the leading # run.
+    """
+    raw = str(line or "")
+    if not raw:
+        return None
+
+    i = 0
+    # CommonMark allows up to 3 spaces of indentation before headings.
+    while i < len(raw) and i < 3 and raw[i] in (" ", "\t"):
+        i += 1
+    s = raw[i:]
+    if not s.startswith("#"):
+        return None
+
+    level = 0
+    n = len(s)
+    while level < n and level < 6 and s[level] == "#":
+        level += 1
+    if level <= 0 or level > 6:
+        return None
+    # Reject headings with more than 6 #'s (rare, but avoids false positives).
+    if level < n and s[level] == "#":
+        return None
+
+    j = level
+    if j >= n or not s[j].isspace():
+        return None
+    while j < n and s[j].isspace():
+        j += 1
+    title = s[j:].strip()
+    if not title:
+        return None
+    return level, title
+
+
+__all__ = ["parse_cn_clause_marker", "parse_cn_prefixed_heading", "parse_markdown_hash_heading"]

@@ -8,7 +8,6 @@ using markdown-friendly separators while preserving character offsets.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,9 +25,24 @@ class _Line:
 
 
 _FRONTMATTER_DELIM = "---"
-_FRONTMATTER_END_RE = re.compile(r"^(---|\.\.\.)\s*$")
-_FRONTMATTER_KEY_RE = re.compile(r"(?m)^\s*[A-Za-z0-9_.-]{1,80}\s*:\s*.+$")
-_TITLE_RE = re.compile(r"(?m)^\s*title\s*:\s*(?P<val>.+?)\s*$")
+
+
+def _is_frontmatter_end_delim(line: str) -> bool:
+    s = str(line or "").strip()
+    return s in {"---", "..."}
+
+
+def _looks_like_yaml_kv_line(line: str) -> bool:
+    s = str(line or "").strip()
+    if not s or s.startswith("#") or ":" not in s:
+        return False
+    key, rest = s.split(":", 1)
+    key = key.strip()
+    if not key or len(key) > 80:
+        return False
+    if not all(ch.isascii() and (ch.isalnum() or ch in "_.-") for ch in key):
+        return False
+    return bool(rest.strip())
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -57,17 +71,22 @@ def _find_frontmatter(text: str) -> tuple[int, int] | None:
 
     for i in range(1, len(lines)):
         plain = lines[i].plain.strip()
-        if _FRONTMATTER_END_RE.match(plain):
+        if _is_frontmatter_end_delim(plain):
             return 0, lines[i].end
     return None
 
 
 def _extract_title(frontmatter: str) -> str | None:
-    m = _TITLE_RE.search(frontmatter or "")
-    if not m:
-        return None
-    val = (m.group("val") or "").strip().strip("'\"")
-    return val[:200] or None
+    for ln in (frontmatter or "").splitlines():
+        s = ln.strip()
+        if not s or ":" not in s:
+            continue
+        key, rest = s.split(":", 1)
+        if key.strip().casefold() != "title":
+            continue
+        val = rest.strip().strip("'\"")
+        return val[:200] or None
+    return None
 
 
 def looks_like_markdown_frontmatter(text: str) -> bool:
@@ -78,7 +97,11 @@ def looks_like_markdown_frontmatter(text: str) -> bool:
     block = (text or "")[start:end]
     if len(block) > 30000:
         return False
-    return bool(_FRONTMATTER_KEY_RE.search(block))
+    # Require at least one key-value line inside the block.
+    for ln in block.splitlines()[:400]:
+        if _looks_like_yaml_kv_line(ln):
+            return True
+    return False
 
 
 class MarkdownFrontmatterChunker(BaseChunker):

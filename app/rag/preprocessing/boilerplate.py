@@ -14,6 +14,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
+
 
 @dataclass(frozen=True)
 class BoilerplateRemovalResult:
@@ -24,7 +26,6 @@ class BoilerplateRemovalResult:
 
 
 _CODE_FENCE_RE = re.compile(r"^\s*```")
-_HEADING_RE = re.compile(r"^\s{0,3}(#{1,6})\s+(?P<title>.+?)\s*$")
 _WS_RE = re.compile(r"\s+")
 _PUNCT_STRIP_CHARS = "-–—:：.。!！?？·•"
 
@@ -130,10 +131,10 @@ def remove_markdown_boilerplate(text: str) -> BoilerplateRemovalResult:
             i += 1
             continue
 
-        heading = _HEADING_RE.match(line)
-        if heading:
-            level = len(heading.group(1))
-            title = _normalize_heading(heading.group("title"))
+        parsed_heading = parse_markdown_hash_heading(line)
+        if parsed_heading is not None:
+            level, heading_title = parsed_heading
+            title = _normalize_heading(heading_title)
             should_remove = title in _SECTION_TITLES or any(title.startswith(p) for p in _SECTION_PREFIXES)
             if should_remove:
                 removed_sections += 1
@@ -142,8 +143,8 @@ def remove_markdown_boilerplate(text: str) -> BoilerplateRemovalResult:
                 i += 1
                 while i < len(lines):
                     nxt = lines[i]
-                    m2 = _HEADING_RE.match(nxt)
-                    if m2 and len(m2.group(1)) <= level:
+                    next_heading = parse_markdown_hash_heading(nxt)
+                    if next_heading is not None and next_heading[0] <= level:
                         break
                     i += 1
                 continue

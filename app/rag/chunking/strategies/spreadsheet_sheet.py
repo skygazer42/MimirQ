@@ -10,7 +10,6 @@ each sheet while preserving character offsets.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,28 +27,57 @@ class _Sheet:
     name: str
 
 
-_SHEET_RE = re.compile(r"(?m)^##\s*Sheet:\s*(?P<name>.+?)\s*$")
+def _parse_sheet_header(line: str) -> str | None:
+    """
+    Parse a sheet header line like:
+      ## Sheet: Name
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").strip()
+    if not s.startswith("##"):
+        return None
+    rest = s[2:].strip()
+    if not rest.casefold().startswith("sheet:"):
+        return None
+    name = rest[len("sheet:") :].strip()
+    return name or None
 
 
 def _iter_sheets(text: str) -> list[_Sheet]:
-    matches = list(_SHEET_RE.finditer(text or ""))
-    if not matches:
+    raw = text or ""
+    if not raw:
+        return []
+
+    starts: list[int] = []
+    names: list[str] = []
+    offset = 0
+    for raw_line in raw.splitlines(keepends=True):
+        line_start = offset
+        offset += len(raw_line)
+        name = _parse_sheet_header(raw_line.rstrip("\r\n"))
+        if name is None:
+            continue
+        starts.append(int(line_start))
+        names.append(name)
+
+    if not starts:
         return []
     sheets: list[_Sheet] = []
-    for idx, m in enumerate(matches):
-        start = m.start()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        name = (m.group("name") or "").strip()
+    for idx, start in enumerate(starts):
+        end = starts[idx + 1] if idx + 1 < len(starts) else len(raw)
+        name = names[idx] or ""
         if not name:
             name = f"sheet_{idx+1}"
-        sheets.append(_Sheet(start=start, end=end, index=idx, name=name))
+        sheets.append(_Sheet(start=int(start), end=int(end), index=idx, name=name))
     return sheets
 
 
 def looks_like_spreadsheet(text: str) -> bool:
     if not text:
         return False
-    return bool(_SHEET_RE.search(text))
+    head = (text or "")[:20000]
+    return any(_parse_sheet_header(ln) is not None for ln in head.splitlines())
 
 
 class SpreadsheetSheetChunker(BaseChunker):

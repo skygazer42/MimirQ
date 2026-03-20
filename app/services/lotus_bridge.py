@@ -20,7 +20,6 @@ Note: This is *not* a drop-in replacement for full LOTUS. It is intentionally sc
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,15 +29,13 @@ from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
+from app.rag.core.code_fence import extract_first_code_fence
 
 
 @dataclass(frozen=True)
 class LotusAvailability:
     ok: bool
     reason: str | None = None
-
-
-_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
 
 
 def lotus_available() -> LotusAvailability:
@@ -85,9 +82,8 @@ def _extract_json_array(text: str) -> list[Any] | None:
         return obj
 
     # Fenced JSON.
-    m = _FENCE_RE.search(raw)
-    if m:
-        inner = (m.group(1) or "").strip()
+    inner = extract_first_code_fence(raw, allowed_info_strings={"", "json"})
+    if inner:
         try:
             obj2 = json.loads(inner)
         except Exception:

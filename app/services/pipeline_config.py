@@ -9,6 +9,7 @@ from dataclasses import asdict
 from typing import Any
 
 from app.core.config import settings
+from app.core.regex_safety import looks_like_nested_quantifier
 from app.types.indexing import IndexingOptions
 from app.types.pipeline import PipelineEffective, PipelineOptions
 
@@ -62,7 +63,6 @@ _ALLOWED_RE_FLAG_BITS = int(re.IGNORECASE | re.MULTILINE | re.DOTALL)
 _REGEX_RULES_MAX = 60
 _REGEX_PATTERN_MAX = 600
 _REGEX_REPL_MAX = 2000
-_SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
 _RULE_PACKS_MAX = 20
 _RULE_PACK_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_.:\-]{0,63}$")
 
@@ -125,7 +125,7 @@ def _sanitize_regex_rules(value: Any) -> list[dict] | None:
             continue
         if len(pattern) > _REGEX_PATTERN_MAX:
             continue
-        if _SUSPICIOUS_NESTED_QUANTIFIER_RE.search(pattern):
+        if looks_like_nested_quantifier(pattern):
             continue
 
         repl = item.get("repl", "")

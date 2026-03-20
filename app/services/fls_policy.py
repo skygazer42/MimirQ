@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.api.schemas.fls_policy import FlsPolicy, FlsRule
+from app.core.regex_safety import looks_like_nested_quantifier
 
 RULE_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
 MAX_RULES = 80
@@ -24,15 +25,12 @@ MAX_COLUMN_REGEX_LEN = 200
 ALLOWED_SOURCES: set[str] = {"table_store", "db_catalog"}
 
 _ALLOWED_RE_FLAG_BITS = int(re.IGNORECASE)
-_SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
 
 DEFAULT_MASK = "[REDACTED]"
 
 
 def _is_suspicious_regex(pattern: str) -> bool:
-    if _SUSPICIOUS_NESTED_QUANTIFIER_RE.search(pattern):
-        return True
-    return False
+    return looks_like_nested_quantifier(pattern)
 
 
 def _normalize_sources(raw: object) -> list[str]:
@@ -314,4 +312,3 @@ def redact_row_lists(rows: Iterable[object], *, columns: list[str], mask_map: Ma
                 item[i] = mask
         out.append(item)
     return out
-

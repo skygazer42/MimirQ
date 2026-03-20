@@ -45,7 +45,38 @@ class _Entry:
 
 
 _TABLE_RE = re.compile(r"^\s*(?P<brackets>\[\[?)(?P<name>[^\]]{1,120})\]\]?\s*$")
-_KEY_RE = re.compile(r"^\s*(?P<key>[A-Za-z0-9_.-]{1,80})\s*=\s*(?P<val>.+?)\s*(?:#.*)?$")
+
+
+def _parse_toml_key_line(line: str) -> str | None:
+    """
+    Parse a TOML key/value line like:
+      key = "value"
+
+    Returns the key or None.
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").strip()
+    if not s or s.startswith("#"):
+        return None
+    if "=" not in s:
+        return None
+    eq = s.find("=")
+    if eq <= 0:
+        return None
+    key = s[:eq].strip()
+    val = s[eq + 1 :].strip()
+    if "#" in val:
+        # Best-effort: strip inline comments when not inside quotes.
+        if " #" in val or val.startswith("#"):
+            val = val.split("#", 1)[0].strip()
+    if not key or not val:
+        return None
+    if len(key) > 80:
+        return None
+    if not all(ch.isascii() and (ch.isalnum() or ch in "_.-") for ch in key):
+        return None
+    return key
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -101,10 +132,7 @@ def _iter_entries(text: str, *, start: int, end: int) -> list[_Entry]:
             continue
         if _TABLE_RE.match(plain.strip()):
             continue
-        m = _KEY_RE.match(plain)
-        if not m:
-            continue
-        key = (m.group("key") or "").strip()
+        key = _parse_toml_key_line(plain)
         if not key:
             continue
         start_idxs.append(i)
@@ -125,8 +153,19 @@ def looks_like_toml_config(text: str) -> bool:
     lowered = text.lower()
     if "[tool." in lowered or "[project]" in lowered:
         return True
-    if re.search(r"(?m)^\s*\[[^\]]+\]\s*$", text) and re.search(r"(?m)^\s*[A-Za-z0-9_.-]+\s*=\s*.+$", text):
-        return True
+    head = (text or "")[:80000]
+    has_table = False
+    has_key = False
+    for ln in head.splitlines()[:2000]:
+        plain = ln.strip()
+        if not plain or plain.startswith("#"):
+            continue
+        if _TABLE_RE.match(plain):
+            has_table = True
+        elif _parse_toml_key_line(plain):
+            has_key = True
+        if has_table and has_key:
+            return True
     return False
 
 

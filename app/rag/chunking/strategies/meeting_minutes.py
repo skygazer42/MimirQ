@@ -18,6 +18,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
 
 
 @dataclass(frozen=True)
@@ -34,8 +35,6 @@ class _Section:
     end: int
     heading: _Heading | None
 
-
-_MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
 
 _EN_SECTIONS: dict[str, str] = {
     "agenda": "agenda",
@@ -78,9 +77,10 @@ def _normalize_title(raw: str) -> str:
     t = (raw or "").strip()
     if not t:
         return ""
-    m = _MD_HEADING_RE.match(t)
-    if m:
-        t = (m.group("title") or "").strip()
+    parsed = parse_markdown_hash_heading(t)
+    if parsed is not None:
+        _level, title = parsed
+        t = title
 
     # Strip bullet markers.
     t = re.sub(r"^\s*(?:[-*+]\s+|\d+\.\s+)", "", t).strip()

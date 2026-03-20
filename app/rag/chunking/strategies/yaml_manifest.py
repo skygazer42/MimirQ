@@ -43,7 +43,6 @@ class _Doc:
 
 
 _DOC_SEP_RE = re.compile(r"(?m)^\s*---\s*(?:#.*)?$")
-_KV_RE = re.compile(r"^\s*(?P<key>[A-Za-z_][A-Za-z0-9_.-]{0,80})\s*:\s*(?P<val>.+?)\s*(?:#.*)?$")
 _KEY_ONLY_RE = re.compile(r"^\s*(?P<key>[A-Za-z_][A-Za-z0-9_.-]{0,80})\s*:\s*(?:#.*)?$")
 _INDENTED_KEY_RE = re.compile(r"^\s{2,}[A-Za-z_][A-Za-z0-9_.-]{0,80}\s*:\s*")
 _LIST_ITEM_RE = re.compile(r"^\s*-\s+\S+")
@@ -51,6 +50,40 @@ _API_VERSION_RE = re.compile(r"(?m)^\s*apiVersion\s*:\s*(?P<val>[^\s#]+)")
 _KIND_RE = re.compile(r"(?m)^\s*kind\s*:\s*(?P<val>[^\s#]+)")
 _METADATA_RE = re.compile(r"^(?P<indent>\s*)metadata\s*:\s*(?:#.*)?$")
 _NAME_RE = re.compile(r"^(?P<indent>\s*)name\s*:\s*(?P<val>[^\s#]+)")
+
+
+def _parse_yaml_kv_line(line: str) -> tuple[str, str] | None:
+    """
+    Parse a simple YAML key/value line like:
+      apiVersion: v1
+      kind: Deployment
+
+    Returns (key, value) or None.
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "").strip()
+    if not s or s.startswith("#") or ":" not in s:
+        return None
+    key_raw, rest = s.split(":", 1)
+    key = key_raw.strip()
+    if not key or len(key) > 81:
+        return None
+    first = key[0]
+    if not (first.isascii() and (first.isalpha() or first == "_")):
+        return None
+    for ch in key[1:]:
+        if not ch.isascii():
+            return None
+        if ch.isalnum() or ch in "_.-":
+            continue
+        return None
+    val = rest.strip()
+    if not val or val.startswith("#"):
+        return None
+    if " #" in val:
+        val = val.split(" #", 1)[0].strip()
+    return key, val
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -134,7 +167,7 @@ def looks_like_yaml_manifest(text: str) -> bool:
     if re.search(r"(?m)^\s*apiVersion\s*:\s*\S+", head) and re.search(r"(?m)^\s*kind\s*:\s*\S+", head):
         return True
     if _DOC_SEP_RE.search(head):
-        kv = len(_KV_RE.findall(head))
+        kv = sum(1 for ln in head.splitlines() if _parse_yaml_kv_line(ln) is not None)
         return kv >= 4
 
     raw_lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
@@ -153,7 +186,7 @@ def looks_like_yaml_manifest(text: str) -> bool:
         if _KEY_ONLY_RE.match(ln):
             key_only += 1
             continue
-        if _KV_RE.match(ln):
+        if _parse_yaml_kv_line(ln) is not None:
             key_with_value += 1
 
     key_lines = key_with_value + key_only

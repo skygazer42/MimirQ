@@ -11,7 +11,6 @@ The chunker splits by heading blocks and preserves character offsets.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -43,7 +42,40 @@ class _Section:
     heading: AsciidocHeading | None
 
 
-_HEADING_RE = re.compile(r"^\s*(?P<marks>={1,6})\s+(?P<title>.+?)\s*$")
+def _parse_asciidoc_heading(line: str) -> tuple[int, str] | None:
+    """
+    Parse an AsciiDoc heading line like:
+      = Title
+      == Section
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    raw = str(line or "").rstrip("\r\n")
+    if not raw:
+        return None
+    s = raw.lstrip()
+    if not s.startswith("="):
+        return None
+
+    i = 0
+    n = len(s)
+    while i < n and i < 6 and s[i] == "=":
+        i += 1
+    if i <= 0 or i > 6:
+        return None
+    # Reject >6 leading '='.
+    if i < n and s[i] == "=":
+        return None
+    # Require at least one whitespace after the marker run.
+    if i >= n or not s[i].isspace():
+        return None
+    j = i
+    while j < n and s[j].isspace():
+        j += 1
+    title = s[j:].strip()
+    if not title:
+        return None
+    return int(i), title
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -62,11 +94,10 @@ def _iter_lines(text: str) -> list[_Line]:
 def _iter_headings(text: str) -> list[AsciidocHeading]:
     headings: list[AsciidocHeading] = []
     for ln in _iter_lines(text):
-        m = _HEADING_RE.match(ln.text.rstrip("\r\n"))
-        if not m:
+        parsed = _parse_asciidoc_heading(ln.text)
+        if not parsed:
             continue
-        level = len(m.group("marks") or "")
-        title = (m.group("title") or "").strip()
+        level, title = parsed
         if not title:
             continue
         headings.append(
@@ -194,4 +225,3 @@ class AsciiDocSectionsChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

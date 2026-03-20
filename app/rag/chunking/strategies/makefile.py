@@ -11,7 +11,6 @@ targets per chunk to respect chunk_size/overlap while preserving offsets.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,7 +34,33 @@ class _Target:
     name: str
 
 
-_TARGET_RE = re.compile(r"^(?P<name>[A-Za-z0-9_./%:@+-]{1,80})\s*:(?!=)\s*(?P<deps>.*)$")
+_TARGET_NAME_ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./%:@+-")
+
+
+def _parse_target_line(line: str) -> str | None:
+    """
+    Parse a Make target line:
+      target: deps
+
+    Returns the target name or None.
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(line or "")
+    if not s:
+        return None
+    colon = s.find(":")
+    if colon <= 0:
+        return None
+    if colon + 1 < len(s) and s[colon + 1] == "=":
+        # Exclude variable assignments like VAR:=
+        return None
+    name = s[:colon].strip()
+    if not name or len(name) > 80:
+        return None
+    if any(ch not in _TARGET_NAME_ALLOWED for ch in name):
+        return None
+    return name
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -61,10 +86,7 @@ def _iter_targets(text: str) -> list[_Target]:
             continue
         if p.startswith("\t"):
             continue
-        m = _TARGET_RE.match(p)
-        if not m:
-            continue
-        name = (m.group("name") or "").strip()
+        name = _parse_target_line(p)
         if not name:
             continue
         idxs.append(i)

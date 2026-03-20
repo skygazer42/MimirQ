@@ -12,7 +12,6 @@ character offsets.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +19,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_markdown_hash_heading
 
 
 @dataclass(frozen=True)
@@ -45,13 +45,46 @@ class _Section:
     heading: _Heading | None
 
 
-_MD_HEADING_RE = re.compile(r"^\s*(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$")
-_NUMBERED_PREFIX_RE = re.compile(r"^\s*\d+(?:\.\d+){0,3}[\).\s]+\s*")
-_COLON_SUFFIX_RE = re.compile(r"\s*[:：]\s*$")
-
-
 def _norm(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip()).lower()
+    return " ".join((s or "").strip().split()).lower()
+
+
+def _strip_numbered_prefix(text: str) -> str:
+    """
+    Strip common numbering prefixes like:
+      1. Goals
+      2) Risks
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(text or "").lstrip()
+    if not s or not s[:1].isdigit():
+        return s
+
+    i = 0
+    while i < len(s) and s[i].isdigit():
+        i += 1
+
+    groups = 0
+    while groups < 3 and i < len(s) and s[i] == ".":
+        j = i + 1
+        if j >= len(s) or not s[j].isdigit():
+            break
+        while j < len(s) and s[j].isdigit():
+            j += 1
+        i = j
+        groups += 1
+
+    if i >= len(s):
+        return s
+    if not (s[i].isspace() or s[i] in ")."):
+        return s
+
+    while i < len(s) and (s[i].isspace() or s[i] in ")."):
+        i += 1
+    while i < len(s) and s[i].isspace():
+        i += 1
+    return s[i:]
 
 
 _SECTION_SYNONYMS: dict[str, list[str]] = {
@@ -93,19 +126,18 @@ def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:
     if not s:
         return None
 
-    m = _MD_HEADING_RE.match(s)
-    if m:
-        title = (m.group("title") or "").strip()
-        title = _COLON_SUFFIX_RE.sub("", title).strip()
-        level = len(m.group("marks") or "#")
+    parsed = parse_markdown_hash_heading(s)
+    if parsed is not None:
+        level, title = parsed
+        title = str(title).rstrip(":：").strip()
         key = _TITLE_TO_KEY.get(_norm(title))
         if key:
             return title, key, int(level)
         return None
 
     # Numbered heading or plain heading.
-    s2 = _NUMBERED_PREFIX_RE.sub("", s).strip()
-    s2 = _COLON_SUFFIX_RE.sub("", s2).strip()
+    s2 = _strip_numbered_prefix(s).strip()
+    s2 = s2.rstrip(":：").strip()
     if not s2 or len(s2) > 80:
         return None
 

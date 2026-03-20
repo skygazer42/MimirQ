@@ -35,7 +35,6 @@ class _JobBlock:
 
 _JOBS_RE = re.compile(r"(?m)^(?P<indent>\s*)jobs\s*:\s*(?:#.*)?$")
 _KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\s*:\s*(?:#.*)?$")
-_WORKFLOW_NAME_RE = re.compile(r"(?m)^(?P<indent>\s*)name\s*:\s*(?P<val>.+?)\s*$")
 _RUNS_ON_RE = re.compile(r"(?m)^\s*runs-on\s*:\s*")
 _ON_RE = re.compile(r"(?m)^(?P<indent>\s*)on\s*:\s*")
 
@@ -62,11 +61,27 @@ def _find_jobs_anchor(text: str) -> tuple[int, int] | None:
 
 def _extract_workflow_name(text: str) -> str | None:
     head = (text or "")[:8000]
-    for m in _WORKFLOW_NAME_RE.finditer(head):
-        indent = len(m.group("indent") or "")
-        if indent == 0:
-            val = (m.group("val") or "").strip()
-            return val[:120] or None
+    offset = 0
+    for raw_line in head.splitlines(keepends=True):
+        _ = offset
+        offset += len(raw_line)
+        plain = raw_line.rstrip("\r\n")
+        if not plain or plain.lstrip().startswith("#"):
+            continue
+        # Only accept top-level "name:".
+        if plain[:1].isspace():
+            continue
+        if ":" not in plain:
+            continue
+        key, rest = plain.split(":", 1)
+        if key.strip().casefold() != "name":
+            continue
+        # Strip common inline comment pattern.
+        val = rest.strip()
+        if " #" in val:
+            val = val.split(" #", 1)[0].strip()
+        val = val.strip().strip("'\"")
+        return val[:120] or None
     return None
 
 
