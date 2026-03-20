@@ -71,6 +71,8 @@ from app.services.prompt_resolver import resolve_prompt_template
 
 logger = get_logger("rag.engine")
 
+_UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
+
 
 class RAGEngine:
     """RAG Conversation Engine"""
@@ -1834,7 +1836,7 @@ Requirements:
                     abstain_reason = "top_relevance_lt_min"
 
             if abstain_triggered:
-                abstain_message = "Unable to answer this question based on the available materials."
+                abstain_message = _UNABLE_TO_ANSWER_MESSAGE
 
                 structured_data = None
                 structured_parse_meta = {"ok": False, "method": None, "error": None}
@@ -2628,7 +2630,7 @@ Requirements:
                                 )
                     cleaned = "\n".join(kept).strip()
                     if not cleaned:
-                        cleaned = "Unable to answer this question based on the available materials."
+                        cleaned = _UNABLE_TO_ANSWER_MESSAGE
                     full_response = cleaned
                 elif claim_check_mode == "structured":
                     # Keep JSON parseable: only scrub natural-language string fields.
@@ -2645,7 +2647,7 @@ Requirements:
                                     "relevance_score": c.get("relevance_score"),
                                 }
                             )
-                        parsed = {"answer": "Unable to answer this question based on the available materials.", "citations": structured_citations}
+                        parsed = {"answer": _UNABLE_TO_ANSWER_MESSAGE, "citations": structured_citations}
 
                     scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
                         parsed,
@@ -2672,7 +2674,7 @@ Requirements:
                             and isinstance(scrubbed.get("answer"), str)
                             and not str(scrubbed.get("answer") or "").strip()
                         ):
-                            scrubbed["answer"] = "Unable to answer this question based on the available materials."
+                            scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
                     except Exception:
                         pass
 

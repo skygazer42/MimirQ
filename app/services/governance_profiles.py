@@ -22,6 +22,8 @@ MAX_PROFILE_RULES = 60
 MAX_PROFILE_RULE_PATTERN = 600
 MAX_PROFILE_RULE_REPL = 2000
 
+DEFAULT_GOVERNANCE_SECRETS_MASK = "[SECRET]"
+
 
 def validate_profile_key(key: str | None) -> str | None:
     if key is None:
@@ -243,7 +245,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_pii_mask": "[REDACTED]",
                     "governance_secrets_redact": True,
                     "governance_secrets_mode": "mask",
-                    "governance_secrets_mask": "[SECRET]",
+                    "governance_secrets_mask": DEFAULT_GOVERNANCE_SECRETS_MASK,
                 },
             ),
         ),
@@ -283,7 +285,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_strip_code_line_numbers": True,
                     "governance_secrets_redact": True,
                     "governance_secrets_mode": "mask",
-                    "governance_secrets_mask": "[SECRET]",
+                    "governance_secrets_mask": DEFAULT_GOVERNANCE_SECRETS_MASK,
                     "governance_max_blank_lines": 2,
                 },
             ),
@@ -389,7 +391,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_pii_max_hits": 0,
                     "governance_secrets_redact": True,
                     "governance_secrets_mode": "mask",
-                    "governance_secrets_mask": "[SECRET]",
+                    "governance_secrets_mask": DEFAULT_GOVERNANCE_SECRETS_MASK,
                     "governance_secrets_max_hits": 0,
                     "governance_quarantine_on_drop": True,
                 },

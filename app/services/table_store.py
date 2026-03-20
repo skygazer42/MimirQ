@@ -16,6 +16,8 @@ from uuid import UUID
 
 from app.core.config import settings
 
+DEFAULT_TABLE_STORE_DIR = "./uploads/table_store"
+
 _TABLE_ID_RE = re.compile(r"^doc:([0-9a-fA-F-]{36}):sheet:(\d+)$")
 
 
@@ -69,15 +71,14 @@ def table_store_path(*, tenant_id: UUID, dataset_id: UUID, document_id: UUID) ->
     Layout:
       {TABLE_STORE_DIR}/{tenant_id}/{dataset_id}/{document_id}.sqlite3
     """
-    root = Path(str(getattr(settings, "TABLE_STORE_DIR", "./uploads/table_store") or "./uploads/table_store"))
+    root = Path(str(getattr(settings, "TABLE_STORE_DIR", DEFAULT_TABLE_STORE_DIR) or DEFAULT_TABLE_STORE_DIR))
     # Avoid accidental relative traversal by always joining deterministic UUID components.
     out = root / str(tenant_id) / str(dataset_id) / f"{document_id}.sqlite3"
     return out
 
 
 def ensure_table_store_dir(*, tenant_id: UUID, dataset_id: UUID) -> Path:
-    root = Path(str(getattr(settings, "TABLE_STORE_DIR", "./uploads/table_store") or "./uploads/table_store"))
+    root = Path(str(getattr(settings, "TABLE_STORE_DIR", DEFAULT_TABLE_STORE_DIR) or DEFAULT_TABLE_STORE_DIR))
     out = root / str(tenant_id) / str(dataset_id)
     out.mkdir(parents=True, exist_ok=True)
     return out
-

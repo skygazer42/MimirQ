@@ -12,6 +12,9 @@ from app.core.config import settings
 from app.types.indexing import IndexingOptions
 from app.types.pipeline import PipelineEffective, PipelineOptions
 
+DEFAULT_GOVERNANCE_PII_MASK = "[REDACTED]"
+DEFAULT_GOVERNANCE_SECRETS_MASK = "[SECRET]"
+
 
 def _coerce_bool(value: Any) -> bool | None:
     if value is None:
@@ -688,9 +691,9 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else str(options.governance_pii_mode or "mask")
     )
     governance_pii_mask = (
-        getattr(settings, "GOVERNANCE_PII_MASK", "[REDACTED]")
+        getattr(settings, "GOVERNANCE_PII_MASK", DEFAULT_GOVERNANCE_PII_MASK)
         if options.governance_pii_mask is None
-        else str(options.governance_pii_mask or "[REDACTED]")
+        else str(options.governance_pii_mask or DEFAULT_GOVERNANCE_PII_MASK)
     )
     governance_pii_max_hits = (
         options.governance_pii_max_hits
@@ -708,9 +711,9 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else str(options.governance_secrets_mode or "mask")
     )
     governance_secrets_mask = (
-        getattr(settings, "GOVERNANCE_SECRETS_MASK", "[SECRET]")
+        getattr(settings, "GOVERNANCE_SECRETS_MASK", DEFAULT_GOVERNANCE_SECRETS_MASK)
         if options.governance_secrets_mask is None
-        else str(options.governance_secrets_mask or "[SECRET]")
+        else str(options.governance_secrets_mask or DEFAULT_GOVERNANCE_SECRETS_MASK)
     )
     governance_secrets_max_hits = (
         options.governance_secrets_max_hits
@@ -941,11 +944,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_quarantine_on_drop=bool(governance_quarantine_on_drop),
         governance_pii_anonymize=bool(governance_pii_anonymize),
         governance_pii_mode=str(governance_pii_mode or "mask"),
-        governance_pii_mask=str(governance_pii_mask or "[REDACTED]"),
+        governance_pii_mask=str(governance_pii_mask or DEFAULT_GOVERNANCE_PII_MASK),
         governance_pii_max_hits=int(governance_pii_max_hits),
         governance_secrets_redact=bool(governance_secrets_redact),
         governance_secrets_mode=str(governance_secrets_mode or "mask"),
-        governance_secrets_mask=str(governance_secrets_mask or "[SECRET]"),
+        governance_secrets_mask=str(governance_secrets_mask or DEFAULT_GOVERNANCE_SECRETS_MASK),
         governance_secrets_max_hits=int(governance_secrets_max_hits),
         governance_max_blank_lines=int(governance_max_blank_lines),
         governance_html_xpath=str(governance_html_xpath or ""),

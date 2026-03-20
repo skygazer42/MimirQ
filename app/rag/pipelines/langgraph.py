@@ -53,6 +53,8 @@ from app.services.prompt_resolver import resolve_prompt_template
 
 logger = logging.getLogger(__name__)
 
+_UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
+
 
 @dataclass
 class RAGRuntimeContext:
@@ -340,7 +342,7 @@ def _generate_node(state: RAGState) -> RAGState:
         engine = get_rag_engine()
         llm, route, reason = engine._select_llm(state["question"], state.get("history"))  # type: ignore[attr-defined]
 
-        abstain_message = "Unable to answer this question based on the available materials."
+        abstain_message = _UNABLE_TO_ANSWER_MESSAGE
         answer = abstain_message
         if bool(state.get("structured_output")):
             preset_key = (state.get("structured_preset") or "").lower()
@@ -532,7 +534,7 @@ def _generate_node(state: RAGState) -> RAGState:
                         )
             cleaned = "\n".join(kept).strip()
             if not cleaned:
-                cleaned = "Unable to answer this question based on the available materials."
+                cleaned = _UNABLE_TO_ANSWER_MESSAGE
             answer = cleaned
         elif claim_check_mode == "structured":
             parsed, _meta = parse_json_from_text(str(answer or ""), expected="object")
@@ -548,7 +550,7 @@ def _generate_node(state: RAGState) -> RAGState:
                             "relevance_score": c.get("relevance_score"),
                         }
                     )
-                parsed = {"answer": "Unable to answer this question based on the available materials.", "citations": structured_citations}
+                parsed = {"answer": _UNABLE_TO_ANSWER_MESSAGE, "citations": structured_citations}
 
             scrubbed, scrub_meta = scrub_structured_output_visible_evidence_only(
                 parsed,
@@ -574,7 +576,7 @@ def _generate_node(state: RAGState) -> RAGState:
                     and isinstance(scrubbed.get("answer"), str)
                     and not str(scrubbed.get("answer") or "").strip()
                 ):
-                    scrubbed["answer"] = "Unable to answer this question based on the available materials."
+                    scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
             except Exception:
                 pass
 

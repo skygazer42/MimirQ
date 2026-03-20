@@ -35,6 +35,8 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(tags=["prompt-templates"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+_PROMPT_TEMPLATE_NOT_FOUND_DETAIL = "Prompt template not found"
+
 
 def _derive_template_key(name: str) -> str:
     """Derive a stable key from name (avoid empty keys)."""
@@ -212,7 +214,7 @@ async def get_prompt_template(
     if not template:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Prompt template not found",
+            detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL,
         )
 
     return template
@@ -241,7 +243,7 @@ async def create_prompt_template_version(
         .first()
     )
     if not current:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prompt template not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL)
     if current.is_system:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot version system templates")
 
@@ -327,7 +329,7 @@ async def update_prompt_template(
     if not template:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Prompt template not found",
+            detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL,
         )
 
     if template.is_system:
@@ -387,7 +389,7 @@ async def delete_prompt_template(
     if not template:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Prompt template not found",
+            detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL,
         )
 
     if template.is_system:
@@ -446,7 +448,7 @@ async def duplicate_prompt_template(
     if not original:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Prompt template not found",
+            detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL,
         )
 
     duplicate = PromptTemplate(
