@@ -115,4 +115,65 @@ def parse_markdown_hash_heading(line: str) -> tuple[int, str] | None:
     return level, title
 
 
-__all__ = ["parse_cn_clause_marker", "parse_cn_prefixed_heading", "parse_markdown_hash_heading"]
+def normalize_spaces(text: str) -> str:
+    """
+    Collapse runs of whitespace into single spaces.
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    return " ".join(str(text or "").split())
+
+
+def normalize_spaces_lower(text: str) -> str:
+    """
+    Normalize text for synonym-map lookups.
+    """
+    return normalize_spaces(text).lower()
+
+
+def strip_numbered_heading_prefix(text: str) -> str:
+    """
+    Strip common numbering prefixes like:
+      1.2 Summary
+      3) Timeline
+
+    We intentionally avoid regex to prevent SonarCloud security hotspots (python:S5852).
+    """
+    s = str(text or "").lstrip()
+    if not s or not s[:1].isdigit():
+        return s
+
+    i = 0
+    while i < len(s) and s[i].isdigit():
+        i += 1
+
+    groups = 0
+    while groups < 3 and i < len(s) and s[i] == ".":
+        j = i + 1
+        if j >= len(s) or not s[j].isdigit():
+            break
+        while j < len(s) and s[j].isdigit():
+            j += 1
+        i = j
+        groups += 1
+
+    if i >= len(s):
+        return s
+    if not (s[i].isspace() or s[i] in ")."):
+        return s
+
+    while i < len(s) and (s[i].isspace() or s[i] in ")."):
+        i += 1
+    while i < len(s) and s[i].isspace():
+        i += 1
+    return s[i:]
+
+
+__all__ = [
+    "normalize_spaces",
+    "normalize_spaces_lower",
+    "parse_cn_clause_marker",
+    "parse_cn_prefixed_heading",
+    "parse_markdown_hash_heading",
+    "strip_numbered_heading_prefix",
+]
