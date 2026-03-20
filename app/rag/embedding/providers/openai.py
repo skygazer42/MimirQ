@@ -12,7 +12,6 @@ Supports any embedding API that follows the OpenAI embeddings format:
 """
 import asyncio
 import contextlib
-import json
 import random
 import threading
 import time
@@ -185,7 +184,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
                         time.sleep(sleep_for)
                     continue
                 break
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            except (KeyError, TypeError, ValueError) as exc:
                 # Do not aggressively retry schema issues; but treat as retryable when the server
                 # returns partial/bad JSON under load (best-effort).
                 last_exc = exc
@@ -276,7 +275,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
                         await asyncio.sleep(sleep_for)
                     continue
                 break
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            except (KeyError, TypeError, ValueError) as exc:
                 last_exc = exc
                 if attempt < max_retries:
                     sleep_for = _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)

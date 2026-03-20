@@ -34,7 +34,7 @@ def try_get_jwt_claims(token: str) -> dict[str, Any] | None:
     try:
         payload = _base64url_decode(payload_b64)
         obj = json.loads(payload.decode("utf-8"))
-    except (binascii.Error, UnicodeDecodeError, ValueError):
+    except (binascii.Error, ValueError):
         return None
     return obj if isinstance(obj, dict) else None
 

@@ -377,7 +377,7 @@ JSON Response:"""
             if "sources" not in data or not data["sources"]:
                 data["sources"] = sources
             return schema.model_validate(data)
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.warning("Failed to parse structured output: %s", e)
             return PlainOutput(content=content, sources=sources)
 

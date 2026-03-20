@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 
 from .base import OrmModel
 
@@ -731,7 +731,7 @@ class DocumentPipelineProvenance(BaseModel):
         effective_raw = m.get("pipeline_effective") if isinstance(m.get("pipeline_effective"), dict) else {}
         try:
             effective = PipelineEffectiveSnapshot.model_validate(effective_raw)
-        except (TypeError, ValueError, ValidationError):
+        except (TypeError, ValueError):
             effective = PipelineEffectiveSnapshot()
 
         rule_packs: list[str] = []
@@ -759,7 +759,7 @@ class DocumentPipelineProvenance(BaseModel):
 
         try:
             analytics = DocumentAnalyticsSchema.model_validate(analytics_payload)
-        except (TypeError, ValueError, ValidationError):
+        except (TypeError, ValueError):
             analytics = DocumentAnalyticsSchema()
 
         text_quality = m.get("parsed_text_quality")
