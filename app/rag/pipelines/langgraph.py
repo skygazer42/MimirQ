@@ -12,7 +12,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import Any, TypedDict
 from uuid import UUID, uuid4
@@ -1209,67 +1209,145 @@ def build_rag_graph_subgraphs() -> Any:
     return g.compile(checkpointer=checkpointer, store=store, name="rag_graph_subgraphs")
 
 
+@dataclass(frozen=True)
+class RagStateBuildOptions:
+    question: str
+    history: list[dict[str, str]] | None = None
+    document_ids: list[UUID] | None = None
+    tenant_id: UUID | None = None
+    account_id: str | None = None
+    dataset_id: UUID | None = None
+    top_k: int = 5
+    score_threshold: float = 0.7
+    retrieval_mode: str = "hybrid"
+    retrieval_profile: str | None = None
+    retrieval_contract_mode: str | None = None
+    must_recall: bool | None = None
+    must_recall_expected_source_keys: list[str] | None = None
+    must_recall_required_anchor_fields: list[str] | None = None
+    intent_router: bool | None = None
+    intent_router_policy: dict[str, Any] | None = None
+    enable_query_alias_expansion: bool | None = None
+    query_aliases: dict[str, list[str]] | None = None
+    query_alias_max_queries: int | None = None
+    enable_multi_query: bool | None = None
+    multi_query_count: int | None = None
+    multi_query_temperature: float | None = None
+    multi_query_max_chars: int | None = None
+    enable_hierarchy_recall: bool | None = None
+    hierarchy_family_collapse: bool | None = None
+    hierarchy_family_aggregation: str | None = None
+    hierarchy_tree_dedup: bool | None = None
+    hierarchy_parent_depth: int | None = None
+    hierarchy_sibling_window: int | None = None
+    hierarchy_overfetch_factor: int | None = None
+    enable_query_rewrite: bool | None = None
+    query_rewrite_strategy: str | None = None
+    query_rewrite_temperature: float | None = None
+    query_rewrite_max_chars: int | None = None
+    sparse_retrieval_enabled: bool | None = None
+    sparse_retrieval_provider: str | None = None
+    alpha: float = 0.6
+    fusion_strategy: str | None = None
+    fusion_budgets: dict[str, int] | None = None
+    fusion_min_scores: dict[str, float] | None = None
+    fusion_weights: dict[str, float] | None = None
+    enable_weight_rerank: bool = True
+    vector_weight: float = 0.6
+    keyword_weight: float = 0.4
+    mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA
+    enable_reranker: bool = settings.ENABLE_RERANKER
+    reranker_provider: str | None = settings.RERANKER_PROVIDER
+    reranker_top_n: int = settings.RERANKER_TOP_N
+    metadata_filter: dict[str, Any] | None = None
+    structured_output: bool = False
+    structured_preset: str | None = None
+    visible_evidence_only: bool = False
+    prompt_template_id: UUID | None = None
+    prompt_template_key: str | None = None
+    prompt_ab_experiment_key: str | None = None
+    ab_user_key: str | None = None
+    db: Any | None = None
+
+
+def _resolve_rag_state_build_options(
+    *,
+    options: RagStateBuildOptions | None,
+    legacy_overrides: dict[str, Any],
+) -> RagStateBuildOptions:
+    if options is None:
+        return RagStateBuildOptions(**legacy_overrides)
+    if not legacy_overrides:
+        return options
+    return replace(options, **legacy_overrides)
+
+
 def build_rag_state(
     *,
-    question: str,
-    history: list[dict[str, str]] | None = None,
-    document_ids: list[UUID] | None = None,
-    tenant_id: UUID | None = None,
-    account_id: str | None = None,
-    dataset_id: UUID | None = None,
-    top_k: int = 5,
-    score_threshold: float = 0.7,
-    retrieval_mode: str = "hybrid",
-    retrieval_profile: str | None = None,
-    retrieval_contract_mode: str | None = None,
-    must_recall: bool | None = None,
-    must_recall_expected_source_keys: list[str] | None = None,
-    must_recall_required_anchor_fields: list[str] | None = None,
-    intent_router: bool | None = None,
-    intent_router_policy: dict[str, Any] | None = None,
-    enable_query_alias_expansion: bool | None = None,
-    query_aliases: dict[str, list[str]] | None = None,
-    query_alias_max_queries: int | None = None,
-    enable_multi_query: bool | None = None,
-    multi_query_count: int | None = None,
-    multi_query_temperature: float | None = None,
-    multi_query_max_chars: int | None = None,
-    enable_hierarchy_recall: bool | None = None,
-    hierarchy_family_collapse: bool | None = None,
-    hierarchy_family_aggregation: str | None = None,
-    hierarchy_tree_dedup: bool | None = None,
-    hierarchy_parent_depth: int | None = None,
-    hierarchy_sibling_window: int | None = None,
-    hierarchy_overfetch_factor: int | None = None,
-    enable_query_rewrite: bool | None = None,
-    query_rewrite_strategy: str | None = None,
-    query_rewrite_temperature: float | None = None,
-    query_rewrite_max_chars: int | None = None,
-    sparse_retrieval_enabled: bool | None = None,
-    sparse_retrieval_provider: str | None = None,
-    alpha: float = 0.6,
-    fusion_strategy: str | None = None,
-    fusion_budgets: dict[str, int] | None = None,
-    fusion_min_scores: dict[str, float] | None = None,
-    fusion_weights: dict[str, float] | None = None,
-    enable_weight_rerank: bool = True,
-    vector_weight: float = 0.6,
-    keyword_weight: float = 0.4,
-    mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
-    enable_reranker: bool = settings.ENABLE_RERANKER,
-    reranker_provider: str | None = settings.RERANKER_PROVIDER,
-    reranker_top_n: int = settings.RERANKER_TOP_N,
-    metadata_filter: dict[str, Any] | None = None,
-    structured_output: bool = False,
-    structured_preset: str | None = None,
-    visible_evidence_only: bool = False,
-    prompt_template_id: UUID | None = None,
-    prompt_template_key: str | None = None,
-    prompt_ab_experiment_key: str | None = None,
-    ab_user_key: str | None = None,
-    db: Any | None = None,
+    options: RagStateBuildOptions | None = None,
+    **legacy_overrides: Any,
 ) -> dict[str, Any]:
     """Build initial RAG graph state shared by run/stream entrypoints."""
+
+    resolved = _resolve_rag_state_build_options(options=options, legacy_overrides=legacy_overrides)
+
+    question = resolved.question
+    history = resolved.history
+    document_ids = resolved.document_ids
+    tenant_id = resolved.tenant_id
+    account_id = resolved.account_id
+    dataset_id = resolved.dataset_id
+    top_k = resolved.top_k
+    score_threshold = resolved.score_threshold
+    retrieval_mode = resolved.retrieval_mode
+    retrieval_profile = resolved.retrieval_profile
+    retrieval_contract_mode = resolved.retrieval_contract_mode
+    must_recall = resolved.must_recall
+    must_recall_expected_source_keys = resolved.must_recall_expected_source_keys
+    must_recall_required_anchor_fields = resolved.must_recall_required_anchor_fields
+    intent_router = resolved.intent_router
+    intent_router_policy = resolved.intent_router_policy
+    enable_query_alias_expansion = resolved.enable_query_alias_expansion
+    query_aliases = resolved.query_aliases
+    query_alias_max_queries = resolved.query_alias_max_queries
+    enable_multi_query = resolved.enable_multi_query
+    multi_query_count = resolved.multi_query_count
+    multi_query_temperature = resolved.multi_query_temperature
+    multi_query_max_chars = resolved.multi_query_max_chars
+    enable_hierarchy_recall = resolved.enable_hierarchy_recall
+    hierarchy_family_collapse = resolved.hierarchy_family_collapse
+    hierarchy_family_aggregation = resolved.hierarchy_family_aggregation
+    hierarchy_tree_dedup = resolved.hierarchy_tree_dedup
+    hierarchy_parent_depth = resolved.hierarchy_parent_depth
+    hierarchy_sibling_window = resolved.hierarchy_sibling_window
+    hierarchy_overfetch_factor = resolved.hierarchy_overfetch_factor
+    enable_query_rewrite = resolved.enable_query_rewrite
+    query_rewrite_strategy = resolved.query_rewrite_strategy
+    query_rewrite_temperature = resolved.query_rewrite_temperature
+    query_rewrite_max_chars = resolved.query_rewrite_max_chars
+    sparse_retrieval_enabled = resolved.sparse_retrieval_enabled
+    sparse_retrieval_provider = resolved.sparse_retrieval_provider
+    alpha = resolved.alpha
+    fusion_strategy = resolved.fusion_strategy
+    fusion_budgets = resolved.fusion_budgets
+    fusion_min_scores = resolved.fusion_min_scores
+    fusion_weights = resolved.fusion_weights
+    enable_weight_rerank = resolved.enable_weight_rerank
+    vector_weight = resolved.vector_weight
+    keyword_weight = resolved.keyword_weight
+    mmr_lambda = resolved.mmr_lambda
+    enable_reranker = resolved.enable_reranker
+    reranker_provider = resolved.reranker_provider
+    reranker_top_n = resolved.reranker_top_n
+    metadata_filter = resolved.metadata_filter
+    structured_output = resolved.structured_output
+    structured_preset = resolved.structured_preset
+    visible_evidence_only = resolved.visible_evidence_only
+    prompt_template_id = resolved.prompt_template_id
+    prompt_template_key = resolved.prompt_template_key
+    prompt_ab_experiment_key = resolved.prompt_ab_experiment_key
+    ab_user_key = resolved.ab_user_key
+    db = resolved.db
 
     engine = get_rag_engine()
     try:
@@ -1449,60 +1527,68 @@ def run_rag_graph(
     question: str,
     history: list[dict[str, str]] | None = None,
     document_ids: list[UUID] | None = None,
-    tenant_id: UUID | None = None,
-    account_id: str | None = None,
-    dataset_id: UUID | None = None,
-    top_k: int = 5,
-    score_threshold: float = 0.7,
-    retrieval_mode: str = "hybrid",
-    retrieval_contract_mode: str | None = None,
+    *args: Any,
     thread_id: str | None = None,
     runtime_context: dict[str, Any] | None = None,
-    alpha: float = 0.6,
-    enable_weight_rerank: bool = True,
-    vector_weight: float = 0.6,
-    keyword_weight: float = 0.4,
-    mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
-    enable_reranker: bool = settings.ENABLE_RERANKER,
-    reranker_provider: str | None = settings.RERANKER_PROVIDER,
-    reranker_top_n: int = settings.RERANKER_TOP_N,
-    metadata_filter: dict[str, Any] | None = None,
-    structured_output: bool = False,
-    structured_preset: str | None = None,
-    prompt_template_id: UUID | None = None,
-    prompt_template_key: str | None = None,
-    prompt_ab_experiment_key: str | None = None,
-    ab_user_key: str | None = None,
-    db: Any | None = None,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """Execute LangGraph RAG flow, return answer/citations/model info."""
+    # Backward compatibility: legacy signature supported a long list of positional args.
+    legacy_positional_keys = [
+        "tenant_id",
+        "account_id",
+        "dataset_id",
+        "top_k",
+        "score_threshold",
+        "retrieval_mode",
+        "retrieval_contract_mode",
+        "thread_id",
+        "runtime_context",
+        "alpha",
+        "enable_weight_rerank",
+        "vector_weight",
+        "keyword_weight",
+        "mmr_lambda",
+        "enable_reranker",
+        "reranker_provider",
+        "reranker_top_n",
+        "metadata_filter",
+        "structured_output",
+        "structured_preset",
+        "prompt_template_id",
+        "prompt_template_key",
+        "prompt_ab_experiment_key",
+        "ab_user_key",
+        "db",
+    ]
+    if args:
+        if len(args) > len(legacy_positional_keys):
+            raise TypeError(f"run_rag_graph() takes at most {3 + len(legacy_positional_keys)} positional arguments")
+        for key, value in zip(legacy_positional_keys, args, strict=False):
+            if key == "thread_id" and thread_id is None:
+                thread_id = value if value is None else str(value)
+                continue
+            if key == "runtime_context" and runtime_context is None:
+                runtime_context = value if value is None else dict(value)
+                continue
+            kwargs.setdefault(key, value)
+
+    # Do not forward execution-only kwargs into build_rag_state.
+    if "thread_id" in kwargs and thread_id is None:
+        thread_id = kwargs.pop("thread_id")
+    else:
+        kwargs.pop("thread_id", None)
+
+    if "runtime_context" in kwargs and runtime_context is None:
+        runtime_context = kwargs.pop("runtime_context")
+    else:
+        kwargs.pop("runtime_context", None)
+
     state = build_rag_state(
         question=question,
         history=history or [],
         document_ids=document_ids,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=dataset_id,
-        top_k=top_k,
-        score_threshold=score_threshold,
-        retrieval_mode=retrieval_mode,
-        retrieval_contract_mode=retrieval_contract_mode,
-        alpha=alpha,
-        enable_weight_rerank=enable_weight_rerank,
-        vector_weight=vector_weight,
-        keyword_weight=keyword_weight,
-        mmr_lambda=mmr_lambda,
-        enable_reranker=enable_reranker,
-        reranker_provider=reranker_provider,
-        reranker_top_n=reranker_top_n,
-        metadata_filter=metadata_filter,
-        structured_output=structured_output,
-        structured_preset=structured_preset,
-        prompt_template_id=prompt_template_id,
-        prompt_template_key=prompt_template_key,
-        prompt_ab_experiment_key=prompt_ab_experiment_key,
-        ab_user_key=ab_user_key,
-        db=db,
+        **kwargs,
     )
 
     # Use Functional API (LangGraph 1.0+)
