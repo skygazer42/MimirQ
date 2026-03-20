@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -1692,7 +1692,7 @@ def _resolve_pipeline_option_overrides(
     base = overrides or PipelineOptionOverrides()
     if not legacy_overrides:
         return base
-    return replace(base, **legacy_overrides)
+    return cast(PipelineOptionOverrides, replace(base, **legacy_overrides))
 
 
 def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:

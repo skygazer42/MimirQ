@@ -51,6 +51,8 @@ export interface FileQueueItemData {
 interface FileQueueItemProps {
   file: FileQueueItemData
   isActive?: boolean
+  draggable?: boolean
+  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void
   onClick?: () => void
   onRemove?: () => void
   onRetry?: () => void
@@ -59,6 +61,8 @@ interface FileQueueItemProps {
 export function FileQueueItem({
   file,
   isActive = false,
+  draggable = false,
+  onDragStart,
   onClick,
   onRemove,
   onRetry,
@@ -160,6 +164,8 @@ export function FileQueueItem({
           ? 'bg-info/10 border-info/25 shadow-sm dark:shadow-none'
           : 'bg-card border-border hover:border-info/25 hover:bg-muted/40'
       )}
+      draggable={draggable}
+      onDragStart={onDragStart}
       {...interactiveProps}
     >
       <div className="flex items-start gap-3">

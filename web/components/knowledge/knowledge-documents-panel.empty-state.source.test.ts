@@ -9,6 +9,6 @@ describe('KnowledgeDocumentsPanel empty states', () => {
 
     expect(src).toContain('onSwitchToAllDatasets')
     expect(src).toContain('切换到全部数据集')
+    expect(src).toContain("当前范围为{' '}")
   })
 })
-

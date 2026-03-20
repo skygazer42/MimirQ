@@ -327,7 +327,7 @@ export function KnowledgeDocumentsPanel({
         else if (documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets) {
                 return (<div className="py-10">
           <EmptyState icon={Database} title="该数据集暂无文档" description={<span className="text-muted-foreground">
-                当前范围为 <span className="font-mono tabular-nums">{selectedDatasetLabel || selectedDatasetId}</span>
+                当前范围为{' '}<span className="font-mono tabular-nums">{selectedDatasetLabel || selectedDatasetId}</span>
                 。可切换到全部数据集查看其他文档，或通过顶部“导入/新增”上传/导入。
               </span>} className="bg-transparent shadow-none">
             <Button type="button" variant="outline" className="rounded-xl" onClick={onSwitchToAllDatasets}>
