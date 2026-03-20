@@ -489,10 +489,17 @@ async def build_vision_reader_context_docs(
         out.append(Document(page_content=text, metadata=new_meta, id=vision_chunk_id))
         succeeded += 1
 
+    if out:
+        reason = "ok"
+    elif attempted:
+        reason = "all_skipped"
+    else:
+        reason = "not_run"
+
     meta.update(
         {
             "used": bool(out),
-            "reason": "ok" if out else ("all_skipped" if attempted else "not_run"),
+            "reason": reason,
             "attempted": int(attempted),
             "succeeded": int(succeeded),
             "skipped": int(skipped),

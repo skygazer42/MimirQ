@@ -219,7 +219,6 @@ def _score_candidate(
                 continue
             if _match_score(sample_blob, t):
                 score += 1
-            continue
     return int(score)
 
 

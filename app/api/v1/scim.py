@@ -742,7 +742,6 @@ def _extract_active_patch(ops: Any) -> bool | None:
         # Alternate pattern: {"op":"Replace","value":{"active":false}}
         if not path and isinstance(value, dict) and "active" in value and op in {"add", "replace"}:
             desired = _coerce_bool(value.get("active"))
-            continue
 
     return desired
 

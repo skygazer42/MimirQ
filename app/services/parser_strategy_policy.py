@@ -98,10 +98,10 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
     ocr_ratio = _clamp01(_safe_float(payload.get("ocr_ratio"), 0.0))
     has_tables = _to_bool(payload.get("has_tables")) or table_density >= 0.15
 
-    strategy = "generic_balanced"
     reason_codes: list[str] = []
-    confidence = 0.5
-    parser_options: dict[str, Any] = {}
+    strategy: str
+    confidence: float
+    parser_options: dict[str, Any]
 
     if _is_pdf(mime, ext):
         reason_codes.append("pdf_document")

@@ -4219,6 +4219,13 @@ class HybridRetriever(BaseRetriever):
         if str(self.retrieval_mode or "").strip().lower() == "mmr":
             fetch_k = int(search_k) * max(1, int(self.mmr_fetch_k_multiplier or 0))
 
+        if self.document_ids:
+            scope_kind = "document_ids"
+        elif self.dataset_id is not None:
+            scope_kind = "dataset_id"
+        else:
+            scope_kind = "open"
+
         debug: dict[str, Any] = {
             "requested_k": int(requested_k),
             "search_k": int(search_k),
@@ -4239,11 +4246,7 @@ class HybridRetriever(BaseRetriever):
                 "account_id_present": bool((self.account_id or "").strip()),
                 "dataset_id": str(self.dataset_id or ""),
                 "document_ids_count": len(self.document_ids or []),
-                "kind": (
-                    "document_ids"
-                    if (self.document_ids or [])
-                    else ("dataset_id" if self.dataset_id is not None else "open")
-                ),
+                "kind": scope_kind,
             },
         }
         try:

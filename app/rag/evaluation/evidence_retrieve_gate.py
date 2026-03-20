@@ -57,16 +57,16 @@ def compute_retrieval_item_meta(
             rr_float = float(rr) if rr is not None else None
         except Exception:
             rr_float = None
-        if rr_float is not None:
-            must_recall_passed = bool(rr_float >= 0.9999)
-        else:
-            must_recall_passed = None
+    if rr_float is not None:
+        must_recall_passed = bool(rr_float >= 0.9999)
+    else:
+        must_recall_passed = None
+    if must_recall_passed is None:
+        must_recall_status = "unknown"
+    else:
+        must_recall_status = "passed" if bool(must_recall_passed) else "failed"
     out["must_recall_passed"] = must_recall_passed
-    out["must_recall_status"] = (
-        ("passed" if bool(must_recall_passed) else "failed")
-        if must_recall_passed is not None
-        else "unknown"
-    )
+    out["must_recall_status"] = must_recall_status
     metrics = retrieval_metrics if isinstance(retrieval_metrics, dict) else {}
     for key in (
         "parse_quality_alert",

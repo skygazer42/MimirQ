@@ -1338,18 +1338,20 @@ def run_dataset_precheck_scan(
                                 if "gibberish_text" not in rec.findings:
                                     rec.findings.append("gibberish_text")
                                     finding_counts["gibberish_text"] += 1
-                            if int(getattr(tq, "chars_non_space", 0) or 0) >= 200 and float(getattr(tq, "density", 1.0) or 1.0) < float(
-                                text_density_threshold
+                            if (
+                                int(getattr(tq, "chars_non_space", 0) or 0) >= 200
+                                and float(getattr(tq, "density", 1.0) or 1.0) < float(text_density_threshold)
+                                and "low_density_text" not in rec.findings
                             ):
-                                if "low_density_text" not in rec.findings:
-                                    rec.findings.append("low_density_text")
-                                    finding_counts["low_density_text"] += 1
-                            if int(getattr(tq, "chars_non_space", 0) or 0) >= 1000 and float(getattr(tq, "density", 1.0) or 1.0) < float(
-                                text_gibberish_density_threshold
+                                rec.findings.append("low_density_text")
+                                finding_counts["low_density_text"] += 1
+                            if (
+                                int(getattr(tq, "chars_non_space", 0) or 0) >= 1000
+                                and float(getattr(tq, "density", 1.0) or 1.0) < float(text_gibberish_density_threshold)
+                                and "gibberish_text" not in rec.findings
                             ):
-                                if "gibberish_text" not in rec.findings:
-                                    rec.findings.append("gibberish_text")
-                                    finding_counts["gibberish_text"] += 1
+                                rec.findings.append("gibberish_text")
+                                finding_counts["gibberish_text"] += 1
 
                 # Optional near-duplicate fingerprint (SimHash over extracted text sample).
                 if enable_near_dup and sample_text:

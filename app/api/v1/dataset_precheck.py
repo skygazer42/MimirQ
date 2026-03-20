@@ -347,43 +347,40 @@ async def stream_dataset_precheck_scan_events(
     async def gen():  # noqa: ANN202
         last_payload: str | None = None
         last_keepalive = time.monotonic()
-        try:
-            # Send an immediate frame so clients/proxies don't see an idle connection.
-            yield ": keepalive\n\n"
-            while True:
-                db2 = SessionLocal()
-                try:
-                    row = (
-                        db2.query(DBDatasetPrecheckScanRun)
-                        .filter(
-                            DBDatasetPrecheckScanRun.id == scan_run_id,
-                            DBDatasetPrecheckScanRun.tenant_id == tenant_id,
-                            DBDatasetPrecheckScanRun.dataset_id == dataset_id,
-                        )
-                        .first()
+        # Send an immediate frame so clients/proxies don't see an idle connection.
+        yield ": keepalive\n\n"
+        while True:
+            db2 = SessionLocal()
+            try:
+                row = (
+                    db2.query(DBDatasetPrecheckScanRun)
+                    .filter(
+                        DBDatasetPrecheckScanRun.id == scan_run_id,
+                        DBDatasetPrecheckScanRun.tenant_id == tenant_id,
+                        DBDatasetPrecheckScanRun.dataset_id == dataset_id,
                     )
-                    if row is None:
-                        break
-                    out = _scan_run_out_from_row(row)
-                    payload = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
-                    st = str(out.get("status") or "").lower()
-                finally:
-                    db2.close()
-
-                if payload != last_payload:
-                    last_payload = payload
-                    yield f"data: {payload}\n\n"
-                    last_keepalive = time.monotonic()
-                elif (time.monotonic() - last_keepalive) > 15.0:
-                    # Keep the connection alive even if the payload doesn't change for a while.
-                    yield ": keepalive\n\n"
-                    last_keepalive = time.monotonic()
-
-                if st not in {"pending", "running"}:
+                    .first()
+                )
+                if row is None:
                     break
-                await asyncio.sleep(1.0)
-        except asyncio.CancelledError:
-            raise
+                out = _scan_run_out_from_row(row)
+                payload = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
+                st = str(out.get("status") or "").lower()
+            finally:
+                db2.close()
+
+            if payload != last_payload:
+                last_payload = payload
+                yield f"data: {payload}\n\n"
+                last_keepalive = time.monotonic()
+            elif (time.monotonic() - last_keepalive) > 15.0:
+                # Keep the connection alive even if the payload doesn't change for a while.
+                yield ": keepalive\n\n"
+                last_keepalive = time.monotonic()
+
+            if st not in {"pending", "running"}:
+                break
+            await asyncio.sleep(1.0)
 
     return StreamingResponse(
         gen(),

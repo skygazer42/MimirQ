@@ -140,11 +140,10 @@ def find_near_duplicate(
             if cand_int is None:
                 continue
             dist = hamming_distance64(target_int, cand_int)
-            if dist <= threshold:
-                if best is None or dist < best.distance:
-                    best = NearDedupMatch(simhash64=cand_hex, distance=int(dist))
-                    if dist == 0:
-                        return best
+            if dist <= threshold and (best is None or dist < best.distance):
+                best = NearDedupMatch(simhash64=cand_hex, distance=int(dist))
+                if dist == 0:
+                    return best
     return best
 
 
@@ -202,4 +201,3 @@ __all__ = [
     "save_near_dedup_index",
     "with_near_dedup_index",
 ]
-

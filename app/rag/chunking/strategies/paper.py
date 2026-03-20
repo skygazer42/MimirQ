@@ -129,9 +129,8 @@ def _iter_headings(text: str) -> list[PaperHeading]:
             continue
 
         title: str | None = None
-        if (m := _RE_CN_HEADING.match(line)) is not None:
-            title = m.group("title")
-        elif (m := _RE_EN_HEADING.match(line)) is not None:
+        m = _RE_CN_HEADING.match(line) or _RE_EN_HEADING.match(line)
+        if m is not None:
             title = m.group("title")
 
         section = _normalize_section(title or "")

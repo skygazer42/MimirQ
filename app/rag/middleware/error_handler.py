@@ -129,9 +129,6 @@ class ErrorHandlerMiddleware:
                         if attempt >= 1 and self.fallback_model:
                             state["model_override"] = self.fallback_model
 
-                except Exception:
-                    raise
-
             if last_exception:
                 raise last_exception
 

@@ -1,5 +1,7 @@
 import inspect
 
+import pytest
+
 from app.services.chat_response_cache import build_chat_cache_key
 
 
@@ -15,7 +17,7 @@ def test_build_chat_cache_key_accepts_dataset_id() -> None:
 def test_chat_cache_key_differs_across_dataset_scopes(monkeypatch) -> None:
     if not _supports_dataset_id_param():
         # The assertion in the test above already fails in this case.
-        return
+        pytest.skip("build_chat_cache_key missing dataset_id parameter")
 
     # Keep pipeline stable for this test; scope changes should still affect key.
     monkeypatch.setattr("app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False)
@@ -39,7 +41,7 @@ def test_chat_cache_key_differs_across_dataset_scopes(monkeypatch) -> None:
 
 def test_chat_cache_key_differs_across_embedding_space(monkeypatch) -> None:
     if not _supports_dataset_id_param():
-        return
+        pytest.skip("build_chat_cache_key missing dataset_id parameter")
 
     base = {
         "tenant_id": "t1",
@@ -65,7 +67,7 @@ def test_chat_cache_key_differs_across_embedding_space(monkeypatch) -> None:
 
 def test_chat_cache_key_differs_across_corpus_cache_token(monkeypatch) -> None:
     if not _supports_dataset_id_param():
-        return
+        pytest.skip("build_chat_cache_key missing dataset_id parameter")
 
     monkeypatch.setattr("app.services.chat_response_cache.current_embedding_space_hash", lambda: "embspace-a", raising=False)
 

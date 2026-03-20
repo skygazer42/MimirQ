@@ -367,7 +367,6 @@ def _pick_best_relationship_between(
                             right_samples=left_sample_rows,
                         )
                     )
-                    continue
 
     return best
 

@@ -467,9 +467,8 @@ def build_citations_from_docs(
             # TAG docs are not real chunks; generate deterministic UUIDs so ChatResponse citation schema
             # remains compatible even when callers used a non-UUID id (historical behavior/tests).
             tag_table_id = str(meta.get("table_id") or "").strip()
-            if not tag_table_id:
-                if tag_payload:
-                    tag_table_id = str(tag_payload.get("table_id") or "").strip()
+            if not tag_table_id and tag_payload:
+                tag_table_id = str(tag_payload.get("table_id") or "").strip()
             chunk_id = _stable_tag_chunk_id(tag_table_id)
 
         effective_text = doc.page_content or ""

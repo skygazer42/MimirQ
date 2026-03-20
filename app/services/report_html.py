@@ -679,9 +679,7 @@ def render_dataset_report_html(
         if not key:
             continue
         # Objective numbers only: keep numeric/bool values; skip nested dict/list blobs.
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            rr_summary_rows.append(f"<tr><td class=\"k\">{escape(key)}</td><td class=\"v\">{escape(_fmt_num(v))}</td><td></td></tr>")
-        elif isinstance(v, bool):
+        if isinstance(v, bool) or (isinstance(v, (int, float)) and not isinstance(v, bool)):
             rr_summary_rows.append(f"<tr><td class=\"k\">{escape(key)}</td><td class=\"v\">{escape(_fmt_num(v))}</td><td></td></tr>")
 
     rr_summary_table = (

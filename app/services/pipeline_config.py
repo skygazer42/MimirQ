@@ -96,7 +96,6 @@ def _sanitize_chunk_strategy_params(value: Any) -> dict[str, Any] | None:
             cleaned[key] = v
             continue
         # No nested objects/lists.
-        continue
 
     return cleaned or None
 

@@ -336,7 +336,7 @@ def expand_hierarchy_context(
 
         _append(d)
 
-        for sk in list(next_keys_by_anchor.get(ak) or []):
+        for sk in next_keys_by_anchor.get(ak) or []:
             doc_sib = cache.get((doc_id, sk))
             if doc_sib is None:
                 continue

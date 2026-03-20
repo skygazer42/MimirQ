@@ -450,14 +450,17 @@ class EventExtractor:
 
                 meta = getattr(chunk, "doc_metadata", None)
                 meta_dict = meta if isinstance(meta, dict) else {}
-                has_asset = False
                 doc_type = str(meta_dict.get("doc_type_kwd") or "").lower()
-                if doc_type in {"image", "table"}:
-                    has_asset = True
-                elif meta_dict.get("image") is not None:
-                    has_asset = True
-                elif meta_dict.get("img_id") or meta_dict.get("image_id") or meta_dict.get("image_url") or meta_dict.get("image_path"):
-                    has_asset = True
+                has_asset = (
+                    doc_type in {"image", "table"}
+                    or meta_dict.get("image") is not None
+                    or bool(
+                        meta_dict.get("img_id")
+                        or meta_dict.get("image_id")
+                        or meta_dict.get("image_url")
+                        or meta_dict.get("image_path")
+                    )
+                )
 
                 content_len = int(chunk_len_by_id.get(chunk.id, len(text)))
                 if min_chars > 0 and content_len < int(min_chars) and not has_asset:
