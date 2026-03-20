@@ -35,8 +35,6 @@ class _PlayBlock:
 
 
 _PLAY_START_RE = re.compile(r"(?m)^(?P<indent>\s*)-\s*(?:name|hosts)\s*:\s*")
-_NAME_RE = re.compile(r"(?m)^\s*name\s*:\s*(?P<val>.+?)\s*$")
-_HOSTS_RE = re.compile(r"(?m)^\s*hosts\s*:\s*(?P<val>.+?)\s*$")
 _TASKS_RE = re.compile(r"(?m)^\s*tasks\s*:\s*")
 
 
@@ -53,24 +51,68 @@ def _iter_lines(text: str) -> list[_Line]:
     return out
 
 
-def _extract_play_name(block_text: str) -> str | None:
-    head = (block_text or "")[:2000]
-    m = re.search(r"(?m)^-\s*name\s*:\s*(?P<val>.+?)\s*$", head)
-    if not m:
-        m = _NAME_RE.search(head)
-    if not m:
+def _is_tasks_key_line(line: str) -> bool:
+    s = (line or "").lstrip()
+    if s.startswith("-"):
+        s = s[1:].lstrip()
+    if not s.lower().startswith("tasks"):
+        return False
+    rest = s[5:].lstrip()
+    return rest.startswith(":")
+
+
+def _parse_yaml_inline_key_value(line: str, *, key: str) -> str | None:
+    """
+    Parse a simple inline YAML key/value, supporting both:
+      - name: Value
+        hosts: all
+      name: Value
+      hosts: all
+    """
+    raw = (line or "").rstrip("\r\n")
+    if not raw.strip():
         return None
-    val = (m.group("val") or "").strip()
-    return val[:120] or None
+
+    s = raw.lstrip()
+    if s.startswith("-"):
+        s = s[1:].lstrip()
+
+    low = s.lower()
+    key_low = (key or "").strip().lower()
+    if not key_low or not low.startswith(key_low):
+        return None
+
+    i = len(key_low)
+    n = len(s)
+    while i < n and s[i].isspace():
+        i += 1
+    if i >= n or s[i] != ":":
+        return None
+    i += 1
+    val = s[i:].strip()
+    return val or None
+
+
+def _extract_play_field(block_text: str, *, key: str) -> str | None:
+    head = (block_text or "")[:2000]
+    for ln in head.splitlines():
+        if not ln.strip() or ln.lstrip().startswith("#"):
+            continue
+        if _is_tasks_key_line(ln):
+            break
+        val = _parse_yaml_inline_key_value(ln, key=key)
+        if not val:
+            continue
+        return val[:120] or None
+    return None
+
+
+def _extract_play_name(block_text: str) -> str | None:
+    return _extract_play_field(block_text, key="name")
 
 
 def _extract_play_hosts(block_text: str) -> str | None:
-    head = (block_text or "")[:2000]
-    m = _HOSTS_RE.search(head)
-    if not m:
-        return None
-    val = (m.group("val") or "").strip()
-    return val[:120] or None
+    return _extract_play_field(block_text, key="hosts")
 
 
 def _build_play_blocks(text: str) -> list[_PlayBlock]:

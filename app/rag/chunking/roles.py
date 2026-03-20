@@ -33,11 +33,6 @@ class ChunkSemanticRole(str, Enum):
 
 _FENCED_CODE_RE = re.compile(r"(?m)^\s*(```|~~~)")
 _NUMBERED_LIST_RE = re.compile(r"(?m)^\s*\d{1,3}[.)]\s+\S")
-_QA_RE = re.compile(r"(?im)^\s*Q[:：]\s+.+\n\s*A[:：]\s+.+", flags=re.M)
-
-# Markdown tables: header row + separator row (GitHub-flavored markdown).
-_MD_TABLE_ROW_RE = re.compile(r"(?m)^\s*\|?.+\|.+\|?\s*$")
-_MD_TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?\s*[:-]{2,}\s*(?:\|\s*[:-]{2,}\s*)+\|?\s*$")
 
 
 def _header_text(meta: Mapping[str, Any]) -> str:
@@ -47,20 +42,84 @@ def _header_text(meta: Mapping[str, Any]) -> str:
     return raw.strip()
 
 
+_MD_TABLE_SEP_ALLOWED = frozenset("-:")
+
+
+def _looks_like_qa_pair(text: str) -> bool:
+    if not text:
+        return False
+    lines = (text or "").splitlines()
+    if len(lines) < 2:
+        return False
+
+    def is_marker(line: str, *, marker: str) -> bool:
+        s = (line or "").lstrip()
+        if len(s) < 3:
+            return False
+        if s[0].lower() != marker.lower():
+            return False
+        if s[1] not in (":", "："):
+            return False
+        return bool(s[2:].strip())
+
+    for i in range(len(lines) - 1):
+        if is_marker(lines[i], marker="q") and is_marker(lines[i + 1], marker="a"):
+            return True
+    return False
+
+
+def _split_md_table_cells(line: str) -> list[str]:
+    s = (line or "").strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in s.split("|")]
+
+
+def _is_md_table_separator_row(line: str) -> bool:
+    s = (line or "").strip()
+    if "|" not in s:
+        return False
+    cells = _split_md_table_cells(s)
+    if len(cells) < 2:
+        return False
+    for cell in cells:
+        if len(cell) < 2:
+            return False
+        if any(ch not in _MD_TABLE_SEP_ALLOWED for ch in cell):
+            return False
+        if cell.count("-") < 2:
+            return False
+    return True
+
+
+def _is_md_table_header_row(line: str) -> bool:
+    s = (line or "").strip()
+    if "|" not in s:
+        return False
+    if _is_md_table_separator_row(s):
+        return False
+    cells = _split_md_table_cells(s)
+    if len(cells) < 2:
+        return False
+    # Require at least one non-empty cell.
+    return any(c for c in cells)
+
+
 def _looks_like_markdown_table(text: str) -> bool:
     if not text:
         return False
-    # Fast-path: need at least one separator line.
-    sep_match = _MD_TABLE_SEP_RE.search(text)
-    if not sep_match:
+    lines = (text or "").splitlines()
+    for idx, ln in enumerate(lines):
+        if not _is_md_table_separator_row(ln):
+            continue
+        # Look at last few lines before the separator.
+        start = max(0, idx - 4)
+        for prev in range(idx - 1, start - 1, -1):
+            if _is_md_table_header_row(lines[prev]):
+                return True
         return False
-    # Ensure there's a plausible header row near the separator.
-    before = text[: sep_match.start()]
-    # Look at last few lines before the separator.
-    head_lines = before.splitlines()[-4:]
-    for ln in reversed(head_lines):
-        if _MD_TABLE_ROW_RE.match(ln):
-            return True
     return False
 
 
@@ -105,11 +164,33 @@ def classify_chunk_semantic_role(*, content: str, meta: Mapping[str, Any] | None
         # Order matters: prefer narrow/binary labels over broad ones.
         if any(k in header for k in ("faq", "frequently asked", "常见问题")):
             return ChunkSemanticRole.FAQ.value
-        if any(k in header for k in ("definition", "definitions", "glossary", "terminology", "定义", "术语", "名词解释")):
+        if any(
+            k in header for k in ("definition", "definitions", "glossary", "terminology", "定义", "术语", "名词解释")
+        ):
             return ChunkSemanticRole.DEFINITION.value
-        if any(k in header for k in ("procedure", "procedures", "step", "steps", "how to", "usage", "install", "setup", "步骤", "流程", "使用", "操作", "指南")):
+        if any(
+            k in header
+            for k in (
+                "procedure",
+                "procedures",
+                "step",
+                "steps",
+                "how to",
+                "usage",
+                "install",
+                "setup",
+                "步骤",
+                "流程",
+                "使用",
+                "操作",
+                "指南",
+            )
+        ):
             return ChunkSemanticRole.PROCEDURE.value
-        if any(k in header for k in ("policy", "policies", "compliance", "privacy", "security", "政策", "合规", "隐私", "安全")):
+        if any(
+            k in header
+            for k in ("policy", "policies", "compliance", "privacy", "security", "政策", "合规", "隐私", "安全")
+        ):
             return ChunkSemanticRole.POLICY.value
         if any(k in header for k in ("example", "examples", "sample", "samples", "demo", "示例", "样例", "例子")):
             return ChunkSemanticRole.EXAMPLE.value
@@ -117,7 +198,7 @@ def classify_chunk_semantic_role(*, content: str, meta: Mapping[str, Any] | None
             return ChunkSemanticRole.REFERENCE.value
 
     # Content-based fallbacks (keep conservative).
-    if _QA_RE.search(text):
+    if _looks_like_qa_pair(text):
         return ChunkSemanticRole.FAQ.value
     if len(_NUMBERED_LIST_RE.findall(text)) >= 2:
         return ChunkSemanticRole.PROCEDURE.value

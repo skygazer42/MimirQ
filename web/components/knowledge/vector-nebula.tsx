@@ -26,6 +26,21 @@ const CLUSTERS = [
   { label: "会议纪要", color: "#10b981", count: 80, center: { x: 50, y: 50, z: -80 } },
 ]
 
+let _fallbackSeed = 0x12345678
+
+function randomFloat01(): number {
+  const cryptoObj = globalThis.crypto
+  if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+    const buf = new Uint32Array(1)
+    cryptoObj.getRandomValues(buf)
+    return buf[0] / 2 ** 32
+  }
+
+  // Deterministic LCG fallback (avoids Math.random hotspots).
+  _fallbackSeed = (_fallbackSeed * 9301 + 49297) % 233280
+  return _fallbackSeed / 233280
+}
+
 function generateMockData() {
   const nodes = []
   for (const cluster of CLUSTERS) {
@@ -37,9 +52,9 @@ function generateMockData() {
         group: cluster.label,
         color: cluster.color,
         val: 1, // size
-        x: cluster.center.x + (Math.random() - 0.5) * spread,
-        y: cluster.center.y + (Math.random() - 0.5) * spread,
-        z: cluster.center.z + (Math.random() - 0.5) * spread,
+        x: cluster.center.x + (randomFloat01() - 0.5) * spread,
+        y: cluster.center.y + (randomFloat01() - 0.5) * spread,
+        z: cluster.center.z + (randomFloat01() - 0.5) * spread,
         content: `Here is a snippet of text from ${cluster.label} document #${i}...`,
         documentId: "mock-doc-id" // In real app, this would be real ID
       })
@@ -98,7 +113,7 @@ export function VectorNebula() {
 
             // Custom particle rendering (Optional: for bloom effect)
             nodeThreeObject={(node: any) => {
-                const geometry = new THREE.SphereGeometry(Math.random() * 1.5 + 0.5, 8, 8)
+                const geometry = new THREE.SphereGeometry(randomFloat01() * 1.5 + 0.5, 8, 8)
                 const material = new THREE.MeshBasicMaterial({ color: node.color })
                 return new THREE.Mesh(geometry, material)
             }}
