@@ -78,7 +78,7 @@ export function decorateLinksForDisplay<T extends Record<string, any>>(links: T[
     const isSelf = src !== '' && src === dst
     const groupKey = isSelf
       ? `self:${src}`
-      : `pair:${[src, dst].sort().join('::')}`
+      : `pair:${[src, dst].sort((a, b) => a.localeCompare(b)).join('::')}`
 
     const entry = { link, idx: i, sortKey: linkSortKey(link), src, dst }
     const bucket = groups.get(groupKey)
@@ -116,4 +116,3 @@ export function decorateLinksForDisplay<T extends Record<string, any>>(links: T[
 
   return links
 }
-
