@@ -335,9 +335,6 @@ def extract_alias_candidates(text: str, *, max_candidates: int = 20) -> list[Ali
     out: list[AliasCandidate] = []
     seen: set[tuple[str, str, str]] = set()
 
-    def _push(a: str, b: str, method: str) -> None:
-        _push_with_quote(a, b, method, quote=None)
-
     def _push_with_quote(a: str, b: str, method: str, *, quote: str | None) -> None:
         if len(out) >= lim:
             return

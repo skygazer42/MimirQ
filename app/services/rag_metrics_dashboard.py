@@ -721,9 +721,7 @@ def _detect_query_analytics_anomalies(
     baseline_rates_error: list[float] = []
     baseline_req = 0
     current_req = 0
-    baseline_zero = 0
     current_zero = 0
-    baseline_error = 0
     current_error = 0
     baseline_bucket_count = 0
     current_bucket_count = 0
@@ -736,8 +734,6 @@ def _detect_query_analytics_anomalies(
         er = int((bucket.get(k) or {}).get("errors") or 0)
         baseline_bucket_count += 1
         baseline_req += req
-        baseline_zero += zh
-        baseline_error += er
         baseline_rates_zero.append(_safe_rate(zh, req))
         baseline_rates_error.append(_safe_rate(er, req))
 

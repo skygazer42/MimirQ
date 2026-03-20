@@ -47,17 +47,24 @@ class EnhanceRecursiveCharacterTextSplitter(RecursiveCharacterTextSplitter):
 
             if token_counting_fn:
                 return [token_counting_fn(text) for text in texts]
-            elif embedding_model_instance and hasattr(embedding_model_instance, 'get_text_embedding_num_tokens'):
-                return embedding_model_instance.get_text_embedding_num_tokens(texts=texts)
-            else:
-                return [_gpt2_token_count(text) for text in texts]
+
+            if embedding_model_instance and hasattr(embedding_model_instance, "get_text_embedding_num_tokens"):
+                fn = embedding_model_instance.get_text_embedding_num_tokens
+                try:
+                    return fn(texts=texts, allowed_special=allowed_special, disallowed_special=disallowed_special)
+                except TypeError:
+                    return fn(texts=texts)
+
+            return [_gpt2_token_count(text) for text in texts]
 
         def _character_encoder(texts: list[str]) -> list[int]:
             if not texts:
                 return []
             return [len(text) for text in texts]
 
-        return cls(length_function=_character_encoder, **kwargs)
+        use_token_encoder = token_counting_fn is not None or embedding_model_instance is not None
+        length_function = _token_encoder if use_token_encoder else _character_encoder
+        return cls(length_function=length_function, **kwargs)
 
 
 class FixedRecursiveCharacterTextSplitter(EnhanceRecursiveCharacterTextSplitter):
