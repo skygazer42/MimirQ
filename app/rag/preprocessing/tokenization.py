@@ -27,7 +27,7 @@ def _tokenize_for_bm25_cached(text: str) -> tuple[str, ...]:
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][\\A-Za-z0-9_+./:-]*[A-Za-z0-9+]")
 _ASCII_PATH_SPLIT_RE = re.compile(r"[\\/]+")
 _ASCII_PART_SPLIT_RE = re.compile(r"[_\-.:]+")
-_CAMEL_SPLIT_RE = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")
+_ALNUM_SEGMENT_RE = re.compile(r"[0-9A-Za-z]+")
 _NUM_SEQ_RE = re.compile(r"\d{2,}")
 _NUM_COMMA_UNDER_RE = re.compile(r"\d[\d,_]{2,}\d")
 
@@ -60,17 +60,54 @@ def _keep_token(norm: str) -> bool:
     return True
 
 
+def _split_camel_alnum_segment(segment: str) -> list[str]:
+    if not segment:
+        return []
+    out: list[str] = []
+    start = 0
+    n = len(segment)
+    for idx in range(1, n):
+        prev = segment[idx - 1]
+        cur = segment[idx]
+        nxt = segment[idx + 1] if idx + 1 < n else ""
+        # Split on:
+        # - lower->upper: "chatRAG" -> "chat", "RAG"
+        # - acronym boundary: "HTTPServer" -> "HTTP", "Server"
+        # - letter<->digit: "Http2" -> "Http", "2"
+        if prev.islower() and cur.isupper():
+            out.append(segment[start:idx])
+            start = idx
+            continue
+        if prev.isupper() and cur.isupper() and nxt and nxt.islower():
+            out.append(segment[start:idx])
+            start = idx
+            continue
+        if prev.isalpha() and cur.isdigit():
+            out.append(segment[start:idx])
+            start = idx
+            continue
+        if prev.isdigit() and cur.isalpha():
+            out.append(segment[start:idx])
+            start = idx
+            continue
+    out.append(segment[start:])
+    return out
+
+
 def _camel_subtokens(raw_token: str) -> list[str]:
     if not raw_token:
         return []
-    # Require some casing signal to avoid splitting normal lowercase words.
-    if not (any(c.islower() for c in raw_token) and any(c.isupper() for c in raw_token)):
-        return []
     out: list[str] = []
-    for part in _CAMEL_SPLIT_RE.findall(raw_token):
-        norm = str(part).strip().casefold()
-        if _keep_token(norm):
-            out.append(norm)
+    for segment in _ALNUM_SEGMENT_RE.findall(raw_token):
+        if not segment:
+            continue
+        # Require some casing signal to avoid splitting normal lowercase words.
+        if not (any(c.islower() for c in segment) and any(c.isupper() for c in segment)):
+            continue
+        for part in _split_camel_alnum_segment(segment):
+            norm = str(part).strip().casefold()
+            if _keep_token(norm):
+                out.append(norm)
     return out
 
 

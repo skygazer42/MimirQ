@@ -15,26 +15,53 @@ _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", flags=re.IGNORECASE |
 _SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
 _AUTO_LIST_INTENT_RE = re.compile(r"(列举|有哪些|列表|对比|比较|分别|优缺点|差异|汇总|总结)", flags=re.IGNORECASE)
-_AUTO_KEYWORD_HINT_RE = re.compile(
-    r"(traceback|exception|stack\s*trace|error|http\s*\d{3}|0x[0-9a-f]{4,}|[a-z_][a-z0-9_]{2,}\(|\.\w{1,5}\b|/|\\\\|::)",
-    flags=re.IGNORECASE,
+_AUTO_KEYWORD_HINT_RES = (
+    re.compile(r"\b(?:traceback|exception|error)\b"),
+    re.compile(r"stack\s*trace"),
+    re.compile(r"http\s*\d{3}"),
+    re.compile(r"0x[0-9a-f]{4,}"),
+    re.compile(r"[a-z_][a-z0-9_]{2,}\("),
+    re.compile(r"\.\w{1,5}\b"),
 )
 _RECALL_SCHEMA_HINT_RE = re.compile(r"(字段|column|columns|schema|表结构|ddl)", flags=re.IGNORECASE)
 _RECALL_PROCEDURE_HINT_RE = re.compile(r"(如何|怎么|步骤|流程|how\s+to|steps?|procedure)", flags=re.IGNORECASE)
 _RECALL_NUMERIC_HINT_RE = re.compile(r"(多少|总数|count|sum|avg|average|mean|max|min|最大|最小)", flags=re.IGNORECASE)
 _RECALL_POLICY_HINT_RE = re.compile(r"(条例|规定|政策|条款|policy|regulation|compliance|law)", flags=re.IGNORECASE)
 _RECALL_DEFINITION_HINT_RE = re.compile(r"(什么是|是什么|定义|define|meaning|what\s+is)", flags=re.IGNORECASE)
-_QUERY_REWRITE_TRIGGER_RE = re.compile(
-    r"(它们?|他(们)?|她(们)?|这个|这(段|部分|些)|那(个)?|上述|上面|前面|之前|刚才|上文|下文|这里|那里|继续|同上|同理)",
-    flags=re.IGNORECASE,
+_QUERY_REWRITE_TRIGGER_SUBSTRINGS = (
+    "它",
+    "它们",
+    "他",
+    "他们",
+    "她",
+    "她们",
+    "这个",
+    "这段",
+    "这部分",
+    "这些",
+    "那",
+    "那个",
+    "上述",
+    "上面",
+    "前面",
+    "之前",
+    "刚才",
+    "上文",
+    "下文",
+    "这里",
+    "那里",
+    "继续",
+    "同上",
+    "同理",
 )
 _DECOMPOSE_STRONG_SPLIT_RE = re.compile(r"[?？。.!！;；\n]+")
 # Split on common CN/EN conjunctions that often join multiple sub-questions.
 # Keep this conservative (avoid single-char CN splitters like "和") to reduce false splits.
-_DECOMPOSE_CONJ_SPLIT_RE = re.compile(
-    r"(?:\s+(?:and|or|also|plus|then|as\s+well\s+as)\s+|(?:以及|并且|同时|另外|此外|还有|然后))",
+_DECOMPOSE_CONJ_SPLIT_EN_RE = re.compile(
+    r"\s+(?:and|or|also|plus|then|as\s+well\s+as)\s+",
     flags=re.IGNORECASE,
 )
+_DECOMPOSE_CONJ_SPLIT_CN_RE = re.compile(r"(?:以及|并且|同时|另外|此外|还有|然后)")
 _DECOMPOSE_LEADING_FILLER_RE = re.compile(
     r"^(?:and|or|also|then)\s+",
     flags=re.IGNORECASE,
@@ -79,10 +106,11 @@ def heuristic_decompose_query(query: str, *, max_subquestions: int = 3) -> list[
     # 2) Conjunction splits within each chunk.
     fragments: list[str] = []
     for ch in chunks:
-        for frag in _DECOMPOSE_CONJ_SPLIT_RE.split(ch):
-            cleaned = _clean_fragment(frag)
-            if cleaned:
-                fragments.append(cleaned)
+        for frag_en in _DECOMPOSE_CONJ_SPLIT_EN_RE.split(ch):
+            for frag in _DECOMPOSE_CONJ_SPLIT_CN_RE.split(frag_en):
+                cleaned = _clean_fragment(frag)
+                if cleaned:
+                    fragments.append(cleaned)
 
     if not fragments:
         return []
@@ -342,7 +370,12 @@ def guess_retrieval_mode(query: str) -> str:
         return "mmr"
 
     q_lower = q.lower()
-    if _AUTO_KEYWORD_HINT_RE.search(q_lower):
+    if (
+        any(p.search(q_lower) for p in _AUTO_KEYWORD_HINT_RES)
+        or "/" in q_lower
+        or "\\" in q_lower
+        or "::" in q_lower
+    ):
         return "keyword"
 
     cjk = sum(1 for ch in q if "\u4e00" <= ch <= "\u9fff")
@@ -366,7 +399,7 @@ def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
     short_len = max(1, int(short_len or 0))
     if len(q) <= short_len:
         return True
-    return bool(_QUERY_REWRITE_TRIGGER_RE.search(q))
+    return any(trigger in q for trigger in _QUERY_REWRITE_TRIGGER_SUBSTRINGS)
 
 
 _VALID_RETRIEVAL_MODES = {"hybrid", "vector", "keyword", "mmr", "auto"}

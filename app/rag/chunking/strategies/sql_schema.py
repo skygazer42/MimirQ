@@ -40,7 +40,7 @@ class _Section:
 
 
 _STMT_START_RE = re.compile(
-    r"(?im)^\s*(?P<kw>(?:create\s+(?:or\s+replace\s+)?(?:table|view|function|procedure|trigger|index)|alter\s+table))\b"
+    r"(?im)^\s*(?P<kw>create\s+(?:or\s+replace\s+)?(?:table|view|function|procedure|trigger|index)|alter\s+table)\b"
 )
 _SEMICOLON_EOS_RE = re.compile(r"(?m);[ \t]*(?:--.*)?$")
 _OBJ_NAME_RE = re.compile(
@@ -48,7 +48,7 @@ _OBJ_NAME_RE = re.compile(
     r"(?:if\s+not\s+exists\s+)?(?P<name>[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?(?:\.[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?)?)"
 )
 _ALTER_NAME_RE = re.compile(
-    r"(?im)^\s*alter\s+table\s+(?:if\s+exists\s+)?(?P<name>[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?(?:\.[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?)?)"
+    r"(?im)^\s*alter\s+table\s+(?:if\s+exists\s+)?(?P<name>[^\s(]+)"
 )
 
 

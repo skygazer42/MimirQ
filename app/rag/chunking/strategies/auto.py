@@ -167,16 +167,18 @@ def _adaptive_chunk_params(
 
     return int(size), int(overlap), str(reason), metrics
 
-_MD_HINT_RE = re.compile(
-    r"(^\s*#{1,6}\s+)|(\[[^\]]+\]\([^)]+\))|(^\s*```)|(^\s*[-*+]\s+)",
-    flags=re.MULTILINE,
+_MD_HINT_RES = (
+    re.compile(r"(?m)^\s*#{1,6}\s+"),
+    re.compile(r"\[[^\]]+\]\([^)]+\)"),
+    re.compile(r"(?m)^\s*```"),
+    re.compile(r"(?m)^\s*[-*+]\s+"),
 )
 
 
 def _looks_like_markdown(text: str) -> bool:
     if not text or len(text) < 20:
         return False
-    return bool(_MD_HINT_RE.search(text))
+    return any(p.search(text) for p in _MD_HINT_RES)
 
 
 def _looks_like_json(text: str) -> bool:

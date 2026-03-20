@@ -85,7 +85,9 @@ def _normalize_title(raw: str) -> str:
     # Strip bullet markers.
     t = re.sub(r"^\s*(?:[-*+]\s+|\d+\.\s+)", "", t).strip()
     # Strip numbering prefixes like "1." / "1)" / "一、" / "（一）".
-    t = re.sub(r"^\s*(?:\d{1,3}[.、)）]\s*|[一二三四五六七八九十]{1,3}[、.]\s*|[（(][一二三四五六七八九十]{1,3}[)）]\s*)", "", t).strip()
+    t = re.sub(r"^\s*\d{1,3}[.、)）]\s*", "", t)
+    t = re.sub(r"^\s*[一二三四五六七八九十]{1,3}[、.]\s*", "", t)
+    t = re.sub(r"^\s*[（(][一二三四五六七八九十]{1,3}[)）]\s*", "", t).strip()
     t = t.strip(":：").strip()
     return t
 
