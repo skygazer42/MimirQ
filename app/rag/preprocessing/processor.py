@@ -3,7 +3,8 @@ Markdown governance processor shared by parsing and indexing pipelines.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -66,6 +67,53 @@ class GovernanceStats:
     tags_docs: int = 0
 
 
+@dataclass(frozen=True)
+class GovernanceCleanOptions:
+    extract_frontmatter: bool = False
+    strip_frontmatter: bool = False
+    detect_language: bool = False
+    language_min_chars: int = 40
+    normalize_urls: bool = False
+    normalize_urls_strip_tracking: bool = True
+    drop_duplicate_paragraphs: bool = False
+    drop_duplicate_paragraphs_min_occurrences: int = 3
+    drop_duplicate_paragraphs_min_chars: int = 40
+    drop_duplicate_paragraphs_max_chars: int = 1200
+    trim_references: bool = False
+    extract_keywords: bool = False
+    keywords_provider: str = "auto"
+    keywords_top_k: int = 10
+    keywords_max_chars: int = 20_000
+    remove_toc_lines: bool = True
+    remove_noise_lines: bool = True
+    unwrap_lines: bool = True
+    remove_common_lines: bool = True
+    remove_boilerplate: bool = False
+    remove_images: str = "none"
+    normalize_tables: bool = False
+    strip_code_line_numbers: bool = False
+    pii_anonymize: bool = False
+    pii_mode: str = "mask"
+    pii_mask: str = "[REDACTED]"
+    pii_max_hits: int = -1
+    secrets_redact: bool = False
+    secrets_mode: str = "mask"
+    secrets_mask: str = "[SECRET]"
+    secrets_max_hits: int = -1
+    max_blank_lines: int = 1
+    drop_outline_only: bool = False
+    drop_outline_min_content_chars: int = 200
+    drop_outline_max_heading_ratio: float = 0.85
+    drop_low_density: bool = False
+    drop_low_density_threshold: float = 0.12
+    collapse_blank_lines: bool = True
+    unwrap_max_line_length: int = 120
+    noise_min_chars: int = 2
+    noise_ratio_threshold: float = 0.2
+    common_lines_min_docs: int = 3
+    common_lines_min_ratio: float = 0.35
+
+
 class GovernanceProcessor:
     """Apply conservative markdown cleanup rules before chunking."""
 
@@ -77,50 +125,58 @@ class GovernanceProcessor:
         documents: Sequence[Document],
         *,
         rules: Iterable[RegexRule] | None = None,
-        extract_frontmatter: bool = False,
-        strip_frontmatter: bool = False,
-        detect_language: bool = False,
-        language_min_chars: int = 40,
-        normalize_urls: bool = False,
-        normalize_urls_strip_tracking: bool = True,
-        drop_duplicate_paragraphs: bool = False,
-        drop_duplicate_paragraphs_min_occurrences: int = 3,
-        drop_duplicate_paragraphs_min_chars: int = 40,
-        drop_duplicate_paragraphs_max_chars: int = 1200,
-        trim_references: bool = False,
-        extract_keywords: bool = False,
-        keywords_provider: str = "auto",
-        keywords_top_k: int = 10,
-        keywords_max_chars: int = 20_000,
-        remove_toc_lines: bool = True,
-        remove_noise_lines: bool = True,
-        unwrap_lines: bool = True,
-        remove_common_lines: bool = True,
-        remove_boilerplate: bool = False,
-        remove_images: str = "none",
-        normalize_tables: bool = False,
-        strip_code_line_numbers: bool = False,
-        pii_anonymize: bool = False,
-        pii_mode: str = "mask",
-        pii_mask: str = "[REDACTED]",
-        pii_max_hits: int = -1,
-        secrets_redact: bool = False,
-        secrets_mode: str = "mask",
-        secrets_mask: str = "[SECRET]",
-        secrets_max_hits: int = -1,
-        max_blank_lines: int = 1,
-        drop_outline_only: bool = False,
-        drop_outline_min_content_chars: int = 200,
-        drop_outline_max_heading_ratio: float = 0.85,
-        drop_low_density: bool = False,
-        drop_low_density_threshold: float = 0.12,
-        collapse_blank_lines: bool = True,
-        unwrap_max_line_length: int = 120,
-        noise_min_chars: int = 2,
-        noise_ratio_threshold: float = 0.2,
-        common_lines_min_docs: int = 3,
-        common_lines_min_ratio: float = 0.35,
+        options: GovernanceCleanOptions | None = None,
+        **legacy_overrides: Any,
     ) -> tuple[list[Document], GovernanceStats]:
+        resolved = options or GovernanceCleanOptions()
+        if legacy_overrides:
+            # Backward compatible: older callsites pass many keyword args.
+            resolved = replace(resolved, **legacy_overrides)
+
+        extract_frontmatter = resolved.extract_frontmatter
+        strip_frontmatter = resolved.strip_frontmatter
+        detect_language = resolved.detect_language
+        language_min_chars = resolved.language_min_chars
+        normalize_urls = resolved.normalize_urls
+        normalize_urls_strip_tracking = resolved.normalize_urls_strip_tracking
+        drop_duplicate_paragraphs = resolved.drop_duplicate_paragraphs
+        drop_duplicate_paragraphs_min_occurrences = resolved.drop_duplicate_paragraphs_min_occurrences
+        drop_duplicate_paragraphs_min_chars = resolved.drop_duplicate_paragraphs_min_chars
+        drop_duplicate_paragraphs_max_chars = resolved.drop_duplicate_paragraphs_max_chars
+        trim_references = resolved.trim_references
+        extract_keywords = resolved.extract_keywords
+        keywords_provider = resolved.keywords_provider
+        keywords_top_k = resolved.keywords_top_k
+        keywords_max_chars = resolved.keywords_max_chars
+        remove_toc_lines = resolved.remove_toc_lines
+        remove_noise_lines = resolved.remove_noise_lines
+        unwrap_lines = resolved.unwrap_lines
+        remove_common_lines = resolved.remove_common_lines
+        remove_boilerplate = resolved.remove_boilerplate
+        remove_images = resolved.remove_images
+        normalize_tables = resolved.normalize_tables
+        strip_code_line_numbers = resolved.strip_code_line_numbers
+        pii_anonymize = resolved.pii_anonymize
+        pii_mode = resolved.pii_mode
+        pii_mask = resolved.pii_mask
+        pii_max_hits = resolved.pii_max_hits
+        secrets_redact = resolved.secrets_redact
+        secrets_mode = resolved.secrets_mode
+        secrets_mask = resolved.secrets_mask
+        secrets_max_hits = resolved.secrets_max_hits
+        max_blank_lines = resolved.max_blank_lines
+        drop_outline_only = resolved.drop_outline_only
+        drop_outline_min_content_chars = resolved.drop_outline_min_content_chars
+        drop_outline_max_heading_ratio = resolved.drop_outline_max_heading_ratio
+        drop_low_density = resolved.drop_low_density
+        drop_low_density_threshold = resolved.drop_low_density_threshold
+        collapse_blank_lines = resolved.collapse_blank_lines
+        unwrap_max_line_length = resolved.unwrap_max_line_length
+        noise_min_chars = resolved.noise_min_chars
+        noise_ratio_threshold = resolved.noise_ratio_threshold
+        common_lines_min_docs = resolved.common_lines_min_docs
+        common_lines_min_ratio = resolved.common_lines_min_ratio
+
         if not documents:
             return [], GovernanceStats(documents=0, changed=0, applied_rules=0, dropped=0, drop_reasons={})
 

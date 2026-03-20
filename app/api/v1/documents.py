@@ -13,7 +13,7 @@ import shutil
 import time
 import uuid
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -1635,51 +1635,19 @@ def _compute_chunk_preview_quality(
 def _to_pipeline_options(
     *,
     pipeline: DocumentPipelineOptions | None = None,
-    governance_enabled: bool | None = None,
-    governance_remove_toc_lines: bool | None = None,
-    governance_remove_noise_lines: bool | None = None,
-    governance_unwrap_lines: bool | None = None,
-    governance_remove_common_lines: bool | None = None,
-    governance_unwrap_max_line_length: int | None = None,
-    governance_noise_min_chars: int | None = None,
-    governance_noise_ratio_threshold: float | None = None,
-    governance_common_lines_min_docs: int | None = None,
-    governance_common_lines_min_ratio: float | None = None,
-    chunk_size: int | None = None,
-    chunk_overlap: int | None = None,
-    chunk_vector_enabled: bool | None = None,
-    bm25_index_enabled: bool | None = None,
-    kg_enabled: bool | None = None,
-    event_vector_enabled: bool | None = None,
-    entity_vector_enabled: bool | None = None,
+    overrides: "PipelineOptionOverrides | None" = None,
+    **legacy_overrides: Any,
 ) -> PipelineOptions:
-    overrides = {
-        "governance_enabled": governance_enabled,
-        "governance_remove_toc_lines": governance_remove_toc_lines,
-        "governance_remove_noise_lines": governance_remove_noise_lines,
-        "governance_unwrap_lines": governance_unwrap_lines,
-        "governance_remove_common_lines": governance_remove_common_lines,
-        "governance_unwrap_max_line_length": governance_unwrap_max_line_length,
-        "governance_noise_min_chars": governance_noise_min_chars,
-        "governance_noise_ratio_threshold": governance_noise_ratio_threshold,
-        "governance_common_lines_min_docs": governance_common_lines_min_docs,
-        "governance_common_lines_min_ratio": governance_common_lines_min_ratio,
-        "chunk_size": chunk_size,
-        "chunk_overlap": chunk_overlap,
-        "chunk_vector_enabled": chunk_vector_enabled,
-        "bm25_index_enabled": bm25_index_enabled,
-        "kg_enabled": kg_enabled,
-        "event_vector_enabled": event_vector_enabled,
-        "entity_vector_enabled": entity_vector_enabled,
-    }
-    overrides = {k: v for k, v in overrides.items() if v is not None}
+    resolved_overrides = _resolve_pipeline_option_overrides(overrides=overrides, legacy_overrides=legacy_overrides)
+    overrides_dict = {k: v for k, v in asdict(resolved_overrides).items() if v is not None}
+
     if pipeline is None:
-        pipeline = DocumentPipelineOptions(**overrides) if overrides else None
-    elif overrides:
+        pipeline = DocumentPipelineOptions(**overrides_dict) if overrides_dict else None
+    elif overrides_dict:
         # Explicit form fields override JSON pipeline (backward compatible).
         try:
             merged = pipeline.model_dump()
-            merged.update(overrides)
+            merged.update(overrides_dict)
             pipeline = DocumentPipelineOptions(**merged)
         except Exception as exc:  # noqa: BLE001
             msg = (str(exc) or exc.__class__.__name__)[:200]
@@ -1691,6 +1659,38 @@ def _to_pipeline_options(
 
     data = pipeline.model_dump(exclude_none=True)
     return PipelineOptions(**data) if data else PipelineOptions()
+
+
+@dataclass(frozen=True)
+class PipelineOptionOverrides:
+    governance_enabled: bool | None = None
+    governance_remove_toc_lines: bool | None = None
+    governance_remove_noise_lines: bool | None = None
+    governance_unwrap_lines: bool | None = None
+    governance_remove_common_lines: bool | None = None
+    governance_unwrap_max_line_length: int | None = None
+    governance_noise_min_chars: int | None = None
+    governance_noise_ratio_threshold: float | None = None
+    governance_common_lines_min_docs: int | None = None
+    governance_common_lines_min_ratio: float | None = None
+    chunk_size: int | None = None
+    chunk_overlap: int | None = None
+    chunk_vector_enabled: bool | None = None
+    bm25_index_enabled: bool | None = None
+    kg_enabled: bool | None = None
+    event_vector_enabled: bool | None = None
+    entity_vector_enabled: bool | None = None
+
+
+def _resolve_pipeline_option_overrides(
+    *,
+    overrides: PipelineOptionOverrides | None,
+    legacy_overrides: dict[str, Any],
+) -> PipelineOptionOverrides:
+    base = overrides or PipelineOptionOverrides()
+    if not legacy_overrides:
+        return base
+    return replace(base, **legacy_overrides)
 
 
 def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:
@@ -2494,32 +2494,53 @@ async def _ingest_url_upload_request(
     return db_document
 
 
+@dataclass
+class PipelineOverridesFormFields:
+    governance_enabled: bool | None = Form(None)
+    governance_remove_toc_lines: bool | None = Form(None)
+    governance_remove_noise_lines: bool | None = Form(None)
+    governance_unwrap_lines: bool | None = Form(None)
+    governance_remove_common_lines: bool | None = Form(None)
+    governance_unwrap_max_line_length: int | None = Form(None)
+    governance_noise_min_chars: int | None = Form(None)
+    governance_noise_ratio_threshold: float | None = Form(None)
+    governance_common_lines_min_docs: int | None = Form(None)
+    governance_common_lines_min_ratio: float | None = Form(None)
+    chunk_size: int | None = Form(None)
+    chunk_overlap: int | None = Form(None)
+    chunk_vector_enabled: bool | None = Form(None)
+    bm25_index_enabled: bool | None = Form(None)
+    kg_enabled: bool | None = Form(None)
+    event_vector_enabled: bool | None = Form(None)
+    entity_vector_enabled: bool | None = Form(None)
+
+
+@dataclass
+class UploadDocumentFormFields:
+    parser_backend: str = Form(settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Form(settings.DEFAULT_CHUNK_STRATEGY)
+    pipeline: str | None = Form(None)
+    dataset_id: UUID | None = Form(None)
+    user_metadata: str | None = Form(None)
+
+
+@dataclass
+class UploadDocumentsBatchFormFields:
+    parser_backend: str = Form(settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Form(settings.DEFAULT_CHUNK_STRATEGY)
+    pipeline: str | None = Form(None)
+    dataset_id: UUID | None = Form(None)
+    precheck_first: bool = Form(False)
+    user_metadata_map: str | None = Form(None)
+    max_concurrent: int = Form(5)
+
+
 @router.post("/upload", response_model=DocumentDetail, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File(...)],
-    parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
-    chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
-    pipeline: Annotated[str | None, Form()] = None,
-    governance_enabled: Annotated[bool | None, Form()] = None,
-    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
-    governance_noise_min_chars: Annotated[int | None, Form()] = None,
-    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
-    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
-    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
-    chunk_size: Annotated[int | None, Form()] = None,
-    chunk_overlap: Annotated[int | None, Form()] = None,
-    chunk_vector_enabled: Annotated[bool | None, Form()] = None,
-    bm25_index_enabled: Annotated[bool | None, Form()] = None,
-    kg_enabled: Annotated[bool | None, Form()] = None,
-    event_vector_enabled: Annotated[bool | None, Form()] = None,
-    entity_vector_enabled: Annotated[bool | None, Form()] = None,
-    dataset_id: Annotated[UUID | None, Form()] = None,
-    user_metadata: Annotated[str | None, Form()] = None,
+    form: Annotated[UploadDocumentFormFields, Depends()],
+    overrides_form: Annotated[PipelineOverridesFormFields, Depends()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -2549,26 +2570,17 @@ async def upload_document(
             detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}"
         )
 
+    parser_backend = form.parser_backend
+    chunk_strategy = form.chunk_strategy
+    pipeline = form.pipeline
+    dataset_id = form.dataset_id
+    user_metadata = form.user_metadata
+
     pipeline_parsed = _parse_pipeline_json(pipeline)
+    pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
     pipeline_options = _to_pipeline_options(
         pipeline=pipeline_parsed,
-        governance_enabled=governance_enabled,
-        governance_remove_toc_lines=governance_remove_toc_lines,
-        governance_remove_noise_lines=governance_remove_noise_lines,
-        governance_unwrap_lines=governance_unwrap_lines,
-        governance_remove_common_lines=governance_remove_common_lines,
-        governance_unwrap_max_line_length=governance_unwrap_max_line_length,
-        governance_noise_min_chars=governance_noise_min_chars,
-        governance_noise_ratio_threshold=governance_noise_ratio_threshold,
-        governance_common_lines_min_docs=governance_common_lines_min_docs,
-        governance_common_lines_min_ratio=governance_common_lines_min_ratio,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        chunk_vector_enabled=chunk_vector_enabled,
-        bm25_index_enabled=bm25_index_enabled,
-        kg_enabled=kg_enabled,
-        event_vector_enabled=event_vector_enabled,
-        entity_vector_enabled=entity_vector_enabled,
+        overrides=pipeline_overrides,
     )
     # Permission check.
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, dataset_id)
@@ -3270,34 +3282,12 @@ async def upload_document_from_url(
 async def upload_documents_batch(
     background_tasks: BackgroundTasks,
     files: Annotated[list[UploadFile], File(...)],
-    parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
-    chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
-    pipeline: Annotated[str | None, Form()] = None,
-    governance_enabled: Annotated[bool | None, Form()] = None,
-    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
-    governance_noise_min_chars: Annotated[int | None, Form()] = None,
-    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
-    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
-    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
-    chunk_size: Annotated[int | None, Form()] = None,
-    chunk_overlap: Annotated[int | None, Form()] = None,
-    chunk_vector_enabled: Annotated[bool | None, Form()] = None,
-    bm25_index_enabled: Annotated[bool | None, Form()] = None,
-    kg_enabled: Annotated[bool | None, Form()] = None,
-    event_vector_enabled: Annotated[bool | None, Form()] = None,
-    entity_vector_enabled: Annotated[bool | None, Form()] = None,
-    dataset_id: Annotated[UUID | None, Form()] = None,
-    precheck_first: Annotated[bool, Form()] = False,
-    user_metadata_map: Annotated[str | None, Form()] = None,
+    form: Annotated[UploadDocumentsBatchFormFields, Depends()],
+    overrides_form: Annotated[PipelineOverridesFormFields, Depends()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-    max_concurrent: Annotated[int, Form()] = 5
 ):
     """
     Batch upload documents (concurrency-optimized).
@@ -3333,8 +3323,17 @@ async def upload_documents_batch(
         additional_bytes=0,
     )
     
+    parser_backend = form.parser_backend
+    chunk_strategy = form.chunk_strategy
+    pipeline = form.pipeline
+    dataset_id = form.dataset_id
+    precheck_first = form.precheck_first
+    user_metadata_map = form.user_metadata_map
+
+    pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
+
     # Cap concurrency.
-    max_concurrent = min(max_concurrent, 10)  # Max 10 concurrent.
+    max_concurrent = min(int(form.max_concurrent or 0), 10)  # Max 10 concurrent.
     semaphore = asyncio.Semaphore(max_concurrent)
 
     pipeline_parsed = _parse_pipeline_json(pipeline)
@@ -3688,26 +3687,7 @@ async def upload_documents_batch(
                     if file_ext not in settings.allowed_extensions_list:
                         raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_ext}")
 
-                    pipeline_options = _to_pipeline_options(
-                        pipeline=pipeline_parsed,
-                        governance_enabled=governance_enabled,
-                        governance_remove_toc_lines=governance_remove_toc_lines,
-                        governance_remove_noise_lines=governance_remove_noise_lines,
-                        governance_unwrap_lines=governance_unwrap_lines,
-                        governance_remove_common_lines=governance_remove_common_lines,
-                        governance_unwrap_max_line_length=governance_unwrap_max_line_length,
-                        governance_noise_min_chars=governance_noise_min_chars,
-                        governance_noise_ratio_threshold=governance_noise_ratio_threshold,
-                        governance_common_lines_min_docs=governance_common_lines_min_docs,
-                        governance_common_lines_min_ratio=governance_common_lines_min_ratio,
-                        chunk_size=chunk_size,
-                        chunk_overlap=chunk_overlap,
-                        chunk_vector_enabled=chunk_vector_enabled,
-                        bm25_index_enabled=bm25_index_enabled,
-                        kg_enabled=kg_enabled,
-                        event_vector_enabled=event_vector_enabled,
-                        entity_vector_enabled=entity_vector_enabled,
-                    )
+                    pipeline_options = _to_pipeline_options(pipeline=pipeline_parsed, overrides=pipeline_overrides)
 
                     matched_rule = match_ingestion_rule(policy, filename=str(upload_key or filename0), file_ext=file_ext)
                     ingestion_meta: dict[str, Any] | None = None
@@ -4030,26 +4010,7 @@ async def upload_documents_batch(
                         "error": f"Unsupported file type: {file_ext}"
                     }
                 
-                pipeline_options = _to_pipeline_options(
-                    pipeline=pipeline_parsed,
-                    governance_enabled=governance_enabled,
-                    governance_remove_toc_lines=governance_remove_toc_lines,
-                    governance_remove_noise_lines=governance_remove_noise_lines,
-                    governance_unwrap_lines=governance_unwrap_lines,
-                    governance_remove_common_lines=governance_remove_common_lines,
-                    governance_unwrap_max_line_length=governance_unwrap_max_line_length,
-                    governance_noise_min_chars=governance_noise_min_chars,
-                    governance_noise_ratio_threshold=governance_noise_ratio_threshold,
-                    governance_common_lines_min_docs=governance_common_lines_min_docs,
-                    governance_common_lines_min_ratio=governance_common_lines_min_ratio,
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap,
-                    chunk_vector_enabled=chunk_vector_enabled,
-                    bm25_index_enabled=bm25_index_enabled,
-                    kg_enabled=kg_enabled,
-                    event_vector_enabled=event_vector_enabled,
-                    entity_vector_enabled=entity_vector_enabled,
-                )
+                pipeline_options = _to_pipeline_options(pipeline=pipeline_parsed, overrides=pipeline_overrides)
 
                 # Ingestion policy overrides (per file).
                 matched_rule = match_ingestion_rule(policy, filename=upload_key or file.filename, file_ext=file_ext)
@@ -4392,19 +4353,24 @@ async def upload_documents_batch(
     }
 
 
+@dataclass
+class ListDocumentsQueryFields:
+    skip: int = Query(0, ge=0)
+    limit: int = Query(20, ge=1, le=200)
+    status: str | None = Query(None)
+    lifecycle: Literal["active", "archived", "disabled", "all"] = Query("active")
+    dataset_id: UUID | None = Query(None)
+    file_type: str | None = Query(None, max_length=20)
+    owner_id: str | None = Query(None, max_length=255)
+    q: str | None = Query(None, max_length=200)
+    source_path_prefix: str | None = Query(None, max_length=500)
+    order_by: Literal["created_at", "filename", "file_size"] = Query("created_at")
+    order_dir: Literal["asc", "desc"] = Query("desc")
+
+
 @router.get("/", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def list_documents(
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
-    status: str | None = None,
-    lifecycle: Annotated[Literal["active", "archived", "disabled", "all"], Query()] = "active",
-    dataset_id: UUID | None = None,
-    file_type: Annotated[str | None, Query(max_length=20)] = None,
-    owner_id: Annotated[str | None, Query(max_length=255)] = None,
-    q: Annotated[str | None, Query(max_length=200)] = None,
-    source_path_prefix: Annotated[str | None, Query(max_length=500)] = None,
-    order_by: Annotated[Literal["created_at", "filename", "file_size"], Query()] = "created_at",
-    order_dir: Annotated[Literal["asc", "desc"], Query()] = "desc",
+    params: Annotated[ListDocumentsQueryFields, Depends()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -4414,6 +4380,18 @@ async def list_documents(
     List documents.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
+
+    skip = params.skip
+    limit = params.limit
+    status = params.status
+    lifecycle = params.lifecycle
+    dataset_id = params.dataset_id
+    file_type = params.file_type
+    owner_id = params.owner_id
+    q = params.q
+    source_path_prefix = params.source_path_prefix
+    order_by = params.order_by
+    order_dir = params.order_dir
 
     query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
 
@@ -9232,24 +9210,34 @@ async def get_image_url(
     )
 
 
+@dataclass
+class PreviewDocumentFormFields:
+    parser_backend: str = Form(settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Form(settings.DEFAULT_CHUNK_STRATEGY)
+    dataset_id: str | None = Form(None)
+    pipeline: str | None = Form(None)
+
+
+@dataclass
+class PreviewDocumentGovernanceOverridesFormFields:
+    governance_enabled: bool | None = Form(None)
+    governance_remove_toc_lines: bool | None = Form(None)
+    governance_remove_noise_lines: bool | None = Form(None)
+    governance_unwrap_lines: bool | None = Form(None)
+    governance_remove_common_lines: bool | None = Form(None)
+    governance_unwrap_max_line_length: int | None = Form(None)
+    governance_noise_min_chars: int | None = Form(None)
+    governance_noise_ratio_threshold: float | None = Form(None)
+    governance_common_lines_min_docs: int | None = Form(None)
+    governance_common_lines_min_ratio: float | None = Form(None)
+
+
 @router.post("/preview", response_model=DocumentParsePreview, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def preview_document(
     request: Request,
     file: Annotated[UploadFile, File(...)],
-    parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
-    chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
-    dataset_id: Annotated[str | None, Form()] = None,
-    pipeline: Annotated[str | None, Form()] = None,
-    governance_enabled: Annotated[bool | None, Form()] = None,
-    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
-    governance_noise_min_chars: Annotated[int | None, Form()] = None,
-    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
-    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
-    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
+    form: Annotated[PreviewDocumentFormFields, Depends()],
+    gov_overrides_form: Annotated[PreviewDocumentGovernanceOverridesFormFields, Depends()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -9263,6 +9251,12 @@ async def preview_document(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
+
+    parser_backend = form.parser_backend
+    dataset_id = form.dataset_id
+    pipeline = form.pipeline
+
+    pipeline_overrides = PipelineOptionOverrides(**asdict(gov_overrides_form))
     # Validate file type.
     file_ext = Path(file.filename).suffix.lower()
     if file_ext not in settings.allowed_extensions_list:
@@ -9324,19 +9318,7 @@ async def preview_document(
                 # If dataset_id is invalid, keep legacy behavior (no dataset override).
                 dataset_meta = {}
 
-        pipeline_options = _to_pipeline_options(
-            pipeline=_parse_pipeline_json(pipeline),
-            governance_enabled=governance_enabled,
-            governance_remove_toc_lines=governance_remove_toc_lines,
-            governance_remove_noise_lines=governance_remove_noise_lines,
-            governance_unwrap_lines=governance_unwrap_lines,
-            governance_remove_common_lines=governance_remove_common_lines,
-            governance_unwrap_max_line_length=governance_unwrap_max_line_length,
-            governance_noise_min_chars=governance_noise_min_chars,
-            governance_noise_ratio_threshold=governance_noise_ratio_threshold,
-            governance_common_lines_min_docs=governance_common_lines_min_docs,
-            governance_common_lines_min_ratio=governance_common_lines_min_ratio,
-        )
+        pipeline_options = _to_pipeline_options(pipeline=_parse_pipeline_json(pipeline), overrides=pipeline_overrides)
         pipeline_effective = resolve_pipeline_effective(
             dataset_metadata=dataset_meta,
             document_metadata={},
@@ -9712,40 +9694,59 @@ async def create_document_with_manual_chunks(
         raise HTTPException(status_code=500, detail=f"Failed to create document with manual chunks: {str(e)}") from e
 
 
+@dataclass
+class ChunkPreviewRequestFields:
+    # Query params (default FastAPI behaviour for simple types)
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    include_original_text: bool = True
+    include_review_signals: bool = Query(False)
+    include_chunks: bool = Query(True)
+    original_text_max_chars: int = 100000
+    max_chunks: int = 0
+    use_parse_cache: bool = Query(True)
+
+    # Form fields (multipart tuning options)
+    parser_backend: str = Form(settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Form(settings.DEFAULT_CHUNK_STRATEGY)
+
+    # Strategy-specific options (enterprise tuning). Currently used by parent_child.
+    child_ratio: float | None = Form(None)
+    min_child_size: int | None = Form(None)
+    separator_preset: str | None = Form(None)
+    separator: str | None = Form(None)
+    keep_separator: bool | None = Form(None)
+    separator_max_chunk_size: int | None = Form(None)
+
+    # Pipeline / governance tuning
+    dataset_id: str | None = Form(None)
+    pipeline: str | None = Form(None)
+    governance_enabled: bool | None = Form(None)
+    governance_remove_toc_lines: bool | None = Form(None)
+    governance_remove_noise_lines: bool | None = Form(None)
+    governance_unwrap_lines: bool | None = Form(None)
+    governance_remove_common_lines: bool | None = Form(None)
+    governance_unwrap_max_line_length: int | None = Form(None)
+    governance_noise_min_chars: int | None = Form(None)
+    governance_noise_ratio_threshold: float | None = Form(None)
+    governance_common_lines_min_docs: int | None = Form(None)
+    governance_common_lines_min_ratio: float | None = Form(None)
+
+
+@dataclass
+class ChunkPreviewByShaFileFields:
+    file_sha256: str = Form(...)
+    file_type: str | None = Form(None)
+    filename: str | None = Form(None)
+    file_size: int | None = Form(None)
+
+
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def preview_chunking(
     request: Request,
     response: Response,
     file: Annotated[UploadFile, File(...)],
-    chunk_size: int = 1000,
-    chunk_overlap: int = 200,
-    include_original_text: bool = True,
-    include_review_signals: Annotated[bool, Query()] = False,
-    include_chunks: Annotated[bool, Query()] = True,
-    original_text_max_chars: int = 100000,
-    max_chunks: int = 0,
-    use_parse_cache: Annotated[bool, Query()] = True,
-    parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
-    chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
-    # Strategy-specific options (enterprise tuning). Currently used by parent_child.
-    child_ratio: Annotated[float | None, Form()] = None,
-    min_child_size: Annotated[int | None, Form()] = None,
-    separator_preset: Annotated[str | None, Form()] = None,
-    separator: Annotated[str | None, Form()] = None,
-    keep_separator: Annotated[bool | None, Form()] = None,
-    separator_max_chunk_size: Annotated[int | None, Form()] = None,
-    dataset_id: Annotated[str | None, Form()] = None,
-    pipeline: Annotated[str | None, Form()] = None,
-    governance_enabled: Annotated[bool | None, Form()] = None,
-    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
-    governance_noise_min_chars: Annotated[int | None, Form()] = None,
-    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
-    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
-    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
+    params: Annotated[ChunkPreviewRequestFields, Depends()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -9767,6 +9768,35 @@ async def preview_chunking(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
+
+    chunk_size = params.chunk_size
+    chunk_overlap = params.chunk_overlap
+    include_original_text = params.include_original_text
+    include_review_signals = params.include_review_signals
+    include_chunks = params.include_chunks
+    original_text_max_chars = params.original_text_max_chars
+    max_chunks = params.max_chunks
+    use_parse_cache = params.use_parse_cache
+    parser_backend = params.parser_backend
+    chunk_strategy = params.chunk_strategy
+    child_ratio = params.child_ratio
+    min_child_size = params.min_child_size
+    separator_preset = params.separator_preset
+    separator = params.separator
+    keep_separator = params.keep_separator
+    separator_max_chunk_size = params.separator_max_chunk_size
+    dataset_id = params.dataset_id
+    pipeline = params.pipeline
+    governance_enabled = params.governance_enabled
+    governance_remove_toc_lines = params.governance_remove_toc_lines
+    governance_remove_noise_lines = params.governance_remove_noise_lines
+    governance_unwrap_lines = params.governance_unwrap_lines
+    governance_remove_common_lines = params.governance_remove_common_lines
+    governance_unwrap_max_line_length = params.governance_unwrap_max_line_length
+    governance_noise_min_chars = params.governance_noise_min_chars
+    governance_noise_ratio_threshold = params.governance_noise_ratio_threshold
+    governance_common_lines_min_docs = params.governance_common_lines_min_docs
+    governance_common_lines_min_ratio = params.governance_common_lines_min_ratio
     preview_started = time.perf_counter()
     parse_cache_hit = False
     parse_cache_age_ms: int | None = None
@@ -10620,39 +10650,8 @@ async def preview_chunking(
 async def preview_chunking_by_sha(
     request: Request,
     response: Response,
-    file_sha256: Annotated[str, Form(...)],
-    file_type: Annotated[str | None, Form()] = None,
-    filename: Annotated[str | None, Form()] = None,
-    file_size: Annotated[int | None, Form()] = None,
-    chunk_size: int = 1000,
-    chunk_overlap: int = 200,
-    include_original_text: bool = True,
-    include_review_signals: Annotated[bool, Query()] = False,
-    include_chunks: Annotated[bool, Query()] = True,
-    original_text_max_chars: int = 100000,
-    max_chunks: int = 0,
-    use_parse_cache: Annotated[bool, Query()] = True,
-    parser_backend: Annotated[str, Form()] = settings.DEFAULT_PARSER_BACKEND,
-    chunk_strategy: Annotated[str, Form()] = settings.DEFAULT_CHUNK_STRATEGY,
-    # Strategy-specific options (enterprise tuning). Currently used by parent_child.
-    child_ratio: Annotated[float | None, Form()] = None,
-    min_child_size: Annotated[int | None, Form()] = None,
-    separator_preset: Annotated[str | None, Form()] = None,
-    separator: Annotated[str | None, Form()] = None,
-    keep_separator: Annotated[bool | None, Form()] = None,
-    separator_max_chunk_size: Annotated[int | None, Form()] = None,
-    dataset_id: Annotated[str | None, Form()] = None,
-    pipeline: Annotated[str | None, Form()] = None,
-    governance_enabled: Annotated[bool | None, Form()] = None,
-    governance_remove_toc_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_noise_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_lines: Annotated[bool | None, Form()] = None,
-    governance_remove_common_lines: Annotated[bool | None, Form()] = None,
-    governance_unwrap_max_line_length: Annotated[int | None, Form()] = None,
-    governance_noise_min_chars: Annotated[int | None, Form()] = None,
-    governance_noise_ratio_threshold: Annotated[float | None, Form()] = None,
-    governance_common_lines_min_docs: Annotated[int | None, Form()] = None,
-    governance_common_lines_min_ratio: Annotated[float | None, Form()] = None,
+    file_fields: Annotated[ChunkPreviewByShaFileFields, Depends()],
+    params: Annotated[ChunkPreviewRequestFields, Depends()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -10665,6 +10664,39 @@ async def preview_chunking_by_sha(
     parse cache is warm. If cache is missing/expired, client should fall back to uploading.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
+
+    file_sha256 = file_fields.file_sha256
+    file_type = file_fields.file_type
+    filename = file_fields.filename
+    file_size = file_fields.file_size
+    chunk_size = params.chunk_size
+    chunk_overlap = params.chunk_overlap
+    include_original_text = params.include_original_text
+    include_review_signals = params.include_review_signals
+    include_chunks = params.include_chunks
+    original_text_max_chars = params.original_text_max_chars
+    max_chunks = params.max_chunks
+    use_parse_cache = params.use_parse_cache
+    parser_backend = params.parser_backend
+    chunk_strategy = params.chunk_strategy
+    child_ratio = params.child_ratio
+    min_child_size = params.min_child_size
+    separator_preset = params.separator_preset
+    separator = params.separator
+    keep_separator = params.keep_separator
+    separator_max_chunk_size = params.separator_max_chunk_size
+    dataset_id = params.dataset_id
+    pipeline = params.pipeline
+    governance_enabled = params.governance_enabled
+    governance_remove_toc_lines = params.governance_remove_toc_lines
+    governance_remove_noise_lines = params.governance_remove_noise_lines
+    governance_unwrap_lines = params.governance_unwrap_lines
+    governance_remove_common_lines = params.governance_remove_common_lines
+    governance_unwrap_max_line_length = params.governance_unwrap_max_line_length
+    governance_noise_min_chars = params.governance_noise_min_chars
+    governance_noise_ratio_threshold = params.governance_noise_ratio_threshold
+    governance_common_lines_min_docs = params.governance_common_lines_min_docs
+    governance_common_lines_min_ratio = params.governance_common_lines_min_ratio
 
     preview_started = time.perf_counter()
     parse_cache_hit = False
