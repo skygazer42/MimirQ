@@ -104,7 +104,7 @@ def _is_md_table_header_row(line: str) -> bool:
     if len(cells) < 2:
         return False
     # Require at least one non-empty cell.
-    return any(c for c in cells)
+    return any(cells)
 
 
 def _looks_like_markdown_table(text: str) -> bool:

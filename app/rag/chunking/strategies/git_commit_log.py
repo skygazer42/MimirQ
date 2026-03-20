@@ -39,6 +39,22 @@ class _Section:
 
 
 _COMMIT_RE = re.compile(r"(?m)^\s*commit\s+(?P<sha>[0-9a-f]{7,40})\b")
+_AUTHOR_PREFIX = "author:"
+_DATE_PREFIX = "date:"
+_HEADER_SCAN_CHAR_LIMIT = 2000
+_HEADER_SCAN_LINE_LIMIT = 60
+_HEADER_VALUE_CHAR_LIMIT = 200
+
+
+def _extract_commit_header_value(line: str, *, prefix: str) -> str | None:
+    stripped = (line or "").strip()
+    if not stripped:
+        return None
+    prefix_norm = prefix.casefold()
+    if not stripped.casefold().startswith(prefix_norm):
+        return None
+    value = stripped[len(prefix) :].strip()
+    return value[:_HEADER_VALUE_CHAR_LIMIT] or None
 
 
 def _iter_commits(text: str) -> list[_Commit]:
@@ -55,19 +71,19 @@ def _iter_commits(text: str) -> list[_Commit]:
         sha = (m.group("sha") or "").strip()
         author = None
         date = None
-        for ln in chunk[:2000].splitlines()[:60]:
-            stripped = ln.strip()
-            if not stripped:
-                continue
-            low = stripped.casefold()
-            if author is None and low.startswith("author:"):
-                val = stripped[len("author:") :].strip()
-                author = val[:200] or None
-                continue
-            if date is None and low.startswith("date:"):
-                val = stripped[len("date:") :].strip()
-                date = val[:200] or None
-                continue
+        for ln in chunk[:_HEADER_SCAN_CHAR_LIMIT].splitlines()[:_HEADER_SCAN_LINE_LIMIT]:
+            if author is None:
+                author = _extract_commit_header_value(ln, prefix=_AUTHOR_PREFIX)
+                if author is not None:
+                    if date is not None:
+                        break
+                    continue
+            if date is None:
+                date = _extract_commit_header_value(ln, prefix=_DATE_PREFIX)
+                if date is not None:
+                    if author is not None:
+                        break
+                    continue
             if author is not None and date is not None:
                 break
         commits.append(_Commit(start=start, end=end, index=len(commits), sha=sha, author=author, date=date))
@@ -97,7 +113,8 @@ def looks_like_git_commit_log(text: str) -> bool:
     commits = len(_COMMIT_RE.findall(head))
     if commits >= 2:
         return True
-    if commits == 1 and ("author:" in head.lower() and "date:" in head.lower()):
+    head_lower = head.lower()
+    if commits == 1 and (_AUTHOR_PREFIX in head_lower and _DATE_PREFIX in head_lower):
         return True
     return False
 

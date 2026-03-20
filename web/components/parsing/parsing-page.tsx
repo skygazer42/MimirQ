@@ -1014,6 +1014,12 @@ export default function ParsingPage() {
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
   }, [folders, currentFolderId])
 
+  const isLibraryEmpty =
+    isLibraryLoaded &&
+    directFolders.length === 0 &&
+    visibleQueueFiles.length === 0 &&
+    visibleLibraryOnlyFiles.length === 0
+
   const folderStatsById = useMemo(() => {
     const byFolder = new Map<string, { count: number; latestTs: number }>()
     const bump = (folderId: string, ts: number) => {
@@ -1604,11 +1610,16 @@ export default function ParsingPage() {
                     "px-4 py-3 border-b border-border/60 flex items-center justify-between z-10 sticky top-0",
                     "bg-card dark:bg-background/40"
                   )}
-                  onDragOver={(e) => handleFolderDragOver(e, currentFolderId)}
-                  onDragLeave={() => setDragOverFolderId(null)}
-                  onDrop={(e) => handleFolderDrop(e, currentFolderId)}
                 >
-                  <div className="flex items-center gap-3 min-w-0 group">
+                  <button
+                    type="button"
+                    className="flex items-center gap-3 min-w-0 group rounded-xl px-2 py-1 -mx-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    onClick={() => requestUploadToFolder(currentFolderId)}
+                    onDragOver={(e) => handleFolderDragOver(e, currentFolderId)}
+                    onDragLeave={() => setDragOverFolderId(null)}
+                    onDrop={(e) => handleFolderDrop(e, currentFolderId)}
+                    title="拖拽文件到当前目录，或点击上传"
+                  >
                     <div className="w-8 h-8 rounded-xl bg-muted dark:bg-muted text-muted-foreground dark:text-muted-foreground flex items-center justify-center">
                       <FileText className="w-4 h-4" />
                     </div>
@@ -1626,7 +1637,7 @@ export default function ParsingPage() {
                     <span className="bg-muted dark:bg-muted text-muted-foreground dark:text-muted-foreground px-2 py-0.5 rounded-full text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
                       {visibleQueueFiles.length}
                     </span>
-                  </div>
+                  </button>
 
                   <div className="flex items-center gap-1">
                     {parseableCount > 0 && (
@@ -1711,9 +1722,7 @@ export default function ParsingPage() {
                 <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-2 bg-card dark:bg-background/40">
                   <div className="min-h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
                     {isLibraryLoaded ? (
-                      directFolders.length === 0 &&
-                      visibleQueueFiles.length === 0 &&
-                      visibleLibraryOnlyFiles.length === 0 ? (
+                      isLibraryEmpty ? (
                         <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                           <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
                             <FolderOpen className="w-6 h-6 text-muted-foreground" />
@@ -1819,12 +1828,8 @@ export default function ParsingPage() {
 
                           {/* Current session queue files */}
 	                          {visibleQueueFiles.map((f) => (
-	                            <div
-	                              key={f.id}
-	                              draggable
-	                              onDragStart={(e) => handleFileDragStart(e, f.id)}
-	                            >
                               <FileQueueItem
+                                key={f.id}
                                 file={{
                                   id: f.id,
                                   name: f.name,
@@ -1839,12 +1844,13 @@ export default function ParsingPage() {
                                   duration: f.duration,
                                   pageCount: f.stats?.pageCount,
                                 }}
+                                draggable
+                                onDragStart={(e) => handleFileDragStart(e, f.id)}
                                 isActive={activeFileId === f.id}
                                 onClick={() => setActiveFileId(f.id)}
                                 onRemove={() => removeFile(f.id)}
                                 onRetry={f.status === 'error' ? () => parseFile(f.id) : undefined}
                               />
-                            </div>
                           ))}
                         </div>
                       )
@@ -2688,8 +2694,8 @@ export default function ParsingPage() {
               </div>
 	              <div className="space-y-1">
 	                {visibleQueueFiles.map((f) => (
-	                  <div key={f.id} draggable onDragStart={(e) => handleFileDragStart(e, f.id)}>
-	                    <FileQueueItem
+	                  <FileQueueItem
+                      key={f.id}
 	                      file={{
                         id: f.id,
                         name: f.name,
@@ -2703,6 +2709,8 @@ export default function ParsingPage() {
                         duration: f.duration,
                         pageCount: f.stats?.pageCount,
                       }}
+                      draggable
+                      onDragStart={(e) => handleFileDragStart(e, f.id)}
                       isActive={activeFileId === f.id}
                       onClick={() => {
                         setActiveLibraryFileId(null)
@@ -2712,9 +2720,8 @@ export default function ParsingPage() {
                       onRemove={() => removeFile(f.id)}
                       onRetry={f.status === 'error' ? () => parseFile(f.id) : undefined}
                     />
-                  </div>
-                ))}
-              </div>
+	                ))}
+	              </div>
             </div>
           ) : null}
 

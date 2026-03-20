@@ -657,7 +657,9 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     if (!suite?.id) return
 
     const query = newQuery.trim()
-    if (!query) return
+    if (!query) {
+      return
+    }
 
 	    let citations: Citation[] = []
 	    let selected: string[] = []

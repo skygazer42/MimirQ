@@ -158,8 +158,21 @@ function formatConnectorSyncCapabilities(info: ConnectorInfo | undefined): strin
   return '全量'
 }
 
+function normalizeConnectorRunDocumentId(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || null
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value)
+  }
+  return null
+}
+
 function collectConnectorRunDocumentIds(documents: Array<{ document_id?: unknown }>): string[] {
-  return documents.map((d) => String(d?.document_id || '').trim()).filter(Boolean)
+  return documents
+    .map((d) => normalizeConnectorRunDocumentId(d?.document_id))
+    .filter((documentId): documentId is string => Boolean(documentId))
 }
 
 export function KnowledgeSettingsPanel({
@@ -664,19 +677,24 @@ export function KnowledgeSettingsPanel({
                                     </Button>
                                   </div>
                                   <div className="mt-2 space-y-1">
-                                    {documents.slice(0, 15).map((d) => (<div key={String(d?.document_id)} className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                          <div className="text-[11px] font-mono text-foreground/90 truncate">
-                                            {String(d?.document_id || '')}
+                                    {documents.slice(0, 15).map((d, index) => {
+                                      const documentId = normalizeConnectorRunDocumentId(d?.document_id) || ''
+                                      return (
+                                        <div key={documentId || `${run.id}:${index}`} className="flex items-start justify-between gap-3">
+                                          <div className="min-w-0">
+                                            <div className="text-[11px] font-mono text-foreground/90 truncate">
+                                              {documentId}
+                                            </div>
+                                            {d?.source_ref ? (<div className="mt-0.5 text-[10px] text-muted-foreground font-mono truncate">
+                                                {String(d.source_ref)}
+                                              </div>) : null}
                                           </div>
-                                          {d?.source_ref ? (<div className="mt-0.5 text-[10px] text-muted-foreground font-mono truncate">
-                                              {String(d.source_ref)}
-                                            </div>) : null}
+                                          <div className="shrink-0 text-[10px] font-mono rounded-full border border-border/60 bg-background px-2 py-0.5">
+                                            {String(d?.status || 'created')}
+                                          </div>
                                         </div>
-                                        <div className="shrink-0 text-[10px] font-mono rounded-full border border-border/60 bg-background px-2 py-0.5">
-                                          {String(d?.status || 'created')}
-                                        </div>
-                                      </div>))}
+                                      )
+                                    })}
                                     {documents.length > 15 ? (<div className="text-[10px] text-muted-foreground">
                                         …(+{documents.length - 15})
                                       </div>) : null}

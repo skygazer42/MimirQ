@@ -9,5 +9,12 @@ describe('KnowledgeSettingsPanel module', () => {
 
     expect(src).toContain('export function KnowledgeSettingsPanel')
   })
-})
 
+  it('normalizes connector run document ids before string conversion', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-settings-panel.tsx'), 'utf8')
+
+    expect(src).toContain('normalizeConnectorRunDocumentId')
+    expect(src).toContain("typeof value === 'string'")
+    expect(src).toContain("typeof value === 'number'")
+  })
+})

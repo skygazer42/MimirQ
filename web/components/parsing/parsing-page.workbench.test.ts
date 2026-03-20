@@ -8,5 +8,13 @@ describe('ParsingPage workbench scaffold', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
     expect(src).toContain('WorkbenchScaffold')
   })
-})
 
+  it('avoids the nested library empty-state ternary and passes drag props through FileQueueItem', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
+
+    expect(src).toContain('const isLibraryEmpty =')
+    expect(src).toContain('<FileQueueItem')
+    expect(src).toContain('draggable')
+    expect(src).not.toContain('<div key={f.id} draggable')
+  })
+})

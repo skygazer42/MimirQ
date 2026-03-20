@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from functools import partial
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 from uuid import UUID, uuid4
 
 from langchain_core.documents import Document
@@ -1279,7 +1279,7 @@ def _resolve_rag_state_build_options(
         return RagStateBuildOptions(**legacy_overrides)
     if not legacy_overrides:
         return options
-    return replace(options, **legacy_overrides)
+    return cast(RagStateBuildOptions, replace(options, **legacy_overrides))
 
 
 def build_rag_state(
