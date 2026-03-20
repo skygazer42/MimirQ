@@ -52,7 +52,7 @@ interface FileQueueItemProps {
   file: FileQueueItemData
   isActive?: boolean
   draggable?: boolean
-  onDragStart?: (e: React.DragEvent<HTMLDivElement>) => void
+  onDragStart?: (e: React.DragEvent<HTMLElement>) => void
   onClick?: () => void
   onRemove?: () => void
   onRetry?: () => void
@@ -173,8 +173,6 @@ export function FileQueueItem({
           ? 'bg-info/10 border-info/25 shadow-sm dark:shadow-none'
           : 'bg-card border-border hover:border-info/25 hover:bg-muted/40'
       )}
-      draggable={draggable}
-      onDragStart={onDragStart}
     >
       <div className="flex items-start gap-2">
         {onClick ? (
@@ -182,6 +180,8 @@ export function FileQueueItem({
             type="button"
             className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left focus-ring"
             onClick={onClick}
+            draggable={draggable}
+            onDragStart={onDragStart}
           >
             {fileContent}
           </button>
