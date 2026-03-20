@@ -19,6 +19,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import parse_cn_clause_marker, parse_cn_prefixed_heading
 
 
 @dataclass(frozen=True)
@@ -36,57 +37,6 @@ class _Section:
     start: int
     end: int
     heading: LawHeading | None
-
-
-_CN_HEADING_NUM_CHARS = set("0123456789一二三四五六七八九十百千")
-_CN_CLAUSE_NUM_CHARS = set("0123456789一二三四五六七八九十")
-
-
-def _parse_cn_prefixed_heading(line: str, *, suffixes: str) -> str | None:
-    """
-    Parse a heading prefix like:
-      第12章 / 第三节 / 第10条
-    Returns the matched prefix (e.g. '第12章'), otherwise None.
-    """
-    s = (line or "").strip()
-    if not s.startswith("第"):
-        return None
-
-    i = 1
-    n = len(s)
-    while i < n and s[i] in _CN_HEADING_NUM_CHARS:
-        i += 1
-    if i == 1 or i >= n:
-        return None
-    if s[i] not in suffixes:
-        return None
-    return s[: i + 1]
-
-
-def _parse_cn_clause_heading(line: str) -> str | None:
-    """
-    Parse a clause marker like:
-      （一） / (1) / （10）
-    Returns the full marker, otherwise None.
-    """
-    s = (line or "").strip()
-    if not s or s[0] not in ("（", "("):
-        return None
-
-    i = 1
-    n = len(s)
-    while i < n and s[i].isspace():
-        i += 1
-    start = i
-    while i < n and s[i] in _CN_CLAUSE_NUM_CHARS:
-        i += 1
-    if i == start:
-        return None
-    while i < n and s[i].isspace():
-        i += 1
-    if i >= n or s[i] not in (")", "）"):
-        return None
-    return s[: i + 1]
 
 
 def _parse_en_article_heading(line: str) -> str | None:
@@ -172,13 +122,13 @@ def _iter_headings(text: str) -> list[LawHeading]:
         level: int | None = None
         num: str | None = None
 
-        if (prefix := _parse_cn_prefixed_heading(line, suffixes="章")) is not None:
+        if (prefix := parse_cn_prefixed_heading(line, suffixes="章")) is not None:
             kind, level, num = "chapter", 1, prefix
-        elif (prefix := _parse_cn_prefixed_heading(line, suffixes="节")) is not None:
+        elif (prefix := parse_cn_prefixed_heading(line, suffixes="节")) is not None:
             kind, level, num = "section", 2, prefix
-        elif (prefix := _parse_cn_prefixed_heading(line, suffixes="条")) is not None:
+        elif (prefix := parse_cn_prefixed_heading(line, suffixes="条")) is not None:
             kind, level, num = "article", 3, prefix
-        elif (prefix := _parse_cn_clause_heading(line)) is not None:
+        elif (prefix := parse_cn_clause_marker(line)) is not None:
             kind, level, num = "clause", 4, prefix
         elif (en_num := _parse_en_article_heading(line)) is not None:
             kind, level, num = "article", 3, en_num
