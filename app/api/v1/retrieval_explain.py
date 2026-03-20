@@ -95,7 +95,7 @@ def _as_history_dicts(history: list[HistoryMessage]) -> list[dict[str, str]]:
     return out
 
 
-@router.post("/explain", response_model=RetrievalExplainResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/explain", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def explain_retrieval(
     body: RetrievalExplainRequest,
     *,

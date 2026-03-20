@@ -140,7 +140,7 @@ def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bo
     return cfg
 
 
-@router.post("/config-hash", response_model=RetrievalConfigHashResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/config-hash", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_retrieval_config_hash(
     body: RetrievalConfigHashRequest,
     *,

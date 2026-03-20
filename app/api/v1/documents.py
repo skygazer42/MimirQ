@@ -609,7 +609,7 @@ def _materialize_extracted_images_for_preview(documents: list, *, tenant_id: UUI
       uses `metadata.setdefault("img_id", ...)` after rewriting preview images to MinIO.
     """
     if not documents:
-        return documents
+        return []
 
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
@@ -696,7 +696,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
     so the frontend can load them via the existing `GET /api/v1/documents/image/{image_id}` API.
     """
     if not documents:
-        return documents
+        return []
 
     images_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
