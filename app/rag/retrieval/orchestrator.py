@@ -547,7 +547,7 @@ def _apply_hierarchy_tree_dedup(
         if node_key:
             kept_node_keys.discard(node_key)
             # Recursively remove descendants (handles >2-level trees when present).
-            for child_doc_key in list(children_by_parent_node.get(node_key, set())):
+            for child_doc_key in children_by_parent_node.get(node_key, set()).copy():
                 _remove_doc(child_doc_key)
             children_by_parent_node.pop(node_key, None)
         return 1
@@ -586,7 +586,7 @@ def _apply_hierarchy_tree_dedup(
 
         # If we just kept an ancestor, evict any previously kept descendants.
         if node_key:
-            for child_doc_key in list(children_by_parent_node.get(node_key, set())):
+            for child_doc_key in children_by_parent_node.get(node_key, set()).copy():
                 _remove_doc(child_doc_key)
             if not children_by_parent_node.get(node_key):
                 children_by_parent_node.pop(node_key, None)

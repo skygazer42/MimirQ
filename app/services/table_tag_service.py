@@ -431,7 +431,6 @@ def _pick_best_relationship_between(
                             "reason": reason,
                         }
                     )
-                    continue
 
     return best
 
@@ -1134,7 +1133,6 @@ def _generate_deterministic_sql_with_diagnostics(
             order_diag = {"column": order_col, "direction": order_dir}
 
     reason = "projection"
-    sql = f"SELECT {selected_col_q} FROM {table_q}{where_clause} LIMIT {int(limit)}"
     if agg_kind and group_col_q:
         if not order_clause:
             order_clause = f" ORDER BY {agg_alias} DESC"

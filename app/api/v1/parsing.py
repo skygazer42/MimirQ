@@ -442,10 +442,7 @@ async def upload_parsing_document(
     upload_dir.mkdir(parents=True, exist_ok=True)
     source_path = upload_dir / f"{document_id}{file_ext}"
 
-    try:
-        file_size = int(await save_upload_file(file, source_path, max_bytes=settings.MAX_FILE_SIZE) or 0)
-    except HTTPException:
-        raise
+    file_size = int(await save_upload_file(file, source_path, max_bytes=settings.MAX_FILE_SIZE) or 0)
 
     if not use_object_storage:
         _assert_path_under_tenant_root(tenant_id=tenant_id, path=source_path)

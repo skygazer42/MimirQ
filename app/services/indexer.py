@@ -548,7 +548,9 @@ class Indexer:
         for item in events:
             refs = item.references if isinstance(getattr(item, "references", None), dict) else {}
             raw_ph = refs.get("pipeline_hash")
-            pipeline_hash = (raw_ph.strip() if isinstance(raw_ph, str) and raw_ph.strip() else None) if raw_ph is not None else None
+            pipeline_hash = None
+            if isinstance(raw_ph, str):
+                pipeline_hash = raw_ph.strip() or None
             if pipeline_hash and len(pipeline_hash) > 200:
                 pipeline_hash = pipeline_hash[:200]
 
@@ -932,7 +934,6 @@ class Indexer:
         )
         if not count:
             logger.warning("No chunks found for BM25 index")
-            return
 
     def rebuild_event_indexes(
         self,

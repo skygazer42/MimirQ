@@ -420,9 +420,8 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
     def _ensure_number_safe(value: Any) -> None:
         if isinstance(value, bool):
             raise ValueError("Invalid number")
-        if isinstance(value, int):
-            if value.bit_length() > _MAX_MATH_INT_BITS:
-                raise ValueError(_NUMBER_TOO_LARGE_ERROR)
+        if isinstance(value, int) and value.bit_length() > _MAX_MATH_INT_BITS:
+            raise ValueError(_NUMBER_TOO_LARGE_ERROR)
 
     def _safe_pow(base: Any, exp: Any, mod: Any | None = None) -> Any:
         if isinstance(base, bool) or isinstance(exp, bool) or isinstance(mod, bool):

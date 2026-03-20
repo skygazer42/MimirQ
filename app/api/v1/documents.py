@@ -868,7 +868,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
         if not replacements:
             continue
 
-        def _md_repl(m: re.Match) -> str:
+        def _md_repl(m: re.Match, replacements=replacements) -> str:
             raw = m.group(1) or ""
             key = raw.strip()
             new = replacements.get(key)
@@ -876,7 +876,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
                 return m.group(0)
             return m.group(0).replace(raw, new, 1)
 
-        def _html_repl(m: re.Match) -> str:
+        def _html_repl(m: re.Match, replacements=replacements) -> str:
             raw = m.group(1) or ""
             key = raw.strip()
             new = replacements.get(key)
@@ -2689,10 +2689,7 @@ async def upload_document(
     file_id = uuid.uuid4()
     file_path = upload_dir / f"{file_id}{file_ext}"
 
-    try:
-        file_size, file_sha256 = await save_upload_file_with_hash(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
-    except HTTPException:
-        raise
+    file_size, file_sha256 = await save_upload_file_with_hash(file, file_path, max_bytes=settings.MAX_FILE_SIZE)
 
     # Tenant quotas (Wave22-T094): enforce cheap docs/storage limits at upload time.
     # This is best-effort and fail-open by default when quotas are disabled.

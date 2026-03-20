@@ -89,7 +89,6 @@ def _split_camel_alnum_segment(segment: str) -> list[str]:
         if prev.isdigit() and cur.isalpha():
             out.append(segment[start:idx])
             start = idx
-            continue
     out.append(segment[start:])
     return out
 

@@ -2,7 +2,6 @@ import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 
-from app.core.regex_runtime import RegexSubstitutionTimeoutError
 from app.core.regex_runtime import safe_subn as safe_regex_subn
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.preprocessing.segmentation import limit_blank_lines
@@ -103,18 +102,15 @@ def clean_markdown(
     rule_hits: list[int] = []
     if rules:
         for idx, rule in enumerate(rules):
-            try:
-                text2, n = safe_regex_subn(
-                    pattern=rule.pattern,
-                    repl=rule.repl,
-                    text=text,
-                    flags=rule.flags,
-                    timeout_ms=regex_timeout_ms,
-                    rule_index=int(idx),
-                )
-            except RegexSubstitutionTimeoutError:
-                # Bubble up with structured details; caller decides how to surface.
-                raise
+            # Bubble up RegexSubstitutionTimeoutError; caller decides how to surface.
+            text2, n = safe_regex_subn(
+                pattern=rule.pattern,
+                repl=rule.repl,
+                text=text,
+                flags=rule.flags,
+                timeout_ms=regex_timeout_ms,
+                rule_index=int(idx),
+            )
             rule_hits.append(int(n or 0))
             if text2 != text:
                 applied += 1

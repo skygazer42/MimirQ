@@ -868,6 +868,16 @@ Requirements:
                 hierarchy_family_collapse = bool(profile_applied.get("hierarchy_family_collapse"))
             if profile_applied.get("hierarchy_overfetch_factor") is not None:
                 hierarchy_overfetch_factor = int(profile_applied.get("hierarchy_overfetch_factor") or 1)
+            if profile_applied.get("hierarchy_family_aggregation") is not None:
+                hierarchy_family_aggregation = (
+                    str(profile_applied.get("hierarchy_family_aggregation") or "").strip().lower() or None
+                )
+            if profile_applied.get("hierarchy_tree_dedup") is not None:
+                hierarchy_tree_dedup = bool(profile_applied.get("hierarchy_tree_dedup"))
+            if profile_applied.get("hierarchy_parent_depth") is not None:
+                hierarchy_parent_depth = max(0, int(profile_applied.get("hierarchy_parent_depth") or 0))
+            if profile_applied.get("hierarchy_sibling_window") is not None:
+                hierarchy_sibling_window = max(0, int(profile_applied.get("hierarchy_sibling_window") or 0))
             if profile_applied.get("retrieval_contract_mode") is not None:
                 retrieval_contract_mode = str(profile_applied.get("retrieval_contract_mode") or "").strip() or None
             if profile_applied.get("visible_evidence_only") is not None:
@@ -2397,6 +2407,19 @@ Requirements:
                     "enable_reranker": rerank_on,
                     "reranker_provider": rerank_provider,
                     "reranker_top_n": rerank_top_n,
+                    "enable_hierarchy_recall": bool(enable_hierarchy_recall),
+                    "hierarchy_family_collapse": bool(hierarchy_family_collapse),
+                    "hierarchy_family_aggregation": (
+                        str(hierarchy_family_aggregation).strip().lower()
+                        if hierarchy_family_aggregation is not None
+                        else None
+                    ),
+                    "hierarchy_tree_dedup": (bool(hierarchy_tree_dedup) if hierarchy_tree_dedup is not None else None),
+                    "hierarchy_parent_depth": (int(hierarchy_parent_depth) if hierarchy_parent_depth is not None else None),
+                    "hierarchy_sibling_window": (
+                        int(hierarchy_sibling_window) if hierarchy_sibling_window is not None else None
+                    ),
+                    "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor or 1),
                     "query_parallelism": retrieval_parallelism,
                     "query_count": len(retrieval_plan),
                     "per_query": retrieval_per_query[:8],

@@ -202,7 +202,7 @@ def assign_events_to_communities(
             scores[lb] = float(scores.get(lb, 0.0) or 0.0) + w
         if not scores:
             continue
-        best = min(scores.keys(), key=lambda k: (-float(scores[k]), _stable_sig(k), k))
+        best = min(scores.keys(), key=lambda k, scores=scores: (-float(scores[k]), _stable_sig(k), k))
         out[ev] = best
     return out
 
@@ -385,4 +385,3 @@ __all__ = [
     "build_entity_cooccurrence_edges",
     "label_propagation_communities",
 ]
-
