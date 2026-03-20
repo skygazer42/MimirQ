@@ -29,7 +29,7 @@ class _Entry:
 
 
 _INLINE_ENTRY_RE = re.compile(
-    r"(?m)^\s*(?P<term>(?:[A-Za-z][A-Za-z0-9 _./+()-]{0,40}|[\u4e00-\u9fff]{2,20}))\s*(?:[:：]|[–—-])\s+(?P<def>.+?)\s*$"
+    r"(?m)^\s*(?P<term>(?:[A-Za-z][A-Za-z0-9 _./+()-]{0,40}|[\u4e00-\u9fff]{2,20}))\s*[:：–—-]\s+(?P<def>.+?)\s*$"
 )
 
 

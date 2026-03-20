@@ -43,7 +43,7 @@ class _Section:
 _MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
 _RELEASE_TOKEN_RE = re.compile(r"(?i)^\s*\[?(?P<token>[^\]\s]+)\]?\s*(?P<rest>.*)$")
 _VERSION_TOKEN_RE = re.compile(r"(?i)^(?:unreleased|v?\d+\.\d+(?:\.\d+)?(?:[-+][0-9a-z.-]+)?)$")
-_RELEASE_REST_PREFIX_RE = re.compile(r"^\s*(?:-|–|—|:)\s*")
+_RELEASE_REST_PREFIX_RE = re.compile(r"^\s*[-–—:]\s*")
 _DATE_RE = re.compile(r"\b(?P<date>\d{4}-\d{2}-\d{2})\b")
 
 
