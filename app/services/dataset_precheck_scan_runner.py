@@ -1416,7 +1416,7 @@ def run_dataset_precheck_scan(
                                 sniff_sample = sample_text[:8192]
                                 dialect: csv.Dialect = csv.excel
                                 try:
-                                    dialect = csv.Sniffer().sniff(sniff_sample, delimiters=[",", "\t", ";", "|"])
+                                    dialect = csv.Sniffer().sniff(sniff_sample, delimiters=",\t;|")
                                 except Exception:
                                     dialect = csv.excel
                                 reader = csv.reader(io.StringIO(sample_text), dialect)

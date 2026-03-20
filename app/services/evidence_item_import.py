@@ -11,6 +11,7 @@ from typing import Any
 _QUERY_KEYS = ("query", "question", "q")
 _EXPECTED_ANSWER_KEYS = ("expected_answer", "expected", "answer", "expectedAnswer", "expected_answer_text")
 _TAGS_KEYS = ("tags", "tag")
+_QUERY_REQUIRED_ERROR = "query is required"
 
 
 def _coerce_str(value: Any) -> str:
@@ -173,7 +174,7 @@ def parse_qa_faq_import_bytes(
             payload = _coerce_record(row)
             item = _build_item(payload)
             if not item.get("query"):
-                errors.append({"index": idx, "error": "query is required"})
+                errors.append({"index": idx, "error": _QUERY_REQUIRED_ERROR})
                 continue
             items.append(item)
             if len(items) >= cap:
@@ -191,7 +192,7 @@ def parse_qa_faq_import_bytes(
             payload = _coerce_record(obj)
             item = _build_item(payload)
             if not item.get("query"):
-                errors.append({"line": idx + 1, "error": "query is required"})
+                errors.append({"line": idx + 1, "error": _QUERY_REQUIRED_ERROR})
                 continue
             items.append(item)
             if len(items) >= cap:
@@ -229,7 +230,7 @@ def plan_evidence_item_import(
         query = _normalize_query(_coerce_str(payload.get("query")))
         if not query:
             skipped += 1
-            errors.append({"index": idx, "error": "query is required"})
+            errors.append({"index": idx, "error": _QUERY_REQUIRED_ERROR})
             continue
 
         if query in seen:

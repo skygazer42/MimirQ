@@ -41,6 +41,7 @@ ENV_FILE = Path(__file__).parent.parent.parent.parent / ".env"
 
 _ENV_UPDATE_LOCK = threading.Lock()
 _MISSING_API_URL_MESSAGE = "missing api_url"
+_CONFIGURED_HEALTH_UNREACHABLE_MESSAGE = "configured (health_unreachable)"
 
 
 @contextlib.contextmanager
@@ -1374,7 +1375,7 @@ async def get_system_status(
                 qianfan_entry["message"] = f"configured ({', '.join(parts[:2])})"
         else:
             qianfan_entry["health"] = {"ok": False, "error": err}
-            qianfan_entry["message"] = "configured (health_unreachable)"
+            qianfan_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
     parsers["qianfan_ocr"] = qianfan_entry
 
     etl_enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
@@ -1413,7 +1414,7 @@ async def get_system_status(
                 paddlevl_entry["message"] = f"configured ({', '.join(parts[:2])})"
         else:
             paddlevl_entry["health"] = {"ok": False, "error": err}
-            paddlevl_entry["message"] = "configured (health_unreachable)"
+            paddlevl_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
 
     parsers["paddle_vl"] = paddlevl_entry
 
@@ -1432,7 +1433,7 @@ async def get_system_status(
             olmocr_entry["health"] = data
         else:
             olmocr_entry["health"] = {"ok": False, "error": err}
-            olmocr_entry["message"] = "configured (health_unreachable)"
+            olmocr_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
     parsers["olmocr"] = olmocr_entry
 
     ok, msg = _check_import("docling")

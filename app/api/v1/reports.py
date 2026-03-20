@@ -32,6 +32,8 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+_SAFE_DATASET_NAME_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
+
 
 @router.get("/datasets/{dataset_id}", response_model=DatasetReportOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_dataset_report(
@@ -72,7 +74,7 @@ def export_dataset_report_json(
         connector_runs_limit=int(connector_runs_limit or 0),
     )
     content = json.dumps(report.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(report.dataset_name or "dataset"))[:64]
+    safe = _SAFE_DATASET_NAME_RE.sub("_", str(report.dataset_name or "dataset"))[:64]
     suffix = f".{pipeline_hash[:8]}" if pipeline_hash else ""
     filename = f"{safe}.report{suffix}.json"
     return Response(
@@ -111,7 +113,7 @@ def export_dataset_report_html(
         redact=bool(redact),
     )
 
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(report.dataset_name or "dataset"))[:64]
+    safe = _SAFE_DATASET_NAME_RE.sub("_", str(report.dataset_name or "dataset"))[:64]
     suffix = f".{pipeline_hash[:8]}" if pipeline_hash else ""
     filename = f"{safe}.report{suffix}.html"
     return Response(
@@ -150,7 +152,7 @@ def export_dataset_rag_audit_html(
         redact=bool(redact),
     )
 
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(report.dataset_name or "dataset"))[:64]
+    safe = _SAFE_DATASET_NAME_RE.sub("_", str(report.dataset_name or "dataset"))[:64]
     suffix = f".{pipeline_hash[:8]}" if pipeline_hash else ""
     filename = f"{safe}.rag_audit{suffix}.html"
     return Response(
@@ -336,7 +338,7 @@ def export_dataset_report_bundle_zip(
         if regression_diff_html:
             zf.writestr("regression_diff.html", regression_diff_html)
 
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(report.dataset_name or "dataset"))[:64]
+    safe = _SAFE_DATASET_NAME_RE.sub("_", str(report.dataset_name or "dataset"))[:64]
     suffix = f".{pipeline_hash[:8]}" if pipeline_hash else ""
     filename = f"{safe}.report_bundle{suffix}.zip"
     return Response(

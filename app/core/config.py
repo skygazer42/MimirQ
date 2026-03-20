@@ -69,6 +69,9 @@ except ImportError:
         return raw
 
 
+DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = "high,medium"
+
+
 class Settings(BaseSettings):
     """
     Application settings with validation.
@@ -745,7 +748,7 @@ class Settings(BaseSettings):
     RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED: bool = False
     RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO: float = 0.5
     RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED: int = 3
-    RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS: str = "high,medium"
+    RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS: str = DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS
     RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE: float = 0.0
     # Default upper-bound for parse-risk driven reparse planning CLI.
     RETRIEVAL_PARSE_RISK_REPARSE_MAX_DOCS: int = 100
@@ -2303,7 +2306,12 @@ class Settings(BaseSettings):
         parse_risk_auto_enqueue_levels = [
             p.strip()
             for p in str(
-                getattr(self, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS", "high,medium") or "high,medium"
+                getattr(
+                    self,
+                    "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS",
+                    DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS,
+                )
+                or DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS
             ).split(",")
         ]
         allowed_levels = {str(x).strip().lower() for x in parse_risk_auto_enqueue_levels if str(x).strip()}

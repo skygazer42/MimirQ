@@ -395,19 +395,24 @@ class NullStreamWriter(BaseStreamWriter):
     """
 
     async def write(self, content: Any, **kwargs) -> None:
-        pass
+        """Intentionally no-op: NullStreamWriter discards output."""
+        return None
 
     async def write_token(self, token: str, **kwargs) -> None:
-        pass
+        """Intentionally no-op: NullStreamWriter discards output."""
+        return None
 
     async def write_metadata(self, metadata: dict[str, Any], **kwargs) -> None:
-        pass
+        """Intentionally no-op: NullStreamWriter discards output."""
+        return None
 
     async def write_error(self, error: str, **kwargs) -> None:
-        pass
+        """Intentionally no-op: NullStreamWriter discards output."""
+        return None
 
     async def close(self) -> None:
-        pass
+        """Intentionally no-op: NullStreamWriter discards output."""
+        return None
 
 
 class MultiStreamWriter(BaseStreamWriter):

@@ -25,6 +25,8 @@ _NS = {
 _MD_NS = "urn:oasis:names:tc:SAML:2.0:metadata"
 _DS_NS = "http://www.w3.org/2000/09/xmldsig#"
 
+INVALID_SAML_RESPONSE_DETAIL = "Invalid SAMLResponse"
+
 
 @dataclass(frozen=True)
 class SamlProvider:
@@ -215,13 +217,13 @@ def _decode_saml_response(saml_response: str) -> etree._Element:
     try:
         xml_bytes = b64decode(raw, validate=True)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail="Invalid SAMLResponse") from exc
+        raise HTTPException(status_code=400, detail=INVALID_SAML_RESPONSE_DETAIL) from exc
     if not xml_bytes or len(xml_bytes) > max_bytes:
-        raise HTTPException(status_code=400, detail="Invalid SAMLResponse")
+        raise HTTPException(status_code=400, detail=INVALID_SAML_RESPONSE_DETAIL)
     try:
         return etree.fromstring(xml_bytes, parser=_xml_parser())
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail="Invalid SAMLResponse") from exc
+        raise HTTPException(status_code=400, detail=INVALID_SAML_RESPONSE_DETAIL) from exc
 
 
 def _verify_signature(root: etree._Element, provider: SamlProvider) -> etree._Element:
@@ -235,7 +237,7 @@ def _verify_signature(root: etree._Element, provider: SamlProvider) -> etree._El
     except InvalidSignature as exc:
         raise HTTPException(status_code=401, detail="Invalid SAML signature") from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail="Invalid SAMLResponse") from exc
+        raise HTTPException(status_code=400, detail=INVALID_SAML_RESPONSE_DETAIL) from exc
 
     signed_xml = verified.signed_xml
     if etree.QName(signed_xml.tag).localname == "Assertion":

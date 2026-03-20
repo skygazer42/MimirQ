@@ -47,6 +47,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _SCIM_MEDIA_TYPE = "application/scim+json"
+_INVALID_SCIM_PAYLOAD_DETAIL = "Invalid SCIM payload"
 
 _URN_LIST_RESPONSE = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 _URN_PATCH_OP = "urn:ietf:params:scim:api:messages:2.0:PatchOp"
@@ -398,7 +399,7 @@ def create_group(
         return _scim_error(status_code=404, detail="POST /Groups not enabled")
 
     if not isinstance(payload, dict):
-        return _scim_error(status_code=400, detail="Invalid SCIM payload", scim_type="invalidSyntax")
+        return _scim_error(status_code=400, detail=_INVALID_SCIM_PAYLOAD_DETAIL, scim_type="invalidSyntax")
 
     display_name = str(payload.get("displayName") or "").strip()
     if not display_name:
@@ -460,7 +461,7 @@ def put_group(
         return _scim_error(status_code=404, detail="PUT /Groups not enabled")
 
     if not isinstance(payload, dict):
-        return _scim_error(status_code=400, detail="Invalid SCIM payload", scim_type="invalidSyntax")
+        return _scim_error(status_code=400, detail=_INVALID_SCIM_PAYLOAD_DETAIL, scim_type="invalidSyntax")
 
     display_name = str(payload.get("displayName") or "").strip()
     if not display_name:
@@ -671,7 +672,7 @@ def create_user(
         return _scim_error(status_code=404, detail="POST /Users not enabled")
 
     if not isinstance(payload, dict):
-        return _scim_error(status_code=400, detail="Invalid SCIM payload", scim_type="invalidSyntax")
+        return _scim_error(status_code=400, detail=_INVALID_SCIM_PAYLOAD_DETAIL, scim_type="invalidSyntax")
 
     user_name = str(payload.get("userName") or "").strip()
     if not user_name:

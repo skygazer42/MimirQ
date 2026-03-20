@@ -33,6 +33,9 @@ from app.rag.tools.mcp_client import (
 
 logger = logging.getLogger(__name__)
 
+_NO_DOCUMENT_ACCESS_ERROR = "No document access"
+_NUMBER_TOO_LARGE_ERROR = "Number too large"
+
 # Configuration
 MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
 
@@ -257,7 +260,7 @@ async def get_document_content(
                             "document_id": document_id,
                             "content": "",
                             "page": page,
-                            "error": "No document access",
+                            "error": _NO_DOCUMENT_ACCESS_ERROR,
                         }
                     elif mode == "partial_members":
                         if not _document_permission_exists(
@@ -270,14 +273,14 @@ async def get_document_content(
                                 "document_id": document_id,
                                 "content": "",
                                 "page": page,
-                                "error": "No document access",
+                                "error": _NO_DOCUMENT_ACCESS_ERROR,
                             }
                     else:
                         return {
                             "document_id": document_id,
                             "content": "",
                             "page": page,
-                            "error": "No document access",
+                            "error": _NO_DOCUMENT_ACCESS_ERROR,
                         }
 
             # Scope to active pipeline version when available; fall back to legacy chunks if absent.
@@ -401,7 +404,7 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
             raise ValueError("Invalid number")
         if isinstance(value, int):
             if value.bit_length() > _MAX_MATH_INT_BITS:
-                raise ValueError("Number too large")
+                raise ValueError(_NUMBER_TOO_LARGE_ERROR)
 
     def _safe_pow(base: Any, exp: Any, mod: Any | None = None) -> Any:
         if isinstance(base, bool) or isinstance(exp, bool) or isinstance(mod, bool):
@@ -413,7 +416,7 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
             if isinstance(base, int) and exp >= 0 and base not in (0, 1, -1):
                 estimated_bits = abs(exp) * max(1, base.bit_length())
                 if estimated_bits > _MAX_MATH_INT_BITS:
-                    raise ValueError("Number too large")
+                    raise ValueError(_NUMBER_TOO_LARGE_ERROR)
 
         if mod is not None:
             if not (isinstance(base, int) and isinstance(exp, int) and isinstance(mod, int)):
@@ -462,7 +465,7 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
             elif isinstance(node.op, ast.Mult):
                 if isinstance(left, int) and isinstance(right, int):
                     if left.bit_length() + right.bit_length() > _MAX_MATH_INT_BITS:
-                        raise ValueError("Number too large")
+                        raise ValueError(_NUMBER_TOO_LARGE_ERROR)
                 out = left * right
             elif isinstance(node.op, ast.Div):
                 out = left / right

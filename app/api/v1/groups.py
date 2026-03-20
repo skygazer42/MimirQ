@@ -38,6 +38,8 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+_NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL = "No permission to manage groups"
+
 
 @router.get("/", response_model=TenantGroupListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_groups(
@@ -72,7 +74,7 @@ def create_group(
         tenant_id,
         account_id,
         TenantPermissions.SETTINGS_WRITE,
-        detail="No permission to manage groups",
+        detail=_NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL,
     )
     group = TenantGroupService.create_group(db, tenant_id=tenant_id, name=payload.name, external_id=payload.external_id)
     audit_log_event(
@@ -125,7 +127,7 @@ def patch_group(
         tenant_id,
         account_id,
         TenantPermissions.SETTINGS_WRITE,
-        detail="No permission to manage groups",
+        detail=_NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL,
     )
     group = TenantGroupService.update_group(
         db,
@@ -164,7 +166,7 @@ def delete_group(
         tenant_id,
         account_id,
         TenantPermissions.SETTINGS_WRITE,
-        detail="No permission to manage groups",
+        detail=_NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL,
     )
     TenantGroupService.delete_group(db, tenant_id=tenant_id, group_id=group_id)
     audit_log_event(

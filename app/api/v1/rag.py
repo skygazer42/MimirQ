@@ -38,6 +38,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL = "dataset_id is required when document_ids is empty"
+NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL = "No accessible documents for retrieval"
+
 
 class RetrievePreviewRequest(BaseModel):
     query: str = Field(min_length=1)
@@ -112,7 +115,7 @@ async def retrieve_preview(
         if not allow_open_scope:
             raise HTTPException(
                 status_code=400,
-                detail="dataset_id is required when document_ids is empty",
+                detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
             )
 
     # Optional existence check (keeps behavior consistent with chat).
@@ -136,11 +139,11 @@ async def retrieve_preview(
             )
             exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
             if not exists:
-                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
         else:
             exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
             if not exists:
-                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
 
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
@@ -487,7 +490,7 @@ async def retrieve_evidence(
         if not allow_open_scope:
             raise HTTPException(
                 status_code=400,
-                detail="dataset_id is required when document_ids is empty",
+                detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
             )
 
     # Optional existence check (keeps behavior consistent with chat).
@@ -511,11 +514,11 @@ async def retrieve_evidence(
             )
             exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
             if not exists:
-                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
         else:
             exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
             if not exists:
-                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
 
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
@@ -943,7 +946,7 @@ async def prompt_preview(
         if not allow_open_scope:
             raise HTTPException(
                 status_code=400,
-                detail="dataset_id is required when document_ids is empty",
+                detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
             )
 
     if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
@@ -966,11 +969,11 @@ async def prompt_preview(
             )
             exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
             if not exists:
-                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
         else:
             exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
             if not exists:
-                raise HTTPException(status_code=400, detail="No accessible documents for retrieval")
+                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
     effective_rag_config = body.rag_config

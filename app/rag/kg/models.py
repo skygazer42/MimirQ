@@ -9,6 +9,8 @@ from sqlalchemy.orm import relationship
 from app.core.config import settings
 from app.core.database import Base
 
+KG_ENTITIES_ID_FK = "kg_entities.id"
+
 
 def _default_tenant() -> uuid.UUID:
     """
@@ -90,7 +92,7 @@ class KgEventEntity(Base):
     )
     entity_id = Column(
         PGUUID(as_uuid=True),
-        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        ForeignKey(KG_ENTITIES_ID_FK, ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -130,7 +132,7 @@ class KgRelation(Base):
 
     subject_entity_id = Column(
         PGUUID(as_uuid=True),
-        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        ForeignKey(KG_ENTITIES_ID_FK, ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -138,7 +140,7 @@ class KgRelation(Base):
     predicate_raw = Column(String(200), nullable=True)
     object_entity_id = Column(
         PGUUID(as_uuid=True),
-        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        ForeignKey(KG_ENTITIES_ID_FK, ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -172,7 +174,7 @@ class KgEntityAlias(Base):
 
     canonical_entity_id = Column(
         PGUUID(as_uuid=True),
-        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        ForeignKey(KG_ENTITIES_ID_FK, ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -219,14 +221,14 @@ class KgEntityRedirect(Base):
 
     from_entity_id = Column(
         PGUUID(as_uuid=True),
-        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        ForeignKey(KG_ENTITIES_ID_FK, ondelete="CASCADE"),
         primary_key=True,
     )
     tenant_id = Column(PGUUID(as_uuid=True), nullable=False, default=_default_tenant, index=True)
 
     to_entity_id = Column(
         PGUUID(as_uuid=True),
-        ForeignKey("kg_entities.id", ondelete="CASCADE"),
+        ForeignKey(KG_ENTITIES_ID_FK, ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

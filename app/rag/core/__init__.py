@@ -10,21 +10,24 @@ from __future__ import annotations
 
 from importlib import import_module
 
+_MODULE_COMMAND = "app.rag.core.command"
+_MODULE_ERRORS = "app.rag.core.errors"
+
 _EXPORTS: dict[str, tuple[str, str]] = {
-    "Command": ("app.rag.core.command", "Command"),
-    "CommandProcessor": ("app.rag.core.command", "CommandProcessor"),
-    "Interrupt": ("app.rag.core.command", "Interrupt"),
-    "NodeReturn": ("app.rag.core.command", "NodeReturn"),
-    "Send": ("app.rag.core.command", "Send"),
-    "interrupt": ("app.rag.core.command", "interrupt"),
-    "AIError": ("app.rag.core.errors", "AIError"),
-    "ConfigError": ("app.rag.core.errors", "ConfigError"),
-    "ExtractError": ("app.rag.core.errors", "ExtractError"),
-    "LLMError": ("app.rag.core.errors", "LLMError"),
-    "LLMTimeoutError": ("app.rag.core.errors", "LLMTimeoutError"),
-    "LoadError": ("app.rag.core.errors", "LoadError"),
-    "PromptError": ("app.rag.core.errors", "PromptError"),
-    "SearchError": ("app.rag.core.errors", "SearchError"),
+    "Command": (_MODULE_COMMAND, "Command"),
+    "CommandProcessor": (_MODULE_COMMAND, "CommandProcessor"),
+    "Interrupt": (_MODULE_COMMAND, "Interrupt"),
+    "NodeReturn": (_MODULE_COMMAND, "NodeReturn"),
+    "Send": (_MODULE_COMMAND, "Send"),
+    "interrupt": (_MODULE_COMMAND, "interrupt"),
+    "AIError": (_MODULE_ERRORS, "AIError"),
+    "ConfigError": (_MODULE_ERRORS, "ConfigError"),
+    "ExtractError": (_MODULE_ERRORS, "ExtractError"),
+    "LLMError": (_MODULE_ERRORS, "LLMError"),
+    "LLMTimeoutError": (_MODULE_ERRORS, "LLMTimeoutError"),
+    "LoadError": (_MODULE_ERRORS, "LoadError"),
+    "PromptError": (_MODULE_ERRORS, "PromptError"),
+    "SearchError": (_MODULE_ERRORS, "SearchError"),
     "get_logger": ("app.rag.core.logging", "get_logger"),
     "setup_logging": ("app.rag.core.logging", "setup_logging"),
     "estimate_tokens": ("app.rag.core.text", "estimate_tokens"),

@@ -307,7 +307,7 @@ def _sniff_csv_delimiter(path: Path, *, max_bytes: int = 64_000) -> str | None:
     try:
         import csv
 
-        sniffed = csv.Sniffer().sniff(sample, delimiters=[",", "\t", ";", "|"])
+        sniffed = csv.Sniffer().sniff(sample, delimiters=",\t;|")
         delim = str(getattr(sniffed, "delimiter", "") or "")
         return delim if delim in {",", "\t", ";", "|"} else None
     except Exception:

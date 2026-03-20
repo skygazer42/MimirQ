@@ -41,6 +41,8 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(tags=["RAG Config Templates"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+_RAG_CONFIG_TEMPLATE_NOT_FOUND_DETAIL = "RAG config template not found"
+
 
 def _ensure_read(db: Session, tenant_id: UUID, account_id: str) -> None:
     ensure_tenant_permission(
@@ -169,7 +171,7 @@ async def get_rag_config_template(
         .first()
     )
     if not template:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RAG config template not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_RAG_CONFIG_TEMPLATE_NOT_FOUND_DETAIL)
     return template
 
 
@@ -191,7 +193,7 @@ async def update_rag_config_template(
         .first()
     )
     if not template:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RAG config template not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_RAG_CONFIG_TEMPLATE_NOT_FOUND_DETAIL)
 
     if request.template_key is not None:
         template.template_key = str(request.template_key or "").strip() or None
@@ -237,7 +239,7 @@ async def create_rag_config_template_version(
         .first()
     )
     if not current:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RAG config template not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_RAG_CONFIG_TEMPLATE_NOT_FOUND_DETAIL)
 
     template_key = current.template_key or _derive_template_key(current.name)
     max_version = (

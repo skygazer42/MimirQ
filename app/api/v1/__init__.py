@@ -9,6 +9,8 @@ from importlib import import_module
 from fastapi import APIRouter
 
 _ROUTER: APIRouter | None = None
+_DATASETS_PREFIX = "/datasets"
+_RETRIEVAL_PREFIX = "/retrieval"
 
 
 def _build_router() -> APIRouter:
@@ -58,10 +60,10 @@ def _build_router() -> APIRouter:
     router.include_router(parsing.router, prefix="/parsing", tags=["Parsing Workspace"])
     router.include_router(chunk_presets.router, prefix="/chunk-presets", tags=["Chunk Preview"])
     router.include_router(chat.router, prefix="/chat", tags=["Chat"])
-    router.include_router(datasets.router, prefix="/datasets", tags=["Datasets"])
-    router.include_router(dataset_precheck.router, prefix="/datasets", tags=["Datasets Precheck"])
-    router.include_router(dataset_tables.router, prefix="/datasets", tags=["Dataset Tables (TAG)"])
-    router.include_router(db_catalog.router, prefix="/datasets", tags=["DB Catalog"])
+    router.include_router(datasets.router, prefix=_DATASETS_PREFIX, tags=["Datasets"])
+    router.include_router(dataset_precheck.router, prefix=_DATASETS_PREFIX, tags=["Datasets Precheck"])
+    router.include_router(dataset_tables.router, prefix=_DATASETS_PREFIX, tags=["Dataset Tables (TAG)"])
+    router.include_router(db_catalog.router, prefix=_DATASETS_PREFIX, tags=["DB Catalog"])
     router.include_router(dataset_categories.router, prefix="/dataset-categories", tags=["Dataset Categories"])
     router.include_router(kg.router, prefix="/kg", tags=["Knowledge Graph (KG)"])
     router.include_router(evidence.router, prefix="/evidence", tags=["Evidence Workbench"])
@@ -77,9 +79,9 @@ def _build_router() -> APIRouter:
     router.include_router(connectors.router, prefix="/connectors", tags=["Connectors"])
     router.include_router(ingestion_runs.router, prefix="/ingestion", tags=["Ingestion Runs"])
     router.include_router(rag.router, prefix="/rag", tags=["RAG"])
-    router.include_router(retrieval_profiles.router, prefix="/retrieval", tags=["Retrieval"])
-    router.include_router(retrieval_explain.router, prefix="/retrieval", tags=["Retrieval"])
-    router.include_router(retrieval_config_hash.router, prefix="/retrieval", tags=["Retrieval"])
+    router.include_router(retrieval_profiles.router, prefix=_RETRIEVAL_PREFIX, tags=["Retrieval"])
+    router.include_router(retrieval_explain.router, prefix=_RETRIEVAL_PREFIX, tags=["Retrieval"])
+    router.include_router(retrieval_config_hash.router, prefix=_RETRIEVAL_PREFIX, tags=["Retrieval"])
     router.include_router(ragviz.router, prefix="/ragviz", tags=["RAG Visualization (RAGViz)"])
     router.include_router(groups.router, prefix="/groups", tags=["Groups"])
     router.include_router(rbac.router, prefix="/rbac", tags=["RBAC"])

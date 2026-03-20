@@ -35,6 +35,8 @@ from app.services.audit_log_service import audit_log_event
 from app.services.evidence_drift_audit_service import audit_reference_sources_drift
 from app.services.index_audit_service import run_dataset_index_audit_internal
 
+SYSTEM_PERIODIC_AUDIT_ACTOR_ID = "system:periodic_audit"
+
 
 def _dt_to_json(v: datetime | None) -> str | None:
     if v is None:
@@ -203,7 +205,7 @@ def run_daily_index_audit_report(
     max_check_ids: int = 5000,
     milvus_list_limit: int = 2000,
     sample_limit: int = 20,
-    actor_id: str | None = "system:periodic_audit",
+    actor_id: str | None = SYSTEM_PERIODIC_AUDIT_ACTOR_ID,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """
@@ -364,7 +366,7 @@ def run_daily_evidence_drift_audit_report(
     include_details: bool = False,
     details_limit: int = 0,
     slice_top_n: int = 20,
-    actor_id: str | None = "system:periodic_audit",
+    actor_id: str | None = SYSTEM_PERIODIC_AUDIT_ACTOR_ID,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """
@@ -511,7 +513,7 @@ def run_daily_access_review_summary(
     tenant_id: UUID,
     execute: bool,
     force: bool = False,
-    actor_id: str | None = "system:periodic_audit",
+    actor_id: str | None = SYSTEM_PERIODIC_AUDIT_ACTOR_ID,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """

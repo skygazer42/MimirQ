@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 INTENT_ROUTER_MODEL_SCHEMA_V1 = "mimirq.intent_router_model.v1"
+INTENT_ROUTER_HINT_SCHEMA_V1 = "mimirq.intent_router_hint.v1"
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_./:-]{2,64}|[\u4e00-\u9fff]{2,16}")
 _ALLOWED_OVERRIDES = {
     "retrieval_mode",
@@ -158,7 +159,7 @@ def predict_learned_router_hint(
     mdl = normalize_intent_router_model(model)
     if mdl is None:
         return {
-            "schema": "mimirq.intent_router_hint.v1",
+            "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
             "used": False,
             "confidence": 0.0,
             "reason_codes": ["model_unavailable"],
@@ -169,7 +170,7 @@ def predict_learned_router_hint(
     query_tokens = _safe_tokenize(query)
     if not query_tokens:
         return {
-            "schema": "mimirq.intent_router_hint.v1",
+            "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
             "used": False,
             "confidence": 0.0,
             "reason_codes": ["empty_query"],
@@ -201,7 +202,7 @@ def predict_learned_router_hint(
     score, chosen, matched = best
     if not isinstance(chosen, dict):
         return {
-            "schema": "mimirq.intent_router_hint.v1",
+            "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
             "used": False,
             "confidence": 0.0,
             "reason_codes": ["no_rule_match"],
@@ -212,7 +213,7 @@ def predict_learned_router_hint(
     overrides = chosen.get("overrides")
     overrides = overrides if isinstance(overrides, dict) else {}
     return {
-        "schema": "mimirq.intent_router_hint.v1",
+        "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
         "used": bool(overrides),
         "confidence": round(float(score), 6),
         "reason_codes": ["rule_match"],

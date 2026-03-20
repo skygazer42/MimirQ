@@ -101,6 +101,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+_DATASET_SAFE_NAME_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
+_APPLICATION_JSON_MEDIA_TYPE = "application/json"
+
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
     meta = getattr(ds, "dataset_metadata", None)
     if not isinstance(meta, dict):
@@ -1747,11 +1750,11 @@ def export_dataset_ingestion_policy(
     policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(version="1", rules=[])
 
     content = export_policy_json(policy)
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
     filename = f"{safe}.ingestion-policy.json"
     return Response(
         content=content,
-        media_type="application/json",
+        media_type=_APPLICATION_JSON_MEDIA_TYPE,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -2072,11 +2075,11 @@ def export_dataset_profile_summary(
     )
     # Use JSON mode so UUID/datetime serialize correctly.
     content = json.dumps(summary.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
     filename = f"{safe}.profile.json"
     return Response(
         content=content,
-        media_type="application/json",
+        media_type=_APPLICATION_JSON_MEDIA_TYPE,
         headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
     )
 
@@ -2109,7 +2112,7 @@ def export_dataset_profile_html_report(
         redact=bool(redact),
     )
 
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
     filename = f"{safe}.profile.html"
     return Response(
         content=html,
@@ -2358,7 +2361,7 @@ def export_dataset_documents_ndjson(
         except Exception:
             pass
 
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(ds, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(ds, "name", "") or "dataset"))[:64]
     headers = {"Cache-Control": "no-store"}
 
     if fmt == "json":
@@ -2390,7 +2393,7 @@ def export_dataset_documents_ndjson(
 
         return Response(
             content=content,
-            media_type="application/json",
+            media_type=_APPLICATION_JSON_MEDIA_TYPE,
             headers=headers,
         )
 
@@ -2598,7 +2601,7 @@ def export_dataset_bundle_zip(
         )
 
     raw = buf.getvalue()
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(ds, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(ds, "name", "") or "dataset"))[:64]
     filename = f"{safe}.export.zip"
     return Response(
         content=raw,

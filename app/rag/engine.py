@@ -2250,7 +2250,7 @@ Requirements:
                             str(rerank_provider or ""),
                             provider_name=str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"),
                         ).get("tier"),
-                        "reranker_top_n": int(rerank_top_n) if rerank_top_n is not None else 0,
+                        "reranker_top_n": int(rerank_top_n),
                         "visible_evidence_only": bool(visible_evidence_only),
                         "retrieval_contract_mode": retrieval_contract_mode_effective or None,
                         "must_recall_requested": bool(must_recall),

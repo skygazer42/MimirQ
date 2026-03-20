@@ -186,7 +186,7 @@ class TokenTextSplitter(TextSplitter):
         self,
         encoding_name: str = "gpt2",
         model_name: str | None = None,
-        allowed_special: Union[Literal["all"], Set[str]] = set(),
+        allowed_special: Union[Literal["all"], Set[str]] | None = None,
         disallowed_special: Union[Literal["all"], Collection[str]] = "all",
         **kwargs: Any,
     ):
@@ -199,7 +199,7 @@ class TokenTextSplitter(TextSplitter):
         else:
             enc = tiktoken.get_encoding(encoding_name)
         self._tokenizer = enc
-        self._allowed_special = allowed_special
+        self._allowed_special = allowed_special if allowed_special is not None else set()
         self._disallowed_special = disallowed_special
 
     def split_text(self, text: str) -> list[str]:
