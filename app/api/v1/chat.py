@@ -121,6 +121,39 @@ NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL = "No accessible documents for chat ret
 CHAT_STREAM_AUDIT_ACTION = "chat.stream"
 
 
+def _enforce_non_empty_chat_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    allowed_doc_ids: list[UUID],
+    scope_dataset_id: UUID | None,
+    error_detail: str,
+) -> None:
+    if allowed_doc_ids:
+        return
+    if scope_dataset_id is not None:
+        from app.models.document import Document as DBDocument  # noqa: WPS433
+        from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
+
+        _, q = build_dataset_documents_query(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=scope_dataset_id,
+        )
+        q = q.filter(DBDocument.publication_status == "published")
+        q = q.filter(
+            (DBDocument.status == "completed")
+            | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+        )
+        if not q.with_entities(DBDocument.id).limit(1).first():
+            raise HTTPException(status_code=400, detail=error_detail)
+        return
+    if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
+        raise HTTPException(status_code=400, detail=error_detail)
+
+
 def _annotate_chat_cache_metrics(
     metrics: dict[str, Any] | None,
     *,
@@ -578,28 +611,14 @@ async def chat(
                 )
 
         if not allow_empty_docs:
-            if allowed_doc_ids:
-                pass
-            elif scope_dataset_id is not None:
-                from app.models.document import Document as DBDocument  # noqa: WPS433
-                from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
-
-                _, q = build_dataset_documents_query(
-                    db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=scope_dataset_id,
-                )
-                q = q.filter(DBDocument.publication_status == "published")
-                q = q.filter(
-                    (DBDocument.status == "completed")
-                    | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-                )
-                if not q.with_entities(DBDocument.id).limit(1).first():
-                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
-            else:
-                if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
+            _enforce_non_empty_chat_scope(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_dataset_id=scope_dataset_id,
+                error_detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL,
+            )
 
     else:
         # Create new conversation.
@@ -635,28 +654,14 @@ async def chat(
                 )
 
         if not allow_empty_docs:
-            if allowed_doc_ids:
-                pass
-            elif scope_dataset_id is not None:
-                from app.models.document import Document as DBDocument  # noqa: WPS433
-                from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
-
-                _, q = build_dataset_documents_query(
-                    db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=scope_dataset_id,
-                )
-                q = q.filter(DBDocument.publication_status == "published")
-                q = q.filter(
-                    (DBDocument.status == "completed")
-                    | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-                )
-                if not q.with_entities(DBDocument.id).limit(1).first():
-                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
-            else:
-                if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
+            _enforce_non_empty_chat_scope(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_dataset_id=scope_dataset_id,
+                error_detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL,
+            )
 
         conversation = Conversation(
             id=uuid.uuid4(),
@@ -1374,28 +1379,14 @@ async def stream_chat(
                 )
 
         if not allow_empty_docs:
-            if allowed_doc_ids:
-                pass
-            elif scope_dataset_id is not None:
-                from app.models.document import Document as DBDocument  # noqa: WPS433
-                from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
-
-                _, q = build_dataset_documents_query(
-                    db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=scope_dataset_id,
-                )
-                q = q.filter(DBDocument.publication_status == "published")
-                q = q.filter(
-                    (DBDocument.status == "completed")
-                    | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-                )
-                if not q.with_entities(DBDocument.id).limit(1).first():
-                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
-            else:
-                if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
+            _enforce_non_empty_chat_scope(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_dataset_id=scope_dataset_id,
+                error_detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL,
+            )
 
     else:
         if request.document_ids:
@@ -1430,28 +1421,14 @@ async def stream_chat(
                 )
 
         if not allow_empty_docs:
-            if allowed_doc_ids:
-                pass
-            elif scope_dataset_id is not None:
-                from app.models.document import Document as DBDocument  # noqa: WPS433
-                from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
-
-                _, q = build_dataset_documents_query(
-                    db,
-                    tenant_id=tenant_id,
-                    account_id=account_id,
-                    dataset_id=scope_dataset_id,
-                )
-                q = q.filter(DBDocument.publication_status == "published")
-                q = q.filter(
-                    (DBDocument.status == "completed")
-                    | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-                )
-                if not q.with_entities(DBDocument.id).limit(1).first():
-                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
-            else:
-                if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                    raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL)
+            _enforce_non_empty_chat_scope(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                allowed_doc_ids=allowed_doc_ids,
+                scope_dataset_id=scope_dataset_id,
+                error_detail=NO_ACCESSIBLE_DOCS_CHAT_RETRIEVAL_DETAIL,
+            )
 
         conversation = Conversation(
             id=uuid.uuid4(),
@@ -2605,28 +2582,14 @@ async def create_conversation(
         allowed_doc_ids = []
 
     if not allow_empty_docs:
-        if allowed_doc_ids:
-            pass
-        elif scope_dataset_id is not None:
-            from app.models.document import Document as DBDocument  # noqa: WPS433
-            from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
-
-            _, q = build_dataset_documents_query(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=scope_dataset_id,
-            )
-            q = q.filter(DBDocument.publication_status == "published")
-            q = q.filter(
-                (DBDocument.status == "completed")
-                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-            )
-            if not q.with_entities(DBDocument.id).limit(1).first():
-                raise HTTPException(status_code=400, detail="No accessible documents for conversation")
-        else:
-            if not list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1):
-                raise HTTPException(status_code=400, detail="No accessible documents for conversation")
+        _enforce_non_empty_chat_scope(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            allowed_doc_ids=allowed_doc_ids,
+            scope_dataset_id=scope_dataset_id,
+            error_detail="No accessible documents for conversation",
+        )
 
     conversation = Conversation(
         tenant_id=tenant_id,

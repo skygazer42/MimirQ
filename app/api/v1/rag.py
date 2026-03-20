@@ -42,6 +42,44 @@ DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL = "dataset_id is required when docume
 NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL = "No accessible documents for retrieval"
 
 
+def _enforce_non_empty_retrieval_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    scope_document_ids: list[UUID],
+    scope_dataset_id: UUID | None,
+) -> None:
+    if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
+        return
+    if scope_document_ids:
+        return
+
+    if scope_dataset_id is not None:
+        from app.models.document import Document as DBDocument
+        from app.services.dataset_profile_service import build_dataset_documents_query
+
+        _ds, q = build_dataset_documents_query(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=scope_dataset_id,
+        )
+        q = q.filter(DBDocument.publication_status == "published")
+        q = q.filter(
+            (DBDocument.status == "completed")
+            | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+        )
+        exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
+        if not exists:
+            raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
+        return
+
+    exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
+    if not exists:
+        raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
+
+
 class RetrievePreviewRequest(BaseModel):
     query: str = Field(min_length=1)
     history: list[HistoryMessage] = Field(default_factory=list)
@@ -117,33 +155,13 @@ async def retrieve_preview(
                 status_code=400,
                 detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
             )
-
-    # Optional existence check (keeps behavior consistent with chat).
-    if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
-        if scope_document_ids:
-            pass
-        elif scope_dataset_id is not None:
-            from app.models.document import Document as DBDocument
-            from app.services.dataset_profile_service import build_dataset_documents_query
-
-            _ds, q = build_dataset_documents_query(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=scope_dataset_id,
-            )
-            q = q.filter(DBDocument.publication_status == "published")
-            q = q.filter(
-                (DBDocument.status == "completed")
-                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-            )
-            exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
-            if not exists:
-                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
-        else:
-            exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
-            if not exists:
-                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
+    _enforce_non_empty_retrieval_scope(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        scope_document_ids=scope_document_ids,
+        scope_dataset_id=scope_dataset_id,
+    )
 
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
@@ -493,32 +511,13 @@ async def retrieve_evidence(
                 detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
             )
 
-    # Optional existence check (keeps behavior consistent with chat).
-    if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
-        if scope_document_ids:
-            pass
-        elif scope_dataset_id is not None:
-            from app.models.document import Document as DBDocument
-            from app.services.dataset_profile_service import build_dataset_documents_query
-
-            _ds, q = build_dataset_documents_query(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=scope_dataset_id,
-            )
-            q = q.filter(DBDocument.publication_status == "published")
-            q = q.filter(
-                (DBDocument.status == "completed")
-                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-            )
-            exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
-            if not exists:
-                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
-        else:
-            exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
-            if not exists:
-                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
+    _enforce_non_empty_retrieval_scope(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        scope_document_ids=scope_document_ids,
+        scope_dataset_id=scope_dataset_id,
+    )
 
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
@@ -949,31 +948,13 @@ async def prompt_preview(
                 detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
             )
 
-    if not bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
-        if scope_document_ids:
-            pass
-        elif scope_dataset_id is not None:
-            from app.models.document import Document as DBDocument
-            from app.services.dataset_profile_service import build_dataset_documents_query
-
-            _ds, q = build_dataset_documents_query(
-                db,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=scope_dataset_id,
-            )
-            q = q.filter(DBDocument.publication_status == "published")
-            q = q.filter(
-                (DBDocument.status == "completed")
-                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
-            )
-            exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
-            if not exists:
-                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
-        else:
-            exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
-            if not exists:
-                raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
+    _enforce_non_empty_retrieval_scope(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        scope_document_ids=scope_document_ids,
+        scope_dataset_id=scope_dataset_id,
+    )
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
     effective_rag_config = body.rag_config
