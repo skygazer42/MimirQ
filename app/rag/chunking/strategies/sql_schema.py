@@ -39,9 +39,11 @@ class _Section:
     stmt: SqlStmt | None
 
 
-_STMT_START_RE = re.compile(
-    r"(?im)^\s*(?P<kw>create\s+(?:or\s+replace\s+)?(?:table|view|function|procedure|trigger|index)|alter\s+table)\b"
+_CREATE_REPLACE_STMT_START_RE = re.compile(
+    r"(?im)^\s*(?P<kw>create\s+or\s+replace\s+(?:table|view|function|procedure|trigger|index))\b"
 )
+_CREATE_STMT_START_RE = re.compile(r"(?im)^\s*(?P<kw>create\s+(?:table|view|function|procedure|trigger|index))\b")
+_ALTER_STMT_START_RE = re.compile(r"(?im)^\s*(?P<kw>alter\s+table)\b")
 _SEMICOLON_EOS_RE = re.compile(r"(?m);[ \t]*(?:--.*)?$")
 _OBJ_NAME_RE = re.compile(
     r"(?im)^\s*create\s+(?:or\s+replace\s+)?(?P<kind>table|view|function|procedure|trigger|index)\s+"
@@ -89,7 +91,9 @@ def _iter_statements(text: str) -> list[SqlStmt]:
     if not text:
         return []
 
-    starts = [m.start() for m in _STMT_START_RE.finditer(text)]
+    starts = []
+    for pat in (_CREATE_REPLACE_STMT_START_RE, _CREATE_STMT_START_RE, _ALTER_STMT_START_RE):
+        starts.extend(m.start() for m in pat.finditer(text))
     if not starts:
         return []
 
@@ -124,7 +128,9 @@ def looks_like_sql_schema(text: str) -> bool:
     if not text or len(text) < 120:
         return False
     head = text[:8000]
-    hits = len(_STMT_START_RE.findall(head))
+    hits = 0
+    for pat in (_CREATE_REPLACE_STMT_START_RE, _CREATE_STMT_START_RE, _ALTER_STMT_START_RE):
+        hits += len(pat.findall(head))
     if hits >= 2:
         return True
     if hits == 1 and ("create table" in head.lower() or "alter table" in head.lower()):
