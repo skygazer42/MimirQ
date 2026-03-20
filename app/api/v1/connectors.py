@@ -8369,45 +8369,88 @@ def _jira_jql_updated_after(raw: str | None) -> str:
     return dt.strftime("%Y-%m-%d %H:%M")
 
 
-def _jira_render_issue_comment_articles(*, fields: dict, rendered: dict, max_comments: int) -> list[str]:
-    comments_obj = fields.get("comment") if isinstance(fields.get("comment"), dict) else {}
-    comment_items = comments_obj.get("comments") if isinstance(comments_obj.get("comments"), list) else []
-    rendered_comments_obj = rendered.get("comment") if isinstance(rendered.get("comment"), dict) else {}
-    rendered_comment_items = (
-        rendered_comments_obj.get("comments") if isinstance(rendered_comments_obj.get("comments"), list) else []
+def _jira_issue_fields(issue: dict) -> dict:
+    fields = issue.get("fields")
+    return fields if isinstance(fields, dict) else {}
+
+
+def _jira_issue_rendered_fields(issue: dict) -> dict:
+    rendered = issue.get("renderedFields")
+    return rendered if isinstance(rendered, dict) else {}
+
+
+def _jira_issue_field_name(fields: dict, key: str) -> str:
+    raw = fields.get(key)
+    if not isinstance(raw, dict):
+        return ""
+    return str(raw.get("name") or "").strip()
+
+
+def _jira_issue_label_text(fields: dict) -> str:
+    labels = fields.get("labels")
+    if not isinstance(labels, list):
+        return ""
+    cleaned = [str(label or "").strip() for label in labels if str(label or "").strip()]
+    return ", ".join(cleaned)
+
+
+def _jira_comment_items(fields: dict) -> list[dict]:
+    comments_obj = fields.get("comment")
+    if not isinstance(comments_obj, dict):
+        return []
+    comments = comments_obj.get("comments")
+    if not isinstance(comments, list):
+        return []
+    return [comment for comment in comments if isinstance(comment, dict)]
+
+
+def _jira_rendered_comment_items(rendered: dict) -> list[dict]:
+    rendered_comments_obj = rendered.get("comment")
+    if not isinstance(rendered_comments_obj, dict):
+        return []
+    comments = rendered_comments_obj.get("comments")
+    if not isinstance(comments, list):
+        return []
+    return [comment for comment in comments if isinstance(comment, dict)]
+
+
+def _jira_rendered_comment_at(rendered_comment_items: list[dict], idx: int) -> dict:
+    if idx <= 0:
+        return {}
+    offset = idx - 1
+    if offset >= len(rendered_comment_items):
+        return {}
+    return rendered_comment_items[offset]
+
+
+def _jira_comment_meta_html(comment: dict) -> str:
+    author_obj = comment.get("author")
+    author = str((author_obj or {}).get("displayName") or "").strip() if isinstance(author_obj, dict) else ""
+    created = str(comment.get("created") or "").strip()
+    meta_bits = [bit for bit in (author, created) if bit]
+    if not meta_bits:
+        return ""
+    return f"<p><strong>Meta:</strong> {html.escape(' | '.join(meta_bits))}</p>"
+
+
+def _jira_render_issue_comment_article(*, idx: int, comment: dict, rendered_comment: dict) -> str:
+    body_html = _jira_html_from_field(
+        rendered=rendered_comment.get("body"),
+        raw=comment.get("body"),
     )
+    meta_html = _jira_comment_meta_html(comment)
+    return "<article>" f"<h3>Comment {idx}</h3>" f"{meta_html}" f"{body_html}" "</article>"
+
+
+def _jira_render_issue_comment_articles(*, fields: dict, rendered: dict, max_comments: int) -> list[str]:
+    comment_items = _jira_comment_items(fields)
+    rendered_comment_items = _jira_rendered_comment_items(rendered)
 
     out: list[str] = []
     lim = max(0, int(max_comments or 0))
     for idx, comment in enumerate(comment_items[:lim], start=1):
-        if not isinstance(comment, dict):
-            continue
-        rendered_comment = (
-            rendered_comment_items[idx - 1]
-            if idx - 1 < len(rendered_comment_items) and isinstance(rendered_comment_items[idx - 1], dict)
-            else {}
-        )
-        author = (
-            str((comment.get("author") or {}).get("displayName") or "").strip()
-            if isinstance(comment.get("author"), dict)
-            else ""
-        )
-        created = str(comment.get("created") or "").strip()
-        body_html = _jira_html_from_field(
-            rendered=rendered_comment.get("body"),
-            raw=comment.get("body"),
-        )
-        meta_bits = [bit for bit in [author, created] if bit]
-        meta_html = ""
-        if meta_bits:
-            meta_html = f"<p><strong>Meta:</strong> {html.escape(' | '.join(meta_bits))}</p>"
-        out.append(
-            "<article>"
-            f"<h3>Comment {idx}</h3>"
-            f"{meta_html}"
-            f"{body_html}"
-            "</article>"
-        )
+        rendered_comment = _jira_rendered_comment_at(rendered_comment_items, idx)
+        out.append(_jira_render_issue_comment_article(idx=idx, comment=comment, rendered_comment=rendered_comment))
 
     return out
 
@@ -8488,19 +8531,18 @@ def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: boo
     Render a Jira issue into a stable HTML document shape that works with `jira_ticket`.
     """
     issue = issue if isinstance(issue, dict) else {}
-    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
-    rendered = issue.get("renderedFields") if isinstance(issue.get("renderedFields"), dict) else {}
+    fields = _jira_issue_fields(issue)
+    rendered = _jira_issue_rendered_fields(issue)
 
     issue_key = str(issue.get("key") or "").strip()
     summary = str(fields.get("summary") or issue_key or "Jira issue").strip()
     issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
     updated = _jira_extract_issue_updated(issue) or ""
 
-    issue_type = str((fields.get("issuetype") or {}).get("name") or "").strip() if isinstance(fields.get("issuetype"), dict) else ""
-    priority = str((fields.get("priority") or {}).get("name") or "").strip() if isinstance(fields.get("priority"), dict) else ""
-    status = str((fields.get("status") or {}).get("name") or "").strip() if isinstance(fields.get("status"), dict) else ""
-    labels = fields.get("labels") if isinstance(fields.get("labels"), list) else []
-    label_text = ", ".join(str(label or "").strip() for label in labels if str(label or "").strip())
+    issue_type = _jira_issue_field_name(fields, "issuetype")
+    priority = _jira_issue_field_name(fields, "priority")
+    status = _jira_issue_field_name(fields, "status")
+    label_text = _jira_issue_label_text(fields)
 
     description_html = _jira_html_from_field(
         rendered=rendered.get("description"),
