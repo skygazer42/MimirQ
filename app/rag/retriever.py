@@ -10,7 +10,8 @@ import re
 import threading
 import time
 from collections import Counter, OrderedDict
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, ClassVar
 from uuid import UUID
 
 import jieba
@@ -52,8 +53,39 @@ COLBERT_INDEX_DIR_FALLBACK = "./data/colbert_indexes"
 LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
 
 
+@dataclass(frozen=True)
+class HybridSearchOptions:
+    top_k: int = 5
+    score_threshold: float = 0.7
+    document_ids: list[UUID] | None = None
+    tenant_id: UUID | None = None
+    alpha: float = 0.5
+    enable_weight_rerank: bool = True
+    vector_weight: float = 0.6
+    keyword_weight: float = 0.4
+    retrieval_mode: str = "hybrid"
+    mmr_lambda: float = 0.7
+    mmr_fetch_k_multiplier: int = 4
+    metadata_filter: dict[str, Any] | None = None
+    requested_k: int | None = None
+
+
+def _resolve_hybrid_search_options(
+    *,
+    options: HybridSearchOptions | None,
+    legacy_overrides: dict[str, Any],
+) -> HybridSearchOptions:
+    if options is None:
+        return HybridSearchOptions(**legacy_overrides)
+    if not legacy_overrides:
+        return options
+    return replace(options, **legacy_overrides)
+
+
 class HybridRetriever(BaseRetriever):
     """Hybrid Retriever: Vector + Keyword BM25, optional MMR reranking."""
+
+    HybridSearchOptions: ClassVar[type[HybridSearchOptions]] = HybridSearchOptions
 
     k: int = 5
     score_threshold: float = settings.SIMILARITY_THRESHOLD
@@ -2471,21 +2503,26 @@ class HybridRetriever(BaseRetriever):
     def _hybrid_search(
         self,
         query: str,
-        top_k: int = 5,
-        score_threshold: float = 0.7,
-        document_ids: list[UUID] | None = None,
-        tenant_id: UUID | None = None,
-        alpha: float = 0.5,
-        enable_weight_rerank: bool = True,
-        vector_weight: float = 0.6,
-        keyword_weight: float = 0.4,
-        retrieval_mode: str = "hybrid",
-        mmr_lambda: float = 0.7,
-        mmr_fetch_k_multiplier: int = 4,
-        metadata_filter: dict[str, Any] | None = None,
-        requested_k: int | None = None,
+        *,
+        options: HybridSearchOptions | None = None,
+        **legacy_overrides: Any,
     ) -> list[dict[str, Any]]:
         """Hybrid search: vector retrieval + BM25, optional reranking."""
+        search_options = _resolve_hybrid_search_options(options=options, legacy_overrides=legacy_overrides)
+        top_k = search_options.top_k
+        score_threshold = search_options.score_threshold
+        document_ids = search_options.document_ids
+        tenant_id = search_options.tenant_id
+        alpha = search_options.alpha
+        enable_weight_rerank = search_options.enable_weight_rerank
+        vector_weight = search_options.vector_weight
+        keyword_weight = search_options.keyword_weight
+        retrieval_mode = search_options.retrieval_mode
+        mmr_lambda = search_options.mmr_lambda
+        mmr_fetch_k_multiplier = search_options.mmr_fetch_k_multiplier
+        metadata_filter = search_options.metadata_filter
+        requested_k = search_options.requested_k
+
         retrieval_mode = (retrieval_mode or "hybrid").lower()
 
         # Best-effort per-query debug metrics (low overhead, no external deps).

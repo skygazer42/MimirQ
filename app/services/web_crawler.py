@@ -13,7 +13,7 @@ import contextlib
 import hashlib
 import re
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -388,29 +388,64 @@ class WebCrawlResult:
     sync_tokens: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class WebCrawlOptions:
+    start_urls: list[str] = field(default_factory=list)
+    max_pages: int = 0
+    max_depth: int = 0
+    same_host_only: bool = True
+    include_patterns: list[str] = field(default_factory=list)
+    exclude_patterns: list[str] = field(default_factory=list)
+    use_sitemaps: bool = False
+    sitemap_urls: list[str] | None = None
+    respect_robots: bool = False
+    dedup_canonical: bool = True
+    headers: dict[str, str] | None = None
+    user_agent: str | None = None
+    timeout_sec: float | None = None
+    max_bytes: int | None = None
+    follow_redirects: bool | None = None
+
+
+def _resolve_web_crawl_options(
+    *,
+    options: WebCrawlOptions | None,
+    legacy_overrides: dict[str, Any],
+) -> WebCrawlOptions:
+    if options is None:
+        return WebCrawlOptions(**legacy_overrides)
+    if not legacy_overrides:
+        return options
+    return replace(options, **legacy_overrides)
+
+
 async def crawl_site(
     *,
-    start_urls: list[str],
-    max_pages: int,
-    max_depth: int,
-    same_host_only: bool,
-    include_patterns: list[str],
-    exclude_patterns: list[str],
-    use_sitemaps: bool = False,
-    sitemap_urls: list[str] | None = None,
-    respect_robots: bool = False,
-    dedup_canonical: bool = True,
-    headers: dict[str, str] | None = None,
-    user_agent: str | None = None,
-    timeout_sec: float | None = None,
-    max_bytes: int | None = None,
-    follow_redirects: bool | None = None,
+    options: WebCrawlOptions | None = None,
+    **legacy_overrides: Any,
 ) -> WebCrawlResult:
     """
     Crawl a website starting from one or more seed URLs.
 
     Returns a list of normalized URLs to ingest (deduped).
     """
+    crawl_options = _resolve_web_crawl_options(options=options, legacy_overrides=legacy_overrides)
+    start_urls = crawl_options.start_urls
+    max_pages = crawl_options.max_pages
+    max_depth = crawl_options.max_depth
+    same_host_only = crawl_options.same_host_only
+    include_patterns = crawl_options.include_patterns
+    exclude_patterns = crawl_options.exclude_patterns
+    use_sitemaps = crawl_options.use_sitemaps
+    sitemap_urls = crawl_options.sitemap_urls
+    respect_robots = crawl_options.respect_robots
+    dedup_canonical = crawl_options.dedup_canonical
+    headers = crawl_options.headers
+    user_agent = crawl_options.user_agent
+    timeout_sec = crawl_options.timeout_sec
+    max_bytes = crawl_options.max_bytes
+    follow_redirects = crawl_options.follow_redirects
+
     seeds = [str(u or "").strip() for u in (start_urls or []) if str(u or "").strip()]
     if not seeds:
         return WebCrawlResult(urls=[], visited=0, queued=0, errors=[])

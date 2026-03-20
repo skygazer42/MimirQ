@@ -8,6 +8,7 @@ import re
 import threading
 import time
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass, replace
 from typing import Any
 from uuid import UUID
 
@@ -16,6 +17,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
+from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 from app.core.openai_compat import normalize_openai_compatible_base_url
@@ -72,6 +74,106 @@ from app.services.prompt_resolver import resolve_prompt_template
 logger = get_logger("rag.engine")
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
+
+
+@dataclass(frozen=True)
+class RAGChatContext:
+    history: list[dict[str, str]] | None = None
+    conversation_id: UUID | None = None
+    document_ids: list[UUID] | None = None
+    tenant_id: UUID | None = None
+    account_id: str | None = None
+    dataset_id: UUID | None = None
+    request_id: str | None = None
+
+
+@dataclass(frozen=True)
+class RAGResponseOptions:
+    structured_output: bool = False
+    structured_preset: str | None = None
+
+
+@dataclass(frozen=True)
+class RAGPromptSelection:
+    prompt_template_id: UUID | None = None
+    prompt_template_key: str | None = None
+    prompt_ab_experiment_key: str | None = None
+    rag_config_template: dict[str, Any] | None = None
+    ab_user_key: str | None = None
+
+
+_STREAM_CONTEXT_KEYS = {
+    "history",
+    "conversation_id",
+    "document_ids",
+    "tenant_id",
+    "account_id",
+    "dataset_id",
+    "request_id",
+}
+_STREAM_RESPONSE_KEYS = {"structured_output", "structured_preset"}
+_STREAM_PROMPT_KEYS = {
+    "prompt_template_id",
+    "prompt_template_key",
+    "prompt_ab_experiment_key",
+    "rag_config_template",
+    "ab_user_key",
+}
+_STREAM_RAG_CONFIG_KEYS = set(ChatRAGConfig.model_fields)
+
+
+def _pop_stream_chat_values(source: dict[str, Any], keys: set[str]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key in list(source):
+        if key in keys:
+            out[key] = source.pop(key)
+    return out
+
+
+def _resolve_stream_chat_inputs(
+    *,
+    context: RAGChatContext | None,
+    rag_config: ChatRAGConfig | None,
+    response_options: RAGResponseOptions | None,
+    prompt_selection: RAGPromptSelection | None,
+    legacy_overrides: dict[str, Any],
+) -> tuple[RAGChatContext, ChatRAGConfig, RAGResponseOptions, RAGPromptSelection]:
+    remaining = dict(legacy_overrides)
+
+    context_updates = _pop_stream_chat_values(remaining, _STREAM_CONTEXT_KEYS)
+    if context is None:
+        context = RAGChatContext(**context_updates)
+    elif context_updates:
+        context = replace(context, **context_updates)
+
+    rag_updates = _pop_stream_chat_values(remaining, _STREAM_RAG_CONFIG_KEYS)
+    if rag_config is None:
+        rag_config = ChatRAGConfig(**rag_updates)
+    elif rag_updates:
+        rag_config = rag_config.model_copy(update=rag_updates)
+
+    response_updates = _pop_stream_chat_values(remaining, _STREAM_RESPONSE_KEYS)
+    if response_options is None:
+        response_options = RAGResponseOptions(**response_updates)
+    elif response_updates:
+        response_options = replace(response_options, **response_updates)
+
+    prompt_updates = _pop_stream_chat_values(remaining, _STREAM_PROMPT_KEYS)
+    if prompt_selection is None:
+        prompt_selection = RAGPromptSelection(**prompt_updates)
+    elif prompt_updates:
+        prompt_selection = replace(prompt_selection, **prompt_updates)
+
+    if remaining:
+        unknown = ", ".join(sorted(remaining))
+        raise TypeError(f"Unexpected stream_chat options: {unknown}")
+
+    return (
+        context or RAGChatContext(),
+        rag_config or ChatRAGConfig(),
+        response_options or RAGResponseOptions(),
+        prompt_selection or RAGPromptSelection(),
+    )
 
 
 class RAGEngine:
@@ -471,59 +573,13 @@ Requirements:
     async def stream_chat(
         self,
         question: str,
-        history: list[dict[str, str]] | None = None,
-        conversation_id: UUID | None = None,
-        document_ids: list[UUID] | None = None,
-        metadata_filter: dict[str, Any] | None = None,
-        top_k: int = 5,
-        score_threshold: float = 0.7,
-        tenant_id: UUID | None = None,
-        account_id: str | None = None,
-        dataset_id: UUID | None = None,
-        structured_output: bool = False,
-        structured_preset: str | None = None,
-        visible_evidence_only: bool = False,
-        retrieval_mode: str = "hybrid",
-        retrieval_profile: str | None = None,
-        retrieval_contract_mode: str | None = None,
-        must_recall: bool | None = None,
-        must_recall_expected_source_keys: list[str] | None = None,
-        must_recall_required_anchor_fields: list[str] | None = None,
-        intent_router: bool | None = None,
-        intent_router_policy: dict[str, Any] | None = None,
-        enable_query_alias_expansion: bool | None = None,
-        query_aliases: dict[str, list[str]] | None = None,
-        query_alias_max_queries: int | None = None,
-        enable_multi_query: bool | None = None,
-        multi_query_count: int | None = None,
-        multi_query_temperature: float | None = None,
-        multi_query_max_chars: int | None = None,
-        enable_hierarchy_recall: bool | None = None,
-        hierarchy_family_collapse: bool | None = None,
-        hierarchy_family_aggregation: str | None = None,
-        hierarchy_tree_dedup: bool | None = None,
-        hierarchy_parent_depth: int | None = None,
-        hierarchy_sibling_window: int | None = None,
-        hierarchy_overfetch_factor: int | None = None,
-        alpha: float = 0.6,
-        fusion_strategy: str | None = None,
-        fusion_budgets: dict[str, int] | None = None,
-        fusion_min_scores: dict[str, float] | None = None,
-        fusion_weights: dict[str, float] | None = None,
-        enable_weight_rerank: bool = True,
-        vector_weight: float = 0.6,
-        keyword_weight: float = 0.4,
-        mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA,
-        enable_reranker: bool = settings.ENABLE_RERANKER,
-        reranker_provider: str | None = settings.RERANKER_PROVIDER,
-        reranker_top_n: int = settings.RERANKER_TOP_N,
-        request_id: str | None = None,
-        prompt_template_id: UUID | None = None,
-        prompt_template_key: str | None = None,
-        prompt_ab_experiment_key: str | None = None,
-        rag_config_template: dict[str, Any] | None = None,
-        ab_user_key: str | None = None,
+        *,
+        context: RAGChatContext | None = None,
+        rag_config: ChatRAGConfig | None = None,
+        response_options: RAGResponseOptions | None = None,
+        prompt_selection: RAGPromptSelection | None = None,
         db: Any | None = None,
+        **legacy_overrides: Any,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Streaming chat interface
@@ -538,6 +594,69 @@ Requirements:
         Yields:
             Streaming events: {"type": "citations|token|done|error", "data": ...}
         """
+        context, rag_config, response_options, prompt_selection = _resolve_stream_chat_inputs(
+            context=context,
+            rag_config=rag_config,
+            response_options=response_options,
+            prompt_selection=prompt_selection,
+            legacy_overrides=legacy_overrides,
+        )
+        history = context.history
+        conversation_id = context.conversation_id
+        document_ids = context.document_ids
+        tenant_id = context.tenant_id
+        account_id = context.account_id
+        dataset_id = context.dataset_id
+        request_id = context.request_id
+
+        metadata_filter = rag_config.metadata_filter
+        top_k = rag_config.top_k
+        score_threshold = rag_config.score_threshold
+        visible_evidence_only = rag_config.visible_evidence_only
+        retrieval_mode = rag_config.retrieval_mode
+        retrieval_profile = rag_config.retrieval_profile
+        retrieval_contract_mode = rag_config.retrieval_contract_mode
+        must_recall = rag_config.must_recall
+        must_recall_expected_source_keys = rag_config.must_recall_expected_source_keys
+        must_recall_required_anchor_fields = rag_config.must_recall_required_anchor_fields
+        intent_router = rag_config.intent_router
+        intent_router_policy = rag_config.intent_router_policy
+        enable_query_alias_expansion = rag_config.enable_query_alias_expansion
+        query_aliases = rag_config.query_aliases
+        query_alias_max_queries = rag_config.query_alias_max_queries
+        enable_multi_query = rag_config.enable_multi_query
+        multi_query_count = rag_config.multi_query_count
+        multi_query_temperature = rag_config.multi_query_temperature
+        multi_query_max_chars = rag_config.multi_query_max_chars
+        enable_hierarchy_recall = rag_config.enable_hierarchy_recall
+        hierarchy_family_collapse = rag_config.hierarchy_family_collapse
+        hierarchy_family_aggregation = rag_config.hierarchy_family_aggregation
+        hierarchy_tree_dedup = rag_config.hierarchy_tree_dedup
+        hierarchy_parent_depth = rag_config.hierarchy_parent_depth
+        hierarchy_sibling_window = rag_config.hierarchy_sibling_window
+        hierarchy_overfetch_factor = rag_config.hierarchy_overfetch_factor
+        alpha = rag_config.alpha
+        fusion_strategy = rag_config.fusion_strategy
+        fusion_budgets = rag_config.fusion_budgets
+        fusion_min_scores = rag_config.fusion_min_scores
+        fusion_weights = rag_config.fusion_weights
+        enable_weight_rerank = rag_config.enable_weight_rerank
+        vector_weight = rag_config.vector_weight
+        keyword_weight = rag_config.keyword_weight
+        mmr_lambda = rag_config.mmr_lambda
+        enable_reranker = rag_config.enable_reranker
+        reranker_provider = rag_config.reranker_provider
+        reranker_top_n = rag_config.reranker_top_n
+
+        structured_output = response_options.structured_output
+        structured_preset = response_options.structured_preset
+
+        prompt_template_id = prompt_selection.prompt_template_id
+        prompt_template_key = prompt_selection.prompt_template_key
+        prompt_ab_experiment_key = prompt_selection.prompt_ab_experiment_key
+        rag_config_template = prompt_selection.rag_config_template
+        ab_user_key = prompt_selection.ab_user_key
+
         try:
             llm, model_route, routing_reason = self._select_llm(question, history)
 
