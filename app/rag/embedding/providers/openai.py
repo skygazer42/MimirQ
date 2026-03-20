@@ -12,7 +12,6 @@ Supports any embedding API that follows the OpenAI embeddings format:
 """
 import asyncio
 import contextlib
-import random
 import threading
 import time
 
@@ -20,6 +19,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
+from app.core.secure_random import secure_jitter
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import logger
 
@@ -91,8 +91,7 @@ def _sleep_seconds_for_attempt(*, attempt: int, retry_after_sec: float | None) -
     base = backoff * (2**attempt)
     if retry_after_sec is not None:
         base = max(base, retry_after_sec)
-    if jitter > 0:
-        base += random.random() * jitter
+    base += secure_jitter(jitter)
     return base
 
 

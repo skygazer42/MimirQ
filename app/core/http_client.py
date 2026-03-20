@@ -5,7 +5,6 @@ Provides unified httpx client configs for external API calls.
 import asyncio
 import contextlib
 import logging
-import random
 import threading
 from typing import Any
 
@@ -14,6 +13,7 @@ import httpx
 from app.core.config import settings
 from app.core.http_env import httpx_trust_env
 from app.core.logging_config import get_request_context
+from app.core.secure_random import secure_jitter
 
 logger = logging.getLogger("http_client")
 
@@ -342,7 +342,7 @@ class HTTPClientPool:
             except (httpx.TimeoutException, httpx.NetworkError) as e:
                 last_exception = e
                 if attempt < max_retries:
-                    sleep_for = current_delay + (random.random() * jitter if jitter > 0 else 0.0)
+                    sleep_for = current_delay + secure_jitter(jitter)
                     logger.warning(
                         "Request failed (attempt %s/%s): %s. Retrying in %.2fs...",
                         attempt + 1,
@@ -372,7 +372,7 @@ class HTTPClientPool:
                             retry_after = None
 
                     base_delay = max(current_delay, retry_after) if retry_after else current_delay
-                    sleep_for = base_delay + (random.random() * jitter if jitter > 0 else 0.0)
+                    sleep_for = base_delay + secure_jitter(jitter)
                     logger.warning(
                         "HTTP %s (attempt %s/%s). Retrying in %.2fs...",
                         status,
