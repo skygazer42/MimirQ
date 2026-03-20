@@ -34,7 +34,7 @@ class AliasCandidate:
 
 
 _WS_RE = re.compile(r"\s+")
-_EDGE_PUNCT_RE = re.compile(r"^[\"'`“”‘’]+|[\"'`“”‘’]+$")
+_EDGE_PUNCT_RE = re.compile(r"(?:^[\"'`“”‘’]+|[\"'`“”‘’]+$)")
 _EN_CONNECTOR_WORDS = {
     # Keep this list short and conservative; it's only used to trim
     # leading context for patterns like "X of Y (ABBR)".
