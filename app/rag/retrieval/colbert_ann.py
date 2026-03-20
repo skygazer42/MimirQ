@@ -28,7 +28,7 @@ from typing import Any, Protocol
 import numpy as np
 
 _INDEX_SCHEMA_V1 = "mimirq.colbert_ann_index.v1"
-_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}|[\u4e00-\u9fff]{2,}")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]+|[\u4e00-\u9fff]{2,}")
 VALID_COLBERT_PROVIDERS = frozenset({"deterministic", "hf"})
 
 

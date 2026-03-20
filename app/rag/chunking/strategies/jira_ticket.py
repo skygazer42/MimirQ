@@ -48,7 +48,7 @@ _ISSUE_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
 _CONFLUENCE_HEADING_RE = re.compile(r"^\s*h[1-6]\.\s+(?P<title>.+?)\s*$", re.IGNORECASE)
 _MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
 _FIELD_RE = re.compile(r"^\s*(?P<k>[A-Za-z][A-Za-z0-9 _/-]{1,40})\s*[:：]\s*(?P<v>.*)$")
-_NUMBERED_PREFIX_RE = re.compile(r"^\s*(?:\d+(?:\.\d+){0,3}[\).\s]+)\s*")
+_NUMBERED_PREFIX_RE = re.compile(r"^\s*\d+(?:\.\d+){0,3}[\).\s]+\s*")
 
 
 def _norm(s: str) -> str:
@@ -246,4 +246,3 @@ class JiraTicketChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

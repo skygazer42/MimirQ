@@ -20,7 +20,7 @@ class QualityDecision:
 
 _CODE_FENCE_RE = re.compile(r"^\s*```")
 _MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+\S")
-_LIST_RE = re.compile(r"^\s*(?:[-*+]|(?:\d{1,3}[.)]))\s+\S")
+_LIST_RE = re.compile(r"^\s*(?:[-*+]|\d{1,3}[.)])\s+\S")
 _SENT_PUNCT_RE = re.compile(r"[.!?\u3002\uff01\uff1f\uff1b;:\uff1a]")
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
 _ALLCAPS_RE = re.compile(r"^[A-Z0-9][A-Z0-9 \-_/]{6,}$")

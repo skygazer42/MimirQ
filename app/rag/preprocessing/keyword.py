@@ -219,7 +219,7 @@ class JiebaTextRankKeywordExtractor:
 class SimpleKeywordExtractor:
     """Very lightweight keyword extractor using regex tokenization + frequency."""
 
-    _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}")
+    _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
 
     def extract_keywords(self, text: str, max_keywords_per_chunk: int | None = 10) -> set[str]:
         raw = (text or "").strip()

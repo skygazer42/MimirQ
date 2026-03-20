@@ -101,7 +101,7 @@ def _normalize_title(raw: str) -> str:
     if m:
         t = (m.group("title") or "").strip()
     # Strip numbering prefixes like "1." / "1)" / "一、"
-    t = re.sub(r"^\s*(?:\d{1,3}[\.\)、)]\s*|[一二三四五六七八九十]{1,3}[、.]\s*)", "", t).strip()
+    t = re.sub(r"^\s*(?:\d{1,3}[.、)）]\s*|[一二三四五六七八九十]{1,3}[、.]\s*)", "", t).strip()
     t = t.strip(":：").strip()
     return t
 
@@ -240,4 +240,3 @@ class ResumeStructuredChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

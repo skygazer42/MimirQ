@@ -20,7 +20,7 @@ from typing import Any
 from app.rag.core.text import is_claim_supported, split_into_claims
 
 _WS_RE = re.compile(r"\s+")
-_CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]{1,}|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
+_CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
 _UNCERTAINTY_RE = re.compile(
     r"(unable to answer|cannot determine|can't determine|insufficient evidence|not enough (?:info|information)|unknown|unsure|not sure|"
     r"证据不足|材料不足|无法(确定|判断|回答)|不确定|未知)",

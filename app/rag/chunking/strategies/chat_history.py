@@ -33,7 +33,7 @@ _TS_BRACKET_RE = re.compile(
     r"(?m)^\s*\[(?P<ts>\d{4}[-/]\d{1,2}[-/]\d{1,2}[^\]]{0,20})\]\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
 )
 _TS_DATE_RE = re.compile(
-    r"(?m)^\s*(?P<date>\d{4}[-/]\d{1,2}[-/]\d{1,2})\s*(?:,|\s)\s*(?P<time>\d{1,2}:\d{2}(?::\d{2})?)\s*(?:-|–|—)?\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
+    r"(?m)^\s*(?P<date>\d{4}[-/]\d{1,2}[-/]\d{1,2})(?:\s*,\s*|\s+)(?P<time>\d{1,2}:\d{2}(?::\d{2})?)\s*(?:-|–|—)?\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
 )
 _TS_TIME_RE = re.compile(
     r"(?m)^\s*(?P<time>\d{1,2}:\d{2}(?::\d{2})?)\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
@@ -193,4 +193,3 @@ class ChatHistoryChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-
