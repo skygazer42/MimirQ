@@ -33,6 +33,10 @@ from app.storage.vector.factory import get_vector_store
 
 logger = get_logger("services.document_qa")
 
+_DOCUMENT_QA_DEGRADED_LOG_MSG = (
+    "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s"
+)
+
 
 @dataclass(frozen=True)
 class QAPair:
@@ -133,7 +137,7 @@ def _generate_pairs(source_text: str, *, num_pairs: int, prefer_llm: bool) -> tu
         except Exception as exc:  # noqa: BLE001
             # Best-effort: fall back to extraction, but make the degradation observable.
             logger.warning(
-                "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s",
+                _DOCUMENT_QA_DEGRADED_LOG_MSG,
                 "qa_llm_generation",
                 "llm",
                 "llm_failed",
@@ -426,7 +430,7 @@ def generate_and_index_document_qa(
                 vector_ids[i] = str(vid)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s",
+            _DOCUMENT_QA_DEGRADED_LOG_MSG,
             "qa_vector_index",
             str(getattr(settings, "VECTOR_BACKEND", "") or "vector_store"),
             "index_failed",
@@ -466,7 +470,7 @@ def generate_and_index_document_qa(
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
-            "Document QA degraded: feature=%s dependency=%s reason=%s remediation=%s error=%s",
+            _DOCUMENT_QA_DEGRADED_LOG_MSG,
             "qa_bm25_upsert",
             "bm25",
             "index_failed",

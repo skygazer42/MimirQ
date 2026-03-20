@@ -45,6 +45,9 @@ _BLOCKED_EXTRA_HEADERS = {
 }
 _MAX_HEADER_VALUE_CHARS = 20_000
 
+_URL_HOST_NOT_ALLOWED_DETAIL = "url host is not allowed"
+_URL_HOST_RESOLUTION_FAILED_DETAIL = "failed to resolve url host"
+
 
 def _sanitize_extra_headers(extra: dict[str, str] | None) -> dict[str, str]:
     """
@@ -143,14 +146,14 @@ async def validate_url_for_ingest(url: str) -> str:
 
     host = parsed.hostname.strip().lower()
     if host in _BLOCKED_HOSTS or host.endswith(".local"):
-        raise HTTPException(status_code=400, detail="url host is not allowed")
+        raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
 
     port = parsed.port or (443 if scheme == "https" else 80)
 
     # Optional host allowlist (defense-in-depth; useful for enterprise deployments).
     allowed_hosts = _parse_csv(str(getattr(settings, "URL_INGEST_ALLOWED_HOSTS", "") or ""))
     if allowed_hosts and not _host_in_allowlist(host, allowed_hosts):
-        raise HTTPException(status_code=400, detail="url host is not allowed")
+        raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
 
     # Optional port allowlist.
     allowed_ports_raw = str(getattr(settings, "URL_INGEST_ALLOWED_PORTS", "") or "")
@@ -171,7 +174,7 @@ async def validate_url_for_ingest(url: str) -> str:
         ip = ipaddress.ip_address(host)
         is_ip_literal = True
         if not _is_allowed_ip(ip, allow_private=allow_private):
-            raise HTTPException(status_code=400, detail="url host is not allowed")
+            raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
 
     if not is_ip_literal:
         # Resolve DNS (blocking -> thread).
@@ -190,18 +193,18 @@ async def validate_url_for_ingest(url: str) -> str:
         try:
             ips = await asyncio.to_thread(_resolve)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=400, detail="failed to resolve url host") from exc
+            raise HTTPException(status_code=400, detail=_URL_HOST_RESOLUTION_FAILED_DETAIL) from exc
 
         if not ips:
-            raise HTTPException(status_code=400, detail="failed to resolve url host")
+            raise HTTPException(status_code=400, detail=_URL_HOST_RESOLUTION_FAILED_DETAIL)
 
         for ip_str in ips:
             try:
                 ip = ipaddress.ip_address(ip_str)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail="failed to resolve url host") from exc
+                raise HTTPException(status_code=400, detail=_URL_HOST_RESOLUTION_FAILED_DETAIL) from exc
             if not _is_allowed_ip(ip, allow_private=allow_private):
-                raise HTTPException(status_code=400, detail="url host is not allowed")
+                raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
 
     return raw
 

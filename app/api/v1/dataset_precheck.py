@@ -63,6 +63,8 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+_SCAN_RUN_NOT_FOUND_DETAIL = "Scan run not found"
+
 
 def _run_precheck_scan_background(
     *,
@@ -207,7 +209,7 @@ def get_dataset_precheck_scan_run(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
     return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
 
@@ -231,7 +233,7 @@ def get_dataset_precheck_summary(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
     return load_precheck_summary_from_row(row)
 
 
@@ -313,7 +315,7 @@ def cancel_dataset_precheck_scan_run(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
     st = str(getattr(row, "status", "") or "").lower()
     if st in {"completed", "failed", "cancelled"}:
@@ -420,7 +422,7 @@ def get_dataset_precheck_samples(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
     raw = load_precheck_samples_from_row(row, tenant_id=tenant_id, size=int(size or 0), prefer_artifact=bool(prefer_artifact))
     try:
@@ -453,7 +455,7 @@ def get_dataset_precheck_near_dups(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
     raw = load_precheck_near_dups_from_row(row, tenant_id=tenant_id)
     try:
@@ -543,7 +545,7 @@ def get_dataset_precheck_ingestion_policy_suggestion(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
     suggestion = build_ingestion_policy_suggestion(
         row,
         tenant_id=tenant_id,
@@ -579,7 +581,7 @@ def apply_dataset_precheck_ingestion_policy_suggestion(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
     res = apply_ingestion_policy_suggestion(
         db,
@@ -611,7 +613,7 @@ def export_dataset_precheck_summary_json(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
     summary = load_precheck_summary_from_row(row)
     content = json.dumps(summary.model_dump(), ensure_ascii=False, separators=(",", ":"))
@@ -646,7 +648,7 @@ def export_dataset_precheck_html_report(
         .first()
     )
     if row is None:
-        raise HTTPException(status_code=404, detail="Scan run not found")
+        raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
     cfg = getattr(row, "config", None)
     cfg = cfg if isinstance(cfg, dict) else {}
