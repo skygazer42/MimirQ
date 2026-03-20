@@ -6,7 +6,6 @@ See https://ollama.com/blog/embedding-models for available models.
 """
 import asyncio
 import contextlib
-import json
 import random
 import threading
 import time
@@ -194,7 +193,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
                         time.sleep(sleep_for)
                     continue
                 break
-            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            except (TypeError, ValueError) as exc:
                 last_exc = exc
                 if attempt < max_retries:
                     sleep_for = _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)
@@ -281,7 +280,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
                         await asyncio.sleep(sleep_for)
                     continue
                 break
-            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            except (TypeError, ValueError) as exc:
                 last_exc = exc
                 if attempt < max_retries:
                     sleep_for = _sleep_seconds_for_attempt(attempt=attempt, retry_after_sec=None)
