@@ -171,7 +171,7 @@ class MCPClient:
         self._tools_cache: list[MCPTool] | None = None
         self._client: httpx.AsyncClient | None = None
 
-    async def _get_client(self) -> httpx.AsyncClient:
+    def _get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
@@ -196,7 +196,7 @@ class MCPClient:
         if not self.server_url:
             raise MCPConnectionError("MCP server URL not configured")
 
-        client = await self._get_client()
+        client = self._get_client()
         url = urljoin(self.server_url, endpoint)
 
         for attempt in range(self.max_retries):

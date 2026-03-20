@@ -190,7 +190,7 @@ class FileContentProvider(BaseContextProvider):
         items = []
         for file_path in file_paths:
             try:
-                content = await self._read_file(file_path)
+                content = self._read_file(file_path)
                 if content:
                     items.append(ContextItem(
                         content=f"[File: {file_path}]\n{content}",
@@ -204,7 +204,7 @@ class FileContentProvider(BaseContextProvider):
 
         return items
 
-    async def _read_file(self, file_path: str) -> str | None:
+    def _read_file(self, file_path: str) -> str | None:
         """Read file content with safety checks."""
         path = Path(file_path)
 

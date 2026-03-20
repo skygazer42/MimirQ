@@ -1,6 +1,7 @@
 """
 Expand stage: multi-hop entity -> event expansion.
 """
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +28,9 @@ class ExpandSearcher:
         ...
 
     async def expand(self, config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
+        return await asyncio.to_thread(self._expand_sync, config, recall_result)
+
+    def _expand_sync(self, config: SearchConfig, recall_result: RecallResult) -> ExpandResult:
         # Explicit empty doc scope must never broaden to tenant-wide KG search.
         if config.document_ids is not None and not config.document_ids:
             return ExpandResult(

@@ -6,6 +6,7 @@ Token bucket algorithm based FastAPI request rate limiting:
 - Configurable rate limit parameters
 - Thread-safe implementation
 """
+import asyncio
 import logging
 import math
 import time
@@ -95,6 +96,7 @@ class RateLimiter:
         return bucket.consume(1)
 
     async def acheck(self, key: str) -> tuple[bool, float]:
+        await asyncio.sleep(0)
         return self.check(key)
 
 
@@ -210,6 +212,7 @@ class RedisRateLimiter:
             return True, 0.0
 
     async def acheck(self, key: str) -> tuple[bool, float]:
+        await asyncio.sleep(0)
         return self.check(key)
 
 

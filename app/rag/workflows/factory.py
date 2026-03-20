@@ -213,11 +213,10 @@ def create_multi_query_workflow(
         Configured ParallelWorkflow
     """
     _ = generate_func
-    import asyncio
 
     from app.rag.workflows.parallelization import create_multi_query_aggregator
 
-    async def create_query_task(query_id: int):
+    def create_query_task(query_id: int):
         async def task(state: dict[str, Any]) -> dict[str, Any]:
             question = state.get("question") or state.get("query") or ""
             # Rewrite query
@@ -228,14 +227,11 @@ def create_multi_query_workflow(
         return task
 
     # Create workflow with aggregator
-    aggregator = asyncio.get_event_loop().run_until_complete(
-        create_multi_query_aggregator()
-    )
+    aggregator = create_multi_query_aggregator()
 
     workflow = ParallelWorkflow(aggregator=aggregator, **kwargs)
 
-    # Add query tasks (they'll be created dynamically)
     for i in range(num_queries):
-        workflow.add_task(f"query_{i}", lambda s, idx=i: create_query_task(idx)(s))
+        workflow.add_task(f"query_{i}", create_query_task(i))
 
     return workflow

@@ -239,10 +239,12 @@ class HTTPClientPool:
         """Get the global async HTTP client (lazy init)."""
         # Keep the method async for backward compatibility (tests, callers),
         # but initialization is synchronous.
+        await asyncio.sleep(0)
         return self.get_async_client()
 
     async def get_external_client(self) -> httpx.AsyncClient:
         """Async wrapper for the pooled external HTTP client."""
+        await asyncio.sleep(0)
         return self.get_external_async_client()
     
     async def close(self):

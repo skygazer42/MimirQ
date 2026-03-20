@@ -1,6 +1,7 @@
 """
 Factory for LLM and embedding clients backed by the existing project settings.
 """
+import asyncio
 from typing import Any
 
 import httpx
@@ -101,15 +102,18 @@ class EmbeddingClient:
         self._provider = milvus_store._init_embedding_model()  # noqa: SLF001
 
     async def generate(self, text: str) -> list[float]:
-        if hasattr(self._provider, "embed_query"):
-            return self._provider.embed_query(text)  # type: ignore[attr-defined]
-        if hasattr(self._provider, "embed_documents"):
-            return self._provider.embed_documents([text])[0]  # type: ignore[attr-defined]
+        provider = self._provider
+        if hasattr(provider, "embed_query"):
+            return await asyncio.to_thread(provider.embed_query, text)  # type: ignore[attr-defined]
+        if hasattr(provider, "embed_documents"):
+            out = await asyncio.to_thread(provider.embed_documents, [text])  # type: ignore[attr-defined]
+            return out[0] if out else []
         raise RuntimeError("Embedding provider missing embed_query/embed_documents")
 
     async def generate_batch(self, texts: list[str]) -> list[list[float]]:
-        if hasattr(self._provider, "embed_documents"):
-            return self._provider.embed_documents(texts)  # type: ignore[attr-defined]
+        provider = self._provider
+        if hasattr(provider, "embed_documents"):
+            return await asyncio.to_thread(provider.embed_documents, texts)  # type: ignore[attr-defined]
         return [await self.generate(t) for t in texts]
 
 
@@ -120,7 +124,7 @@ async def create_llm_client(
 ) -> BaseLLMClient:
     _ = scenario
     _ = kwargs
-    return OpenAIChatClient(model_config=model_config)
+    return await asyncio.to_thread(OpenAIChatClient, model_config=model_config)
 
 
 async def get_embedding_client(
@@ -129,7 +133,7 @@ async def get_embedding_client(
 ) -> EmbeddingClient:
     _ = scenario
     _ = kwargs
-    return EmbeddingClient()
+    return await asyncio.to_thread(EmbeddingClient)
 
 
 __all__ = [
