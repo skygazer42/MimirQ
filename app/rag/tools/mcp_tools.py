@@ -243,17 +243,16 @@ def _get_document_content_sync(
             owner = str(getattr(document, "owner_id", "") or "").strip()
             if account_id:
                 actor = str(account_id or "").strip()
-                if mode and mode not in {"inherit", "all_team_members"}:
-                    if owner and owner == actor:
-                        pass
-                    elif mode == "only_me":
+                is_owner = bool(owner and owner == actor)
+                if mode and mode not in {"inherit", "all_team_members"} and not is_owner:
+                    if mode == "only_me":
                         return {
                             "document_id": document_id,
                             "content": "",
                             "page": page,
                             "error": _NO_DOCUMENT_ACCESS_ERROR,
                         }
-                    elif mode == "partial_members":
+                    if mode == "partial_members":
                         if not _document_permission_exists(
                             db,
                             tenant_id=tenant_uuid,
