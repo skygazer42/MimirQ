@@ -694,7 +694,7 @@ def _parse_markdown_table(block_lines: list[str]) -> tuple["pd.DataFrame", bool]
         return parts
 
     header = split_row(lines[0])
-    if not any(c for c in header):
+    if not any(header):
         return None
 
     body_start = 1
@@ -707,7 +707,7 @@ def _parse_markdown_table(block_lines: list[str]) -> tuple["pd.DataFrame", bool]
     rows: list[list[str]] = []
     for line in lines[body_start:]:
         row = split_row(line)
-        if not any(c for c in row):
+        if not any(row):
             continue
         if len(row) < len(header):
             row = row + [""] * (len(header) - len(row))

@@ -122,7 +122,6 @@ class MinerUService:
         url: str,
         *,
         headers: dict[str, str] | None = None,
-        timeout: float | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
@@ -132,7 +131,7 @@ class MinerUService:
         """
         pool = get_http_client_pool()
         try:
-            resp = await pool.request_with_retry(method, url, headers=headers, timeout=timeout, **kwargs)
+            resp = await pool.request_with_retry(method, url, headers=headers, timeout=30.0, **kwargs)
         except httpx.HTTPStatusError as exc:
             status = int(getattr(exc.response, "status_code", 0) or 0)
             if status in {401, 403}:
@@ -156,7 +155,7 @@ class MinerUService:
         url = f"{self.api_base}/file-urls/batch"
         data = {"files": [{"name": filename, "data_id": data_id}], "model_version": self.model_version}
 
-        result = await self._arequest_json("POST", url, headers=self._get_headers(), json=data, timeout=30.0)
+        result = await self._arequest_json("POST", url, headers=self._get_headers(), json=data)
         if result.get("code") == 0:
             batch_id = result["data"]["batch_id"]
             upload_url = result["data"]["file_urls"][0]
@@ -213,7 +212,7 @@ class MinerUService:
         url = f"{self.api_base}/file-urls/batch"
         data = {"files": files, "model_version": self.model_version}
 
-        result = await self._arequest_json("POST", url, headers=self._get_headers(), json=data, timeout=30.0)
+        result = await self._arequest_json("POST", url, headers=self._get_headers(), json=data)
         if result.get("code") == 0:
             return {"batch_id": result["data"]["batch_id"], "file_urls": result["data"]["file_urls"], "files": files}
         raise RuntimeError(f"Apply batch upload URLs failed: {result.get('msg', 'Unknown error')}")
@@ -327,7 +326,7 @@ class MinerUService:
         self._ensure_online_enabled()
 
         url = f"{self.api_base}/extract-results/batch/{batch_id}"
-        result = await self._arequest_json("GET", url, headers=self._get_headers(), timeout=30.0)
+        result = await self._arequest_json("GET", url, headers=self._get_headers())
         if result.get("code") == 0:
             data = result.get("data") or {}
             return self._normalize_batch_status(data)
@@ -462,7 +461,7 @@ class MinerUService:
         """Fetch raw MinerU batch results (async)."""
         self._ensure_online_enabled()
         url = f"{self.api_base}/extract-results/batch/{batch_id}"
-        result = await self._arequest_json("GET", url, headers=self._get_headers(), timeout=30.0)
+        result = await self._arequest_json("GET", url, headers=self._get_headers())
         if result.get("code") == 0:
             return result.get("data") or {}
         raise RuntimeError(f"Get batch results failed: {result.get('msg', 'Unknown error')}")
@@ -497,7 +496,6 @@ class MinerUService:
         *,
         data_id: str | None = None,
         filename: str | None = None,
-        timeout: int = 600,
         poll_interval: int = 5,
         max_interval: int = 30,
         backoff_factor: float = 1.5,
@@ -510,12 +508,12 @@ class MinerUService:
             batch_id: Batch ID.
             data_id: The file's `data_id` used when applying upload URL (recommended).
             filename: Fallback selector when `data_id` is unavailable.
-            timeout: Timeout (seconds).
             poll_interval: Poll interval (seconds).
 
         Returns:
             The matched extract_result item.
         """
+        timeout = 600
         start_time = time.monotonic()
         current_interval = max(1, int(poll_interval))
 
@@ -867,7 +865,6 @@ class MinerUService:
             batch_id,
             data_id=data_id,
             filename=file_path.name,
-            timeout=600,
             poll_interval=5,
         )
 

@@ -76,7 +76,6 @@ def content_hash_multiset_diff(
         unchanged_chunks=int(unchanged),
         added_chunks=int(added),
         removed_chunks=int(removed),
-        added_hashes=tuple([h for _n, h in (added_hashes[:lim] if lim else [])]),
-        removed_hashes=tuple([h for _n, h in (removed_hashes[:lim] if lim else [])]),
+        added_hashes=tuple(h for _n, h in (added_hashes[:lim] if lim else [])),
+        removed_hashes=tuple(h for _n, h in (removed_hashes[:lim] if lim else [])),
     )
-
