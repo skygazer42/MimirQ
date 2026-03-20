@@ -75,14 +75,6 @@ export function FileQueueItem({
       ? 0
       : Math.max(0, Math.min(100, Number(file.progress)))
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!onClick) return
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      onClick()
-    }
-  }
-
   const getStatusContent = () => {
     switch (file.status) {
       case 'pending':
@@ -129,27 +121,49 @@ export function FileQueueItem({
         )
       case 'error':
         return (
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400">
-              <XCircle className="w-3 h-3" />
-              解析失败
-            </span>
-            {onRetry && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRetry()
-                }}
-                className="flex items-center gap-1 text-xs text-info hover:text-info/90 focus-ring rounded px-1"
-              >
-                <RotateCcw className="w-3 h-3" />
-                重试
-              </button>
-            )}
-          </div>
+          <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400">
+            <XCircle className="w-3 h-3" />
+            解析失败
+          </span>
         )
     }
   }
+
+  const fileContent = (
+    <>
+      <div className={cn('p-2.5 rounded-lg flex-shrink-0', config.bg)}>
+        <Icon className={cn('w-5 h-5', config.color)} />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+          {file.name}
+        </p>
+
+        {(file.folderPathLabel || file.sourcePath) && (
+          <p
+            className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate"
+            title={[file.folderPathLabel, file.sourcePath].filter(Boolean).join(' · ')}
+          >
+            {file.folderPathLabel ? `目录：${file.folderPathLabel}` : ''}
+            {file.sourcePath ? ` · ZIP：${file.sourcePath}` : ''}
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <span>{formatFileSize(file.size)}</span>
+          {file.pageCount && (
+            <>
+              <span>·</span>
+              <span>{file.pageCount} 页</span>
+            </>
+          )}
+        </div>
+
+        <div className="mt-2">{getStatusContent()}</div>
+      </div>
+    </>
+  )
 
   return (
     <div
@@ -161,29 +175,38 @@ export function FileQueueItem({
       )}
       draggable={draggable}
       onDragStart={onDragStart}
-      onClick={onClick}
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={handleKeyDown}
     >
-      <div className="flex items-start gap-3">
-        {/* 文件图标 */}
-        <div className={cn('p-2.5 rounded-lg flex-shrink-0', config.bg)}>
-          <Icon className={cn('w-5 h-5', config.color)} />
-        </div>
+      <div className="flex items-start gap-2">
+        {onClick ? (
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-start gap-3 rounded-lg text-left focus-ring"
+            onClick={onClick}
+          >
+            {fileContent}
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            {fileContent}
+          </div>
+        )}
 
-        {/* 文件信息 */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-              {file.name}
-            </p>
+        {(onRetry || onRemove) && (
+          <div className="flex shrink-0 items-start gap-1">
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="flex items-center gap-1 text-xs text-info hover:text-info/90 focus-ring rounded px-1.5 py-1"
+              >
+                <RotateCcw className="w-3 h-3" />
+                重试
+              </button>
+            )}
             {onRemove && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onRemove()
-                }}
+                type="button"
+                onClick={onRemove}
                 aria-label="移除文件"
                 title="移除"
                 className="opacity-0 group-hover:opacity-100 p-1 rounded flex-shrink-0 focus-ring transition-opacity transition-colors duration-200 motion-reduce:transition-none hover:bg-destructive/10"
@@ -192,32 +215,9 @@ export function FileQueueItem({
               </button>
             )}
           </div>
-
-          {(file.folderPathLabel || file.sourcePath) && (
-            <p
-              className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate"
-              title={[file.folderPathLabel, file.sourcePath].filter(Boolean).join(' · ')}
-            >
-              {file.folderPathLabel ? `目录：${file.folderPathLabel}` : ''}
-              {file.sourcePath ? ` · ZIP：${file.sourcePath}` : ''}
-            </p>
-          )}
-
-          <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            <span>{formatFileSize(file.size)}</span>
-            {file.pageCount && (
-              <>
-                <span>·</span>
-                <span>{file.pageCount} 页</span>
-              </>
-            )}
-          </div>
-
-          <div className="mt-2">{getStatusContent()}</div>
-        </div>
+        )}
       </div>
 
-      {/* 错误信息 */}
       {file.status === 'error' && file.error && (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">
           {file.error}
