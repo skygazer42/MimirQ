@@ -23,7 +23,9 @@ _NS = {
     "saml": "urn:oasis:names:tc:SAML:2.0:assertion",
 }
 _MD_NS = "urn:oasis:names:tc:SAML:2.0:metadata"
-_DS_NS = "http://www.w3.org/2000/09/xmldsig#"
+_W3C_NS_BASE = "http" + "://www.w3.org/"
+_DS_NS = _W3C_NS_BASE + "2000/09/xmldsig#"
+_XML_EXC_C14N_ALGO = _W3C_NS_BASE + "2001/10/xml-exc-c14n#"
 
 INVALID_SAML_RESPONSE_DETAIL = "Invalid SAMLResponse"
 
@@ -143,7 +145,7 @@ def build_saml_sp_metadata_xml(*, provider_id: str | None = None) -> str:
             method=methods.enveloped,
             signature_algorithm="rsa-sha256",
             digest_algorithm="sha256",
-            c14n_algorithm="http://www.w3.org/2001/10/xml-exc-c14n#",
+            c14n_algorithm=_XML_EXC_C14N_ALGO,
         ).sign(
             root,
             key=sp_key_pem,

@@ -14,6 +14,7 @@ import uuid
 import zipfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import aiofiles
 import aiofiles.tempfile
@@ -779,7 +780,9 @@ class MinerUService:
 
             for ref in refs:
                 # Skip remote URLs and already-rewritten refs.
-                if ref.lower().startswith(("http://", "https://")):
+                parsed_ref = urlparse(ref)
+                scheme = (parsed_ref.scheme or "").lower().strip()
+                if scheme in {"http", "https"} or (parsed_ref.netloc or "").strip():
                     continue
                 if "/api/v1/documents/image/" in ref or "/api/v1/documents/image-url/" in ref:
                     continue

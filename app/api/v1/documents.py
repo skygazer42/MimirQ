@@ -725,7 +725,7 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
     else:
         pillow_ok = True
 
-    from urllib.parse import unquote
+    from urllib.parse import unquote, urlparse
 
     for doc in documents:
         content = getattr(doc, "page_content", "") or ""
@@ -772,7 +772,9 @@ def _materialize_local_images_for_preview(documents: list, *, tenant_id: UUID) -
 
             # Skip remote/already rewired refs.
             ref_lower = ref_stripped.lower()
-            if ref_lower.startswith(("http://", "https://", "data:", "blob:")):
+            parsed_ref = urlparse(ref_stripped)
+            scheme = (parsed_ref.scheme or "").lower().strip()
+            if scheme in {"http", "https", "data", "blob"} or (parsed_ref.netloc or "").strip():
                 continue
             if "/api/v1/documents/image-url/" in ref_lower or "/api/v1/documents/image/" in ref_lower:
                 continue
