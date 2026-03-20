@@ -8025,6 +8025,146 @@ def _jira_adf_text_node_html(value: dict) -> str:
     return text
 
 
+def _jira_adf_render_child_nodes(child_items: list[object], *, depth: int, separator: str) -> str:
+    return separator.join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+
+
+def _jira_adf_node_html_paragraph(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="")
+    if not inner:
+        return ""
+    return f"<p>{inner}</p>"
+
+
+def _jira_adf_node_html_heading(value: dict, child_items: list[object], depth: int) -> str:
+    attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+    try:
+        level = int(attrs.get("level") or 3)
+    except Exception:
+        level = 3
+    level = max(1, min(level, 6))
+
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="")
+    if not inner:
+        return ""
+
+    # Keep ADF headings slightly lower in the document hierarchy to avoid competing with issue-level headings.
+    safe_level = min(6, max(3, level + 1))
+    return f"<h{safe_level}>{inner}</h{safe_level}>"
+
+
+def _jira_adf_node_html_blockquote(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<blockquote>{inner}</blockquote>"
+
+
+def _jira_adf_node_html_hr(value: dict, child_items: list[object], depth: int) -> str:
+    return "<hr />"
+
+
+def _jira_adf_node_html_bullet_list(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<ul>{inner}</ul>"
+
+
+def _jira_adf_node_html_ordered_list(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<ol>{inner}</ol>"
+
+
+def _jira_adf_node_html_list_item(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<li>{inner}</li>"
+
+
+def _jira_adf_node_html_code_block(value: dict, child_items: list[object], depth: int) -> str:
+    # Render as plain escaped text to preserve code fidelity.
+    code_text = _jira_adf_to_text(value).strip("\n")
+    if not code_text.strip():
+        return ""
+    return f"<pre><code>{html.escape(code_text)}</code></pre>"
+
+
+def _jira_adf_node_html_table(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<table><tbody>{inner}</tbody></table>"
+
+
+def _jira_adf_node_html_table_row(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="")
+    if not inner:
+        return ""
+    return f"<tr>{inner}</tr>"
+
+
+def _jira_adf_node_html_table_cell(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<td>{inner}</td>"
+
+
+def _jira_adf_node_html_table_header(value: dict, child_items: list[object], depth: int) -> str:
+    inner = _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
+    if not inner:
+        return ""
+    return f"<th>{inner}</th>"
+
+
+def _jira_adf_node_html_inline_card(value: dict, child_items: list[object], depth: int) -> str:
+    attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+    url = str(attrs.get("url") or "").strip()
+    if _is_http_or_https_url(url):
+        esc = html.escape(url)
+        return f'<a href="{esc}">{esc}</a>'
+    return html.escape(url) if url else ""
+
+
+def _jira_adf_node_html_mention(value: dict, child_items: list[object], depth: int) -> str:
+    attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+    text = str(attrs.get("text") or attrs.get("displayName") or "").strip()
+    if text:
+        return html.escape(text)
+    return ""
+
+
+def _jira_adf_node_html_emoji(value: dict, child_items: list[object], depth: int) -> str:
+    attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
+    text = str(attrs.get("text") or attrs.get("shortName") or "").strip()
+    if text:
+        return html.escape(text)
+    return ""
+
+
+_JIRA_ADF_NODE_HTML_HANDLERS = {
+    "blockquote": _jira_adf_node_html_blockquote,
+    "bulletlist": _jira_adf_node_html_bullet_list,
+    "codeblock": _jira_adf_node_html_code_block,
+    "emoji": _jira_adf_node_html_emoji,
+    "heading": _jira_adf_node_html_heading,
+    "inlinecard": _jira_adf_node_html_inline_card,
+    "listitem": _jira_adf_node_html_list_item,
+    "mention": _jira_adf_node_html_mention,
+    "orderedlist": _jira_adf_node_html_ordered_list,
+    "paragraph": _jira_adf_node_html_paragraph,
+    "rule": _jira_adf_node_html_hr,
+    "table": _jira_adf_node_html_table,
+    "tablecell": _jira_adf_node_html_table_cell,
+    "tableheader": _jira_adf_node_html_table_header,
+    "tablerow": _jira_adf_node_html_table_row,
+}
+
+
 def _jira_adf_node_to_html(value: object, *, depth: int = 0) -> str:
     if depth > 50:
         return ""
@@ -8048,98 +8188,12 @@ def _jira_adf_node_to_html(value: object, *, depth: int = 0) -> str:
     if node_type == "hardbreak":
         return "<br />"
 
-    if node_type == "paragraph":
-        inner = "".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
-        if not inner:
-            return ""
-        return f"<p>{inner}</p>"
-
-    if node_type == "heading":
-        attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
-        try:
-            level = int(attrs.get("level") or 3)
-        except Exception:
-            level = 3
-        level = max(1, min(level, 6))
-        inner = "".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
-        if not inner:
-            return ""
-        # Keep ADF headings slightly lower in the document hierarchy to avoid competing with issue-level headings.
-        safe_level = min(6, max(3, level + 1))
-        return f"<h{safe_level}>{inner}</h{safe_level}>"
-
-    if node_type == "blockquote":
-        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
-        if not inner:
-            return ""
-        return f"<blockquote>{inner}</blockquote>"
-
-    if node_type == "rule":
-        return "<hr />"
-
-    if node_type in {"bulletlist", "orderedlist"}:
-        tag = "ul" if node_type == "bulletlist" else "ol"
-        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
-        if not inner:
-            return ""
-        return f"<{tag}>{inner}</{tag}>"
-
-    if node_type == "listitem":
-        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
-        if not inner:
-            return ""
-        return f"<li>{inner}</li>"
-
-    if node_type == "codeblock":
-        # Render as plain escaped text to preserve code fidelity.
-        code_text = _jira_adf_to_text(value).strip("\n")
-        if not code_text.strip():
-            return ""
-        return f"<pre><code>{html.escape(code_text)}</code></pre>"
-
-    if node_type == "table":
-        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
-        if not inner:
-            return ""
-        return f"<table><tbody>{inner}</tbody></table>"
-
-    if node_type == "tablerow":
-        inner = "".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
-        if not inner:
-            return ""
-        return f"<tr>{inner}</tr>"
-
-    if node_type in {"tablecell", "tableheader"}:
-        tag = "th" if node_type == "tableheader" else "td"
-        inner = "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
-        if not inner:
-            return ""
-        return f"<{tag}>{inner}</{tag}>"
-
-    if node_type == "inlinecard":
-        attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
-        url = str(attrs.get("url") or "").strip()
-        if _is_http_or_https_url(url):
-            esc = html.escape(url)
-            return f'<a href="{esc}">{esc}</a>'
-        return html.escape(url) if url else ""
-
-    if node_type == "mention":
-        attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
-        text = str(attrs.get("text") or attrs.get("displayName") or "").strip()
-        if text:
-            return html.escape(text)
-        return ""
-
-    if node_type == "emoji":
-        attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
-        text = str(attrs.get("text") or attrs.get("shortName") or "").strip()
-        if text:
-            return html.escape(text)
-        return ""
+    handler = _JIRA_ADF_NODE_HTML_HANDLERS.get(node_type)
+    if handler:
+        return handler(value, child_items, depth)
 
     # Fallback: render children.
-    return "\n".join(_jira_adf_node_to_html(item, depth=depth + 1) for item in child_items).strip()
+    return _jira_adf_render_child_nodes(child_items, depth=depth, separator="\n")
 
 
 def _jira_adf_to_html(value: object) -> str:
@@ -8315,6 +8369,120 @@ def _jira_jql_updated_after(raw: str | None) -> str:
     return dt.strftime("%Y-%m-%d %H:%M")
 
 
+def _jira_render_issue_comment_articles(*, fields: dict, rendered: dict, max_comments: int) -> list[str]:
+    comments_obj = fields.get("comment") if isinstance(fields.get("comment"), dict) else {}
+    comment_items = comments_obj.get("comments") if isinstance(comments_obj.get("comments"), list) else []
+    rendered_comments_obj = rendered.get("comment") if isinstance(rendered.get("comment"), dict) else {}
+    rendered_comment_items = (
+        rendered_comments_obj.get("comments") if isinstance(rendered_comments_obj.get("comments"), list) else []
+    )
+
+    out: list[str] = []
+    lim = max(0, int(max_comments or 0))
+    for idx, comment in enumerate(comment_items[:lim], start=1):
+        if not isinstance(comment, dict):
+            continue
+        rendered_comment = (
+            rendered_comment_items[idx - 1]
+            if idx - 1 < len(rendered_comment_items) and isinstance(rendered_comment_items[idx - 1], dict)
+            else {}
+        )
+        author = (
+            str((comment.get("author") or {}).get("displayName") or "").strip()
+            if isinstance(comment.get("author"), dict)
+            else ""
+        )
+        created = str(comment.get("created") or "").strip()
+        body_html = _jira_html_from_field(
+            rendered=rendered_comment.get("body"),
+            raw=comment.get("body"),
+        )
+        meta_bits = [bit for bit in [author, created] if bit]
+        meta_html = ""
+        if meta_bits:
+            meta_html = f"<p><strong>Meta:</strong> {html.escape(' | '.join(meta_bits))}</p>"
+        out.append(
+            "<article>"
+            f"<h3>Comment {idx}</h3>"
+            f"{meta_html}"
+            f"{body_html}"
+            "</article>"
+        )
+
+    return out
+
+
+def _jira_render_custom_field_sections(*, fields: dict, rendered: dict) -> list[str]:
+    custom_fields = [
+        (key, raw_value)
+        for k, raw_value in (fields or {}).items()
+        if (key := str(k or "").strip()).startswith("customfield_")
+    ]
+    custom_fields.sort(key=lambda item: item[0])
+
+    out: list[str] = []
+    for key, raw_value in custom_fields:
+        value_html = _jira_html_from_field(
+            rendered=rendered.get(key),
+            raw=raw_value,
+        )
+        if not value_html:
+            continue
+        out.append(
+            "<article>"
+            f"<h3>{html.escape(key)}</h3>"
+            f"{value_html}"
+            "</article>"
+        )
+    return out
+
+
+def _jira_render_issue_document_preamble(*, issue_key: str, summary: str, issue_url: str, base_url: str) -> list[str]:
+    base_href = issue_url or str(base_url or "")
+    base_tag = f'  <base href="{html.escape(base_href)}" />' if base_href else ""
+    return [
+        "<!doctype html>",
+        "<html>",
+        "<head>",
+        '  <meta charset="utf-8" />',
+        f"  <title>{html.escape(issue_key or summary)}</title>",
+        base_tag,
+        "</head>",
+        "<body>",
+        f"  <h1>{html.escape(issue_key or 'Jira Issue')}</h1>",
+        "  <h2>Summary</h2>",
+        f"  <p>{html.escape(summary)}</p>",
+    ]
+
+
+def _jira_render_issue_meta_paragraphs(
+    *,
+    issue_url: str,
+    issue_type: str,
+    priority: str,
+    status: str,
+    updated: str,
+    label_text: str,
+) -> list[str]:
+    out: list[str] = []
+    if issue_url:
+        esc = html.escape(issue_url)
+        out.append(f'  <p><strong>Issue URL:</strong> <a href="{esc}">{esc}</a></p>')
+
+    for label, value in (
+        ("Issue Type", issue_type),
+        ("Priority", priority),
+        ("Status", status),
+        ("Updated", updated),
+        ("Labels", label_text),
+    ):
+        if not value:
+            continue
+        out.append(f"  <p><strong>{label}:</strong> {html.escape(value)}</p>")
+
+    return out
+
+
 def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: bool, max_comments: int) -> str:
     """
     Render a Jira issue into a stable HTML document shape that works with `jira_ticket`.
@@ -8339,86 +8507,28 @@ def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: boo
         raw=fields.get("description"),
     )
 
-    comments_html: list[str] = []
-    if include_comments:
-        comments_obj = fields.get("comment") if isinstance(fields.get("comment"), dict) else {}
-        comment_items = comments_obj.get("comments") if isinstance(comments_obj.get("comments"), list) else []
-        rendered_comments_obj = rendered.get("comment") if isinstance(rendered.get("comment"), dict) else {}
-        rendered_comment_items = rendered_comments_obj.get("comments") if isinstance(rendered_comments_obj.get("comments"), list) else []
-
-        lim = max(0, int(max_comments or 0))
-        for idx, comment in enumerate(comment_items[:lim], start=1):
-            if not isinstance(comment, dict):
-                continue
-            rendered_comment = rendered_comment_items[idx - 1] if idx - 1 < len(rendered_comment_items) and isinstance(rendered_comment_items[idx - 1], dict) else {}
-            author = str((comment.get("author") or {}).get("displayName") or "").strip() if isinstance(comment.get("author"), dict) else ""
-            created = str(comment.get("created") or "").strip()
-            body_html = _jira_html_from_field(
-                rendered=rendered_comment.get("body"),
-                raw=comment.get("body"),
-            )
-            meta_bits = [bit for bit in [author, created] if bit]
-            meta_html = ""
-            if meta_bits:
-                meta_html = f"<p><strong>Meta:</strong> {html.escape(' | '.join(meta_bits))}</p>"
-            comments_html.append(
-                "<article>"
-                f"<h3>Comment {idx}</h3>"
-                f"{meta_html}"
-                f"{body_html}"
-                "</article>"
-            )
-
-    parts = [
-        "<!doctype html>",
-        "<html>",
-        "<head>",
-        '  <meta charset="utf-8" />',
-        f"  <title>{html.escape(issue_key or summary)}</title>",
-        f'  <base href="{html.escape(issue_url or str(base_url or ""))}" />' if (issue_url or base_url) else "",
-        "</head>",
-        "<body>",
-        f"  <h1>{html.escape(issue_key or 'Jira Issue')}</h1>",
-        "  <h2>Summary</h2>",
-        f"  <p>{html.escape(summary)}</p>",
-    ]
-
-    if issue_url:
-        parts.append(f'  <p><strong>Issue URL:</strong> <a href="{html.escape(issue_url)}">{html.escape(issue_url)}</a></p>')
-    if issue_type:
-        parts.append(f"  <p><strong>Issue Type:</strong> {html.escape(issue_type)}</p>")
-    if priority:
-        parts.append(f"  <p><strong>Priority:</strong> {html.escape(priority)}</p>")
-    if status:
-        parts.append(f"  <p><strong>Status:</strong> {html.escape(status)}</p>")
-    if updated:
-        parts.append(f"  <p><strong>Updated:</strong> {html.escape(updated)}</p>")
-    if label_text:
-        parts.append(f"  <p><strong>Labels:</strong> {html.escape(label_text)}</p>")
-
-    custom_fields: list[tuple[str, object]] = []
-    for k, v in (fields or {}).items():
-        key = str(k or "").strip()
-        if not key.startswith("customfield_"):
-            continue
-        custom_fields.append((key, v))
-    custom_fields.sort(key=lambda item: item[0])
-
-    custom_field_sections: list[str] = []
-    for key, raw_value in custom_fields:
-        value_html = _jira_html_from_field(
-            rendered=rendered.get(key),
-            raw=raw_value,
+    comments_html = (
+        _jira_render_issue_comment_articles(fields=fields, rendered=rendered, max_comments=max_comments)
+        if include_comments
+        else []
+    )
+    parts = _jira_render_issue_document_preamble(
+        issue_key=issue_key,
+        summary=summary,
+        issue_url=issue_url,
+        base_url=base_url,
+    )
+    parts.extend(
+        _jira_render_issue_meta_paragraphs(
+            issue_url=issue_url,
+            issue_type=issue_type,
+            priority=priority,
+            status=status,
+            updated=updated,
+            label_text=label_text,
         )
-        if not value_html:
-            continue
-        custom_field_sections.append(
-            "<article>"
-            f"<h3>{html.escape(key)}</h3>"
-            f"{value_html}"
-            "</article>"
-        )
-
+    )
+    custom_field_sections = _jira_render_custom_field_sections(fields=fields, rendered=rendered)
     if custom_field_sections:
         parts.extend(["  <h2>Custom Fields</h2>", *custom_field_sections])
 
