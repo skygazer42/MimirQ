@@ -17,8 +17,31 @@ DEFAULT_MAX_PATTERN_LEN = 600
 DEFAULT_MAX_REPL_LEN = 2000
 DEFAULT_ALLOWED_FLAG_BITS = int(re.IGNORECASE | re.MULTILINE | re.DOTALL)
 
-# Best-effort ReDoS guard: reject the most common nested-quantifier shape: (.*)+, (.+)+, ([a-z]+)*
-_SUSPICIOUS_NESTED_QUANTIFIER_RE = re.compile(r"\([^)]*[+*][^)]*\)[+*]")
+def _has_suspicious_nested_quantifier(pattern: str) -> bool:
+    """
+    Best-effort ReDoS guard.
+
+    Detect the most common nested-quantifier shape without using regex:
+      - "(...+...)+" / "(...*...)*"
+    This is intentionally conservative and does not attempt to parse full regex grammar.
+    """
+    s = str(pattern or "")
+    i = 0
+    while True:
+        open_idx = s.find("(", i)
+        if open_idx < 0:
+            return False
+        close_idx = s.find(")", open_idx + 1)
+        if close_idx < 0:
+            return False
+
+        # Outer quantifier must exist.
+        if close_idx + 1 < len(s) and s[close_idx + 1] in {"+", "*"}:
+            inner = s[open_idx + 1 : close_idx]
+            if "+" in inner or "*" in inner:
+                return True
+
+        i = open_idx + 1
 
 
 @dataclass(frozen=True)
@@ -108,7 +131,7 @@ def validate_regex_rules(
             )
             continue
 
-        if _SUSPICIOUS_NESTED_QUANTIFIER_RE.search(pat):
+        if _has_suspicious_nested_quantifier(pat):
             violations.append(RegexRuleViolation(index=idx, field="pattern", code="unsafe", message="nested quantifier"))
             continue
 
