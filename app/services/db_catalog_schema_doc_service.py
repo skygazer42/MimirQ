@@ -26,6 +26,15 @@ def _norm_str(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _safe_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 # Stable identity for the virtual schema document for a dataset.
 def virtual_schema_file_path(dataset_id: str) -> str:
     ds = _norm_str(dataset_id)
@@ -102,16 +111,8 @@ def chunk_virtual_schema_markdown(
     out: list[ChunkInput] = []
     for d in docs:
         meta = dict(getattr(d, "metadata", None) or {})
-        start = meta.get("start_char")
-        end = meta.get("end_char")
-        try:
-            start_i = int(start) if start is not None else None
-        except Exception:
-            start_i = None
-        try:
-            end_i = int(end) if end is not None else None
-        except Exception:
-            end_i = None
+        start_i = _safe_int(meta.get("start_char"))
+        end_i = _safe_int(meta.get("end_char"))
         out.append(
             ChunkInput(
                 content=str(getattr(d, "page_content", None) or ""),

@@ -25,11 +25,7 @@ def limit_blank_lines(text: str, *, max_blank_lines: int) -> str:
     if not raw:
         return raw
 
-    max_blank_lines = int(max_blank_lines or 0)
-    if max_blank_lines < 0:
-        max_blank_lines = 0
-    if max_blank_lines > 50:
-        max_blank_lines = 50
+    max_blank_lines = max(0, min(50, int(max_blank_lines or 0)))
 
     lines = raw.split("\n")
     out: list[str] = []
@@ -57,4 +53,3 @@ def limit_blank_lines(text: str, *, max_blank_lines: int) -> str:
         out.append(line)
 
     return "\n".join(out)
-

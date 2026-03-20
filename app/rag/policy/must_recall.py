@@ -51,6 +51,41 @@ def _citation_source_values(citation: dict[str, Any]) -> list[str]:
     return values
 
 
+def _collect_present_source_keys(
+    citations: list[dict[str, Any]] | None,
+) -> tuple[set[str], dict[str, str]]:
+    present: set[str] = set()
+    display: dict[str, str] = {}
+    for item in citations or []:
+        if not isinstance(item, dict):
+            continue
+        for raw in _citation_source_values(item):
+            folded = raw.casefold()
+            if folded not in present:
+                display[folded] = raw
+            present.add(folded)
+    return present, display
+
+
+def _match_required_source_keys(
+    expected: list[str],
+    present: set[str],
+    display: dict[str, str],
+) -> tuple[list[str], list[str], dict[str, str]]:
+    missing: list[str] = []
+    matched: list[str] = []
+    matched_by_required: dict[str, str] = {}
+    for exp in expected:
+        folded = exp.casefold()
+        if folded not in present:
+            missing.append(exp)
+            continue
+        matched_display = display.get(folded) or exp
+        matched.append(matched_display)
+        matched_by_required[exp] = matched_display
+    return missing, matched, matched_by_required
+
+
 def evaluate_required_source_keys(
     *,
     citations: list[dict[str, Any]] | None,
@@ -71,28 +106,8 @@ def evaluate_required_source_keys(
             "passed": True,
         }
 
-    present: set[str] = set()
-    display: dict[str, str] = {}
-    for item in citations or []:
-        if not isinstance(item, dict):
-            continue
-        for raw in _citation_source_values(item):
-            key = raw.casefold()
-            if key not in present:
-                display[key] = raw
-            present.add(key)
-
-    missing: list[str] = []
-    matched: list[str] = []
-    matched_by_required: dict[str, str] = {}
-    for exp in expected:
-        folded = exp.casefold()
-        if folded not in present:
-            missing.append(exp)
-            continue
-        matched_display = display.get(folded) or exp
-        matched.append(matched_display)
-        matched_by_required[exp] = matched_display
+    present, display = _collect_present_source_keys(citations)
+    missing, matched, matched_by_required = _match_required_source_keys(expected, present, display)
 
     present_out = [display[k] for k in sorted(display.keys())[:200]]
     required_n = int(len(expected))

@@ -46,16 +46,7 @@ def _is_outline_line(line: str) -> bool:
     return False
 
 
-def drop_if_outline_only(
-    text: str,
-    *,
-    min_content_chars: int = 200,
-    max_heading_ratio: float = 0.85,
-) -> QualityDecision:
-    raw = text or ""
-    if not raw.strip():
-        return QualityDecision(dropped=True, reason="empty_document", metrics={"content_chars": 0})
-
+def _outline_only_metrics(raw: str) -> tuple[int, int, int]:
     total = 0
     outline = 0
     content_chars = 0
@@ -74,6 +65,21 @@ def drop_if_outline_only(
         content_chars += len(_ALNUM_CJK_RE.findall(stripped))
         if _is_outline_line(stripped):
             outline += 1
+
+    return total, outline, content_chars
+
+
+def drop_if_outline_only(
+    text: str,
+    *,
+    min_content_chars: int = 200,
+    max_heading_ratio: float = 0.85,
+) -> QualityDecision:
+    raw = text or ""
+    if not raw.strip():
+        return QualityDecision(dropped=True, reason="empty_document", metrics={"content_chars": 0})
+
+    total, outline, content_chars = _outline_only_metrics(raw)
 
     if total <= 0:
         return QualityDecision(dropped=True, reason="empty_document", metrics={"content_chars": content_chars})

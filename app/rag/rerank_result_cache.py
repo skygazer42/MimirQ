@@ -47,6 +47,7 @@ _META_ALLOWLIST = {
     "kg_edge_conf_mid",
     "kg_edge_conf_high",
 }
+_META_KEYS_SORTED = tuple(sorted(_META_ALLOWLIST))
 _redis_client: Any | None = None
 
 
@@ -125,6 +126,26 @@ def _normalize_meta_value(value: Any) -> Any:
         return None
 
 
+def _fingerprint_candidate_entry(candidate: RerankCandidate) -> dict[str, Any] | None:
+    if candidate is None:
+        return None
+    cid = str(getattr(candidate, "id", "") or "").strip()
+    if not cid:
+        return None
+    meta = getattr(candidate, "metadata", None)
+    meta = meta if isinstance(meta, dict) else {}
+
+    entry: dict[str, Any] = {"id": cid}
+    for key in _META_KEYS_SORTED:
+        if key not in meta:
+            continue
+        nv = _normalize_meta_value(meta.get(key))
+        if nv is None:
+            continue
+        entry[key] = nv
+    return entry
+
+
 def fingerprint_rerank_candidates(candidates: Sequence[RerankCandidate]) -> str:
     """
     Build a PII-safe fingerprint for rerank inputs.
@@ -133,23 +154,9 @@ def fingerprint_rerank_candidates(candidates: Sequence[RerankCandidate]) -> str:
     """
     items: list[dict[str, Any]] = []
     for c in candidates:
-        if c is None:
-            continue
-        cid = str(getattr(c, "id", "") or "").strip()
-        if not cid:
-            continue
-        meta = getattr(c, "metadata", None)
-        meta = meta if isinstance(meta, dict) else {}
-
-        entry: dict[str, Any] = {"id": cid}
-        for k in sorted(_META_ALLOWLIST):
-            if k not in meta:
-                continue
-            nv = _normalize_meta_value(meta.get(k))
-            if nv is None:
-                continue
-            entry[k] = nv
-        items.append(entry)
+        entry = _fingerprint_candidate_entry(c)
+        if entry is not None:
+            items.append(entry)
 
     raw = json.dumps(items, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     return stable_hash(raw, length=32)
