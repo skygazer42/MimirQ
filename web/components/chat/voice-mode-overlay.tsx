@@ -178,7 +178,9 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
 	                exit={reduceMotion ? undefined : { opacity: 0 }}
 	                className="fixed inset-0 z-100 bg-background text-foreground flex flex-col items-center justify-center"
 	            >
-		                <canvas ref={canvasRef} className="absolute inset-0" aria-hidden="true" />
+		                <div className="absolute inset-0" aria-hidden="true">
+		                    <canvas ref={canvasRef} className="absolute inset-0" />
+		                </div>
 
 	                <div className="relative z-10 flex flex-col items-center gap-8">
 	                    <div className="h-20 flex items-center justify-center">

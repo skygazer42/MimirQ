@@ -70,23 +70,18 @@ export function FileQueueItem({
   const ext = file.name.split('.').pop()?.toLowerCase() || 'txt'
   const config = FILE_TYPE_CONFIG[ext] || FILE_TYPE_CONFIG.txt
   const Icon = config.icon
-  const interactiveProps = onClick
-    ? {
-        onClick,
-        role: 'button' as const,
-        tabIndex: 0,
-        onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onClick()
-          }
-        },
-      }
-    : {}
   const progressPct =
     file.progress == null || !Number.isFinite(Number(file.progress))
       ? 0
       : Math.max(0, Math.min(100, Number(file.progress)))
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!onClick) return
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onClick()
+    }
+  }
 
   const getStatusContent = () => {
     switch (file.status) {
@@ -166,7 +161,10 @@ export function FileQueueItem({
       )}
       draggable={draggable}
       onDragStart={onDragStart}
-      {...interactiveProps}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={handleKeyDown}
     >
       <div className="flex items-start gap-3">
         {/* 文件图标 */}
