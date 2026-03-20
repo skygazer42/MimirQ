@@ -10,7 +10,18 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # 复制应用代码
-COPY . .
+COPY next.config.mjs tsconfig.json tailwind.config.ts postcss.config.mjs eslint.config.js next-env.d.ts vitest.config.ts .eslintrc.json ./
+COPY app ./app
+COPY components ./components
+COPY contexts ./contexts
+COPY hooks ./hooks
+COPY lib ./lib
+COPY public ./public
+COPY scripts ./scripts
+COPY services ./services
+COPY store ./store
+COPY types ./types
+COPY workers ./workers
 RUN chown -R node:node /app
 
 # 暴露端口

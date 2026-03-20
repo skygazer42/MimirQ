@@ -9,6 +9,12 @@ export function detachPromise<T>(value: PromiseLike<T> | T): void {
   Promise.resolve(value).catch(() => {})
 }
 
+export function trimTrailingSlashes(value: string): string {
+  let out = String(value || '').trim()
+  while (out.endsWith('/')) out = out.slice(0, -1)
+  return out
+}
+
 /**
  * 格式化文件大小
  */
@@ -48,4 +54,3 @@ export function formatDate(dateString: string): string {
   if (minutes > 0) return `${minutes} 分钟前`
   return '刚刚'
 }
-

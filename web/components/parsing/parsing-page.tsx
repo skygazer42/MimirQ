@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { documentApi, parsingApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
+import { generateRequestId } from '@/lib/request-id'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
@@ -107,7 +108,7 @@ function countMarkdownHeadings(markdown: string) {
 function bumpParsingProgress(prev: ParsedFile[], fileId: string): ParsedFile[] {
   return prev.map((f) =>
     f.id === fileId && f.status === 'parsing'
-      ? { ...f, progress: Math.min((f.progress || 0) + Math.random() * 15, 90) }
+      ? { ...f, progress: Math.min((f.progress || 0) + 5, 90) }
       : f
   )
 }
@@ -488,7 +489,7 @@ export default function ParsingPage() {
   )
 
   // 生成唯一 ID
-  const generateId = useCallback(() => Math.random().toString(36).substring(2, 15), [])
+  const generateId = useCallback(() => generateRequestId(), [])
 
   const requestRebindForLibraryFile = useCallback((libraryId: string, autoParse: boolean) => {
     const id = (libraryId || '').trim()

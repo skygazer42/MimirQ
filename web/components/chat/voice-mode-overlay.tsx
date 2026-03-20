@@ -102,13 +102,14 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
 	            ctx.strokeStyle = isListening ? primaryColor : fgColor
 
 	            const cy = height / 2
-	            const cx = width / 2
+		            const cx = width / 2
 
-	            // Simple circle wave
-	            const radius = 100 + Math.sin(phase) * 10 + (isListening && !reduceMotion ? Math.random() * 20 : 0)
+		            // Simple circle wave
+		            const jitter = isListening && !reduceMotion ? (Math.sin(phase * 1.7) + 1) * 10 : 0
+		            const radius = 100 + Math.sin(phase) * 10 + jitter
 
-	            ctx.arc(cx, cy, radius, 0, 2 * Math.PI)
-	            ctx.stroke()
+		            ctx.arc(cx, cy, radius, 0, 2 * Math.PI)
+		            ctx.stroke()
 
 	            // Ripple
 	            if (isListening) {
