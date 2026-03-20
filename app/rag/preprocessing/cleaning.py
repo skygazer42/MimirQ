@@ -43,7 +43,6 @@ class CleaningOptions:
     noise_ratio_threshold: float = 0.2
 
 
-_TRAILING_SPACES_RE = re.compile(r"[ \t]+\n")
 _MID_WS_RE = re.compile(r"(?<=\S)[ \t]{2,}(?=\S)")
 _ALNUM_CJK_RE = re.compile(r"[A-Za-z0-9\u4e00-\u9fff]")
 _UPPER_RUN_RE = re.compile(r"[A-Z]{3,}")
@@ -61,16 +60,8 @@ _CODE_FENCE_RE = re.compile(r"^\s*```")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s+")
 _LIST_RE = re.compile(r"^\s*(?:[-*+]|\d{1,3}[.)])\s+")
 _BLOCKQUOTE_RE = re.compile(r"^\s*>")
-# Markdown pipe tables can omit leading/trailing pipes (e.g. "a | b").
-# Treat such lines as "structural" to avoid unwrap/noise filters mangling tables.
-_TABLE_ROW_RE = re.compile(r"^\s*\|?\s*[^|]*(\|\s*[^|]*)+\|?\s*$")
 _INDENTED_CODE_RE = re.compile(r"^(?:\t| {4,})\S")
 _SENT_END_RE = re.compile(r"[.!?\u3002\uff01\uff1f\uff1b;:\uff1a]\s*$")
-_TRAILING_PAGE_NUM_RE = re.compile(r"\s+\d{1,4}\s*$")
-_TRAILING_PAGE_OF_RE = re.compile(r"\s+\d{1,4}\s*/\s*\d{1,4}\s*$")
-_TRAILING_PAGE_WORD_RE = re.compile(r"\s+(?:page|p\.?)\s*\d{1,4}\s*$", re.IGNORECASE)
-_TRAILING_PAGE_CN_RE = re.compile(r"\s*第?\s*\d{1,4}\s*页\s*$")
-_TRAILING_PAGE_CN_OF_RE = re.compile(r"\s*第?\s*\d{1,4}\s*页\s*/\s*共?\s*\d{1,4}\s*页\s*$")
 _LEADING_LINE_NUMBER_RE = re.compile(r"^(\s*)\d{1,4}\s+(?=\S)")
 
 _PDF_BULLETS: tuple[str, ...] = (
@@ -83,6 +74,168 @@ _PDF_BULLETS: tuple[str, ...] = (
     "\u2043",  # ⁃
     "\uf0b7",  #  (common private-use bullet from some PDF extractors)
 )
+
+
+def _trim_trailing_spaces(text: str) -> str:
+    """Remove trailing ASCII spaces/tabs before newlines (linear time; no regex)."""
+    if not text or "\n" not in text:
+        return text
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        if line.endswith("\n"):
+            out.append(line[:-1].rstrip(" \t") + "\n")
+        else:
+            out.append(line)
+    return "".join(out)
+
+
+def _looks_like_pipe_table_row(line: str) -> bool:
+    """
+    Best-effort: treat any non-empty line containing a pipe as a table row.
+
+    These lines are considered "structural" and should not be merged/rewritten by
+    unwrap/noise filters.
+    """
+    stripped = (line or "").strip()
+    return bool("|" in stripped and stripped != "|")
+
+
+def _skip_spaces_left(text: str, idx: int) -> int:
+    while idx > 0 and text[idx - 1].isspace():
+        idx -= 1
+    return idx
+
+
+def _consume_digits_left(text: str, idx: int, *, max_digits: int) -> int:
+    start = idx
+    digits = 0
+    while idx > 0 and text[idx - 1].isdigit():
+        idx -= 1
+        digits += 1
+        if digits > max_digits:
+            return start
+    return idx if digits >= 1 else start
+
+
+def _strip_trailing_page_of(text: str) -> str:
+    # Equivalent to: r"\s+\d{1,4}\s*/\s*\d{1,4}\s*$"
+    s = (text or "").rstrip()
+    i = len(s)
+    j = _consume_digits_left(s, i, max_digits=4)
+    if j == i:
+        return text
+    k = _skip_spaces_left(s, j)
+    if k <= 0 or s[k - 1] != "/":
+        return text
+    k -= 1
+    k = _skip_spaces_left(s, k)
+    k2 = _consume_digits_left(s, k, max_digits=4)
+    if k2 == k:
+        return text
+    # Require whitespace before the first number (matches leading \s+)
+    if k2 <= 0 or not s[k2 - 1].isspace():
+        return text
+    return s[:k2]
+
+
+def _strip_trailing_page_word(text: str) -> str:
+    # Equivalent to: r"\s+(?:page|p\.?)\s*\d{1,4}\s*$" (case-insensitive)
+    s = (text or "").rstrip()
+    i = len(s)
+    j = _consume_digits_left(s, i, max_digits=4)
+    if j == i:
+        return text
+    k = _skip_spaces_left(s, j)
+    token_end = k
+    token_start = token_end
+    while token_start > 0 and (s[token_start - 1].isalpha() or s[token_start - 1] == "."):
+        token_start -= 1
+    token = s[token_start:token_end].casefold()
+    if token not in {"page", "p", "p."}:
+        return text
+    if token_start <= 0 or not s[token_start - 1].isspace():
+        return text
+    return s[:token_start]
+
+
+def _strip_trailing_page_num(text: str) -> str:
+    # Equivalent to: r"\s+\d{1,4}\s*$"
+    s = (text or "").rstrip()
+    i = len(s)
+    j = _consume_digits_left(s, i, max_digits=4)
+    if j == i:
+        return text
+    if j <= 0 or not s[j - 1].isspace():
+        return text
+    return s[:j]
+
+
+def _strip_trailing_page_cn_of(text: str) -> str:
+    # Equivalent to: r"\s*第?\s*\d{1,4}\s*页\s*/\s*共?\s*\d{1,4}\s*页\s*$"
+    s = (text or "").rstrip()
+    i = _skip_spaces_left(s, len(s))
+    if i <= 0 or s[i - 1] != "页":
+        return text
+    i -= 1
+    i = _skip_spaces_left(s, i)
+    i2 = _consume_digits_left(s, i, max_digits=4)
+    if i2 == i:
+        return text
+    i = _skip_spaces_left(s, i2)
+    if i > 0 and s[i - 1] == "共":
+        i -= 1
+        i = _skip_spaces_left(s, i)
+    if i <= 0 or s[i - 1] != "/":
+        return text
+    i -= 1
+    i = _skip_spaces_left(s, i)
+    if i <= 0 or s[i - 1] != "页":
+        return text
+    i -= 1
+    i = _skip_spaces_left(s, i)
+    i3 = _consume_digits_left(s, i, max_digits=4)
+    if i3 == i:
+        return text
+    i = _skip_spaces_left(s, i3)
+    if i > 0 and s[i - 1] == "第":
+        i -= 1
+        i = _skip_spaces_left(s, i)
+    return s[:i]
+
+
+def _strip_trailing_page_cn(text: str) -> str:
+    # Equivalent to: r"\s*第?\s*\d{1,4}\s*页\s*$"
+    s = (text or "").rstrip()
+    i = _skip_spaces_left(s, len(s))
+    if i <= 0 or s[i - 1] != "页":
+        return text
+    i -= 1
+    i = _skip_spaces_left(s, i)
+    i2 = _consume_digits_left(s, i, max_digits=4)
+    if i2 == i:
+        return text
+    i = _skip_spaces_left(s, i2)
+    if i > 0 and s[i - 1] == "第":
+        i -= 1
+        i = _skip_spaces_left(s, i)
+    return s[:i]
+
+
+def _strip_trailing_page_markers(text: str) -> str:
+    # Keep the same order as the legacy regex substitutions.
+    out = _strip_trailing_page_of(text)
+    if out != text:
+        return out
+    out = _strip_trailing_page_word(text)
+    if out != text:
+        return out
+    out = _strip_trailing_page_num(text)
+    if out != text:
+        return out
+    out = _strip_trailing_page_cn_of(text)
+    if out != text:
+        return out
+    return _strip_trailing_page_cn(text)
 
 
 def _resolve_cleaning_options(
@@ -172,7 +325,7 @@ def clean_markdown(
         text = "\n".join(lines)
 
     if trim_trailing_spaces:
-        text = _TRAILING_SPACES_RE.sub("\n", text)
+        text = _trim_trailing_spaces(text)
 
     if collapse_blank_lines:
         text = limit_blank_lines(text, max_blank_lines=max_blank_lines)
@@ -259,11 +412,7 @@ def _normalize_line_for_display(line: str) -> str:
     if not text:
         return ""
     text = re.sub(r"\s+", " ", text)
-    text = _TRAILING_PAGE_OF_RE.sub("", text)
-    text = _TRAILING_PAGE_WORD_RE.sub("", text)
-    text = _TRAILING_PAGE_NUM_RE.sub("", text)
-    text = _TRAILING_PAGE_CN_OF_RE.sub("", text)
-    text = _TRAILING_PAGE_CN_RE.sub("", text)
+    text = _strip_trailing_page_markers(text)
     return text.strip()
 
 
@@ -357,11 +506,7 @@ def _normalize_line_signature(line: str) -> str:
     if not text:
         return ""
     text = re.sub(r"\s+", " ", text)
-    text = _TRAILING_PAGE_OF_RE.sub("", text)
-    text = _TRAILING_PAGE_WORD_RE.sub("", text)
-    text = _TRAILING_PAGE_NUM_RE.sub("", text)
-    text = _TRAILING_PAGE_CN_OF_RE.sub("", text)
-    text = _TRAILING_PAGE_CN_RE.sub("", text)
+    text = _strip_trailing_page_markers(text)
     return text.strip().casefold()
 
 
@@ -631,7 +776,7 @@ def _is_structural_line(line: str) -> bool:
         _HEADING_RE.match(line)
         or _LIST_RE.match(line)
         or _BLOCKQUOTE_RE.match(line)
-        or _TABLE_ROW_RE.match(line)
+        or _looks_like_pipe_table_row(line)
         or _INDENTED_CODE_RE.match(line)
     )
 
