@@ -2,7 +2,6 @@
 Small text helpers shared across RAG modules.
 """
 
-
 import json
 import re
 from typing import Any, Literal
@@ -11,7 +10,6 @@ from app.core.token_utils import estimate_tokens  # noqa: F401
 from app.rag.core.claim_nli_verifier import verify_claim_with_nli
 from app.rag.core.claim_verifier import verify_claim
 
-_JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", flags=re.IGNORECASE | re.DOTALL)
 _SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
 _AUTO_LIST_INTENT_RE = re.compile(r"(列举|有哪些|列表|对比|比较|分别|优缺点|差异|汇总|总结)", flags=re.IGNORECASE)
@@ -57,16 +55,95 @@ _QUERY_REWRITE_TRIGGER_SUBSTRINGS = (
 _DECOMPOSE_STRONG_SPLIT_RE = re.compile(r"[?？。.!！;；\n]+")
 # Split on common CN/EN conjunctions that often join multiple sub-questions.
 # Keep this conservative (avoid single-char CN splitters like "和") to reduce false splits.
-_DECOMPOSE_CONJ_SPLIT_EN_RE = re.compile(
-    r"\s+(?:and|or|also|plus|then|as\s+well\s+as)\s+",
-    flags=re.IGNORECASE,
-)
+_DECOMPOSE_CONJ_SPLIT_EN_TOKENS = frozenset({"and", "or", "also", "plus", "then"})
 _DECOMPOSE_CONJ_SPLIT_CN_RE = re.compile(r"(?:以及|并且|同时|另外|此外|还有|然后)")
 _DECOMPOSE_LEADING_FILLER_RE = re.compile(
     r"^(?:and|or|also|then)\s+",
     flags=re.IGNORECASE,
 )
 _DECOMPOSE_TRAILING_PUNCT = " \t\r\n,，;；:：.!?。！？"
+
+
+def _extract_json_fence(text: str) -> str | None:
+    """
+    Extract the first triple-backtick code fence content, limited to:
+      ```json
+      ...
+      ```
+    or:
+      ```
+      ...
+      ```
+
+    Implemented without regex to avoid SonarCloud S5852 hotspots.
+    """
+    raw = text or ""
+    if not raw:
+        return None
+    lower = raw.lower()
+
+    start = lower.find("```")
+    while start != -1:
+        # Determine the opening fence's info string (until newline/end).
+        line_end = raw.find("\n", start + 3)
+        if line_end == -1:
+            line_end = len(raw)
+        info = raw[start + 3 : line_end].strip().lower()
+        if info not in ("", "json"):
+            start = lower.find("```", start + 3)
+            continue
+
+        content_start = line_end + 1 if line_end < len(raw) else line_end
+        end = lower.find("```", content_start)
+        if end == -1:
+            return None
+        inner = raw[content_start:end].strip()
+        return inner or None
+
+    return None
+
+
+def _split_on_en_conjunctions(text: str) -> list[str]:
+    """
+    Split text on common English conjunctions without regex.
+    """
+    tokens = (text or "").split()
+    if len(tokens) < 3:
+        return [text] if text else []
+
+    out: list[str] = []
+    buf: list[str] = []
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        low = t.casefold()
+
+        # "as well as" is treated as a conjunction splitter.
+        if (
+            low == "as"
+            and i + 2 < len(tokens)
+            and tokens[i + 1].casefold() == "well"
+            and tokens[i + 2].casefold() == "as"
+        ):
+            if buf:
+                out.append(" ".join(buf))
+                buf = []
+            i += 3
+            continue
+
+        if low in _DECOMPOSE_CONJ_SPLIT_EN_TOKENS:
+            if buf:
+                out.append(" ".join(buf))
+                buf = []
+            i += 1
+            continue
+
+        buf.append(t)
+        i += 1
+
+    if buf:
+        out.append(" ".join(buf))
+    return out or ([text] if text else [])
 
 
 def heuristic_decompose_query(query: str, *, max_subquestions: int = 3) -> list[str]:
@@ -106,7 +183,7 @@ def heuristic_decompose_query(query: str, *, max_subquestions: int = 3) -> list[
     # 2) Conjunction splits within each chunk.
     fragments: list[str] = []
     for ch in chunks:
-        for frag_en in _DECOMPOSE_CONJ_SPLIT_EN_RE.split(ch):
+        for frag_en in _split_on_en_conjunctions(ch):
             for frag in _DECOMPOSE_CONJ_SPLIT_CN_RE.split(frag_en):
                 cleaned = _clean_fragment(frag)
                 if cleaned:
@@ -185,11 +262,9 @@ def parse_json_from_text(
 
     candidates: list[tuple[str, str]] = []
 
-    fence = _JSON_FENCE_RE.search(raw)
-    if fence:
-        inner = (fence.group(1) or "").strip()
-        if inner:
-            candidates.append(("code_fence", inner))
+    inner = _extract_json_fence(raw)
+    if inner:
+        candidates.append(("code_fence", inner))
 
     candidates.append(("raw", raw))
 
@@ -370,12 +445,7 @@ def guess_retrieval_mode(query: str) -> str:
         return "mmr"
 
     q_lower = q.lower()
-    if (
-        any(p.search(q_lower) for p in _AUTO_KEYWORD_HINT_RES)
-        or "/" in q_lower
-        or "\\" in q_lower
-        or "::" in q_lower
-    ):
+    if any(p.search(q_lower) for p in _AUTO_KEYWORD_HINT_RES) or "/" in q_lower or "\\" in q_lower or "::" in q_lower:
         return "keyword"
 
     cjk = sum(1 for ch in q if "\u4e00" <= ch <= "\u9fff")
@@ -429,7 +499,6 @@ def normalize_retrieval_mode(mode: str | None) -> str:
     return "hybrid"
 
 
-_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+\s*[.)])\s+(?P<item>.+?)\s*$")
 _CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
 _CLAIM_UNCERTAINTY_RE = re.compile(
     r"(unable to answer|cannot determine|can't determine|insufficient evidence|not enough (?:info|information)|unknown|unsure|not sure|"
@@ -475,6 +544,39 @@ def split_into_claims(text: str, *, max_claims: int = 24) -> list[str]:
     claims: list[str] = []
     paragraph_lines: list[str] = []
 
+    def _parse_list_item(raw: str) -> str | None:
+        s = (raw or "").lstrip()
+        if not s:
+            return None
+
+        # Bullets: - / * / •
+        if s[0] in ("-", "*", "•"):
+            i = 1
+            if i >= len(s) or not s[i].isspace():
+                return None
+            while i < len(s) and s[i].isspace():
+                i += 1
+            item = s[i:].strip()
+            return item or None
+
+        # Ordered list: 1. / 1)
+        i = 0
+        while i < len(s) and s[i].isdigit():
+            i += 1
+        if i == 0:
+            return None
+        while i < len(s) and s[i].isspace():
+            i += 1
+        if i >= len(s) or s[i] not in (".", ")"):
+            return None
+        i += 1
+        if i >= len(s) or not s[i].isspace():
+            return None
+        while i < len(s) and s[i].isspace():
+            i += 1
+        item = s[i:].strip()
+        return item or None
+
     def _flush_paragraph() -> bool:
         if not paragraph_lines:
             return False
@@ -498,15 +600,13 @@ def split_into_claims(text: str, *, max_claims: int = 24) -> list[str]:
                 break
             continue
 
-        m = _LIST_ITEM_RE.match(raw_line)
-        if m:
+        item = _parse_list_item(raw_line)
+        if item:
             if _flush_paragraph():
                 break
-            item = (m.group("item") or "").strip()
-            if item:
-                claims.append(item)
-                if len(claims) >= max_claims:
-                    break
+            claims.append(item)
+            if len(claims) >= max_claims:
+                break
             continue
 
         paragraph_lines.append(line)
@@ -531,6 +631,7 @@ def _claim_token_set(text: str) -> set[str]:
         else:
             tokens.add(t)
     return tokens
+
 
 def verify_claim_with_fallback(
     claim: str,

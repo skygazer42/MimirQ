@@ -43,10 +43,9 @@ class _Section:
     heading: OrgHeading | None
 
 
-_HEADING_RE = re.compile(r"^\s*(?P<stars>\*{1,12})\s+(?P<title>.+?)\s*$")
 _FILE_KWD_RE = re.compile(r"(?mi)^\s*#\+(title|author|date|options|startup):")
-_TAGS_RE = re.compile(r"\s+:[A-Za-z0-9_@#%:.-]+:\s*$")
-_TODO_RE = re.compile(r"^(TODO|DONE|NEXT|WAIT|CANCELLED)\s+(?P<rest>.*)$", re.IGNORECASE)
+_ORG_TAG_ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@#%:.-")
+_ORG_TODO_KEYWORDS = frozenset({"todo", "done", "next", "wait", "cancelled"})
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -64,23 +63,67 @@ def _iter_lines(text: str) -> list[_Line]:
 
 def _clean_title(raw: str) -> str:
     s = (raw or "").strip()
-    s = _TAGS_RE.sub("", s).strip()
-    m = _TODO_RE.match(s)
-    if m:
-        s = (m.group("rest") or "").strip()
+    if not s:
+        return ""
+
+    # Strip Org tags at end, e.g. "Heading :tag1:tag2:"
+    tokens = s.split()
+    if tokens:
+        last = tokens[-1].strip()
+        if (
+            len(last) >= 3
+            and last.startswith(":")
+            and last.endswith(":")
+            and all(ch in _ORG_TAG_ALLOWED for ch in last)
+        ):
+            tokens = tokens[:-1]
+            s = " ".join(tokens).strip()
+
+    if not s:
+        return ""
+
+    # Strip common TODO keywords.
+    first_rest = s.split(None, 1)
+    if first_rest:
+        head = first_rest[0].strip().casefold()
+        if head in _ORG_TODO_KEYWORDS and len(first_rest) > 1:
+            s = (first_rest[1] or "").strip()
     return s
+
+
+def _parse_heading_line(line: str) -> tuple[int, str] | None:
+    plain = (line or "").rstrip("\r\n")
+    if not plain.strip():
+        return None
+
+    i = 0
+    n = len(plain)
+    while i < n and plain[i].isspace():
+        i += 1
+    star_start = i
+    while i < n and i - star_start < 12 and plain[i] == "*":
+        i += 1
+    if i == star_start:
+        return None
+    if i >= n or not plain[i].isspace():
+        return None
+
+    level = i - star_start
+    while i < n and plain[i].isspace():
+        i += 1
+    title = _clean_title(plain[i:])
+    if not title:
+        return None
+    return max(1, min(10, int(level))), title
 
 
 def _iter_headings(text: str) -> list[OrgHeading]:
     headings: list[OrgHeading] = []
     for ln in _iter_lines(text):
-        m = _HEADING_RE.match(ln.text.rstrip("\r\n"))
-        if not m:
+        parsed = _parse_heading_line(ln.text)
+        if not parsed:
             continue
-        level = len(m.group("stars") or "")
-        title = _clean_title(m.group("title") or "")
-        if not title:
-            continue
+        level, title = parsed
         headings.append(
             OrgHeading(
                 start=ln.start,
@@ -205,4 +248,3 @@ class OrgModeSectionsChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

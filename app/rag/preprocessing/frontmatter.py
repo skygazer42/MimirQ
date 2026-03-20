@@ -13,10 +13,9 @@ from typing import Any
 
 _FRONTMATTER_START_RE = re.compile(r"^\ufeff?---\s*$")
 _FRONTMATTER_END_RE = re.compile(r"^(---|\.\.\.)\s*$")
-_KEY_VALUE_RE = re.compile(r"^\s*(?P<key>[A-Za-z0-9_.-]{1,80})\s*:\s*(?P<val>.*)\s*$")
-_LIST_ITEM_RE = re.compile(r"^\s*-\s*(?P<val>.+?)\s*$")
-_H1_RE = re.compile(r"^\s*#\s+(?P<title>.+?)\s*$")
 _CODE_FENCE_RE = re.compile(r"^\s*```")
+
+_YAML_KEY_ALLOWED = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
 
 
 @dataclass(frozen=True)
@@ -42,13 +41,76 @@ def _coerce_scalar(value: str) -> Any:
         return low == "true"
 
     # Keep dates as strings; only coerce plain ints.
-    if re.fullmatch(r"\d{1,18}", v or ""):
+    if v.isdigit() and 1 <= len(v) <= 18:
         try:
             return int(v)
         except Exception:
             return v
 
     return v
+
+
+def _parse_frontmatter_key_value(line: str) -> tuple[str, str] | None:
+    raw = (line or "").rstrip("\r\n")
+    if not raw.strip():
+        return None
+
+    i = 0
+    n = len(raw)
+    while i < n and raw[i].isspace():
+        i += 1
+
+    key_start = i
+    while i < n and raw[i] in _YAML_KEY_ALLOWED and (i - key_start) < 80:
+        i += 1
+    if i == key_start:
+        return None
+    key = raw[key_start:i]
+    if not (1 <= len(key) <= 80):
+        return None
+
+    while i < n and raw[i].isspace():
+        i += 1
+    if i >= n or raw[i] != ":":
+        return None
+    i += 1
+
+    val = raw[i:].strip()
+    return key.strip().casefold(), val
+
+
+def _parse_frontmatter_list_item(line: str) -> str | None:
+    raw = (line or "").rstrip("\r\n")
+    if not raw.strip():
+        return None
+    s = raw.lstrip()
+    if not s.startswith("-"):
+        return None
+    i = 1
+    if i >= len(s) or not s[i].isspace():
+        return None
+    while i < len(s) and s[i].isspace():
+        i += 1
+    val = s[i:].strip()
+    return val or None
+
+
+def _parse_markdown_h1_title(line: str) -> str | None:
+    raw = (line or "").rstrip("\r\n")
+    if not raw.strip():
+        return None
+    s = raw.lstrip()
+    if not s.startswith("#"):
+        return None
+    if len(s) >= 2 and s[1] == "#":
+        return None
+    i = 1
+    if i >= len(s) or not s[i].isspace():
+        return None
+    while i < len(s) and s[i].isspace():
+        i += 1
+    title = s[i:].strip()
+    return title or None
 
 
 def _parse_inline_list(value: str) -> list[str] | None:
@@ -122,21 +184,21 @@ def extract_markdown_frontmatter(
             continue
 
         # Multi-line list items.
-        m_item = _LIST_ITEM_RE.match(ln)
-        if m_item and current_key and current_list is not None:
-            val = (m_item.group("val") or "").strip().strip("'\"")
+        item_val = _parse_frontmatter_list_item(ln)
+        if item_val and current_key and current_list is not None:
+            val = item_val.strip().strip("'\"")
             if val:
                 current_list.append(val)
             continue
 
-        m = _KEY_VALUE_RE.match(ln)
-        if not m:
+        kv = _parse_frontmatter_key_value(ln)
+        if not kv:
             current_key = None
             current_list = None
             continue
 
-        key = (m.group("key") or "").strip().casefold()
-        val_raw = (m.group("val") or "").strip()
+        key, val_raw = kv
+        val_raw = (val_raw or "").strip()
 
         inline_list = _parse_inline_list(val_raw)
         if inline_list is not None:
@@ -186,11 +248,10 @@ def extract_markdown_title(text: str, *, max_lines: int = 60) -> str | None:
             continue
         if in_code:
             continue
-        m = _H1_RE.match(ln)
-        if not m:
+        title = _parse_markdown_h1_title(ln)
+        if not title:
             continue
-        title = (m.group("title") or "").strip()
-        title = re.sub(r"\s+", " ", title)
+        title = " ".join(title.split())
         return title[:200] or None
 
     return None
@@ -201,4 +262,3 @@ __all__ = [
     "extract_markdown_frontmatter",
     "extract_markdown_title",
 ]
-
