@@ -12,7 +12,6 @@ configured chunk size/overlap while preserving positions.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,42 +37,113 @@ class _Section:
     heading: BookHeading | None
 
 
-_RE_ROMAN = r"[ivxlcdm]{1,10}"
-_RE_EN_NUM = rf"(?:\d{{1,4}}|{_RE_ROMAN})"
+_ROMAN_CHARS = set("ivxlcdm")
+_CN_HEADING_NUM_CHARS = set("0123456789一二三四五六七八九十百千")
 
-_RE_EN_VOLUME = re.compile(
-    rf"^(?P<prefix>volume|vol\.)\s+(?P<num>{_RE_EN_NUM})\b\s*[:：.\-]?\s*(?P<title>.*?)\s*$",
-    re.IGNORECASE,
-)
-_RE_EN_BOOK = re.compile(
-    rf"^(?P<prefix>book)\s+(?P<num>{_RE_EN_NUM})\b\s*[:：.\-]?\s*(?P<title>.*?)\s*$",
-    re.IGNORECASE,
-)
-_RE_EN_PART = re.compile(
-    rf"^(?P<prefix>part)\s+(?P<num>{_RE_EN_NUM})\b\s*[:：.\-]?\s*(?P<title>.*?)\s*$",
-    re.IGNORECASE,
-)
-_RE_EN_CHAPTER = re.compile(
-    rf"^(?P<prefix>chapter|ch\.)\s+(?P<num>{_RE_EN_NUM})\b\s*[:：.\-]?\s*(?P<title>.*?)\s*$",
-    re.IGNORECASE,
-)
-_RE_EN_SECTION = re.compile(
-    r"^(?P<prefix>section)\s+(?P<num>\d{1,4}(?:\.\d{1,4}){0,3})\b\s*[:：.\-]?\s*(?P<title>.*?)\s*$",
-    re.IGNORECASE,
-)
 
-_RE_CN_VOLUME = re.compile(
-    r"^(?P<prefix>第[0-9一二三四五六七八九十百千]+卷)\s*(?P<title>.*?)\s*$"
-)
-_RE_CN_PART = re.compile(
-    r"^(?P<prefix>第[0-9一二三四五六七八九十百千]+部)\s*(?P<title>.*?)\s*$"
-)
-_RE_CN_CHAPTER = re.compile(
-    r"^(?P<prefix>第[0-9一二三四五六七八九十百千]+[章回])\s*(?P<title>.*?)\s*$"
-)
-_RE_CN_SECTION = re.compile(
-    r"^(?P<prefix>第[0-9一二三四五六七八九十百千]+节)\s*(?P<title>.*?)\s*$"
-)
+def _parse_cn_prefixed_heading(line: str, *, suffixes: str) -> str | None:
+    s = (line or "").strip()
+    if not s.startswith("第"):
+        return None
+    i = 1
+    n = len(s)
+    while i < n and s[i] in _CN_HEADING_NUM_CHARS:
+        i += 1
+    if i == 1 or i >= n:
+        return None
+    if s[i] not in suffixes:
+        return None
+    return s[: i + 1]
+
+
+def _parse_en_num_simple(s: str, start: int) -> tuple[str, int] | None:
+    """
+    Parse either digits (1-4) or a simple roman token ([ivxlcdm]{1,10}).
+    Returns (num, next_index).
+    """
+    n = len(s)
+    i = start
+    j = i
+    while j < n and j - i < 4 and s[j].isdigit():
+        j += 1
+    if j > i:
+        return s[i:j], j
+
+    j = i
+    while j < n and j - i < 10 and s[j].lower() in _ROMAN_CHARS:
+        j += 1
+    if j > i:
+        return s[i:j], j
+    return None
+
+
+def _parse_en_num_section(s: str, start: int) -> tuple[str, int] | None:
+    n = len(s)
+    i = start
+
+    def parse_segment(idx: int) -> int:
+        seg_start = idx
+        while idx < n and idx - seg_start < 4 and s[idx].isdigit():
+            idx += 1
+        return idx if idx > seg_start else seg_start
+
+    i0 = i
+    i = parse_segment(i)
+    if i == i0:
+        return None
+    segs = 1
+    while segs < 4 and i < n and s[i] == ".":
+        nxt = parse_segment(i + 1)
+        if nxt == i + 1:
+            break
+        i = nxt
+        segs += 1
+    return s[start:i], i
+
+
+def _parse_en_heading(line: str) -> tuple[str, int, str] | None:
+    """
+    Parse book-ish headings without regex to avoid Sonar S5852 hotspots.
+    Returns (kind, level, number).
+    """
+    s = (line or "").strip()
+    if not s:
+        return None
+    low = s.lower()
+    n = len(s)
+
+    candidates = [
+        ("volume", 1, ("volume", "vol."), _parse_en_num_simple),
+        ("book", 1, ("book",), _parse_en_num_simple),
+        ("part", 1, ("part",), _parse_en_num_simple),
+        ("chapter", 2, ("chapter", "ch."), _parse_en_num_simple),
+        ("section", 3, ("section",), _parse_en_num_section),
+    ]
+
+    for kind, level, prefixes, num_parser in candidates:
+        for pref in prefixes:
+            if not low.startswith(pref):
+                continue
+            if len(low) > len(pref) and not low[len(pref)].isspace():
+                continue
+
+            i = len(pref)
+            while i < n and s[i].isspace():
+                i += 1
+            if i >= n:
+                continue
+
+            parsed = num_parser(s, i)
+            if not parsed:
+                continue
+            num, j = parsed
+            if j < n and (s[j].isalnum() or s[j] == "_"):
+                continue
+            if j + 1 < n and s[j] == "." and s[j + 1].isdigit():
+                continue
+            return kind, int(level), num
+
+    return None
 
 
 def _iter_headings(text: str) -> list[BookHeading]:
@@ -94,24 +164,16 @@ def _iter_headings(text: str) -> list[BookHeading]:
 
         kind: str | None = None
         level: int | None = None
-        if _RE_CN_VOLUME.match(line):
+        if _parse_cn_prefixed_heading(line, suffixes="卷") is not None:
             kind, level = "volume", 1
-        elif _RE_CN_PART.match(line):
+        elif _parse_cn_prefixed_heading(line, suffixes="部") is not None:
             kind, level = "part", 1
-        elif _RE_CN_CHAPTER.match(line):
+        elif _parse_cn_prefixed_heading(line, suffixes="章回") is not None:
             kind, level = "chapter", 2
-        elif _RE_CN_SECTION.match(line):
+        elif _parse_cn_prefixed_heading(line, suffixes="节") is not None:
             kind, level = "section", 3
-        elif _RE_EN_VOLUME.match(line):
-            kind, level = "volume", 1
-        elif _RE_EN_BOOK.match(line):
-            kind, level = "book", 1
-        elif _RE_EN_PART.match(line):
-            kind, level = "part", 1
-        elif _RE_EN_CHAPTER.match(line):
-            kind, level = "chapter", 2
-        elif _RE_EN_SECTION.match(line):
-            kind, level = "section", 3
+        elif (en := _parse_en_heading(line)) is not None:
+            kind, level, _ = en
 
         if kind is None or level is None:
             continue
@@ -250,4 +312,3 @@ class BookStructuredChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

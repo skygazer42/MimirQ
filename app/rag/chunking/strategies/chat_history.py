@@ -11,7 +11,6 @@ The chunker keeps whole messages together and uses message-level overlap.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,59 +28,188 @@ class _Msg:
     ts: str | None
 
 
-_TS_BRACKET_RE = re.compile(
-    r"(?m)^\s*\[(?P<ts>\d{4}[-/]\d{1,2}[-/]\d{1,2}[^\]]{0,20})\]\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
-)
-_TS_DATE_COMMA_RE = re.compile(
-    r"(?m)^\s*(?P<ts>\d{4}[-/]\d{1,2}[-/]\d{1,2},\s*[0-9:]{4,8})\s*[-–—]?\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
-)
-_TS_DATE_SPACE_RE = re.compile(
-    r"(?m)^\s*(?P<ts>\d{4}[-/]\d{1,2}[-/]\d{1,2}\s+[0-9:]{4,8})\s*[-–—]?\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
-)
-_TS_TIME_RE = re.compile(
-    r"(?m)^\s*(?P<time>\d{1,2}:\d{2}(?::\d{2})?)\s*(?P<speaker>[^:\n]{1,40})\s*[:：]\s*(?P<rest>.*)$"
-)
+_DASH_CHARS = {"-", "–", "—"}
+
+
+def _parse_date_prefix(s: str, start: int) -> int | None:
+    """
+    Parse YYYY[-/]M[-/]D starting at start, return next index if valid.
+    """
+    n = len(s)
+    i = start
+    # Minimal length: 'YYYY-M-D' (8 chars).
+    if i + 8 > n:
+        return None
+    if not (s[i : i + 4].isdigit()):
+        return None
+    i += 4
+    if i >= n or s[i] not in ("-", "/"):
+        return None
+    i += 1
+    m0 = i
+    while i < n and i - m0 < 2 and s[i].isdigit():
+        i += 1
+    if i == m0:
+        return None
+    if i >= n or s[i] not in ("-", "/"):
+        return None
+    i += 1
+    d0 = i
+    while i < n and i - d0 < 2 and s[i].isdigit():
+        i += 1
+    if i == d0:
+        return None
+    return i
+
+
+def _parse_time_prefix(s: str, start: int) -> int | None:
+    """
+    Parse H:MM / HH:MM / H:MM:SS / HH:MM:SS.
+    """
+    n = len(s)
+    i = start
+    h0 = i
+    while i < n and i - h0 < 2 and s[i].isdigit():
+        i += 1
+    if i == h0 or i >= n or s[i] != ":":
+        return None
+    i += 1
+    if i + 2 > n or not s[i : i + 2].isdigit():
+        return None
+    i += 2
+    if i + 3 <= n and s[i] == ":" and s[i + 1 : i + 3].isdigit():
+        i += 3
+    return i
+
+
+def _parse_speaker_and_rest(s: str, start: int) -> tuple[str, int] | None:
+    n = len(s)
+    i = start
+    while i < n and s[i].isspace():
+        i += 1
+    speaker_start = i
+    while i < n and s[i] not in (":", "：", "\n", "\r"):
+        i += 1
+    if i <= speaker_start or i >= n or s[i] not in (":", "："):
+        return None
+    speaker = s[speaker_start:i].strip()
+    if not speaker or len(speaker) > 40:
+        return None
+    i += 1
+    while i < n and s[i].isspace():
+        i += 1
+    return speaker, i
+
+
+def _parse_message_start(line: str) -> tuple[str, str | None] | None:
+    """
+    Detect chat message boundaries. Implemented without regex to avoid Sonar S5852 hotspots.
+    Returns (speaker, ts) where ts is a best-effort timestamp string.
+    """
+    raw = line or ""
+    if not raw:
+        return None
+    s = raw
+    i = 0
+    n = len(s)
+    while i < n and s[i].isspace():
+        i += 1
+    if i >= n:
+        return None
+
+    # [YYYY-MM-DD ...] Speaker: ...
+    if s[i] == "[":
+        close = s.find("]", i + 1)
+        if close == -1:
+            return None
+        inside = s[i + 1 : close]
+        if len(inside) > 40:
+            return None
+        date_end = _parse_date_prefix(inside, 0)
+        if date_end is None:
+            return None
+        ts = inside.strip()
+        parsed = _parse_speaker_and_rest(s, close + 1)
+        if not parsed:
+            return None
+        speaker, _ = parsed
+        return speaker, ts
+
+    # YYYY/MM/DD, 10:00 - Speaker: ...
+    date_end = _parse_date_prefix(s, i)
+    if date_end is not None:
+        j = date_end
+        if j < n and s[j] == ",":
+            j += 1
+            while j < n and s[j].isspace():
+                j += 1
+            time_end = _parse_time_prefix(s, j)
+            if time_end is not None:
+                ts = s[i:time_end].strip()
+                k = time_end
+                while k < n and s[k].isspace():
+                    k += 1
+                if k < n and s[k] in _DASH_CHARS:
+                    k += 1
+                parsed = _parse_speaker_and_rest(s, k)
+                if parsed:
+                    speaker, _ = parsed
+                    return speaker, ts
+
+        # YYYY-MM-DD 10:00 - Speaker: ...
+        j = date_end
+        if j < n and s[j].isspace():
+            while j < n and s[j].isspace():
+                j += 1
+            time_end = _parse_time_prefix(s, j)
+            if time_end is not None:
+                ts = s[i:time_end].strip()
+                k = time_end
+                while k < n and s[k].isspace():
+                    k += 1
+                if k < n and s[k] in _DASH_CHARS:
+                    k += 1
+                parsed = _parse_speaker_and_rest(s, k)
+                if parsed:
+                    speaker, _ = parsed
+                    return speaker, ts
+
+    # 10:00 Speaker: ...
+    time_end = _parse_time_prefix(s, i)
+    if time_end is not None:
+        ts = s[i:time_end].strip()
+        parsed = _parse_speaker_and_rest(s, time_end)
+        if parsed:
+            speaker, _ = parsed
+            return speaker, ts
+
+    return None
 
 
 def _iter_messages(text: str) -> list[_Msg]:
     if not text:
         return []
 
-    matches = []
-    for pat in (_TS_BRACKET_RE, _TS_DATE_COMMA_RE, _TS_DATE_SPACE_RE, _TS_TIME_RE):
-        matches.extend(list(pat.finditer(text)))
+    leads: list[tuple[int, str, str | None]] = []
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        start = offset
+        offset += len(raw_line)
+        parsed = _parse_message_start(raw_line)
+        if not parsed:
+            continue
+        speaker, ts = parsed
+        leads.append((start, speaker, ts))
 
-    matches = sorted(matches, key=lambda m: m.start())
-    if len(matches) < 2:
+    if len(leads) < 2:
         return []
 
-    # De-dup by start position (keep first match).
-    dedup = []
-    last_start = -1
-    for m in matches:
-        if m.start() == last_start:
-            continue
-        dedup.append(m)
-        last_start = m.start()
-    matches = dedup
-
     msgs: list[_Msg] = []
-    for idx, m in enumerate(matches):
-        start = m.start()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        speaker = (m.group("speaker") or "").strip()
+    for idx, (start, speaker, ts) in enumerate(leads):
+        end = leads[idx + 1][0] if idx + 1 < len(leads) else len(text)
         if not speaker:
             continue
-        ts = None
-        if "ts" in m.groupdict() and m.group("ts"):
-            ts = (m.group("ts") or "").strip()
-        elif "date" in m.groupdict() and m.group("date"):
-            ts = (m.group("date") or "").strip()
-            if "time" in m.groupdict() and m.group("time"):
-                ts = ts + " " + (m.group("time") or "").strip()
-        elif "time" in m.groupdict() and m.group("time"):
-            ts = (m.group("time") or "").strip()
-        msgs.append(_Msg(start=start, end=end, speaker=speaker, ts=ts))
+        msgs.append(_Msg(start=int(start), end=int(end), speaker=str(speaker), ts=(str(ts) if ts else None)))
     return msgs if len(msgs) >= 2 else []
 
 

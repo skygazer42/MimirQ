@@ -17,7 +17,6 @@ Markdown parser.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from app.rag.preprocessing.normalization import normalize_text
@@ -38,19 +37,164 @@ class MarkdownCanonicalizeResult:
     table_rows_changed: int = 0
 
 
-_BLOCKQUOTE_LEAD_RE = re.compile(r"^(?P<lead>[ \t]*>(?:[ \t]*>[ \t]*)*)(?P<body>.*)$")
-_CODE_FENCE_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<ticks>`{3,})(?P<rest>.*)$")
-_HEADING_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<hashes>#{1,6})(?P<space>[ \t]*)(?P<title>\S.*)$")
-_ULIST_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<marker>[-*+])(?P<space>[ \t]+)(?P<rest>.*)$")
-_OLIST_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<num>\d{1,3})(?P<delim>[.)])(?P<space>[ \t]+)(?P<rest>.*)$")
-_INDENTED_CODE_RE = re.compile(r"^(?:\t| {4,})\S")
-
-
 def _split_blockquote_lead(line: str) -> tuple[str, str]:
-    m = _BLOCKQUOTE_LEAD_RE.match(line or "")
-    if not m:
-        return "", line or ""
-    return (m.group("lead") or ""), (m.group("body") or "")
+    """
+    Split a markdown blockquote prefix from a line.
+
+    Equivalent to matching a repeating pattern like:
+      [ \\t]*> [ \\t]* > [ \\t]* > ...
+
+    Implemented without regex so it stays linear-time and avoids Sonar S5852 hotspots.
+    """
+    s = line or ""
+    if not s:
+        return "", ""
+
+    i = 0
+    n = len(s)
+    lead_end = 0
+    while i < n:
+        # Consume optional whitespace.
+        j = i
+        while j < n and s[j] in (" ", "\t"):
+            j += 1
+
+        if j < n and s[j] == ">":
+            j += 1
+            while j < n and s[j] in (" ", "\t"):
+                j += 1
+            lead_end = j
+            i = j
+            continue
+        break
+
+    if lead_end <= 0:
+        return "", s
+    return s[:lead_end], s[lead_end:]
+
+
+def _parse_code_fence(line: str) -> tuple[str, str, str] | None:
+    """
+    Parse a fenced code marker line of the form:
+      [ \\t]* ```+ <rest>
+    """
+    s = line or ""
+    if not s:
+        return None
+
+    i = 0
+    n = len(s)
+    while i < n and s[i] in (" ", "\t"):
+        i += 1
+    indent = s[:i]
+
+    j = i
+    while j < n and s[j] == "`":
+        j += 1
+    if (j - i) < 3:
+        return None
+    ticks = s[i:j]
+    rest = s[j:]
+    return indent, ticks, rest
+
+
+def _parse_heading(line: str) -> tuple[str, str, str] | None:
+    """
+    Parse ATX headings (1-6 hashes), e.g.:
+      '##Heading' or '##  Heading'
+    """
+    s = line or ""
+    if not s:
+        return None
+
+    i = 0
+    n = len(s)
+    while i < n and s[i] in (" ", "\t"):
+        i += 1
+    indent = s[:i]
+
+    j = i
+    while j < n and j - i < 6 and s[j] == "#":
+        j += 1
+    if j == i:
+        return None
+    hashes = s[i:j]
+
+    # Allow any amount of whitespace after hashes, but require a non-whitespace title.
+    k = j
+    while k < n and s[k] in (" ", "\t"):
+        k += 1
+    if k >= n or s[k].isspace():
+        return None
+    title = s[k:]
+    return indent, hashes, title
+
+
+def _parse_ulist(line: str) -> tuple[str, str] | None:
+    s = line or ""
+    if not s:
+        return None
+
+    i = 0
+    n = len(s)
+    while i < n and s[i] in (" ", "\t"):
+        i += 1
+    indent = s[:i]
+    if i >= n or s[i] not in ("-", "*", "+"):
+        return None
+    i += 1
+
+    if i >= n or s[i] not in (" ", "\t"):
+        return None
+    while i < n and s[i] in (" ", "\t"):
+        i += 1
+
+    return indent, s[i:]
+
+
+def _parse_olist(line: str) -> tuple[str, str, str] | None:
+    s = line or ""
+    if not s:
+        return None
+
+    i = 0
+    n = len(s)
+    while i < n and s[i] in (" ", "\t"):
+        i += 1
+    indent = s[:i]
+
+    start = i
+    while i < n and i - start < 3 and s[i].isdigit():
+        i += 1
+    if i == start:
+        return None
+    num = s[start:i]
+
+    if i >= n or s[i] not in (".", ")"):
+        return None
+    i += 1
+
+    if i >= n or s[i] not in (" ", "\t"):
+        return None
+    while i < n and s[i] in (" ", "\t"):
+        i += 1
+
+    return indent, num, s[i:]
+
+
+def _is_indented_code_line(line: str) -> bool:
+    s = line or ""
+    if len(s) < 2:
+        return False
+    if s[0] == "\t":
+        return len(s) > 1 and (not s[1].isspace())
+    if s.startswith("    "):
+        i = 0
+        n = len(s)
+        while i < n and s[i] == " ":
+            i += 1
+        return i >= 4 and i < n and (not s[i].isspace())
+    return False
 
 
 def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
@@ -71,11 +215,9 @@ def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
     for raw_line in normalized.splitlines():
         lead, body = _split_blockquote_lead(raw_line)
 
-        m_fence = _CODE_FENCE_RE.match(body)
-        if m_fence:
-            indent = m_fence.group("indent") or ""
-            ticks = m_fence.group("ticks") or "```"
-            rest = m_fence.group("rest") or ""
+        fence = _parse_code_fence(body)
+        if fence is not None:
+            indent, ticks, rest = fence
 
             if not in_fence:
                 # Opening fence: strip leading/trailing whitespace in info string.
@@ -98,16 +240,15 @@ def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
 
         # If this line is an indented code block (4+ spaces) and is NOT a list/heading,
         # do not attempt canonicalization (avoid accidental semantics changes).
-        if _INDENTED_CODE_RE.match(body) and not (_ULIST_RE.match(body) or _OLIST_RE.match(body) or _HEADING_RE.match(body)):
+        if _is_indented_code_line(body) and not (_parse_ulist(body) or _parse_olist(body) or _parse_heading(body)):
             out_lines.append(raw_line)
             continue
 
         # Headings.
-        m_head = _HEADING_RE.match(body)
-        if m_head:
-            indent = m_head.group("indent") or ""
-            hashes = m_head.group("hashes") or ""
-            title = (m_head.group("title") or "").rstrip()
+        head = _parse_heading(body)
+        if head is not None:
+            indent, hashes, title = head
+            title = (title or "").rstrip()
             new_body = f"{indent}{hashes} {title}"
             if new_body != body:
                 headings_changed += 1
@@ -115,10 +256,9 @@ def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
             continue
 
         # Unordered list markers.
-        m_ul = _ULIST_RE.match(body)
-        if m_ul:
-            indent = m_ul.group("indent") or ""
-            rest = (m_ul.group("rest") or "")
+        ul = _parse_ulist(body)
+        if ul is not None:
+            indent, rest = ul
             new_body = f"{indent}- {rest.lstrip()}"
             if new_body != body:
                 list_markers_changed += 1
@@ -126,11 +266,10 @@ def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
             continue
 
         # Ordered list markers.
-        m_ol = _OLIST_RE.match(body)
-        if m_ol:
-            indent = m_ol.group("indent") or ""
-            num = m_ol.group("num") or "1"
-            rest = (m_ol.group("rest") or "")
+        ol = _parse_olist(body)
+        if ol is not None:
+            indent, num, rest = ol
+            num = num or "1"
             new_body = f"{indent}{num}. {rest.lstrip()}"
             if new_body != body:
                 olist_markers_changed += 1
@@ -158,4 +297,3 @@ def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
 
 
 __all__ = ["MarkdownCanonicalizeResult", "canonicalize_markdown"]
-

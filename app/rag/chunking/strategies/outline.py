@@ -13,7 +13,6 @@ configured chunk size/overlap while preserving positions.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,15 +37,135 @@ class _Section:
     heading: OutlineHeading | None
 
 
-_RE_NUMERIC = re.compile(
-    r"^(?P<num>\d{1,3}(?:\.\d{1,3}){0,6})\s*(?:[\.、)\]]\s*)?(?P<title>.+?)\s*$"
-)
-_RE_CN_CHAPTER = re.compile(
-    r"^(?P<prefix>第[0-9一二三四五六七八九十百千]+[章节篇回])\s*(?P<title>.*?)\s*$"
-)
-_RE_CN_NUM = re.compile(r"^(?P<num>[一二三四五六七八九十百千]+)\s*[、\.]\s*(?P<title>.+?)\s*$")
-_RE_CN_PAREN = re.compile(r"^[（(]\s*(?P<num>[0-9一二三四五六七八九十]+)\s*[）)]\s*(?P<title>.+?)\s*$")
-_RE_EN_CHAPTER = re.compile(r"^(?P<prefix>chapter)\s+(?P<num>\d{1,3})\b\s*(?P<title>.*?)\s*$", re.IGNORECASE)
+_CN_HEADING_NUM_CHARS = set("0123456789一二三四五六七八九十百千")
+_CN_NUMERAL_CHARS = set("一二三四五六七八九十百千")
+_CN_PAREN_NUM_CHARS = set("0123456789一二三四五六七八九十")
+
+
+def _parse_numeric_heading_level(line: str) -> int | None:
+    """
+    Parse headings like:
+      1. Title
+      1.1 Title
+      1.1.1 Title
+    Returns the heading level (number of segments) if it looks like a heading.
+    """
+    s = (line or "").strip()
+    if not s:
+        return None
+
+    i = 0
+    n = len(s)
+
+    segs = 0
+    while segs < 7:
+        count = 0
+        while i < n and count < 3 and s[i].isdigit():
+            i += 1
+            count += 1
+        if count == 0:
+            return None
+        segs += 1
+
+        # Continue with another segment only if '.' is followed by a digit.
+        if i + 1 < n and s[i] == "." and s[i + 1].isdigit():
+            i += 1
+            continue
+        break
+
+    # Optional delimiter after the number ('.', '、', ')', ']').
+    while i < n and s[i].isspace():
+        i += 1
+    if i < n and s[i] in (".", "、", ")", "]"):
+        i += 1
+        while i < n and s[i].isspace():
+            i += 1
+
+    title = s[i:].strip()
+    if not title:
+        return None
+    return int(segs)
+
+
+def _parse_cn_prefixed_heading(line: str, *, suffixes: str) -> str | None:
+    s = (line or "").strip()
+    if not s.startswith("第"):
+        return None
+    i = 1
+    n = len(s)
+    while i < n and s[i] in _CN_HEADING_NUM_CHARS:
+        i += 1
+    if i == 1 or i >= n:
+        return None
+    if s[i] not in suffixes:
+        return None
+    return s[: i + 1]
+
+
+def _looks_like_cn_num_heading(line: str) -> bool:
+    s = (line or "").strip()
+    if not s:
+        return False
+    i = 0
+    n = len(s)
+    while i < n and s[i] in _CN_NUMERAL_CHARS:
+        i += 1
+    if i == 0:
+        return False
+    while i < n and s[i].isspace():
+        i += 1
+    if i >= n or s[i] not in ("、", "."):
+        return False
+    i += 1
+    while i < n and s[i].isspace():
+        i += 1
+    return bool(s[i:].strip())
+
+
+def _looks_like_cn_paren_heading(line: str) -> bool:
+    s = (line or "").strip()
+    if not s or s[0] not in ("（", "("):
+        return False
+    i = 1
+    n = len(s)
+    while i < n and s[i].isspace():
+        i += 1
+    start = i
+    while i < n and s[i] in _CN_PAREN_NUM_CHARS:
+        i += 1
+    if i == start:
+        return False
+    while i < n and s[i].isspace():
+        i += 1
+    if i >= n or s[i] not in ("）", ")"):
+        return False
+    i += 1
+    while i < n and s[i].isspace():
+        i += 1
+    return bool(s[i:].strip())
+
+
+def _looks_like_en_chapter_heading(line: str) -> bool:
+    s = (line or "").strip()
+    if not s:
+        return False
+    low = s.lower()
+    if not low.startswith("chapter") or (len(low) > 7 and not low[7].isspace()):
+        return False
+    i = 7
+    n = len(s)
+    while i < n and s[i].isspace():
+        i += 1
+    start = i
+    while i < n and i - start < 3 and s[i].isdigit():
+        i += 1
+    if i == start:
+        return False
+    if i < n and (s[i].isalnum() or s[i] == "_"):
+        return False
+    if i + 1 < n and s[i] == "." and s[i + 1].isdigit():
+        return False
+    return True
 
 
 def _iter_headings(text: str) -> list[OutlineHeading]:
@@ -67,16 +186,15 @@ def _iter_headings(text: str) -> list[OutlineHeading]:
             continue
 
         level: int | None = None
-        if (m := _RE_NUMERIC.match(line)) is not None:
-            # 1. / 1.1 / 1.1.1 -> level = segments
-            level = max(1, len(m.group("num").split(".")))
-        elif _RE_CN_CHAPTER.match(line):
+        if (lv := _parse_numeric_heading_level(line)) is not None:
+            level = int(lv)
+        elif _parse_cn_prefixed_heading(line, suffixes="章节篇回") is not None:
             level = 1
-        elif _RE_CN_NUM.match(line):
+        elif _looks_like_cn_num_heading(line):
             level = 1
-        elif _RE_CN_PAREN.match(line):
+        elif _looks_like_cn_paren_heading(line):
             level = 2
-        elif _RE_EN_CHAPTER.match(line):
+        elif _looks_like_en_chapter_heading(line):
             level = 1
 
         if level is None:
