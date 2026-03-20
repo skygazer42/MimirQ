@@ -11,6 +11,7 @@ from collections import Counter
 from typing import Any
 from uuid import UUID
 
+import httpx
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
@@ -248,60 +249,62 @@ def generate_questions_from_documents(
     
     # Prepare LLM.
     proxy_url = get_proxy_url()
-    http_client_kwargs = {}
-    if proxy_url:
-        http_client_kwargs["proxies"] = proxy_url
-    
-    llm = ChatOpenAI(
-        model=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
-        temperature=0.7,
-        http_client=None if not http_client_kwargs else None,
-        **http_client_kwargs
-    )
-    
-    parser = JsonOutputParser()
-    prompt = PromptTemplate(
-        template=GENERATE_QUESTIONS_FROM_TEXT_PROMPT,
-        input_variables=["text", "num_questions", "question_types"]
-    )
-    
-    chain = prompt | llm | parser
-    
-    # Generate questions for each chunk.
-    all_questions: list[GeneratedQuestion] = []
-    questions_per_chunk = max(1, num_questions // len(sampled_chunks))
-    
-    for chunk in sampled_chunks:
-        try:
-            result = chain.invoke({
-                "text": chunk.content[:2000],  # Limit length.
-                "num_questions": questions_per_chunk,
-                "question_types": ", ".join(question_types)
-            })
-            
-            if isinstance(result, dict) and "questions" in result:
-                for q in result["questions"]:
-                    all_questions.append(GeneratedQuestion(
-                        question=q.get("question", ""),
-                        expected_answer=q.get("expected_answer"),
-                        context=chunk.content[:500],
-                        metadata={
-                            "source_type": "document",
-                            "source_id": str(chunk.document_id),
-                            "chunk_id": str(chunk.id),
-                            "question_type": q.get("question_type", "factual")
-                        }
-                    ))
-        except Exception as e:
-            print(f"Failed to generate questions: {e}")
-            continue
+    timeout = int(getattr(settings, "LLM_TIMEOUT", 60) or 60)
+    http_client = httpx.Client(proxy=proxy_url, timeout=timeout) if proxy_url else None
+    try:
+        llm = ChatOpenAI(
+            model=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
+            temperature=0.7,
+            timeout=timeout,
+            http_client=http_client,
+        )
         
-        if len(all_questions) >= num_questions:
-            break
-    
-    return all_questions[:num_questions]
+        parser = JsonOutputParser()
+        prompt = PromptTemplate(
+            template=GENERATE_QUESTIONS_FROM_TEXT_PROMPT,
+            input_variables=["text", "num_questions", "question_types"]
+        )
+        
+        chain = prompt | llm | parser
+        
+        # Generate questions for each chunk.
+        all_questions: list[GeneratedQuestion] = []
+        questions_per_chunk = max(1, num_questions // len(sampled_chunks))
+        
+        for chunk in sampled_chunks:
+            try:
+                result = chain.invoke({
+                    "text": chunk.content[:2000],  # Limit length.
+                    "num_questions": questions_per_chunk,
+                    "question_types": ", ".join(question_types)
+                })
+                
+                if isinstance(result, dict) and "questions" in result:
+                    for q in result["questions"]:
+                        all_questions.append(GeneratedQuestion(
+                            question=q.get("question", ""),
+                            expected_answer=q.get("expected_answer"),
+                            context=chunk.content[:500],
+                            metadata={
+                                "source_type": "document",
+                                "source_id": str(chunk.document_id),
+                                "chunk_id": str(chunk.id),
+                                "question_type": q.get("question_type", "factual")
+                            }
+                        ))
+            except Exception as e:
+                print(f"Failed to generate questions: {e}")
+                continue
+            
+            if len(all_questions) >= num_questions:
+                break
+        
+        return all_questions[:num_questions]
+    finally:
+        if http_client is not None:
+            http_client.close()
 
 
 def generate_questions_from_conversations(
@@ -397,49 +400,51 @@ def generate_questions_from_conversations(
     
     # Prepare LLM.
     proxy_url = get_proxy_url()
-    http_client_kwargs = {}
-    if proxy_url:
-        http_client_kwargs["proxies"] = proxy_url
-    
-    llm = ChatOpenAI(
-        model=settings.LLM_MODEL,
-        api_key=settings.LLM_API_KEY,
-        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
-        temperature=0.7,
-        http_client=None if not http_client_kwargs else None,
-        **http_client_kwargs
-    )
-    
-    parser = JsonOutputParser()
-    prompt = PromptTemplate(
-        template=EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT,
-        input_variables=["conversations", "num_questions"]
-    )
-    
-    chain = prompt | llm | parser
-    
+    timeout = int(getattr(settings, "LLM_TIMEOUT", 60) or 60)
+    http_client = httpx.Client(proxy=proxy_url, timeout=timeout) if proxy_url else None
     try:
-        result = chain.invoke({
-            "conversations": conversation_text[:8000],  # Limit length.
-            "num_questions": num_questions
-        })
+        llm = ChatOpenAI(
+            model=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
+            temperature=0.7,
+            timeout=timeout,
+            http_client=http_client,
+        )
         
-        questions: list[GeneratedQuestion] = []
+        parser = JsonOutputParser()
+        prompt = PromptTemplate(
+            template=EXTRACT_QUESTIONS_FROM_CONVERSATION_PROMPT,
+            input_variables=["conversations", "num_questions"]
+        )
         
-        if isinstance(result, dict) and "questions" in result:
-            for q in result["questions"]:
-                questions.append(GeneratedQuestion(
-                    question=q.get("question", ""),
-                    expected_answer=q.get("expected_answer"),
-                    context=q.get("original_question"),
-                    metadata={
-                        "source_type": "conversation",
-                        "original_question": q.get("original_question", "")
-                    }
-                ))
+        chain = prompt | llm | parser
         
-        return questions[:num_questions]
-    
-    except Exception as e:
-        print(f"Failed to generate questions from conversation: {e}")
-        return []
+        try:
+            result = chain.invoke({
+                "conversations": conversation_text[:8000],  # Limit length.
+                "num_questions": num_questions
+            })
+            
+            questions: list[GeneratedQuestion] = []
+            
+            if isinstance(result, dict) and "questions" in result:
+                for q in result["questions"]:
+                    questions.append(GeneratedQuestion(
+                        question=q.get("question", ""),
+                        expected_answer=q.get("expected_answer"),
+                        context=q.get("original_question"),
+                        metadata={
+                            "source_type": "conversation",
+                            "original_question": q.get("original_question", "")
+                        }
+                    ))
+            
+            return questions[:num_questions]
+        
+        except Exception as e:
+            print(f"Failed to generate questions from conversation: {e}")
+            return []
+    finally:
+        if http_client is not None:
+            http_client.close()

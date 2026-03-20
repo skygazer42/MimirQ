@@ -101,7 +101,7 @@ def _build_blocks(text: str) -> list[_Block]:
 def looks_like_nginx_config(text: str) -> bool:
     if not text or len(text) < 80:
         return False
-    lowered = (text or "").lower()
+    lowered = text.lower()
     if "server {" in lowered and "listen " in lowered:
         return True
     if "http {" in lowered and "server {" in lowered:
@@ -177,4 +177,3 @@ class NginxConfigChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

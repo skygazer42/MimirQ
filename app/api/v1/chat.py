@@ -77,6 +77,33 @@ from app.services.structured_memory_service import build_structured_memory_conte
 
 logger = logging.getLogger(__name__)
 
+_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
+
+
+def _spawn_background_task(coro: Any) -> None:
+    """
+    Best-effort fire-and-forget task runner.
+
+    Sonar rule python:S7502: keep a strong reference to background tasks until completion.
+    """
+    try:
+        task = asyncio.create_task(coro)
+    except Exception:
+        with contextlib.suppress(Exception):
+            coro.close()
+        return
+
+    _BACKGROUND_TASKS.add(task)
+
+    def _done(t: asyncio.Task[Any]) -> None:
+        _BACKGROUND_TASKS.discard(t)
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            exc = t.exception()
+            if exc is not None:
+                logger.warning("Background task failed: %s", str(exc)[:200])
+
+    task.add_done_callback(_done)
+
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
     403: {"description": "Forbidden"},
@@ -288,7 +315,7 @@ async def _persist_chat_stream_turn_background(
             and conversation_id
         ):
             with contextlib.suppress(Exception):
-                asyncio.create_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
+                _spawn_background_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
     except Exception:
         return
 
@@ -316,7 +343,7 @@ def _ensure_conversation_access(
     """
     if not conv.document_ids:
         return []
-    doc_ids = list(conv.document_ids or [])
+    doc_ids = list(conv.document_ids)
     allowed_ids, missing_ids = get_allowed_document_id_sets(
         db,
         tenant_id,
@@ -1747,7 +1774,7 @@ async def stream_chat(
 
             if persist_in_background:
                 with contextlib.suppress(Exception):
-                    asyncio.create_task(
+                    _spawn_background_task(
                         _persist_chat_stream_turn_background(
                             tenant_id=tenant_id,
                             conversation_id=conversation_id,
@@ -1825,9 +1852,7 @@ async def stream_chat(
                 and conversation_id
             ):
                 with contextlib.suppress(Exception):
-                    asyncio.create_task(
-                        _auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id)
-                    )
+                    _spawn_background_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
             return
 
         # LangGraph path: stream stage events (custom) + state snapshots (values).
@@ -2071,7 +2096,7 @@ async def stream_chat(
 
                 if persist_in_background:
                     with contextlib.suppress(Exception):
-                        asyncio.create_task(
+                        _spawn_background_task(
                             _persist_chat_stream_turn_background(
                                 tenant_id=tenant_id,
                                 conversation_id=conversation_id,
@@ -2088,12 +2113,12 @@ async def stream_chat(
                                 cache_key=cache_key,
                                 cache_eligible=False,
                                 structured_data=structured_data,
-                                    ip=client_ip,
-                                    user_agent=user_agent,
-                                    enable_summary_memory=enable_summary_memory,
-                                    enable_structured_memory=enable_structured_memory,
-                                )
+                                ip=client_ip,
+                                user_agent=user_agent,
+                                enable_summary_memory=enable_summary_memory,
+                                enable_structured_memory=enable_structured_memory,
                             )
+                        )
                     return
 
                 message_metadata = {**(metrics_data or {}), "request_id": str(request_id)}
@@ -2149,7 +2174,7 @@ async def stream_chat(
                     and conversation_id
                 ):
                     with contextlib.suppress(Exception):
-                        asyncio.create_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
+                        _spawn_background_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
                 return
 
             except Exception as e:  # noqa: BLE001
@@ -2433,7 +2458,7 @@ async def stream_chat(
 
             if persist_in_background:
                 with contextlib.suppress(Exception):
-                    asyncio.create_task(
+                    _spawn_background_task(
                         _persist_chat_stream_turn_background(
                             tenant_id=tenant_id,
                             conversation_id=conversation_id,
@@ -2450,11 +2475,11 @@ async def stream_chat(
                             cache_key=cache_key,
                             cache_eligible=False,
                             structured_data=structured_data,
-                                ip=client_ip,
-                                user_agent=user_agent,
-                                enable_summary_memory=enable_summary_memory,
-                                enable_structured_memory=enable_structured_memory,
-                            )
+                            ip=client_ip,
+                            user_agent=user_agent,
+                            enable_summary_memory=enable_summary_memory,
+                            enable_structured_memory=enable_structured_memory,
+                        )
                         )
                 return
 
@@ -2512,7 +2537,7 @@ async def stream_chat(
                 and conversation_id
             ):
                 with contextlib.suppress(Exception):
-                    asyncio.create_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
+                    _spawn_background_task(_auto_update_summary_background(tenant_id=tenant_id, conversation_id=conversation_id))
 
         except Exception as e:
             logger.error("Chat stream error: %s", str(e)[:200])

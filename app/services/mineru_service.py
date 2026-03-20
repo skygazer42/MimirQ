@@ -15,6 +15,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import aiofiles
+import aiofiles.tempfile
 import httpx
 from langchain_core.documents import Document
 
@@ -274,14 +276,29 @@ class MinerUService:
         pool = get_http_client_pool()
         try:
             # MinerU upload does not require Content-Type.
-            with open(file_path, "rb") as f:
-                resp = await pool.put(upload_url, content=f, timeout=300.0)
-                ok = int(getattr(resp, "status_code", 0) or 0) == 200
-                try:
-                    await resp.aclose()
-                except Exception:
-                    pass
-                return ok
+            class _FileChunks:
+                def __init__(self, path: Path, *, chunk_size: int = 1024 * 1024):
+                    self._path = path
+                    self._chunk_size = chunk_size
+
+                def __aiter__(self):
+                    async def gen():
+                        async with aiofiles.open(self._path, "rb") as f:
+                            while True:
+                                chunk = await f.read(self._chunk_size)
+                                if not chunk:
+                                    break
+                                yield chunk
+
+                    return gen()
+
+            resp = await pool.put(upload_url, content=_FileChunks(file_path), timeout=300.0)
+            ok = int(getattr(resp, "status_code", 0) or 0) == 200
+            try:
+                await resp.aclose()
+            except Exception:
+                pass
+            return ok
         except Exception as exc:  # noqa: BLE001
             logger.error("Upload file failed: %s", str(exc)[:200])
             return False
@@ -863,8 +880,8 @@ class MinerUService:
         if dataset_id and document_id and settings.MINIO_ENABLED:
             tmp_zip_path: Path | None = None
             try:
-                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                    tmp_zip.write(zip_bytes)
+                async with aiofiles.tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                    await tmp_zip.write(zip_bytes)
                     tmp_zip_path = Path(tmp_zip.name)
 
                 result = await asyncio.to_thread(
@@ -953,15 +970,16 @@ class MinerUService:
         tmp_zip_path: Path | None = None
         try:
             # multipart upload (keep file open until request finishes)
-            with open(file_path, "rb") as f:
-                files = {"files": (file_path.name, f, "application/octet-stream")}
-                resp = await pool.request_with_retry(
-                    "POST",
-                    parse_endpoint,
-                    files=files,
-                    data=data,
-                    timeout=300.0,
-                )
+            async with aiofiles.open(file_path, "rb") as f:
+                file_bytes = await f.read()
+            files = {"files": (file_path.name, file_bytes, "application/octet-stream")}
+            resp = await pool.request_with_retry(
+                "POST",
+                parse_endpoint,
+                files=files,
+                data=data,
+                timeout=300.0,
+            )
 
             try:
                 content_type = str(resp.headers.get("Content-Type", "") or "")
@@ -975,8 +993,8 @@ class MinerUService:
             if ("zip" not in content_type.lower()) and ("application/octet-stream" not in content_type.lower()):
                 raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
 
-            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                tmp_zip.write(body)
+            async with aiofiles.tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                await tmp_zip.write(body)
                 tmp_zip_path = Path(tmp_zip.name)
 
             # Process ZIP in a thread (includes MinIO uploads)

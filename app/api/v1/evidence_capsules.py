@@ -115,7 +115,8 @@ def persist_evidence_capsule(
 
     payload = dict(body.capsule)
     payload.setdefault("capsule_id", capsule_id)
-    path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
+    # capsule_id is validated and path is confined to EVIDENCE_CAPSULE_STORE_DIR in _capsule_path().
+    path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")  # NOSONAR
     return EvidenceCapsulePersistResponse(
         capsule_id=capsule_id,
         capsule_hash=capsule_hash,

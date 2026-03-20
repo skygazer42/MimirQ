@@ -103,7 +103,7 @@ def _build_sections(text: str, blocks: list[_Block]) -> list[_Section]:
 def looks_like_terraform_hcl(text: str) -> bool:
     if not text or len(text) < 120:
         return False
-    head = (text or "")[:12000].lower()
+    head = text[:12000].lower()
     if "terraform {" in head or "provider " in head or "resource " in head:
         # Ensure braces + at least one block start.
         return _BLOCK_START_RE.search(text) is not None
@@ -174,4 +174,3 @@ class TerraformHCLChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

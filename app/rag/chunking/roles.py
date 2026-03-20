@@ -43,7 +43,7 @@ _MD_TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|
 def _header_text(meta: Mapping[str, Any]) -> str:
     raw = meta.get("header_path") or meta.get("header_context") or ""
     if not isinstance(raw, str):
-        raw = str(raw or "")
+        raw = str(raw)
     return raw.strip()
 
 
@@ -126,4 +126,3 @@ def classify_chunk_semantic_role(*, content: str, meta: Mapping[str, Any] | None
 
 
 __all__ = ["ChunkSemanticRole", "classify_chunk_semantic_role"]
-

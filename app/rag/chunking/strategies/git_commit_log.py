@@ -82,7 +82,7 @@ def _build_sections(text: str, commits: list[_Commit]) -> list[_Section]:
 def looks_like_git_commit_log(text: str) -> bool:
     if not text or len(text) < 160:
         return False
-    head = (text or "")[:12000]
+    head = text[:12000]
     commits = len(_COMMIT_RE.findall(head))
     if commits >= 2:
         return True
@@ -151,4 +151,3 @@ class GitCommitLogChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

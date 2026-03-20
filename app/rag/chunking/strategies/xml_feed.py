@@ -85,7 +85,7 @@ def _iter_blocks(text: str, *, kind: str) -> list[_Block]:
 def looks_like_xml_feed(text: str) -> bool:
     if not text or len(text) < 120:
         return False
-    lowered = (text or "").lower()
+    lowered = text.lower()
     if "<rss" not in lowered and "<feed" not in lowered:
         return False
     item_n = len(_ITEM_START_RE.findall(text[:200000]))
@@ -183,4 +183,3 @@ class XMLFeedChunker(BaseChunker):
             chunk.metadata = meta
 
         return out
-

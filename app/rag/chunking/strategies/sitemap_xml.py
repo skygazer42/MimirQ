@@ -75,7 +75,7 @@ def _iter_entries(text: str, *, kind: str) -> list[_Entry]:
 def looks_like_sitemap_xml(text: str) -> bool:
     if not text or len(text) < 80:
         return False
-    lowered = (text or "").lower()
+    lowered = text.lower()
     if "<urlset" not in lowered and "<sitemapindex" not in lowered:
         return False
     urls = len(_URL_START_RE.findall(text[:200000]))

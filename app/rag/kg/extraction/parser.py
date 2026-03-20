@@ -7,7 +7,7 @@ import unicodedata
 
 class EntityValueParser:
     _ws_re = re.compile(r"\s+")
-    _edge_quote_re = re.compile(r"^[\"'`“”‘’]+|[\"'`“”‘’]+$")
+    _edge_quote_re = re.compile(r"(?:^[\"'`“”‘’]+)|(?:[\"'`“”‘’]+$)")
     # Conservative edge punctuation stripping to reduce fragmentation:
     # - We only strip at the edges (not internal), so names like "node.js" are preserved.
     # - We intentionally do NOT strip '#'/'+' to avoid breaking names like "C#" / "C++".
