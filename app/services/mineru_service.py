@@ -28,6 +28,8 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("services.mineru")
 
+OCTET_STREAM = "application/octet-stream"
+
 
 class MinerUService:
     """MinerU parsing service."""
@@ -972,7 +974,7 @@ class MinerUService:
             # multipart upload (keep file open until request finishes)
             async with aiofiles.open(file_path, "rb") as f:
                 file_bytes = await f.read()
-            files = {"files": (file_path.name, file_bytes, "application/octet-stream")}
+            files = {"files": (file_path.name, file_bytes, OCTET_STREAM)}
             resp = await pool.request_with_retry(
                 "POST",
                 parse_endpoint,
@@ -990,7 +992,7 @@ class MinerUService:
                 except Exception:
                     pass
 
-            if ("zip" not in content_type.lower()) and ("application/octet-stream" not in content_type.lower()):
+            if ("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower()):
                 raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
 
             async with aiofiles.tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
@@ -1188,7 +1190,7 @@ class MinerUService:
         try:
             # Send file.
             with open(file_path, "rb") as f:
-                files = {"files": (file_path.name, f, "application/octet-stream")}
+                files = {"files": (file_path.name, f, OCTET_STREAM)}
                 # NOTE: Local ZIP parsing path is currently sync-only; for async,
                 # wrap with asyncio.to_thread or add an async version to avoid blocking.
                 import requests  # local import to avoid global dependency in async paths
@@ -1199,7 +1201,7 @@ class MinerUService:
             
             # Check response is ZIP.
             content_type = response.headers.get('Content-Type', '')
-            if 'zip' not in content_type.lower() and 'application/octet-stream' not in content_type.lower():
+            if 'zip' not in content_type.lower() and OCTET_STREAM not in content_type.lower():
                 # Try parsing JSON error.
                 try:
                     error_data = response.json()

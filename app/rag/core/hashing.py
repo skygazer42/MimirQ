@@ -14,7 +14,7 @@ import json
 from typing import Any
 
 
-def stable_hash(text: str, *, length: int = 16) -> str:
+def stable_hash(text: str, *, length: int | None = 16) -> str:
     """
     Return a stable lowercase hex digest for `text`.
 

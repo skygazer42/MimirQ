@@ -23,6 +23,7 @@ class DocumentStatusEnum(str, Enum):
 
 
 DocumentPublicationStatus = Literal["draft", "published", "deprecated"]
+DOCUMENT_PUBLICATION_STATUS_DESCRIPTION = "draft|published|deprecated"
 
 
 def _normalize_publication_status(value: object) -> str:
@@ -360,7 +361,7 @@ class DocumentLifecycleMetadata(BaseModel):
     review_due_at: datetime | None = None
     authority_level: int | None = Field(default=None, ge=0, le=100)
     supersedes_document_id: UUID | None = None
-    publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
+    publication_status: DocumentPublicationStatus = Field(default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION)
 
     @field_validator("publication_status", mode="before")
     @classmethod
@@ -381,7 +382,7 @@ class DocumentLifecycleMetadataUpdateRequest(BaseModel):
     review_due_at: datetime | None = None
     authority_level: int | None = Field(default=None, ge=0, le=100)
     supersedes_document_id: UUID | None = None
-    publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
+    publication_status: DocumentPublicationStatus = Field(default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION)
 
 
 class DocumentBatchLifecycleRequest(BaseModel):
@@ -591,7 +592,7 @@ class DocumentDetail(OrmModel):
     total_characters: int
     owner_id: str | None = None
     access_mode: DocumentAccessMode | None = None
-    publication_status: DocumentPublicationStatus = Field(default="published", description="draft|published|deprecated")
+    publication_status: DocumentPublicationStatus = Field(default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION)
     lifecycle_owner: str | None = None
     review_due_at: datetime | None = None
     authority_level: int | None = None

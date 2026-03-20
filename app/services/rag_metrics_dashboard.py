@@ -26,6 +26,8 @@ from typing import Any
 
 from app.core.config import settings
 
+DEFAULT_METRICS_LOG_PATH = "./logs/rag_metrics.jsonl"
+
 
 def _percentile(values: list[float], p: float) -> float | None:
     if not values:
@@ -166,7 +168,7 @@ def summarize_rag_metrics(
     Build a small dashboard summary from the metrics JSONL file.
     """
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
     path = Path(path_str)
 
     window_minutes = max(1, int(window_minutes or 0))
@@ -413,7 +415,7 @@ def summarize_rag_cost_attribution(
     """
 
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
     path = Path(path_str)
 
     window_minutes = max(1, int(window_minutes or 0))
@@ -862,7 +864,7 @@ def summarize_rag_query_analytics(
     """
 
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
     path = Path(path_str)
 
     window_minutes = max(1, int(window_minutes or 0))
@@ -1156,7 +1158,7 @@ def build_redacted_metrics_tail_gzip(
     - Applies lightweight secret/PII masking on remaining strings (best-effort).
     """
 
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
     path = Path(path_str)
 
     window_minutes = max(1, int(window_minutes or 0))
@@ -1426,7 +1428,7 @@ def build_rag_trace_bundle(
     """
 
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
     path = Path(path_str)
 
     request_id = str(request_id or "").strip()

@@ -26,6 +26,8 @@ from app.services.audit_log_retention import plan_audit_log_purge, purge_audit_l
 from app.services.audit_log_service import audit_log_event
 from app.services.regression_run_retention import plan_regression_run_purge, purge_regression_run_rows
 
+SYSTEM_RETENTION_ACTOR_ID = "system:retention"
+
 _delete_document_lifecycle = None
 
 
@@ -114,7 +116,7 @@ def run_audit_log_retention(
     retention_days: int,
     max_delete: int,
     dry_run: bool,
-    actor_id: str | None = "system:retention",
+    actor_id: str | None = SYSTEM_RETENTION_ACTOR_ID,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """
@@ -186,7 +188,7 @@ def run_regression_run_retention(
     max_delete: int,
     dry_run: bool,
     dataset_id: UUID | None = None,
-    actor_id: str | None = "system:retention",
+    actor_id: str | None = SYSTEM_RETENTION_ACTOR_ID,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """
@@ -279,7 +281,7 @@ async def run_knowledge_asset_retention(
     dry_run: bool,
     dataset_id: UUID | None = None,
     lifecycle_state: str = "either",
-    actor_id: str | None = "system:retention",
+    actor_id: str | None = SYSTEM_RETENTION_ACTOR_ID,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """
@@ -325,7 +327,7 @@ async def run_knowledge_asset_retention(
                 await delete_document_lifecycle(
                     document_id=document_id,
                     tenant_id=tenant_id,
-                    account_id=str(actor_id or "system:retention"),
+                    account_id=str(actor_id or SYSTEM_RETENTION_ACTOR_ID),
                     db=db,
                     enforce_permissions=False,
                 )

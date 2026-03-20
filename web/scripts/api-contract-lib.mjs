@@ -35,8 +35,28 @@ function stripApiV1Prefix(normalizedPath) {
   return p
 }
 
+function parsePythonStringConstants(pyText) {
+  const map = new Map()
+
+  // Matches:
+  //   NAME = "value"
+  //   NAME: str = "value"
+  // with optional trailing comment.
+  const re =
+    /^([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=\s*(?:\"([^\"]*)\"|'([^']*)')\s*(?:#.*)?$/gm
+  let m
+  while ((m = re.exec(pyText))) {
+    const name = m[1]
+    const value = m[2] ?? m[3] ?? ''
+    map.set(name, value)
+  }
+
+  return map
+}
+
 export function parseBackendPrefixes() {
   const initPy = readText('app/api/v1/__init__.py')
+  const constants = parsePythonStringConstants(initPy)
   const map = new Map()
 
   // Matches: router.include_router(documents.router, prefix="/documents", ...)
@@ -46,7 +66,14 @@ export function parseBackendPrefixes() {
     const mod = m[1]
     const args = m[2] || ''
     const prefixMatch = args.match(/prefix\s*=\s*(?:\"([^\"]*)\"|'([^']*)')/)
-    const prefix = prefixMatch ? (prefixMatch[1] || prefixMatch[2] || '') : ''
+    let prefix = prefixMatch ? (prefixMatch[1] || prefixMatch[2] || '') : ''
+    if (!prefix) {
+      const constMatch = args.match(/prefix\s*=\s*([A-Za-z_][A-Za-z0-9_]*)/)
+      const constName = constMatch ? constMatch[1] : ''
+      if (constName && constants.has(constName)) {
+        prefix = constants.get(constName) || ''
+      }
+    }
     map.set(mod, prefix)
   }
   return map

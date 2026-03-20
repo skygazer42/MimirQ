@@ -50,6 +50,9 @@ FINDING_KEYS: set[str] = {
     "merged_heavy_spreadsheet",
 }
 
+ARTIFACTS_NOT_AVAILABLE_DETAIL = "Artifacts not available"
+ARTIFACTS_NOT_FOUND_DETAIL = "Artifacts not found"
+
 
 def _assert_artifact_path_under_tenant(*, tenant_id: UUID, path: Path) -> None:
     upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads").resolve(strict=False)
@@ -271,11 +274,11 @@ def load_precheck_samples_from_row(
     # Build on demand from JSONL.
     jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
     if not jsonl_raw:
-        raise HTTPException(status_code=404, detail="Artifacts not available")
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
     jsonl_path = Path(jsonl_raw)
     _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
     if not jsonl_path.exists() or not jsonl_path.is_file():
-        raise HTTPException(status_code=404, detail="Artifacts not found")
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
 
     return _build_samples_payload(jsonl_path=jsonl_path, target_size=size_n)
 
@@ -319,11 +322,11 @@ def list_near_dup_files_from_row(
     artifacts = artifacts if isinstance(artifacts, dict) else {}
     jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
     if not jsonl_raw:
-        raise HTTPException(status_code=404, detail="Artifacts not available")
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
     jsonl_path = Path(jsonl_raw)
     _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
     if not jsonl_path.exists() or not jsonl_path.is_file():
-        raise HTTPException(status_code=404, detail="Artifacts not found")
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
 
     near = load_precheck_near_dups_from_row(row, tenant_id=tenant_id)
     clusters = near.get("clusters") if isinstance(near.get("clusters"), list) else []
@@ -397,12 +400,12 @@ def list_precheck_finding_files(
         artifacts = {}
     jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
     if not jsonl_raw:
-        raise HTTPException(status_code=404, detail="Artifacts not available")
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
 
     jsonl_path = Path(jsonl_raw)
     _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
     if not jsonl_path.exists() or not jsonl_path.is_file():
-        raise HTTPException(status_code=404, detail="Artifacts not found")
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
 
     # near_dup is cluster-based and resolved via near_dups_json (not per-record findings).
     if key == "near_dup":
@@ -441,12 +444,12 @@ def list_precheck_files_by_dir_prefix(
         artifacts = {}
     jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()
     if not jsonl_raw:
-        raise HTTPException(status_code=404, detail="Artifacts not available")
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_AVAILABLE_DETAIL)
 
     jsonl_path = Path(jsonl_raw)
     _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
     if not jsonl_path.exists() or not jsonl_path.is_file():
-        raise HTTPException(status_code=404, detail="Artifacts not found")
+        raise HTTPException(status_code=404, detail=ARTIFACTS_NOT_FOUND_DETAIL)
 
     return _list_files_from_jsonl(
         jsonl_path=jsonl_path,

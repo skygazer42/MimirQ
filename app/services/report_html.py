@@ -455,7 +455,7 @@ def render_dataset_report_html(
         ("p90_elapsed_ms", prov_elapsed_p90),
     ]
     prov_meta_table = (
-        "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
+        BARS_METRIC_TABLE_HEADER
         + "".join(f'<tr><td class="k">{escape(str(k))}</td><td class="v">{_fmt_int(v)}</td><td></td></tr>' for k, v in prov_meta_rows)
         + TABLE_TBODY_CLOSE
         if prov_meta_rows
@@ -685,7 +685,7 @@ def render_dataset_report_html(
             rr_summary_rows.append(f"<tr><td class=\"k\">{escape(key)}</td><td class=\"v\">{escape(_fmt_num(v))}</td><td></td></tr>")
 
     rr_summary_table = (
-        "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
+        BARS_METRIC_TABLE_HEADER
         + "".join(rr_summary_rows)
         + TABLE_TBODY_CLOSE
         if rr_summary_rows
@@ -1240,7 +1240,7 @@ def render_rag_audit_html(
 
     rr_summary_rows = [f"<tr><td class=\"k\">{escape(k)}</td><td class=\"v\">{escape(v)}</td><td></td></tr>" for k, v in rr_summary_items[:50]]
     rr_summary_table = (
-        "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
+        BARS_METRIC_TABLE_HEADER
         + "".join(rr_summary_rows)
         + TABLE_TBODY_CLOSE
         if rr_summary_rows

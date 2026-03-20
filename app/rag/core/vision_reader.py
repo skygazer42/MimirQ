@@ -37,24 +37,25 @@ from app.storage.object.minio import MinIOService
 logger = get_logger("rag.multimodal.vision_reader")
 
 _NIL_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+_DEFAULT_IMAGE_MIME_TYPE = "image/jpeg"
 
 
 def _guess_mime_type(image_bytes: bytes) -> str:
     if not image_bytes:
-        return "image/jpeg"
+        return _DEFAULT_IMAGE_MIME_TYPE
     # PNG: 89 50 4E 47 0D 0A 1A 0A
     if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png"
     # JPEG: FF D8 FF
     if image_bytes.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg"
+        return _DEFAULT_IMAGE_MIME_TYPE
     # GIF: GIF87a / GIF89a
     if image_bytes.startswith(b"GIF87a") or image_bytes.startswith(b"GIF89a"):
         return "image/gif"
     # WebP: RIFF....WEBP
     if len(image_bytes) >= 12 and image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
         return "image/webp"
-    return "image/jpeg"
+    return _DEFAULT_IMAGE_MIME_TYPE
 
 
 def _chat_completions_url(api_base: str) -> str:

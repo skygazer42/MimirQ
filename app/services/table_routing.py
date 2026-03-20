@@ -89,7 +89,7 @@ def _estimate_csv_shape(path: Path, *, sample_bytes: int) -> tuple[int, int, boo
         sample = text[:8192]
         dialect = csv.excel
         try:
-            sniffed = csv.Sniffer().sniff(sample, delimiters=[",", "\t", ";", "|"])
+            sniffed = csv.Sniffer().sniff(sample, delimiters=",\t;|")
             dialect = sniffed
         except Exception:
             dialect = csv.excel

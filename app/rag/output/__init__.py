@@ -24,6 +24,9 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+_DESC_OUTPUT_MODE_IDENTIFIER = "Output mode identifier"
+_DESC_SOURCE_REFERENCES = "Source references"
+
 
 class OutputMode(str, Enum):
     """Available output modes."""
@@ -44,22 +47,22 @@ class OutputMode(str, Enum):
 
 class FAQOutput(BaseModel):
     """FAQ-style output with question and answer."""
-    mode: str = Field(default="faq", description="Output mode identifier")
+    mode: str = Field(default="faq", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     question: str = Field(description="The original question")
     answer: str = Field(description="Direct answer to the question")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence score")
     related_questions: list[str] = Field(default_factory=list, description="Related questions")
-    sources: list[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description=_DESC_SOURCE_REFERENCES)
 
 
 class SummaryOutput(BaseModel):
     """Summary-style output for long content."""
-    mode: str = Field(default="summary", description="Output mode identifier")
+    mode: str = Field(default="summary", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Summary title")
     summary: str = Field(description="Main summary text")
     key_points: list[str] = Field(default_factory=list, description="Key points")
     word_count: int = Field(default=0, description="Original content word count")
-    sources: list[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description=_DESC_SOURCE_REFERENCES)
 
 
 class ActionItem(BaseModel):
@@ -73,11 +76,11 @@ class ActionItem(BaseModel):
 
 class ActionItemsOutput(BaseModel):
     """Action items extracted from content."""
-    mode: str = Field(default="action_items", description="Output mode identifier")
+    mode: str = Field(default="action_items", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Action items title")
     items: list[ActionItem] = Field(default_factory=list, description="List of action items")
     total_count: int = Field(default=0, description="Total action items")
-    sources: list[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description=_DESC_SOURCE_REFERENCES)
 
 
 class ComparisonItem(BaseModel):
@@ -90,13 +93,13 @@ class ComparisonItem(BaseModel):
 
 class ComparisonOutput(BaseModel):
     """Comparison-style output."""
-    mode: str = Field(default="comparison", description="Output mode identifier")
+    mode: str = Field(default="comparison", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Comparison title")
     option_a_name: str = Field(description="First option name")
     option_b_name: str = Field(description="Second option name")
     comparisons: list[ComparisonItem] = Field(default_factory=list, description="Comparison items")
     conclusion: str = Field(description="Overall conclusion")
-    sources: list[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description=_DESC_SOURCE_REFERENCES)
 
 
 class Step(BaseModel):
@@ -109,12 +112,12 @@ class Step(BaseModel):
 
 class StepByStepOutput(BaseModel):
     """Step-by-step guide output."""
-    mode: str = Field(default="step_by_step", description="Output mode identifier")
+    mode: str = Field(default="step_by_step", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Guide title")
     introduction: str = Field(default="", description="Introduction text")
     steps: list[Step] = Field(default_factory=list, description="List of steps")
     conclusion: str = Field(default="", description="Conclusion text")
-    sources: list[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description=_DESC_SOURCE_REFERENCES)
 
 
 class AnalysisSection(BaseModel):
@@ -126,20 +129,20 @@ class AnalysisSection(BaseModel):
 
 class AnalysisOutput(BaseModel):
     """Detailed analysis output."""
-    mode: str = Field(default="analysis", description="Output mode identifier")
+    mode: str = Field(default="analysis", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     title: str = Field(description="Analysis title")
     overview: str = Field(description="Overview text")
     sections: list[AnalysisSection] = Field(default_factory=list, description="Analysis sections")
     conclusions: list[str] = Field(default_factory=list, description="Conclusions")
     recommendations: list[str] = Field(default_factory=list, description="Recommendations")
-    sources: list[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description=_DESC_SOURCE_REFERENCES)
 
 
 class PlainOutput(BaseModel):
     """Plain text output."""
-    mode: str = Field(default="plain", description="Output mode identifier")
+    mode: str = Field(default="plain", description=_DESC_OUTPUT_MODE_IDENTIFIER)
     content: str = Field(description="Plain text content")
-    sources: list[str] = Field(default_factory=list, description="Source references")
+    sources: list[str] = Field(default_factory=list, description=_DESC_SOURCE_REFERENCES)
 
 
 # Union type for all outputs

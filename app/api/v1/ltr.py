@@ -39,6 +39,8 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+_NO_PERMISSION_TO_MANAGE_LTR_MODELS_DETAIL = "No permission to manage LTR models"
+
 
 class LTRModelInfo(BaseModel):
     model_id: str
@@ -122,7 +124,7 @@ async def register_ltr_model(
         tenant_id,
         account_id,
         TenantPermissions.SETTINGS_WRITE,
-        detail="No permission to manage LTR models",
+        detail=_NO_PERMISSION_TO_MANAGE_LTR_MODELS_DETAIL,
     )
 
     try:
@@ -191,7 +193,7 @@ async def activate_ltr_model(
         tenant_id,
         account_id,
         TenantPermissions.SETTINGS_WRITE,
-        detail="No permission to manage LTR models",
+        detail=_NO_PERMISSION_TO_MANAGE_LTR_MODELS_DETAIL,
     )
 
     try:
@@ -235,7 +237,7 @@ async def rollback_ltr_model(
         tenant_id,
         account_id,
         TenantPermissions.SETTINGS_WRITE,
-        detail="No permission to manage LTR models",
+        detail=_NO_PERMISSION_TO_MANAGE_LTR_MODELS_DETAIL,
     )
 
     try:

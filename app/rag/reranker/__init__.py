@@ -9,27 +9,31 @@ from __future__ import annotations
 
 from importlib import import_module
 
+_MODULE_BASE = "app.rag.reranker.base"
+_MODULE_HYBRID = "app.rag.reranker.hybrid"
+_MODULE_LLM_BASED = "app.rag.reranker.llm_based"
+
 _EXPORTS: dict[str, tuple[str, str]] = {
-    "BaseReranker": ("app.rag.reranker.base", "BaseReranker"),
-    "APIReranker": ("app.rag.reranker.base", "APIReranker"),
-    "DocumentReranker": ("app.rag.reranker.base", "DocumentReranker"),
+    "BaseReranker": (_MODULE_BASE, "BaseReranker"),
+    "APIReranker": (_MODULE_BASE, "APIReranker"),
+    "DocumentReranker": (_MODULE_BASE, "DocumentReranker"),
     "OpenAIReranker": ("app.rag.reranker.openai", "OpenAIReranker"),
     "DashScopeReranker": ("app.rag.reranker.dashscope", "DashScopeReranker"),
-    "WeightedReranker": ("app.rag.reranker.hybrid", "WeightedReranker"),
+    "WeightedReranker": (_MODULE_HYBRID, "WeightedReranker"),
     "ParentChildReranker": ("app.rag.reranker.parent_child", "ParentChildReranker"),
-    "LLMReranker": ("app.rag.reranker.llm_based", "LLMReranker"),
+    "LLMReranker": (_MODULE_LLM_BASED, "LLMReranker"),
     "KGReranker": ("app.rag.reranker.kg", "KGReranker"),
     "get_kg_reranker": ("app.rag.reranker.kg", "get_kg_reranker"),
     "RerankCandidate": ("app.rag.reranker.types", "RerankCandidate"),
     "RerankResult": ("app.rag.reranker.types", "RerankResult"),
-    "LLMRerankResult": ("app.rag.reranker.llm_based", "LLMRerankResult"),
-    "Weights": ("app.rag.reranker.hybrid", "Weights"),
-    "VectorSetting": ("app.rag.reranker.hybrid", "VectorSetting"),
-    "KeywordSetting": ("app.rag.reranker.hybrid", "KeywordSetting"),
-    "RerankMode": ("app.rag.reranker.hybrid", "RerankMode"),
+    "LLMRerankResult": (_MODULE_LLM_BASED, "LLMRerankResult"),
+    "Weights": (_MODULE_HYBRID, "Weights"),
+    "VectorSetting": (_MODULE_HYBRID, "VectorSetting"),
+    "KeywordSetting": (_MODULE_HYBRID, "KeywordSetting"),
+    "RerankMode": (_MODULE_HYBRID, "RerankMode"),
     "get_reranker": ("app.rag.reranker.factory", "get_reranker"),
     "get_rag_reranker": ("app.rag.reranker.factory", "get_rag_reranker"),
-    "get_llm_reranker": ("app.rag.reranker.llm_based", "get_llm_reranker"),
+    "get_llm_reranker": (_MODULE_LLM_BASED, "get_llm_reranker"),
 }
 
 

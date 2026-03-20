@@ -16,6 +16,8 @@ _api_reranker_cache: dict[str, BaseReranker] = {}
 _local_reranker_lock = threading.Lock()
 _local_reranker_cache: dict[str, BaseReranker] = {}
 
+DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+
 
 def describe_reranker_provider(provider: str | None, **kwargs: Any) -> dict[str, Any]:
     normalized = str(provider or "").strip().lower() or "openai"
@@ -91,7 +93,7 @@ def get_reranker(
     if provider in ("dashscope", "aliyun"):
         from app.rag.reranker.dashscope import DashScopeReranker
         
-        model_name = model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3"
+        model_name = model_name or settings.RERANKER_MODEL or DEFAULT_RERANKER_MODEL
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or "https://dashscope.aliyuncs.com/api/v1/services/rerank"
         
@@ -115,7 +117,7 @@ def get_reranker(
     elif provider == "openai":
         from app.rag.reranker.openai import OpenAIReranker
         
-        model_name = model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3"
+        model_name = model_name or settings.RERANKER_MODEL or DEFAULT_RERANKER_MODEL
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
         
@@ -353,7 +355,7 @@ def get_reranker(
     elif provider in ("cross_encoder", "cross-encoder", "sentence_transformers", "sentence-transformers"):
         from app.rag.reranker.cross_encoder import CrossEncoderReranker
 
-        model_name = model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3"
+        model_name = model_name or settings.RERANKER_MODEL or DEFAULT_RERANKER_MODEL
         device = kwargs.get("device")
         cache_key = _local_cache_key("cross_encoder", [str(model_name or ""), str(device or "")])
         with _local_reranker_lock:
@@ -376,7 +378,7 @@ def get_reranker(
     else:
         from app.rag.reranker.openai import OpenAIReranker
         
-        model_name = model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3"
+        model_name = model_name or settings.RERANKER_MODEL or DEFAULT_RERANKER_MODEL
         api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
         base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
         

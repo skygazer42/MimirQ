@@ -28,6 +28,8 @@ _ALIAS_TOKEN_RE = re.compile(
     flags=re.UNICODE,
 )
 
+ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR = "account_id is required when dataset_id is provided"
+
 
 def _extract_alias_candidates(query: str, *, max_tokens: int = 32, max_ngrams: int = 256) -> list[str]:
     """
@@ -533,7 +535,7 @@ class EventRepository:
             if tenant_id is None:
                 raise ValueError("tenant_id is required when dataset_id is provided")
             if not account_id:
-                raise ValueError("account_id is required when dataset_id is provided")
+                raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
             allowed_docs = self._allowed_document_ids_subquery_for_dataset(
                 tenant_id=tenant_id,
                 dataset_id=dataset_id,
@@ -633,7 +635,7 @@ class EventRepository:
 
         # Dataset-scoped search: post-filter vector hits via SQL to enforce ACL without enumerating doc ids.
         if not account_id:
-            raise ValueError("account_id is required when dataset_id is provided")
+            raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
         try:
             candidate_event_ids = [item.get("event_id") for item in formatted if item.get("event_id")]
             allowed_event_ids = self.filter_event_ids_in_dataset(
@@ -692,7 +694,7 @@ class EventRepository:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
         elif dataset_id is not None:
             if not account_id:
-                raise ValueError("account_id is required when dataset_id is provided")
+                raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
             allowed_docs = self._allowed_document_ids_subquery_for_dataset(
                 tenant_id=UUID(str(tenant_id)),
                 dataset_id=dataset_id,
@@ -823,7 +825,7 @@ class EventRepository:
             stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
         elif dataset_id is not None:
             if not account_id:
-                raise ValueError("account_id is required when dataset_id is provided")
+                raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
             allowed_docs = self._allowed_document_ids_subquery_for_dataset(
                 tenant_id=UUID(str(tenant_id)),
                 dataset_id=dataset_id,
@@ -917,7 +919,7 @@ class RelationRepository:
             q = q.filter(KgRelation.document_id.in_(doc_ids))
         elif dataset_id is not None:
             if not account_id:
-                raise ValueError("account_id is required when dataset_id is provided")
+                raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
             allowed_docs = self._allowed_document_ids_subquery_for_dataset(
                 tenant_id=UUID(str(tenant_id)),
                 dataset_id=dataset_id,
