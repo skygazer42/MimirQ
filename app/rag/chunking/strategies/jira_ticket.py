@@ -45,14 +45,119 @@ class _Section:
 
 
 _ISSUE_KEY_RE = re.compile(r"\b[A-Z][A-Z0-9]+-\d+\b")
-_CONFLUENCE_HEADING_RE = re.compile(r"^\s*h[1-6]\.\s+(?P<title>.+?)\s*$", re.IGNORECASE)
-_MD_HEADING_RE = re.compile(r"^\s*#{1,6}\s+(?P<title>.+?)\s*$")
-_FIELD_RE = re.compile(r"^\s*(?P<k>[A-Za-z][A-Za-z0-9 _/-]{1,40})\s*[:：]\s*(?P<v>.*)$")
-_NUMBERED_PREFIX_RE = re.compile(r"^\s*\d+(?:\.\d+){0,3}[\).\s]+\s*")
+_FIELD_KEY_ALLOWED = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _/-")
 
 
 def _norm(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip()).lower()
+    # Faster and avoids regex hotspots in Sonar.
+    return " ".join((s or "").strip().split()).lower()
+
+
+def _strip_numbered_prefix(s: str) -> str:
+    """
+    Strip a numbered outline prefix such as:
+      1. Title
+      1) Title
+      1.2.3) Title
+    """
+    raw = (s or "").lstrip()
+    if not raw:
+        return ""
+
+    i = 0
+    n = len(raw)
+    if i >= n or not raw[i].isdigit():
+        return raw
+
+    # First segment digits.
+    while i < n and raw[i].isdigit():
+        i += 1
+
+    segs = 1
+    while segs < 4 and i + 1 < n and raw[i] == "." and raw[i + 1].isdigit():
+        i += 1
+        while i < n and raw[i].isdigit():
+            i += 1
+        segs += 1
+
+    # Require at least one delimiter character ('.', ')', or whitespace).
+    j = i
+    while j < n and (raw[j].isspace() or raw[j] in (".", ")")):
+        j += 1
+    if j == i:
+        return raw
+
+    return raw[j:].strip()
+
+
+def _strip_trailing_colon(s: str) -> str:
+    out = (s or "").rstrip()
+    while out and out[-1].isspace():
+        out = out[:-1]
+    if out.endswith((":", "：")):
+        out = out[:-1].rstrip()
+    return out
+
+
+def _parse_confluence_heading(s: str) -> str | None:
+    """
+    Parse 'h1. Title' style headings.
+    """
+    line = (s or "").strip()
+    if len(line) < 4:
+        return None
+    if line[0].lower() != "h":
+        return None
+    if line[1] not in "123456":
+        return None
+    if line[2] != ".":
+        return None
+    if not line[3].isspace():
+        return None
+    title = line[3:].strip()
+    return title or None
+
+
+def _parse_md_heading(s: str) -> str | None:
+    """
+    Parse Markdown ATX headings (1-6 '#') and return the title.
+    """
+    line = (s or "").strip()
+    if not line:
+        return None
+    i = 0
+    n = len(line)
+    while i < n and i < 6 and line[i] == "#":
+        i += 1
+    if i == 0 or i >= n or not line[i].isspace():
+        return None
+    title = line[i:].strip()
+    return title or None
+
+
+def _parse_field_heading(s: str) -> str | None:
+    """
+    Parse 'Key: Value' style headings and return the key.
+    """
+    line = (s or "").strip()
+    if not line:
+        return None
+    pos = line.find(":")
+    pos2 = line.find("：")
+    if pos == -1:
+        pos = pos2
+    elif pos2 != -1:
+        pos = min(pos, pos2)
+    if pos <= 0:
+        return None
+    key = line[:pos].strip()
+    if len(key) < 2 or len(key) > 41:
+        return None
+    if not key[0].isalpha():
+        return None
+    if any(ch not in _FIELD_KEY_ALLOWED for ch in key):
+        return None
+    return key
 
 
 _SECTION_SYNONYMS: dict[str, list[str]] = {
@@ -90,28 +195,22 @@ def _parse_heading_line(plain: str) -> tuple[str, str] | None:
     s = (plain or "").strip()
     if not s:
         return None
-    s = _NUMBERED_PREFIX_RE.sub("", s).strip()
+    s = _strip_numbered_prefix(s)
 
-    m = _CONFLUENCE_HEADING_RE.match(s)
-    if m:
-        title = (m.group("title") or "").strip()
+    if (title := _parse_confluence_heading(s)) is not None:
         key = _TITLE_TO_KEY.get(_norm(title))
         if key:
             return title, key
         return None
 
-    m = _MD_HEADING_RE.match(s)
-    if m:
-        title = (m.group("title") or "").strip()
-        title = re.sub(r"\s*[:：]\s*$", "", title).strip()
+    if (title := _parse_md_heading(s)) is not None:
+        title = _strip_trailing_colon(title)
         key = _TITLE_TO_KEY.get(_norm(title))
         if key:
             return title, key
         return None
 
-    m = _FIELD_RE.match(s)
-    if m:
-        title = (m.group("k") or "").strip()
+    if (title := _parse_field_heading(s)) is not None:
         key = _TITLE_TO_KEY.get(_norm(title))
         if key:
             return title, key
@@ -119,7 +218,7 @@ def _parse_heading_line(plain: str) -> tuple[str, str] | None:
 
     # Standalone heading with trailing colon.
     if s.endswith((":", "：")) and len(s) <= 80:
-        title = re.sub(r"[:：]\s*$", "", s).strip()
+        title = _strip_trailing_colon(s)
         key = _TITLE_TO_KEY.get(_norm(title))
         if key:
             return title, key
