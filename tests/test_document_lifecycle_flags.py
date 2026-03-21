@@ -97,7 +97,7 @@ def test_document_lifecycle_batch_enable_disable_archive(monkeypatch):  # noqa: 
 
 
 def test_list_documents_defaults_to_active_lifecycle(monkeypatch):  # noqa: ANN001
-    from app.api.v1.documents import list_documents
+    from app.api.v1.documents import ListDocumentsQueryFields, list_documents
     from app.models.document import Document as DBDocument
 
     class _DummyQuery:
@@ -139,15 +139,17 @@ def test_list_documents_defaults_to_active_lifecycle(monkeypatch):  # noqa: ANN0
 
     asyncio.run(
         list_documents(
-            skip=0,
-            limit=20,
-            status=None,
-            dataset_id=uuid.uuid4(),
-            file_type=None,
-            owner_id=None,
-            q=None,
-            order_by="created_at",
-            order_dir="desc",
+            params=ListDocumentsQueryFields(
+                skip=0,
+                limit=20,
+                status=None,
+                dataset_id=uuid.uuid4(),
+                file_type=None,
+                owner_id=None,
+                q=None,
+                order_by="created_at",
+                order_dir="desc",
+            ),
             tenant_id=uuid.uuid4(),
             account_id="acct",
             db=_DummyDB(),  # type: ignore[arg-type]

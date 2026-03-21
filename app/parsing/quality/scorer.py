@@ -2,9 +2,10 @@
 PDF quality scorer to decide parsing routing.
 
 Scoring dimensions (sample first 3 pages):
-- Text extraction quality (50%): volume, readability, OCR noise
-- Format consistency (30%): fonts, line spacing, paragraph structure
-- Table integrity (20%): detection rate, alignment
+- Text extraction quality: volume, readability, OCR noise
+- Format consistency: fonts, line spacing, paragraph structure
+- Table integrity: detection rate, alignment
+- Reading order: geometric consistency of observed word flow
 
 Final score 0-1; higher is cleaner. Low scores prefer OCR/structured flow.
 """
@@ -15,6 +16,7 @@ from pathlib import Path
 import pdfplumber  # type: ignore
 
 from app.parsing.quality.ocr_validator import rapid_ocr_service
+from app.parsing.quality.reading_order import score_pdfplumber_reading_order
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.quality.scorer")
@@ -52,6 +54,7 @@ def score_pdf_quality(
     text_quality_score = 0.0
     format_consistency_score = 0.0
     table_quality_score = 0.0
+    reading_order_score = 1.0
     is_scanned = False
 
     try:
@@ -71,18 +74,23 @@ def score_pdf_quality(
             # Dimension 3: table integrity (20%).
             table_quality_score = _score_table_quality(pages_data)
 
+            # Dimension 4: reading-order consistency (15%).
+            reading_order_score = float((score_pdfplumber_reading_order(pages_data) or {}).get("score") or 1.0)
+
     except Exception as e:
         logger.warning("PDF quality scoring failed: %s", e)
         # Return low scores on failure.
         text_quality_score = 0.0
         format_consistency_score = 0.0
         table_quality_score = 0.0
+        reading_order_score = 1.0
 
-    # Weighted sum: text 50% + format 30% + table 20%.
+    # Weighted sum: text 40% + format 25% + table 20% + reading order 15%.
     final_score = (
-        0.50 * text_quality_score +
-        0.30 * format_consistency_score +
-        0.20 * table_quality_score
+        0.40 * text_quality_score +
+        0.25 * format_consistency_score +
+        0.20 * table_quality_score +
+        0.15 * reading_order_score
     )
     final_score = max(0.0, min(1.0, final_score))
 
@@ -91,6 +99,7 @@ def score_pdf_quality(
         "text_quality_score": round(text_quality_score, 3),
         "format_consistency_score": round(format_consistency_score, 3),
         "table_quality_score": round(table_quality_score, 3),
+        "reading_order_score": round(reading_order_score, 3),
         "is_scanned": is_scanned,
         "page_count": float(page_count),
     }

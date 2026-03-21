@@ -41,7 +41,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { datasetApi } from '@/lib/api-client'
+import { datasetApi, documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 
@@ -131,6 +131,7 @@ export default function DatasetProfilePage() {
   const [selectedFinding, setSelectedFinding] = useState<DatasetProfileFindingSummary | null>(null)
   const [findingLoading, setFindingLoading] = useState(false)
   const [findingRes, setFindingRes] = useState<DatasetProfileFindingListResponse | null>(null)
+  const [retryingFinding, setRetryingFinding] = useState(false)
 
   const [bucketOpen, setBucketOpen] = useState(false)
   const [bucketDim, setBucketDim] = useState<'file_type' | 'language' | 'directory' | 'quality_bucket' | null>(null)
@@ -318,6 +319,31 @@ export default function DatasetProfilePage() {
     return (summary?.findings || []).find((f) => f.key === 'parse_low_quality') || null
   }, [summary])
 
+  const averageParseQuality = useMemo(() => {
+    const bins = summary?.parse_quality_histogram || []
+    let weighted = 0
+    let total = 0
+    for (const bin of bins) {
+      const count = Number(bin.count || 0)
+      if (count <= 0) continue
+      const label = String(bin.label || '')
+      const [rawLo, rawHi] = label.split('-', 2)
+      const lo = Number.parseFloat(rawLo)
+      const hi = Number.parseFloat(rawHi)
+      const midpoint = Number.isFinite(lo) && Number.isFinite(hi) ? (lo + hi) / 2 : 0
+      weighted += midpoint * count
+      total += count
+    }
+    return total > 0 ? weighted / total : null
+  }, [summary])
+
+  const fallbackRate = useMemo(() => {
+    const docsWithProvenance = Number(summary?.parsing_provenance?.docs_with_provenance || 0)
+    const fallbackDocs = Number(summary?.parsing_provenance?.fallback_docs || 0)
+    if (docsWithProvenance <= 0) return null
+    return fallbackDocs / docsWithProvenance
+  }, [summary])
+
   const openFinding = useCallback(
     async (finding: DatasetProfileFindingSummary) => {
       if (!datasetId) return
@@ -383,6 +409,27 @@ export default function DatasetProfilePage() {
       setFindingLoading(false)
     }
   }, [datasetId, selectedFinding, findingRes])
+
+  const retryFindingDocuments = useCallback(async () => {
+    if (!datasetId || !selectedFinding || !findingRes?.items?.length) return
+    setRetryingFinding(true)
+    try {
+      const res = await documentApi.batchRetry({
+        document_ids: findingRes.items.map((item) => item.id),
+        force: true,
+        skip_if_unchanged: false,
+      })
+      toast.success(`已提交重试：queued ${Number(res.queued || 0)}，skipped ${Number(res.skipped || 0)}`)
+      await load()
+      const refreshed = await datasetApi.listProfileFinding(datasetId, selectedFinding.key, { skip: 0, limit: 50 })
+      setFindingRes(refreshed)
+    } catch (e: any) {
+      console.error('Failed to retry finding documents', e)
+      toast.error(formatApiError(e, '批量重试失败'))
+    } finally {
+      setRetryingFinding(false)
+    }
+  }, [datasetId, findingRes, load, selectedFinding])
 
   const loadMoreBucket = useCallback(async () => {
     if (!datasetId || !bucketDim || !bucketKey || !bucketRes) return
@@ -951,6 +998,18 @@ export default function DatasetProfilePage() {
                     {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p90 || 0)}
                   </div>
                 </div>
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">平均解析分</div>
+                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                    {averageParseQuality == null ? '-' : averageParseQuality.toFixed(3)}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                  <div className="text-xs text-muted-foreground">fallback_rate</div>
+                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                    {fallbackRate == null ? '-' : `${(fallbackRate * 100).toFixed(1)}%`}
+                  </div>
+                </div>
               </div>
             </Panel>
 
@@ -1384,8 +1443,21 @@ export default function DatasetProfilePage() {
     }
     else if (findingRes) {
             return (<div className="space-y-3">
-                  <div className="text-xs text-muted-foreground font-mono">
-                    showing {findingRes.items.length}/{findingRes.total}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs text-muted-foreground font-mono">
+                      showing {findingRes.items.length}/{findingRes.total}
+                    </div>
+                    {selectedFinding?.key === 'parse_low_quality' && findingRes.items.length ? (
+                      <Button
+                        variant="outline"
+                        className="gap-2"
+                        onClick={() => detachPromise(retryFindingDocuments())}
+                        disabled={retryingFinding}
+                      >
+                        {retryingFinding ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : <RefreshCw className="w-4 h-4"/>}
+                        批量重试低质量
+                      </Button>
+                    ) : null}
                   </div>
                   <div className="rounded-xl border border-border/60 overflow-hidden">
                     <table className="w-full text-sm text-left">

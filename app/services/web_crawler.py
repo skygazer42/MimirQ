@@ -756,4 +756,4 @@ async def crawl_site(
     return WebCrawlResult(urls=out, visited=len(visited), queued=len(q), errors=errors, sync_tokens=sync_tokens)
 
 
-__all__ = ["WebCrawlResult", "crawl_site"]
+__all__ = ["WebCrawlOptions", "WebCrawlResult", "crawl_site"]
