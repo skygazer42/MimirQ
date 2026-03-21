@@ -29,7 +29,7 @@ def _collect_binds(expr):  # noqa: ANN001
 
 
 def _run_list_documents(*, monkeypatch, order_by: str, order_dir: str):  # noqa: ANN001
-    from app.api.v1.documents import list_documents
+    from app.api.v1.documents import ListDocumentsQueryFields, list_documents
     from app.models.document import Document as DBDocument
 
     class _DummyQuery:
@@ -77,17 +77,19 @@ def _run_list_documents(*, monkeypatch, order_by: str, order_dir: str):  # noqa:
 
     asyncio.run(
         list_documents(
-            skip=0,
-            limit=20,
-            status=None,
-            lifecycle="active",
-            dataset_id=uuid.uuid4(),
-            file_type=None,
-            owner_id=None,
-            q=None,
-            source_path_prefix=None,
-            order_by=order_by,
-            order_dir=order_dir,
+            params=ListDocumentsQueryFields(
+                skip=0,
+                limit=20,
+                status=None,
+                lifecycle="active",
+                dataset_id=uuid.uuid4(),
+                file_type=None,
+                owner_id=None,
+                q=None,
+                source_path_prefix=None,
+                order_by=order_by,
+                order_dir=order_dir,
+            ),
             tenant_id=uuid.uuid4(),
             account_id="acct",
             db=_DummyDB(),  # type: ignore[arg-type]

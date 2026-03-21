@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import types
 import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -80,10 +81,29 @@ if "app.api.v1.documents" not in sys.modules:
 if "app.services.web_crawler" not in sys.modules:
     web_crawler_mod = types.ModuleType("app.services.web_crawler")
 
+    @dataclass(frozen=True)
+    class _StubWebCrawlOptions:
+        start_urls: list[str] = field(default_factory=list)
+        max_pages: int = 0
+        max_depth: int = 0
+        same_host_only: bool = True
+        include_patterns: list[str] = field(default_factory=list)
+        exclude_patterns: list[str] = field(default_factory=list)
+        use_sitemaps: bool = False
+        sitemap_urls: list[str] | None = None
+        respect_robots: bool = False
+        dedup_canonical: bool = True
+        headers: dict[str, str] | None = None
+        user_agent: str | None = None
+        timeout_sec: float | None = None
+        max_bytes: int | None = None
+        follow_redirects: bool | None = None
+
     async def _crawl_noop(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         await yield_control()
         return None
 
+    web_crawler_mod.WebCrawlOptions = _StubWebCrawlOptions
     web_crawler_mod.crawl_site = _crawl_noop
     sys.modules["app.services.web_crawler"] = web_crawler_mod
     _remember_stub("app.services.web_crawler", web_crawler_mod)

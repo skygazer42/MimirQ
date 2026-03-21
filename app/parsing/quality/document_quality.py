@@ -8,6 +8,7 @@ This is a lightweight "quality score" used for:
 It combines existing signals that are already persisted in doc metadata:
 - pdf_quality.score (0..1) when available
 - parsed_text_quality.density (0..1) and replacement_ratio
+- pdf_quality.reading_order_score (0..1) when available
 """
 
 from __future__ import annotations
@@ -41,15 +42,32 @@ def score_document_parse_quality(
     - components: the signals used to compute the score
     """
     pdf_score = _coerce_float((pdf_quality or {}).get("score"))
+    reading_order_score = _coerce_float((pdf_quality or {}).get("reading_order_score"))
     density = _coerce_float((parsed_text_quality or {}).get("density"))
     replacement_ratio = _coerce_float((parsed_text_quality or {}).get("replacement_ratio"))
 
     if pdf_score is not None:
-        base = pdf_score if density is None else (0.70 * pdf_score + 0.30 * density)
-        source = "pdf+text" if density is not None else "pdf"
+        if density is not None and reading_order_score is not None:
+            base = 0.60 * pdf_score + 0.25 * density + 0.15 * reading_order_score
+            source = "pdf+text+reading_order"
+        elif density is not None:
+            base = 0.70 * pdf_score + 0.30 * density
+            source = "pdf+text"
+        elif reading_order_score is not None:
+            base = 0.80 * pdf_score + 0.20 * reading_order_score
+            source = "pdf+reading_order"
+        else:
+            base = pdf_score
+            source = "pdf"
+    elif density is not None and reading_order_score is not None:
+        base = 0.85 * density + 0.15 * reading_order_score
+        source = "text+reading_order"
     elif density is not None:
         base = density
         source = "text"
+    elif reading_order_score is not None:
+        base = reading_order_score
+        source = "reading_order"
     else:
         base = 0.0
         source = "none"
@@ -67,6 +85,7 @@ def score_document_parse_quality(
         "source": source,
         "components": {
             "pdf_score": (round(pdf_score, 3) if pdf_score is not None else None),
+            "reading_order_score": (round(reading_order_score, 3) if reading_order_score is not None else None),
             "text_density": (round(density, 3) if density is not None else None),
             "replacement_ratio": (round(replacement_ratio, 4) if replacement_ratio is not None else None),
             "penalty": round(pen, 3),
@@ -77,4 +96,3 @@ def score_document_parse_quality(
 __all__ = [
     "score_document_parse_quality",
 ]
-

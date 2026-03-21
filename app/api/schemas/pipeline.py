@@ -30,6 +30,7 @@ class PDFQualityScore(BaseModel):
     text_quality_score: float = Field(..., description="Text extraction quality (0-1)")
     format_consistency_score: float = Field(..., description="Format consistency (0-1)")
     table_quality_score: float = Field(..., description="Table completeness (0-1)")
+    reading_order_score: float | None = Field(default=None, description="Reading-order consistency (0-1)")
     is_scanned: bool = Field(..., description="Whether it is a scanned document")
     page_count: float = Field(..., description="Total page count")
 

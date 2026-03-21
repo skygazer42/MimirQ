@@ -364,6 +364,9 @@ class Settings(BaseSettings):
     PREVIEW_PARSE_CACHE_MAX_DOC_CHARS: int = 2_000_000
     # Manual cache-bust key for preview parse cache (include parser changes, model changes, etc.).
     PREVIEW_PARSE_CACHE_VERSION: str = "v1"
+    # Persisted parse cache for document ingest/retry flows.
+    PARSE_CACHE_ENABLED: bool = False
+    PARSE_CACHE_TTL_SEC: int = 86_400
     # ZIP extraction safety limits (for Markdown+images archives).
     ZIP_MAX_FILES: int = 2000
     ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES: int = 500_000_000
@@ -1249,6 +1252,15 @@ class Settings(BaseSettings):
     PARSE_FALLBACK_ENABLED: bool = False
     PARSE_FALLBACK_MIN_CONTENT_CHARS: int = 120
     PARSE_FALLBACK_MAX_RETRIES: int = 1
+    # Cross-page structure restoration.
+    CROSS_PAGE_MERGE_ENABLED: bool = False
+    CROSS_PAGE_MERGE_MAX_PAGE_GAP: int = 1
+    # Reading-order scoring is lightweight and only affects parse-quality metadata/selection.
+    READING_ORDER_ENABLED: bool = True
+    # Optional VLM correction for low-quality PDF pages.
+    VLM_CORRECTION_ENABLED: bool = False
+    VLM_CORRECTION_MIN_TABLE_SCORE: float = 0.6
+    VLM_CORRECTION_MAX_PAGES: int = 2
     # Persist parsed markdown (raw+clean) for audit/debug.
     PERSIST_PARSED_CONTENT: bool = False
     PERSIST_PARSED_CONTENT_MAX_CHARS: int = 200_000

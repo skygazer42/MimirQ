@@ -242,7 +242,7 @@ lint-py:
 	$(PY) -m ruff check app tests scripts main.py
 
 lint-py-docker:
-	$(COMPOSE) exec -T mimirq-api ruff check app tests scripts main.py
+	$(COMPOSE) exec -T mimirq-api ruff check app scripts main.py
 
 compileall-docker:
 	$(COMPOSE) exec -T mimirq-api python -m compileall -q app

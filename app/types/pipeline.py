@@ -65,6 +65,14 @@ class PipelineOptions:
     parse_fallback_enabled: bool | None = None
     parse_fallback_min_content_chars: int | None = None
     parse_fallback_max_retries: int | None = None
+    cross_page_merge_enabled: bool | None = None
+    cross_page_merge_max_page_gap: int | None = None
+    reading_order_enabled: bool | None = None
+    parse_cache_enabled: bool | None = None
+    parse_cache_ttl_sec: int | None = None
+    vlm_correction_enabled: bool | None = None
+    vlm_correction_min_table_score: float | None = None
+    vlm_correction_max_pages: int | None = None
     persist_parsed_content: bool | None = None
     persist_parsed_content_max_chars: int | None = None
     near_dedup_enabled: bool | None = None
@@ -156,6 +164,14 @@ class PipelineEffective:
     parse_fallback_enabled: bool
     parse_fallback_min_content_chars: int
     parse_fallback_max_retries: int
+    cross_page_merge_enabled: bool
+    cross_page_merge_max_page_gap: int
+    reading_order_enabled: bool
+    parse_cache_enabled: bool
+    parse_cache_ttl_sec: int
+    vlm_correction_enabled: bool
+    vlm_correction_min_table_score: float
+    vlm_correction_max_pages: int
     persist_parsed_content: bool
     persist_parsed_content_max_chars: int
     near_dedup_enabled: bool

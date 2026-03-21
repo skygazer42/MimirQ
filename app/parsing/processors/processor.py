@@ -29,6 +29,9 @@ from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.errors import ParsingError
 from app.parsing.preprocess.file_preprocessor import preprocess_file
+from app.parsing.processors.cross_page_merge import merge_cross_page_documents
+from app.parsing.processors.parse_cache import LocalParseCacheStore, ParseCacheEntry, build_parse_cache_key
+from app.parsing.processors.vlm_correction import apply_vlm_correction_async, should_apply_vlm_correction
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend
@@ -141,6 +144,38 @@ def _chunk_has_asset(meta: dict[str, Any]) -> bool:
     if isinstance(meta.get("image_path"), str) and meta.get("image_path").strip():
         return True
     return bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
+
+
+def _serialize_documents_for_parse_cache(items: list[Document] | None) -> list[dict[str, Any]] | None:
+    if items is None:
+        return None
+    out: list[dict[str, Any]] = []
+    for item in items:
+        out.append(
+            {
+                "page_content": str(item.page_content or ""),
+                "metadata": dict(item.metadata or {}),
+                "id": getattr(item, "id", None),
+            }
+        )
+    return out
+
+
+def _deserialize_documents_from_parse_cache(items: list[dict[str, Any]] | None) -> list[Document] | None:
+    if items is None:
+        return None
+    out: list[Document] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        out.append(
+            Document(
+                page_content=str(item.get("page_content") or ""),
+                metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                id=item.get("id") if isinstance(item.get("id"), str) else None,
+            )
+        )
+    return out
 
 
 def _is_table_segment_metadata(meta: dict[str, Any] | None) -> bool:
@@ -1769,7 +1804,10 @@ class DocumentProcessorService:
             governance_stats: GovernanceStats | None = None
             governance_audit_patch: dict[str, Any] | None = None
             resumed_from_checkpoint = False
+            resumed_from_parse_cache = False
             parsed: ParseResult | None = None
+            parse_cache_store: LocalParseCacheStore | None = None
+            parse_cache_key: str | None = None
 
             # Optional checkpoint/resume: if we previously persisted parsed markdown content
             # for this same (file_sha256 + pipeline_hash), skip parsing and resume from it.
@@ -1821,6 +1859,50 @@ class DocumentProcessorService:
                 resumed_from_checkpoint = False
 
             if not resumed_from_checkpoint:
+                try:
+                    meta0 = dict(db_document.doc_metadata or {})
+                    file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
+                    pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
+                    parser_backend_key = str(parser_backend or "").strip().lower() or "auto"
+                    if (
+                        bool(getattr(pipeline_effective, "parse_cache_enabled", False))
+                        and file_sha0
+                        and pipeline_hash0
+                    ):
+                        parse_cache_store = LocalParseCacheStore(
+                            root=Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_parse_cache"
+                        )
+                        parse_cache_key = build_parse_cache_key(
+                            file_sha256=file_sha0,
+                            parser_backend=parser_backend_key,
+                            config_hash=pipeline_hash0,
+                        )
+                        cached_entry, cached_age_ms = parse_cache_store.get(
+                            parse_cache_key,
+                            ttl_sec=int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+                        )
+                        if cached_entry is not None and (cached_entry.documents is not None or cached_entry.chunks is not None):
+                            parsed = ParseResult(
+                                resolved_backend=str(cached_entry.resolved_backend or parser_backend_key),
+                                resolved_chunk_strategy=str(cached_entry.resolved_chunk_strategy or chunker_factory.resolve_strategy(chunk_strategy)),
+                                documents=_deserialize_documents_from_parse_cache(cached_entry.documents),
+                                chunks=_deserialize_documents_from_parse_cache(cached_entry.chunks),
+                            )
+                            resumed_from_parse_cache = True
+                            meta_hit = dict(db_document.doc_metadata or {})
+                            meta_hit["parse_cache"] = {
+                                "enabled": True,
+                                "hit": True,
+                                "age_ms": int(cached_age_ms or 0),
+                                "ttl_sec": int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+                            }
+                            db_document.doc_metadata = meta_hit
+                            db.commit()
+                            db.refresh(db_document)
+                except Exception:
+                    resumed_from_parse_cache = False
+
+            if not resumed_from_checkpoint and not resumed_from_parse_cache:
                 with metrics_span(
                     "ingest.parse",
                     parser_backend_requested=parser_backend,
@@ -1851,6 +1933,7 @@ class DocumentProcessorService:
                 and file_path.suffix.lower() == ".pdf"
                 and (str(parser_backend or "").strip().lower() in {"", "auto"})
                 and (not resumed_from_checkpoint)
+                and (not resumed_from_parse_cache)
                 and parsed.documents is not None
             ):
                 try:
@@ -1970,10 +2053,43 @@ class DocumentProcessorService:
                 resolved_backend = str(meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto").strip() or "auto"
                 resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
             else:
-                _add_stage_duration("parse", (time.perf_counter() - t_parse0) * 1000)
+                if not resumed_from_parse_cache:
+                    _add_stage_duration("parse", (time.perf_counter() - t_parse0) * 1000)
 
                 resolved_backend = parsed.resolved_backend
                 resolved_chunk_strategy = parsed.resolved_chunk_strategy
+
+            if (
+                not resumed_from_checkpoint
+                and not resumed_from_parse_cache
+                and parse_cache_store is not None
+                and parse_cache_key
+                and parsed is not None
+            ):
+                try:
+                    parse_cache_store.set(
+                        parse_cache_key,
+                        ParseCacheEntry(
+                            created_at_epoch=time.time(),
+                            file_sha256=str((db_document.doc_metadata or {}).get("file_sha256") or "").strip().lower(),
+                            parser_backend=str(parser_backend or "").strip().lower() or "auto",
+                            resolved_backend=str(parsed.resolved_backend or resolved_backend),
+                            resolved_chunk_strategy=str(parsed.resolved_chunk_strategy or resolved_chunk_strategy),
+                            documents=_serialize_documents_for_parse_cache(parsed.documents),
+                            chunks=_serialize_documents_for_parse_cache(parsed.chunks),
+                        ),
+                    )
+                    meta_cached = dict(db_document.doc_metadata or {})
+                    meta_cached["parse_cache"] = {
+                        "enabled": True,
+                        "hit": False,
+                        "ttl_sec": int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+                    }
+                    db_document.doc_metadata = meta_cached
+                    db.commit()
+                    db.refresh(db_document)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Persisted parse cache write failed (ignored): %s", str(exc)[:200])
 
             # Parse quality gate: if fallback is enabled but we still don't have enough signal,
             # route to failed/quarantined instead of indexing garbage.
@@ -1985,6 +2101,7 @@ class DocumentProcessorService:
                 and file_path.suffix.lower() == ".pdf"
                 and (str(parser_backend or "").strip().lower() in {"", "auto"})
                 and (not resumed_from_checkpoint)
+                and (not resumed_from_parse_cache)
                 and parsed.documents is not None
             ):
                 try:
@@ -2115,6 +2232,15 @@ class DocumentProcessorService:
                             document_img_ids.add(iid)
                 else:
                     parsed_documents = None
+
+                if parsed_documents and bool(getattr(pipeline_effective, "cross_page_merge_enabled", False)):
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.cross_page_merge"):
+                        parsed_documents = merge_cross_page_documents(
+                            parsed_documents,
+                            max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
+                        )
+                    _add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
 
                 # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
                 if parsed_documents and file_path.suffix.lower() == ".pdf":
@@ -2285,6 +2411,41 @@ class DocumentProcessorService:
                             document_img_ids.add(iid)
                 else:
                     parsed_documents = None
+
+                if parsed_documents and bool(getattr(pipeline_effective, "cross_page_merge_enabled", False)):
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.cross_page_merge"):
+                        parsed_documents = merge_cross_page_documents(
+                            parsed_documents,
+                            max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
+                        )
+                    _add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
+
+                pdf_quality = (db_document.doc_metadata or {}).get("pdf_quality") if isinstance((db_document.doc_metadata or {}).get("pdf_quality"), dict) else None
+                if (
+                    parsed_documents
+                    and file_path.suffix.lower() == ".pdf"
+                    and should_apply_vlm_correction(
+                        enabled=bool(getattr(pipeline_effective, "vlm_correction_enabled", False)),
+                        pdf_quality=pdf_quality,
+                        min_table_score=float(getattr(pipeline_effective, "vlm_correction_min_table_score", 0.6) or 0.6),
+                    )
+                ):
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.vlm_correction"):
+                        corrected_docs, correction_meta = await apply_vlm_correction_async(
+                            documents=parsed_documents,
+                            file_path=file_path,
+                            max_pages=int(getattr(pipeline_effective, "vlm_correction_max_pages", 2) or 2),
+                        )
+                    _add_stage_duration("vlm_correction", (time.perf_counter() - t0) * 1000)
+                    parsed_documents = corrected_docs
+                    if bool(correction_meta.get("applied")):
+                        meta_vlm = dict(db_document.doc_metadata or {})
+                        meta_vlm["vlm_correction"] = correction_meta
+                        db_document.doc_metadata = meta_vlm
+                        db.commit()
+                        db.refresh(db_document)
 
                 # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
                 if parsed_documents and file_path.suffix.lower() == ".pdf":

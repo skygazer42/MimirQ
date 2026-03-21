@@ -22,5 +22,10 @@ describe('dataset profile page distributions', () => {
     expect(src).toContain('avg_chunk_chars_histogram')
     expect(src).toContain('chunk_targets')
     expect(src).toContain('parsing_provenance')
+
+    // Parsing dashboard follow-through: show derived parse metrics and allow retry from finding drilldown.
+    expect(src).toContain('平均解析分')
+    expect(src).toContain('fallback_rate')
+    expect(src).toContain('documentApi.batchRetry')
   })
 })

@@ -285,6 +285,14 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         parse_fallback_enabled=_coerce_bool(pipeline.get("parse_fallback_enabled")),
         parse_fallback_min_content_chars=_coerce_int(pipeline.get("parse_fallback_min_content_chars")),
         parse_fallback_max_retries=_coerce_int(pipeline.get("parse_fallback_max_retries")),
+        cross_page_merge_enabled=_coerce_bool(pipeline.get("cross_page_merge_enabled")),
+        cross_page_merge_max_page_gap=_coerce_int(pipeline.get("cross_page_merge_max_page_gap")),
+        reading_order_enabled=_coerce_bool(pipeline.get("reading_order_enabled")),
+        parse_cache_enabled=_coerce_bool(pipeline.get("parse_cache_enabled")),
+        parse_cache_ttl_sec=_coerce_int(pipeline.get("parse_cache_ttl_sec")),
+        vlm_correction_enabled=_coerce_bool(pipeline.get("vlm_correction_enabled")),
+        vlm_correction_min_table_score=_coerce_float(pipeline.get("vlm_correction_min_table_score")),
+        vlm_correction_max_pages=_coerce_int(pipeline.get("vlm_correction_max_pages")),
         persist_parsed_content=_coerce_bool(pipeline.get("persist_parsed_content")),
         persist_parsed_content_max_chars=_coerce_int(pipeline.get("persist_parsed_content_max_chars")),
         near_dedup_enabled=_coerce_bool(dedup.get("enabled")),
@@ -331,6 +339,22 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
         pipeline["parse_fallback_min_content_chars"] = int(options.parse_fallback_min_content_chars)
     if options.parse_fallback_max_retries is not None:
         pipeline["parse_fallback_max_retries"] = int(options.parse_fallback_max_retries)
+    if options.cross_page_merge_enabled is not None:
+        pipeline["cross_page_merge_enabled"] = bool(options.cross_page_merge_enabled)
+    if options.cross_page_merge_max_page_gap is not None:
+        pipeline["cross_page_merge_max_page_gap"] = int(options.cross_page_merge_max_page_gap)
+    if options.reading_order_enabled is not None:
+        pipeline["reading_order_enabled"] = bool(options.reading_order_enabled)
+    if options.parse_cache_enabled is not None:
+        pipeline["parse_cache_enabled"] = bool(options.parse_cache_enabled)
+    if options.parse_cache_ttl_sec is not None:
+        pipeline["parse_cache_ttl_sec"] = int(options.parse_cache_ttl_sec)
+    if options.vlm_correction_enabled is not None:
+        pipeline["vlm_correction_enabled"] = bool(options.vlm_correction_enabled)
+    if options.vlm_correction_min_table_score is not None:
+        pipeline["vlm_correction_min_table_score"] = float(options.vlm_correction_min_table_score)
+    if options.vlm_correction_max_pages is not None:
+        pipeline["vlm_correction_max_pages"] = int(options.vlm_correction_max_pages)
     if options.persist_parsed_content is not None:
         pipeline["persist_parsed_content"] = bool(options.persist_parsed_content)
     if options.persist_parsed_content_max_chars is not None:
@@ -793,6 +817,46 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.parse_fallback_max_retries is not None
         else int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1)
     )
+    cross_page_merge_enabled = (
+        getattr(settings, "CROSS_PAGE_MERGE_ENABLED", False)
+        if options.cross_page_merge_enabled is None
+        else bool(options.cross_page_merge_enabled)
+    )
+    cross_page_merge_max_page_gap = (
+        options.cross_page_merge_max_page_gap
+        if options.cross_page_merge_max_page_gap is not None
+        else int(getattr(settings, "CROSS_PAGE_MERGE_MAX_PAGE_GAP", 1) or 1)
+    )
+    reading_order_enabled = (
+        getattr(settings, "READING_ORDER_ENABLED", True)
+        if options.reading_order_enabled is None
+        else bool(options.reading_order_enabled)
+    )
+    parse_cache_enabled = (
+        getattr(settings, "PARSE_CACHE_ENABLED", False)
+        if options.parse_cache_enabled is None
+        else bool(options.parse_cache_enabled)
+    )
+    parse_cache_ttl_sec = (
+        options.parse_cache_ttl_sec
+        if options.parse_cache_ttl_sec is not None
+        else int(getattr(settings, "PARSE_CACHE_TTL_SEC", 86_400) or 86_400)
+    )
+    vlm_correction_enabled = (
+        getattr(settings, "VLM_CORRECTION_ENABLED", False)
+        if options.vlm_correction_enabled is None
+        else bool(options.vlm_correction_enabled)
+    )
+    vlm_correction_min_table_score = (
+        options.vlm_correction_min_table_score
+        if options.vlm_correction_min_table_score is not None
+        else float(getattr(settings, "VLM_CORRECTION_MIN_TABLE_SCORE", 0.6) or 0.6)
+    )
+    vlm_correction_max_pages = (
+        options.vlm_correction_max_pages
+        if options.vlm_correction_max_pages is not None
+        else int(getattr(settings, "VLM_CORRECTION_MAX_PAGES", 2) or 2)
+    )
     persist_parsed_content = (
         getattr(settings, "PERSIST_PARSED_CONTENT", False)
         if options.persist_parsed_content is None
@@ -963,6 +1027,14 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         parse_fallback_enabled=bool(parse_fallback_enabled),
         parse_fallback_min_content_chars=int(parse_fallback_min_content_chars),
         parse_fallback_max_retries=int(parse_fallback_max_retries),
+        cross_page_merge_enabled=bool(cross_page_merge_enabled),
+        cross_page_merge_max_page_gap=int(cross_page_merge_max_page_gap),
+        reading_order_enabled=bool(reading_order_enabled),
+        parse_cache_enabled=bool(parse_cache_enabled),
+        parse_cache_ttl_sec=int(parse_cache_ttl_sec),
+        vlm_correction_enabled=bool(vlm_correction_enabled),
+        vlm_correction_min_table_score=float(vlm_correction_min_table_score),
+        vlm_correction_max_pages=int(vlm_correction_max_pages),
         persist_parsed_content=bool(persist_parsed_content),
         persist_parsed_content_max_chars=int(persist_parsed_content_max_chars),
         near_dedup_enabled=bool(near_dedup_enabled),
