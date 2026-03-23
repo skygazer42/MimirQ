@@ -67,7 +67,7 @@ tiktoken==0.12.0
 trio==0.33.0
 xgboost==3.2.0
 # NOTE: docling 2.81.0 still requires huggingface-hub<1.
-huggingface-hub==0.36.2
+huggingface-hub==1.7.2
 # NOTE: docling currently requires pillow<12. Keep this pin compatible.
 Pillow==12.1.1
 # NOTE: opencv-python 4.13.x is compatible with the current numpy 2.4.x pin.
@@ -133,7 +133,7 @@ llama-index-core==0.14.18
 
 # Task Queue / Redis (ingest throughput: task queue, idempotency locks, cache)
 # NOTE: arq currently requires redis-py < 6.
-redis==5.3.1
+redis==7.3.0
 arq==0.27.0
 # Dev / test tooling
 pip-audit==2.10.0
