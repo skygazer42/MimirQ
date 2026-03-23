@@ -502,6 +502,9 @@ export function KnowledgeDocumentsPanel({
                                             const TypeIcon = fileType.icon;
                                             const userTags = getUserTagsFromDocument(doc);
 	                                            const sourcePath = String((doc.metadata as any)?.source_path || '').trim();
+	                                            const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score;
+	                                            const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null;
+	                                            const parseLow = parseScore !== null && parseScore < 0.35;
 	                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="hover:bg-muted/20 transition-colors group">
 		                        <td className="px-3 py-3 align-middle">
 		                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={buildToggleDocSelectionHandler(doc.id)} aria-label={`选择文档 ${doc.filename}`}/>
@@ -519,6 +522,14 @@ export function KnowledgeDocumentsPanel({
 	                                <span className={cn('inline-flex items-center rounded-full border px-1.5 py-0 text-[10px] font-semibold uppercase ', fileType.bg, fileType.border, fileType.color)} title={fileType.label}>
 	                                  {fileType.label}
 	                                </span>
+	                                {parseLow ? (
+	                                  <span
+	                                    className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
+	                                    title={`解析质量偏低 (score=${parseScore?.toFixed?.(3) ?? '—'})`}
+	                                  >
+	                                    <AlertTriangle className="h-3.5 w-3.5" />
+	                                  </span>
+	                                ) : null}
 	                              </div>
 	                              {sourcePath ? (<button type="button" className="mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4" onClick={buildCopyHandler(sourcePath, '已复制 Source Path')} title="点击复制 Source Path">
 	                                  {sourcePath}
