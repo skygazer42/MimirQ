@@ -25,7 +25,7 @@ pymysql==1.1.2
 pyodbc==5.3.0
 
 # LangChain Ecosystem (latest major versions)
-langchain==1.2.12
+langchain==1.2.13
 langchain-core==1.2.20
 langchain-community==0.4.1
 langchain-chroma==1.1.0
@@ -33,7 +33,7 @@ langchain-openai==1.1.11
 langchain-anthropic==1.4.0
 langchain-text-splitters==1.1.1
 # NOTE: USTC mirror / PyPI currently provides up to 1.0.5 (1.0.15 not published).
-langgraph==1.1.2
+langgraph==1.1.3
 # FAISS has no official Windows wheels; it's only used when VECTOR_BACKEND=faiss.
 faiss-cpu==1.13.2; platform_system != "Windows"
 chromadb==1.5.5
@@ -48,7 +48,7 @@ minio==7.2.20
 # MagicPDF (magic-pdf) is an optional, heavy local parser (torch/transformers).
 # Install it separately only when enabling MAGIC_PDF_ENABLED=true.
 # See: docs/guides/magicpdf_guide.md
-PyMuPDF==1.27.2
+PyMuPDF==1.27.2.2
 unstructured==0.18.32
 python-magic==0.4.27
 markdown==3.10.2
@@ -67,7 +67,7 @@ tiktoken==0.12.0
 trio==0.33.0
 xgboost==3.2.0
 # NOTE: docling 2.80.0 still requires huggingface-hub<1.
-huggingface-hub==0.36.2
+huggingface-hub==1.7.2
 # NOTE: docling currently requires pillow<12. Keep this pin compatible.
 Pillow==12.1.1
 # NOTE: opencv-python 4.13.x is compatible with the current numpy 2.4.x pin.
@@ -80,10 +80,10 @@ tqdm==4.67.3
 beartype==0.22.9
 hanziconv==0.3.2
 nltk==3.9.3
-docling==2.80.0
+docling==2.81.0
 docling-ibm-models==3.12.0
 accelerate==1.13.0
-tencentcloud-sdk-python==3.1.59
+tencentcloud-sdk-python==3.1.61
 html-text==0.7.1
 readability-lxml==0.8.4.1
 
@@ -133,8 +133,8 @@ llama-index-core==0.14.18
 
 # Task Queue / Redis (ingest throughput: task queue, idempotency locks, cache)
 # NOTE: arq currently requires redis-py < 6.
-redis==5.3.1
+redis==7.3.0
 arq==0.27.0
 # Dev / test tooling
 pip-audit==2.10.0
-ruff==0.15.6
+ruff==0.15.7
