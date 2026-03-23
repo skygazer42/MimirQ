@@ -88,8 +88,8 @@ from app.services.ingestion_policy import (
 )
 from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
-from app.services.retention_policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
 from app.services.report_html import render_dataset_profile_html
+from app.services.retention_policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
 
