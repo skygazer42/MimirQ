@@ -15,11 +15,13 @@ from langchain_core.documents import Document as LCDocument
 from sqlalchemy.orm import Session, aliased
 
 from app.core.config import settings
+from app.core.constants import EmbeddingProviders
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata
 from app.rag.core.metadata import ensure_hierarchy_overlay_metadata, normalize_image_metadata
-from app.rag.embedding.utils import current_embedding_space_hash
+from app.rag.embedding import create_langchain_embeddings_from_config
+from app.rag.embedding.utils import current_embedding_space_hash, embedding_space_hash_for_config
 from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.preprocessing.normalization import normalize_text
@@ -39,6 +41,159 @@ from app.types.indexing import (
 )
 
 logger = logging.getLogger("indexer")
+
+_shadow_vector_writer_sig: str | None = None
+_shadow_vector_writer: tuple[Any, Any, str] | None = None  # (embeddings, adapter, embedding_space_hash)
+
+
+def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
+    """
+    Best-effort resolve (embeddings, milvus_adapter, shadow_space_hash) for dual-write.
+
+    This is used by Gap5 embedding blue-green migrations: when enabled, ingestion writes
+    vectors into both the primary collection (settings.MILVUS_COLLECTION_NAME) and the
+    shadow collection (settings.MILVUS_SHADOW_COLLECTION_NAME) using a potentially
+    different embedding model.
+    """
+    if not bool(getattr(settings, "EMBEDDING_SHADOW_ENABLED", False)):
+        return None
+
+    if str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() != "milvus":
+        return None
+
+    shadow_collection = str(getattr(settings, "MILVUS_SHADOW_COLLECTION_NAME", "") or "").strip()
+    shadow_model = str(getattr(settings, "EMBEDDING_SHADOW_MODEL", "") or "").strip()
+    if not shadow_collection or not shadow_model:
+        return None
+
+    provider_raw = (
+        str(getattr(settings, "EMBEDDING_SHADOW_PROVIDER", "") or "").strip().lower()
+        or str(getattr(settings, "EMBEDDING_PROVIDER", "openai_compatible") or "openai_compatible").strip().lower()
+    )
+    mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, "openai_compatible")
+    api_key = (
+        str(getattr(settings, "EMBEDDING_SHADOW_API_KEY", "") or "").strip()
+        or str(getattr(settings, "EMBEDDING_API_KEY", "") or "").strip()
+        or str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+    )
+    base_url = (
+        str(getattr(settings, "EMBEDDING_SHADOW_API_BASE", "") or "").strip()
+        or str(getattr(settings, "EMBEDDING_API_BASE", "") or "").strip()
+        or str(getattr(settings, "LLM_API_BASE", "") or "").strip()
+    )
+    sig = f"{mapped_provider}|{shadow_model}|{base_url}|{shadow_collection}"
+
+    global _shadow_vector_writer_sig, _shadow_vector_writer
+    if _shadow_vector_writer is not None and _shadow_vector_writer_sig == sig:
+        return _shadow_vector_writer
+
+    try:
+        emb = create_langchain_embeddings_from_config(
+            provider=mapped_provider,
+            model=shadow_model,
+            api_key=api_key,
+            base_url=base_url,
+            dimension=None,  # Auto-detect
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Shadow embeddings init failed; dual-write disabled: %s", str(exc)[:200])
+        _shadow_vector_writer_sig = sig
+        _shadow_vector_writer = None
+        return None
+
+    try:
+        adapter = get_milvus_adapter(resolve_collection_name(shadow_collection))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Shadow Milvus adapter init failed; dual-write disabled: %s", str(exc)[:200])
+        _shadow_vector_writer_sig = sig
+        _shadow_vector_writer = None
+        return None
+
+    try:
+        shadow_space = embedding_space_hash_for_config(
+            provider=mapped_provider,
+            model=shadow_model,
+            base_url=base_url,
+            length=16,
+        )
+    except Exception:
+        shadow_space = ""
+
+    _shadow_vector_writer_sig = sig
+    _shadow_vector_writer = (emb, adapter, shadow_space)
+    return _shadow_vector_writer
+
+
+def _dual_write_shadow_vectors_best_effort(
+    docs: list[dict[str, Any]],
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+) -> None:
+    writer = _resolve_shadow_vector_writer()
+    if writer is None:
+        return
+    embeddings, adapter, shadow_space = writer
+
+    if not docs:
+        return
+
+    items: list[dict[str, Any]] = []
+    texts: list[str] = []
+    for doc in docs:
+        meta0 = doc.get("metadata") if isinstance(doc, dict) else None
+        meta = dict(meta0 or {}) if isinstance(meta0, dict) else {}
+        chunk_id = str(meta.get("chunk_id") or "").strip()
+        if not chunk_id:
+            continue
+        meta["embedding_space_hash"] = shadow_space
+        items.append({"id": chunk_id, "content": str(doc.get("content") or ""), "metadata": meta})
+        texts.append(str(doc.get("content") or ""))
+
+    if not items:
+        return
+
+    try:
+        vecs = embeddings.embed_documents(texts)
+    except Exception as exc:  # noqa: BLE001
+        log_metrics(
+            {
+                "event": "ingest.shadow_vector_write",
+                "ok": False,
+                "reason": "embed_failed",
+                "tenant_id": str(tenant_id),
+                "document_id": str(document_id),
+                "count": int(len(items)),
+                "error": str(exc)[:200],
+            }
+        )
+        return
+
+    try:
+        batch_size = int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
+        adapter.add_vectors(items, embeddings=vecs, batch_size=batch_size, upsert=True)
+        log_metrics(
+            {
+                "event": "ingest.shadow_vector_write",
+                "ok": True,
+                "tenant_id": str(tenant_id),
+                "document_id": str(document_id),
+                "count": int(len(items)),
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        log_metrics(
+            {
+                "event": "ingest.shadow_vector_write",
+                "ok": False,
+                "reason": "milvus_write_failed",
+                "tenant_id": str(tenant_id),
+                "document_id": str(document_id),
+                "count": int(len(items)),
+                "error": str(exc)[:200],
+            }
+        )
+        return
 
 
 def _safe_int(value: Any) -> int | None:
@@ -1088,6 +1243,8 @@ class Indexer:
                 for attempt in range(max_retries + 1):
                     try:
                         out.extend(list(vector_store.add_documents(batch, document_id, tenant_id)))
+                        # Best-effort dual-write to the shadow collection (Gap5).
+                        _dual_write_shadow_vectors_best_effort(batch, document_id=document_id, tenant_id=tenant_id)
                         last_exc = None
                         break
                     except Exception as exc:  # noqa: BLE001
