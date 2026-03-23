@@ -86,6 +86,9 @@ class PipelineOptions:
     # When enabled, prefix chunk content with lightweight structural context (e.g. header_path)
     # before computing embeddings. Does not change stored chunk.content (DB); affects vector similarity only.
     embedding_context_prefix_enabled: bool | None = None
+    # When enabled, inject a short document/section-level context prefix before embedding (vector-only).
+    # This is a deterministic heuristic by default; does not change stored chunk.content (DB).
+    embedding_contextual_retrieval_enabled: bool | None = None
     # When enabled, store extra field-aware embeddings (title/heading) alongside the body embedding.
     # This is dataset-scoped and increases vector write volume.
     embedding_field_aware_enabled: bool | None = None
@@ -182,6 +185,7 @@ class PipelineEffective:
     chunk_merge_small_min_chars: int
     chunk_strategy_params: dict[str, Any]
     embedding_context_prefix_enabled: bool
+    embedding_contextual_retrieval_enabled: bool
     embedding_field_aware_enabled: bool
     chunk_vector_enabled: bool
     bm25_index_enabled: bool
