@@ -1009,6 +1009,13 @@ class Settings(BaseSettings):
     # When true, allow per-dataset/document pipeline to prefix chunk content with structural context
     # (e.g. header_path) before embedding. Default is off to keep backward-compatible vectors.
     EMBEDDING_CONTEXT_PREFIX_ENABLED: bool = False
+    # When true, inject a short document/section-level context prefix before embedding (vector-only).
+    # Default off to keep backward-compatible vectors and ingestion costs stable.
+    CONTEXTUAL_RETRIEVAL_ENABLED: bool = False
+    # Best-effort deterministic contextual prefix knobs (no LLM calls by default).
+    CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS: int = 240
+    CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K: int = 6
+    CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS: int = 2000
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True

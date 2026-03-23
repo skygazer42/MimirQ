@@ -143,6 +143,35 @@ def _coerce_short_text(value: Any, *, max_chars: int) -> str | None:
     return s or None
 
 
+def _derive_document_title(filename: Any, doc_metadata: Any, *, max_chars: int = 120) -> str | None:
+    """
+    Best-effort derive a human-ish document title for embedding prefixes.
+
+    Prefer explicit metadata when available; fall back to filename stem.
+    """
+    title: str | None = None
+    if isinstance(doc_metadata, dict):
+        for key in ("document_title", "doc_title", "title", "name"):
+            v = doc_metadata.get(key)
+            if isinstance(v, str) and v.strip():
+                title = v.strip()
+                break
+
+    if not title:
+        raw = str(filename or "").strip()
+        if raw:
+            try:
+                from pathlib import Path
+
+                base = Path(raw).name
+                stem = Path(base).stem
+                title = stem or base
+            except Exception:
+                title = raw
+
+    return _coerce_short_text(title, max_chars=int(max_chars or 0)) if title else None
+
+
 def _extract_title_for_embedding(meta: dict[str, Any]) -> str | None:
     """
     Best-effort extract a document "title" string for field-aware embeddings.
@@ -338,22 +367,25 @@ class Indexer:
     ) -> PersistChunksResult:
         dataset_id_str: str | None = None
         file_type_str: str | None = None
+        document_title: str | None = None
         embedding_space = current_embedding_space_hash()
         try:
             row = (
-                self._db.query(DBDocument.dataset_id, DBDocument.file_type)
+                self._db.query(DBDocument.dataset_id, DBDocument.file_type, DBDocument.filename, DBDocument.doc_metadata)
                 .filter(DBDocument.tenant_id == tenant_id, DBDocument.id == document_id)
                 .first()
             )
             if row:
-                ds_id, ft = row
+                ds_id, ft, fn, doc_meta = row
                 if ds_id is not None:
                     dataset_id_str = str(ds_id)
                 if ft is not None:
                     file_type_str = str(ft)
+                document_title = _derive_document_title(fn, doc_meta)
         except Exception:
             dataset_id_str = None
             file_type_str = None
+            document_title = None
 
         source = str(default_source or "").strip() or "unknown"
         total_characters = sum(len(c.content or "") for c in chunks)
@@ -385,6 +417,7 @@ class Indexer:
         chunk_ids: list[UUID] = []
         prepared_chunks: list[tuple[ChunkInput, dict[str, Any], UUID]] = []
         embedding_prefix_enabled = bool(getattr(options, "embedding_context_prefix_enabled", False)) if options else False
+        contextual_retrieval_enabled = bool(getattr(options, "embedding_contextual_retrieval_enabled", False)) if options else False
         field_aware_enabled = bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False
         total_chunks = len(chunks)
         for idx, c in enumerate(chunks):
@@ -400,6 +433,8 @@ class Indexer:
                 meta["file_type"] = file_type_str
             if embedding_prefix_enabled:
                 meta.setdefault("embedding_context_prefix_enabled", True)
+            if contextual_retrieval_enabled:
+                meta.setdefault("embedding_contextual_retrieval_enabled", True)
             if field_aware_enabled:
                 meta.setdefault("embedding_field_aware_enabled", True)
             meta = _ensure_chunk_metadata(
@@ -432,7 +467,28 @@ class Indexer:
                     end_char=c.end_char,
                 )
             )
-            embed_text = _build_embedding_text(c.content or "", meta) if embedding_prefix_enabled else (c.content or "")
+            raw_body = c.content or ""
+            embed_text = raw_body
+            if contextual_retrieval_enabled and raw_body and _should_prefix_embedding(meta):
+                try:
+                    from app.rag.chunking.contextual_enrichment import build_context_prefix
+
+                    title = document_title or _extract_title_for_embedding(meta)
+                    prefix = build_context_prefix(
+                        raw_body,
+                        document_title=title,
+                        meta=meta,
+                        max_prefix_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS", 240) or 240),
+                        keywords_top_k=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K", 6) or 6),
+                        keywords_max_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS", 2000) or 2000),
+                    )
+                    if prefix:
+                        embed_text = prefix + "\n" + raw_body
+                except Exception:
+                    # Fail open: contextual prefixes are best-effort.
+                    pass
+            if embedding_prefix_enabled:
+                embed_text = _build_embedding_text(embed_text, meta)
             vector_docs.append({"content": embed_text, "metadata": meta})
 
             if field_aware_enabled and _should_prefix_embedding(meta):
