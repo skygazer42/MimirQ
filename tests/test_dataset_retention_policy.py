@@ -21,6 +21,9 @@ class _DummyDB:
     def refresh(self, _obj) -> None:  # noqa: ANN001
         return None
 
+    def rollback(self) -> None:
+        return None
+
 
 def _override_get_db():  # noqa: ANN202
     yield _DummyDB()
@@ -165,3 +168,61 @@ def test_get_dataset_returns_retention_policy(monkeypatch: pytest.MonkeyPatch) -
     assert body.get("retention_policy", {}).get("action") == "delete"
     assert body.get("retention_policy", {}).get("max_inactive_days") == 30
 
+
+@pytest.mark.asyncio
+async def test_run_dataset_retention_sweep_dry_run_summarizes_eligible_documents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.schemas.dataset import DatasetRetentionPolicy
+    from app.services import retention_policy as rp
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    now = datetime.now(UTC)
+    dataset_obj = SimpleNamespace(id=dataset_id, tenant_id=tenant_id, dataset_metadata={})
+    expired_docs = [
+        SimpleNamespace(id=uuid.uuid4(), archived_at=None),
+        SimpleNamespace(id=uuid.uuid4(), archived_at=None),
+    ]
+
+    class _DatasetQuery:
+        def filter(self, *_args, **_kwargs):  # noqa: ANN001
+            return self
+
+        def first(self):  # noqa: ANN201
+            return dataset_obj
+
+    class _ExpiredQuery:
+        def limit(self, _n):  # noqa: ANN001, ANN201
+            return self
+
+        def all(self):  # noqa: ANN201
+            return expired_docs
+
+    class _FakeDB(_DummyDB):
+        def query(self, _model):  # noqa: ANN001, ANN201
+            return _DatasetQuery()
+
+    monkeypatch.setattr(rp, "_expired_documents_query", lambda *_a, **_k: _ExpiredQuery(), raising=True)
+    monkeypatch.setattr(rp, "audit_log_event", lambda *_a, **_k: None, raising=True)
+
+    summary = await rp.run_dataset_retention_sweep(
+        _FakeDB(),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        policy=DatasetRetentionPolicy(enabled=True, action="archive", max_age_days=30),
+        dry_run=True,
+        max_documents=10,
+        max_versions_pruned=0,
+        actor_id="system:retention",
+        now=now,
+    )
+
+    assert summary["ok"] is True
+    assert summary["dry_run"] is True
+    assert summary["documents"]["eligible"] == 2
+    assert summary["documents"]["archived"] == 0
+    assert summary["documents"]["deleted"] == 0
+    assert summary["policy"]["action"] == "archive"
+    assert summary["policy"]["max_age_days"] == 30
+    assert summary["cutoffs"]["created_at_lte"] is not None
