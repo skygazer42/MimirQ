@@ -919,6 +919,10 @@ class Settings(BaseSettings):
     RAG_PARENT_CHILD_AUTO_MERGE_MODE: str = "replace"
     RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN: int = 2
     RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS: int = 20
+    # Optional context compression before final prompt formatting.
+    RAG_CONTEXT_COMPRESSION_ENABLED: bool = False
+    # Optional lightweight generation-time reordering for better reading flow.
+    RAG_CONTEXT_REORDER_ENABLED: bool = False
     # Context evidence extraction (query-focused sentence selection)
     RAG_CONTEXT_EVIDENCE_ENABLED: bool = False
     RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK: int = 6

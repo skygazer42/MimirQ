@@ -45,3 +45,36 @@ def test_langgraph_build_context_applies_optional_reorder(monkeypatch) -> None:
     assert out.startswith('[Source 1: c]')
     assert out.index('[Source 2: b]') > out.index('[Source 1: c]')
     assert out.index('[Source 3: a]') > out.index('[Source 2: b]')
+
+
+def test_compress_context_docs_keeps_query_relevant_sentences() -> None:
+    from app.rag.core.context_compression import compress_context_docs
+
+    docs = [
+        Document(
+            page_content='Noise sentence. API timeout happened on /v1/chat. More unrelated filler.',
+            metadata={'source': 'ops.md'},
+        )
+    ]
+
+    out = compress_context_docs(docs, query='Which endpoint timed out?')
+
+    assert len(out) == 1
+    assert '/v1/chat' in out[0].page_content
+    assert 'Noise sentence' not in out[0].page_content
+
+
+def test_langgraph_build_context_applies_compression_before_render(monkeypatch) -> None:
+    import app.rag.pipelines.langgraph as lg_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, 'RAG_CONTEXT_COMPRESSION_ENABLED', True, raising=False)
+    monkeypatch.setattr(
+        'app.rag.core.context_compression.compress_context_docs',
+        lambda docs, query=None: [Document(page_content='COMPRESSED', metadata={'source': 'x'})],
+    )
+
+    out = lg_mod._build_context([Document(page_content='RAW', metadata={'source': 'x'})], query='why')
+
+    assert 'COMPRESSED' in out
+    assert 'RAW' not in out
