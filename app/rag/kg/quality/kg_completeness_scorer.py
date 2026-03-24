@@ -18,7 +18,7 @@ class _UnionFind:
     @classmethod
     def from_nodes(cls, nodes: set[str]) -> "_UnionFind":
         parent = {n: n for n in nodes}
-        size = {n: 1 for n in nodes}
+        size = dict.fromkeys(nodes, 1)
         return cls(parent=parent, size=size)
 
     def find(self, x: str) -> str:

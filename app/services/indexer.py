@@ -44,6 +44,7 @@ logger = logging.getLogger("indexer")
 
 _shadow_vector_writer_sig: str | None = None
 _shadow_vector_writer: tuple[Any, Any, str] | None = None  # (embeddings, adapter, embedding_space_hash)
+_SHADOW_VECTOR_WRITE_EVENT = "ingest.shadow_vector_write"
 
 
 def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
@@ -158,7 +159,7 @@ def _dual_write_shadow_vectors_best_effort(
     except Exception as exc:  # noqa: BLE001
         log_metrics(
             {
-                "event": "ingest.shadow_vector_write",
+                "event": _SHADOW_VECTOR_WRITE_EVENT,
                 "ok": False,
                 "reason": "embed_failed",
                 "tenant_id": str(tenant_id),
@@ -174,7 +175,7 @@ def _dual_write_shadow_vectors_best_effort(
         adapter.add_vectors(items, embeddings=vecs, batch_size=batch_size, upsert=True)
         log_metrics(
             {
-                "event": "ingest.shadow_vector_write",
+                "event": _SHADOW_VECTOR_WRITE_EVENT,
                 "ok": True,
                 "tenant_id": str(tenant_id),
                 "document_id": str(document_id),
@@ -184,7 +185,7 @@ def _dual_write_shadow_vectors_best_effort(
     except Exception as exc:  # noqa: BLE001
         log_metrics(
             {
-                "event": "ingest.shadow_vector_write",
+                "event": _SHADOW_VECTOR_WRITE_EVENT,
                 "ok": False,
                 "reason": "milvus_write_failed",
                 "tenant_id": str(tenant_id),
