@@ -44,6 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { datasetApi, documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
+import { Breadcrumb, usePathBreadcrumbs } from '@/components/ui/breadcrumb'
 
 import type {
   Dataset,
@@ -106,6 +107,7 @@ export default function DatasetProfilePage() {
   const router = useRouter()
   const params = useParams()
   const datasetId = asDatasetId(params?.id)
+  const breadcrumbs = usePathBreadcrumbs()
 
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [summary, setSummary] = useState<DatasetProfileSummary | null>(null)
@@ -601,6 +603,7 @@ export default function DatasetProfilePage() {
         badge="Dataset Profile"
         icon={BarChart3}
         iconColor="text-primary"
+        top={<Breadcrumb items={breadcrumbs} />}
         description={
           <span className="text-sm text-muted-foreground">
             基于文档库元数据的入库前/入库中质量画像（格式、长度、扫描件、PII、重复等）

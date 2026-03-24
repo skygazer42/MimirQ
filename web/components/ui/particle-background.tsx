@@ -1,8 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import Particles from "react-tsparticles"
-import { loadSlim } from "tsparticles-slim"
 import type { Engine, IOptions, RecursivePartial } from "tsparticles-engine"
 import { useTheme } from "next-themes"
 import { useReducedMotion } from "framer-motion"
@@ -21,8 +19,25 @@ export function ParticleBackground({ className, interactive = true }: Readonly<P
   const [isVisible, setIsVisible] = useState(true)
   const [color, setColor] = useState(() => getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"))
   const [linkColor, setLinkColor] = useState(() => getCssHslColor("--muted-foreground", "hsl(215, 20%, 65%)"))
-  
+  const [ParticlesComponent, setParticlesComponent] = useState<React.ComponentType<any> | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { default: Particles } = await import("react-tsparticles")
+        if (!cancelled) {
+          setParticlesComponent(() => Particles)
+        }
+      } catch {
+        // best-effort: particles are decorative
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
   const particlesInit = useCallback(async (engine: Engine) => {
+    const { loadSlim } = await import("tsparticles-slim")
     await loadSlim(engine)
   }, [])
 
@@ -114,10 +129,10 @@ export function ParticleBackground({ className, interactive = true }: Readonly<P
     [color, interactive, linkColor]
   )
 
-  if (shouldReduceMotion || !isFinePointer || !isVisible) return null
+  if (shouldReduceMotion || !isFinePointer || !isVisible || !ParticlesComponent) return null
 
   return (
-    <Particles
+    <ParticlesComponent
       id="tsparticles"
       init={particlesInit}
       className={cn("absolute inset-0 -z-10", className)}

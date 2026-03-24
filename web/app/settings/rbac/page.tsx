@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { rbacApi, type TenantMember } from '@/lib/api-client'
+import { EmptyState } from '@/components/ui/empty-state'
 
 const ROLE_OPTIONS = [
     { key: 'owner', label: 'owner (admin)' },
@@ -171,9 +172,16 @@ export default function SettingsRbacPage() {
                     )
                   })
                 ) : (
-                  <div className="px-3 py-8 text-sm text-muted-foreground">
-                    {loading ? '加载中...' : '没有成员或无权限'}
-                  </div>
+                  loading ? (
+                    <div className="px-3 py-8 text-sm text-muted-foreground">加载中...</div>
+                  ) : (
+                    <EmptyState
+                      icon={Users}
+                      title="暂无成员"
+                      description="还没有添加任何成员，或您没有查看权限。"
+                      className="rounded-none border-0 border-t border-border shadow-none"
+                    />
+                  )
                 )}
               </div>
             </CardContent>

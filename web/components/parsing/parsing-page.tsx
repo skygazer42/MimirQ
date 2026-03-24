@@ -21,7 +21,13 @@ import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { DocumentFolderTree, getFileIcon } from '@/components/document-library/folder-tree'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
-import { PdfViewer } from '@/components/parsing/pdf-viewer'
+import dynamic from 'next/dynamic'
+import { Skeleton } from '@/components/ui/skeleton'
+
+const PdfViewer = dynamic(() => import('@/components/parsing/pdf-viewer').then((mod) => mod.PdfViewer), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[400px] w-full" />,
+})
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 import { toast } from 'sonner'

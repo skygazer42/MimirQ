@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Copy, FileJson, FileText, RefreshCcw, Timer, Hash, FileSearch, Gauge, Package } from 'lucide-react'
+import { Activity, Copy, FileJson, FileText, RefreshCcw, Timer, Hash, FileSearch, Gauge, Package, Stethoscope } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { observabilityApi, ragApi } from '@/lib/api-client'
 import { API_BASE_URL, API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { formatFileSize } from '@/lib/utils'
+import { EmptyState } from '@/components/ui/empty-state'
 import type { PromptPreviewResponse } from '@/types'
 
 function prettyJson(value: unknown): string {
@@ -302,6 +303,14 @@ export default function DiagnosticsPage() {
         </div>
       }
     >
+      {health.error && meta.error && ready.error ? (
+        <EmptyState
+          icon={Stethoscope}
+          title="后端不可达"
+          description="无法连接到后端服务，请检查后端是否已启动以及网络配置是否正确。"
+          className="mb-4"
+        />
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0">

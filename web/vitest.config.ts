@@ -11,6 +11,25 @@ const config = {
     pool: 'threads',
     include: ['**/*.test.ts'],
     reporters: ['default'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'text-summary', 'lcov', 'html'],
+      reportsDirectory: './coverage',
+      include: ['components/**/*.{ts,tsx}', 'app/**/*.{ts,tsx}', 'hooks/**/*.{ts,tsx}', 'lib/**/*.{ts,tsx}'],
+      exclude: [
+        '**/*.test.{ts,tsx}',
+        '**/*.source.test.{ts,tsx}',
+        '**/node_modules/**',
+        '**/.next/**',
+        '**/coverage/**',
+      ],
+      thresholds: {
+        statements: 40,
+        branches: 30,
+        functions: 35,
+        lines: 40,
+      },
+    },
   },
 }
 

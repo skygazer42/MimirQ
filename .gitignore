@@ -67,6 +67,7 @@ artifacts/
 runs/perf/
 .worktrees/
 .beads/.migration-hint-ts
+web/coverage/
 web/.next/
 web/.next_build/
 web/openapi.json
