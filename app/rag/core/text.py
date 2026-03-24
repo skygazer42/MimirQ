@@ -946,3 +946,59 @@ def derive_followup_questions(
         return followups
 
     return [question] if question else []
+
+
+def extract_followup_questions_from_answer(
+    answer: str | None,
+    *,
+    max_items: int = 3,
+) -> tuple[str, list[str]]:
+    """Extract repeated <followup> tags from an answer and return clean body + questions."""
+    raw = str(answer or "")
+    open_tag = "<followup>"
+    close_tag = "</followup>"
+    lower = raw.lower()
+    limit = max(0, int(max_items or 0))
+
+    questions: list[str] = []
+    seen: set[str] = set()
+    cleaned_parts: list[str] = []
+    cursor = 0
+    found_tag = False
+    while True:
+        start = lower.find(open_tag, cursor)
+        if start == -1:
+            cleaned_parts.append(raw[cursor:])
+            break
+
+        end = lower.find(close_tag, start + len(open_tag))
+        if end == -1:
+            cleaned_parts.append(raw[cursor:])
+            break
+
+        found_tag = True
+        cleaned_parts.append(raw[cursor:start])
+        question = " ".join(raw[start + len(open_tag):end].split())
+        key = question.casefold()
+        if question and key not in seen and (not limit or len(questions) < limit):
+            seen.add(key)
+            questions.append(question)
+        cursor = end + len(close_tag)
+
+    if not found_tag:
+        return raw, []
+
+    normalized_lines: list[str] = []
+    pending_blank = False
+    for line in "".join(cleaned_parts).splitlines():
+        stripped = line.strip()
+        if stripped:
+            if pending_blank and normalized_lines:
+                normalized_lines.append("")
+            normalized_lines.append(stripped)
+            pending_blank = False
+        else:
+            pending_blank = True
+
+    cleaned = "\n".join(normalized_lines).strip()
+    return cleaned, questions

@@ -44,6 +44,7 @@ from app.rag.core.sentence_citations import (
 from app.rag.core.text import (
     derive_followup_questions,
     extract_evidence_text,
+    extract_followup_questions_from_answer,
     parse_json_from_text,
     scrub_structured_output_visible_evidence_only,
     split_into_claims,
@@ -517,6 +518,13 @@ def _generate_node(state: RAGState) -> RAGState:
     if pii_on:
         answer = redact_text(str(answer))
 
+    followup_questions: list[str] = []
+    if (
+        not bool(state.get("structured_output"))
+        and bool(getattr(settings, "RAG_FOLLOWUP_SUGGESTIONS_ENABLED", False))
+    ):
+        answer, followup_questions = extract_followup_questions_from_answer(str(answer or ""), max_items=3)
+
     strict_visible = bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False)) or bool(state.get("visible_evidence_only"))
     claim_check_configured = bool(getattr(settings, "RAG_CLAIM_CHECK_ENABLED", False)) or strict_visible
     claim_check_max_claims = max(1, int(getattr(settings, "RAG_CLAIM_CHECK_MAX_CLAIMS", 24) or 24))
@@ -800,6 +808,7 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["confidence_score"] = confidence_meta.get("score")
     metrics["confidence_band"] = confidence_meta.get("band")
     metrics["confidence_reasons"] = list(confidence_meta.get("reasons") or [])
+    metrics["followup_questions"] = list(followup_questions or [])
     metrics["visible_evidence_only_enabled"] = bool(strict_visible)
     metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
     base = generation_elapsed
@@ -823,6 +832,7 @@ def _generate_node(state: RAGState) -> RAGState:
         "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
         "routing_reason": reason,
         "metrics": metrics,
+        "followup_questions": list(followup_questions or []),
     }
 
 
