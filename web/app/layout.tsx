@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import '@xyflow/react/dist/style.css'
 import { ParserBackendProvider } from "@/contexts/parser-backend-context"
 import { ChunkStrategyProvider } from "@/contexts/chunk-strategy-context"
 import { PipelineOptionsProvider } from "@/contexts/pipeline-options-context"

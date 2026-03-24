@@ -352,6 +352,7 @@ class DatasetConfigBundle(BaseModel):
     retention_policy: DatasetRetentionPolicy | None = None
     ingestion_policy: IngestionPolicy | None = None
     fls_policy: FlsPolicy | None = None
+    workflow_layout: dict[str, Any] | None = None
 
 
 class DatasetConfigExport(BaseModel):
