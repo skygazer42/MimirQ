@@ -132,6 +132,29 @@ async def test_engine_metrics_include_faithfulness_and_sentence_citations(
     assert any("Bananas are red" in str(x.get("claim") or "") for x in sentence_citations if isinstance(x, dict))
 
 
+def test_langgraph_build_context_preserves_extract_evidence_text_after_denoise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.pipelines.langgraph as lg_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, 'RAG_CONTEXT_EVIDENCE_ENABLED', True, raising=False)
+    monkeypatch.setattr(lg_mod, 'extract_evidence_text', lambda *_args, **_kwargs: 'EVIDENCE ONLY')
+
+    out = lg_mod._build_context(
+        [
+            Document(
+                page_content='The sky is blue due to Rayleigh scattering. Additional filler.',
+                metadata={'source': 'doc.txt', 'page': 1},
+                id=str(uuid.uuid4()),
+            )
+        ],
+        query='Why is the sky blue?',
+    )
+
+    assert 'EVIDENCE ONLY' in out
+
+
 def test_langgraph_generate_node_includes_faithfulness_and_sentence_citations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
