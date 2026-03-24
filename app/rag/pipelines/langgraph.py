@@ -247,6 +247,14 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
         logger.debug("Context denoise failed, falling back to raw docs: %s", exc)
         usable_docs = list(docs)
 
+    if bool(getattr(settings, "RAG_CONTEXT_COMPRESSION_ENABLED", False)):
+        try:
+            from app.rag.core.context_compression import compress_context_docs
+
+            usable_docs = compress_context_docs(usable_docs, query=query) or list(usable_docs)
+        except Exception as exc:
+            logger.debug("Context compression failed, skipping compression: %s", exc)
+
     if bool(getattr(settings, "RAG_CONTEXT_REORDER_ENABLED", False)):
         try:
             from app.rag.core.doc_ordering import reorder_docs_for_generation
