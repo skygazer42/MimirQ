@@ -42,6 +42,7 @@ from app.rag.core.sentence_citations import (
     render_sentence_citations_markdown,
 )
 from app.rag.core.text import (
+    derive_followup_questions,
     extract_evidence_text,
     parse_json_from_text,
     scrub_structured_output_visible_evidence_only,
@@ -139,6 +140,7 @@ class RAGState(TypedDict, total=False):
     metrics: dict[str, Any] | None
     abstain_triggered: bool | None
     abstain_reason: str | None
+    followup_questions: list[str] | None
     # Optional: best-effort debug payload (query normalization/expansion provenance).
     query_debug: dict[str, Any] | None
 
@@ -387,6 +389,7 @@ def _generate_node(state: RAGState) -> RAGState:
             answer = json.dumps(payload, ensure_ascii=False)
 
         metrics = dict(state.get("metrics") or {})
+        followup_questions = derive_followup_questions(metrics.get("abstain_followup"))
         metrics["generation_elapsed_sec"] = 0.0
         metrics["context_evidence_enabled"] = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
         metrics["context_evidence_max_sentences_per_chunk"] = (
@@ -454,6 +457,7 @@ def _generate_node(state: RAGState) -> RAGState:
         metrics["confidence_score"] = confidence_meta.get("score")
         metrics["confidence_band"] = confidence_meta.get("band")
         metrics["confidence_reasons"] = list(confidence_meta.get("reasons") or [])
+        metrics["followup_questions"] = followup_questions
 
         base = 0.0
         base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
@@ -478,6 +482,7 @@ def _generate_node(state: RAGState) -> RAGState:
             "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
             "routing_reason": reason,
             "metrics": metrics,
+            "followup_questions": followup_questions,
         }
 
     engine = get_rag_engine()

@@ -52,6 +52,46 @@ def test_render_sentence_citations_inline_uses_numbered_markers() -> None:
     assert "doc:d1" not in text
 
 
+def test_langgraph_abstain_maps_followup_questions_from_abstain_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.engine as engine_mod
+    import app.rag.pipelines.langgraph as lg_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+    monkeypatch.setattr(settings, "FAITHFULNESS_SCORE_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+
+    out = lg_mod._generate_node(
+        {
+            "question": "Need more detail?",
+            "history": [],
+            "docs": [],
+            "citations": [],
+            "metrics": {
+                "abstain_followup": {
+                    "type": "select_document",
+                    "question": "I found related materials but not enough to answer confidently. Which document should I focus on?",
+                    "options": [
+                        {"document_name": "Policy Handbook"},
+                        {"document_id": "doc-2"},
+                    ],
+                }
+            },
+            "structured_output": False,
+            "abstain_triggered": True,
+        }
+    )
+
+    metrics = out.get("metrics") or {}
+    assert metrics.get("followup_questions") == [
+        'Ask specifically about "Policy Handbook".',
+        'Ask specifically about "doc-2".',
+    ]
+
+
 @pytest.mark.asyncio
 async def test_engine_metrics_include_faithfulness_and_sentence_citations(
     monkeypatch: pytest.MonkeyPatch,

@@ -913,3 +913,36 @@ def build_abstain_followup(
         "question": "I found related materials but not enough to answer confidently. Which document should I focus on?",
         "options": options,
     }
+
+
+def derive_followup_questions(
+    abstain_followup: dict[str, Any] | None,
+    *,
+    max_questions: int = 3,
+) -> list[str]:
+    """Derive deterministic user-facing follow-up questions from abstain metadata."""
+    if not isinstance(abstain_followup, dict):
+        return []
+
+    limit = max(0, int(max_questions or 0))
+    raw_options = abstain_followup.get("options")
+    question = str(abstain_followup.get("question") or "").strip()
+
+    followups: list[str] = []
+    seen: set[str] = set()
+    if isinstance(raw_options, list):
+        for option in raw_options:
+            if not isinstance(option, dict):
+                continue
+            label = str(option.get("document_name") or option.get("document_id") or "").strip()
+            if not label or label in seen:
+                continue
+            seen.add(label)
+            followups.append(f'Ask specifically about "{label}".')
+            if limit and len(followups) >= limit:
+                return followups
+
+    if followups:
+        return followups
+
+    return [question] if question else []
