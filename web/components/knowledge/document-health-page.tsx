@@ -15,6 +15,8 @@ import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import { documentApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 
+type QualityBadgeTone = 'bad' | 'warn' | 'ok'
+
 function safeNumber(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null
   return value
@@ -28,12 +30,38 @@ function pct(value: number | null | undefined, digits = 1): string {
 
 function fmt(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
-  return String(value)
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value.toString()
+  }
+  if (value instanceof Date) return value.toISOString()
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return '—'
+  }
 }
 
 function parseQualityScore(card: DocumentHealthCard | null): number | null {
   const score = (card?.parsing?.parse_quality as any)?.score
   return safeNumber(score)
+}
+
+function qualityBadgeClassName(tone: QualityBadgeTone): string {
+  switch (tone) {
+    case 'bad':
+      return 'border-destructive/30 bg-destructive/10 text-destructive'
+    case 'warn':
+      return 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+    default:
+      return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+  }
+}
+
+function retrievalHitsStatusLabel(
+  retrievalHits: DocumentHealthCard['retrieval_hits'] | null | undefined,
+): string {
+  if (retrievalHits?.enabled !== true) return 'disabled'
+  return retrievalHits.available ? 'available' : 'missing'
 }
 
 export default function DocumentHealthPage({ documentId }: Readonly<{ documentId: string }>) {
@@ -49,6 +77,8 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
     if (qualityScore < 0.6) return { label: '解析质量一般', tone: 'warn' as const }
     return { label: '解析质量良好', tone: 'ok' as const }
   }, [qualityScore])
+  const retrievalHitsStatus = retrievalHitsStatusLabel(data?.retrieval_hits)
+  const retrievalMetricsDisabled = data?.retrieval_hits?.enabled === false
 
   const load = useCallback(async () => {
     if (!documentId) return
@@ -136,14 +166,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                   {qualityBadge ? (
                     <Badge
                       variant="secondary"
-                      className={cn(
-                        'border',
-                        qualityBadge.tone === 'bad'
-                          ? 'border-destructive/30 bg-destructive/10 text-destructive'
-                          : qualityBadge.tone === 'warn'
-                            ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                            : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-                      )}
+                      className={cn('border', qualityBadgeClassName(qualityBadge.tone))}
                     >
                       {qualityBadge.label}
                     </Badge>
@@ -271,9 +294,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
               <div className="text-sm font-semibold text-foreground">检索命中（最近）</div>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <div className="text-muted-foreground">Metrics</div>
-                <div className="font-mono">
-                  {data.retrieval_hits?.enabled ? (data.retrieval_hits.available ? 'available' : 'missing') : 'disabled'}
-                </div>
+                <div className="font-mono">{retrievalHitsStatus}</div>
                 <div className="text-muted-foreground">Window</div>
                 <div className="font-mono tabular-nums">{data.retrieval_hits?.window_minutes ?? '—'} min</div>
                 <div className="text-muted-foreground">Traces</div>
@@ -286,7 +307,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
                 <div className="font-mono tabular-nums">{pct(data.retrieval_hits?.hit_rate, 2)}</div>
               </div>
 
-              {!data.retrieval_hits?.enabled ? (
+              {retrievalMetricsDisabled ? (
                 <div className="mt-4 text-xs text-muted-foreground">
                   提示：需要启用后端 metrics 日志（ENABLE_METRICS_LOG=true）才能统计命中频率。
                 </div>

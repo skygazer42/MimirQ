@@ -11,7 +11,7 @@ def _as_float(value: Any) -> float | None:
         v = float(value)
     except Exception:
         return None
-    if not (v == v):  # NaN
+    if v != v:  # NaN
         return None
     return v
 

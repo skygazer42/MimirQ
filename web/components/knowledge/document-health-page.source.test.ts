@@ -11,4 +11,13 @@ describe('DocumentHealthPage source wiring', () => {
     expect(src).toContain('解析 → 分块 → KG → 检索命中')
     expect(src).toContain('ENABLE_METRICS_LOG=true')
   })
+
+  it('keeps display formatting explicit and avoids nested ternaries in badges and retrieval status', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'document-health-page.tsx'), 'utf8')
+
+    expect(src).not.toContain('return String(value)')
+    expect(src).not.toContain("qualityBadge.tone === 'bad'")
+    expect(src).not.toContain("data.retrieval_hits?.enabled ? (data.retrieval_hits.available ? 'available' : 'missing') : 'disabled'")
+    expect(src).not.toContain('{!data.retrieval_hits?.enabled ? (')
+  })
 })
