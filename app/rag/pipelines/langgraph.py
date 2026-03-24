@@ -234,6 +234,23 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
     """Format retrieved document context."""
     if not docs:
         return "No relevant reference materials found."
+
+    try:
+        from app.rag.core.context_denoise import denoise_context_docs
+
+        usable_docs = denoise_context_docs(docs) or list(docs)
+    except Exception as exc:
+        logger.debug("Context denoise failed, falling back to raw docs: %s", exc)
+        usable_docs = list(docs)
+
+    if bool(getattr(settings, "RAG_CONTEXT_REORDER_ENABLED", False)):
+        try:
+            from app.rag.core.doc_ordering import reorder_docs_for_generation
+
+            usable_docs = reorder_docs_for_generation(usable_docs) or list(usable_docs)
+        except Exception as exc:
+            logger.debug("Context doc ordering failed, skipping reorder: %s", exc)
+
     parts = []
     max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
     max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
@@ -241,7 +258,7 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
     max_total_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0))
     total_chars = 0
     total_tokens = 0
-    for idx, doc in enumerate(docs, 1):
+    for idx, doc in enumerate(usable_docs, 1):
         meta = doc.metadata or {}
         source = meta.get("source", "Unknown")
         page_info = None
