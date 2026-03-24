@@ -57,6 +57,21 @@ _INTENT_FAQ_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
+_INTENT_GREETING_RE = re.compile(
+    r"^\s*(?:hi|hello|hey|你好|您好|嗨|哈喽|早上好|下午好|晚上好)\s*[!,.?~。！？、，]*\s*$",
+    flags=re.IGNORECASE,
+)
+
+_INTENT_THANKS_RE = re.compile(
+    r"^\s*(?:thanks|thank\s+you|thx|谢谢|多谢|感谢|辛苦了)\s*[!,.?~。！？、，]*\s*$",
+    flags=re.IGNORECASE,
+)
+
+_INTENT_SMALLTALK_RE = re.compile(
+    r"^\s*(?:how\s+are\s+you|who\s+are\s+you|what\s+can\s+you\s+do|在吗|你在吗|你是谁|你能做什么|你会什么)\s*[!,.?~。！？、，]*\s*$",
+    flags=re.IGNORECASE,
+)
+
 _POLICY_ALLOWED_OVERRIDES = {
     "retrieval_mode",
     "retrieval_profile",
@@ -249,6 +264,21 @@ def _query_matches_policy_rule(query: str, rule: dict[str, Any]) -> bool:
     any_ok = True if not match_any else any(term in q for term in match_any)
     all_ok = all(term in q for term in match_all)
     return bool(any_ok and all_ok)
+
+
+def route_intent(query: str) -> dict[str, Any]:
+    """Route lightweight no-retrieval intents before retrieval preset logic."""
+    q = (query or "").strip()
+    if q:
+        if _INTENT_GREETING_RE.match(q):
+            return {"intent": "greeting", "reasons": ["social:greeting"], "skip_retrieval": True}
+        if _INTENT_THANKS_RE.match(q):
+            return {"intent": "thanks", "reasons": ["social:thanks"], "skip_retrieval": True}
+        if _INTENT_SMALLTALK_RE.match(q):
+            return {"intent": "smalltalk", "reasons": ["social:smalltalk"], "skip_retrieval": True}
+
+    intent, reasons = classify_query_intent(query)
+    return {"intent": intent, "reasons": reasons, "skip_retrieval": False}
 
 
 def classify_query_intent(query: str) -> tuple[str, list[str]]:
@@ -643,6 +673,7 @@ __all__ = [
     "_ADAPTIVE_ROUTER_POLICY_SCHEMA_V1",
     "_INTENT_ROUTER_POLICY_SCHEMA_V1",
     "classify_query_intent",
+    "route_intent",
     "normalize_adaptive_router_policy",
     "normalize_intent_router_policy",
     "route_adaptive_retrieval_overrides",
