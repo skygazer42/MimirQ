@@ -6,7 +6,39 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Braces, MessageSquare, Database, Activity, Layers, History, Settings, FileText, FileSearch, Share2, GitCompare, Plus, Scissors, BarChart3, Star, Wand2, ShieldCheck, Hash, AlertTriangle, Grid3X3, SlidersHorizontal, User, Users, LogIn, LogOut, PanelLeftClose, PanelLeftOpen, Coins } from 'lucide-react'
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Braces,
+  ChevronDown,
+  ChevronRight,
+  Coins,
+  Database,
+  FileSearch,
+  FileText,
+  GitCompare,
+  Grid3X3,
+  Hash,
+  History,
+  Layers,
+  LogIn,
+  LogOut,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Scissors,
+  Search,
+  Settings,
+  Share2,
+  ShieldCheck,
+  SlidersHorizontal,
+  Star,
+  User,
+  Users,
+  Wand2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -15,6 +47,7 @@ import { ModeToggle } from '@/components/mode-toggle'
 import { useAuth } from '@/hooks/use-auth'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { useBackendReady } from '@/hooks/use-backend-ready'
+import { globalEventBus } from '@/lib/event-bus'
 
 type MenuItem = {
   icon: React.ComponentType<{ className?: string }>
@@ -78,11 +111,17 @@ const menuSections: Array<{ title: string; items: MenuItem[] }> = [
   },
 ]
 
+const DEFAULT_OPEN_SECTIONS = new Set(['核心', '知识库管理'])
+
 const menuItems: MenuItem[] = menuSections.flatMap((s) => s.items)
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)
+}
+
+function sectionHasActiveRoute(pathname: string, items: MenuItem[]) {
+  return items.some((item) => isActiveRoute(pathname, item.href))
 }
 
 function trimmedPrimitiveString(value: unknown): string {
@@ -115,6 +154,11 @@ export function Navbar({
   const firstActionRef = useRef<HTMLButtonElement | null>(null)
   const prevIsSidebarOpenRef = useRef<boolean | null>(null)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      menuSections.map((section) => [section.title, DEFAULT_OPEN_SECTIONS.has(section.title)] as const)
+    )
+  )
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
   const pathname = usePathname()
@@ -144,6 +188,15 @@ export function Navbar({
       // ignore
     }
   }, [setSidebarOpen])
+  const setCommandMenuOpen = useCallback((nextOpen: boolean) => {
+    globalEventBus.emit('command-menu:set-open', { open: nextOpen })
+  }, [])
+  const toggleSection = useCallback((sectionTitle: string) => {
+    setOpenSections((current) => ({
+      ...current,
+      [sectionTitle]: !current[sectionTitle],
+    }))
+  }, [])
 
   // Accessibility: prevent focus from entering the sidebar when collapsed/hidden.
   useEffect(() => {
@@ -210,6 +263,19 @@ export function Navbar({
       toggleButtonRef.current?.focus()
     })
   }, [isSidebarOpen])
+
+  useEffect(() => {
+    const activeSection = menuSections.find((section) => sectionHasActiveRoute(pathname, section.items))
+    if (!activeSection) return
+
+    setOpenSections((current) => {
+      if (current[activeSection.title]) return current
+      return {
+        ...current,
+        [activeSection.title]: true,
+      }
+    })
+  }, [pathname])
 
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.
   useEffect(() => {
@@ -345,47 +411,111 @@ export function Navbar({
           </Button>
         </div>
 
+        <div className="px-4 pb-2">
+          <button
+            type="button"
+            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-dashed border-border/70 bg-background/70 px-3 py-3 text-left transition-colors duration-200 hover:border-primary/40 hover:bg-accent/60 focus-ring"
+            onClick={() => {
+              setCommandMenuOpen(true)
+              closeSidebarOnMobile()
+            }}
+            aria-label="打开命令搜索"
+            title="打开命令搜索"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary">
+                <Search className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">打开命令搜索</p>
+                <p className="text-[11px] text-muted-foreground">快速跳转到页面和常用操作</p>
+              </div>
+            </div>
+            <span className="rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm">⌘K</span>
+          </button>
+        </div>
+
         {/* 导航菜单 */}
         {/* Allow internal scroll so items are never clipped on short viewports. */}
         <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
-          <div className="space-y-4">
-            {menuSections.map((section) => (
-              <div key={section.title} className="space-y-1">
-                <p className="px-3 text-[11px] font-semibold text-muted-foreground mb-2 uppercase">
-                  {section.title}
-                </p>
-                {section.items.map((item) => {
-                  const Icon = item.icon
-                  const isActive = isActiveRoute(pathname, item.href)
+          <div className="space-y-3">
+            {menuSections.map((section, index) => {
+              const isOpen = openSections[section.title] ?? false
+              const hasActiveItem = sectionHasActiveRoute(pathname, section.items)
+              const ToggleIcon = isOpen ? ChevronDown : ChevronRight
 
-                  return (
-                    <div key={item.href}>
-                      <Link
-                        href={item.href}
-                        prefetch
-                        onClick={closeSidebarOnMobile}
-                        aria-current={isActive ? 'page' : undefined}
-                        className={cn(
-                          'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
-                          "before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-transparent",
-                          isActive
-                            ? 'bg-muted text-foreground font-medium before:bg-primary/80'
-                            : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                        )}
-                      >
-                        <Icon
-                          className={cn(
-                            "h-4 w-4 transition-colors",
-                            isActive ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"
-                          )}
-                        />
-                        <span className="text-sm">{item.label}</span>
-                      </Link>
+              return (
+                <section
+                  key={section.title}
+                  className={cn('space-y-1.5', index > 0 ? 'border-t border-sidebar-border/70 pt-3' : '')}
+                >
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors duration-200 focus-ring',
+                      hasActiveItem ? 'text-foreground' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
+                    )}
+                    onClick={() => toggleSection(section.title)}
+                    aria-expanded={isOpen}
+                    aria-controls={`sidebar-section-${section.title}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.18em]">{section.title}</p>
+                      <p className="text-[10px] text-muted-foreground">{section.items.length} 个入口</p>
                     </div>
-                  )
-                })}
-              </div>
-            ))}
+                    <div className="flex items-center gap-2">
+                      {hasActiveItem ? (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">当前</span>
+                      ) : null}
+                      <ToggleIcon className="h-4 w-4 shrink-0" />
+                    </div>
+                  </button>
+
+                  <div
+                    id={`sidebar-section-${section.title}`}
+                    className={cn(
+                      'grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-out',
+                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-70'
+                    )}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="space-y-1 pb-1">
+                        {section.items.map((item) => {
+                          const Icon = item.icon
+                          const isActive = isActiveRoute(pathname, item.href)
+
+                          return (
+                            <div key={item.href}>
+                              <Link
+                                href={item.href}
+                                prefetch
+                                onClick={closeSidebarOnMobile}
+                                aria-current={isActive ? 'page' : undefined}
+                                className={cn(
+                                  'relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-200 group focus-ring',
+                                  'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-0.5 before:rounded-full before:bg-transparent',
+                                  isActive
+                                    ? 'bg-muted text-foreground font-medium before:bg-primary/80'
+                                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                                )}
+                              >
+                                <Icon
+                                  className={cn(
+                                    'h-4 w-4 transition-colors',
+                                    isActive ? 'text-primary' : 'text-muted-foreground/70 group-hover:text-foreground'
+                                  )}
+                                />
+                                <span className="text-sm">{item.label}</span>
+                              </Link>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )
+            })}
           </div>
         </div>
 

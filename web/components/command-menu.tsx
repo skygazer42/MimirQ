@@ -18,6 +18,7 @@ import { useTheme } from "next-themes"
 
 import type { Document } from "@/types"
 import { documentApi } from "@/lib/api-client"
+import { globalEventBus } from "@/lib/event-bus"
 import { useDocumentView } from "@/store/document-view"
 
 import {
@@ -50,6 +51,22 @@ export function CommandMenu() {
 
     document.addEventListener("keydown", down)
     return () => document.removeEventListener("keydown", down)
+  }, [])
+
+  React.useEffect(() => {
+    const offSetOpen = globalEventBus.on("command-menu:set-open", (payload) => {
+      if (typeof payload?.open === "boolean") {
+        setOpen(payload.open)
+      }
+    })
+    const offToggle = globalEventBus.on("command-menu:toggle", () => {
+      setOpen((current) => !current)
+    })
+
+    return () => {
+      offSetOpen()
+      offToggle()
+    }
   }, [])
 
   // Server-backed document search for large knowledge bases.
