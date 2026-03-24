@@ -26,6 +26,7 @@ from app.core.token_utils import num_tokens_from_string, truncate
 from app.core.utils import parse_csv
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.claim_evidence import build_claim_evidence_map
+from app.rag.core.confidence import compute_confidence_score
 from app.rag.core.conversation import format_history_text
 from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.hashing import stable_hash
@@ -2038,6 +2039,12 @@ Requirements:
                         nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
                         nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
                     )
+                confidence_meta = compute_confidence_score(
+                    faithfulness_score=faithfulness_meta.get("score"),
+                    claim_total=faithfulness_meta.get("total_claims"),
+                    claim_supported=faithfulness_meta.get("supported_claims"),
+                    evidence_gap=None,
+                )
                 done_payload = {
                     "type": "done",
                     "data": {
@@ -2130,6 +2137,9 @@ Requirements:
                             "faithfulness_supported_claims": int(faithfulness_meta.get("supported_claims") or 0),
                             "faithfulness_total_claims": int(faithfulness_meta.get("total_claims") or 0),
                             "faithfulness_unsupported_claims": list(faithfulness_meta.get("unsupported_claims") or []),
+                            "confidence_score": confidence_meta.get("score"),
+                            "confidence_band": confidence_meta.get("band"),
+                            "confidence_reasons": list(confidence_meta.get("reasons") or []),
                             "sentence_citations_count": 0,
                             "sentence_citations": [],
                             "sentence_citations_inline_enabled": bool(
@@ -2882,6 +2892,12 @@ Requirements:
             if sentence_citations_inline_style not in {"appendix", "inline"}:
                 sentence_citations_inline_style = "appendix"
             sentence_citations_inline_fallback_reason: str | None = None
+            confidence_meta = compute_confidence_score(
+                faithfulness_score=faithfulness_meta.get("score"),
+                claim_total=faithfulness_meta.get("total_claims"),
+                claim_supported=faithfulness_meta.get("supported_claims"),
+                evidence_gap=None,
+            )
 
             # Optional: inline per-claim citations (only safe when claim-check produced a claim list).
             if (
@@ -3210,6 +3226,9 @@ Requirements:
                         "faithfulness_supported_claims": int(faithfulness_meta.get("supported_claims") or 0),
                         "faithfulness_total_claims": int(faithfulness_meta.get("total_claims") or 0),
                         "faithfulness_unsupported_claims": list(faithfulness_meta.get("unsupported_claims") or []),
+                        "confidence_score": confidence_meta.get("score"),
+                        "confidence_band": confidence_meta.get("band"),
+                        "confidence_reasons": list(confidence_meta.get("reasons") or []),
                         "visible_evidence_only_enabled": bool(strict_visible),
                         "visible_evidence_only_requested": bool(visible_evidence_only),
                         "evidence_span_strict_enabled": bool(evidence_span_strict_enabled),
