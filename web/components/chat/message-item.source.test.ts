@@ -13,5 +13,7 @@ describe('message item source', () => {
     expect(src).toContain("toast.error('复制失败，请检查浏览器剪贴板权限')")
     expect(src).toContain('confidence_score')
     expect(src).toContain('置信度')
+    expect(src).toContain('INLINE_CITATION_HREF_PREFIX')
+    expect(src).toContain('handleInlineCitationClick')
   })
 })
