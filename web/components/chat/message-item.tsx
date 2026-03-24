@@ -237,17 +237,31 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     const value = typeof confidenceScoreRaw === 'number' ? confidenceScoreRaw : Number(confidenceScoreRaw)
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null
   })()
-  const confidenceTone =
+  const confidenceMeta =
     confidenceScore == null
       ? null
       : confidenceScore >= 0.75
-        ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+        ? {
+            label: '✓ 高置信度',
+            summary: '证据与回答整体一致',
+            badgeClass: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+            lineClass: 'border-l-emerald-500/80',
+          }
         : confidenceScore >= 0.5
-          ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-          : 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300'
-  const confidenceLabel =
-    confidenceScore == null ? null : confidenceScore >= 0.75 ? '高' : confidenceScore >= 0.5 ? '中' : '低'
+          ? {
+              label: '⚠ 部分支撑',
+              summary: '存在有效证据，但仍建议交叉确认',
+              badgeClass: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+              lineClass: 'border-l-amber-500/80',
+            }
+          : {
+              label: '✗ 证据不足',
+              summary: '当前回答缺少足够支撑，建议继续追问',
+              badgeClass: 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+              lineClass: 'border-l-rose-500/80',
+            }
   const claimEvidence = Array.isArray(metrics.claim_evidence) ? metrics.claim_evidence : null
+  const claimEvidenceCount = claimEvidence?.length ?? 0
   const followupQuestions = Array.isArray(metrics.followup_questions)
     ? metrics.followup_questions
         .map((item: unknown) => (typeof item === 'string' ? item.trim() : ''))
@@ -270,6 +284,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const citationRows = (message.citations || [])
     .slice()
     .sort((a, b) => (Number(b.relevance_score) || 0) - (Number(a.relevance_score) || 0))
+  const citationPreviewRows = citationRows.slice(0, 2)
 
   const citationByChunkId = (() => {
     const map = new Map<string, Citation>()
@@ -320,6 +335,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
     openDocument(documentId, citation?.chunk_id || target.chunkId, citation ? getCitationRange(citation) : undefined)
   }, [citationByChunkId, citationByDocumentId, openDocument])
+
+  const handleOpenCitation = useCallback((citation: Citation) => {
+    if (!citation.document_id) return
+    openDocument(citation.document_id, citation.chunk_id, getCitationRange(citation))
+  }, [openDocument])
 
   const markdownComponents = {
     ...markdownBaseComponents,
@@ -390,7 +410,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-shadow duration-200 motion-reduce:transition-none',
 	          isUser
 	            ? 'bg-primary text-primary-foreground rounded-2xl rounded-tr-sm shadow-strong border border-primary/20 backdrop-blur-sm'
-	            : 'glass-card text-foreground rounded-2xl rounded-tl-sm hover:shadow-lg hover:shadow-primary/10'
+	            : cn(
+	                'glass-card text-foreground rounded-2xl rounded-tl-sm border border-border/60 border-l-4 hover:shadow-lg hover:shadow-primary/10',
+	                confidenceMeta?.lineClass || 'border-l-primary/20'
+	              )
 	        )}
 	      >
         {/* 思维链 / 步骤展示 */}
@@ -672,19 +695,57 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           )}
         </button>
 
-        {!isUser && confidenceScore != null && confidenceTone && confidenceLabel && (
-          <div className="mb-3 flex flex-wrap items-center gap-2 pr-16">
-            <div
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tabular-nums',
-                confidenceTone
-              )}
-            >
-              <BarChart3 className="h-3 w-3" />
-              <span>置信度</span>
-              <span>{Math.round(confidenceScore * 100)}%</span>
-            </div>
-            <div className="text-[11px] text-muted-foreground">{confidenceLabel}可信度</div>
+        {!isUser && (confidenceMeta || citationPreviewRows.length > 0) && (
+          <div className="mb-4 space-y-3 pr-16">
+            {confidenceMeta && confidenceScore != null ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <div
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tabular-nums',
+                    confidenceMeta.badgeClass
+                  )}
+                >
+                  <BarChart3 className="h-3 w-3" />
+                  <span>{confidenceMeta.label}</span>
+                  <span>{Math.round(confidenceScore * 100)}%</span>
+                </div>
+                <div className="text-[11px] text-muted-foreground">{confidenceMeta.summary}</div>
+              </div>
+            ) : null}
+
+            {citationPreviewRows.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                  来源速览
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                  {citationPreviewRows.map((citation, idx) => {
+                    const citationKey = `${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`
+                    return (
+                      <button
+                        key={citationKey}
+                        type="button"
+                        onClick={() => handleOpenCitation(citation)}
+                        className="flex shrink-0 items-center gap-2 rounded-full border border-border/60 bg-background/70 px-3 py-1.5 text-xs text-foreground transition-colors hover:border-primary/25 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                      >
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[10px] font-semibold text-primary">
+                          {idx + 1}
+                        </span>
+                        <span className="max-w-[180px] truncate font-medium">{citation.document_name}</span>
+                        {citation.page_number != null ? (
+                          <span className="text-muted-foreground">P.{citation.page_number}</span>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                  {citationRows.length > citationPreviewRows.length ? (
+                    <div className="flex shrink-0 items-center rounded-full border border-dashed border-border/70 px-3 py-1.5 text-xs text-muted-foreground">
+                      +{citationRows.length - citationPreviewRows.length} 条来源
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -735,55 +796,173 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           </div>
         )}
 
-        {!isUser && message.citations && message.citations.length > 0 && (
-          <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
-            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase  opacity-80">
-              <Database className="w-3 h-3" />
-              参考来源
+        {!isUser && (citationRows.length > 0 || claimEvidenceCount > 0) && (
+          <details className="mt-5 overflow-hidden rounded-2xl border border-border/60 bg-background/35 open:bg-background/45">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                  来源与证据
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {citationRows.length ? `${citationRows.length} 条来源` : '暂无引用来源'}
+                  {claimEvidenceCount > 0 ? ` · ${claimEvidenceCount} 条 claim evidence` : ''}
+                </div>
+              </div>
+              <span className="text-[11px] text-muted-foreground">展开详情</span>
+            </summary>
+            <div className="space-y-4 border-t border-border/50 px-4 py-4">
+              {citationRows.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                    <Database className="h-3 w-3" />
+                    参考来源
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {citationRows.map((citation, idx) => {
+                      const citationKey = `${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`
+                      return <CitationCard key={citationKey} citation={citation} index={idx} />
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {claimEvidenceCount > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                      Claim Evidence
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">{claimEvidenceCount} 条</div>
+                  </div>
+                  <div className="space-y-3">
+                    {claimEvidence?.slice(0, 6).map((item: any, idx: number) => {
+                      const claim = String(item?.claim || '').trim()
+                      const evidence = Array.isArray(item?.evidence) ? item.evidence : []
+                      return (
+                        <div
+                          key={claim || evidence.map((ev: any) => String(ev?.chunk_id || ev?.document_id || '')).join(':') || `claim-${idx}`}
+                          className="rounded-xl border border-border/60 bg-card/70 p-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 text-sm font-medium leading-6 text-foreground/90">
+                              {claim || `Claim #${idx + 1}`}
+                            </div>
+                            <div className="shrink-0 text-[10px] text-muted-foreground">{evidence.length} 证据</div>
+                          </div>
+
+                          {evidence.length ? (
+                            <div className="mt-3 flex flex-col gap-2">
+                              {evidence.slice(0, 2).map((ev: any) => {
+                                const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
+                                const chunkId = typeof ev?.chunk_id === 'string' ? ev.chunk_id : ''
+                                const citation =
+                                  (chunkId && citationByChunkId.get(chunkId)) ||
+                                  (docId && citationByDocumentId.get(docId))
+                                const score = typeof ev?.score === 'number' ? ev.score : null
+                                const quote = String(ev?.quote || '').trim()
+                                const disabled = !docId
+
+                                return (
+                                  <button
+                                    key={`${docId}:${chunkId}:${quote.slice(0, 24)}`}
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() => handleOpenEvidence(ev)}
+                                    className={cn(
+                                      'w-full rounded-xl border border-border/50 bg-background/70 px-3 py-2 text-left transition-colors',
+                                      disabled
+                                        ? 'cursor-not-allowed opacity-60'
+                                        : 'hover:border-primary/25 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60'
+                                    )}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div
+                                          className="truncate text-[11px] font-semibold text-foreground"
+                                          title={citation?.document_name || docId || 'Unknown'}
+                                        >
+                                          {citation?.document_name || docId || 'Unknown'}
+                                        </div>
+                                        <div className="text-[10px] text-muted-foreground tabular-nums">
+                                          {citation?.page_number == null ? '—' : `P.${citation.page_number}`}
+                                          {typeof ev?.start_char === 'number' && typeof ev?.end_char === 'number'
+                                            ? ` · ${Math.trunc(ev.start_char)}-${Math.trunc(ev.end_char)}`
+                                            : ''}
+                                        </div>
+                                      </div>
+                                      {score == null ? null : (
+                                        <div className="text-[10px] font-mono text-muted-foreground tabular-nums">
+                                          {score.toFixed(3)}
+                                        </div>
+                                      )}
+                                    </div>
+                                    {quote ? (
+                                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                                        {quote}
+                                      </div>
+                                    ) : null}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-xs text-muted-foreground">未找到可见证据。</div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {message.citations.map((citation, idx) => {
-                const citationKey = `${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`
-                return (
-                  <CitationCard key={citationKey} citation={citation} index={idx} />
-                )
-              })}
-            </div>
-          </div>
+          </details>
         )}
 
         {!isUser && canRate && (
-          <div className="mt-5 pt-3 border-t border-border/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="text-[10px] font-bold text-muted-foreground uppercase  opacity-80">
-              反馈评分
+          <details className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/35 open:bg-background/45">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+                  反馈评分
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  用 1-5 星记录这条回答是否有帮助。
+                </div>
+              </div>
+              <span className="text-[11px] text-muted-foreground">{rating != null ? `${rating} / 5` : '展开评分'}</span>
+            </summary>
+            <div className="flex flex-col gap-3 border-t border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs text-muted-foreground">
+                评分越低，越适合后续进入回归或 evidence workbench 继续分析。
+              </div>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4, 5].map((v) => {
+                  const active = rating != null && v <= rating
+                  return (
+                    <button
+                      key={v}
+                      type="button"
+                      disabled={ratingSending}
+                      onClick={() => submitRating(v)}
+                      className={cn(
+                        'inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
+                        'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+                        ratingSending && 'cursor-not-allowed opacity-50'
+                      )}
+                      aria-label={`rate-${v}`}
+                      title={`${v} 星`}
+                    >
+                      <Star
+                        className={cn('h-4 w-4', active ? 'text-yellow-500' : 'text-muted-foreground')}
+                        fill={active ? 'currentColor' : 'none'}
+                      />
+                    </button>
+                  )
+                })}
+                {ratingSending ? <span className="ml-2 text-xs text-muted-foreground">提交中…</span> : null}
+              </div>
             </div>
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map((v) => {
-                const active = rating != null && v <= rating
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    disabled={ratingSending}
-                    onClick={() => submitRating(v)}
-                    className={cn(
-                      'h-8 w-8 inline-flex items-center justify-center rounded-lg transition-colors',
-                      'hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
-                      ratingSending && 'opacity-50 cursor-not-allowed'
-                    )}
-                    aria-label={`rate-${v}`}
-                    title={`${v} 星`}
-                  >
-                    <Star
-                      className={cn('h-4 w-4', active ? 'text-yellow-500' : 'text-muted-foreground')}
-                      fill={active ? 'currentColor' : 'none'}
-                    />
-                  </button>
-                )
-              })}
-              {ratingSending && <span className="text-xs text-muted-foreground ml-2">提交中…</span>}
-            </div>
-          </div>
+          </details>
         )}
       </div>
 
