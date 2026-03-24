@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs",
@@ -96,6 +97,7 @@
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.3.3",
+    "@vitest/coverage-v8": "^4.1.0",
     "vitest": "^4.1.0"
   }
 }

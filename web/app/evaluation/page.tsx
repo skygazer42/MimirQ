@@ -1,2 +1,5 @@
-export { default } from '../evaluations/page'
+import { redirect } from 'next/navigation'
 
+export default function EvaluationRedirectPage() {
+  redirect('/evaluations')
+}

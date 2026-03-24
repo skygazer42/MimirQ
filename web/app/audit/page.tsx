@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { ShieldCheck, RefreshCw, Search, Copy, FilterX } from 'lucide-react'
+import { ShieldCheck, RefreshCw, Search, Copy, FilterX, ScrollText } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -13,6 +13,7 @@ import { auditApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import type { AuditLogItem, AuditLogListResponse } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
+import { EmptyState } from '@/components/ui/empty-state'
 
 function fmtTs(ts: string) {
   try {
@@ -238,7 +239,11 @@ export default function AuditLogsPage() {
             {(() => {
     if (resp) {
         if (items.length === 0) {
-            return (<div className="text-sm text-muted-foreground">暂无记录</div>);
+            return (<EmptyState
+                      icon={ScrollText}
+                      title="暂无审计记录"
+                      description="当前筛选条件下没有找到任何审计日志。"
+                    />);
         }
         else {
             return (<div className="space-y-2">

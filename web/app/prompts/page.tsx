@@ -36,7 +36,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api-client'
-import { Plus, Edit, Trash2, Copy, Check, X, Eye, Filter, Wand2 } from 'lucide-react'
+import { Plus, Edit, Trash2, Copy, Check, X, Eye, Filter, Wand2, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'
 import { KgPredicateOntologySettings } from '@/components/kg-predicate-ontology-settings'
@@ -44,6 +44,7 @@ import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { EmptyState } from '@/components/ui/empty-state'
 
 export default function PromptsPage() {
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
@@ -362,16 +363,18 @@ export default function PromptsPage() {
         return (<div className="text-center py-12">加载中...</div>);
     }
     else if (filteredTemplates.length === 0) {
-            return (<Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            {templates.length === 0 ? (<>
-                <p>还没有提示词模板</p>
-                <Button onClick={handleCreate} className="mt-4">
+            return (<EmptyState
+              icon={MessageSquare}
+              title="暂无提示词模板"
+              description={templates.length === 0 ? "还没有创建任何提示词模板。" : "没有找到匹配的模板，请尝试调整筛选条件。"}
+            >
+              {templates.length === 0 ? (
+                <Button onClick={handleCreate}>
+                  <Plus className="w-4 h-4 mr-2" />
                   创建第一个模板
                 </Button>
-              </>) : (<p>没有找到匹配的模板</p>)}
-          </CardContent>
-        </Card>);
+              ) : null}
+            </EmptyState>);
         }
         else {
             return (<div className="space-y-4">

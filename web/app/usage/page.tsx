@@ -14,6 +14,7 @@ import { datasetApi, usageApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import type { ChatCostUsageSummary, ChatTokenQuotaStatus, ChatTokenUsageSummary } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
+import { EmptyState } from '@/components/ui/empty-state'
 
 const WINDOW_PRESETS = [
     { label: '24 小时', value: 1 },
@@ -281,11 +282,12 @@ export default function UsagePage() {
               ) : null}
             </div>
           ) : (
-            <Panel padding="lg" className="mt-4">
-              <div className="text-sm text-muted-foreground">
-                无法加载用量数据。请确认你是 owner/admin，并且后端已更新到包含 /api/v1/usage 的版本。
-              </div>
-            </Panel>
+            <EmptyState
+              icon={BarChart3}
+              title="暂无用量数据"
+              description="无法加载用量数据。请确认您拥有 owner/admin 权限，并且后端已更新到包含用量接口的版本。"
+              className="mt-4"
+            />
           )}
         </PageScaffold>
       </div>

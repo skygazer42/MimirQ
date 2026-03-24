@@ -10,8 +10,14 @@ import { AlertCircle } from 'lucide-react'
 
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { buildBlockIdToBestChunkIndex } from '@/components/chunk-preview/utils/pdf-box-mapping'
-import { PdfViewer } from '@/components/parsing/pdf-viewer'
+import dynamic from 'next/dynamic'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+
+const PdfViewer = dynamic(() => import('@/components/parsing/pdf-viewer').then((mod) => mod.PdfViewer), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[400px] w-full" />,
+})
 import {
   createPositionTagIndexMapper,
   extractBlocksFromMarkdownWithRanges,

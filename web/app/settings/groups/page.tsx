@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, RefreshCw, Trash2, Users } from 'lucide-react'
+import { Plus, RefreshCw, Trash2, Users, UsersRound } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
@@ -20,6 +20,7 @@ import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { groupApi } from '@/lib/api-client'
 import type { TenantGroupOut } from '@/types/backend'
+import { EmptyState } from '@/components/ui/empty-state'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -281,9 +282,16 @@ export default function SettingsGroupsPage() {
                     )
                   })
                 ) : (
-                  <div className="px-3 py-8 text-sm text-muted-foreground">
-                    {loading ? '加载中…' : '暂无组（或无权限）'}
-                  </div>
+                  loading ? (
+                    <div className="px-3 py-8 text-sm text-muted-foreground">加载中…</div>
+                  ) : (
+                    <EmptyState
+                      icon={UsersRound}
+                      title="暂无组"
+                      description="还没有创建任何组，或您没有查看权限。"
+                      className="rounded-none border-0 border-t border-border shadow-none"
+                    />
+                  )
                 )}
               </div>
             </CardContent>
