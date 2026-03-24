@@ -1,19 +1,22 @@
-"use client"
+'use client'
 
-import * as React from "react"
+import * as React from 'react'
+import { Sparkles, FileText, Eraser, Settings2 } from 'lucide-react'
+
 import {
   Command,
+  CommandEmpty,
   CommandGroup,
+  CommandInput,
   CommandItem,
   CommandList,
-  CommandInput
-} from "@/components/ui/command"
-import { 
-  Popover, 
-  PopoverContent, 
-  PopoverTrigger 
-} from "@/components/ui/popover"
-import { Sparkles, FileText, Eraser, Settings2 } from "lucide-react"
+  CommandShortcut,
+} from '@/components/ui/command'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 
 interface SlashMenuProps {
   open: boolean
@@ -23,35 +26,76 @@ interface SlashMenuProps {
 }
 
 const COMMANDS = [
-  { id: "prompt", label: "插入提示词", icon: Sparkles },
-  { id: "doc", label: "引用文档", icon: FileText },
-  { id: "clear", label: "清空对话", icon: Eraser },
-  { id: "config", label: "调整参数", icon: Settings2 },
-]
+  {
+    id: 'prompt',
+    label: '插入提示模板',
+    description: '快速填入一条适合知识库摘要的提示',
+    keywords: ['prompt', '模板', 'summary', '摘要'],
+    icon: Sparkles,
+  },
+  {
+    id: 'doc',
+    label: '强调引用文档',
+    description: '让回答优先结合知识库来源与依据',
+    keywords: ['document', 'citation', '文档', '引用'],
+    icon: FileText,
+  },
+  {
+    id: 'config',
+    label: '打开 RAG 配置',
+    description: '调整检索模式、Top K 与过滤条件',
+    keywords: ['config', 'settings', '检索', '参数'],
+    icon: Settings2,
+  },
+  {
+    id: 'clear',
+    label: '清空当前输入',
+    description: '只清理输入框，不影响已有会话记录',
+    keywords: ['clear', 'erase', '清空'],
+    icon: Eraser,
+  },
+] as const
 
 export function SlashMenu({ open, onOpenChange, onSelect, position }: Readonly<SlashMenuProps>) {
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <div 
-            style={{ 
-                position: 'fixed', 
-                top: position.top, 
-                left: position.left, 
-                width: 1, 
-                height: 1 
-            }} 
+        <div
+          style={{
+            position: 'fixed',
+            top: position.top,
+            left: position.left,
+            width: 1,
+            height: 1,
+          }}
         />
       </PopoverTrigger>
-      <PopoverContent className="p-0 w-64" align="start" side="top">
-        <Command>
-          <CommandInput placeholder="输入命令..." autoFocus />
+      <PopoverContent
+        className="w-80 overflow-hidden border border-border/70 bg-popover/95 p-0 shadow-strong backdrop-blur"
+        align="start"
+        side="top"
+      >
+        <Command loop>
+          <CommandInput placeholder="搜索命令或用途..." autoFocus />
           <CommandList>
+            <CommandEmpty>未找到匹配命令</CommandEmpty>
             <CommandGroup heading="快捷指令">
               {COMMANDS.map((cmd) => (
-                <CommandItem key={cmd.id} onSelect={() => onSelect(cmd.id)}>
-                  <cmd.icon className="mr-2 h-4 w-4" />
-                  <span>{cmd.label}</span>
+                <CommandItem
+                  key={cmd.id}
+                  value={`${cmd.id} ${cmd.label} ${cmd.description} ${cmd.keywords.join(' ')}`}
+                  keywords={[...cmd.keywords]}
+                  onSelect={() => onSelect(cmd.id)}
+                  className="items-start gap-3 rounded-xl px-3 py-3"
+                >
+                  <div className="mt-0.5 flex size-8 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
+                    <cmd.icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-foreground">{cmd.label}</div>
+                    <div className="mt-1 text-xs leading-5 text-muted-foreground">{cmd.description}</div>
+                  </div>
+                  <CommandShortcut>↵</CommandShortcut>
                 </CommandItem>
               ))}
             </CommandGroup>
