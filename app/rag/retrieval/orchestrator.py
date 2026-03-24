@@ -143,6 +143,77 @@ def _build_history_text(history: list[dict[str, str]] | None) -> str:
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
 
 
+def _decompose_query(query_for_retrieval: str, engine: Any) -> tuple[list[str], float, str | None, dict[str, Any]]:
+    decompose_elapsed = 0.0
+    decompose_model_used = None
+    decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+    sub_questions: list[str] = []
+
+    dq_n = max(0, min(int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS or 0), 8))
+    dq_min_chars = max(0, int(settings.QUERY_DECOMPOSITION_MIN_CHARS or 0))
+    dq_max_chars = max(0, int(settings.QUERY_DECOMPOSITION_MAX_CHARS or 0))
+    if not (
+        bool(settings.ENABLE_QUERY_DECOMPOSITION)
+        and dq_n > 0
+        and len(query_for_retrieval) >= dq_min_chars
+        and (dq_max_chars <= 0 or len(query_for_retrieval) <= dq_max_chars)
+    ):
+        return sub_questions, decompose_elapsed, decompose_model_used, decompose_parse_meta
+
+    from app.rag.core.text import heuristic_decompose_query
+
+    heuristic_fallback_enabled = bool(getattr(settings, "QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED", True))
+    llm_api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+
+    if heuristic_fallback_enabled and not llm_api_key:
+        sub_questions = heuristic_decompose_query(query_for_retrieval, max_subquestions=dq_n)
+        if sub_questions:
+            decompose_parse_meta = {"ok": True, "method": "heuristic", "error": None}
+        return sub_questions, decompose_elapsed, decompose_model_used, decompose_parse_meta
+
+    dq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
+    decompose_model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
+    try:
+        _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
+        dq_chain = (
+            engine.decompose_prompt  # type: ignore[attr-defined]
+            | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
+            | str_output_parser_cls()
+        )
+        dq_start = time.time()
+        dq_raw = dq_chain.invoke({"query": query_for_retrieval, "n": dq_n})
+        decompose_elapsed = time.time() - dq_start
+        dq_data, decompose_parse_meta = parse_json_from_text(dq_raw, expected="array")
+
+        if isinstance(dq_data, list):
+            seen: set[str] = set()
+            for item in dq_data:
+                if not isinstance(item, str):
+                    continue
+                q = (item or "").strip().strip('"').strip()
+                if not q or q == query_for_retrieval or q in seen:
+                    continue
+                if len(q) > 500:
+                    q = q[:500] + "..."
+                seen.add(q)
+                sub_questions.append(q)
+                if len(sub_questions) >= dq_n:
+                    break
+    except Exception as exc:  # noqa: BLE001
+        decompose_elapsed = 0.0
+        decompose_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+        sub_questions = []
+
+    if heuristic_fallback_enabled and not sub_questions and not bool(decompose_parse_meta.get("ok")):
+        sub_questions = heuristic_decompose_query(query_for_retrieval, max_subquestions=dq_n)
+        if sub_questions:
+            decompose_model_used = None
+            decompose_elapsed = 0.0
+            decompose_parse_meta = {"ok": True, "method": "heuristic", "error": None}
+
+    return sub_questions, decompose_elapsed, decompose_model_used, decompose_parse_meta
+
+
 def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | None:
     """
     Shrink retriever debug payloads for API responses / metrics.
@@ -2145,71 +2216,21 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
     sub_questions: list[str] = []
 
-    dq_n = max(0, min(int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS or 0), 8))
-    dq_min_chars = max(0, int(settings.QUERY_DECOMPOSITION_MIN_CHARS or 0))
-    dq_max_chars = max(0, int(settings.QUERY_DECOMPOSITION_MAX_CHARS or 0))
-    if (
-        bool(settings.ENABLE_QUERY_DECOMPOSITION)
-        and dq_n > 0
-        and len(query_for_retrieval) >= dq_min_chars
-        and (dq_max_chars <= 0 or len(query_for_retrieval) <= dq_max_chars)
-    ):
-        from app.rag.core.text import heuristic_decompose_query
-
-        heuristic_fallback_enabled = bool(getattr(settings, "QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED", True))
-        llm_api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-
-        if heuristic_fallback_enabled and not llm_api_key:
-            sub_questions = heuristic_decompose_query(query_for_retrieval, max_subquestions=dq_n)
-            if sub_questions:
-                decompose_elapsed = 0.0
-                decompose_parse_meta = {"ok": True, "method": "heuristic", "error": None}
-        else:
-            dq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
-            decompose_model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
-            try:
-                _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-                dq_chain = (
-                    engine.decompose_prompt  # type: ignore[attr-defined]
-                    | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
-                    | str_output_parser_cls()
-                )
-                dq_start = time.time()
-                dq_raw = dq_chain.invoke({"query": query_for_retrieval, "n": dq_n})
-                decompose_elapsed = time.time() - dq_start
-                dq_data, decompose_parse_meta = parse_json_from_text(dq_raw, expected="array")
-
-                if isinstance(dq_data, list):
-                    seen: set[str] = set()
-                    for item in dq_data:
-                        if not isinstance(item, str):
-                            continue
-                        q = (item or "").strip().strip('"').strip()
-                        if not q:
-                            continue
-                        if q == query_for_retrieval:
-                            continue
-                        if q in seen:
-                            continue
-                        if len(q) > 500:
-                            q = q[:500] + "..."
-                        seen.add(q)
-                        sub_questions.append(q)
-                        if len(sub_questions) >= dq_n:
-                            break
-            except Exception as exc:  # noqa: BLE001
-                decompose_elapsed = 0.0
-                decompose_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-                sub_questions = []
-
-            if heuristic_fallback_enabled and not sub_questions and not bool(decompose_parse_meta.get("ok")):
-                sub_questions = heuristic_decompose_query(query_for_retrieval, max_subquestions=dq_n)
-                if sub_questions:
-                    decompose_model_used = None
-                    decompose_elapsed = 0.0
-                    decompose_parse_meta = {"ok": True, "method": "heuristic", "error": None}
+    decompose_result = _decompose_query(query_for_retrieval, engine)
+    if isinstance(decompose_result, tuple) and len(decompose_result) == 4:
+        sub_questions, decompose_elapsed, decompose_model_used, decompose_parse_meta = decompose_result
+    elif isinstance(decompose_result, list):
+        sub_questions = [str(item).strip() for item in decompose_result if str(item or "").strip()]
+        if sub_questions:
+            decompose_parse_meta = {"ok": True, "method": "patched", "error": None}
 
     decompose_used = bool(sub_questions)
+    decompose_chain_enabled = bool(getattr(settings, "RAG_DECOMPOSITION_CHAIN_ENABLED", False))
+    decompose_chain_requested = bool(decompose_chain_enabled and sub_questions)
+    decompose_chain_used = False
+    decompose_chain_steps = 0
+    decompose_chain_elapsed = 0.0
+    decompose_chain_queries: list[str] = []
 
     retrieval_queries: list[tuple[str, str]] = [("main", query_for_retrieval)]
     for q in alias_queries:
@@ -2250,7 +2271,6 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     docs_by_query_kinds: list[str] = []
     retrieval_errors: list[str] = []
     retrieval_per_query: list[dict[str, Any]] = []
-    start = time.time()
     retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
     retrieval_plan: list[tuple[str, str, Any]] = []
     for kind, q in retrieval_queries:
@@ -2297,6 +2317,58 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             return kind, (docs_i or []), None, time.time() - t0, dbg
         except Exception as exc:  # noqa: BLE001
             return kind, [], str(exc)[:200], time.time() - t0, None
+
+    start = time.time()
+    if decompose_chain_requested:
+        try:
+            from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
+
+            chain_start = time.time()
+            prior_findings: list[str] = []
+            chain_retrieval_mode = str(retriever_update.get("retrieval_mode") or state.get("retrieval_mode") or "hybrid")
+            for sub_question in sub_questions:
+                chained_query = build_chained_query(sub_question, prior_findings)
+                if not chained_query:
+                    continue
+                decompose_chain_queries.append(chained_query)
+                chained_retriever = retriever.model_copy(update={"enable_reranker": False})
+                kind, docs_i, err, elapsed_i, dbg = _invoke_with_timing("subq", chained_query, chained_retriever)
+                retrieval_per_query.append(
+                    {
+                        "kind": kind,
+                        "query_chars": len(chained_query or ""),
+                        "elapsed_sec": round(elapsed_i, 3),
+                        "ok": err is None,
+                        "retriever_debug": dbg,
+                    }
+                )
+                if err:
+                    retrieval_errors.append(f"{kind}:{err[:160]}")
+                docs_by_query_kinds.append(kind)
+                docs_by_query.append(docs_i or [])
+
+                try:
+                    chain_citations = build_citations_from_docs(
+                        docs_i or [],
+                        retrieval_elapsed_sec=float(elapsed_i or 0.0),
+                        retrieval_mode=chain_retrieval_mode,
+                        query=chained_query,
+                    )
+                except Exception:
+                    chain_citations = []
+                step_summary = summarize_chain_step(chain_citations)
+                prior_findings.append(sub_question if not step_summary else f"{sub_question}: {step_summary}")
+
+            decompose_chain_steps = len(decompose_chain_queries)
+            decompose_chain_used = decompose_chain_steps > 0
+            decompose_chain_elapsed = time.time() - chain_start
+            if decompose_chain_used:
+                retrieval_plan = [item for item in retrieval_plan if item[0] != "subq"]
+        except Exception:
+            decompose_chain_used = False
+            decompose_chain_steps = 0
+            decompose_chain_elapsed = 0.0
+            decompose_chain_queries = []
 
     if retrieval_parallelism <= 1 or len(retrieval_plan) <= 1:
         for kind, q, r in retrieval_plan:
@@ -4272,6 +4344,10 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["decompose_parse_ok"] = bool(decompose_parse_meta.get("ok"))
     metrics["decompose_parse_method"] = decompose_parse_meta.get("method")
     metrics["decompose_parse_error"] = decompose_parse_meta.get("error")
+    metrics["decompose_chain_enabled"] = bool(decompose_chain_enabled)
+    metrics["decompose_chain_used"] = bool(decompose_chain_used)
+    metrics["decompose_chain_steps"] = int(decompose_chain_steps or 0)
+    metrics["decompose_chain_elapsed_sec"] = round(float(decompose_chain_elapsed or 0.0), 3)
     metrics["parse_quality"] = dict(parse_quality_summary or {})
     metrics["parse_quality_low_threshold"] = float(parse_quality_low_threshold)
     metrics["parse_quality_alert_ratio"] = float(parse_quality_alert_ratio)
@@ -4457,6 +4533,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     if hyde_used and hyde_text:
         expansions_dbg.append({"kind": "hyde", "expanded_text": hyde_text, "source_rule_id": "llm:hyde", "weight": 1.0})
     query_debug["expansions"] = expansions_dbg[:20]
+    query_debug["decompose_chain"] = {
+        "enabled": bool(decompose_chain_enabled),
+        "used": bool(decompose_chain_used),
+        "steps": int(decompose_chain_steps or 0),
+        "queries": decompose_chain_queries[:5],
+        "elapsed_sec": round(float(decompose_chain_elapsed or 0.0), 3),
+    }
     if kg_query_expansion_entity_names:
         query_debug["kg_entities"] = kg_query_expansion_entity_names[:10]
 
