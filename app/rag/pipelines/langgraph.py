@@ -33,6 +33,7 @@ from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
 from app.rag.checkpointer.factory import get_checkpointer
 from app.rag.core.claim_evidence import build_claim_evidence_map
+from app.rag.core.confidence import compute_confidence_score
 from app.rag.core.conversation import format_history_text
 from app.rag.core.faithfulness import compute_faithfulness_score
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
@@ -429,6 +430,16 @@ def _generate_node(state: RAGState) -> RAGState:
                 nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
                 nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
             )
+        retrieval_gap = metrics.get("iterative_pass_gap")
+        if not isinstance(retrieval_gap, dict):
+            retrieval_gap = metrics.get("evidence_gap") if isinstance(metrics.get("evidence_gap"), dict) else None
+        confidence_meta = compute_confidence_score(
+            faithfulness_score=faithfulness_meta.get("score"),
+            claim_total=faithfulness_meta.get("total_claims"),
+            claim_supported=faithfulness_meta.get("supported_claims"),
+            evidence_gap=retrieval_gap,
+        )
+
         metrics["sentence_citations_count"] = 0
         metrics["sentence_citations"] = []
         metrics["sentence_citations_inline_enabled"] = bool(getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False))
@@ -440,6 +451,9 @@ def _generate_node(state: RAGState) -> RAGState:
         metrics["faithfulness_supported_claims"] = int(faithfulness_meta.get("supported_claims") or 0)
         metrics["faithfulness_total_claims"] = int(faithfulness_meta.get("total_claims") or 0)
         metrics["faithfulness_unsupported_claims"] = list(faithfulness_meta.get("unsupported_claims") or [])
+        metrics["confidence_score"] = confidence_meta.get("score")
+        metrics["confidence_band"] = confidence_meta.get("band")
+        metrics["confidence_reasons"] = list(confidence_meta.get("reasons") or [])
 
         base = 0.0
         base += float(metrics.get("retrieval_elapsed_sec", 0.0) or 0.0)
@@ -724,6 +738,15 @@ def _generate_node(state: RAGState) -> RAGState:
             sentence_citations_inline_count = int(rendered_count or 0)
 
     metrics = dict(state.get("metrics") or {})
+    retrieval_gap = metrics.get("iterative_pass_gap")
+    if not isinstance(retrieval_gap, dict):
+        retrieval_gap = metrics.get("evidence_gap") if isinstance(metrics.get("evidence_gap"), dict) else None
+    confidence_meta = compute_confidence_score(
+        faithfulness_score=faithfulness_meta.get("score"),
+        claim_total=faithfulness_meta.get("total_claims"),
+        claim_supported=faithfulness_meta.get("supported_claims"),
+        evidence_gap=retrieval_gap,
+    )
     metrics["generation_elapsed_sec"] = round(generation_elapsed, 3)
     metrics["context_chars"] = len(ctx or "")
     metrics["context_tokens"] = num_tokens_from_string(ctx or "")
@@ -769,6 +792,9 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["faithfulness_supported_claims"] = int(faithfulness_meta.get("supported_claims") or 0)
     metrics["faithfulness_total_claims"] = int(faithfulness_meta.get("total_claims") or 0)
     metrics["faithfulness_unsupported_claims"] = list(faithfulness_meta.get("unsupported_claims") or [])
+    metrics["confidence_score"] = confidence_meta.get("score")
+    metrics["confidence_band"] = confidence_meta.get("band")
+    metrics["confidence_reasons"] = list(confidence_meta.get("reasons") or [])
     metrics["visible_evidence_only_enabled"] = bool(strict_visible)
     metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
     base = generation_elapsed

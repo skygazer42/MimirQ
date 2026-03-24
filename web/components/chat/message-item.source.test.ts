@@ -11,5 +11,7 @@ describe('message item source', () => {
     expect(src).not.toContain('document.body.removeChild(')
     expect(src).not.toContain('role="button"')
     expect(src).toContain("toast.error('复制失败，请检查浏览器剪贴板权限')")
+    expect(src).toContain('confidence_score')
+    expect(src).toContain('置信度')
   })
 })

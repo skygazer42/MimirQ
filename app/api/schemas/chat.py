@@ -576,6 +576,7 @@ class ChatResponse(BaseModel):
     total_chars: int = 0
     retrieval_mode: str | None = None
     vector_backend: str | None = None
+    confidence_score: float | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
     structured: bool = False
     structured_data: Any = None

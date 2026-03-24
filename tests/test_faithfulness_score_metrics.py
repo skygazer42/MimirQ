@@ -119,6 +119,7 @@ async def test_engine_metrics_include_faithfulness_and_sentence_citations(
     metrics = done_metrics or {}
     assert metrics.get("faithfulness_score_enabled") is True
     assert metrics.get("faithfulness_score") == pytest.approx(0.5)
+    assert metrics.get("confidence_score") == pytest.approx(0.6)
     assert int(metrics.get("faithfulness_supported_claims") or 0) == 1
     assert int(metrics.get("faithfulness_total_claims") or 0) == 2
     assert int(metrics.get("sentence_citations_count") or 0) >= 2
@@ -185,7 +186,7 @@ def test_langgraph_generate_node_includes_faithfulness_and_sentence_citations(
                 )
             ],
             "citations": [],
-            "metrics": {},
+            "metrics": {"iterative_pass_gap": {"has_gap": False, "severity": "none"}},
             "structured_output": False,
             "visible_evidence_only": False,
         }
@@ -193,6 +194,7 @@ def test_langgraph_generate_node_includes_faithfulness_and_sentence_citations(
     metrics = out.get("metrics") or {}
     assert metrics.get("faithfulness_score_enabled") is True
     assert metrics.get("faithfulness_score") == pytest.approx(0.5)
+    assert metrics.get("confidence_score") == pytest.approx(0.6)
     assert int(metrics.get("faithfulness_supported_claims") or 0) == 1
     assert int(metrics.get("faithfulness_total_claims") or 0) == 2
     assert int(metrics.get("sentence_citations_count") or 0) >= 2

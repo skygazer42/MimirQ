@@ -23,3 +23,17 @@ def test_detect_evidence_gap_reports_no_gap_when_constraints_met() -> None:
     )
     assert out["has_gap"] is False
     assert list(out.get("reason_codes") or []) == []
+
+
+def test_compute_confidence_score_combines_faithfulness_gap_and_claim_coverage() -> None:
+    from app.rag.core.confidence import compute_confidence_score
+
+    out = compute_confidence_score(
+        faithfulness_score=0.75,
+        claim_total=4,
+        claim_supported=3,
+        evidence_gap={"has_gap": False, "severity": "none"},
+    )
+
+    assert out["score"] == 0.8
+    assert out["band"] == "high"

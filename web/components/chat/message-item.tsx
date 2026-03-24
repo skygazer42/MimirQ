@@ -215,6 +215,21 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   }, [message.citations, message.id, message.message_metadata])
 
   const metrics = (message.message_metadata || {})
+  const confidenceScoreRaw = metrics.confidence_score
+  const confidenceScore = (() => {
+    const value = typeof confidenceScoreRaw === 'number' ? confidenceScoreRaw : Number(confidenceScoreRaw)
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null
+  })()
+  const confidenceTone =
+    confidenceScore == null
+      ? null
+      : confidenceScore >= 0.75
+        ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+        : confidenceScore >= 0.5
+          ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+          : 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300'
+  const confidenceLabel =
+    confidenceScore == null ? null : confidenceScore >= 0.75 ? '高' : confidenceScore >= 0.5 ? '中' : '低'
   const claimEvidence = Array.isArray(metrics.claim_evidence) ? metrics.claim_evidence : null
   const metricEntries: Array<{ k: string; v: any }> = [
     { k: 'request_id', v: metrics.request_id },
@@ -584,6 +599,22 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             <Copy className="h-3.5 w-3.5" />
           )}
         </button>
+
+        {!isUser && confidenceScore != null && confidenceTone && confidenceLabel && (
+          <div className="mb-3 flex flex-wrap items-center gap-2 pr-16">
+            <div
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tabular-nums',
+                confidenceTone
+              )}
+            >
+              <BarChart3 className="h-3 w-3" />
+              <span>置信度</span>
+              <span>{Math.round(confidenceScore * 100)}%</span>
+            </div>
+            <div className="text-[11px] text-muted-foreground">{confidenceLabel}可信度</div>
+          </div>
+        )}
 
         <div
 	          className={cn(
