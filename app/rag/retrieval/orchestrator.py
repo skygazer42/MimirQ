@@ -52,7 +52,7 @@ from app.rag.core.text import (
     parse_json_from_text,
     should_rewrite_query,
 )
-from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_retrieval_preset
+from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_intent, route_retrieval_preset
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
     build_must_recall_fail_reasons,
@@ -1205,6 +1205,63 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     """
     question = str(state.get("question") or "")
     history_text = _build_history_text(state.get("history"))
+    no_retrieval_intent = route_intent(question)
+    if bool(no_retrieval_intent.get("skip_retrieval")):
+        requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
+        requested_retrieval_profile = state.get("retrieval_profile")
+        retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
+        profile_norm = str(requested_retrieval_profile or "").strip().lower() or None
+        metrics = dict(state.get("metrics") or {})
+        metrics["retrieval_elapsed_sec"] = 0.0
+        metrics["retrieval_mode"] = retrieval_mode
+        metrics["retrieval_mode_requested"] = requested_retrieval_mode
+        metrics["retrieval_mode_auto_routed"] = False
+        metrics["retrieval_profile"] = profile_norm
+        metrics["retrieval_profile_requested"] = profile_norm
+        metrics["retrieval_bypassed"] = True
+        metrics["retrieval_bypass_reason"] = "no_retrieval_intent"
+        metrics["retrieval_bypass_intent"] = no_retrieval_intent.get("intent")
+        metrics["intent_router_enabled"] = False
+        metrics["intent_router_used"] = False
+
+        query_debug: dict[str, Any] = {
+            "original": question,
+            "normalized": question,
+            "applied_rules": [],
+            "expansions": [],
+            "contributions": [],
+            "channels": None,
+            "query_for_retrieval": question,
+            "rewrite_used": False,
+            "retrieval_profile": profile_norm,
+            "retrieval_profile_requested": profile_norm,
+            "no_retrieval_intent": dict(no_retrieval_intent),
+        }
+        retrieval_trace: dict[str, Any] = {
+            "schema": "mimirq.retrieval_trace_pass.v1",
+            "query_for_retrieval_hash": stable_hash(question),
+            "requested_retrieval_mode": str(requested_retrieval_mode or ""),
+            "retrieval_mode": str(retrieval_mode or ""),
+            "retrieval_mode_auto_routed": False,
+            "retrieval_profile": profile_norm,
+            "retrieval_profile_requested": profile_norm,
+            "intent_router": {"enabled": False, "used": False},
+            "adaptive_router": {"enabled": False, "used": False},
+            "channel_budget_policy": {"enabled": False, "used": False},
+            "no_retrieval_intent": dict(no_retrieval_intent),
+        }
+        return {
+            **state,
+            "query_for_retrieval": question,
+            "docs": [],
+            "citations": [],
+            "metrics": metrics,
+            "abstain_triggered": False,
+            "abstain_reason": None,
+            "query_debug": query_debug,
+            "retrieval_trace": retrieval_trace,
+        }
+
     engine = get_rag_engine()
 
     query_for_retrieval = question
