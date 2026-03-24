@@ -1213,6 +1213,7 @@ class Settings(BaseSettings):
     FAITHFULNESS_SCORE_ENABLED: bool = True
     FAITHFULNESS_SCORE_MAX_CLAIMS: int = 24
     FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS: int = 24_000
+    RAG_FOLLOWUP_SUGGESTIONS_ENABLED: bool = False
     SENTENCE_CITATIONS_INLINE_ENABLED: bool = False
     # appendix (default): add a compact "Sentence Citations" section at the end of the answer
     # inline: rewrite the answer into one-claim-per-line with inline citation brackets

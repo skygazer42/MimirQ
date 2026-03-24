@@ -92,6 +92,48 @@ def test_langgraph_abstain_maps_followup_questions_from_abstain_metadata(
     ]
 
 
+def test_langgraph_generate_node_extracts_followups_from_answer_tags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.engine as engine_mod
+    import app.rag.pipelines.langgraph as lg_mod
+    from app.core.config import settings
+
+    engine_mod.reset_rag_engine()
+    monkeypatch.setattr(settings, "RAG_FOLLOWUP_SUGGESTIONS_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "FAITHFULNESS_SCORE_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_CLAIM_CHECK_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "SHOW_IMAGE_IN_ANSWER", False, raising=False)
+    monkeypatch.setattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        settings,
+        "LLM_MOCK_RESPONSE",
+        "Main answer.\n<followup>What exception type is shown?</followup>\n<followup>Which endpoint failed?</followup>",
+        raising=False,
+    )
+
+    out = lg_mod._generate_node(
+        {
+            "question": "Summarize the failure",
+            "history": [],
+            "docs": [],
+            "citations": [],
+            "metrics": {},
+            "structured_output": False,
+        }
+    )
+
+    assert "<followup>" not in str(out.get("answer") or "")
+    metrics = out.get("metrics") or {}
+    assert metrics.get("followup_questions") == [
+        "What exception type is shown?",
+        "Which endpoint failed?",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_engine_metrics_include_faithfulness_and_sentence_citations(
     monkeypatch: pytest.MonkeyPatch,
