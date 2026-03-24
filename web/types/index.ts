@@ -1525,6 +1525,7 @@ export interface DatasetConfigBundle {
   default_prompt_ab_experiment_key?: string | null
   pipeline?: DocumentPipelineOptions | null
   ingestion_policy?: IngestionPolicy | null
+  workflow_layout?: Record<string, any> | null
 }
 
 export interface DatasetConfigExport {

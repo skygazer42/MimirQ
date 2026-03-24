@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Download, FileUp, Layers, Loader2, RefreshCw, Settings2, Table2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Download, FileUp, Layers, Loader2, RefreshCw, Save, Settings2, Table2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 
-import { GraphViewer } from '@/components/graph/graph-viewer'
+import { WorkflowEditor } from '@/components/workflow/workflow-editor'
 import { datasetApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { buildDatasetConfigGraph } from '@/lib/dataset-config-graph'
@@ -62,10 +62,11 @@ export default function DatasetWorkflowPage() {
 
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [exportRes, setExportRes] = useState<DatasetConfigExport | null>(null)
-  const [graph, setGraph] = useState(() => buildDatasetConfigGraph({}))
+  const [workingConfig, setWorkingConfig] = useState<DatasetConfigBundle | null>(null)
   const [selectedNode, setSelectedNode] = useState<DatasetWorkflowGraphNode | null>(null)
 
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [importing, setImporting] = useState(false)
 
@@ -78,6 +79,12 @@ export default function DatasetWorkflowPage() {
     return Object.keys(importBundle).sort((a, b) => a.localeCompare(b))
   }, [importBundle])
 
+  const activeConfig = workingConfig ?? exportRes?.config ?? null
+  const graph = useMemo(() => buildDatasetConfigGraph(activeConfig ?? {}), [activeConfig])
+  const savedConfigJson = useMemo(() => JSON.stringify(exportRes?.config ?? null), [exportRes?.config])
+  const workingConfigJson = useMemo(() => JSON.stringify(workingConfig ?? null), [workingConfig])
+  const hasUnsavedLayoutChanges = !!workingConfig && workingConfigJson !== savedConfigJson
+
   const selectedMeta = selectedNode?.meta
   const selectedSummary = Array.isArray(selectedMeta?.summary) ? selectedMeta.summary : []
   const selectedJson = selectedMeta?.json
@@ -87,7 +94,7 @@ export default function DatasetWorkflowPage() {
       ? 'Not configured (inherits defaults)'
       : selectedMeta?.configured === true
         ? 'Configured'
-        : 'Click a node to inspect summary + JSON'
+        : 'Click a node in the workflow editor to inspect summary + JSON'
   const selectedJsonText = useMemo(() => {
     if (selectedJson === undefined) return ''
     try {
@@ -115,7 +122,7 @@ export default function DatasetWorkflowPage() {
       ])
       setDataset(ds)
       setExportRes(exp)
-      setGraph(buildDatasetConfigGraph(exp.config ?? {}))
+      setWorkingConfig(exp.config ?? {})
       setSelectedNode(null)
     } catch (e: unknown) {
       console.error('Failed to load dataset workflow', e)
@@ -188,6 +195,31 @@ export default function DatasetWorkflowPage() {
     }
   }, [datasetId, importBundle, load])
 
+  const onWorkflowLayoutChange = useCallback((workflowLayout: Record<string, any>) => {
+    startTransition(() => {
+      setWorkingConfig((prev) => ({
+        ...((prev ?? exportRes?.config ?? {}) as DatasetConfigBundle),
+        workflow_layout: workflowLayout,
+      }))
+    })
+  }, [exportRes?.config])
+
+  const doSaveLayout = useCallback(async () => {
+    if (!datasetId || !workingConfig) return
+    setSaving(true)
+    try {
+      const payload: DatasetConfigImportRequest = { config: workingConfig, replace: true }
+      await datasetApi.importConfig(datasetId, payload)
+      toast.success('Saved workflow layout')
+      await load()
+    } catch (e: unknown) {
+      console.error('Failed to save workflow layout', e)
+      toast.error(formatApiError(e, 'Save failed'))
+    } finally {
+      setSaving(false)
+    }
+  }, [datasetId, load, workingConfig])
+
   const copySelectedJson = useCallback(async () => {
     if (!selectedJsonText.trim()) return
     try {
@@ -208,7 +240,7 @@ export default function DatasetWorkflowPage() {
         iconColor="text-primary"
         description={
           <span className="text-sm text-muted-foreground">
-            Read-only graph of <span className="font-mono">DatasetConfigBundle</span> with export/import.
+            Editable workflow view of <span className="font-mono">DatasetConfigBundle</span> with export/import and layout persistence.
           </span>
         }
         actions={
@@ -239,6 +271,15 @@ export default function DatasetWorkflowPage() {
               <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
               Refresh
             </Button>
+            {hasUnsavedLayoutChanges ? <Badge variant="secondary">Unsaved layout</Badge> : null}
+            <Button
+              className="gap-2"
+              onClick={() => detachPromise(doSaveLayout())}
+              disabled={saving || !datasetId || !workingConfig || !hasUnsavedLayoutChanges}
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Save className="w-4 h-4" />}
+              Save Layout
+            </Button>
             <Button variant="outline" className="gap-2" onClick={() => detachPromise(doExport())} disabled={exporting}>
               {exporting ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
               Export JSON
@@ -259,12 +300,11 @@ export default function DatasetWorkflowPage() {
       >
         <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
           <Panel padding="none" className="overflow-hidden h-[min(720px,calc(100vh-260px))] min-h-[480px]">
-            <GraphViewer
-              data={graph}
-              layoutMode="tree"
-              showEdgeLabels={false}
-              onNodeClick={(node) => setSelectedNode(node)}
-              onBackgroundClick={() => setSelectedNode(null)}
+            <WorkflowEditor
+              graph={graph}
+              workflowLayout={workingConfig?.workflow_layout ?? null}
+              onWorkflowLayoutChange={onWorkflowLayoutChange}
+              onNodeSelect={(node) => setSelectedNode(node as DatasetWorkflowGraphNode | null)}
             />
           </Panel>
 

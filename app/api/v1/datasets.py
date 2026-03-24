@@ -995,6 +995,8 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
     if "fls_policy" in meta_dict:
         fls_policy = parse_fls_policy_from_metadata(meta_dict)
 
+    workflow_layout = meta_dict.get("workflow_layout") if isinstance(meta_dict.get("workflow_layout"), dict) else None
+
     return DatasetConfigBundle(
         default_parser_backend=default_parser_backend,
         default_chunk_strategy=default_chunk_strategy,
@@ -1010,6 +1012,7 @@ def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
         retention_policy=_dataset_retention_policy_out(ds),
         ingestion_policy=ingestion_policy,
         fls_policy=fls_policy,
+        workflow_layout=dict(workflow_layout) if isinstance(workflow_layout, dict) else None,
     )
 
 
@@ -1173,6 +1176,13 @@ def import_dataset_config(
             meta["fls_policy"] = normalized.model_dump()
         else:
             meta.pop("fls_policy", None)
+        changed = True
+
+    if replace or cfg.workflow_layout is not None:
+        if cfg.workflow_layout is not None:
+            meta["workflow_layout"] = dict(cfg.workflow_layout)
+        else:
+            meta.pop("workflow_layout", None)
         changed = True
 
     if changed:
