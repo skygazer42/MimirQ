@@ -15,5 +15,7 @@ describe('message item source', () => {
     expect(src).toContain('置信度')
     expect(src).toContain('INLINE_CITATION_HREF_PREFIX')
     expect(src).toContain('handleInlineCitationClick')
+    expect(src).toContain('followup_questions')
+    expect(src).toContain('继续追问')
   })
 })

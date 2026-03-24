@@ -1868,6 +1868,7 @@ export interface ChatResponse {
   retrieval_mode?: string | null
   vector_backend?: string | null
   confidence_score?: number | null
+  followup_questions?: string[]
   metrics: Record<string, any>
   structured: boolean
   structured_data?: any

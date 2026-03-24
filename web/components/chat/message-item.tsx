@@ -12,6 +12,7 @@ import remarkGfm from 'remark-gfm'
 
 import type { Citation, Message } from '@/types'
 import { cn } from '@/lib/utils'
+import { globalEventBus } from '@/lib/event-bus'
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 import { useDocumentView } from '@/store/document-view'
@@ -247,6 +248,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const confidenceLabel =
     confidenceScore == null ? null : confidenceScore >= 0.75 ? '高' : confidenceScore >= 0.5 ? '中' : '低'
   const claimEvidence = Array.isArray(metrics.claim_evidence) ? metrics.claim_evidence : null
+  const followupQuestions = Array.isArray(metrics.followup_questions)
+    ? metrics.followup_questions
+        .map((item: unknown) => (typeof item === 'string' ? item.trim() : ''))
+        .filter((item: string) => item.length > 0)
+        .slice(0, 3)
+    : []
   const metricEntries: Array<{ k: string; v: any }> = [
     { k: 'request_id', v: metrics.request_id },
     { k: 'retrieval_mode', v: metrics.retrieval_mode ?? metrics.retrieval_mode_requested },
@@ -293,6 +300,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     const range = start != null && end != null && end > start ? { start, end } : undefined
     openDocument(docId, chunkId, range)
   }, [openDocument])
+
+  const handleFollowupPrefill = useCallback((question: string) => {
+    const prompt = question.trim()
+    if (!prompt) return
+    globalEventBus.emit('chat:send', prompt)
+  }, [])
 
   const handleInlineCitationClick = useCallback((href?: string) => {
     const target = parseInlineCitationHref(href)
@@ -699,6 +712,28 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         }
 })()}
         </div>
+
+        {!isUser && followupQuestions.length > 0 && (
+          <div className="mt-5 pt-3 border-t border-border/40 space-y-3">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase opacity-80">
+              继续追问
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {followupQuestions.map((question) => (
+                <Button
+                  key={question}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleFollowupPrefill(question)}
+                  className="h-auto whitespace-normal rounded-full px-3 py-1.5 text-left text-xs leading-5"
+                >
+                  {question}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {!isUser && message.citations && message.citations.length > 0 && (
           <div className="mt-5 pt-3 border-t border-border/40 space-y-3">

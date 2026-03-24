@@ -47,6 +47,7 @@ from app.rag.core.temporal import (
 )
 from app.rag.core.text import (
     build_abstain_followup,
+    derive_followup_questions,
     extract_evidence_text,
     guess_recall_bucket,
     guess_retrieval_mode,
@@ -2045,6 +2046,8 @@ Requirements:
                     claim_supported=faithfulness_meta.get("supported_claims"),
                     evidence_gap=None,
                 )
+                abstain_followup = build_abstain_followup(reason=abstain_reason, citations=citations)
+                followup_questions = derive_followup_questions(abstain_followup)
                 done_payload = {
                     "type": "done",
                     "data": {
@@ -2150,7 +2153,8 @@ Requirements:
                             "abstain_enabled": bool(abstain_enabled),
                             "abstain_triggered": True,
                             "abstain_reason": abstain_reason,
-                            "abstain_followup": build_abstain_followup(reason=abstain_reason, citations=citations),
+                            "abstain_followup": abstain_followup,
+                            "followup_questions": followup_questions,
                             "abstain_min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
                             "abstain_min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
                             "visible_evidence_only_enabled": bool(strict_visible),
