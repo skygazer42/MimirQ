@@ -66,6 +66,8 @@ function maybeAttachImageAuthToken(url: string): string {
   return parsed.toString()
 }
 
+const INLINE_CITATION_HREF_PREFIX = 'mimirq-citation://'
+
 function getCitationRange(citation: Citation): { start: number; end: number } | undefined {
   let start: number | null = null
   if (typeof citation.evidence_start_char === 'number') {
@@ -84,8 +86,22 @@ function getCitationRange(citation: Citation): { start: number; end: number } | 
   return start != null && end != null && end > start ? { start, end } : undefined
 }
 
+function parseInlineCitationHref(href?: string): { documentId?: string; chunkId?: string } | null {
+  if (!href?.startsWith(INLINE_CITATION_HREF_PREFIX)) return null
+
+  try {
+    const parsed = new URL(href)
+    const documentId = (parsed.searchParams.get('document_id') || '').trim() || undefined
+    const chunkId = (parsed.searchParams.get('chunk_id') || '').trim() || undefined
+    if (!documentId && !chunkId) return null
+    return { documentId, chunkId }
+  } catch {
+    return null
+  }
+}
+
 const markdownPlugins = [remarkGfm]
-const markdownComponents = {
+const markdownBaseComponents = {
   p: ({ children }: { children?: ReactNode }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
   ul: ({ children }: { children?: ReactNode }) => (
     <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60">{children}</ul>
@@ -277,6 +293,49 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     const range = start != null && end != null && end > start ? { start, end } : undefined
     openDocument(docId, chunkId, range)
   }, [openDocument])
+
+  const handleInlineCitationClick = useCallback((href?: string) => {
+    const target = parseInlineCitationHref(href)
+    if (!target) return
+
+    const citation =
+      (target.chunkId ? citationByChunkId.get(target.chunkId) : undefined) ||
+      (target.documentId ? citationByDocumentId.get(target.documentId) : undefined)
+
+    const documentId = citation?.document_id || target.documentId
+    if (!documentId) return
+
+    openDocument(documentId, citation?.chunk_id || target.chunkId, citation ? getCitationRange(citation) : undefined)
+  }, [citationByChunkId, citationByDocumentId, openDocument])
+
+  const markdownComponents = {
+    ...markdownBaseComponents,
+    a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+      const inlineCitation = parseInlineCitationHref(href)
+      if (inlineCitation) {
+        return (
+          <button
+            type="button"
+            onClick={() => handleInlineCitationClick(href)}
+            className="inline-flex items-center rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[0.75em] font-semibold text-primary no-underline transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            {children}
+          </button>
+        )
+      }
+
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
+        >
+          {children}
+        </a>
+      )
+    },
+  }
 
   const canRate = (() => {
     if (isUser) return false

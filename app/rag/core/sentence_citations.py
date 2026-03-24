@@ -1,6 +1,30 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlencode
+
+
+def _build_inline_citation_href(ev: dict[str, Any]) -> str | None:
+    doc_id = str(ev.get("document_id") or "").strip()
+    chunk_id = str(ev.get("chunk_id") or "").strip()
+    page = ev.get("page_number")
+    if page is None:
+        page = ev.get("page")
+
+    params: dict[str, str] = {}
+    if doc_id:
+        params["document_id"] = doc_id
+    if chunk_id:
+        params["chunk_id"] = chunk_id
+    try:
+        page_i = int(page) if page is not None else None
+    except Exception:
+        page_i = None
+    if page_i is not None:
+        params["page"] = str(page_i)
+    if not params:
+        return None
+    return f"mimirq-citation://evidence?{urlencode(params)}"
 
 
 def render_sentence_citations_markdown(
@@ -97,6 +121,7 @@ def render_sentence_citations_inline(
 
     lines: list[str] = []
     rendered = 0
+    reference_number = 0
     for item in claim_evidence or []:
         if rendered >= max_items:
             break
@@ -112,25 +137,11 @@ def render_sentence_citations_inline(
         for ev in evidence:
             if not isinstance(ev, dict):
                 continue
-            doc_id = str(ev.get("document_id") or "").strip()
-            chunk_id = str(ev.get("chunk_id") or "").strip()
-            page = ev.get("page_number")
-            if page is None:
-                page = ev.get("page")
-            parts: list[str] = []
-            if doc_id:
-                parts.append(f"doc:{doc_id}")
-            if chunk_id:
-                parts.append(f"chunk:{chunk_id}")
-            try:
-                page_i = int(page) if page is not None else None
-            except Exception:
-                page_i = None
-            if page_i is not None:
-                parts.append(f"p.{page_i}")
-            if not parts:
+            href = _build_inline_citation_href(ev)
+            if not href:
                 continue
-            cites.append("[" + " | ".join(parts) + "]")
+            reference_number += 1
+            cites.append(f"[{reference_number}]({href})")
             if len(cites) >= max_evidence_per_claim:
                 break
 

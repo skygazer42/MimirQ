@@ -40,6 +40,18 @@ def test_render_sentence_citations_markdown_outputs_rows() -> None:
     assert "doc:d1" in md and "chunk:c1" in md
 
 
+def test_render_sentence_citations_inline_uses_numbered_markers() -> None:
+    from app.rag.core.sentence_citations import render_sentence_citations_inline
+
+    text, count = render_sentence_citations_inline(
+        [{"claim": "Sky is blue.", "evidence": [{"document_id": "d1", "chunk_id": "c1"}]}]
+    )
+
+    assert count == 1
+    assert "[1]" in text
+    assert "doc:d1" not in text
+
+
 @pytest.mark.asyncio
 async def test_engine_metrics_include_faithfulness_and_sentence_citations(
     monkeypatch: pytest.MonkeyPatch,
