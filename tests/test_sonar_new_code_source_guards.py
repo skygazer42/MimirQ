@@ -11,9 +11,10 @@ def test_indexer_uses_shared_shadow_vector_event_constant() -> None:
     assert src.count('ingest.shadow_vector_write') == 1
 
 
-def test_perf_suite_diff_nan_check_uses_direct_inequality() -> None:
+def test_perf_suite_diff_nan_check_uses_math_isnan() -> None:
     src = _read('app/services/perf_suite_diff_service.py')
-    assert 'if v != v:' in src
+    assert 'if math.isnan(v):' in src
+    assert 'if v != v:' not in src
     assert 'if not (v == v):' not in src
 
 

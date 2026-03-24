@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 PERF_SUITE_DIFF_SCHEMA_V1 = "mimirq.perf_suite_diff.v1"
@@ -11,7 +12,7 @@ def _as_float(value: Any) -> float | None:
         v = float(value)
     except Exception:
         return None
-    if v != v:  # NaN
+    if math.isnan(v):  # NaN
         return None
     return v
 
