@@ -30,6 +30,8 @@ import { cn, detachPromise } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ItemListPanel } from '@/components/evidence/item-list-panel'
+import { SuiteListPanel } from '@/components/evidence/suite-list-panel'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -1119,206 +1121,40 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Suites */}
-        <Panel className="lg:col-span-3 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <ShieldCheck className="size-4 text-muted-foreground" aria-hidden="true" />
-                Evidence Suites
-              </div>
-              <div className="text-xs text-muted-foreground mt-1 text-pretty">
-                数据集：{datasetLoading ? '加载中…' : (dataset?.name || datasetId || '-')}
-              </div>
-            </div>
-            <Button size="sm" className="gap-2" onClick={openCreateSuite}>
-              <Plus className="size-4" aria-hidden="true" />
-              新建
-            </Button>
-          </div>
+        <SuiteListPanel
+          datasetLabel={datasetLoading ? '加载中…' : (dataset?.name || datasetId || '-')}
+          suiteQuery={suiteQuery}
+          onSuiteQueryChange={setSuiteQuery}
+          onRefresh={() => detachPromise(loadSuites())}
+          suitesLoading={suitesLoading}
+          includeArchivedSuites={includeArchivedSuites}
+          onIncludeArchivedSuitesChange={setIncludeArchivedSuites}
+          suitesError={suitesError}
+          filteredSuites={filteredSuites}
+          selectedSuiteId={selectedSuiteId}
+          onCreateSuite={openCreateSuite}
+          onSelectSuite={(suiteId) => {
+            setSelectedSuiteId(suiteId)
+            setSelectedItemId('')
+          }}
+        />
 
-          <div className="mt-3 flex items-center gap-2">
-            <SearchInput value={suiteQuery} onValueChange={setSuiteQuery} placeholder="搜索 Suite…" />
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="刷新 Suites"
-              className="size-9"
-              onClick={() => detachPromise(loadSuites())}
-              disabled={suitesLoading}
-            >
-              <RefreshCw className={cn('size-4', suitesLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
-            </Button>
-          </div>
-
-          <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <div className="inline-flex items-center gap-2 select-none">
-              <Checkbox
-                checked={includeArchivedSuites}
-                onCheckedChange={(v) => setIncludeArchivedSuites(Boolean(v))}
-                aria-label="包含已归档 suites"
-              />
-              包含已归档
-            </div>
-            <span className="font-mono tabular-nums">{filteredSuites.length}</span>
-          </div>
-
-          {suitesError ? (
-            <div className="mt-3 text-xs text-destructive text-pretty">{suitesError}</div>
-          ) : null}
-
-          <div className="mt-3">
-            <ScrollArea className="h-[420px] pr-2">
-              <div className="space-y-2">
-                {(() => {
-    if (suitesLoading) {
-        return (<div className="text-xs text-muted-foreground">加载中…</div>);
-    }
-    else if (filteredSuites.length) {
-            return (filteredSuites.map((s) => {
-                const active = s.id === selectedSuiteId;
-                const counts = s.item_counts || {};
-                const total = Number(counts?.total || 0);
-                const approved = Number(counts?.approved || 0);
-                return (<button key={s.id} type="button" className={cn('w-full text-left rounded-lg border px-3 py-2 transition-colors', active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30')} onClick={() => {
-                        setSelectedSuiteId(String(s.id));
-                        setSelectedItemId('');
-                    }}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-foreground truncate">{s.name}</div>
-                            {s.description ? (<div className="mt-0.5 text-xs text-muted-foreground line-clamp-2 text-pretty">
-                                {s.description}
-                              </div>) : null}
-                          </div>
-                          <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                            <Badge variant="outline" className="font-mono tabular-nums">
-                              {total}
-                            </Badge>
-                            {approved ? (<Badge variant="soft" className="font-mono tabular-nums">
-                                approved {approved}
-                              </Badge>) : null}
-                          </div>
-                        </div>
-                        {Array.isArray(s.tags) && s.tags.length ? (<div className="mt-2 flex flex-wrap gap-1">
-                            {(s.tags || []).slice(0, 3).map((t) => (<Badge key={t} variant="secondary" className="text-[10px] font-mono">
-                                {t}
-                              </Badge>))}
-                            {s.tags.length > 3 ? (<span className="text-[10px] text-muted-foreground font-mono">+{s.tags.length - 3}</span>) : null}
-                          </div>) : null}
-                      </button>);
-            }));
-        }
-        else {
-            return (<div className="text-xs text-muted-foreground text-pretty">
-                    暂无 Suite。点击「新建」创建一个 Evidence Suite。
-                  </div>);
-        }
-})()}
-              </div>
-            </ScrollArea>
-          </div>
-        </Panel>
-
-        {/* Items */}
-        <Panel className="lg:col-span-4 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">Evidence Items</div>
-              <div className="text-xs text-muted-foreground mt-1 text-pretty">
-                {selectedSuite ? (
-                  <>
-                    Suite：<span className="font-mono">{String(selectedSuite.id).slice(0, 8)}</span> ·{' '}
-                    <span className="font-medium">{selectedSuite.name}</span>
-                  </>
-                ) : (
-                  '请选择一个 Suite'
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" className="gap-2" onClick={openCreateItem} disabled={!selectedSuiteId}>
-                <Plus className="size-4" aria-hidden="true" />
-                新建 Item
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-2">
-            <SearchInput value={itemQuery} onValueChange={setItemQuery} placeholder="搜索 Item…" />
-            <div className="flex items-center gap-2">
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(String(v))} disabled={!selectedSuiteId}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="状态筛选" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">全部状态</SelectItem>
-                  <SelectItem value="draft">draft</SelectItem>
-                  <SelectItem value="reviewed">reviewed</SelectItem>
-                  <SelectItem value="approved">approved</SelectItem>
-                  <SelectItem value="archived">archived</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="刷新 Items"
-                className="size-9"
-                onClick={() => detachPromise(loadItems())}
-                disabled={!selectedSuiteId || itemsLoading}
-              >
-                <RefreshCw className={cn('size-4', itemsLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
-              </Button>
-              <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
-                {filteredItems.length}
-              </div>
-            </div>
-          </div>
-
-          {itemsError ? <div className="mt-3 text-xs text-destructive text-pretty">{itemsError}</div> : null}
-
-          <div className="mt-3">
-            <ScrollArea className="h-[420px] pr-2">
-              <div className="space-y-2">
-                {(() => {
-    if (selectedSuiteId) {
-        if (itemsLoading) {
-            return (<div className="text-xs text-muted-foreground">加载中…</div>);
-        }
-        else if (filteredItems.length) {
-                return (filteredItems.map((it) => {
-                    const active = it.id === selectedItemId;
-                    return (<button key={it.id} type="button" className={cn('w-full text-left rounded-lg border px-3 py-2 transition-colors', active ? 'border-primary/40 bg-primary/5' : 'border-border hover:bg-muted/30')} onClick={() => setSelectedItemId(String(it.id))}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-foreground line-clamp-2 text-pretty">
-                              {it.query}
-                            </div>
-                            {it.notes ? (<div className="mt-1 text-xs text-muted-foreground line-clamp-2 text-pretty">{it.notes}</div>) : null}
-                          </div>
-                          <Badge variant={evidenceStatusBadgeVariant(it.status)} className="font-mono text-[10px] uppercase">
-                            {it.status}
-                          </Badge>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground font-mono tabular-nums">
-                          <span>refs: {Array.isArray(it.reference_sources) ? it.reference_sources.length : 0}</span>
-                          <span>{String(it.updated_at || '').slice(0, 19).replaceAll('T', ' ')}</span>
-                        </div>
-                      </button>);
-                }));
-            }
-            else {
-                return (<div className="text-xs text-muted-foreground text-pretty">暂无 Items。点击「新建 Item」创建。</div>);
-            }
-    }
-    else {
-        return (<div className="text-xs text-muted-foreground text-pretty">选择一个 Suite 后即可查看/创建 Items。</div>);
-    }
-})()}
-              </div>
-            </ScrollArea>
-          </div>
-        </Panel>
+        <ItemListPanel
+          selectedSuite={selectedSuite}
+          selectedSuiteId={selectedSuiteId}
+          itemQuery={itemQuery}
+          onItemQueryChange={setItemQuery}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          onRefresh={() => detachPromise(loadItems())}
+          itemsLoading={itemsLoading}
+          filteredItems={filteredItems}
+          itemsError={itemsError}
+          selectedItemId={selectedItemId}
+          onCreateItem={openCreateItem}
+          onSelectItem={setSelectedItemId}
+          statusBadgeVariant={evidenceStatusBadgeVariant}
+        />
 
         {/* Detail */}
         <Panel className="lg:col-span-5 p-4">

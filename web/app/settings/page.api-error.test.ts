@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest'
 
 describe('settings page api error formatting', () => {
   it('uses formatApiError for backend failures (request_id included)', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+    const page = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+    const hook = fs.readFileSync(path.resolve(__dirname, 'use-settings-page-state.ts'), 'utf8')
 
-    expect(src).toContain('formatApiError(')
-    expect(src).not.toContain('const err = error as any')
+    expect(page).toContain('useSettingsPageState')
+    expect(hook).toContain('formatApiError(')
+    expect(hook).not.toContain('const err = error as any')
   })
 })

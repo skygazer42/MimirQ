@@ -60,6 +60,16 @@ import type {
 
 const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function readRecordNumber(value: unknown, key: string): number {
+  if (!isRecord(value)) return 0
+  const next = value[key]
+  return typeof next === 'number' ? next : Number(next || 0) || 0
+}
+
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
   if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0]
@@ -584,10 +594,10 @@ export default function DatasetProfilePage() {
     const docsB = Number(sb.total_documents || 0)
     const bytesA = Number(sa.total_size_bytes || 0)
     const bytesB = Number(sb.total_size_bytes || 0)
-    const p90A = Number(sa.length_percentiles?.p90 || 0)
-    const p90B = Number(sb.length_percentiles?.p90 || 0)
-    const scannedA = Number(sa.pdf_scan?.scanned || 0)
-    const scannedB = Number(sb.pdf_scan?.scanned || 0)
+    const p90A = readRecordNumber(sa.length_percentiles, 'p90')
+    const p90B = readRecordNumber(sb.length_percentiles, 'p90')
+    const scannedA = readRecordNumber(sa.pdf_scan, 'scanned')
+    const scannedB = readRecordNumber(sb.pdf_scan, 'scanned')
     const piiA = Object.values(sa.pii_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
     const piiB = Object.values(sb.pii_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
     const secA = Object.values(sa.secrets_hits_total || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)

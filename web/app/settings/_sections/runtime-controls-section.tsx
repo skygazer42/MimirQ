@@ -6,40 +6,30 @@ import { Database, EyeOff, Network, Server, ToggleLeft, ToggleRight } from 'luci
 
 type RuntimeControlsSectionProps = {
   chat: ChatConfig
-  chatDefaults: ChatConfig
   updateChat: (patch: Partial<ChatConfig>) => void
   cache: CacheConfig
-  cacheDefaults: CacheConfig
   updateCache: (patch: Partial<CacheConfig>) => void
   safety: SafetyConfig
-  safetyDefaults: SafetyConfig
   updateSafety: (patch: Partial<SafetyConfig>) => void
   langgraph: LangGraphConfig
-  langGraphDefaults: LangGraphConfig
   updateLangGraph: (patch: Partial<LangGraphConfig>) => void
 }
 
 export function RuntimeControlsSection({
   chat,
-  chatDefaults,
   updateChat,
   cache,
-  cacheDefaults,
   updateCache,
   safety,
-  safetyDefaults,
   updateSafety,
   langgraph,
-  langGraphDefaults,
   updateLangGraph,
 }: Readonly<RuntimeControlsSectionProps>) {
-  const isCancelOnDisconnectEnabled =
-    chat.stream_cancel_on_disconnect ?? chatDefaults.stream_cancel_on_disconnect
-  const isUploadDedupEnabled = cache.upload_dedup_enabled ?? cacheDefaults.upload_dedup_enabled
-  const isChatResponseCacheEnabled =
-    cache.chat_response_cache_enabled ?? cacheDefaults.chat_response_cache_enabled
-  const isPiiRedactionEnabled = safety.pii_redaction_enabled ?? safetyDefaults.pii_redaction_enabled
-  const isSubgraphEnabled = langgraph.use_subgraphs ?? langGraphDefaults.use_subgraphs
+  const isCancelOnDisconnectEnabled = chat.stream_cancel_on_disconnect ?? true
+  const isUploadDedupEnabled = cache.upload_dedup_enabled ?? false
+  const isChatResponseCacheEnabled = cache.chat_response_cache_enabled ?? false
+  const isPiiRedactionEnabled = safety.pii_redaction_enabled ?? false
+  const isSubgraphEnabled = langgraph.use_subgraphs ?? false
 
   return (
     <section>
@@ -80,7 +70,7 @@ export function RuntimeControlsSection({
                 min={0}
                 max={120}
                 step={1}
-                value={chat.stream_heartbeat_sec ?? chatDefaults.stream_heartbeat_sec}
+                value={chat.stream_heartbeat_sec ?? 10}
                 onChange={(event) =>
                   updateChat({ stream_heartbeat_sec: Number.parseFloat(event.target.value || '0') })
                 }
@@ -159,7 +149,7 @@ export function RuntimeControlsSection({
                   type="number"
                   min={0}
                   max={86400}
-                  value={cache.chat_response_cache_ttl_sec ?? cacheDefaults.chat_response_cache_ttl_sec}
+                  value={cache.chat_response_cache_ttl_sec ?? 300}
                   onChange={(event) =>
                     updateCache({
                       chat_response_cache_ttl_sec: Number.parseInt(event.target.value || '0', 10),
@@ -173,10 +163,7 @@ export function RuntimeControlsSection({
                   type="number"
                   min={0}
                   max={5000000}
-                  value={
-                    cache.chat_response_cache_max_value_bytes ??
-                    cacheDefaults.chat_response_cache_max_value_bytes
-                  }
+                  value={cache.chat_response_cache_max_value_bytes ?? 200000}
                   onChange={(event) =>
                     updateCache({
                       chat_response_cache_max_value_bytes: Number.parseInt(
@@ -190,10 +177,7 @@ export function RuntimeControlsSection({
               <div className="flex items-center gap-2 pt-5">
                 <input
                   type="checkbox"
-                  checked={
-                    cache.chat_response_cache_require_empty_history ??
-                    cacheDefaults.chat_response_cache_require_empty_history
-                  }
+                  checked={cache.chat_response_cache_require_empty_history ?? true}
                   onChange={(event) =>
                     updateCache({ chat_response_cache_require_empty_history: event.target.checked })
                   }
@@ -234,7 +218,7 @@ export function RuntimeControlsSection({
               <div>
                 <div className="mb-1 text-xs text-muted-foreground">脱敏占位符</div>
                 <Input
-                  value={safety.pii_redaction_mask ?? safetyDefaults.pii_redaction_mask}
+                  value={safety.pii_redaction_mask ?? '[REDACTED]'}
                   onChange={(event) => updateSafety({ pii_redaction_mask: event.target.value })}
                 />
               </div>
@@ -244,9 +228,7 @@ export function RuntimeControlsSection({
                   type="number"
                   min={0}
                   max={2048}
-                  value={
-                    safety.pii_stream_holdback_chars ?? safetyDefaults.pii_stream_holdback_chars
-                  }
+                  value={safety.pii_stream_holdback_chars ?? 128}
                   onChange={(event) =>
                     updateSafety({
                       pii_stream_holdback_chars: Number.parseInt(event.target.value || '0', 10),
