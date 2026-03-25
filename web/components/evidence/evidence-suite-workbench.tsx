@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Download, FileUp, Loader2, Plus, RefreshCw, Search } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 
 import type {
   Citation,
@@ -23,38 +23,21 @@ import { formatApiError } from '@/lib/api-errors'
 import { buildWhyMissedReport } from '@/lib/evidence-why-missed'
 import { extractEvidenceNeedles, rankEvidenceCitations } from '@/lib/evidence-suggestions'
 import { coerceOneOf } from '@/lib/one-of'
-import { cn, detachPromise } from '@/lib/utils'
+import { detachPromise } from '@/lib/utils'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { CreateItemDialog } from '@/components/evidence/create-item-dialog'
 import { HardcaseCandidatesDialog } from '@/components/evidence/hardcase-candidates-dialog'
 import { ItemDetailPanel } from '@/components/evidence/item-detail-panel'
 import { ItemListPanel } from '@/components/evidence/item-list-panel'
 import { SuiteListPanel } from '@/components/evidence/suite-list-panel'
 import { SuiteDashboardDialog } from '@/components/evidence/suite-dashboard-dialog'
+import { WhyMissedDialog } from '@/components/evidence/why-missed-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Panel } from '@/components/ui/panel'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { SearchInput } from '@/components/ui/search-input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TagInput } from '@/components/ui/tag-input'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 
 type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
 
@@ -72,7 +55,6 @@ type EvidenceImportPack = JsonObject & {
 }
 
 const RETRIEVAL_PROFILE_VALUES = ['recall50', 'coverage80', 'recall20'] as const
-const CREATE_ITEM_TAB_VALUES = ['retrieve', 'import'] as const
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -194,13 +176,6 @@ function evidenceStatusBadgeVariant(st: EvidenceItemStatus): 'outline' | 'second
   if (st === 'reviewed') return 'secondary'
   if (st === 'archived') return 'outline'
   return 'outline'
-}
-
-function citationScoreLabel(c: Citation): string {
-  const raw = c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0
-  const n = Number(raw)
-  if (Number.isFinite(n)) return n.toFixed(4)
-  return '0.0000'
 }
 
 function buildReferenceSources(citations: Citation[], selectedChunkIds: Set<string>): ReferenceSource[] {
@@ -1163,313 +1138,60 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
         </DialogContent>
       </Dialog>
 
-      {/* Create item dialog */}
-      <Dialog open={createItemOpen} onOpenChange={(open) => setCreateItemOpen(open)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>新建 Evidence Item</DialogTitle>
-            <DialogDescription className="text-pretty">
-              先用检索找到证据切片，再将选中的引用保存为 <span className="font-mono">reference_sources</span>。
-            </DialogDescription>
-          </DialogHeader>
+      <CreateItemDialog
+        open={createItemOpen}
+        newQuery={newQuery}
+        newExpected={newExpected}
+        newNotes={newNotes}
+        createItemTab={createItemTab}
+        profile={profile}
+        retrieving={retrieving}
+        datasetId={datasetId}
+        suggestedRetrieveChunkIds={suggestedRetrieveChunkIds}
+        selectedChunkIds={selectedChunkIds}
+        retrieveError={retrieveError}
+        expectedNeedles={expectedNeedles}
+        hasRetrieveResult={Boolean(retrieveRes)}
+        retrieveRanked={retrieveRanked}
+        fileInputRef={fileInputRef}
+        hasImportPack={Boolean(importPack)}
+        importPackVersionLabel={String(importPack?.version ?? '?')}
+        importCitations={importCitations}
+        importError={importError}
+        importSelectedChunkIds={importSelectedChunkIds}
+        creatingItem={creatingItem}
+        selectedSuiteId={selectedSuiteId}
+        onOpenChange={setCreateItemOpen}
+        onNewQueryChange={setNewQuery}
+        onNewExpectedChange={setNewExpected}
+        onNewNotesChange={setNewNotes}
+        onCreateItemTabChange={setCreateItemTab}
+        onProfileChange={setProfile}
+        onRunRetrieve={() => detachPromise(runRetrieve())}
+        onApplyRetrieveSuggestions={applyRetrieveSuggestions}
+        onToggleRetrieveChunk={(chunkId) => toggleChunkSelection(chunkId, 'retrieve')}
+        onPickPackFile={(file) => {
+          detachPromise(handlePickPackFile(file))
+        }}
+        onToggleImportChunk={(chunkId) => toggleChunkSelection(chunkId, 'import')}
+        onCreateItem={() => detachPromise(handleCreateItem())}
+      />
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label htmlFor="item-query">Query</Label>
-                <Input
-                  id="item-query"
-                  value={newQuery}
-                  onChange={(e) => setNewQuery(e.target.value)}
-                  placeholder="输入要标注/回归的查询…"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="item-expected">Expected Answer（可选）</Label>
-                <Input
-                  id="item-expected"
-                  value={newExpected}
-                  onChange={(e) => setNewExpected(e.target.value)}
-                  placeholder="用于人工对照（可留空）"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label htmlFor="item-notes">Notes（可选）</Label>
-              <Textarea
-                id="item-notes"
-                value={newNotes}
-                onChange={(e) => setNewNotes(e.target.value)}
-                placeholder="记录为什么这些引用是 Ground Truth / 边界条件 / 预期召回方式…"
-                rows={2}
-              />
-            </div>
-
-            <Tabs
-              value={createItemTab}
-              onValueChange={(value) => setCreateItemTab(coerceOneOf(CREATE_ITEM_TAB_VALUES, value, 'retrieve'))}
-            >
-              <TabsList>
-                <TabsTrigger value="retrieve">检索选择</TabsTrigger>
-                <TabsTrigger value="import">导入 Evidence Pack</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="retrieve" className="mt-3 space-y-3">
-                <div className="flex flex-col md:flex-row gap-3 md:items-end">
-                  <div className="w-full md:w-[220px]">
-                    <div className="text-xs text-muted-foreground mb-1">Retrieval Profile</div>
-                    <Select
-                      value={profile}
-                      onValueChange={(value) => setProfile(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))}
-                    >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="选择 profile" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="recall50">recall50 (默认)</SelectItem>
-                        <SelectItem value="coverage80">coverage80</SelectItem>
-                        <SelectItem value="recall20">recall20</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <Button className="gap-2" onClick={() => detachPromise(runRetrieve())} disabled={retrieving || !newQuery.trim() || !datasetId}>
-                    {retrieving ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Search className="size-4" aria-hidden="true" />}
-                    运行检索
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    className="gap-2"
-                    onClick={applyRetrieveSuggestions}
-                    disabled={retrieving || !retrieveRes || suggestedRetrieveChunkIds.length === 0}
-                  >
-                    Suggest ({suggestedRetrieveChunkIds.length})
-                  </Button>
-
-                  <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
-                    已选 {selectedChunkIds.length}
-                  </div>
-                </div>
-
-                {retrieveError ? <div className="text-xs text-destructive text-pretty">{retrieveError}</div> : null}
-
-                {expectedNeedles.length ? (
-                  <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                    <span className="font-mono">needles:</span>
-                    {expectedNeedles.slice(0, 10).map((n) => (
-                      <Badge key={`needle:${n}`} variant="secondary" className="text-[10px] font-mono">
-                        {n}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : null}
-
-                <Panel className="p-3">
-	                  <ScrollArea className="h-[320px] pr-2">
-	                    <div className="space-y-2">
-	                      {!retrieveRes && (
-	                        <div className="text-sm text-muted-foreground text-pretty">
-	                          运行检索后在此勾选 Ground Truth 引用。
-	                        </div>
-	                      )}
-	                      {retrieveRes && retrieveRanked.length === 0 && (
-	                        <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
-	                      )}
-	                      {retrieveRes &&
-	                        retrieveRanked.length > 0 &&
-	                        retrieveRanked.map((r) => {
-	                          const c = r.citation
-	                          const assistScore = r.score
-	                          const hits = r.hits || []
-	                          const chunkId = String(c.chunk_id || '')
-	                          const checked = !!chunkId && selectedChunkIds.includes(chunkId)
-	                          return (
-	                            <div
-	                              key={chunkId || `${c.document_id}:${c.chunk_index}`}
-	                              className="rounded-lg border border-border/60 p-2"
-	                            >
-	                              <div className="flex items-start gap-2">
-	                                <Checkbox
-	                                  checked={checked}
-	                                  onCheckedChange={() => toggleChunkSelection(chunkId, 'retrieve')}
-	                                  aria-label="选择该引用"
-	                                  disabled={!chunkId}
-	                                />
-	                                <div className="min-w-0 flex-1">
-	                                  <div className="flex items-start justify-between gap-3">
-	                                    <div className="min-w-0">
-	                                      <div className="text-xs font-mono text-foreground truncate">
-	                                        {c.document_name || String(c.document_id).slice(0, 8)}
-	                                      </div>
-	                                      <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-	                                        score {citationScoreLabel(c)}
-	                                        {typeof c.page_number === 'number' ? ` · P.${c.page_number}` : null}
-	                                        {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
-	                                      </div>
-	                                    </div>
-	                                    <div className="flex items-center gap-2">
-	                                      {assistScore > 0 ? (
-	                                        <Badge variant="secondary" className="font-mono text-[10px] tabular-nums">
-	                                          hit {assistScore}
-	                                        </Badge>
-	                                      ) : null}
-	                                      {chunkId ? (
-	                                        <Badge variant="outline" className="font-mono text-[10px]">
-	                                          {chunkId.slice(0, 8)}
-	                                        </Badge>
-	                                      ) : (
-	                                        <Badge variant="destructive" className="font-mono text-[10px]">
-	                                          missing chunk_id
-	                                        </Badge>
-	                                      )}
-	                                    </div>
-	                                  </div>
-	                                  <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
-	                                    {c.chunk_content}
-	                                  </div>
-	                                  {hits.length ? (
-	                                    <div className="mt-2 flex flex-wrap gap-1">
-	                                      {hits.slice(0, 4).map((h) => (
-	                                        <Badge
-	                                          key={`hit:${chunkId || String(c.document_id)}:${h}`}
-	                                          variant="outline"
-	                                          className="text-[10px] font-mono"
-	                                        >
-	                                          {h}
-	                                        </Badge>
-	                                      ))}
-	                                    </div>
-	                                  ) : null}
-	                                </div>
-	                              </div>
-	                            </div>
-	                          )
-	                        })}
-	                    </div>
-	                  </ScrollArea>
-	                </Panel>
-              </TabsContent>
-
-              <TabsContent value="import" className="mt-3 space-y-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="application/json,.json"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) detachPromise(handlePickPackFile(file))
-                    }}
-                  />
-                  <Button
-                    variant="outline"
-                    className="gap-2"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <FileUp className="size-4" aria-hidden="true" />
-                    选择 JSON
-                  </Button>
-                  {importPack ? (
-                    <div className="text-xs text-muted-foreground font-mono truncate">
-                      pack version {String(importPack?.version ?? '?')} · citations {Array.isArray(importCitations) ? importCitations.length : 0}
-                    </div>
-                  ) : (
-                    <div className="text-xs text-muted-foreground text-pretty">上传 Evidence Pack（来自检索预览导出）。</div>
-                  )}
-
-                  <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
-                    已选 {importSelectedChunkIds.length}
-                  </div>
-                </div>
-
-                {importError ? <div className="text-xs text-destructive text-pretty">{importError}</div> : null}
-
-                <Panel className="p-3">
-	                  <ScrollArea className="h-[320px] pr-2">
-	                    <div className="space-y-2">
-	                      {!importPack && (
-	                        <div className="text-sm text-muted-foreground text-pretty">
-	                          导入后在此勾选 Ground Truth 引用。
-	                        </div>
-	                      )}
-	                      {importPack && importCitations.length === 0 && (
-	                        <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
-	                      )}
-	                      {importPack &&
-	                        importCitations.length > 0 &&
-	                        importCitations.map((c) => {
-	                          const chunkId = String(c.chunk_id || '')
-	                          const checked = !!chunkId && importSelectedChunkIds.includes(chunkId)
-	                          return (
-	                            <div
-	                              key={chunkId || `${c.document_id}:${c.chunk_index}`}
-	                              className="rounded-lg border border-border/60 p-2"
-	                            >
-	                              <div className="flex items-start gap-2">
-	                                <Checkbox
-	                                  checked={checked}
-	                                  onCheckedChange={() => toggleChunkSelection(chunkId, 'import')}
-	                                  aria-label="选择该引用"
-	                                  disabled={!chunkId}
-	                                />
-	                                <div className="min-w-0 flex-1">
-	                                  <div className="flex items-start justify-between gap-3">
-	                                    <div className="min-w-0">
-	                                      <div className="text-xs font-mono text-foreground truncate">
-	                                        {c.document_name || String(c.document_id).slice(0, 8)}
-	                                      </div>
-	                                      <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-	                                        score {citationScoreLabel(c)}
-	                                        {typeof c.page_number === 'number' ? ` · P.${c.page_number}` : null}
-	                                        {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
-	                                      </div>
-	                                    </div>
-	                                    {chunkId ? (
-	                                      <Badge variant="outline" className="font-mono text-[10px]">
-	                                        {chunkId.slice(0, 8)}
-	                                      </Badge>
-	                                    ) : (
-	                                      <Badge variant="destructive" className="font-mono text-[10px]">
-	                                        missing chunk_id
-	                                      </Badge>
-	                                    )}
-	                                  </div>
-	                                  <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
-	                                    {c.chunk_content}
-	                                  </div>
-	                                </div>
-	                              </div>
-	                            </div>
-	                          )
-	                        })}
-	                    </div>
-	                  </ScrollArea>
-	                </Panel>
-              </TabsContent>
-            </Tabs>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateItemOpen(false)}>
-              取消
-            </Button>
-            <Button
-              onClick={() => detachPromise(handleCreateItem())}
-              disabled={creatingItem || !selectedSuiteId || !newQuery.trim()}
-            >
-              {creatingItem ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none mr-2" aria-hidden="true" /> : null}
-              创建 Item（draft）
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Why missed? dialog (per EvidenceItem) */}
-      <Dialog
+      <WhyMissedDialog
         open={whyMissedOpen}
+        datasetId={datasetId}
+        selectedSuiteId={selectedSuiteId}
+        selectedItem={selectedItem}
+        whyMissedProfile={whyMissedProfile}
+        whyMissedRetrieving={whyMissedRetrieving}
+        whyMissedDriftLoading={whyMissedDriftLoading}
+        whyMissedReport={whyMissedReport}
+        whyMissedError={whyMissedError}
+        whyMissedDriftError={whyMissedDriftError}
+        whyMissedRanRetrieve={whyMissedRanRetrieve}
+        whyMissedCitations={whyMissedCitations}
+        whyMissedRefDocIds={whyMissedRefDocIds}
+        whyMissedRefChunkIds={whyMissedRefChunkIds}
         onOpenChange={(open) => {
           setWhyMissedOpen(open)
           if (!open) {
@@ -1480,256 +1202,11 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
             setWhyMissedDriftedRefs([])
           }
         }}
-      >
-        <DialogContent className="max-w-5xl overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Why missed?</DialogTitle>
-            <DialogDescription className="text-pretty">
-              对比 <span className="font-mono">reference_sources</span>（Ground Truth）与“当前检索结果”，并附带 Drift Audit（引用指针是否已漂移）。
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="flex flex-col md:flex-row md:items-end gap-3">
-              <div className="w-full md:w-[220px]">
-                <div className="text-xs text-muted-foreground mb-1">Retrieval Profile</div>
-                <Select
-                  value={whyMissedProfile}
-                  onValueChange={(value) => setWhyMissedProfile(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="选择 profile" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="recall50">recall50 (默认)</SelectItem>
-                    <SelectItem value="coverage80">coverage80</SelectItem>
-                    <SelectItem value="recall20">recall20</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button
-                className="gap-2"
-                onClick={() => detachPromise(runWhyMissedRetrieve())}
-                disabled={whyMissedRetrieving || !datasetId || !selectedItem?.query}
-              >
-                {whyMissedRetrieving ? (
-                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                ) : (
-                  <Search className="size-4" aria-hidden="true" />
-                )}
-                运行检索
-              </Button>
-
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => detachPromise(loadWhyMissedDrift())}
-                disabled={whyMissedDriftLoading || !selectedSuiteId || !selectedItem?.id}
-                title="Load drift audit details for this suite and filter to the selected item"
-              >
-                {whyMissedDriftLoading ? (
-                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                ) : (
-                  <RefreshCw className="size-4" aria-hidden="true" />
-                )}
-                Drift Audit
-              </Button>
-
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={exportWhyMissedReport}
-                disabled={!whyMissedReport}
-                title="Export a JSON report (PII-minimized except for query text)."
-              >
-                <Download className="size-4" aria-hidden="true" />
-                导出 JSON
-              </Button>
-
-              <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
-                {selectedItem?.id ? `item ${String(selectedItem.id).slice(0, 8)}` : null}
-                {whyMissedRanRetrieve ? ` · citations ${whyMissedCitations.length}` : null}
-              </div>
-            </div>
-
-            {whyMissedError ? <div className="text-xs text-destructive text-pretty">{whyMissedError}</div> : null}
-            {whyMissedDriftError ? <div className="text-xs text-destructive text-pretty">{whyMissedDriftError}</div> : null}
-
-            {whyMissedReport ? (
-              <div className="flex flex-wrap gap-2 text-xs">
-                <Badge variant="outline" className="font-mono tabular-nums">
-                  refs {whyMissedReport.summary.total_references}
-                </Badge>
-                <Badge variant="soft" className="font-mono tabular-nums">
-                  retrieved {whyMissedReport.summary.retrieved_references}
-                </Badge>
-                <Badge variant="destructive" className="font-mono tabular-nums">
-                  missed {whyMissedReport.summary.missing_references}
-                </Badge>
-                <Badge variant="secondary" className="font-mono tabular-nums">
-                  drifted {whyMissedReport.summary.drifted_references}
-                </Badge>
-              </div>
-            ) : (
-              <div className="text-xs text-muted-foreground text-pretty">先运行检索，再查看 “missed / drifted / retrieved” 解释。</div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <Panel className="p-3">
-                <div className="text-xs font-medium text-muted-foreground mb-2">Ground Truth（reference_sources）</div>
-                <ScrollArea className="h-[420px] pr-2">
-                  <div className="space-y-2">
-                    {(() => {
-    if (selectedItem) {
-        if (whyMissedReport) {
-            return (whyMissedReport.references.map((r) => {
-                const status = r.status;
-                const statusLabel = (() => {
-                    if (status === 'retrieved') {
-                        return `hit #${r.retrieval?.rank ?? '?'}`;
-                    }
-                    else if (status === 'drifted') {
-                            return `drift:${String(r.drift?.reason || 'unknown')}`;
-                        }
-                        else if (status === 'missing') {
-                                return 'missed';
-                            }
-                            else {
-                                return 'unknown';
-                            }
-                })();
-                const statusVariant: 'outline' | 'secondary' | 'soft' | 'destructive' = (() => {
-                    if (status === 'retrieved') {
-                        return 'soft';
-                    }
-                    else if (status === 'missing') {
-                            return 'destructive';
-                        }
-                        else if (status === 'drifted') {
-                                return 'secondary';
-                            }
-                            else {
-                                return 'outline';
-                            }
-                })();
-                return (<div key={r.chunk_id} className="rounded-lg border border-border/60 p-2">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <Badge variant={statusVariant} className="font-mono text-[10px]">
-                                    {statusLabel}
-                                  </Badge>
-                                  <div className="text-xs font-mono text-foreground truncate">
-                                    {String(r.document_id || '').slice(0, 8)}:{String(r.chunk_id || '').slice(0, 8)}
-                                  </div>
-                                </div>
-                                {r.label ? <div className="mt-1 text-xs text-muted-foreground line-clamp-1 text-pretty">{r.label}</div> : null}
-                                {r.retrieval ? (<div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
-                                    {r.retrieval.hit_type ? `${r.retrieval.hit_type}` : 'hit'} · rank {r.retrieval.rank}
-                                    {typeof r.retrieval.score === 'number' ? ` · score ${r.retrieval.score.toFixed(4)}` : null}
-                                  </div>) : null}
-                                {r.hints?.document_hit_rank || r.hints?.chunk_index_hit_rank ? (<div className="mt-2 flex flex-wrap gap-1">
-                                    {r.hints?.document_hit_rank ? (<Badge variant="outline" className="font-mono text-[10px]">
-                                        doc@{r.hints.document_hit_rank}
-                                      </Badge>) : null}
-                                    {r.hints?.chunk_index_hit_rank ? (<Badge variant="outline" className="font-mono text-[10px]">
-                                        idx@{r.hints.chunk_index_hit_rank}
-                                      </Badge>) : null}
-                                  </div>) : null}
-                              </div>
-                              {typeof r.chunk_index === 'number' ? (<div className="text-[11px] text-muted-foreground font-mono tabular-nums flex-shrink-0">
-                                  #{r.chunk_index}
-                                </div>) : null}
-                            </div>
-                          </div>);
-            }));
-        }
-        else {
-            return (<div className="text-sm text-muted-foreground text-pretty">运行检索后展示对照结果。</div>);
-        }
-    }
-    else {
-        return (<div className="text-sm text-muted-foreground text-pretty">未选择 Item。</div>);
-    }
-})()}
-                  </div>
-                </ScrollArea>
-              </Panel>
-
-              <Panel className="p-3">
-                <div className="text-xs font-medium text-muted-foreground mb-2">Retrieved Citations（当前检索结果）</div>
-                <ScrollArea className="h-[420px] pr-2">
-                  <div className="space-y-2">
-                    {(() => {
-    if (whyMissedRanRetrieve) {
-        if (whyMissedCitations.length) {
-            return (whyMissedCitations.slice(0, 80).map((c, idx) => {
-                const docId = String(c.document_id || '').trim();
-                const chunkId = String(c.chunk_id || '').trim();
-                const isRefDoc = !!docId && whyMissedRefDocIds.has(docId);
-                const isRefChunk = !!chunkId && whyMissedRefChunkIds.has(chunkId);
-                const score = c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score;
-                return (<div key={chunkId || `${docId}:${idx}`} className={cn('rounded-lg border p-2', (() => {
-                        if (isRefChunk) {
-                            return 'border-primary/50 bg-primary/5';
-                        }
-                        else if (isRefDoc) {
-                                return 'border-border/60 bg-muted/20';
-                            }
-                            else {
-                                return 'border-border/60';
-                            }
-                    })())}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="text-xs font-mono text-foreground truncate">
-                                    #{idx + 1} {c.document_name || docId.slice(0, 8)}
-                                  </div>
-                                  {isRefChunk ? (<Badge variant="soft" className="font-mono text-[10px]">
-                                      ref_chunk
-                                    </Badge>) : null}
-                                  {isRefDoc && !isRefChunk ? (<Badge variant="outline" className="font-mono text-[10px]">
-                                      ref_doc
-                                    </Badge>) : null}
-                                </div>
-                                <div className="mt-1 text-[11px] text-muted-foreground font-mono tabular-nums">
-                                  {String(c.hit_type || 'hit')} · score {Number(score || 0).toFixed(4)}
-                                  {typeof c.page_number === 'number' ? ` · P.${c.page_number}` : null}
-                                  {typeof c.chunk_index === 'number' ? ` · #${c.chunk_index}` : null}
-                                </div>
-                              </div>
-                              {chunkId ? (<Badge variant="outline" className="font-mono text-[10px]">
-                                  {chunkId.slice(0, 8)}
-                                </Badge>) : null}
-                            </div>
-                            {c.chunk_content ? (<div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">
-                                {c.chunk_content}
-                              </div>) : null}
-                          </div>);
-            }));
-        }
-        else {
-            return (<div className="text-sm text-muted-foreground text-pretty">无 citations。</div>);
-        }
-    }
-    else {
-        return (<div className="text-sm text-muted-foreground text-pretty">先点击“运行检索”。</div>);
-    }
-})()}
-                  </div>
-                </ScrollArea>
-                {whyMissedRanRetrieve && whyMissedCitations.length > 80 ? (
-                  <div className="mt-2 text-xs text-muted-foreground font-mono">
-                    showing first 80 of {whyMissedCitations.length}
-                  </div>
-                ) : null}
-              </Panel>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        onWhyMissedProfileChange={setWhyMissedProfile}
+        onRunRetrieve={() => detachPromise(runWhyMissedRetrieve())}
+        onLoadDrift={() => detachPromise(loadWhyMissedDrift())}
+        onExportReport={exportWhyMissedReport}
+      />
     </div>
   )
 }
