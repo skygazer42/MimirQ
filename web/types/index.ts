@@ -289,8 +289,8 @@ export interface ConnectorRunOut {
   connector_id: string
   requested_by?: string | null
   status: ConnectorRunStatus
-  config?: Record<string, any>
-  stats?: Record<string, any>
+  config?: JsonObject
+  stats?: JsonObject
   error_message?: string | null
   task_id?: string | null
   created_at: string
@@ -321,8 +321,8 @@ export interface IngestionRunOut {
   kind: string
   requested_by?: string | null
   status: string
-  config?: Record<string, any>
-  stats?: Record<string, any>
+  config?: JsonObject
+  stats?: JsonObject
   error_message?: string | null
   created_at?: string | null
   started_at?: string | null
@@ -338,7 +338,7 @@ export interface IngestionRunListResponse {
 export interface IngestionRunCompareResponse {
   run_a: IngestionRunOut
   run_b: IngestionRunOut
-  diff: Record<string, any>
+  diff: JsonObject
 }
 
 export interface ConnectorConfigCreateRequest {
@@ -728,7 +728,7 @@ export interface ParsedSegment {
   index: number
   content: string
   page_number?: number
-  metadata?: Record<string, any>
+  metadata?: JsonObject
 }
 
 export interface DocumentPreview {
@@ -746,7 +746,7 @@ export interface ManualChunk {
   page_number?: number
   start_char?: number
   end_char?: number
-  metadata?: Record<string, any>
+  metadata?: JsonObject
 }
 
 // ==================== 切块预览相关类型 ====================
@@ -755,19 +755,19 @@ export interface ChunkPreset {
   id: string
   name: string
   description?: string | null
-  payload: Record<string, any>
+  payload: JsonObject
 }
 
 export interface ChunkPresetCreateRequest {
   name: string
   description?: string | null
-  payload: Record<string, any>
+  payload: JsonObject
 }
 
 export interface ChunkPresetUpdateRequest {
   name: string
   description?: string | null
-  payload: Record<string, any>
+  payload: JsonObject
 }
 
 export interface ChunkPresetListResponse {
@@ -778,7 +778,7 @@ export interface ChunkPreviewParams {
   chunk_size: number
   chunk_overlap: number
   unit?: 'chars' | 'tokens'
-  strategy_params?: Record<string, any>
+  strategy_params?: JsonObject
 }
 
 export interface ChunkPreviewItem {
@@ -789,7 +789,7 @@ export interface ChunkPreviewItem {
   start_index: number
   end_index: number
   page_number?: number
-  metadata?: Record<string, any>
+  metadata?: JsonObject
 }
 
 export interface ChunkPreviewHistogramBin {
@@ -825,7 +825,7 @@ export interface ChunkPreviewQualityReason {
   code: string
   severity?: 'info' | 'warning' | 'error'
   message: string
-  meta?: Record<string, any>
+  meta?: JsonObject
 }
 
 export interface ChunkPreviewQualityGate {
@@ -839,7 +839,7 @@ export interface ChunkPreviewRecommendationPatch {
   id: string
   title: string
   description?: string
-  patch?: Record<string, any>
+  patch?: JsonObject
 }
 
 export interface ChunkPreviewReviewSignals {
@@ -2388,8 +2388,8 @@ export interface RegressionRun {
   dataset_id?: string
   status: string
   metrics: string[]
-  params: Record<string, any>
-  summary: Record<string, any>
+  params: JsonObject
+  summary: JsonObject
   error_message?: string
   created_at: string
   started_at?: string
@@ -2431,9 +2431,9 @@ export interface RegressionItem {
   question: string
   response: string
   retrieved_contexts?: string[]
-  citations: any[]
-  scores: Record<string, any>
-  meta?: Record<string, any>
+  citations: unknown[]
+  scores: JsonObject
+  meta?: JsonObject
   created_at: string
 }
 
@@ -2444,8 +2444,8 @@ export interface RegressionRunDetail {
 
 export interface RegressionRunMetricDiff {
   key: string
-  before?: any
-  after?: any
+  before?: unknown
+  after?: unknown
   delta?: number | null
 }
 
@@ -2477,8 +2477,8 @@ export interface RagasRegressionRunDiffResponse {
   base_run_id: string
   target_run_id: string
   generated_at: string
-  base_params: Record<string, any>
-  target_params: Record<string, any>
+  base_params: JsonObject
+  target_params: JsonObject
   metric_diffs: RegressionRunMetricDiff[]
   diff_score?: RegressionRunDiffScore | null
   slice_diffs: Record<string, RegressionRunSliceDiff>
@@ -2491,7 +2491,7 @@ export interface RagvizSimilarityCollection {
   label: string
   kind: string
   count: number
-  meta?: Record<string, any>
+  meta?: JsonObject
 }
 
 export interface RagvizSimilarityCollectionsResponse {
@@ -2522,12 +2522,12 @@ export interface RagvizSimilarityStats {
 
 export interface RagvizSimilarityMatrixResult {
   matrix: number[][]
-  x_data: Record<string, any>[]
-  y_data: Record<string, any>[]
+  x_data: JsonObject[]
+  y_data: JsonObject[]
   x_available_fields: string[]
   y_available_fields: string[]
   stats: RagvizSimilarityStats
-  metadata: Record<string, any>
+  metadata: JsonObject
 }
 
 export interface RagvizSimilarityCalculateResponse {

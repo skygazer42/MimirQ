@@ -27,6 +27,82 @@ import { toast } from 'sonner'
 type LeftTopPanel = 'dataSource' | 'operations'
 type RightTopPanel = 'statistics' | null
 type RightBottomPanel = 'filters' | null
+type JsonRecord = Record<string, unknown>
+
+type PlotlyTrace = {
+  type: 'heatmap'
+  z: Array<Array<number | null>>
+  x: string[]
+  y: string[]
+  colorscale: string
+  zmin: number
+  zmax: number
+  hovertemplate: string
+}
+
+type PlotlyLayout = {
+  margin: { l: number; r: number; t: number; b: number }
+  xaxis: { automargin: boolean; tickangle: number }
+  yaxis: { automargin: boolean; autorange: 'reversed' }
+  paper_bgcolor: string
+  plot_bgcolor: string
+}
+
+type PlotlyConfig = {
+  responsive: boolean
+  displaylogo: boolean
+}
+
+type PlotlyLike = {
+  react: (element: HTMLDivElement, data: PlotlyTrace[], layout: PlotlyLayout, config: PlotlyConfig) => void
+  purge: (element: HTMLDivElement) => void
+}
+
+function isRecord(value: unknown): value is JsonRecord {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isPlotlyLike(value: unknown): value is PlotlyLike {
+  if (!value || (typeof value !== 'object' && typeof value !== 'function')) return false
+  const maybe = value as { react?: unknown; purge?: unknown }
+  return typeof maybe.react === 'function' && typeof maybe.purge === 'function'
+}
+
+function isSimilarityMatrixResult(value: unknown): value is RagvizSimilarityMatrixResult {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.matrix) &&
+    Array.isArray(value.x_data) &&
+    Array.isArray(value.y_data) &&
+    Array.isArray(value.x_available_fields) &&
+    Array.isArray(value.y_available_fields) &&
+    isRecord(value.metadata)
+  )
+}
+
+function isVisualConfig(value: unknown): value is VisualConfig {
+  return (
+    isRecord(value) &&
+    isRecord(value.displayFields) &&
+    typeof value.displayFields.xField === 'string' &&
+    typeof value.displayFields.yField === 'string' &&
+    isRecord(value.similarityRange) &&
+    typeof value.similarityRange.min === 'number' &&
+    typeof value.similarityRange.max === 'number' &&
+    isRecord(value.filters) &&
+    isRecord(value.filters.topK) &&
+    typeof value.filters.topK.value === 'number' &&
+    (value.filters.topK.axis === 'x' || value.filters.topK.axis === 'y') &&
+    isRecord(value.sorting) &&
+    typeof value.sorting.order === 'string'
+  )
+}
+
+function getErrorMessage(error: unknown, fallback = '操作失败'): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  const text = String(error || '').trim()
+  return text || fallback
+}
 
 export function RagvizSimilarityWorkbench() {
   const [collections, setCollections] = useState<RagvizSimilarityCollection[]>([])
@@ -70,8 +146,8 @@ export function RagvizSimilarityWorkbench() {
     try {
       const res: RagvizSimilarityCollectionsResponse = await ragvizApi.listSimilarityCollections()
       setCollections(res.collections || [])
-    } catch (e: any) {
-      setCollectionsError(e?.message || '加载 collections 失败')
+    } catch (error: unknown) {
+      setCollectionsError(getErrorMessage(error, '加载 collections 失败'))
     } finally {
       setCollectionsLoading(false)
     }
@@ -141,8 +217,8 @@ export function RagvizSimilarityWorkbench() {
             result: res.result,
             visualConfig,
           })
-        } catch (e: any) {
-          const msg = e?.message || '计算失败'
+        } catch (error: unknown) {
+          const msg = getErrorMessage(error, '计算失败')
           toast.error(`${resolveCollectionLabel(x)} vs ${resolveCollectionLabel(y)}：${msg}`)
         } finally {
           done += 1
@@ -181,7 +257,7 @@ export function RagvizSimilarityWorkbench() {
     setExportIndex(0)
   }
 
-  const downloadJson = (filename: string, data: any) => {
+  const downloadJson = (filename: string, data: unknown) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -206,30 +282,22 @@ export function RagvizSimilarityWorkbench() {
     downloadJson(`matrices_all.json`, payload)
   }
 
-  const parseImportedPayload = (raw: any): SimilarityMatrixEntry[] => {
+  const parseImportedPayload = (raw: unknown): SimilarityMatrixEntry[] => {
     if (!raw) return []
-    const entries = (() => {
-    if (Array.isArray(raw)) {
-        return raw;
-    }
-    else if (Array.isArray(raw.entries)) {
-            return raw.entries;
-        }
-        else {
-            return [raw];
-        }
-})()
+    const entries = Array.isArray(raw) ? raw : isRecord(raw) && Array.isArray(raw.entries) ? raw.entries : [raw]
     const out: SimilarityMatrixEntry[] = []
-    for (const e of entries) {
-      const result: RagvizSimilarityMatrixResult | undefined = e?.result
-      if (!result || !Array.isArray(result.matrix)) continue
-      const xCollectionId = String(e?.xCollectionId || e?.xCollection || result.metadata?.x_collection || '')
-      const yCollectionId = String(e?.yCollectionId || e?.yCollection || result.metadata?.y_collection || '')
-      const xCollectionLabel = String(e?.xCollectionLabel || xCollectionId || 'X')
-      const yCollectionLabel = String(e?.yCollectionLabel || yCollectionId || 'Y')
+    for (const entry of entries) {
+      if (!isRecord(entry)) continue
+      const result = entry.result
+      if (!isSimilarityMatrixResult(result)) continue
+      const metadata = isRecord(result.metadata) ? result.metadata : null
+      const xCollectionId = String(entry.xCollectionId || entry.xCollection || metadata?.x_collection || '')
+      const yCollectionId = String(entry.yCollectionId || entry.yCollection || metadata?.y_collection || '')
+      const xCollectionLabel = String(entry.xCollectionLabel || xCollectionId || 'X')
+      const yCollectionLabel = String(entry.yCollectionLabel || yCollectionId || 'Y')
       const visualConfig: VisualConfig =
-        e?.visualConfig?.displayFields
-          ? e.visualConfig
+        isVisualConfig(entry.visualConfig)
+          ? entry.visualConfig
           : createDefaultVisualConfig(result.x_available_fields || [], result.y_available_fields || [])
 
       out.push({
@@ -250,10 +318,10 @@ export function RagvizSimilarityWorkbench() {
     for (const file of Array.from(files)) {
       try {
         const text = await file.text()
-        const json = JSON.parse(text)
+        const json: unknown = JSON.parse(text)
         imported.push(...parseImportedPayload(json))
-      } catch (e: any) {
-        toast.error(`导入失败：${file.name}（${e?.message || 'JSON 解析错误'}）`)
+      } catch (error: unknown) {
+        toast.error(`导入失败：${file.name}（${getErrorMessage(error, 'JSON 解析错误')}）`)
       }
     }
 
@@ -1400,7 +1468,7 @@ function toPlotlyColorScale(key: ColorSchemeKey) {
   return mapping[key]
 }
 
-function generateUniqueLabels(items: Record<string, any>[], field: string) {
+function generateUniqueLabels(items: Array<Record<string, unknown>>, field: string) {
   const counts = new Map<string, number>()
   return items.map((item) => {
     const raw = String((item && field ? item[field] : '') ?? '').trim()
@@ -1425,15 +1493,16 @@ function PlotlyHeatmap({
   isDifference: boolean
 }>) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [plotly, setPlotly] = useState<any>(null)
+  const [plotly, setPlotly] = useState<PlotlyLike | null>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const mod: any = await import('plotly.js-dist-min')
-        const Plotly = mod?.default || mod
-        if (!cancelled) setPlotly(() => Plotly)
+        const modUnknown: unknown = await import('plotly.js-dist-min')
+        const mod = isRecord(modUnknown) ? modUnknown : null
+        const plotlyModule = isPlotlyLike(mod?.default) ? mod.default : isPlotlyLike(modUnknown) ? modUnknown : null
+        if (!cancelled) setPlotly(plotlyModule)
       } catch {
         if (!cancelled) setPlotly(null)
       }
@@ -1450,7 +1519,7 @@ function PlotlyHeatmap({
     const zmax = 1
     const colorscale = isDifference ? 'RdBu' : toPlotlyColorScale(colorScheme)
 
-    const trace: any = {
+    const trace: PlotlyTrace = {
       type: 'heatmap',
       z: matrix,
       x: xLabels,
@@ -1461,7 +1530,7 @@ function PlotlyHeatmap({
       hovertemplate: 'x=%{x}<br>y=%{y}<br>value=%{z:.4f}<extra></extra>',
     }
 
-    const layout: any = {
+    const layout: PlotlyLayout = {
       margin: { l: 120, r: 30, t: 30, b: 120 },
       xaxis: { automargin: true, tickangle: 45 },
       yaxis: { automargin: true, autorange: 'reversed' },
@@ -1469,7 +1538,7 @@ function PlotlyHeatmap({
       plot_bgcolor: 'transparent',
     }
 
-    const config: any = {
+    const config: PlotlyConfig = {
       responsive: true,
       displaylogo: false,
     }

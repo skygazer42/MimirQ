@@ -101,8 +101,8 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
         await connectorApi.cancelRun(runId)
         toast.success('已取消导入任务')
         detachPromise(refreshSelectedDatasetRuns())
-      } catch (err: any) {
-        toast.error(formatApiError(err, '取消导入任务失败'))
+      } catch (error: unknown) {
+        toast.error(formatApiError(error, '取消导入任务失败'))
       }
     },
     [refreshSelectedDatasetRuns]
@@ -116,8 +116,8 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
         toast.success(`已创建重试任务：${String(next.id || '').slice(0, 8)}`)
         detachPromise(refreshSelectedDatasetRuns())
         detachPromise(loadDocuments?.())
-      } catch (err: any) {
-        toast.error(formatApiError(err, '重试失败项失败'))
+      } catch (error: unknown) {
+        toast.error(formatApiError(error, '重试失败项失败'))
       }
     },
     [loadDocuments, refreshSelectedDatasetRuns]
@@ -131,8 +131,8 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
         toast.success(`已创建续跑任务：${String(next.id || '').slice(0, 8)}`)
         detachPromise(refreshSelectedDatasetRuns())
         detachPromise(loadDocuments?.())
-      } catch (err: any) {
-        toast.error(formatApiError(err, '续跑失败'))
+      } catch (error: unknown) {
+        toast.error(formatApiError(error, '续跑失败'))
       }
     },
     [loadDocuments, refreshSelectedDatasetRuns]

@@ -17,10 +17,11 @@ import {
 } from '@/components/ui/dialog'
 import { cn, detachPromise } from '@/lib/utils'
 import { chunkPresetApi } from '@/lib/api'
+import { formatApiError } from '@/lib/api-errors'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
-import type { ChunkPreset } from '@/types'
+import type { ChunkPreset, DocumentPipelineOptions, JsonObject } from '@/types'
 
 function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(value)))
@@ -34,6 +35,29 @@ function decodeSeparatorInput(raw: string) {
   } catch {
     return value
   }
+}
+
+type ChunkPresetPayload = JsonObject & {
+  dataset_id?: string
+  parser_backend?: string
+  chunk_strategy?: string
+  chunk_size?: number
+  chunk_overlap?: number
+  separator_preset?: string
+  separator?: string
+  keep_separator?: boolean
+  separator_max_chunk_size?: number
+  pipeline?: DocumentPipelineOptions
+}
+
+function isRecord(value: unknown): value is JsonObject {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) return error.message.trim()
+  const text = String(error || '').trim()
+  return text || fallback
 }
 
 export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>) {
@@ -87,8 +111,8 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     return decodeSeparatorInput(raw) || '\n\n'
   }, [separatorCustom, separatorPreset])
 
-  const buildPayload = () => {
-    const payload: Record<string, any> = {
+  const buildPayload = (): ChunkPresetPayload => {
+    const payload: ChunkPresetPayload = {
       dataset_id: datasetId || undefined,
       parser_backend: parserBackend,
       chunk_strategy: chunkStrategy,
@@ -109,8 +133,8 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     return payload
   }
 
-  const applyPayload = async (payload: any) => {
-    const parsed = payload && typeof payload === 'object' ? payload : {}
+  const applyPayload = async (payload: unknown) => {
+    const parsed = isRecord(payload) ? payload : {}
 
     if (typeof parsed.dataset_id === 'string') setDatasetId(String(parsed.dataset_id))
     else if (parsed.dataset_id == null) setDatasetId('')
@@ -143,12 +167,11 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
     }
 
     const pipeline = parsed.pipeline
-    if (pipeline && typeof pipeline === 'object') {
+    if (isRecord(pipeline)) {
       pipelineCtx.setEnabled(true)
-      for (const [k, v] of Object.entries(pipeline)) {
-        if (k in pipelineCtx.options) {
-          pipelineCtx.updateOption(k as any, v as any)
-        }
+      const importResult = pipelineCtx.importJson(JSON.stringify(pipeline))
+      if (!importResult.ok) {
+        toast.error(importResult.error || '应用 Pipeline 配置失败')
       }
     }
   }
@@ -166,8 +189,8 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       if (selectedId && !next.some((p) => p.id === selectedId)) {
         setSelectedId('')
       }
-    } catch (err: any) {
-      toast.error((err?.message as string) || '加载 presets 失败')
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '加载 presets 失败'))
     } finally {
       setLoading(false)
     }
@@ -192,8 +215,8 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       })
       await refresh()
       toast.success('已更新 preset')
-    } catch (err: any) {
-      toast.error((err?.message as string) || '保存失败')
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '保存失败'))
     } finally {
       setSaving(false)
     }
@@ -218,8 +241,8 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       setSelectedId(created.id)
       setSaveAsOpen(false)
       toast.success('已创建 preset')
-    } catch (err: any) {
-      toast.error((err?.message as string) || '创建失败')
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '创建失败'))
     } finally {
       setSaving(false)
     }
@@ -324,11 +347,11 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
               file
                 .text()
                 .then(async (text) => {
-                  const data = JSON.parse(text || '{}')
+                  const data: unknown = JSON.parse(text || '{}')
                   await applyPayload(data)
                   toast.success('已导入 JSON 并应用')
                 })
-                .catch((err: any) => toast.error((err?.message as string) || '导入失败'))
+                .catch((error: unknown) => toast.error(getErrorMessage(error, '导入失败')))
             }}
           />
           <Button
