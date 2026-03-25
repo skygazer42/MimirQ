@@ -12,20 +12,13 @@
 - `hooks/use-parsed-files.ts` — 128 行，旧版本
 - `store/use-parsed-files-store.ts` — 343 行，Zustand 版本，功能更完整
 
-**引用检查**：
-搜索结果显示以下文件引用了 `use-parsed-files`：
-- `components/parsing/parsing-page.tsx` → 需确认使用的是 hook 还是 store
-- `lib/security-hotspots.source.test.ts` → 测试文件
-- `store/use-parsed-files-store.source.test.ts` → store 测试
-- `components/data-governance-panel.tsx` → 需确认
-- `components/document-library/folder-tree.tsx` → 需确认
-- `components/chunk-preview/context.tsx` → 需确认
+**引用检查结果**：
+经代码搜索确认：**零个生产代码文件**引用 `hooks/use-parsed-files`。唯一的引用在 `lib/security-hotspots.source.test.ts` 测试文件中。所有生产组件均已迁移到 `store/use-parsed-files-store.ts`。
 
 **操作**：
-1. 检查每个引用文件，确认都是 import `store/use-parsed-files-store`（非 `hooks/use-parsed-files`）
-2. 如有引用旧 hook 的，迁移到 store 版本
-3. 删除 `hooks/use-parsed-files.ts`
-4. 更新相关测试
+1. ~~检查每个引用文件~~ → 已确认无生产引用
+2. 删除 `hooks/use-parsed-files.ts`
+3. 更新 `lib/security-hotspots.source.test.ts` 中的引用（如有必要）
 
 ### B. 合并或扩展 `services/` 目录
 
@@ -41,7 +34,11 @@
 
 **文件**：`web/tailwind.config.ts`
 
-检查 `content` 配置中是否有 `'./src/**/*.{ts,tsx}'`，项目无 `src/` 目录，应删除此条目。
+content 配置中存在两个无效路径：
+- `'./src/**/*.{ts,tsx}'` — 项目无 `src/` 目录，应删除
+- `'./pages/**/*.{ts,tsx}'` — 项目使用 App Router（`app/` 目录），无 `pages/` 目录，应删除
+
+仅保留有效的 content 路径（`./app/**`, `./components/**`, `./lib/**` 等）。
 
 ### D. 删除重复的 blink keyframe
 
