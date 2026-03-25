@@ -1,14 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import { toast } from 'sonner'
-import { BarChart3, Copy, Download, FileUp, Loader2, Plus, RefreshCw, Search, ShieldCheck, TestTube2, X } from 'lucide-react'
+import { Download, FileUp, Loader2, Plus, RefreshCw, Search } from 'lucide-react'
 
 import type {
   Citation,
   Dataset,
-  EvidenceCoverageHeatmap,
   EvidenceHardcaseDiscovery,
   EvidenceItem,
   EvidenceItemCreate,
@@ -30,8 +28,11 @@ import { cn, detachPromise } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { HardcaseCandidatesDialog } from '@/components/evidence/hardcase-candidates-dialog'
+import { ItemDetailPanel } from '@/components/evidence/item-detail-panel'
 import { ItemListPanel } from '@/components/evidence/item-list-panel'
 import { SuiteListPanel } from '@/components/evidence/suite-list-panel'
+import { SuiteDashboardDialog } from '@/components/evidence/suite-dashboard-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -72,32 +73,6 @@ type EvidenceImportPack = JsonObject & {
 
 const RETRIEVAL_PROFILE_VALUES = ['recall50', 'coverage80', 'recall20'] as const
 const CREATE_ITEM_TAB_VALUES = ['retrieve', 'import'] as const
-
-type ErrBadgeEntry = [string, number]
-
-function compareErrBadgeEntry(a: ErrBadgeEntry, b: ErrBadgeEntry): number {
-  return Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0]))
-}
-
-function buildErrBadges(errKinds: Record<string, number>): ErrBadgeEntry[] {
-  const out: ErrBadgeEntry[] = []
-  for (const [k, v0] of Object.entries(errKinds || {})) {
-    const key = String(k || '').trim()
-    const n = Number(v0) || 0
-    if (!key || n <= 0) continue
-    out.push([key, n])
-  }
-  out.sort(compareErrBadgeEntry)
-  return out.slice(0, 4)
-}
-
-function heatmapCellBg(v: number, ratio: number): string {
-  if (v === 0) return 'bg-muted/20'
-  if (ratio >= 0.75) return 'bg-primary/30'
-  if (ratio >= 0.5) return 'bg-primary/20'
-  if (ratio >= 0.25) return 'bg-primary/10'
-  return 'bg-primary/5'
-}
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -184,71 +159,6 @@ function getErrorMessage(error: unknown): string {
   return text || 'unknown'
 }
 
-function renderLanguageXFileTypeHeatmap(hm: EvidenceCoverageHeatmap | null | undefined): ReactNode {
-  const x = Array.isArray(hm?.x) ? hm.x : []
-  const y = Array.isArray(hm?.y) ? hm.y : []
-  const z = Array.isArray(hm?.z) ? hm.z : []
-
-  let max = 0
-  for (const row of z) {
-    if (!Array.isArray(row)) continue
-    for (const v of row) {
-      const n = Number(v) || 0
-      if (n > max) max = n
-    }
-  }
-
-  const cols = x.length
-  const xNodes: ReactNode[] = []
-  for (const ft of x) {
-    const ftLabel = String(ft ?? '')
-    xNodes.push(
-      <div key={`hm-x:${ftLabel}`} className="bg-muted/40 px-2 py-1 text-[11px] font-mono truncate">
-        {ftLabel}
-      </div>,
-    )
-  }
-
-  const rowNodes: ReactNode[] = []
-  for (let rowIdx = 0; rowIdx < y.length; rowIdx++) {
-    const langLabel = String(y[rowIdx] ?? '')
-    const row = Array.isArray(z[rowIdx]) ? z[rowIdx] : []
-    const cells: ReactNode[] = []
-    for (let colIdx = 0; colIdx < x.length; colIdx++) {
-      const ftLabel = String(x[colIdx] ?? '')
-      const v = Number(row?.[colIdx] ?? 0) || 0
-      const ratio = max > 0 ? v / max : 0
-      const cellBg = heatmapCellBg(v, ratio)
-      cells.push(
-        <div
-          key={`hm-cell:${langLabel}:${ftLabel}`}
-          className={cn('px-2 py-1 text-[11px] font-mono tabular-nums text-center', cellBg)}
-        >
-          {v}
-        </div>,
-      )
-    }
-
-    rowNodes.push(
-      <div key={`hm-row:${langLabel}`} className="contents">
-        <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">{langLabel}</div>
-        {cells}
-      </div>,
-    )
-  }
-
-  return (
-    <div
-      className="grid gap-px rounded-lg overflow-hidden border border-border/60 bg-border/60"
-      style={{ gridTemplateColumns: `120px repeat(${cols}, minmax(72px, 1fr))` }}
-    >
-      <div className="bg-muted/40 px-2 py-1 text-[11px] font-mono text-muted-foreground">lang \\ ft</div>
-      {xNodes}
-      {rowNodes}
-    </div>
-  )
-}
-
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
   return null
@@ -320,17 +230,6 @@ function safeIsoForFilename(ts: string) {
   return (ts || new Date().toISOString()).replaceAll(/[:.]/g, '-')
 }
 
-function formatDurationSec(sec: unknown): string {
-  const n = Number(sec)
-  if (!Number.isFinite(n) || n <= 0) return '-'
-  const mins = n / 60
-  if (mins < 60) return `${Math.round(mins)}m`
-  const hours = mins / 60
-  if (hours < 48) return `${hours.toFixed(1)}h`
-  const days = hours / 24
-  return `${days.toFixed(1)}d`
-}
-
 const EMPTY_CITATIONS: Citation[] = []
 
 export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ datasetId: string }>) {
@@ -374,8 +273,6 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
   const [dashboardError, setDashboardError] = useState<string | null>(null)
   const [dashboard, setDashboard] = useState<EvidenceSuiteDashboard | null>(null)
   const [dashboardIncludeArchived, setDashboardIncludeArchived] = useState(false)
-  const dashboardThroughput = dashboard?.throughput
-  const dashboardCoverage = dashboard?.coverage
 
   // Hardcase discovery (suite-level; PII-safe)
   const [hardcaseOpen, setHardcaseOpen] = useState(false)
@@ -557,11 +454,6 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     }
   }, [])
 
-  const buildCopyHandler = useCallback(
-    (label: string, text: string) => () => detachPromise(copyText(label, text)),
-    [copyText],
-  )
-
   const handleConvertFeedbackToEvidence = useCallback(async (feedbackId: string, questionHash?: string) => {
     if (!selectedSuiteId) return
     const fid = String(feedbackId || '').trim()
@@ -586,12 +478,6 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       setConvertingFeedbackId('')
     }
   }, [hardcaseTags, loadHardcases, loadItems, selectedSuiteId])
-
-  const buildConvertFeedbackHandler = useCallback(
-    (feedbackId: string, questionHash?: string) => () =>
-      detachPromise(handleConvertFeedbackToEvidence(feedbackId, questionHash)),
-    [handleConvertFeedbackToEvidence],
-  )
 
   useEffect(() => {
     detachPromise(loadDataset())
@@ -1156,286 +1042,37 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
           statusBadgeVariant={evidenceStatusBadgeVariant}
         />
 
-        {/* Detail */}
-        <Panel className="lg:col-span-5 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">Detail</div>
-              <div className="text-xs text-muted-foreground mt-1 text-pretty">
-                {selectedItem ? (
-                  <>
-                    Item：<span className="font-mono">{String(selectedItem.id).slice(0, 8)}</span>
-                  </>
-                ) : (
-                  '请选择一个 Item'
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                ref={qaFaqInputRef}
-                type="file"
-                accept=".csv,.jsonl,text/csv,application/x-ndjson"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) detachPromise(handleImportQAFaq(f))
-                }}
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setHardcaseOpen(true)}
-                disabled={!selectedSuite?.id}
-              >
-                <TestTube2 className="size-4" aria-hidden="true" />
-                Hardcases
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setDashboardOpen(true)}
-                disabled={!selectedSuite?.id}
-              >
-                <BarChart3 className="size-4" aria-hidden="true" />
-                Dashboard
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={handleExportSuite}
-                disabled={!selectedSuite?.id}
-              >
-                <Download className="size-4" aria-hidden="true" />
-                导出 Suite
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={handleExportLtrTraining}
-                disabled={!selectedSuite?.id}
-                title="Export LTR training rows + hard negatives (ZIP)"
-              >
-                <Download className="size-4" aria-hidden="true" />
-                导出 LTR
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => qaFaqInputRef.current?.click()}
-                disabled={!selectedSuite?.id || importingQAFaq}
-              >
-                {importingQAFaq ? (
-                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                ) : (
-                  <FileUp className="size-4" aria-hidden="true" />
-                )}
-                导入 QA/FAQ
-              </Button>
-
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button size="sm" className="gap-2" disabled={!selectedSuite?.id}>
-                    <RefreshCw className="size-4" aria-hidden="true" />
-                    Sync 回归
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>同步到回归用例库？</AlertDialogTitle>
-                    <AlertDialogDescription className="text-pretty">
-                      将该 Suite 中 <span className="font-mono">approved</span> 状态的 Items upsert 到回归用例库（question + reference_sources）。
-                      如果已有绑定的 case，会更新它。
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>取消</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => detachPromise(handleSyncSuite())} disabled={!selectedSuite?.id}>
-                      同步
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </div>
-
-          {suiteCounts ? (
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              <Badge variant="outline" className="font-mono tabular-nums">
-                total {suiteCounts.total}
-              </Badge>
-              <Badge variant="outline" className="font-mono tabular-nums">
-                draft {suiteCounts.draft}
-              </Badge>
-              <Badge variant="secondary" className="font-mono tabular-nums">
-                reviewed {suiteCounts.reviewed}
-              </Badge>
-              <Badge variant="soft" className="font-mono tabular-nums">
-                approved {suiteCounts.approved}
-              </Badge>
-              <Badge variant="outline" className="font-mono tabular-nums">
-                archived {suiteCounts.archived}
-              </Badge>
-            </div>
-          ) : null}
-
-          <Separator className="my-4" />
-
-          {selectedItem ? (
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-foreground text-pretty">{selectedItem.query}</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground font-mono">
-                    <Badge variant={evidenceStatusBadgeVariant(selectedItem.status)} className="uppercase">
-                      {selectedItem.status}
-                    </Badge>
-                    {selectedItem.regression_case_id ? (
-                      <Badge variant="outline" className="truncate max-w-[220px]">
-                        case {String(selectedItem.regression_case_id).slice(0, 8)}
-                      </Badge>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {selectedItem.status === 'draft' ? (
-                    <Button size="sm" variant="outline" className="gap-2" onClick={() => detachPromise(handleReviewItem(String(selectedItem.id)))}>
-                      <Search className="size-4" aria-hidden="true" />
-                      Review
-                    </Button>
-                  ) : null}
-
-                  {selectedItem.status === 'reviewed' ? (
-                    <Button size="sm" className="gap-2" onClick={() => detachPromise(handleApproveItem(String(selectedItem.id)))}>
-                      <ShieldCheck className="size-4" aria-hidden="true" />
-                      Approve
-                    </Button>
-                  ) : null}
-
-                  <Button size="sm" variant="outline" className="gap-2" onClick={openWhyMissed}>
-                    <BarChart3 className="size-4" aria-hidden="true" />
-                    Why missed?
-                  </Button>
-
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="sm" variant="destructive" className="gap-2" disabled={selectedItem.status === 'archived'}>
-                        <X className="size-4" aria-hidden="true" />
-                        归档
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>归档该 Item？</AlertDialogTitle>
-                        <AlertDialogDescription className="text-pretty">
-                          归档后不会从数据库删除，但默认列表会隐藏。该操作可用于标记“已废弃/不再维护”的证据。
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => detachPromise(handleArchiveItem(String(selectedItem.id)))}>归档</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </div>
-
-              {selectedItem.expected_answer ? (
-                <div>
-                  <div className="text-xs font-medium text-muted-foreground mb-1">Expected Answer (optional)</div>
-                  <Panel className="p-3">
-                    <div className="text-sm whitespace-pre-wrap text-pretty">{selectedItem.expected_answer}</div>
-                  </Panel>
-                </div>
-              ) : null}
-
-              {selectedItem?.tags?.length ? (
-                <div>
-                  <div className="text-xs font-medium text-muted-foreground mb-1">Tags</div>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedItem.tags.map((t) => (
-                      <Badge key={t} variant="outline" className="font-mono text-[10px]">
-                        {t}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-	              {selectedItem?.source_metadata && Object.keys(selectedItem.source_metadata).length ? (
-	                <div>
-	                  <div className="text-xs font-medium text-muted-foreground mb-1">Source Metadata</div>
-	                  <Panel className="p-3">
-                    <ScrollArea className="h-[180px] pr-2">
-                      <pre className="text-xs font-mono whitespace-pre-wrap break-words text-muted-foreground">
-                        {JSON.stringify(selectedItem.source_metadata, null, 2)}
-                      </pre>
-                    </ScrollArea>
-                  </Panel>
-                </div>
-              ) : null}
-
-              <div>
-                <div className="text-xs font-medium text-muted-foreground mb-1">Reference Sources</div>
-                <Panel className="p-3">
-                  <div className="space-y-2">
-                    {(selectedItem.reference_sources || []).length ? (
-                      (selectedItem.reference_sources || []).map((r) => (
-                        <div key={`${String(r.document_id)}:${String(r.chunk_id)}`} className="rounded-md border border-border/60 p-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-xs font-mono text-foreground truncate">
-                                {String(r.document_id).slice(0, 8)}:{String(r.chunk_id).slice(0, 8)}
-                              </div>
-                              {r.label ? (
-                                <div className="mt-1 text-xs text-muted-foreground line-clamp-1 text-pretty">{r.label}</div>
-                              ) : null}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground font-mono tabular-nums flex-shrink-0">
-                              {typeof r.page_number === 'number' ? `P.${r.page_number}` : null}
-                              {typeof r.chunk_index === 'number' ? ` · #${r.chunk_index}` : null}
-                            </div>
-                          </div>
-                          {r.quote ? (
-                            <div className="mt-2 text-xs text-muted-foreground line-clamp-3 text-pretty">{r.quote}</div>
-                          ) : null}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-muted-foreground text-pretty">暂无 reference_sources。</div>
-                    )}
-                  </div>
-                </Panel>
-              </div>
-
-              {selectedItem.notes ? (
-                <div>
-                  <div className="text-xs font-medium text-muted-foreground mb-1">Notes</div>
-                  <Panel className="p-3">
-                    <div className="text-sm whitespace-pre-wrap text-pretty">{selectedItem.notes}</div>
-                  </Panel>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground text-pretty">
-              选择一个 Item 查看详情。你可以在 draft 状态下修改内容，然后提交 review → approve → sync。
-            </div>
-          )}
-        </Panel>
+        <ItemDetailPanel
+          selectedItem={selectedItem}
+          selectedSuite={selectedSuite}
+          suiteCounts={suiteCounts}
+          importingQAFaq={importingQAFaq}
+          qaFaqInputRef={qaFaqInputRef}
+          statusBadgeVariant={evidenceStatusBadgeVariant}
+          onImportQAFaqFile={(file) => detachPromise(handleImportQAFaq(file))}
+          onOpenHardcases={() => setHardcaseOpen(true)}
+          onOpenDashboard={() => setDashboardOpen(true)}
+          onExportSuite={handleExportSuite}
+          onExportLtrTraining={handleExportLtrTraining}
+          onSyncSuite={() => detachPromise(handleSyncSuite())}
+          onReviewItem={(itemId) => detachPromise(handleReviewItem(itemId))}
+          onApproveItem={(itemId) => detachPromise(handleApproveItem(itemId))}
+          onOpenWhyMissed={openWhyMissed}
+          onArchiveItem={(itemId) => detachPromise(handleArchiveItem(itemId))}
+        />
       </div>
 
-      {/* Hardcase candidates dialog */}
-      <Dialog
+      <HardcaseCandidatesDialog
         open={hardcaseOpen}
+        selectedSuiteId={selectedSuiteId}
+        loading={hardcaseLoading}
+        error={hardcaseError}
+        hardcaseRes={hardcaseRes}
+        maxRating={hardcaseMaxRating}
+        includeExisting={hardcaseIncludeExisting}
+        maxCandidates={hardcaseMaxCandidates}
+        tags={hardcaseTags}
+        convertingFeedbackId={convertingFeedbackId}
         onOpenChange={(open) => {
           setHardcaseOpen(open)
           if (!open) {
@@ -1443,442 +1080,36 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
             setConvertingFeedbackId('')
           }
         }}
-      >
-        <DialogContent className="max-w-4xl overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Hardcase Candidates</DialogTitle>
-            <DialogDescription className="text-pretty">
-              从低分反馈 + rag_trace 聚类得到的候选（PII-safe）。选择一个 <span className="font-mono">feedback_id</span> 转为 draft EvidenceItem。
-            </DialogDescription>
-          </DialogHeader>
+        onMaxRatingChange={setHardcaseMaxRating}
+        onIncludeExistingChange={setHardcaseIncludeExisting}
+        onMaxCandidatesChange={setHardcaseMaxCandidates}
+        onTagsChange={setHardcaseTags}
+        onRefresh={() => detachPromise(loadHardcases())}
+        onCopyText={(label, text) => {
+          detachPromise(copyText(label, text))
+        }}
+        onConvertFeedback={(feedbackId, questionHash) => {
+          detachPromise(handleConvertFeedbackToEvidence(feedbackId, questionHash))
+        }}
+      />
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">max rating</span>
-                <Select value={String(hardcaseMaxRating)} onValueChange={(v) => setHardcaseMaxRating(Number(v) || 2)}>
-                  <SelectTrigger className="h-8 w-24">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">{'<= 1'}</SelectItem>
-                    <SelectItem value="2">{'<= 2'}</SelectItem>
-                    <SelectItem value="3">{'<= 3'}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
-                <Checkbox
-                  checked={hardcaseIncludeExisting}
-                  onCheckedChange={(v) => setHardcaseIncludeExisting(Boolean(v))}
-                  aria-label="Include existing items"
-                />
-                include existing
-              </div>
-
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">max candidates</span>
-                <Input
-                  value={String(hardcaseMaxCandidates)}
-                  onChange={(e) => {
-                    const n = Number(e.target.value || 0) || 0
-                    setHardcaseMaxCandidates(Math.max(0, Math.min(200, Math.floor(n))))
-                  }}
-                  className="h-8 w-24 font-mono tabular-nums"
-                  inputMode="numeric"
-                />
-              </div>
-            </div>
-
-            <div className="sm:ml-auto flex items-center gap-2">
-              {hardcaseRes ? (
-                <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                  scanned {hardcaseRes.feedback_scanned} · candidates {hardcaseRes.candidates?.length ?? 0}
-                  {hardcaseRes.truncated ? ' · truncated' : ''}
-                </div>
-              ) : null}
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => detachPromise(loadHardcases())}
-                disabled={!selectedSuiteId || hardcaseLoading}
-              >
-                <RefreshCw className={cn('size-4', hardcaseLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
-                refresh
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label>Convert tags</Label>
-            <TagInput value={hardcaseTags} onValueChange={setHardcaseTags} placeholder="回车添加 tag…" />
-          </div>
-
-          {hardcaseError ? <div className="text-xs text-destructive text-pretty">{hardcaseError}</div> : null}
-
-          <ScrollArea className="max-h-[70vh] pr-3">
-            {(() => {
-    if (hardcaseLoading) {
-        return (<div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
-                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true"/>
-                loading…
-              </div>);
-    }
-    else if (hardcaseRes) {
-            return (<div className="space-y-3 py-1">
-                {(() => {
-                    if (hardcaseRes.enabled) {
-                        if ((hardcaseRes.candidates || []).length) {
-                            return ((hardcaseRes.candidates || []).map((cand) => {
-	                                const qh = String(cand.question_hash || '').trim();
-	                                const fbIds = Array.isArray(cand.feedback_ids) ? cand.feedback_ids : [];
-	                                const reqIds = Array.isArray(cand.request_ids) ? cand.request_ids : [];
-	                                const errKinds = (cand.retrieval_error_kinds || {}) as Record<string, number>;
-	                                const errBadges = buildErrBadges(errKinds);
-	                                const errBadgeNodes: ReactNode[] = [];
-	                                for (const [k, v] of errBadges) {
-	                                    errBadgeNodes.push((<Badge key={k} variant="outline" className="font-mono">
-	                                  {k}:{v}
-	                                </Badge>));
-	                                }
-
-	                                const fbIdNodes: ReactNode[] = [];
-	                                if (fbIds.length) {
-	                                    for (const fid0 of fbIds.slice(0, 8)) {
-	                                        const fid = String(fid0);
-	                                        fbIdNodes.push((<div key={fid} className="inline-flex items-center gap-1.5">
-	                                    <Badge variant="outline" className="font-mono text-[10px]">
-	                                      {String(fid).slice(0, 8)}
-	                                    </Badge>
-	                                    <Button variant="outline" size="icon" className="size-7" aria-label="复制 feedback_id" onClick={buildCopyHandler('feedback_id', String(fid))}>
-	                                      <Copy className="size-3.5" aria-hidden="true"/>
-	                                    </Button>
-	                                    <Button size="sm" className="h-7 px-2 text-xs" onClick={buildConvertFeedbackHandler(String(fid), qh)} disabled={!selectedSuiteId || Boolean(convertingFeedbackId)}>
-	                                      {convertingFeedbackId === String(fid) ? (<Loader2 className="size-3.5 animate-spin motion-reduce:animate-none mr-1.5" aria-hidden="true"/>) : null}
-	                                      转为 draft
-	                                    </Button>
-	                                  </div>));
-	                                    }
-	                                }
-
-	                                const reqIdNodes: ReactNode[] = [];
-	                                if (reqIds.length) {
-	                                    for (const rid0 of reqIds.slice(0, 6)) {
-	                                        const rid = String(rid0);
-	                                        reqIdNodes.push((<div key={rid} className="inline-flex items-center gap-1.5">
-	                                    <Badge variant="secondary" className="font-mono text-[10px]">
-	                                      {String(rid).slice(0, 10)}
-	                                    </Badge>
-	                                    <Button variant="outline" size="icon" className="size-7" aria-label="复制 request_id" onClick={buildCopyHandler('request_id', String(rid))}>
-	                                      <Copy className="size-3.5" aria-hidden="true"/>
-	                                    </Button>
-	                                  </div>));
-	                                    }
-	                                }
-		                                const tmpl = cand.rag_config_template ?? null;
-		                                const tmplKey = tmpl ? String(tmpl?.template_key || '').trim() : '';
-		                                const tmplVer = tmpl && Number.isFinite(Number(tmpl?.version)) ? Number(tmpl.version) : null;
-		                                const tmplPatch = tmpl ? String(tmpl?.patch_hash || '').trim() : '';
-	                                const tmplVerLabel = tmplVer === null ? '' : `@${tmplVer}`;
-	                                const tmplLabel = tmplKey ? `${tmplKey}${tmplVerLabel}` : '';
-	                                return (<Panel key={qh || JSON.stringify(cand)} className="p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="text-[11px] text-muted-foreground">question_hash</div>
-                            <div className="mt-0.5 font-mono text-sm break-all">{qh || '(missing)'}</div>
-                          </div>
-	                          <div className="flex items-center gap-2 flex-shrink-0">
-	                            <Badge variant="outline" className="font-mono tabular-nums">
-	                              cluster {cand.cluster_size ?? 0}
-	                            </Badge>
-	                            <Button variant="outline" size="icon" className="size-8" aria-label="复制 question_hash" onClick={buildCopyHandler('question_hash', qh)} disabled={!qh}>
-	                              <Copy className="size-4" aria-hidden="true"/>
-	                            </Button>
-	                          </div>
-	                        </div>
-
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground font-mono tabular-nums">
-                          {cand.retrieval_config_hash ? (<Badge variant="secondary" className="font-mono">
-                              cfg {String(cand.retrieval_config_hash).slice(0, 16)}
-                            </Badge>) : (<Badge variant="outline" className="font-mono">
-                              cfg -
-                            </Badge>)}
-
-	                          {typeof cand.citations_count === 'number' ? (<Badge variant="outline" className="font-mono">
-	                              cites {cand.citations_count}
-	                            </Badge>) : null}
-
-	                          {errBadges.length ? errBadgeNodes : (<Badge variant="outline" className="font-mono">
-	                              errors 0
-	                            </Badge>)}
-
-                          {tmplLabel ? (<Badge variant="outline" className="font-mono">
-                              tmpl {tmplLabel}
-                            </Badge>) : null}
-                          {tmplPatch ? (<Badge variant="outline" className="font-mono">
-                              patch {tmplPatch.slice(0, 10)}
-                            </Badge>) : null}
-
-                          {hardcaseRes.truncated ? (<Badge variant="destructive" className="font-mono">
-                              truncated
-                            </Badge>) : null}
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-	                          <div>
-	                            <div className="text-[11px] text-muted-foreground mb-1">feedback_ids (sample)</div>
-	                            <div className="flex flex-wrap gap-2">
-	                              {fbIds.length ? fbIdNodes : (<div className="text-xs text-muted-foreground">-</div>)}
-	                            </div>
-	                          </div>
-
-	                          <div>
-	                            <div className="text-[11px] text-muted-foreground mb-1">request_ids (sample)</div>
-	                            <div className="flex flex-wrap gap-2">
-	                              {reqIds.length ? reqIdNodes : (<div className="text-xs text-muted-foreground">-</div>)}
-	                            </div>
-	                          </div>
-                        </div>
-                      </Panel>);
-                            }));
-                        }
-                        else {
-                            return (<Panel className="p-3">
-                    <div className="text-sm font-medium text-foreground">暂无候选</div>
-                    <div className="mt-1 text-xs text-muted-foreground text-pretty">
-                      你可以尝试提高 <span className="font-mono">max rating</span> 或增大窗口（后端默认 7 天）。
-                    </div>
-                  </Panel>);
-                        }
-                    }
-                    else {
-                        return (<Panel className="p-3">
-                    <div className="text-sm font-medium text-foreground">Metrics log disabled</div>
-                    <div className="mt-1 text-xs text-muted-foreground text-pretty">
-                      需要开启 <span className="font-mono">ENABLE_METRICS_LOG=true</span> 才能从 traces 中发现 hardcases。
-                    </div>
-                  </Panel>);
-                    }
-                })()}
-
-                <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-                  window {hardcaseRes.window_minutes}m · max_bytes {hardcaseRes.max_bytes} · trace_index {hardcaseRes.trace_index_size}
-                </div>
-              </div>);
-        }
-        else {
-            return (<div className="text-sm text-muted-foreground py-4">点击 refresh 加载候选。</div>);
-        }
-})()}
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
-
-      {/* Suite dashboard dialog */}
-      <Dialog
+      <SuiteDashboardDialog
         open={dashboardOpen}
+        selectedSuite={selectedSuite}
+        selectedSuiteId={selectedSuiteId}
+        includeArchived={dashboardIncludeArchived}
+        loading={dashboardLoading}
+        error={dashboardError}
+        dashboard={dashboard}
         onOpenChange={(open) => {
           setDashboardOpen(open)
           if (!open) {
             setDashboardError(null)
           }
         }}
-      >
-        <DialogContent className="max-w-4xl overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Suite Dashboard</DialogTitle>
-            <DialogDescription className="text-pretty">
-              {selectedSuite ? (
-                <>
-                  Suite <span className="font-mono">{String(selectedSuite.id).slice(0, 8)}</span> 路{' '}
-                  <span className="font-medium">{selectedSuite.name}</span>
-                </>
-              ) : (
-                '请选择一个 Suite'
-              )}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
-              <Checkbox
-                checked={dashboardIncludeArchived}
-                onCheckedChange={(v) => setDashboardIncludeArchived(Boolean(v))}
-                aria-label="Include archived items"
-              />
-              include archived items
-            </div>
-
-            <div className="sm:ml-auto flex items-center gap-2">
-              {dashboard ? (
-                <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                  generated {String(dashboard.generated_at || '').slice(0, 19).replaceAll('T', ' ')}
-                </div>
-              ) : null}
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => detachPromise(loadDashboard())}
-                disabled={!selectedSuiteId || dashboardLoading}
-              >
-                <RefreshCw className={cn('size-4', dashboardLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
-                refresh
-              </Button>
-            </div>
-          </div>
-
-          {dashboardError ? <div className="text-xs text-destructive text-pretty">{dashboardError}</div> : null}
-
-          <ScrollArea className="max-h-[70vh] pr-3">
-            <div className="space-y-4">
-              {(() => {
-    if (dashboardLoading) {
-        return (<div className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true"/>
-                  loading…
-                </div>);
-    }
-    else if (dashboard) {
-            return (<>
-                  {dashboardThroughput ? (<div>
-                      <div className="text-xs font-medium text-muted-foreground mb-2">
-                        Throughput (last {dashboardThroughput.window_days}d)
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        <Badge variant="outline" className="font-mono tabular-nums">
-                          created {dashboardThroughput.last_window?.created ?? 0}
-                        </Badge>
-                        <Badge variant="secondary" className="font-mono tabular-nums">
-                          reviewed {dashboardThroughput.last_window?.reviewed ?? 0}
-                        </Badge>
-                        <Badge variant="soft" className="font-mono tabular-nums">
-                          approved {dashboardThroughput.last_window?.approved ?? 0}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <Panel className="p-3">
-                          <div className="text-xs font-medium text-muted-foreground mb-1">draft → reviewed</div>
-                          <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                            n {dashboardThroughput.draft_to_reviewed?.count ?? 0}
-                          </div>
-                          <div className="mt-1 text-xs font-mono tabular-nums">
-                            p50 {formatDurationSec(dashboardThroughput.draft_to_reviewed?.p50_sec ?? 0)} · p90{' '}
-                            {formatDurationSec(dashboardThroughput.draft_to_reviewed?.p90_sec ?? 0)} · mean{' '}
-                            {formatDurationSec(dashboardThroughput.draft_to_reviewed?.mean_sec ?? 0)}
-                          </div>
-                        </Panel>
-
-                        <Panel className="p-3">
-                          <div className="text-xs font-medium text-muted-foreground mb-1">reviewed → approved</div>
-                          <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                            n {dashboardThroughput.reviewed_to_approved?.count ?? 0}
-                          </div>
-                          <div className="mt-1 text-xs font-mono tabular-nums">
-                            p50 {formatDurationSec(dashboardThroughput.reviewed_to_approved?.p50_sec ?? 0)} · p90{' '}
-                            {formatDurationSec(dashboardThroughput.reviewed_to_approved?.p90_sec ?? 0)} · mean{' '}
-                            {formatDurationSec(dashboardThroughput.reviewed_to_approved?.mean_sec ?? 0)}
-                          </div>
-                        </Panel>
-
-                        <Panel className="p-3">
-                          <div className="text-xs font-medium text-muted-foreground mb-1">draft → approved</div>
-                          <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                            n {dashboardThroughput.draft_to_approved?.count ?? 0}
-                          </div>
-                          <div className="mt-1 text-xs font-mono tabular-nums">
-                            p50 {formatDurationSec(dashboardThroughput.draft_to_approved?.p50_sec ?? 0)} · p90{' '}
-                            {formatDurationSec(dashboardThroughput.draft_to_approved?.p90_sec ?? 0)} · mean{' '}
-                            {formatDurationSec(dashboardThroughput.draft_to_approved?.mean_sec ?? 0)}
-                          </div>
-                        </Panel>
-                      </div>
-                    </div>) : (<div className="text-sm text-muted-foreground text-pretty">No throughput data.</div>)}
-
-                  <Separator />
-
-                  {dashboardCoverage ? (<>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <Panel className="p-3">
-                          <div className="text-xs font-medium text-muted-foreground mb-2">Language coverage</div>
-                          <div className="space-y-1">
-                            {(dashboardCoverage.language || []).map((b) => (<div key={`lang:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
-                                <div className="min-w-0 truncate font-mono">{b.key}</div>
-                                <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                                  <span>refs {b.references}</span>
-                                  <span>items {b.items}</span>
-                                </div>
-                              </div>))}
-                          </div>
-                        </Panel>
-
-                        <Panel className="p-3">
-                          <div className="text-xs font-medium text-muted-foreground mb-2">File type coverage</div>
-                          <div className="space-y-1">
-                            {(dashboardCoverage.file_type || []).map((b) => (<div key={`ft:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
-                                <div className="min-w-0 truncate font-mono">{b.key}</div>
-                                <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                                  <span>refs {b.references}</span>
-                                  <span>items {b.items}</span>
-                                </div>
-                              </div>))}
-                          </div>
-                        </Panel>
-
-                        <Panel className="p-3">
-                          <div className="text-xs font-medium text-muted-foreground mb-2">Quality bucket coverage</div>
-                          <div className="space-y-1">
-                            {(dashboardCoverage.quality_bucket || []).map((b) => (<div key={`qb:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
-                                <div className="min-w-0 truncate font-mono">{b.key}</div>
-                                <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                                  <span>refs {b.references}</span>
-                                  <span>items {b.items}</span>
-                                </div>
-                              </div>))}
-                          </div>
-                        </Panel>
-
-                        <Panel className="p-3">
-                          <div className="text-xs font-medium text-muted-foreground mb-2">Channel (hit_type) coverage</div>
-                          <div className="space-y-1">
-                            {(dashboardCoverage.channel || []).map((b) => (<div key={`ch:${b.key}`} className="flex items-center justify-between gap-3 text-xs">
-                                <div className="min-w-0 truncate font-mono">{b.key}</div>
-                                <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                                  <span>refs {b.references}</span>
-                                  <span>items {b.items}</span>
-                                </div>
-                              </div>))}
-                          </div>
-                        </Panel>
-                      </div>
-
-	                      <Panel className="p-3">
-	                        <div className="text-xs font-medium text-muted-foreground mb-2">
-	                          Heatmap: language × file_type (unique items)
-	                        </div>
-	                        {dashboardCoverage.heatmaps?.['language_x_file_type'] ? (
-	                          <div className="overflow-x-auto">
-	                            {renderLanguageXFileTypeHeatmap(dashboardCoverage.heatmaps['language_x_file_type'])}
-	                          </div>
-	                        ) : (
-	                          <div className="text-xs text-muted-foreground">No heatmap data.</div>
-	                        )}
-	                  </Panel>
-                    </>) : (<div className="text-sm text-muted-foreground text-pretty">No coverage data.</div>)}
-                </>);
-        }
-        else {
-            return (<div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>);
-        }
-})()}
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
+        onIncludeArchivedChange={setDashboardIncludeArchived}
+        onRefresh={() => detachPromise(loadDashboard())}
+      />
 
       {/* Create suite dialog */}
       <Dialog
