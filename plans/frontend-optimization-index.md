@@ -1,6 +1,8 @@
 # MimirQ 前端优化 — 实施计划索引
 
 > 基于 `plans/frontend-audit.md` 审查报告，按影响度 × 实施难度排序的 4 批实施计划。
+>
+> 所有计划均经过代码库深度探索验证，包含精确的文件路径、行号和代码片段。
 
 ## 计划文件
 
@@ -10,6 +12,17 @@
 | [`batch-2-architecture.md`](./batch-2-architecture.md) | 第二批 | 架构治理 | 3 |
 | [`batch-3-code-quality.md`](./batch-3-code-quality.md) | 第三批 | 代码质量 | 4 |
 | [`batch-4-long-term.md`](./batch-4-long-term.md) | 第四批 | 长期改善 | 5 |
+
+## 关键发现摘要
+
+| 发现 | 严重度 | 对应 Task |
+|------|--------|-----------|
+| JWT token 通过 URL query param 泄露（2 个文件） | 🔴 高 | 1.1 |
+| `api-client.ts` 4,261 行、32 个 namespace、83 个消费者 | 🟠 中 | 2.1 |
+| `sanitizeFilename` export.ts 中存在 bug（字符串非正则） | 🟠 中 | 2.3A |
+| Parser 名称规范化缺少 `olm-ocr` 别名（3 处副本） | 🟡 低 | 2.3F |
+| `@codesandbox/sandpack-react` 零 import，可安全删除 | 🟡 低 | 1.3C |
+| `hooks/use-parsed-files.ts` 零生产引用，确认死代码 | 🟡 低 | 4.1A |
 
 ## 实施顺序与依赖关系
 
