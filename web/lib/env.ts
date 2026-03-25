@@ -1,10 +1,4 @@
-function trimTrailingSlashes(value: string): string {
-  let end = value.length
-  while (end > 0 && value[end - 1] === '/') {
-    end -= 1
-  }
-  return value.slice(0, end)
-}
+import { trimTrailingSlashes } from './utils'
 
 function hasHttpProtocol(value: string): boolean {
   const lower = value.slice(0, 8).toLowerCase()

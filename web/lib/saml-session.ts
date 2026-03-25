@@ -1,4 +1,5 @@
 import type { AuthResponse } from '@/types'
+import { base64UrlDecodeToBytes, base64UrlEncode, decodeUtf8, encodeUtf8 } from '@/lib/encoding'
 
 export const SAML_BRIDGE_COOKIE_NAME = 'mimirq_saml_bridge'
 export const SAML_BRIDGE_COOKIE_PATH = '/auth/saml/callback'
@@ -14,36 +15,12 @@ export type SamlBridgeState =
       error: string
     }
 
-function encodeUtf8(value: string): Uint8Array {
-  return new TextEncoder().encode(value)
-}
-
-function decodeUtf8(value: Uint8Array): string {
-  return new TextDecoder().decode(value)
-}
-
-function toBase64Url(bytes: Uint8Array): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(bytes).toString('base64url')
-  }
-
-  let out = ''
-  for (const byte of bytes) out += String.fromCodePoint(byte)
-  return btoa(out).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
-}
-
 function fromBase64Url(value: string): Uint8Array | null {
   const normalized = String(value || '').trim()
   if (!normalized) return null
 
   try {
-    if (typeof Buffer !== 'undefined') {
-      return new Uint8Array(Buffer.from(normalized, 'base64url'))
-    }
-
-    const padded = normalized.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    const binary = atob(padded)
-    return Uint8Array.from(binary, (char) => char.codePointAt(0) ?? 0)
+    return base64UrlDecodeToBytes(normalized)
   } catch {
     return null
   }
@@ -63,7 +40,7 @@ function readCookie(name: string): string | null {
 }
 
 export function encodeSamlBridgeState(payload: SamlBridgeState): string {
-  return toBase64Url(encodeUtf8(JSON.stringify(payload)))
+  return base64UrlEncode(encodeUtf8(JSON.stringify(payload)))
 }
 
 export function clearSamlBridgeState(): void {

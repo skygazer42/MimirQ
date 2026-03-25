@@ -4,7 +4,7 @@ type ParserResolveResult = {
   reason?: string
 }
 
-function normalizeBackend(value?: string): string {
+export function normalizeParserBackendName(value?: string): string {
   const raw = (value || '').trim().toLowerCase()
   if (!raw) return 'auto'
   const normalized = raw.replaceAll("_", '-')
@@ -47,7 +47,7 @@ const PDF_BACKENDS = new Set([
 ])
 
 export function resolveParserBackendForFilename(filename: string, requestedBackend?: string): ParserResolveResult {
-  const backend = normalizeBackend(requestedBackend)
+  const backend = normalizeParserBackendName(requestedBackend)
   const ext = fileExt(filename)
 
   if (ext === '.pdf') {
@@ -125,7 +125,7 @@ export function resolveParserBackendForFilename(filename: string, requestedBacke
 }
 
 export function resolveParserBackendForFiles(files: File[], requestedBackend?: string): ParserResolveResult {
-  const normalized = normalizeBackend(requestedBackend)
+  const normalized = normalizeParserBackendName(requestedBackend)
   let changed = false
   for (const file of files) {
     const resolved = resolveParserBackendForFilename(file?.name || '', normalized)

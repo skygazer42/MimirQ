@@ -6,6 +6,7 @@ describe('workflow editor source', () => {
   it('uses React Flow editor primitives for editable workflow layout', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'workflow-editor.tsx'), 'utf8')
     expect(src).toContain('@xyflow/react')
+    expect(src).toContain("@xyflow/react/dist/style.css")
     expect(src).toContain('ReactFlow')
     expect(src).toContain('onNodesChange')
     expect(src).toContain('onEdgesChange')

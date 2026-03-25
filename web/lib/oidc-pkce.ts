@@ -1,44 +1,6 @@
-function bytesToBase64(bytes: Uint8Array): string {
-  // Prefer Buffer when available (Node), otherwise fall back to btoa (browser).
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(bytes).toString('base64')
-  }
+import { base64UrlDecodeToBytes, base64UrlEncode, encodeUtf8 } from '@/lib/encoding'
 
-  let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCodePoint(byte)
-  }
-  // btoa expects Latin-1 bytes, which we provide via String.fromCharCode.
-  return btoa(binary)
-}
-
-function base64ToBytes(base64: string): Uint8Array {
-  if (typeof Buffer !== 'undefined') {
-    return Uint8Array.from(Buffer.from(base64, 'base64'))
-  }
-
-  const binary = atob(base64)
-  const out = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    out[i] = binary.charCodeAt(i)
-  }
-  return out
-}
-
-export function base64UrlEncode(bytes: Uint8Array): string {
-  return bytesToBase64(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
-}
-
-export function base64UrlDecodeToBytes(base64Url: string): Uint8Array {
-  const raw = String(base64Url || '').trim()
-  if (!raw) return new Uint8Array()
-
-  let base64 = raw.replaceAll('-', '+').replaceAll('_', '/')
-  const pad = base64.length % 4
-  if (pad) base64 += '='.repeat(4 - pad)
-
-  return base64ToBytes(base64)
-}
+export { base64UrlDecodeToBytes, base64UrlEncode } from '@/lib/encoding'
 
 export function randomBytes(byteLength: number): Uint8Array {
   if (!Number.isFinite(byteLength) || byteLength <= 0) {
@@ -69,8 +31,8 @@ export async function sha256Bytes(input: string): Promise<Uint8Array> {
     throw new Error('crypto_subtle_unavailable')
   }
 
-  const data = new TextEncoder().encode(String(input || ''))
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', data)
+  const data = encodeUtf8(String(input || ''))
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', data as BufferSource)
   return new Uint8Array(digest)
 }
 

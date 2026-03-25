@@ -10,6 +10,8 @@ describe('document viewer panel source', () => {
     expect(src).toContain('String.raw`\\$&`')
     expect(src).not.toContain('document.execCommand(')
     expect(src).not.toContain('removeChild(')
+    expect(src).not.toContain('searchParams.set("token"')
+    expect(src).not.toContain("searchParams.set('token'")
     expect(src).toContain('setHighlightChunkState((prev) => (prev?.id === updated.id ? updated : prev))')
   })
 })

@@ -4,6 +4,7 @@ import * as React from "react"
 import { X, Maximize2, Minimize2, FileText, Loader2, Download, Copy, Link2, Pencil, Trash2, Plus, Sparkles } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn, detachPromise } from '@/lib/utils'
+import { useResolvedAuthAssetUrl } from "@/components/auth-image"
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -14,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { documentApi, ragApi } from "@/lib/api-client"
 import { API_V1_BASE_URL } from "@/lib/env"
 import type { Citation, Document, DocumentChunk, DocumentParsedContentResponse, DocumentQAGenerateResponse } from "@/types"
-import { getAccessToken, getTenantId } from "@/lib/auth-storage"
 import { FloatingMenu } from "@/components/document-viewer/floating-menu"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
@@ -445,26 +445,19 @@ export function DocumentViewerPanel() {
     setMatchCursor(0)
   }, [chunkQuery])
 
-  const fileUrl = React.useMemo(() => {
-    if (!documentId) return ""
-    const url = new URL(`${API_V1_BASE_URL}/documents/${documentId}/download`)
-    const token = getAccessToken()
-    const tenantId = getTenantId()
-    if (tenantId) url.searchParams.set("tenant_id", tenantId)
-    if (token) url.searchParams.set("token", token)
-    return url.toString()
+  const rawFileUrl = React.useMemo(() => {
+    if (!documentId) return null
+    return `${API_V1_BASE_URL}/documents/${documentId}/download`
   }, [documentId])
 
-  const downloadUrl = React.useMemo(() => {
-    if (!documentId) return ""
+  const rawDownloadUrl = React.useMemo(() => {
+    if (!documentId) return null
     const url = new URL(`${API_V1_BASE_URL}/documents/${documentId}/download`)
-    const token = getAccessToken()
-    const tenantId = getTenantId()
-    if (tenantId) url.searchParams.set("tenant_id", tenantId)
-    if (token) url.searchParams.set("token", token)
     url.searchParams.set("inline", "0")
     return url.toString()
   }, [documentId])
+  const fileUrl = useResolvedAuthAssetUrl(rawFileUrl)
+  const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl)
 
   const buildChunkLink = React.useCallback((chunkId: string, range?: { start?: number | null; end?: number | null }) => {
     if (!documentId) return ""
@@ -949,6 +942,11 @@ export function DocumentViewerPanel() {
     }
     else if (canInlinePreview && fileUrl) {
             return (<iframe src={`${fileUrl}#toolbar=0`} className="w-full h-full border-none" title="Document Preview"/>);
+        }
+        else if (canInlinePreview && rawFileUrl) {
+            return (<div className="flex items-center justify-center h-full text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
+                  </div>);
         }
         else {
             return (<div className="h-full flex items-center justify-center p-6">

@@ -21,8 +21,8 @@ import {
 import { cn, detachPromise } from '@/lib/utils'
 import { PARSER_BACKEND_OPTIONS, getParserOption } from '@/lib/parser-options'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
-import { resolveParserBackendForFilename } from '@/lib/parser-compat'
-import { settingsApi } from '@/lib/api-client'
+import { normalizeParserBackendName, resolveParserBackendForFilename } from '@/lib/parser-compat'
+import { settingsApi } from '@/lib/api/settings'
 
 // 图标映射
 const ICON_MAP = {
@@ -64,22 +64,9 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { capabilities, loading, error, refresh, parserBackendAvailable } = usePipelineCapabilities()
 
-  const normalizeBackendName = (backend?: string) => {
-    const raw = (backend || '').toLowerCase().trim()
-    const normalized = raw.replaceAll("_", '-')
-    if (normalized === 'magic-pdf') return 'magicpdf'
-    if (normalized === 'olm-ocr') return 'olmocr'
-    if (normalized === 'olmocr-pdf') return 'olmocr'
-    if (normalized === 'etl-4llm') return 'etl4llm'
-    if (normalized === 'bisheng-unstructured') return 'etl4llm'
-    if (normalized === 'bishengunstructured') return 'etl4llm'
-    if (normalized === 'bisheng') return 'etl4llm'
-    return normalized
-  }
-
   const parserNotesByName = new Map<string, string>()
   for (const info of capabilities?.pdf_backends || []) {
-    const key = normalizeBackendName(info.name)
+    const key = normalizeParserBackendName(info.name)
     const notes = (info.notes || '').trim()
     if (key && notes) parserNotesByName.set(key, notes)
   }
@@ -225,7 +212,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                 resolveParserBackendForFilename(filename || '', option.value).backend !== option.value
               const isDisabledByCapabilities = option.value !== 'auto' && option.value !== 'basic' && availability !== true
               const isDisabled = isDisabledByFile || isDisabledByCapabilities
-              const notes = parserNotesByName.get(normalizeBackendName(option.value))
+              const notes = parserNotesByName.get(normalizeParserBackendName(option.value))
               const disabledTitle = isDisabledByFile
                 ? '该文件类型不支持此解析器'
                 : (notes || '后端未启用该解析器（可到“设置”开启/配置）')

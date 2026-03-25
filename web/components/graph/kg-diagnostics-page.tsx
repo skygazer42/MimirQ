@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
 import { evaluationApi, type KGHardcaseMode, type KGSearchDiagnosticsResponse, type KGSearchDiagnosticsRunDetail } from '@/lib/api-client'
 import { coerceOneOf } from '@/lib/one-of'
+import { sanitizeFilename } from '@/lib/sanitize'
 
 const KG_EXTRACT_MODE_VALUES = ['auto', 'on', 'off'] as const
 
@@ -25,12 +26,6 @@ function prettyJson(value: unknown): string {
   } catch {
     return String(value)
   }
-}
-
-function sanitizeFilename(name: string): string {
-  const trimmed = String(name || '').trim()
-  const base = trimmed || 'kg-diagnostics'
-  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function downloadJson(value: unknown, filename: string): void {

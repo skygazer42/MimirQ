@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
+import { normalizeParserBackendName } from '@/lib/parser-compat'
 
 const STORAGE_KEY = 'mimirq_parser_backend'
 
@@ -20,12 +21,12 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
     if (globalThis.window === undefined) return
     const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
     if (stored) {
-      setParserBackend(stored)
+      setParserBackend(normalizeParserBackendName(stored))
     }
 
     const handleStorage = (event: StorageEvent) => {
       if (event.key === STORAGE_KEY && event.newValue) {
-        setParserBackend(event.newValue)
+        setParserBackend(normalizeParserBackendName(event.newValue))
       }
     }
     globalThis.window.addEventListener('storage', handleStorage)
@@ -33,13 +34,7 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
   }, [])
 
   const persistParserBackend = useCallback((value: string) => {
-    const raw = (value || '').toLowerCase().trim()
-    const normalized = raw.replaceAll('_', '-')
-    let next = normalized
-    if (next === 'magic-pdf') next = 'magicpdf'
-    if (next === 'etl-4llm') next = 'etl4llm'
-    if (next === 'bisheng-unstructured' || next === 'bishengunstructured' || next === 'bisheng') next = 'etl4llm'
-    next = next || 'auto'
+    const next = normalizeParserBackendName(value)
     setParserBackend(next)
     if (globalThis.window !== undefined) {
       globalThis.window.localStorage.setItem(STORAGE_KEY, next)

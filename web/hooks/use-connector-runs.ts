@@ -3,13 +3,15 @@
  */
 'use client'
 
-import { useCallback, useState } from 'react'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import type { ConnectorRunOut } from '@/types'
-import { connectorApi } from '@/lib/api-client'
+import { connectorApi } from '@/lib/api/connectors'
 import { formatApiError } from '@/lib/api-errors'
 import { detachPromise } from '@/lib/utils'
+import { queryKeys } from '@/lib/query-keys'
 
 
 export type ConnectorRunsListParams = {
@@ -23,28 +25,69 @@ type UseConnectorRunsOptions = {
   loadDocuments?: () => void | Promise<void>
 }
 
+type ConnectorRunsScope = {
+  datasetId?: string
+  limit: number
+}
+
 export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments }: UseConnectorRunsOptions) {
-  const [connectorRuns, setConnectorRuns] = useState<ConnectorRunOut[]>([])
-  const [connectorRunsLoading, setConnectorRunsLoading] = useState(false)
-  const [connectorRunsUpdatedAt, setConnectorRunsUpdatedAt] = useState<number | null>(null)
+  const queryClient = useQueryClient()
+  const [scope, setScope] = useState<ConnectorRunsScope>({ datasetId: selectedDatasetId, limit })
+  const [enabled, setEnabled] = useState(false)
+
+  const queryParams = useMemo(
+    () => ({
+      datasetId: scope.datasetId,
+      limit: scope.limit,
+    }),
+    [scope.datasetId, scope.limit]
+  )
+
+  const queryFn = useCallback(async () => {
+    const res = await connectorApi.listRuns({
+      limit: queryParams.limit,
+      dataset_id: queryParams.datasetId,
+    })
+    return res.items || []
+  }, [queryParams.datasetId, queryParams.limit])
+
+  const {
+    data: connectorRuns = [],
+    dataUpdatedAt,
+    isFetching,
+    isLoading,
+  } = useQuery<ConnectorRunOut[]>({
+    queryKey: queryKeys.connectors.runs(queryParams),
+    queryFn,
+    enabled,
+    placeholderData: keepPreviousData,
+  })
 
   const loadConnectorRuns = useCallback(
     async (params?: ConnectorRunsListParams) => {
-      setConnectorRunsLoading(true)
+      const nextScope = {
+        datasetId: params?.datasetId ?? selectedDatasetId,
+        limit: params?.limit ?? limit,
+      }
+      setScope(nextScope)
+      setEnabled(true)
+
       try {
-        const res = await connectorApi.listRuns({
-          limit: params?.limit ?? limit,
-          dataset_id: params?.datasetId,
+        await queryClient.fetchQuery({
+          queryKey: queryKeys.connectors.runs(nextScope),
+          queryFn: async () => {
+            const res = await connectorApi.listRuns({
+              limit: nextScope.limit,
+              dataset_id: nextScope.datasetId,
+            })
+            return res.items || []
+          },
         })
-        setConnectorRuns(res.items || [])
-        setConnectorRunsUpdatedAt(Date.now())
       } catch (err) {
         console.warn('Load connector runs failed:', err)
-      } finally {
-        setConnectorRunsLoading(false)
       }
     },
-    [limit]
+    [limit, queryClient, selectedDatasetId]
   )
 
   const refreshSelectedDatasetRuns = useCallback(async () => {
@@ -97,8 +140,8 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
 
   return {
     connectorRuns,
-    connectorRunsLoading,
-    connectorRunsUpdatedAt,
+    connectorRunsLoading: enabled && (isLoading || isFetching),
+    connectorRunsUpdatedAt: dataUpdatedAt || null,
     loadConnectorRuns,
     refreshSelectedDatasetRuns,
     cancelConnectorRun,

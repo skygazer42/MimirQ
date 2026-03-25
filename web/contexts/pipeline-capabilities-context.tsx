@@ -1,9 +1,12 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { createContext, useCallback, useContext, useMemo } from 'react'
 import type { PipelineCapabilitiesResponse } from '@/types'
-import { pipelineApi } from '@/lib/api-client'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { formatApiError } from '@/lib/api-errors'
+import { normalizeParserBackendName } from '@/lib/parser-compat'
+import { queryKeys } from '@/lib/query-keys'
 
 type PipelineCapabilitiesContextValue = {
   capabilities: PipelineCapabilitiesResponse | null
@@ -16,44 +19,30 @@ type PipelineCapabilitiesContextValue = {
 
 const PipelineCapabilitiesContext = createContext<PipelineCapabilitiesContextValue | null>(null)
 
-function normalizeParserBackendName(value?: string) {
-  const raw = (value || '').toLowerCase().trim()
-  const normalized = raw.replaceAll("_", '-')
-  if (normalized === 'magic-pdf') return 'magicpdf'
-  if (normalized === 'olm-ocr') return 'olmocr'
-  if (normalized === 'olmocr-pdf') return 'olmocr'
-  if (normalized === 'etl-4llm') return 'etl4llm'
-  if (normalized === 'bisheng-unstructured') return 'etl4llm'
-  if (normalized === 'bishengunstructured') return 'etl4llm'
-  if (normalized === 'bisheng') return 'etl4llm'
-  return normalized
-}
-
 function normalizeChunkStrategyName(value?: string) {
   return (value || '').toLowerCase().trim()
 }
 
 export function PipelineCapabilitiesProvider({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [capabilities, setCapabilities] = useState<PipelineCapabilitiesResponse | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    data,
+    error: queryError,
+    isFetching,
+    isLoading,
+    refetch,
+  } = useQuery<PipelineCapabilitiesResponse>({
+    queryKey: queryKeys.pipeline.capabilities,
+    queryFn: () => pipelineApi.getCapabilities(),
+    staleTime: 5 * 60_000,
+  })
+
+  const capabilities = data ?? null
+  const loading = isLoading || isFetching
+  const error = queryError ? formatApiError(queryError, 'Failed to load pipeline capabilities') : null
 
   const refresh = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await pipelineApi.getCapabilities()
-      setCapabilities(data)
-      setError(null)
-    } catch (err: any) {
-      setError(formatApiError(err, 'Failed to load pipeline capabilities'))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+    await refetch()
+  }, [refetch])
 
   const parserBackendMap = useMemo(() => {
     const map = new Map<string, boolean>()

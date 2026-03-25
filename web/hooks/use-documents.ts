@@ -3,8 +3,9 @@
  */
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { documentApi } from '@/lib/api-client'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { documentApi } from '@/lib/api/documents'
 import type {
   Document,
   DocumentBatchUploadFailure,
@@ -16,6 +17,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 
 export type DocumentListParams = {
   skip?: number
@@ -178,39 +180,62 @@ async function uploadBatchRound(
   }
 }
 
+type DocumentListResponse = Awaited<ReturnType<typeof documentApi.list>>
+
 export function useDocuments() {
-  const [documents, setDocuments] = useState<Document[]>([])
-  const [total, setTotal] = useState(0)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const pollTimersRef = useRef<Map<string, number>>(new Map())
-  const lastListParamsRef = useRef<DocumentListParams>({ limit: 100, lifecycle: 'active' })
+  const [listParams, setListParams] = useState<DocumentListParams>({ limit: 100, lifecycle: 'active' })
+  const lastListParamsRef = useRef<DocumentListParams>(listParams)
+  const [actionError, setActionError] = useState<string | null>(null)
   const { parserBackend } = useParserBackendPreference()
   const { chunkStrategy } = useChunkStrategyPreference()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = usePipelineOptions()
 
-  /**
-   * 加载文档列表
-   */
-  const loadDocuments = useCallback(async (params?: DocumentListParams) => {
-    setIsLoading(true)
-    setError(null)
+  const {
+    data: listData,
+    error: listError,
+    isFetching,
+    isLoading: isListLoading,
+  } = useQuery<DocumentListResponse>({
+    queryKey: queryKeys.documents.list(listParams),
+    queryFn: () => documentApi.list(listParams),
+    placeholderData: keepPreviousData,
+  })
 
-    try {
+  const updateCachedDocuments = useCallback(
+    (updater: (current: DocumentListResponse | undefined) => DocumentListResponse | undefined) => {
+      queryClient.setQueryData<DocumentListResponse>(
+        queryKeys.documents.list(lastListParamsRef.current),
+        updater
+      )
+    },
+    [queryClient]
+  )
+
+  const loadDocuments = useCallback(
+    async (params?: DocumentListParams) => {
+      setActionError(null)
+
       const effective: DocumentListParams = params
         ? { ...lastListParamsRef.current, ...params }
         : { ...lastListParamsRef.current }
+
       lastListParamsRef.current = effective
-      const response = await documentApi.list(effective)
-      setDocuments(response.items || [])
-      setTotal(Number(response.total) || 0)
-    } catch (err: any) {
-      setError(formatApiError(err, 'Failed to load documents'))
-      console.error('Load documents error:', err)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+      setListParams(effective)
+
+      try {
+        await queryClient.fetchQuery({
+          queryKey: queryKeys.documents.list(effective),
+          queryFn: () => documentApi.list(effective),
+        })
+      } catch (err: any) {
+        setActionError(formatApiError(err, 'Failed to load documents'))
+        console.error('Load documents error:', err)
+      }
+    },
+    [queryClient]
+  )
 
   /**
    * 轮询文档处理状态
@@ -229,7 +254,13 @@ export function useDocuments() {
           const status = await documentApi.getStatus(documentId)
 
           // 更新文档状态
-          setDocuments((prev) => mergePolledDocumentList(prev, documentId, status))
+          updateCachedDocuments((current) => {
+            if (!current?.items?.length) return current
+            return {
+              ...current,
+              items: mergePolledDocumentList(current.items || [], documentId, status),
+            }
+          })
 
           // 如果处理完成/失败/隔离，停止轮询
           if (isTerminalDocumentStatus(status.status)) {
@@ -237,7 +268,13 @@ export function useDocuments() {
 
             // 重新加载完整的文档信息
             const fullDoc = await documentApi.get(documentId)
-            setDocuments((prev) => replacePolledDocumentList(prev, documentId, fullDoc))
+            updateCachedDocuments((current) => {
+              if (!current?.items?.length) return current
+              return {
+                ...current,
+                items: replacePolledDocumentList(current.items || [], documentId, fullDoc),
+              }
+            })
             return
           }
         } catch (err) {
@@ -255,61 +292,65 @@ export function useDocuments() {
         pollTimersRef.current.set(documentId, timeoutId)
       }
 
-      pollOnce()
+      void pollOnce()
     },
-    []
+    [updateCachedDocuments]
   )
 
-  /**
-   * 上传文档
-   */
-  const uploadDocument = useCallback(
-    async (file: File) => {
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
-        const newDoc = await documentApi.upload(file, {
-          parser_backend: parserBackend,
-          chunk_strategy: chunkStrategy,
-          dataset_id: datasetId || undefined,
-          pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-        })
-        const params = lastListParamsRef.current
-        if (matchesDocumentListParams(newDoc, params)) {
-          setDocuments((prev) => [newDoc, ...prev])
-          setTotal((prev) => prev + 1)
-        }
-
-        // 轮询检查处理状态
-        pollDocumentStatus(newDoc.id)
-
-        return newDoc
-      } catch (err: any) {
-        setError(formatApiError(err, 'Failed to upload document'))
-        console.error('Upload error:', err)
-        throw err
-      } finally {
-        setIsLoading(false)
-      }
+  const {
+    mutateAsync: uploadDocumentMutation,
+    isPending: uploadDocumentPending,
+  } = useMutation({
+    mutationFn: async (file: File) => {
+      const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
+      return documentApi.upload(file, {
+        parser_backend: parserBackend,
+        chunk_strategy: chunkStrategy,
+        dataset_id: datasetId || undefined,
+        pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+      })
     },
-    [parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions, pollDocumentStatus]
+    onMutate: async () => {
+      setActionError(null)
+    },
+    onSuccess: (newDoc) => {
+      const params = lastListParamsRef.current
+      if (matchesDocumentListParams(newDoc, params)) {
+        updateCachedDocuments((current) => ({
+          ...(current || { items: [], total: 0 }),
+          items: [newDoc, ...(current?.items || [])],
+          total: Number(current?.total || 0) + 1,
+        }))
+      }
+      pollDocumentStatus(newDoc.id)
+    },
+    onError: (err) => {
+      setActionError(formatApiError(err, 'Failed to upload document'))
+      console.error('Upload error:', err)
+    },
+  })
+
+  const uploadDocument = useCallback(
+    async (file: File) => uploadDocumentMutation(file),
+    [uploadDocumentMutation]
   )
 
   /**
    * 批量上传（支持 folder upload 的相对路径保留 + 自动重试失败项）
    */
-  const uploadDocuments = useCallback(
-    async (
-      files: File[],
-      options: { maxRetries?: number; maxConcurrent?: number } = {}
-    ): Promise<DocumentBatchUploadResponse> => {
-      setIsLoading(true)
-      setError(null)
-
-      const maxRetries = clampUploadOption(options.maxRetries, 1, 0, 3)
-      const maxConcurrent = clampUploadOption(options.maxConcurrent, 5, 1, 10)
+  const {
+    mutateAsync: uploadDocumentsMutation,
+    isPending: uploadDocumentsPending,
+  } = useMutation({
+    mutationFn: async ({
+      files,
+      options,
+    }: {
+      files: File[]
+      options?: { maxRetries?: number; maxConcurrent?: number }
+    }): Promise<DocumentBatchUploadResponse> => {
+      const maxRetries = clampUploadOption(options?.maxRetries, 1, 0, 3)
+      const maxConcurrent = clampUploadOption(options?.maxConcurrent, 5, 1, 10)
       const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
 
       const originalFiles = files.filter(Boolean)
@@ -330,141 +371,196 @@ export function useDocuments() {
       let remaining = originalFiles
       let attempt = 0
 
-      try {
-        while (remaining.length > 0 && attempt <= maxRetries) {
-          const round = await uploadBatchRound(
-            remaining,
-            {
-              parser_backend: parserBackend,
-              chunk_strategy: chunkStrategy,
-              dataset_id: datasetId || undefined,
-              pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-              max_concurrent: maxConcurrent,
-            },
-            fileByKey
-          )
+      while (remaining.length > 0 && attempt <= maxRetries) {
+        const round = await uploadBatchRound(
+          remaining,
+          {
+            parser_backend: parserBackend,
+            chunk_strategy: chunkStrategy,
+            dataset_id: datasetId || undefined,
+            pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+            max_concurrent: maxConcurrent,
+          },
+          fileByKey
+        )
 
-          successes.push(...round.successful)
-          failures = round.failed
-          const nextRemaining = round.nextRemaining
-          if (nextRemaining.length === 0) break
-          attempt += 1
-          remaining = nextRemaining
-        }
+        successes.push(...round.successful)
+        failures = round.failed
+        const nextRemaining = round.nextRemaining
+        if (nextRemaining.length === 0) break
+        attempt += 1
+        remaining = nextRemaining
+      }
 
-        // Refresh list once and then start polling new docs (ensures doc ids are present in state).
-        await loadDocuments()
-        for (const s of successes) {
-          if (s?.document_id) pollDocumentStatus(String(s.document_id))
-        }
+      // Refresh list once and then start polling new docs (ensures doc ids are present in state).
+      await loadDocuments()
+      for (const s of successes) {
+        if (s?.document_id) pollDocumentStatus(String(s.document_id))
+      }
 
-        return {
-          total,
-          successful_count: successes.length,
-          failed_count: failures.length,
-          successful: successes,
-          failed: failures,
-        }
-      } catch (err: any) {
-        setError(formatApiError(err, 'Failed to upload documents'))
-        console.error('Batch upload error:', err)
-        throw err
-      } finally {
-        setIsLoading(false)
+      return {
+        total,
+        successful_count: successes.length,
+        failed_count: failures.length,
+        successful: successes,
+        failed: failures,
       }
     },
-    [chunkStrategy, loadDocuments, parserBackend, pipelineOptions, pipelineOverridesEnabled, pollDocumentStatus]
+    onMutate: async () => {
+      setActionError(null)
+    },
+    onError: (err) => {
+      setActionError(formatApiError(err, 'Failed to upload documents'))
+      console.error('Batch upload error:', err)
+    },
+  })
+
+  const uploadDocuments = useCallback(
+    async (
+      files: File[],
+      options: { maxRetries?: number; maxConcurrent?: number } = {}
+    ) => uploadDocumentsMutation({ files, options }),
+    [uploadDocumentsMutation]
   )
 
   /**
    * 通过 URL 导入文档（后端拉取并入库）
    */
+  const {
+    mutateAsync: uploadDocumentFromUrlMutation,
+    isPending: uploadDocumentFromUrlPending,
+  } = useMutation({
+    mutationFn: async (params: { url: string; filename?: string; dataset_id?: string }) => {
+      return documentApi.uploadFromUrl({
+        url: params.url,
+        filename: params.filename,
+        dataset_id: params.dataset_id,
+        parser_backend: parserBackend,
+        chunk_strategy: chunkStrategy,
+        pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+      })
+    },
+    onMutate: async () => {
+      setActionError(null)
+    },
+    onSuccess: (newDoc) => {
+      const params = lastListParamsRef.current
+      if (matchesDocumentListParams(newDoc, params)) {
+        updateCachedDocuments((current) => ({
+          ...(current || { items: [], total: 0 }),
+          items: [newDoc, ...(current?.items || [])],
+          total: Number(current?.total || 0) + 1,
+        }))
+      }
+      pollDocumentStatus(newDoc.id)
+    },
+    onError: (err) => {
+      setActionError(formatApiError(err, 'Failed to upload document from URL'))
+      console.error('Upload from URL error:', err)
+    },
+  })
+
   const uploadDocumentFromUrl = useCallback(
     async (params: { url: string; filename?: string; dataset_id?: string }) => {
-      setIsLoading(true)
-      setError(null)
-
-      try {
-        const newDoc = await documentApi.uploadFromUrl({
-          url: params.url,
-          filename: params.filename,
-          dataset_id: params.dataset_id,
-          parser_backend: parserBackend,
-          chunk_strategy: chunkStrategy,
-          pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-        })
-
-        const listParams = lastListParamsRef.current
-        if (matchesDocumentListParams(newDoc, listParams)) {
-          setDocuments((prev) => [newDoc, ...prev])
-          setTotal((prev) => prev + 1)
-        }
-
-        pollDocumentStatus(newDoc.id)
-        return newDoc
-      } catch (err: any) {
-        setError(formatApiError(err, 'Failed to upload document from URL'))
-        console.error('Upload from URL error:', err)
-        throw err
-      } finally {
-        setIsLoading(false)
-      }
+      return uploadDocumentFromUrlMutation(params)
     },
-    [parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions, pollDocumentStatus]
+    [uploadDocumentFromUrlMutation]
   )
 
   /**
    * 取消文档处理
    */
-  const cancelDocument = useCallback(async (documentId: string) => {
-    const existing = pollTimersRef.current.get(documentId)
-    if (existing) {
-      clearTimeout(existing)
-      pollTimersRef.current.delete(documentId)
-    }
+  const {
+    mutateAsync: cancelDocumentMutation,
+    isPending: cancelDocumentPending,
+  } = useMutation({
+    mutationFn: async (documentId: string) => {
+      const existing = pollTimersRef.current.get(documentId)
+      if (existing) {
+        clearTimeout(existing)
+        pollTimersRef.current.delete(documentId)
+      }
 
-    try {
-      const status = await documentApi.cancel(documentId)
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          doc.id === documentId
-            ? {
-                ...doc,
-                status: status.status,
-                processing_progress: status.processing_progress,
-                current_stage: status.current_stage,
-                error_message: status.error_message,
-              }
-            : doc
-        )
-      )
-      return status
-    } catch (err: any) {
-      setError(formatApiError(err, 'Failed to cancel document'))
+      return documentApi.cancel(documentId)
+    },
+    onMutate: async () => {
+      setActionError(null)
+    },
+    onSuccess: (status, documentId) => {
+      updateCachedDocuments((current) => {
+        if (!current?.items?.length) return current
+        return {
+          ...current,
+          items: current.items.map((doc) =>
+            doc.id === documentId
+              ? {
+                  ...doc,
+                  status: status.status,
+                  processing_progress: status.processing_progress,
+                  current_stage: status.current_stage,
+                  error_message: status.error_message,
+                }
+              : doc
+          ),
+        }
+      })
+    },
+    onError: (err) => {
+      setActionError(formatApiError(err, 'Failed to cancel document'))
       console.error('Cancel error:', err)
-      throw err
-    }
-  }, [])
+    },
+  })
+
+  const cancelDocument = useCallback(
+    async (documentId: string) => cancelDocumentMutation(documentId),
+    [cancelDocumentMutation]
+  )
 
   /**
    * 删除文档
    */
-  const deleteDocument = useCallback(async (documentId: string) => {
-    try {
-      await documentApi.delete(documentId)
-      setDocuments((prev) => prev.filter((doc) => doc.id !== documentId))
-      setTotal((prev) => Math.max(0, prev - 1))
-    } catch (err: any) {
-      setError(formatApiError(err, 'Failed to delete document'))
+  const {
+    mutateAsync: deleteDocumentMutation,
+    isPending: deleteDocumentPending,
+  } = useMutation({
+    mutationFn: (documentId: string) => documentApi.delete(documentId),
+    onMutate: async () => {
+      setActionError(null)
+    },
+    onSuccess: (_result, documentId) => {
+      updateCachedDocuments((current) => {
+        if (!current) return current
+        return {
+          ...current,
+          items: (current.items || []).filter((doc) => doc.id !== documentId),
+          total: Math.max(0, Number(current.total || 0) - 1),
+        }
+      })
+    },
+    onError: (err) => {
+      setActionError(formatApiError(err, 'Failed to delete document'))
       console.error('Delete error:', err)
-      throw err
-    }
-  }, [])
+    },
+  })
 
-  // 初始加载
-  useEffect(() => {
-    loadDocuments()
-  }, [loadDocuments])
+  const deleteDocument = useCallback(
+    async (documentId: string) => {
+      return deleteDocumentMutation(documentId)
+    },
+    [deleteDocumentMutation]
+  )
+
+  const documents = listData?.items || []
+  const total = Number(listData?.total) || 0
+  const isLoading =
+    isListLoading ||
+    isFetching ||
+    uploadDocumentPending ||
+    uploadDocumentsPending ||
+    uploadDocumentFromUrlPending ||
+    cancelDocumentPending ||
+    deleteDocumentPending
+  const error = actionError || (listError ? formatApiError(listError, 'Failed to load documents') : null)
 
   useEffect(() => {
     const timers = pollTimersRef.current

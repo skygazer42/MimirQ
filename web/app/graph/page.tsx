@@ -43,7 +43,8 @@ import { GraphService } from '@/services/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
-import { documentApi, kgApi } from '@/lib/api-client'
+import { documentApi } from '@/lib/api/documents'
+import { kgApi } from '@/lib/api/graph'
 import type {
   KGEntityAliasItem,
   KGEntityAliasSuggestionItem,
@@ -59,6 +60,7 @@ import type {
   RagTraceListResponse,
 } from '@/types'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
+import { sanitizeFilename } from '@/lib/sanitize'
 
 type GraphConfBucket = 'high' | 'medium' | 'low'
 
@@ -75,12 +77,6 @@ type GraphContextMenuState = {
 
 function coerceTrimmedString(value: unknown): string {
   return toTrimmedPrimitiveString(value)
-}
-
-function sanitizeFilename(name: string): string {
-  const trimmed = String(name || '').trim()
-  const base = trimmed || 'knowledge-graph'
-  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function stripFilenameExtension(name: string): string {
