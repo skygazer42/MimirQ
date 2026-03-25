@@ -316,7 +316,7 @@ export default function DatasetTablesPage() {
                       {queryRes.truncated ? <Badge variant="soft" className="font-mono text-[10px]">truncated</Badge> : null}
                     </div>
                     <div className="mt-2 overflow-auto">
-                      <table className="min-w-full text-xs">
+                      <table aria-label="数据表查询结果" className="min-w-full text-xs">
                         <thead>
                           <tr className="border-b border-border/60">
                             {(queryRes.columns || []).map((c) => (
@@ -397,7 +397,7 @@ export default function DatasetTablesPage() {
                       {semFilterRes.truncated ? <Badge variant="soft" className="font-mono text-[10px]">truncated</Badge> : null}
                     </div>
                     <div className="mt-2 overflow-auto">
-                      <table className="min-w-full text-xs">
+                      <table aria-label="数据表问答引用结果" className="min-w-full text-xs">
                         <thead>
                           <tr className="border-b border-border/60">
                             {(semFilterRes.columns || []).map((c) => (

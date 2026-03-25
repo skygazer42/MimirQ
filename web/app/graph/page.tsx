@@ -39,7 +39,7 @@ import { KnowledgeGraph3D, type KnowledgeGraph3DRef } from '@/components/graph/f
 import { GraphLegend } from '@/components/graph/graph-legend'
 import { GraphStatsBar } from '@/components/graph/graph-stats-bar'
 import { parseGraphML, GraphData, type GraphNode } from '@/lib/graph-parser'
-import { GraphService } from '@/services/graph-service'
+import { GraphService } from '@/lib/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'

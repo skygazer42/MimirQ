@@ -1293,7 +1293,7 @@ export default function DatasetProfilePage() {
 
             {scanRuns.length ? (
               <div className="rounded-xl border border-border/60 overflow-hidden">
-                <table className="w-full text-sm text-left">
+                <table aria-label="数据集画像扫描运行记录" className="w-full text-sm text-left">
                   <thead className="bg-muted/40 text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2 font-medium">时间</th>
@@ -1474,7 +1474,7 @@ export default function DatasetProfilePage() {
                     showing {findingRes.items.length}/{findingRes.total}
                   </div>
                   <div className="rounded-xl border border-border/60 overflow-hidden">
-                    <table className="w-full text-sm text-left">
+                    <table aria-label="数据集画像 PII 命中明细" className="w-full text-sm text-left">
                       <thead className="bg-muted/40 text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">文件名</th>
@@ -1617,7 +1617,7 @@ export default function DatasetProfilePage() {
                     showing {bucketRes.items.length}/{bucketRes.total}
                   </div>
                   <div className="rounded-xl border border-border/60 overflow-hidden">
-                    <table className="w-full text-sm text-left">
+                    <table aria-label="数据集画像 Secrets 命中明细" className="w-full text-sm text-left">
                       <thead className="bg-muted/40 text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">文件名</th>

@@ -2,7 +2,7 @@ import { GraphData, GraphNode, GraphLink } from '@/lib/graph-parser'
 import { kgApi } from '@/lib/api'
 
 // Mock delay to simulate network request
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i

@@ -473,7 +473,7 @@ export function KnowledgeDocumentsPanel({
                                 }
                                 else {
                                     return (<Panel padding="none" className="rounded-xl overflow-hidden">
-	              <table className="w-full text-sm text-left">
+	              <table aria-label="知识库文档列表" className="w-full text-sm text-left">
 	                <thead className="text-xs text-muted-foreground uppercase border-b border-border/60">
 	                  <tr>
 	                    <th className="sticky top-0 z-10 bg-card px-3 py-3 font-medium w-10">

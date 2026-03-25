@@ -216,26 +216,3 @@
 html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-muted-foreground/30 hover:bg-primary/60;
 }
-
-/* Typing Cursor Animation */
-@keyframes blink {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0;
-  }
-}
-
-.typing-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1em;
-  background-color: currentColor;
-  margin-left: 1px;
-  vertical-align: text-bottom;
-  animation: blink 1s step-end infinite;
-}

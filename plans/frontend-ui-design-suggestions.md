@@ -3,14 +3,14 @@
 ## 1. 视觉系统对齐 (Visual Alignment)
 
 ### 1.1 AI-Native 风格重塑
-- [ ] **极简 Chrome 设计**: 移除冗余的边框和背景色。侧边栏使用 `bg-sidebar` 并增加 `backdrop-blur-xl`。
+- [x] **极简 Chrome 设计**: 移除冗余的边框和背景色。侧边栏使用 `bg-sidebar` 并增加 `backdrop-blur-xl`。
 - [ ] **设计令牌一致性**: 强制所有颜色引用 `hsl(var(--primary))`，确保深色模式下 AI 特色紫色 (#6366F1) 的对比度。
 - [ ] **排版升级**: 采用 `Geist` 或类似现代无衬线字体，增大 `h1` 字号，增加 1.75 倍行高以提升长文本阅读体验。
 
 ### 1.2 高级微动效 (Micro-interactions)
 - [ ] **流式文本渲染**: 优化 `cinematic-typewriter`，增加 Token 级的 `opacity` 淡入效果，减少字符跳动。
 - [ ] **平滑布局转换**: 使用 Framer Motion 的 `layout` 属性，在“列表视图”与“图谱视图”切换时提供连续的视觉反馈。
-- [ ] **全局 Command-K 增强**: 实现类似 Raycast 的命令面板，支持 `/` 指令快速触发“上传文档”、“分析当前视图”等操作。
+- [x] **全局 Command-K 增强**: 实现类似 Raycast 的命令面板，支持 `/` 指令快速触发“上传文档”、“分析当前视图”等操作。
 
 ## 2. 知识交互深度 (Deep Knowledge Interaction)
 

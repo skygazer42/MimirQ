@@ -775,7 +775,7 @@ export default function DatasetPrecheckPage() {
                 <div className="rounded-xl border border-border/60 overflow-hidden">
                   <div className="px-3 py-2 text-sm font-medium bg-muted/40">Top Findings Δ</div>
                   <div className="max-h-[220px] overflow-auto">
-                    <table className="w-full text-sm text-left">
+                    <table aria-label="预检 Top Findings 差异" className="w-full text-sm text-left">
                       <thead className="bg-muted/20 text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">key</th>
@@ -988,7 +988,7 @@ export default function DatasetPrecheckPage() {
                 <div className="rounded-xl border border-border/60 overflow-hidden">
                   <div className="px-3 py-2 text-sm font-medium bg-muted/40">代表性样本（{samplesRes.representative?.length || 0}）</div>
                   <div className="max-h-[260px] overflow-auto">
-                    <table className="w-full text-sm text-left">
+                    <table aria-label="预检代表性样本" className="w-full text-sm text-left">
                       <thead className="bg-muted/20 text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">文件</th>
@@ -1012,7 +1012,7 @@ export default function DatasetPrecheckPage() {
                 <div className="rounded-xl border border-border/60 overflow-hidden">
                   <div className="px-3 py-2 text-sm font-medium bg-muted/40">问题分桶样本</div>
                   <div className="max-h-[260px] overflow-auto">
-                    <table className="w-full text-sm text-left">
+                    <table aria-label="预检问题分桶样本" className="w-full text-sm text-left">
                       <thead className="bg-muted/20 text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">bucket</th>
@@ -1137,7 +1137,7 @@ export default function DatasetPrecheckPage() {
                     showing {findingRes.items.length}/{findingRes.total}
                   </div>
                   <div className="rounded-xl border border-border/60 overflow-hidden">
-                    <table className="w-full text-sm text-left">
+                    <table aria-label="预检入库建议列表" className="w-full text-sm text-left">
                       <thead className="bg-muted/40 text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 font-medium">文件</th>
@@ -1383,7 +1383,7 @@ export default function DatasetPrecheckPage() {
 
                 <div className="rounded-xl border border-border/60 overflow-hidden">
                   <div className="px-3 py-2 text-sm font-medium bg-muted/40">待人工复核</div>
-                  <table className="w-full text-sm text-left">
+                  <table aria-label="预检人工复核列表" className="w-full text-sm text-left">
                     <thead className="bg-muted/20 text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2 font-medium">bucket</th>

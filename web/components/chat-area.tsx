@@ -41,11 +41,13 @@ const METADATA_FILTER_MODE_VALUES = ['all', 'exclude_qa', 'qa_only', 'custom'] a
 export function ChatArea({
   initialConversationId,
   initialPrompt,
+  initialAutoSendPrompt,
   initialOpenRagSettings,
   onConversationId,
 }: Readonly<{
   initialConversationId?: string
   initialPrompt?: string
+  initialAutoSendPrompt?: boolean
   initialOpenRagSettings?: boolean
   onConversationId?: (conversationId: string) => void
 }> = {}) {
@@ -88,6 +90,7 @@ export function ChatArea({
   const scrollRafRef = useRef<number | null>(null)
   const scrollEventRafRef = useRef<number | null>(null)
   const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
+  const autoSendPromptRef = useRef(false)
   // Slash Menu State
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 })
@@ -448,6 +451,20 @@ export function ChatArea({
     setInputValue('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
   }, [inputValue, isLoading, sendMessage])
+
+  useEffect(() => {
+    const p = (initialPrompt || '').trim()
+    if (!initialAutoSendPrompt || !p) return
+    if (autoSendPromptRef.current) return
+    if (isLoading || messages.length > 0) return
+
+    autoSendPromptRef.current = true
+    sendMessage(p)
+    setInputValue('')
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+  }, [initialAutoSendPrompt, initialPrompt, isLoading, messages.length, sendMessage])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

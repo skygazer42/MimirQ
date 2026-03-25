@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, Tags, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -26,6 +26,7 @@ import { documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'
+import { messages } from '@/lib/messages'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
@@ -122,6 +123,11 @@ function toDatetimeLocalValue(value: string | null | undefined): string {
 }
 
 export function DocumentDetailDialog({ document: initialDocument, trigger }: Readonly<DocumentDetailDialogProps>) {
+  const viewTabsId = useId()
+  const chunksTabId = `${viewTabsId}-chunks-tab`
+  const timelineTabId = `${viewTabsId}-timeline-tab`
+  const chunksPanelId = `${viewTabsId}-chunks-panel`
+  const timelinePanelId = `${viewTabsId}-timeline-panel`
   const [open, setOpen] = useState(false)
   const [activeView, setActiveView] = useState<'chunks' | 'timeline'>('chunks')
   const [detail, setDetail] = useState<Document | null>(null)
@@ -175,6 +181,38 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [isSavingLifecycle, setIsSavingLifecycle] = useState(false)
 
   const canMutateChunks = viewPipelineHash === ACTIVE_PIPELINE_VALUE
+
+  const focusViewTab = useCallback((nextView: 'chunks' | 'timeline') => {
+    setActiveView(nextView)
+    globalThis.window.requestAnimationFrame(() => {
+      globalThis.document.getElementById(nextView === 'chunks' ? chunksTabId : timelineTabId)?.focus()
+    })
+  }, [chunksTabId, timelineTabId])
+
+  const handleViewTabKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        event.preventDefault()
+        focusViewTab('chunks')
+        break
+      case 'ArrowRight':
+      case 'ArrowDown':
+        event.preventDefault()
+        focusViewTab('timeline')
+        break
+      case 'Home':
+        event.preventDefault()
+        focusViewTab('chunks')
+        break
+      case 'End':
+        event.preventDefault()
+        focusViewTab('timeline')
+        break
+      default:
+        break
+    }
+  }, [focusViewTab])
 
   const beginEditChunk = useCallback((chunk: DocumentChunk) => {
     if (!canMutateChunks) return
@@ -1306,21 +1344,33 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
               >
                 <button
                   type="button"
+                  id={chunksTabId}
+                  role="tab"
+                  aria-controls={chunksPanelId}
+                  aria-selected={activeView === 'chunks'}
+                  tabIndex={activeView === 'chunks' ? 0 : -1}
                   className={cn(
                     "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none",
                     activeView === "chunks" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"
                   )}
                   onClick={() => setActiveView("chunks")}
+                  onKeyDown={handleViewTabKeyDown}
                 >
                   切片
                 </button>
                 <button
                   type="button"
+                  id={timelineTabId}
+                  role="tab"
+                  aria-controls={timelinePanelId}
+                  aria-selected={activeView === 'timeline'}
+                  tabIndex={activeView === 'timeline' ? 0 : -1}
                   className={cn(
                     "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none",
                     activeView === "timeline" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"
                   )}
                   onClick={() => setActiveView("timeline")}
+                  onKeyDown={handleViewTabKeyDown}
                 >
                   时间线
                 </button>
@@ -1391,14 +1441,20 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
               )}
             </div>
 
-            <div ref={scrollParentRef} className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4">
+            <div
+              ref={scrollParentRef}
+              id={activeView === 'chunks' ? chunksPanelId : timelinePanelId}
+              role="tabpanel"
+              aria-labelledby={activeView === 'chunks' ? chunksTabId : timelineTabId}
+              className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4"
+            >
               {(() => {
     if (activeView === "chunks") {
         return ((() => {
             if ((isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0)) {
                 return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-                    <p className="text-sm">正在加载切片数据...</p>
+                    <p className="text-sm">{messages.documents.loadingChunks}</p>
                   </div>);
             }
             else if (loadError && chunks.length === 0) {
@@ -1413,16 +1469,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                             detachPromise(loadVersions());
                             detachPromise(reloadChunks());
                         }}>
-                        重试
+                        {messages.common.retry}
                       </Button>
                       <Button variant="secondary" onClick={() => setOpen(false)}>
-                        关闭
+                        {messages.common.close}
                       </Button>
                     </div>
                   </div>);
                 }
                 else if (chunksTotal === 0 && !isSearching) {
-                        return (<EmptyState icon={FileText} title="暂无切片数据" description="该文档暂未生成可用切片，或后端未返回切片内容。" className="min-h-[320px]"/>);
+                        return (<EmptyState icon={FileText} title={messages.documents.emptyChunks} description="该文档暂未生成可用切片，或后端未返回切片内容。" className="min-h-[320px]"/>);
                     }
                     else if (chunksTotal === 0 && isSearching) {
                             return (<EmptyState icon={Search} title="未找到匹配切片" description={<span>尝试更换关键词，或清空筛选条件。</span>} className="min-h-[320px]">
@@ -1488,11 +1544,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 	                                  <Textarea value={editingChunkContent} onChange={(e) => setEditingChunkContent(e.target.value)} className="min-h-[140px] font-mono text-xs" disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}/>
 	                                  <div className="flex items-center justify-end gap-2">
 	                                    <Button type="button" variant="outline" size="sm" onClick={cancelEditChunk} disabled={chunkOpWorkingId === chunk.id}>
-	                                      取消
+	                                      {messages.common.cancel}
 	                                    </Button>
 	                                    <Button type="button" size="sm" onClick={() => detachPromise(saveEditChunk())} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id} className="gap-2">
 	                                      {chunkOpWorkingId === chunk.id ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : (<Save className="h-4 w-4"/>)}
-	                                      保存
+	                                      {messages.common.save}
 	                                    </Button>
 	                                  </div>
 	                                </div>) : (<div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
@@ -1516,7 +1572,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     else if (isLoadingTimeline && timelineItems.length === 0) {
             return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
 	                  <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-                  <p className="text-sm">正在加载时间线...</p>
+                  <p className="text-sm">{messages.documents.loadingTimeline}</p>
                 </div>);
         }
         else if ((timelineError || docError) && timelineItems.length === 0) {
@@ -1527,16 +1583,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   </Alert>
                   <div className="mt-4 flex items-center justify-end gap-2">
                     <Button variant="outline" onClick={() => detachPromise(loadTimeline())}>
-                      重试
+                      {messages.common.retry}
                     </Button>
                     <Button variant="secondary" onClick={() => setOpen(false)}>
-                      关闭
+                      {messages.common.close}
                     </Button>
                   </div>
                 </div>);
             }
             else if (timelineItems.length === 0) {
-                    return (<EmptyState icon={Calendar} title="暂无时间线事件" description="该文档暂未产生可回溯的事件记录（或审计未启用）。" className="min-h-[320px]"/>);
+                    return (<EmptyState icon={Calendar} title={messages.documents.emptyTimeline} description="该文档暂未产生可回溯的事件记录（或审计未启用）。" className="min-h-[320px]"/>);
                 }
                 else {
                     return (<div className="pb-6 space-y-3">

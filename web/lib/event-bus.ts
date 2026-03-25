@@ -1,25 +1,37 @@
-type EventHandler = (payload: any) => void
+type AppEventMap = {
+  'chat:send': string
+  'command-menu:set-open': { open: boolean }
+  'command-menu:toggle': undefined
+}
 
-class EventBus {
-  private handlers: Record<string, EventHandler[]> = {}
+type EventHandler<EventMap extends Record<string, unknown>, K extends keyof EventMap> = (payload: EventMap[K]) => void
 
-  on(event: string, handler: EventHandler) {
-    if (!this.handlers[event]) {
-      this.handlers[event] = []
-    }
-    this.handlers[event].push(handler)
+class EventBus<EventMap extends Record<string, unknown>> {
+  private handlers = new Map<keyof EventMap, Set<unknown>>()
+
+  on<K extends keyof EventMap>(event: K, handler: EventHandler<EventMap, K>) {
+    const listeners = this.handlers.get(event) ?? new Set<unknown>()
+    listeners.add(handler)
+    this.handlers.set(event, listeners)
     return () => this.off(event, handler)
   }
 
-  off(event: string, handler: EventHandler) {
-    if (!this.handlers[event]) return
-    this.handlers[event] = this.handlers[event].filter(h => h !== handler)
+  off<K extends keyof EventMap>(event: K, handler: EventHandler<EventMap, K>) {
+    const listeners = this.handlers.get(event)
+    if (!listeners) return
+    listeners.delete(handler)
+    if (listeners.size === 0) {
+      this.handlers.delete(event)
+    }
   }
 
-  emit(event: string, payload: any) {
-    if (!this.handlers[event]) return
-    this.handlers[event].forEach(h => h(payload))
+  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]) {
+    const listeners = this.handlers.get(event)
+    if (!listeners) return
+    listeners.forEach((handler) => {
+      ;(handler as EventHandler<EventMap, K>)(payload)
+    })
   }
 }
 
-export const globalEventBus = new EventBus()
+export const globalEventBus = new EventBus<AppEventMap>()

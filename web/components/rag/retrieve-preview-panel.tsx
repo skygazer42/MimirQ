@@ -633,7 +633,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             )}
 
             <div className="rounded-xl border border-border/60 bg-background/60 overflow-auto">
-              <table className="min-w-[980px] w-full text-xs">
+              <table aria-label="检索结果候选列表" className="min-w-[980px] w-full text-xs">
                 <thead className="bg-muted/30 text-muted-foreground">
                   <tr className="border-b border-border/60">
                     <th className="p-3 text-left font-semibold w-10">GT</th>
@@ -1079,7 +1079,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
 
                 {retrievalPerQuery.length ? (
                   <div className="rounded-lg border border-border/60 overflow-auto">
-                    <table className="min-w-[720px] w-full text-xs">
+                    <table aria-label="按查询聚合的检索统计" className="min-w-[720px] w-full text-xs">
                       <thead className="bg-muted/30 text-muted-foreground">
                         <tr className="border-b border-border/60">
                           <th className="p-2 text-left font-semibold w-24">kind</th>

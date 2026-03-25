@@ -1374,7 +1374,7 @@ export default function SettingsPage() {
                       </div>
                     ) : (
                       <div className="overflow-x-auto rounded-xl border border-border">
-                        <table className="w-full text-sm">
+                        <table aria-label="系统设置分组配置" className="w-full text-sm">
                           <thead className="bg-muted/40">
                             <tr className="text-left">
                               <th className="px-3 py-2 font-medium text-muted-foreground">状态</th>

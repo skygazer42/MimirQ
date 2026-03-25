@@ -18,6 +18,7 @@ export function getAuthHeaders(): Record<string, string> {
 
   const envUserId = process.env.NEXT_PUBLIC_USER_ID
   const envTenantId = process.env.NEXT_PUBLIC_TENANT_ID
+  const defaultUserId = process.env.NODE_ENV === 'development' ? 'demo' : undefined
 
   let userId = envUserId
   let tenantId = envTenantId
@@ -28,7 +29,10 @@ export function getAuthHeaders(): Record<string, string> {
   }
 
   if (!headers['Authorization']) {
-    headers['X-User-ID'] = userId || 'demo'
+    const fallbackUserId = userId || defaultUserId
+    if (fallbackUserId) {
+      headers['X-User-ID'] = fallbackUserId
+    }
   }
   if (tenantId) {
     headers['X-Tenant-ID'] = tenantId

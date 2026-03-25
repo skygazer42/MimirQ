@@ -481,7 +481,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
                           {citationRows.length ? (
                             <div className="overflow-x-auto flex-1">
-                              <table className="w-full text-xs text-left tabular-nums">
+                              <table aria-label="消息引用明细" className="w-full text-xs text-left tabular-nums">
                                 <thead className="text-muted-foreground">
                                   <tr className="border-b border-border">
                                     <th className="px-4 py-2.5 font-medium">#</th>

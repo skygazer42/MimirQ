@@ -417,7 +417,7 @@ export function ChunkAutoTuneDialog() {
             </div>
 
             <div className="rounded-xl border border-border/60 overflow-hidden">
-              <table className="w-full text-xs">
+              <table aria-label="Chunk 自动调优候选方案" className="w-full text-xs">
                 <thead className="bg-muted/40 text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Params</th>
@@ -478,4 +478,3 @@ export function ChunkAutoTuneDialog() {
     </>
   )
 }
-

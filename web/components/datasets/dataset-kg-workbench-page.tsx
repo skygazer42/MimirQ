@@ -28,7 +28,7 @@ import { StepIndicator } from '@/components/ui/step-indicator'
 import { datasetApi, documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
-import { GraphService } from '@/services/graph-service'
+import { GraphService } from '@/lib/graph-service'
 
 import type { Dataset, Document, KGExtractResponse, KGGraphNode, KGStatsResponse } from '@/types'
 
