@@ -1,23 +1,24 @@
 "use client"
 
 import * as React from "react"
-import { X, Maximize2, Minimize2, FileText, Loader2, Download, Plus, Sparkles } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn, detachPromise } from '@/lib/utils'
 import { useResolvedAuthAssetUrl } from "@/components/auth-image"
+import { ChunksTabPanel } from "@/components/document-viewer/chunks-tab-panel"
+import { DocumentViewerHeader } from "@/components/document-viewer/document-viewer-header"
 import { useDocumentView } from "@/store/document-view"
-import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { documentApi, ragApi } from "@/lib/api"
 import { API_V1_BASE_URL } from "@/lib/env"
 import type { Citation, Document, DocumentChunk, DocumentParsedContentResponse, DocumentQAGenerateResponse } from "@/types"
 import { ChunkEditorDialog } from "@/components/document-viewer/chunk-editor-dialog"
-import { DocumentChunkCard } from "@/components/document-viewer/chunk-renderer"
 import { FloatingMenu } from "@/components/document-viewer/floating-menu"
+import { PreviewTabPanel } from "@/components/document-viewer/preview-tab-panel"
 import { QAGenerationDialog } from "@/components/document-viewer/qa-generation-dialog"
+import { TextTabPanel } from "@/components/document-viewer/text-tab-panel"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
-import { OriginalPreviewMonaco } from "@/components/chunk-preview/components/workbench/preview/original-preview-monaco"
 import { formatApiError } from "@/lib/api-errors"
 import { toast } from "sonner"
 
@@ -430,6 +431,26 @@ export function DocumentViewerPanel() {
     return chunksLoaded ? localMatchChunkIds : serverMatchIds
   }, [chunkQuery, chunksLoaded, localMatchChunkIds, serverMatchIds])
 
+  const chunkSearchPlaceholder = React.useMemo(() => {
+    if (serverMatchLoading) return "搜索中…"
+    if (chunksLoaded) return "搜索切片内容…"
+    return "搜索切片内容…（无需加载全部切片）"
+  }, [chunksLoaded, serverMatchLoading])
+
+  const chunkMatchSummary = React.useMemo(() => {
+    if (!chunkQuery.trim()) return "—"
+    if (serverMatchLoading) return "…"
+    if (matchChunkIds.length) {
+      return `${matchCursor + 1}/${chunksLoaded ? matchChunkIds.length : (serverMatchTotal || matchChunkIds.length)}${!chunksLoaded && serverMatchTruncated ? "+" : ""}`
+    }
+    return "0/0"
+  }, [chunkQuery, chunksLoaded, matchChunkIds.length, matchCursor, serverMatchLoading, serverMatchTotal, serverMatchTruncated])
+
+  const handleSelectTextChunkIndex = React.useCallback((chunkIndex: number) => {
+    const target = chunks.find((c) => c.chunk_index === chunkIndex) || (highlightChunk?.chunk_index === chunkIndex ? highlightChunk : null)
+    if (target) setHighlightChunk(target.id)
+  }, [chunks, highlightChunk, setHighlightChunk])
+
   React.useEffect(() => {
     setMatchCursor(0)
   }, [chunkQuery])
@@ -673,6 +694,20 @@ export function DocumentViewerPanel() {
     setHighlightChunk(matchChunkIds[clamped] || null)
   }, [matchChunkIds, setActiveTab, setHighlightChunk])
 
+  const handleChunkSearchKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return
+    e.preventDefault()
+    if (!matchChunkIds.length) return
+
+    const currentId = matchChunkIds[matchCursor]
+    if (currentId && highlightChunkId === currentId) {
+      jumpToMatch(matchCursor + (e.shiftKey ? -1 : 1))
+      return
+    }
+
+    jumpToMatch(matchCursor)
+  }, [highlightChunkId, jumpToMatch, matchChunkIds, matchCursor])
+
   const runRetrievePreview = React.useCallback(async () => {
     if (!documentId) return
     const q = retrieveQuery.trim()
@@ -749,42 +784,14 @@ export function DocumentViewerPanel() {
 	           isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
 	        )}
 	    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pb-3 pt-3 border-b border-border bg-muted/30 backdrop-blur-sm supports-[padding:env(safe-area-inset-top)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]">
-        <div className="flex items-center gap-3 overflow-hidden">
-            <div className="p-2 bg-primary/10 rounded-lg">
-                <FileText className="h-5 w-5 text-primary" />
-            </div>
-            <div className="flex flex-col min-w-0">
-                <h3 className="text-sm font-semibold truncate max-w-[200px]" title={doc?.filename}>
-                    {doc?.filename || '加载中...'}
-                </h3>
-                <span className="text-xs text-muted-foreground">
-                    {(doc?.chunk_count ?? chunks.length)} 个切片
-                </span>
-            </div>
-        </div>
-        
-        <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" asChild title="下载原文件" aria-label="下载原文件">
-              <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
-                <Download className="h-4 w-4" />
-              </a>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsExpanded(!isExpanded)}
-              title={isExpanded ? "收起" : "展开"}
-              aria-label={isExpanded ? "收起" : "展开"}
-            >
-                {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={closeDocument} aria-label="关闭">
-                <X className="h-4 w-4" />
-            </Button>
-        </div>
-      </div>
+      <DocumentViewerHeader
+        filename={doc?.filename}
+        chunkCount={doc?.chunk_count ?? chunks.length}
+        isExpanded={isExpanded}
+        downloadUrl={downloadUrl}
+        onToggleExpanded={() => setIsExpanded(!isExpanded)}
+        onClose={closeDocument}
+      />
 
       {/* Main Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
@@ -817,477 +824,87 @@ export function DocumentViewerPanel() {
             </div>
 
             <TabsContent value="preview" className="flex-1 m-0 h-full bg-muted/30 dark:bg-muted/20 relative">
-	                {(() => {
-    if (isLoading && !doc) {
-        return (<div className="flex items-center justify-center h-full text-muted-foreground">
-	                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-	                  </div>);
-    }
-    else if (canInlinePreview && fileUrl) {
-            return (<iframe src={`${fileUrl}#toolbar=0`} className="w-full h-full border-none" title="Document Preview"/>);
-        }
-        else if (canInlinePreview && rawFileUrl) {
-            return (<div className="flex items-center justify-center h-full text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-                  </div>);
-        }
-        else {
-            return (<div className="h-full flex items-center justify-center p-6">
-                    <div className="max-w-md w-full rounded-xl border border-border bg-background p-6 shadow-sm">
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 rounded-lg bg-primary/10">
-                          <FileText className="h-5 w-5 text-primary"/>
-                        </div>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-semibold">暂不支持内嵌预览</h4>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            当前文件类型为 <span className="font-mono">{doc?.file_type || "-"}</span>。你可以下载原文件，
-                            或切换到「智能切片」查看内容。
-                          </p>
-                          <div className="mt-4 flex items-center gap-2">
-                            <Button size="sm" variant="outline" asChild>
-                              <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
-                                下载原文件
-                              </a>
-                            </Button>
-                            <Button size="sm" onClick={() => setActiveTab("chunks")}>
-                              查看切片
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>);
-        }
-})()}
+              <PreviewTabPanel
+                isLoading={isLoading}
+                doc={doc}
+                canInlinePreview={canInlinePreview}
+                fileUrl={fileUrl}
+                rawFileUrl={rawFileUrl}
+                downloadUrl={downloadUrl}
+                onViewChunks={() => setActiveTab("chunks")}
+              />
             </TabsContent>
 
-            <TabsContent value="text" className="flex-1 m-0 h-full overflow-hidden flex flex-col bg-muted/20 dark:bg-muted/10">
-                 <div className="p-4 border-b border-border bg-background/60 backdrop-blur-sm">
-                   <div className="flex flex-col gap-2">
-                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                       <div className="flex items-center flex-wrap gap-2">
-                         <Button
-                           type="button"
-                           size="sm"
-                           variant={textMode === "cleaned" ? "secondary" : "outline"}
-                           onClick={() => setTextMode("cleaned")}
-                         >
-                           清洗后
-                         </Button>
-                         <Button
-                           type="button"
-                           size="sm"
-                           variant={textMode === "original" ? "secondary" : "outline"}
-                           onClick={() => setTextMode("original")}
-                         >
-                           原始解析
-                         </Button>
-
-                         {highlightChunkId && !loadAllChunks && !chunksLoaded ? (
-                           <span className="text-[11px] text-muted-foreground">
-                             仅加载引用切片位置；如需展示全部切片位置，请点右侧「加载全部切片」。
-                           </span>
-                         ) : null}
-                       </div>
-
-                       <div className="flex items-center gap-2 justify-end">
-                         {highlightChunkId ? (
-                           <Button
-                             type="button"
-                             size="sm"
-                             variant="outline"
-                             onClick={() => setHighlightChunk(null)}
-                           >
-                             清除定位
-                           </Button>
-                         ) : null}
-
-                         {chunksLoaded ? null : (
-                           <Button
-                             type="button"
-                             size="sm"
-                             onClick={() => setLoadAllChunks(true)}
-                             disabled={chunksLoading}
-                           >
-                             加载全部切片
-                           </Button>
-                         )}
-                       </div>
-                     </div>
-
-                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                       <input
-                         value={retrieveQuery}
-                         onChange={(e) => setRetrieveQuery(e.target.value)}
-                         onKeyDown={(e) => {
-                           if (e.key !== "Enter") return
-                           e.preventDefault()
-                           detachPromise(runRetrievePreview())
-                         }}
-                         placeholder="检索测试：输入问题，查看真实检索命中的切片…"
-                         className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                       />
-                       <div className="flex items-center gap-2 justify-end">
-                         <Button
-                           type="button"
-                           size="sm"
-                           variant="outline"
-                           disabled={!retrieveQuery.trim() || retrieveLoading}
-                           onClick={() => detachPromise(runRetrievePreview())}
-                         >
-                           {retrieveLoading ? (
-                             <span className="inline-flex items-center gap-2">
-                               <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                               检索中…
-                             </span>
-                           ) : (
-                             "检索"
-                           )}
-                         </Button>
-                         {retrieveCitations.length ? (
-                           <Button
-                             type="button"
-                             size="sm"
-                             variant="outline"
-                             onClick={() => {
-                               setRetrieveCitations([])
-                               setRetrieveError(null)
-                             }}
-                           >
-                             清空
-                           </Button>
-                         ) : null}
-                       </div>
-                     </div>
-
-                     {retrieveError ? (
-                       <div className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
-                         {retrieveError}
-                       </div>
-                     ) : null}
-
-                     {retrieveCitations.length ? (
-                       <div className="rounded-xl border border-border/60 bg-background/60 p-3 max-h-[220px] overflow-auto">
-                         <div className="text-xs font-semibold text-foreground mb-2">检索命中</div>
-                         <div className="space-y-2">
-                           {retrieveCitations.slice(0, 6).map((c) => {
-                             const hasChunk = Boolean(c.chunk_id)
-                             return (
-                               <button
-                                 key={`${String(c.document_id || '')}:${String(c.chunk_id || '')}:${String(c.page_number ?? '')}`}
-                                 type="button"
-                                 className={cn(
-                                   "w-full text-left rounded-lg border border-border bg-background px-3 py-2",
-                                   "hover:border-primary/30 hover:bg-muted/30 transition-colors"
-                                 )}
-                                 disabled={!hasChunk}
-                                 onClick={() => {
-                                   if (!c.chunk_id) return
-                                   setActiveTab("text")
-                                   setHighlightChunk(c.chunk_id)
-                                 }}
-                               >
-                                 <div className="flex items-center justify-between gap-2">
-                                   <div className="text-[11px] text-muted-foreground">
-                                     score <span className="font-mono">{Number(c.relevance_score || 0).toFixed(4)}</span>
-                                     {typeof c.page_number === "number" ? (
-                                       <span className="ml-2">P.{c.page_number}</span>
-                                     ) : null}
-                                   </div>
-                                   <div className="text-[11px] text-muted-foreground">
-                                     {hasChunk ? "点击定位" : "无 chunk_id"}
-                                   </div>
-                                 </div>
-                                 <div className="mt-1 text-xs leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap line-clamp-3">
-                                   {c.chunk_content || ""}
-                                 </div>
-                               </button>
-                             )
-                           })}
-                         </div>
-                       </div>
-                     ) : null}
-
-                     {textMode === "original" ? (
-                       <div className="text-[11px] text-muted-foreground">
-                         提示：切片的 start/end 偏移通常基于「清洗后」文本；在「原始解析」视图中高亮定位可能不准确。
-                       </div>
-                     ) : null}
-
-                     {parsedContent?.markdown_truncated || parsedContent?.original_markdown_truncated ? (
-                       <div className="text-[11px] text-muted-foreground">
-                         文本已截断显示（max_chars={parsedContent?.max_chars ?? 0}）。如需完整内容，请提高 persist_parsed_content_max_chars 或缩小文件。
-                       </div>
-                     ) : null}
-
-                     {parsedContentError ? (
-                       <div className="text-[11px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
-                         {parsedContentError}
-                       </div>
-                     ) : null}
-                   </div>
-                 </div>
-
-                 <div className="flex-1 overflow-hidden p-4">
-                   {(() => {
-    if (parsedContentLoading && !parsedContent) {
-        return (<div className="h-full flex items-center justify-center text-muted-foreground">
-                       <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-                     </div>);
-    }
-    else if (parsedContent?.available && textValue) {
-            return (<OriginalPreviewMonaco text={textValue} chunks={textMode === "cleaned" ? textChunkItems : []} activeChunkIndex={textMode === "cleaned" ? textActiveChunkIndex : null} activeRange={textMode === "cleaned" ? (highlightRange ?? null) : null} onSelectChunkIndex={(chunkIndex) => {
-                    const target = chunks.find((c) => c.chunk_index === chunkIndex) ||
-                        (highlightChunk?.chunk_index === chunkIndex ? highlightChunk : null);
-                    if (target)
-                        setHighlightChunk(target.id);
-                }}/>);
-        }
-        else {
-            return (<div className="h-full flex items-center justify-center p-6">
-                       <div className="max-w-md w-full rounded-xl border border-border bg-background p-6 shadow-sm">
-                         <div className="flex items-start gap-3">
-                           <div className="p-2 rounded-lg bg-primary/10">
-                             <FileText className="h-5 w-5 text-primary"/>
-                           </div>
-                           <div className="flex-1">
-                             <h4 className="text-sm font-semibold">未持久化解析文本</h4>
-                             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                               当前文档未开启 <span className="font-mono">persist_parsed_content</span>，因此无法在此处高亮定位切片位置。
-                               你可以在上传/流水线配置中开启该选项后重新入库，或继续使用「智能切片」查看内容。
-                             </p>
-                             <div className="mt-4 flex items-center gap-2">
-                               <Button size="sm" variant="outline" onClick={() => setActiveTab("chunks")}>
-                                 查看切片
-                               </Button>
-                               <Button size="sm" variant="outline" onClick={() => setActiveTab("preview")}>
-                                 返回原文
-                               </Button>
-                             </div>
-                           </div>
-                         </div>
-                       </div>
-                     </div>);
-        }
-})()}
-                 </div>
+            <TabsContent value="text" className="flex-1 m-0 h-full overflow-hidden">
+              <TextTabPanel
+                textMode={textMode}
+                highlightChunkId={highlightChunkId}
+                loadAllChunks={loadAllChunks}
+                chunksLoaded={chunksLoaded}
+                chunksLoading={chunksLoading}
+                retrieveQuery={retrieveQuery}
+                retrieveLoading={retrieveLoading}
+                retrieveError={retrieveError}
+                retrieveCitations={retrieveCitations}
+                parsedContent={parsedContent}
+                parsedContentLoading={parsedContentLoading}
+                parsedContentError={parsedContentError}
+                textValue={textValue}
+                textChunkItems={textChunkItems}
+                textActiveChunkIndex={textActiveChunkIndex}
+                highlightRange={highlightRange ?? null}
+                onTextModeChange={setTextMode}
+                onClearHighlight={() => setHighlightChunk(null)}
+                onLoadAllChunks={() => setLoadAllChunks(true)}
+                onRetrieveQueryChange={setRetrieveQuery}
+                onRunRetrieve={() => detachPromise(runRetrievePreview())}
+                onClearRetrieve={() => {
+                  setRetrieveCitations([])
+                  setRetrieveError(null)
+                }}
+                onSelectRetrieveChunk={(chunkId) => {
+                  setActiveTab("text")
+                  setHighlightChunk(chunkId)
+                }}
+                onSelectChunkIndex={handleSelectTextChunkIndex}
+                onGoToChunks={() => setActiveTab("chunks")}
+                onGoToPreview={() => setActiveTab("preview")}
+              />
             </TabsContent>
 
-            <TabsContent value="chunks" className="flex-1 m-0 h-full overflow-hidden flex flex-col bg-muted/20 dark:bg-muted/10">
-                 <div className="p-4 border-b border-border bg-background/60 backdrop-blur-sm">
-                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                     <input
-                       ref={chunkSearchRef}
-                       value={chunkQuery}
-                       onChange={(e) => setChunkQuery(e.target.value)}
-                       onKeyDown={(e) => {
-                         if (e.key !== "Enter") return
-                         e.preventDefault()
-                         if (!matchChunkIds.length) return
-
-                         const currentId = matchChunkIds[matchCursor]
-                         // First Enter jumps to the current match; subsequent Enter goes next.
-                         if (currentId && highlightChunkId === currentId) {
-                           jumpToMatch(matchCursor + (e.shiftKey ? -1 : 1))
-                           return
-                         }
-
-                         jumpToMatch(matchCursor)
-                       }}
-                       placeholder={
-                         (() => {
-    if (serverMatchLoading) {
-        return "搜索中…";
-    }
-    else if (chunksLoaded) {
-            return "搜索切片内容…";
-        }
-        else {
-            return "搜索切片内容…（无需加载全部切片）";
-        }
-})()
-                       }
-                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                     />
-                     <div className="flex items-center gap-2">
-                       <div className="text-xs text-muted-foreground tabular-nums min-w-[88px] text-right">
-                         {chunkQuery.trim() ? (
-                           (() => {
-    if (serverMatchLoading) {
-        return (<span>…</span>);
-    }
-    else if (matchChunkIds.length) {
-            return (<span>
-                               {matchCursor + 1}/
-                               {chunksLoaded ? matchChunkIds.length : (serverMatchTotal || matchChunkIds.length)}
-                               {!chunksLoaded && serverMatchTruncated ? "+" : ""}
-                             </span>);
-        }
-        else {
-            return (<span>0/0</span>);
-        }
-})()
-                         ) : (
-                           <span>—</span>
-                         )}
-                       </div>
-                       <Button
-                         size="sm"
-                         variant="outline"
-                         disabled={!matchChunkIds.length}
-                         onClick={() => jumpToMatch(matchCursor - 1)}
-                       >
-                         上一个
-                       </Button>
-                       <Button
-                         size="sm"
-                         variant="outline"
-                         disabled={!matchChunkIds.length}
-                         onClick={() => jumpToMatch(matchCursor + 1)}
-                       >
-                         下一个
-                       </Button>
-                     </div>
-                   </div>
-
-                   <div className="mt-2 flex items-center justify-end gap-2">
-                     <Button
-                       type="button"
-                       size="sm"
-                       variant="outline"
-                       className="gap-2"
-                       onClick={openCreateChunk}
-                       disabled={!canEditChunks}
-                       title={canEditChunks ? "Add a new chunk" : "Document is processing; editing disabled"}
-                     >
-                       <Plus className="h-4 w-4" />
-                       Add chunk
-                     </Button>
-                     <Button
-                       type="button"
-                       size="sm"
-                       variant="outline"
-                       className="gap-2"
-                       onClick={() => setQaDialogOpen(true)}
-                       disabled={!canEditChunks}
-                       title={canEditChunks ? "Generate FAQ-style Q&A chunks" : "Document is processing; editing disabled"}
-                     >
-                       <Sparkles className="h-4 w-4" />
-                       Q&A
-                     </Button>
-                   </div>
-
-                   {!chunksLoaded && chunkQuery.trim() && serverMatchTruncated ? (
-                     <div className="mt-2 text-[11px] text-muted-foreground">
-                       匹配结果过多，仅返回前 {matchChunkIds.length} 条（计数后缀 “+” 表示截断）。
-                     </div>
-                   ) : null}
-
-                   {highlightChunkId && !loadAllChunks && !chunksLoaded ? (
-                     <div className="mt-3 rounded-xl border border-border/60 bg-background/60 p-4">
-                       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                         <div className="min-w-0">
-                           <div className="text-xs font-semibold text-foreground">引用切片</div>
-                           <div className="mt-1 text-[11px] text-muted-foreground">
-                             为避免一次性加载大量切片，先展示命中内容；需要全文切片可点击「加载全部切片」。
-                           </div>
-                         </div>
-                         <div className="flex items-center gap-2 justify-end">
-                           <Button
-                             type="button"
-                             size="sm"
-                             variant="outline"
-                             onClick={() => setHighlightChunk(null)}
-                             disabled={highlightChunkLoading}
-                           >
-                             清除定位
-                           </Button>
-                           <Button
-                             type="button"
-                             size="sm"
-                             onClick={() => setLoadAllChunks(true)}
-                             disabled={chunksLoading}
-                           >
-                             加载全部切片
-                           </Button>
-                         </div>
-                       </div>
-
-                       <div className="mt-3">
-                         {(() => {
-    if (highlightChunkLoading) {
-        return (<div className="flex items-center gap-2 text-xs text-muted-foreground">
-                             <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
-                             <span>加载命中切片…</span>
-                           </div>);
-    }
-    else if (highlightChunk) {
-            return (<DocumentChunkCard chunk={highlightChunk} query={chunkQuery} isActive canEditChunks={canEditChunks} chunkEditorSubmitting={chunkEditorSubmitting} chunkDeleteSubmitting={chunkDeleteSubmitting} showHoverActions={false} onCopyContent={copyChunkContent} onCopyLink={copyChunkLink} onEdit={openEditChunk} onDelete={handleDeleteChunk}/>);
-        }
-        else {
-            return (<div className="text-xs text-muted-foreground">未找到命中切片（可能已被删除或无权限）</div>);
-        }
-})()}
-                       </div>
-                     </div>
-                   ) : null}
-                 </div>
-                 <div className="flex-1 overflow-y-auto overscroll-contain p-4 scroll-smooth no-scrollbar" ref={chunksListRef}>
-                    {chunksLoading && chunks.length === 0 ? (
-                      <div className="flex items-center justify-center py-10 text-muted-foreground">
-                        <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
-                      </div>
-                    ) : null}
-
-                    {chunks.length > 0 ? (
-                      <div
-                        style={{
-                          height: `${rowVirtualizer.getTotalSize()}px`,
-                          width: "100%",
-                          position: "relative",
-                        }}
-                      >
-                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                          const chunk = chunks[virtualRow.index]
-                          if (!chunk) return null
-
-                          return (
-                            <div
-                              key={virtualRow.key}
-                              data-index={virtualRow.index}
-                              ref={rowVirtualizer.measureElement}
-                              style={{
-                                position: "absolute",
-                                top: 0,
-                                left: 0,
-                                width: "100%",
-                                transform: `translateY(${virtualRow.start}px)`,
-                              }}
-                              className="pb-4"
-                            >
-                              <DocumentChunkCard
-                                chunk={chunk}
-                                query={chunkQuery}
-                                isActive={highlightChunkId === chunk.id}
-                                canEditChunks={canEditChunks}
-                                chunkEditorSubmitting={chunkEditorSubmitting}
-                                chunkDeleteSubmitting={chunkDeleteSubmitting}
-                                onCopyContent={copyChunkContent}
-                                onCopyLink={copyChunkLink}
-                                onEdit={openEditChunk}
-                                onDelete={handleDeleteChunk}
-                              />
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : null}
-
-                    {chunksLoaded && !chunksLoading && chunks.length === 0 && (
-                      <div className="text-center py-10 text-muted-foreground">暂无切片数据</div>
-                    )}
-                 </div>
+            <TabsContent value="chunks" className="flex-1 m-0 h-full overflow-hidden">
+                 <ChunksTabPanel
+                   chunkSearchRef={chunkSearchRef}
+                   chunksListRef={chunksListRef}
+                   rowVirtualizer={rowVirtualizer}
+                   chunkQuery={chunkQuery}
+                   searchPlaceholder={chunkSearchPlaceholder}
+                   matchSummary={chunkMatchSummary}
+                   canJumpMatches={Boolean(matchChunkIds.length)}
+                   canEditChunks={canEditChunks}
+                   serverMatchTruncatedHint={Boolean(!chunksLoaded && chunkQuery.trim() && serverMatchTruncated)}
+                   highlightChunkId={highlightChunkId}
+                   loadAllChunks={loadAllChunks}
+                   chunksLoaded={chunksLoaded}
+                   chunksLoading={chunksLoading}
+                   highlightChunkLoading={highlightChunkLoading}
+                   highlightChunk={highlightChunk}
+                   chunkEditorSubmitting={chunkEditorSubmitting}
+                   chunkDeleteSubmitting={chunkDeleteSubmitting}
+                   matchCursor={matchCursor}
+                   chunks={chunks}
+                   onChunkQueryChange={setChunkQuery}
+                   onSearchKeyDown={handleChunkSearchKeyDown}
+                   onJumpToMatch={jumpToMatch}
+                   onOpenCreateChunk={openCreateChunk}
+                   onOpenQaDialog={() => setQaDialogOpen(true)}
+                   onClearHighlight={() => setHighlightChunk(null)}
+                   onLoadAllChunks={() => setLoadAllChunks(true)}
+                   onCopyContent={copyChunkContent}
+                   onCopyLink={copyChunkLink}
+                   onEditChunk={openEditChunk}
+                   onDeleteChunk={handleDeleteChunk}
+                 />
             </TabsContent>
          </Tabs>
       </div>

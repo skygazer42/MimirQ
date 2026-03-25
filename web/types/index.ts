@@ -414,7 +414,7 @@ export interface RagMetricsSummaryResponse {
   retrieval_mode_counts: Record<string, number>
   hit_type_counts: Record<string, number>
   error_counts: Record<string, number>
-  timeseries: Record<string, any[]>
+  timeseries: Record<string, unknown[]>
 }
 
 export interface OnlineQualitySummaryResponse {
@@ -427,8 +427,8 @@ export interface OnlineQualitySummaryResponse {
   sample_count: number
   faithfulness_det_avg?: number | null
   chunk_utilization_avg?: number | null
-  timeseries: Record<string, any[]>
-  alerts: Array<Record<string, any>>
+  timeseries: Record<string, unknown[]>
+  alerts: Array<Record<string, unknown>>
 }
 
 export interface QuerysetHealthRunsResponse {
@@ -436,12 +436,12 @@ export interface QuerysetHealthRunsResponse {
   path: string
   total: number
   truncated: boolean
-  items: Array<Record<string, any>>
-  timeseries: Record<string, any[]>
+  items: Array<Record<string, unknown>>
+  timeseries: Record<string, unknown[]>
 }
 
 export interface QuerysetHealthDiffResponse {
-  diff: Record<string, any>
+  diff: Record<string, unknown>
 }
 
 export interface RagQueryAnalyticsResponse {
@@ -465,19 +465,19 @@ export interface RagQueryAnalyticsResponse {
   retrieval_p99_elapsed_sec?: number | null
 
   error_kind_counts: Record<string, number>
-  top_zero_hit_queries: Array<{ query_hash: string; count: number } | Record<string, any>>
-  top_slow_queries: Array<{ query_hash: string; count: number; max_elapsed_sec: number } | Record<string, any>>
-  timeseries: Record<string, any[]>
+  top_zero_hit_queries: Array<{ query_hash: string; count: number } | Record<string, unknown>>
+  top_slow_queries: Array<{ query_hash: string; count: number; max_elapsed_sec: number } | Record<string, unknown>>
+  timeseries: Record<string, unknown[]>
 }
 
 export interface DepsDiagnosticsResponse {
   schema: string
   generated_at: string
 
-  postgres: Record<string, any>
-  redis: Record<string, any>
-  minio: Record<string, any>
-  milvus: Record<string, any>
+  postgres: Record<string, unknown>
+  redis: Record<string, unknown>
+  minio: Record<string, unknown>
+  milvus: Record<string, unknown>
 }
 
 export interface RagCostAttributionResponse {
@@ -511,7 +511,7 @@ export interface RagCostAttributionResponse {
 export interface OpsConfigSnapshotResponse {
   schema: string
   fingerprint: string
-  config: Record<string, any>
+  config: Record<string, unknown>
 }
 
 export interface PeriodicJobFreshnessItemResponse {
@@ -561,7 +561,7 @@ export interface RagTraceBundleResponse {
   truncated: boolean
   record_count: number
   request_id: string
-  records: Array<Record<string, any>>
+  records: Array<Record<string, unknown>>
 }
 
 export interface RagTraceBundleSummaryResponse {
@@ -969,7 +969,7 @@ export interface CleanPreviewResponse {
   drop_reason?: string | null
   pii_hits?: Record<string, number> | null
   secrets_hits?: Record<string, number> | null
-  frontmatter?: Record<string, any> | null
+  frontmatter?: Record<string, unknown> | null
   title?: string | null
   tags?: string[] | null
   language?: string | null
@@ -1267,7 +1267,7 @@ export interface ZipWithImagesResponse {
 
 export interface IngestionPreprocessStep {
   id: string
-  params?: Record<string, any>
+  params?: Record<string, unknown>
 }
 
 export interface IngestionPreprocessConfig {
@@ -1289,7 +1289,7 @@ export interface IngestionRule {
   parser_backend?: string | null
   chunk_strategy?: string | null
   governance_profile_ref?: string | null
-  pipeline_patch?: Record<string, any>
+  pipeline_patch?: Record<string, unknown>
 }
 
 export interface IngestionPolicy {
@@ -1352,7 +1352,7 @@ export interface IngestionPreviewResponse {
   preprocess: PreprocessSummary
   parse: PipelineParsePreviewResponse
   clean: CleanPreviewResponse
-  explain?: Record<string, any>
+  explain?: Record<string, unknown>
 }
 
 // ==================== 数据集相关类型 ====================
@@ -1484,7 +1484,7 @@ export interface DatasetReportConnectorRun {
   created_at: string
   finished_at?: string | null
   error_message?: string | null
-  stats: Record<string, any>
+  stats: Record<string, unknown>
 }
 
 export interface DatasetGovernanceMetrics {
@@ -1538,7 +1538,7 @@ export interface DatasetReport {
   compliance: DatasetReportCompliance
   pipeline_versions: DatasetReportPipelineVersion[]
   connectors: DatasetReportConnectorRun[]
-  dataset_metadata: Record<string, any>
+  dataset_metadata: Record<string, unknown>
   folder_tree?: DocumentFolderTreeResponse | null
   governance_metrics?: DatasetGovernanceMetrics | null
   governance_audit?: DatasetGovernanceAudit | null
@@ -1547,13 +1547,13 @@ export interface DatasetReport {
 export interface DatasetConfigBundle {
   default_parser_backend?: string | null
   default_chunk_strategy?: string | null
-  rag_defaults?: Record<string, any> | null
+  rag_defaults?: Record<string, unknown> | null
   default_prompt_template_id?: string | null
   default_prompt_template_key?: string | null
   default_prompt_ab_experiment_key?: string | null
   pipeline?: DocumentPipelineOptions | null
   ingestion_policy?: IngestionPolicy | null
-  workflow_layout?: Record<string, any> | null
+  workflow_layout?: Record<string, unknown> | null
 }
 
 export interface DatasetConfigExport {
@@ -1584,7 +1584,7 @@ export interface Message {
   content: string
   citations?: Citation[]
   steps?: string[]
-  message_metadata?: Record<string, any> | null
+  message_metadata?: Record<string, unknown> | null
   created_at: string
 }
 
@@ -1617,7 +1617,7 @@ export interface RagTraceStep {
   key: string
   label: string
   elapsed_sec?: number | null
-  meta?: Record<string, any>
+  meta?: Record<string, unknown>
 }
 
 export interface RagTraceCitation {
@@ -1656,7 +1656,7 @@ export interface RagTraceCitation {
   has_image?: boolean
 
   kg_path?: Array<{ entity_id: string; type?: string }> | null
-  kg_path_provenance?: Record<string, any> | null
+  kg_path_provenance?: Record<string, unknown> | null
 }
 
 export interface RagTraceRetrievalQuery {
