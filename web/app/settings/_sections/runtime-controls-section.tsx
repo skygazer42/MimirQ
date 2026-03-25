@@ -1,0 +1,288 @@
+'use client'
+
+import { Input } from '@/components/ui/input'
+import type { CacheConfig, ChatConfig, LangGraphConfig, SafetyConfig } from '@/lib/api'
+import { Database, EyeOff, Network, Server, ToggleLeft, ToggleRight } from 'lucide-react'
+
+type RuntimeControlsSectionProps = {
+  chat: ChatConfig
+  chatDefaults: ChatConfig
+  updateChat: (patch: Partial<ChatConfig>) => void
+  cache: CacheConfig
+  cacheDefaults: CacheConfig
+  updateCache: (patch: Partial<CacheConfig>) => void
+  safety: SafetyConfig
+  safetyDefaults: SafetyConfig
+  updateSafety: (patch: Partial<SafetyConfig>) => void
+  langgraph: LangGraphConfig
+  langGraphDefaults: LangGraphConfig
+  updateLangGraph: (patch: Partial<LangGraphConfig>) => void
+}
+
+export function RuntimeControlsSection({
+  chat,
+  chatDefaults,
+  updateChat,
+  cache,
+  cacheDefaults,
+  updateCache,
+  safety,
+  safetyDefaults,
+  updateSafety,
+  langgraph,
+  langGraphDefaults,
+  updateLangGraph,
+}: Readonly<RuntimeControlsSectionProps>) {
+  const isCancelOnDisconnectEnabled =
+    chat.stream_cancel_on_disconnect ?? chatDefaults.stream_cancel_on_disconnect
+  const isUploadDedupEnabled = cache.upload_dedup_enabled ?? cacheDefaults.upload_dedup_enabled
+  const isChatResponseCacheEnabled =
+    cache.chat_response_cache_enabled ?? cacheDefaults.chat_response_cache_enabled
+  const isPiiRedactionEnabled = safety.pii_redaction_enabled ?? safetyDefaults.pii_redaction_enabled
+  const isSubgraphEnabled = langgraph.use_subgraphs ?? langGraphDefaults.use_subgraphs
+
+  return (
+    <section>
+      <div className="space-y-8 rounded-2xl border border-border bg-card p-6 shadow-sm">
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Server className="h-4 w-4 text-muted-foreground" />
+                Chat 流式稳定性（SSE）
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Heartbeat 用于保活连接；断连自动取消可减少浪费（保存后通常可立即生效）
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                updateChat({
+                  stream_cancel_on_disconnect: !isCancelOnDisconnectEnabled,
+                })
+              }
+              className="shrink-0"
+            >
+              {isCancelOnDisconnectEnabled ? (
+                <ToggleRight className="h-10 w-10 text-primary" />
+              ) : (
+                <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
+              )}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-3">
+            <div>
+              <div className="mb-1 text-xs text-muted-foreground">Heartbeat（秒）</div>
+              <Input
+                type="number"
+                min={0}
+                max={120}
+                step={1}
+                value={chat.stream_heartbeat_sec ?? chatDefaults.stream_heartbeat_sec}
+                onChange={(event) =>
+                  updateChat({ stream_heartbeat_sec: Number.parseFloat(event.target.value || '0') })
+                }
+              />
+            </div>
+            <div className="flex items-center text-xs text-muted-foreground md:col-span-2">
+              设为 0 将禁用心跳（不推荐，可能被代理/负载均衡断开）
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 border-t pt-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Database className="h-4 w-4 text-muted-foreground" />
+                性能与缓存
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                去重/缓存属于“best-effort”，依赖 Redis 时会 fail-open（不可用时不影响主流程）
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-2">
+            <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
+              <div>
+                <div className="text-sm font-semibold text-foreground">上传去重（Dataset 内）</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  同 file_sha256 + pipeline_hash 时直接复用已存在文档，减少重复入库/embedding
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => updateCache({ upload_dedup_enabled: !isUploadDedupEnabled })}
+                className="shrink-0"
+                aria-label="Toggle upload dedup"
+              >
+                {isUploadDedupEnabled ? (
+                  <ToggleRight className="h-10 w-10 text-primary" />
+                ) : (
+                  <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
+                )}
+              </button>
+            </div>
+
+            <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
+              <div>
+                <div className="text-sm font-semibold text-foreground">Chat 响应缓存（Redis）</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  相同问题+相同文档范围+相同配置命中后直接返回，降低 LLM/检索成本
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  updateCache({ chat_response_cache_enabled: !isChatResponseCacheEnabled })
+                }
+                className="shrink-0"
+                aria-label="Toggle chat response cache"
+              >
+                {isChatResponseCacheEnabled ? (
+                  <ToggleRight className="h-10 w-10 text-primary" />
+                ) : (
+                  <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {isChatResponseCacheEnabled ? (
+            <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-3">
+              <div>
+                <div className="mb-1 text-xs text-muted-foreground">TTL（秒）</div>
+                <Input
+                  type="number"
+                  min={0}
+                  max={86400}
+                  value={cache.chat_response_cache_ttl_sec ?? cacheDefaults.chat_response_cache_ttl_sec}
+                  onChange={(event) =>
+                    updateCache({
+                      chat_response_cache_ttl_sec: Number.parseInt(event.target.value || '0', 10),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-xs text-muted-foreground">最大 value bytes</div>
+                <Input
+                  type="number"
+                  min={0}
+                  max={5000000}
+                  value={
+                    cache.chat_response_cache_max_value_bytes ??
+                    cacheDefaults.chat_response_cache_max_value_bytes
+                  }
+                  onChange={(event) =>
+                    updateCache({
+                      chat_response_cache_max_value_bytes: Number.parseInt(
+                        event.target.value || '0',
+                        10
+                      ),
+                    })
+                  }
+                />
+              </div>
+              <div className="flex items-center gap-2 pt-5">
+                <input
+                  type="checkbox"
+                  checked={
+                    cache.chat_response_cache_require_empty_history ??
+                    cacheDefaults.chat_response_cache_require_empty_history
+                  }
+                  onChange={(event) =>
+                    updateCache({ chat_response_cache_require_empty_history: event.target.checked })
+                  }
+                  className="h-4 w-4 accent-primary"
+                />
+                <span className="text-sm text-foreground/80">仅缓存无历史请求</span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-3 border-t pt-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <EyeOff className="h-4 w-4 text-muted-foreground" />
+                PII 脱敏
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                对模型输入/输出与工具调用做脱敏（流式输出会做 holdback 以减少漏出）
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateSafety({ pii_redaction_enabled: !isPiiRedactionEnabled })}
+              className="shrink-0"
+            >
+              {isPiiRedactionEnabled ? (
+                <ToggleRight className="h-10 w-10 text-primary" />
+              ) : (
+                <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
+              )}
+            </button>
+          </div>
+
+          {isPiiRedactionEnabled ? (
+            <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-3">
+              <div>
+                <div className="mb-1 text-xs text-muted-foreground">脱敏占位符</div>
+                <Input
+                  value={safety.pii_redaction_mask ?? safetyDefaults.pii_redaction_mask}
+                  onChange={(event) => updateSafety({ pii_redaction_mask: event.target.value })}
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-xs text-muted-foreground">流式 holdback 字符数</div>
+                <Input
+                  type="number"
+                  min={0}
+                  max={2048}
+                  value={
+                    safety.pii_stream_holdback_chars ?? safetyDefaults.pii_stream_holdback_chars
+                  }
+                  onChange={(event) =>
+                    updateSafety({
+                      pii_stream_holdback_chars: Number.parseInt(event.target.value || '0', 10),
+                    })
+                  }
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="space-y-3 border-t pt-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Network className="h-4 w-4 text-muted-foreground" />
+                LangGraph 子图组合（Subgraph）
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                将 retrieve/generate 作为子图节点组合（更模块化，便于后续扩展）
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateLangGraph({ use_subgraphs: !isSubgraphEnabled })}
+              className="shrink-0"
+            >
+              {isSubgraphEnabled ? (
+                <ToggleRight className="h-10 w-10 text-primary" />
+              ) : (
+                <ToggleLeft className="h-10 w-10 text-muted-foreground hover:text-muted-foreground" />
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
