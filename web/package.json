@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --webpack -H 0.0.0.0 -p 3000",
     "dev:turbo": "next dev --turbopack -H 0.0.0.0 -p 3000",
-    "build": "next build --webpack",
+    "build": "next build --webpack && node scripts/check-bundle-budget.mjs",
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -14,7 +14,7 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
-    "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs",
+    "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
     "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs",
     "api-ping": "node scripts/api-ping.mjs",
     "openapi:export": "node scripts/export-openapi.mjs --out openapi.json",
