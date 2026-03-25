@@ -6,7 +6,12 @@ import { describe, expect, it } from 'vitest'
 describe('ParsingPage workbench scaffold', () => {
   it('uses WorkbenchScaffold for the outer layout', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
+    expect(fs.existsSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'parsing-library-preview-pane.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'parsing-types.ts'))).toBe(true)
     expect(src).toContain('WorkbenchScaffold')
+    expect(src).toContain('ParsingActiveFilePane')
+    expect(src).toContain('ParsingLibraryPreviewPane')
   })
 
   it('avoids the nested library empty-state ternary and passes drag props through FileQueueItem', () => {
