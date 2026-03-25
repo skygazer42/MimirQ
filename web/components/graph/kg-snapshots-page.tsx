@@ -12,7 +12,8 @@ import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
-import { kgApi } from '@/lib/api-client'
+import { kgApi } from '@/lib/api/graph'
+import { sanitizeFilename } from '@/lib/sanitize'
 import { detachPromise } from '@/lib/utils'
 
 type SnapshotPayload = Record<string, unknown>
@@ -36,12 +37,6 @@ function prettyJson(value: unknown): string {
   } catch {
     return String(value)
   }
-}
-
-function sanitizeFilename(name: string): string {
-  const trimmed = String(name || '').trim()
-  const base = trimmed || 'kg-snapshots'
-  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function downloadJson(value: unknown, filename: string): void {

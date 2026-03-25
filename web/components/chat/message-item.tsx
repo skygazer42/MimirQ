@@ -5,16 +5,15 @@
 
 import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import Image from 'next/image'
 import { BarChart3, Check, Copy, Database, Bot, Star, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { AuthImage } from '@/components/auth-image'
 import type { Citation, Message } from '@/types'
 import { cn } from '@/lib/utils'
 import { globalEventBus } from '@/lib/event-bus'
-import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
-import { getAccessToken, getTenantId } from '@/lib/auth-storage'
+import { toAbsoluteBackendUrl } from '@/lib/env'
 import { useDocumentView } from '@/store/document-view'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
 import { EvidenceViewerDialog } from '@/components/evidence/evidence-viewer-dialog'
@@ -25,47 +24,6 @@ import { Button } from '@/components/ui/button'
 import { feedbackApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
-
-let BACKEND_ORIGIN = ''
-try {
-  BACKEND_ORIGIN = new URL(API_BASE_URL).origin
-} catch {
-  BACKEND_ORIGIN = ''
-}
-
-function maybeAttachImageAuthToken(url: string): string {
-  const token = getAccessToken()
-  const tenantId = getTenantId()
-  if (!token && !tenantId) return url
-
-  let parsed: URL
-  try {
-    parsed = new URL(url, API_BASE_URL)
-  } catch {
-    return url
-  }
-
-  if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) return url
-
-  const path = parsed.pathname || ''
-  const needsToken =
-    path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
-  if (!needsToken) return url
-
-  if (
-    tenantId &&
-    !parsed.searchParams.has('tenant_id') &&
-    !parsed.searchParams.has('x_tenant_id') &&
-    !parsed.searchParams.has('tenant')
-  ) {
-    parsed.searchParams.set('tenant_id', tenantId)
-  }
-
-  if (!parsed.searchParams.has('token') && !parsed.searchParams.has('access_token')) {
-    if (token) parsed.searchParams.set('token', token)
-  }
-  return parsed.toString()
-}
 
 const INLINE_CITATION_HREF_PREFIX = 'mimirq-citation://'
 
@@ -135,12 +93,11 @@ const markdownBaseComponents = {
     else {
         return '';
     }
-})()
+    })()
     if (!resolved) return null
-    const finalSrc = maybeAttachImageAuthToken(resolved)
     return (
-      <Image
-        src={finalSrc}
+      <AuthImage
+        src={resolved}
         alt={alt || 'image'}
         width={1200}
         height={800}
@@ -1066,7 +1023,7 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
               aria-label="open-evidence-viewer"
               title="打开 Evidence Viewer"
             >
-              <Image
+              <AuthImage
                 src={imgUrl}
                 alt="引用图片"
                 fill

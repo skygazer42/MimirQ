@@ -13,7 +13,7 @@ import type {
   TenantGroupOut,
   TenantGroupUpdateRequest,
 } from '@/types/backend'
-import { extractBackendMessage, extractBackendRequestId } from '@/lib/api-errors'
+import { extractBackendMessage, extractBackendRequestId, extractRateLimitDetail } from '@/lib/api-errors'
 import { buildFetchError } from '@/lib/fetch-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { clearAuthSession, getAccessToken, setAccessToken } from '@/lib/auth-storage'
@@ -129,15 +129,6 @@ export function formatRateLimitLogMessage({
   }
 }
 
-function extractRateLimitDetail(data: unknown): { retryAfterSec?: number; scope?: string; limit?: number } {
-  const detailObj = data && typeof data === 'object' ? (data as { detail?: Record<string, unknown> }).detail : null
-  return {
-    retryAfterSec: coerceRetryAfterSeconds(detailObj?.retry_after_sec, undefined),
-    scope: typeof detailObj?.scope === 'string' ? detailObj.scope : undefined,
-    limit: typeof detailObj?.limit === 'number' ? detailObj.limit : undefined,
-  }
-}
-
 async function handleUnauthorizedApiError(error: any, requestId?: string) {
   logRequestScopedError('[API] 未授权，请检查登录状态', requestId)
 
@@ -183,11 +174,11 @@ function handleResponseStatusError(status: number, detail: string, requestId: st
   if (status === 429) {
     const retryAfterHeader = error.response.headers?.['retry-after']
     const rateLimit = extractRateLimitDetail(data)
-    const retryAfterSec = coerceRetryAfterSeconds(rateLimit.retryAfterSec, retryAfterHeader)
+    const retryAfterSec = coerceRetryAfterSeconds(rateLimit?.retryAfterSec, retryAfterHeader)
     const { message, extra } = formatRateLimitLogMessage({
       retryAfterSec,
-      scope: rateLimit.scope,
-      limit: rateLimit.limit,
+      scope: rateLimit?.scope,
+      limit: rateLimit?.limit,
     })
     logRequestScopedError(message, requestId, extra)
     return

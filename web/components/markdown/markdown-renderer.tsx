@@ -2,17 +2,16 @@
 
 import { memo, useEffect, useMemo, useRef } from 'react'
 import type * as React from 'react'
-import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize'
 
+import { AuthImage } from '@/components/auth-image'
 import { cn } from '@/lib/utils'
-import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
+import { toAbsoluteBackendUrl } from '@/lib/env'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
-import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 
 const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
 
@@ -44,47 +43,6 @@ const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
     colgroup: [...((defaultSchema.attributes?.colgroup as string[] | undefined) || [])],
     col: [...((defaultSchema.attributes?.col as string[] | undefined) || []), 'span'],
   },
-}
-
-let BACKEND_ORIGIN = ''
-try {
-  BACKEND_ORIGIN = new URL(API_BASE_URL).origin
-} catch {
-  BACKEND_ORIGIN = ''
-}
-
-function maybeAttachImageAuthToken(url: string): string {
-  const token = getAccessToken()
-  const tenantId = getTenantId()
-  if (!token && !tenantId) return url
-
-  let parsed: URL
-  try {
-    parsed = new URL(url, API_BASE_URL)
-  } catch {
-    return url
-  }
-
-  if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) return url
-
-  const path = parsed.pathname || ''
-  const needsToken =
-    path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
-  if (!needsToken) return url
-
-  if (
-    tenantId &&
-    !parsed.searchParams.has('tenant_id') &&
-    !parsed.searchParams.has('x_tenant_id') &&
-    !parsed.searchParams.has('tenant')
-  ) {
-    parsed.searchParams.set('tenant_id', tenantId)
-  }
-
-  if (!parsed.searchParams.has('token') && !parsed.searchParams.has('access_token')) {
-    if (token) parsed.searchParams.set('token', token)
-  }
-  return parsed.toString()
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
@@ -230,12 +188,11 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     else {
         return '';
     }
-})()
+            })()
             if (!resolved) return null
-            const finalSrc = maybeAttachImageAuthToken(resolved)
             return (
-              <Image
-                src={finalSrc}
+              <AuthImage
+                src={resolved}
                 alt={alt || 'image'}
                 width={1200}
                 height={800}

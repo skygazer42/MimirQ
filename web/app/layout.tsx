@@ -1,10 +1,5 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import '@xyflow/react/dist/style.css'
-import { ParserBackendProvider } from "@/contexts/parser-backend-context"
-import { ChunkStrategyProvider } from "@/contexts/chunk-strategy-context"
-import { PipelineOptionsProvider } from "@/contexts/pipeline-options-context"
-import { PipelineCapabilitiesProvider } from "@/contexts/pipeline-capabilities-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { SonnerToaster } from "@/components/sonner-toaster"
 import { CommandMenu } from "@/components/command-menu"
@@ -45,15 +40,7 @@ export default function RootLayout({
             <RouteScrollReset />
             {enableFluidCursor ? <FluidCursor /> : null}
             <TaskCenter />
-            <PipelineCapabilitiesProvider>
-              <ParserBackendProvider>
-                <ChunkStrategyProvider>
-                  <PipelineOptionsProvider>
-                    <AuthGuard>{children}</AuthGuard>
-                  </PipelineOptionsProvider>
-                </ChunkStrategyProvider>
-              </ParserBackendProvider>
-            </PipelineCapabilitiesProvider>
+            <AuthGuard>{children}</AuthGuard>
           </QueryProvider>
         </ThemeProvider>
       </body>

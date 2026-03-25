@@ -43,7 +43,7 @@ function asFiniteNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-function extractRateLimitDetail(data: unknown): { retryAfterSec?: number; limit?: number; scope?: string } | undefined {
+export function extractRateLimitDetail(data: unknown): { retryAfterSec?: number; limit?: number; scope?: string } | undefined {
   if (!data || typeof data !== 'object') return undefined
   const detail = (data as ErrorResponseLike).detail
   if (!detail || typeof detail !== 'object') return undefined

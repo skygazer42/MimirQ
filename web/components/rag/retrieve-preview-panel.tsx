@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import { useCallback, useMemo, useState } from 'react'
 import {
   Copy,
@@ -13,6 +12,7 @@ import {
   Zap,
 } from 'lucide-react'
 import type { Citation } from '@/types'
+import { AuthImage, AuthImageLink, useResolvedAuthAssetUrl } from '@/components/auth-image'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
@@ -104,6 +104,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     if (!activeHit?.has_image) return null
     return resolveSafeCitationImageUrl(activeHit.img_url)
   }, [activeHit])
+  const resolvedActiveHitImageUrl = useResolvedAuthAssetUrl(activeHitImageUrl)
 
   const selectedEvidenceSet = useMemo(() => new Set(selectedEvidenceChunkIds || []), [selectedEvidenceChunkIds])
 
@@ -533,15 +534,13 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                                 const safeUrl = resolveSafeCitationImageUrl(hit.img_url)
                                 if (!safeUrl) return null
                                 return (
-                                  <a
-                                    href={safeUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                  <AuthImageLink
+                                    src={safeUrl}
                                     className="shrink-0 relative h-10 w-10 rounded-md overflow-hidden border border-border/60 bg-muted/20"
                                     title="Open image"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <Image
+                                    <AuthImage
                                       src={safeUrl}
                                       alt="citation thumbnail"
                                       fill
@@ -549,7 +548,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                                       sizes="40px"
                                       className="object-cover"
                                     />
-                                  </a>
+                                  </AuthImageLink>
                                 )
                               })()
                             ) : null}
@@ -947,10 +946,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             <div className="flex-1 overflow-auto px-6 py-5 space-y-5">
               {activeHit ? (
                 <>
-                  {activeHitImageUrl ? (
+                  {resolvedActiveHitImageUrl ? (
                     <div className="rounded-xl border border-border/60 bg-background/60 overflow-hidden">
-                      <a href={activeHitImageUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video">
-                        <Image
+                      <a href={resolvedActiveHitImageUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video">
+                        <AuthImage
                           src={activeHitImageUrl}
                           alt="cited image"
                           fill

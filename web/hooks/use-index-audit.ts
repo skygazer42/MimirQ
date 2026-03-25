@@ -3,21 +3,36 @@
  */
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import { toast } from 'sonner'
 
 import type { IndexAuditResponse } from '@/types'
-import { observabilityApi } from '@/lib/api-client'
+import { observabilityApi } from '@/lib/api/observability'
 import { formatApiError } from '@/lib/api-errors'
+import { queryKeys } from '@/lib/query-keys'
 
 type UseIndexAuditOptions = {
   selectedDatasetId?: string
 }
 
 export function useIndexAudit({ selectedDatasetId }: UseIndexAuditOptions) {
-  const [indexAudit, setIndexAudit] = useState<IndexAuditResponse | null>(null)
-  const [indexAuditLoading, setIndexAuditLoading] = useState(false)
-  const [indexAuditError, setIndexAuditError] = useState<string | null>(null)
+  const {
+    data,
+    error,
+    isFetching,
+    refetch,
+  } = useQuery<IndexAuditResponse>({
+    queryKey: queryKeys.indexAudit.result(selectedDatasetId || 'unselected'),
+    queryFn: () => {
+      if (!selectedDatasetId) {
+        throw new Error('missing_dataset_id')
+      }
+      return observabilityApi.getIndexAudit({ dataset_id: selectedDatasetId })
+    },
+    enabled: false,
+    retry: false,
+  })
 
   const runIndexAudit = useCallback(async () => {
     if (!selectedDatasetId) {
@@ -25,25 +40,22 @@ export function useIndexAudit({ selectedDatasetId }: UseIndexAuditOptions) {
       return
     }
 
-    setIndexAuditLoading(true)
-    setIndexAuditError(null)
-    try {
-      const res = await observabilityApi.getIndexAudit({ dataset_id: selectedDatasetId })
-      setIndexAudit(res)
-      toast.success('Index Audit 完成')
-    } catch (err: any) {
-      console.error('Index audit failed:', err)
-      setIndexAuditError(formatApiError(err, 'Index Audit 失败'))
-    } finally {
-      setIndexAuditLoading(false)
+    const result = await refetch()
+    if (result.error) {
+      console.error('Index audit failed:', result.error)
+      toast.error(formatApiError(result.error, 'Index Audit 失败'))
+      return
     }
-  }, [selectedDatasetId])
+
+    if (result.data) {
+      toast.success('Index Audit 完成')
+    }
+  }, [refetch, selectedDatasetId])
 
   return {
-    indexAudit,
-    indexAuditLoading,
-    indexAuditError,
+    indexAudit: data ?? null,
+    indexAuditLoading: isFetching,
+    indexAuditError: error ? formatApiError(error, 'Index Audit 失败') : null,
     runIndexAudit,
   }
 }
-

@@ -1,7 +1,6 @@
 'use client'
 
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
-import { getAccessToken, getTenantId } from '@/lib/auth-storage'
 
 let BACKEND_ORIGIN = ''
 try {
@@ -35,22 +34,5 @@ export function resolveSafeCitationImageUrl(rawUrl: string | null | undefined): 
     path.includes('/api/v1/documents/image/') || path.includes('/api/v1/documents/image-url/')
   if (!ok) return null
 
-  const token = getAccessToken()
-  const tenantId = getTenantId()
-
-  if (
-    tenantId &&
-    !parsed.searchParams.has('tenant_id') &&
-    !parsed.searchParams.has('x_tenant_id') &&
-    !parsed.searchParams.has('tenant')
-  ) {
-    parsed.searchParams.set('tenant_id', tenantId)
-  }
-
-  if (!parsed.searchParams.has('token') && !parsed.searchParams.has('access_token')) {
-    if (token) parsed.searchParams.set('token', token)
-  }
-
   return parsed.toString()
 }
-

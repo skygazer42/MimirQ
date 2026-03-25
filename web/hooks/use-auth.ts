@@ -1,50 +1,59 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback } from 'react'
 import type { UserProfile } from '@/types'
-import { authApi } from '@/lib/api-client'
+import { authApi } from '@/lib/api/auth'
 import { clearAuthSession, getAccessToken, getStoredUser, setStoredUser } from '@/lib/auth-storage'
+import { queryKeys } from '@/lib/query-keys'
 
 export function useAuth() {
-  const [user, setUser] = useState<UserProfile | null>(getStoredUser())
-  const [isLoading, setIsLoading] = useState(false)
+  const queryClient = useQueryClient()
+  const accessToken = getAccessToken()
+  const initialUser = getStoredUser()
+
+  const { data: user, isFetching, refetch } = useQuery<UserProfile | null>({
+    queryKey: queryKeys.auth.profile,
+    queryFn: async () => {
+      const token = getAccessToken()
+      if (!token) return getStoredUser()
+
+      try {
+        const profile = await authApi.me()
+        setStoredUser(profile)
+        return profile
+      } catch {
+        clearAuthSession()
+        return null
+      }
+    },
+    enabled: Boolean(accessToken),
+    initialData: initialUser,
+    staleTime: 5 * 60_000,
+  })
 
   const refresh = useCallback(async () => {
-    const token = getAccessToken()
-    if (!token) {
-      setUser(getStoredUser())
+    if (!getAccessToken()) {
+      queryClient.setQueryData(queryKeys.auth.profile, getStoredUser())
       return
     }
-    setIsLoading(true)
-    try {
-      const profile = await authApi.me()
-      setStoredUser(profile)
-      setUser(profile)
-    } catch {
-      clearAuthSession()
-      setUser(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
+
+    await refetch()
+  }, [queryClient, refetch])
 
   const logout = useCallback(() => {
     // Best-effort: clear server-side OIDC refresh token cookie if present.
     void fetch('/api/oidc/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => undefined)
     clearAuthSession()
-    setUser(null)
-  }, [])
+    queryClient.setQueryData(queryKeys.auth.profile, null)
+  }, [queryClient])
 
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  const isAuthenticated = Boolean(getAccessToken())
+  const isAuthenticated = Boolean(accessToken)
   const isDevMode = !isAuthenticated
 
   return {
     user,
-    isLoading,
+    isLoading: isFetching,
     isAuthenticated,
     isDevMode,
     refresh,

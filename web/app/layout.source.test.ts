@@ -1,0 +1,17 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+describe('root layout source', () => {
+  it('keeps pipeline providers and xyflow CSS out of the global shell', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'layout.tsx'), 'utf8')
+
+    expect(src).not.toContain("@xyflow/react/dist/style.css")
+    expect(src).not.toContain('PipelineCapabilitiesProvider')
+    expect(src).not.toContain('ParserBackendProvider')
+    expect(src).not.toContain('ChunkStrategyProvider')
+    expect(src).not.toContain('PipelineOptionsProvider')
+    expect(src).toContain('<AuthGuard>{children}</AuthGuard>')
+  })
+})

@@ -1,11 +1,15 @@
 "use client"
 
+import dynamic from 'next/dynamic'
 import { useEffect, useState, useRef, useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+
+const CinematicCodeBlock = dynamic(
+  () => import('./cinematic-code-block').then((mod) => mod.CinematicCodeBlock),
+  { ssr: false }
+)
 
 // 调整打字速度配置 (ms)
 const MIN_TYPE_SPEED = 5
@@ -45,31 +49,10 @@ export function CinematicTypewriter({
     code: ({ className, children, ...props }: any) => {
       const match = /language-(\w+)/.exec(className || '')
       return match ? (
-        <div className="relative group rounded-lg overflow-hidden my-4 border border-border/50 shadow-sm motion-safe:animate-fade-in-up">
-          {/* Mac 风格窗口头 */}
-          <div className="flex items-center px-4 py-2 bg-secondary/30 border-b border-border/60">
-            <div className="flex gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-destructive/80" />
-              <div className="w-2.5 h-2.5 rounded-full bg-warning/80" />
-              <div className="w-2.5 h-2.5 rounded-full bg-success/80" />
-            </div>
-            <span className="ml-4 text-[10px] font-mono text-muted-foreground uppercase">{match[1]}</span>
-          </div>
-          <SyntaxHighlighter
-            {...props}
-            style={oneDark}
-            language={match[1]}
-            PreTag="div"
-            customStyle={{
-              margin: 0,
-              borderRadius: 0,
-              background: 'transparent',
-              fontSize: '0.85em',
-            }}
-          >
-            {String(children).replace(/\n$/, '')}
-          </SyntaxHighlighter>
-        </div>
+        <CinematicCodeBlock
+          language={match[1]}
+          code={String(children).replace(/\n$/, '')}
+        />
       ) : (
         <code className="bg-secondary/50 px-1.5 py-0.5 rounded-md text-sm font-mono text-primary" {...props}>
           {children}

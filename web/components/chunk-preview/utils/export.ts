@@ -1,12 +1,9 @@
 import type { ChunkPreviewResponse } from '@/types'
 import { toPrimitiveString, toSingleLinePrimitiveString } from '@/lib/primitive-text'
+import { sanitizeFilename } from '@/lib/sanitize'
 import { computeCoverageSignals, computeDuplicateIndices, computeShortIndices, fnv1a32, roughEstimateTokens } from './review-signals'
 
-export function sanitizeFilename(name: string) {
-  const trimmed = (name || '').trim()
-  const base = trimmed || 'chunks'
-  return base.replaceAll("[/:*?\"<>|]+", '_')
-}
+export { sanitizeFilename } from '@/lib/sanitize'
 
 export function downloadTextFile(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
   const blob = new Blob([content], { type: mime })

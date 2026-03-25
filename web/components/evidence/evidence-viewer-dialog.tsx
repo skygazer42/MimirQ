@@ -1,10 +1,10 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
 import { Copy, ExternalLink, FileText, Image as ImageIcon, Table2 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { AuthImage, useResolvedAuthAssetUrl } from '@/components/auth-image'
 import type { Citation } from '@/types'
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
@@ -79,6 +79,7 @@ export function EvidenceViewerDialog({
 
   const kind = inferEvidenceKind(citation)
   const imgUrl = kind === 'image' ? resolveSafeCitationImageUrl(citation?.img_url) : null
+  const resolvedImgUrl = useResolvedAuthAssetUrl(imgUrl)
 
   const title = (() => {
     if (!citation) return 'Evidence'
@@ -242,9 +243,9 @@ export function EvidenceViewerDialog({
             {kind === 'image' ? (
               <div className="space-y-3">
                 <div className="rounded-xl border border-border/60 bg-muted/20 overflow-hidden">
-                  {imgUrl ? (
+                  {resolvedImgUrl ? (
                     <div className="relative w-full aspect-video">
-                      <Image
+                      <AuthImage
                         src={imgUrl}
                         alt="evidence image"
                         fill
@@ -260,13 +261,13 @@ export function EvidenceViewerDialog({
                   )}
                 </div>
 
-                {imgUrl ? (
+                {resolvedImgUrl ? (
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       className="rounded-xl gap-2"
-                      onClick={() => globalThis.window.open(imgUrl, '_blank', 'noopener,noreferrer')}
+                      onClick={() => globalThis.window.open(resolvedImgUrl, '_blank', 'noopener,noreferrer')}
                     >
                       <ExternalLink className="h-4 w-4" />
                       新窗口打开
@@ -276,8 +277,8 @@ export function EvidenceViewerDialog({
                       size="sm"
                       className="rounded-xl gap-2"
                       onClick={async () => {
-                        const ok = await copyToClipboard(imgUrl)
-                        if (ok) toast.success('已复制图片 URL')
+                        const ok = await copyToClipboard(resolvedImgUrl)
+                        if (ok) toast.success('已复制临时图片链接')
                       }}
                     >
                       <Copy className="h-4 w-4" />

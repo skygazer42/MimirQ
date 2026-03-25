@@ -15,8 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
-import { datasetApi, evaluationApi } from '@/lib/api-client'
+import { datasetApi } from '@/lib/api/datasets'
+import { evaluationApi } from '@/lib/api/evaluation'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import { sanitizeFilename } from '@/lib/sanitize'
 import type { Dataset, RegressionRun, RegressionRunCreate, RagasRegressionRunDiffResponse } from '@/types'
 import { detachPromise } from '@/lib/utils'
 
@@ -41,12 +43,6 @@ function prettyJson(value: unknown): string {
   } catch {
     return String(value)
   }
-}
-
-function sanitizeFilename(name: string): string {
-  const trimmed = String(name || '').trim()
-  const base = trimmed || 'retrieval-ablations'
-  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
 }
 
 function downloadJson(value: unknown, filename: string): void {

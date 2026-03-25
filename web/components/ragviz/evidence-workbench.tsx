@@ -1,10 +1,10 @@
 'use client'
 
-import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { AuthImage, AuthImageLink } from '@/components/auth-image'
 import type { Citation, Dataset, EvidenceRetrieveResponse } from '@/types'
 import { datasetApi, ragApi } from '@/lib/api-client'
 import { formatApiError } from '@/lib/api-errors'
@@ -377,15 +377,13 @@ export function EvidenceWorkbench() {
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {safeImgUrl ? (
-                            <a
-                              href={safeImgUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <AuthImageLink
+                              src={safeImgUrl}
                               className="shrink-0 relative h-10 w-14 rounded-md overflow-hidden border border-border/60 bg-muted/20"
                               title="Open image"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <Image
+                              <AuthImage
                                 src={safeImgUrl}
                                 alt="citation thumbnail"
                                 fill
@@ -393,7 +391,7 @@ export function EvidenceWorkbench() {
                                 sizes="56px"
                                 className="object-cover"
                               />
-                            </a>
+                            </AuthImageLink>
                           ) : null}
                           <div className="text-[11px] text-muted-foreground">score</div>
                           <div className="text-[11px] font-mono">{scoreLabel(c)}</div>
