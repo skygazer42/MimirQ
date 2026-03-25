@@ -1,0 +1,59 @@
+"use client"
+
+import { Download, FileText, Maximize2, Minimize2, X } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+
+type DocumentViewerHeaderProps = {
+  filename?: string | null
+  chunkCount: number
+  isExpanded: boolean
+  downloadUrl: string | null
+  onToggleExpanded: () => void
+  onClose: () => void
+}
+
+export function DocumentViewerHeader({
+  filename,
+  chunkCount,
+  isExpanded,
+  downloadUrl,
+  onToggleExpanded,
+  onClose,
+}: Readonly<DocumentViewerHeaderProps>) {
+  return (
+    <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 pb-3 pt-3 backdrop-blur-sm supports-[padding:env(safe-area-inset-top)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]">
+      <div className="flex items-center gap-3 overflow-hidden">
+        <div className="rounded-lg bg-primary/10 p-2">
+          <FileText className="h-5 w-5 text-primary" />
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <h3 className="max-w-[200px] truncate text-sm font-semibold" title={filename ?? undefined}>
+            {filename || "加载中..."}
+          </h3>
+          <span className="text-xs text-muted-foreground">{chunkCount} 个切片</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon" asChild title="下载原文件" aria-label="下载原文件">
+          <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
+            <Download className="h-4 w-4" />
+          </a>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleExpanded}
+          title={isExpanded ? "收起" : "展开"}
+          aria-label={isExpanded ? "收起" : "展开"}
+        >
+          {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+        </Button>
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label="关闭">
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}
