@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
@@ -62,7 +62,7 @@ export function ChatArea({
     score_threshold: number
     retrieval_mode: string
     use_graph: boolean
-    metadata_filter?: Record<string, any> | null
+    metadata_filter?: Record<string, unknown> | null
   }>(() => ({
     top_k: 5,
     score_threshold: 0.7,
@@ -1020,7 +1020,7 @@ function QuickStartChip({
   prompt,
   onSelect,
 }: Readonly<{
-  icon: any
+  icon: LucideIcon
   title: string
   prompt: string
   onSelect: (prompt: string) => void
@@ -1053,7 +1053,7 @@ function WelcomeStatusCard({
   actionLabel,
   onAction,
 }: Readonly<{
-  icon: any
+  icon: LucideIcon
   title: string
   desc: string
   actionLabel?: string

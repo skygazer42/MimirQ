@@ -21,7 +21,7 @@ type TokenResponse = {
 const REFRESH_COOKIE_NAME = 'mimirq_oidc_refresh_token'
 const PROVIDER_COOKIE_NAME = 'mimirq_oidc_provider_id'
 
-function jsonNoStore(data: any, init?: { status?: number }) {
+function jsonNoStore(data: unknown, init?: { status?: number }) {
   const resp = NextResponse.json(data, init)
   resp.headers.set('Cache-Control', 'no-store')
   resp.headers.set('Pragma', 'no-cache')
@@ -95,8 +95,9 @@ export async function POST(req: NextRequest) {
   let tokenEndpoint = ''
   try {
     tokenEndpoint = (await discoverTokenEndpoint(issuer)).token_endpoint
-  } catch (e: any) {
-    return jsonNoStore({ error: String(e?.message || 'oidc_discovery_failed') }, { status: 400 })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'oidc_discovery_failed'
+    return jsonNoStore({ error: String(message || 'oidc_discovery_failed') }, { status: 400 })
   }
 
   const secret = provider.client_secret?.trim() ?? ''

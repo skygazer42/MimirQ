@@ -45,7 +45,7 @@ function applyNoStore(resp: NextResponse) {
   return resp
 }
 
-function jsonNoStore(data: any, init?: { status?: number }) {
+function jsonNoStore(data: unknown, init?: { status?: number }) {
   return applyNoStore(NextResponse.json(data, init))
 }
 

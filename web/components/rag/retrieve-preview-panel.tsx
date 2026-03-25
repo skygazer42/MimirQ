@@ -11,7 +11,12 @@ import {
   TestTube2,
   Zap,
 } from 'lucide-react'
-import type { Citation } from '@/types'
+import type {
+  Citation,
+  EvidenceRetrieveResponse,
+  ReferenceSource,
+  RegressionCaseCreate,
+} from '@/types'
 import { AuthImage, AuthImageLink, useResolvedAuthAssetUrl } from '@/components/auth-image'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -28,11 +33,151 @@ type RetrievePreviewPanelProps = {
   className?: string
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
+type JsonRecord = Record<string, unknown>
+
+type KgPathStep = {
+  entity_id: string
+  type?: string
+}
+
+type KgPathProvenanceNode = {
+  kind?: string
+  entity_id?: string
+  event_id?: string
+  type?: string
+  document_id?: string
+  chunk_id?: string
+}
+
+type KgPathProvenanceEdge = {
+  kind?: string
+  predicate?: string
+  confidence_bucket?: string
+  evidence_source?: string
+  relation_id?: string
+  document_id?: string
+  chunk_id?: string
+}
+
+type KgPathProvenance = JsonRecord & {
+  kind?: string
+  hops?: number
+  nodes?: KgPathProvenanceNode[]
+  edges?: KgPathProvenanceEdge[]
+}
+
+type RetrievePreviewCitation = Omit<Citation, 'kg_path' | 'kg_path_provenance'> & {
+  kg_path?: KgPathStep[]
+  kg_path_provenance?: KgPathProvenance
+  family_hit?: boolean
+  family_collapse_key?: string
+  hierarchy_family_key?: string
+}
+
+function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function toCitation(value: unknown): Citation | null {
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const next = Number(value)
+    if (Number.isFinite(next)) return next
+  }
+  return undefined
+}
+
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function toStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const items = value.filter((item): item is string => typeof item === 'string' && item.length > 0)
+  return items.length ? items : undefined
+}
+
+function toKgPath(value: unknown): KgPathStep[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const items = value
+    .filter(isRecord)
+    .map((item) => {
+      const entityId = toOptionalString(item.entity_id)
+      if (!entityId) return null
+      const step: KgPathStep = { entity_id: entityId }
+      const type = toOptionalString(item.type)
+      if (type) step.type = type
+      return step
+    })
+    .filter((item): item is KgPathStep => item !== null)
+  return items.length ? items : undefined
+}
+
+function toKgPathProvenanceNode(value: unknown): KgPathProvenanceNode | null {
+  if (!isRecord(value)) return null
+  return {
+    kind: toOptionalString(value.kind),
+    entity_id: toOptionalString(value.entity_id),
+    event_id: toOptionalString(value.event_id),
+    type: toOptionalString(value.type),
+    document_id: toOptionalString(value.document_id),
+    chunk_id: toOptionalString(value.chunk_id),
+  }
+}
+
+function toKgPathProvenanceEdge(value: unknown): KgPathProvenanceEdge | null {
+  if (!isRecord(value)) return null
+  return {
+    kind: toOptionalString(value.kind),
+    predicate: toOptionalString(value.predicate),
+    confidence_bucket: toOptionalString(value.confidence_bucket),
+    evidence_source: toOptionalString(value.evidence_source),
+    relation_id: toOptionalString(value.relation_id),
+    document_id: toOptionalString(value.document_id),
+    chunk_id: toOptionalString(value.chunk_id),
+  }
+}
+
+function toKgPathProvenance(value: unknown): KgPathProvenance | undefined {
+  if (!isRecord(value)) return undefined
+
+  const nodes = Array.isArray(value.nodes)
+    ? value.nodes.map(toKgPathProvenanceNode).filter((item): item is KgPathProvenanceNode => item !== null)
+    : undefined
+  const edges = Array.isArray(value.edges)
+    ? value.edges.map(toKgPathProvenanceEdge).filter((item): item is KgPathProvenanceEdge => item !== null)
+    : undefined
+
+  return {
+    kind: toOptionalString(value.kind),
+    hops: toOptionalNumber(value.hops),
+    nodes: nodes?.length ? nodes : undefined,
+    edges: edges?.length ? edges : undefined,
+  }
+}
+
+function buildReferenceSource(citation: RetrievePreviewCitation): ReferenceSource | null {
+  const chunkId = toOptionalString(citation.chunk_id)
+  if (!chunkId) return null
+
+  return {
+    document_id: citation.document_id,
+    chunk_id: chunkId,
+    page_number: citation.page_number,
+    start_char: citation.start_char,
+    end_char: citation.end_char,
+    doc_pipeline_key: citation.doc_pipeline_key,
+    pipeline_hash: citation.pipeline_hash,
+    quote: citation.chunk_content,
+    label: 'ground_truth',
+  }
+}
+
+function toCitation(value: unknown): RetrievePreviewCitation | null {
   if (!isRecord(value)) return null
   const document_id = typeof value.document_id === 'string' ? value.document_id : ''
   const document_name = typeof value.document_name === 'string' ? value.document_name : ''
@@ -42,7 +187,56 @@ function toCitation(value: unknown): Citation | null {
 
   if (!document_id || !document_name) return null
 
-  return { ...(value as any), document_id, document_name, chunk_content, relevance_score } as Citation
+  const citation: RetrievePreviewCitation = {
+    document_id,
+    document_name,
+    chunk_content,
+    relevance_score,
+  }
+
+  citation.chunk_id = toOptionalString(value.chunk_id)
+  citation.matched_terms = toStringList(value.matched_terms)
+  citation.page_number = toOptionalNumber(value.page_number)
+  citation.chunk_index = toOptionalNumber(value.chunk_index)
+  citation.start_char = toOptionalNumber(value.start_char)
+  citation.end_char = toOptionalNumber(value.end_char)
+  citation.evidence_start_char = toOptionalNumber(value.evidence_start_char)
+  citation.evidence_end_char = toOptionalNumber(value.evidence_end_char)
+  citation.header_path = toOptionalString(value.header_path)
+  citation.chunk_strategy = toOptionalString(value.chunk_strategy)
+  citation.chunk_role = toOptionalString(value.chunk_role)
+  citation.chunk_semantic_role = toOptionalString(value.chunk_semantic_role)
+  citation.policy_clause_id = toOptionalString(value.policy_clause_id)
+  citation.policy_clause_number = toOptionalString(value.policy_clause_number)
+  citation.policy_path = toStringList(value.policy_path)
+  citation.policy_path_str = toOptionalString(value.policy_path_str)
+  citation.parent_id = toOptionalString(value.parent_id)
+  citation.retrieval_role = toOptionalString(value.retrieval_role)
+  citation.neighbor_of = toOptionalString(value.neighbor_of)
+  citation.kg_path = toKgPath(value.kg_path)
+  citation.kg_path_provenance = toKgPathProvenance(value.kg_path_provenance)
+  citation.doc_pipeline_key = toOptionalString(value.doc_pipeline_key)
+  citation.pipeline_hash = toOptionalString(value.pipeline_hash)
+  citation.vector_score = toOptionalNumber(value.vector_score)
+  citation.bm25_score = toOptionalNumber(value.bm25_score)
+  citation.keyword_score = toOptionalNumber(value.keyword_score)
+  citation.rerank_score = toOptionalNumber(value.rerank_score)
+  citation.retrieval_score = toOptionalNumber(value.retrieval_score)
+  citation.reranker_provider = toOptionalString(value.reranker_provider)
+  citation.rerank_elapsed_sec = toOptionalNumber(value.rerank_elapsed_sec)
+  citation.rerank_model_used = toOptionalString(value.rerank_model_used)
+  citation.retrieval_mode = toOptionalString(value.retrieval_mode)
+  citation.vector_backend = toOptionalString(value.vector_backend)
+  citation.retrieval_elapsed_sec = toOptionalNumber(value.retrieval_elapsed_sec)
+  citation.hit_type = toOptionalString(value.hit_type)
+  citation.has_image = toOptionalBoolean(value.has_image)
+  citation.img_id = toOptionalString(value.img_id)
+  citation.img_url = toOptionalString(value.img_url)
+  citation.family_hit = toOptionalBoolean(value.family_hit)
+  citation.family_collapse_key = toOptionalString(value.family_collapse_key)
+  citation.hierarchy_family_key = toOptionalString(value.hierarchy_family_key)
+
+  return citation
 }
 
 function shortId(id: string, opts?: { head?: number; tail?: number }): string {
@@ -86,10 +280,10 @@ async function copyToClipboard(text: string, label: string): Promise<void> {
 
 export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<RetrievePreviewPanelProps>) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Citation[]>([])
+  const [searchResults, setSearchResults] = useState<RetrievePreviewCitation[]>([])
   const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState<string>('')
-  const [searchMetrics, setSearchMetrics] = useState<Record<string, any> | null>(null)
-  const [searchRetrievalTrace, setSearchRetrievalTrace] = useState<Record<string, any> | null>(null)
+  const [searchMetrics, setSearchMetrics] = useState<JsonRecord | null>(null)
+  const [searchRetrievalTrace, setSearchRetrievalTrace] = useState<JsonRecord | null>(null)
   const [searchHasEvidence, setSearchHasEvidence] = useState<boolean | null>(null)
   const [searchAbstainTriggered, setSearchAbstainTriggered] = useState<boolean | null>(null)
   const [searchAbstainReason, setSearchAbstainReason] = useState<string | null>(null)
@@ -99,7 +293,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
   const [isCreatingRegressionCase, setIsCreatingRegressionCase] = useState(false)
 
   const [detailOpen, setDetailOpen] = useState(false)
-  const [activeHit, setActiveHit] = useState<Citation | null>(null)
+  const [activeHit, setActiveHit] = useState<RetrievePreviewCitation | null>(null)
   const activeHitImageUrl = useMemo(() => {
     if (!activeHit?.has_image) return null
     return resolveSafeCitationImageUrl(activeHit.img_url)
@@ -149,6 +343,11 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     return isRecord(r) ? r : null
   }, [selectedPassTrace])
 
+  const selectedPassQueryVariantFusion = useMemo(() => {
+    const fusion = selectedPassTrace?.query_variant_fusion
+    return isRecord(fusion) ? fusion : null
+  }, [selectedPassTrace])
+
   const handleSearch = useCallback(async () => {
     const q = searchQuery.trim()
     if (!q) return
@@ -166,21 +365,21 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     try {
       // Use the production retrieval-only endpoint so this workbench answers:
       // "Do we have evidence in the corpus?" (no answer generation).
-      const res = await ragApi.retrieveEvidence({
+      const res: EvidenceRetrieveResponse = await ragApi.retrieveEvidence({
         query: q,
         history: [],
         dataset_id: selectedDatasetId || undefined,
         document_ids: [],
       })
       const citations = Array.isArray(res.citations) ? res.citations : []
-      setSearchResults(citations.map(toCitation).filter(Boolean) as Citation[])
+      setSearchResults(citations.map(toCitation).filter((citation): citation is RetrievePreviewCitation => citation !== null))
       setSearchQueryForRetrieval(res.query_for_retrieval || '')
-      setSearchMetrics(res.metrics || null)
-      setSearchRetrievalTrace(((res as any).retrieval_trace) || null)
-      setSearchHasEvidence(Boolean((res as any).has_evidence))
-      setSearchAbstainTriggered(Boolean((res as any).abstain_triggered))
-      setSearchAbstainReason(((res as any).abstain_reason as string | null | undefined) ?? null)
-    } catch (error: any) {
+      setSearchMetrics(isRecord(res.metrics) ? res.metrics : null)
+      setSearchRetrievalTrace(isRecord(res.retrieval_trace) ? res.retrieval_trace : null)
+      setSearchHasEvidence(res.has_evidence)
+      setSearchAbstainTriggered(res.abstain_triggered)
+      setSearchAbstainReason(res.abstain_reason ?? null)
+    } catch (error) {
       console.error('Search failed:', error)
       setSearchError(formatApiError(error, '检索失败，请检查后端服务状态'))
     } finally {
@@ -260,19 +459,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
       return
     }
 
-    const refs = (searchResults || [])
+    const refs: ReferenceSource[] = (searchResults || [])
       .filter((c) => !!c?.chunk_id && selectedEvidenceSet.has(String(c.chunk_id)))
-      .map((c) => ({
-        document_id: c.document_id,
-        chunk_id: c.chunk_id,
-        page_number: c.page_number ?? null,
-        start_char: c.start_char ?? null,
-        end_char: c.end_char ?? null,
-        doc_pipeline_key: c.doc_pipeline_key ?? null,
-        pipeline_hash: c.pipeline_hash ?? null,
-        quote: c.chunk_content,
-        label: 'ground_truth',
-      }))
+      .map(buildReferenceSource)
+      .filter((ref): ref is ReferenceSource => ref !== null)
     if (!refs.length) {
       toast.error('选中的证据引用无效（缺少 chunk_id/document_id）')
       return
@@ -280,19 +470,20 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
 
     setIsCreatingRegressionCase(true)
     try {
-      await evaluationApi.createRegressionCase({
+      const payload: RegressionCaseCreate = {
         question: q,
         dataset_id: selectedDatasetId,
-        reference_sources: refs as any,
+        reference_sources: refs,
         tags: ['from_retrieval_preview'],
         extra: {
           query_for_retrieval: searchQueryForRetrieval || q,
           retrieval_metrics: searchMetrics || null,
           created_from: 'knowledge.retrieval',
         },
-      } as any)
+      }
+      await evaluationApi.createRegressionCase(payload)
       toast.success('已创建回归用例')
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to create regression case from selection', err)
       toast.error(formatApiError(err, '创建回归用例失败'))
     } finally {
@@ -300,7 +491,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     }
   }, [searchMetrics, searchQuery, searchQueryForRetrieval, searchResults, selectedDatasetId, selectedEvidenceSet])
 
-  const openDetails = useCallback((hit: Citation) => {
+  const openDetails = useCallback((hit: RetrievePreviewCitation) => {
     setActiveHit(hit)
     setDetailOpen(true)
   }, [])
@@ -315,6 +506,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     if (!Array.isArray(terms)) return []
     return terms.filter(Boolean).slice(0, 24).map(String)
   }, [activeHit])
+  const activeKgPath = activeHit?.kg_path || []
+  const activeKgPathProvenance = activeHit?.kg_path_provenance
+  const activeKgPathNodes = activeKgPathProvenance?.nodes || []
+  const activeKgPathEdges = activeKgPathProvenance?.edges || []
 
   return (
     <>
@@ -463,11 +658,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                     const checked = !!chunkId && selectedEvidenceSet.has(chunkId)
                     const role = String(hit.retrieval_role || 'main')
                     const isExpanded = role.startsWith('hierarchy_')
-                    const familyHitRaw = (hit as any).family_hit
                     const familyHit =
-                      typeof familyHitRaw === 'boolean'
-                        ? familyHitRaw
-                        : Boolean(String((hit as any).family_collapse_key || (hit as any).hierarchy_family_key || '').trim())
+                      typeof hit.family_hit === 'boolean'
+                        ? hit.family_hit
+                        : Boolean(String(hit.family_collapse_key || hit.hierarchy_family_key || '').trim())
                     const chunkRole = String(hit.chunk_role || '')
                     const clause = String(hit.policy_clause_number || '')
                     const pathStr = String(hit.policy_path_str || '')
@@ -679,7 +873,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                       <div className="rounded-lg border border-border/60 bg-background/60 p-2">
                         <div className="text-[11px]">query_variant_fusion</div>
                         <div className="mt-1 font-mono text-foreground/90">
-                          {String((selectedPassTrace?.query_variant_fusion)?.strategy ?? '—')}
+                          {String(selectedPassQueryVariantFusion?.strategy ?? '—')}
                         </div>
                       </div>
                     </div>
@@ -1039,15 +1233,15 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                     <div className="space-y-2 text-xs">
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-muted-foreground">policy_clause_number</div>
-                        <div className="font-mono text-foreground/90">{String((activeHit as any).policy_clause_number || '—')}</div>
+                        <div className="font-mono text-foreground/90">{String(activeHit.policy_clause_number || '—')}</div>
                       </div>
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-muted-foreground">parent_id</div>
-                        <div className="font-mono text-foreground/90 break-all">{String((activeHit as any).parent_id || '—')}</div>
+                        <div className="font-mono text-foreground/90 break-all">{String(activeHit.parent_id || '—')}</div>
                       </div>
                       <div className="flex flex-col gap-1">
                         <div className="text-muted-foreground">policy_path_str</div>
-                        <div className="font-mono text-foreground/90">{String((activeHit as any).policy_path_str || '—')}</div>
+                        <div className="font-mono text-foreground/90">{String(activeHit.policy_path_str || '—')}</div>
                       </div>
                     </div>
                   </div>
@@ -1068,7 +1262,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                     </div>
                   ) : null}
 
-                  {Array.isArray((activeHit as any).kg_path) && (activeHit as any).kg_path.length ? (
+                  {activeKgPath.length ? (
                     <div className="rounded-xl border border-border/60 bg-background/60 p-4">
                       <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="text-xs font-semibold text-foreground">KG Path</div>
@@ -1078,7 +1272,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                           className="h-8 rounded-full px-3 gap-2"
                           onClick={() =>
                             detachPromise(copyToClipboard(
-                              JSON.stringify((activeHit as any).kg_path || [], null, 0),
+                              JSON.stringify(activeKgPath, null, 0),
                               'kg_path'
                             ))
                           }
@@ -1088,14 +1282,14 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                         </Button>
                       </div>
                       <div className="space-y-2 text-xs">
-                        {((activeHit as any).kg_path || []).map((step: any) => (
+                        {activeKgPath.map((step) => (
                           <div
-                            key={`${String(step?.entity_id || '')}:${String(step?.type || 'entity')}`}
+                            key={`${String(step.entity_id || '')}:${String(step.type || 'entity')}`}
                             className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2"
                           >
-                            <div className="text-muted-foreground">{String(step?.type || 'entity')}</div>
+                            <div className="text-muted-foreground">{String(step.type || 'entity')}</div>
                             <div className="font-mono text-foreground/90 break-all">
-                              {step?.entity_id ? shortId(String(step.entity_id)) : '—'}
+                              {step.entity_id ? shortId(String(step.entity_id)) : '—'}
                             </div>
                           </div>
                         ))}
@@ -1106,7 +1300,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                     </div>
                   ) : null}
 
-                  {isRecord((activeHit as any).kg_path_provenance) ? (
+                  {activeKgPathProvenance ? (
                     <div className="rounded-xl border border-border/60 bg-background/60 p-4">
                       <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="text-xs font-semibold text-foreground">KG Path Provenance</div>
@@ -1116,7 +1310,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                           className="h-8 rounded-full px-3 gap-2"
                           onClick={() =>
                             detachPromise(copyToClipboard(
-                              JSON.stringify((activeHit as any).kg_path_provenance || {}, null, 2),
+                              JSON.stringify(activeKgPathProvenance, null, 2),
                               'kg_path_provenance'
                             ))
                           }
@@ -1130,30 +1324,29 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                         <div className="rounded-lg border border-border/60 bg-background/60 p-2">
                           <div className="text-[11px] text-muted-foreground">kind</div>
                           <div className="mt-1 font-mono text-foreground/90">
-                            {String(((activeHit as any).kg_path_provenance)?.kind || '—')}
+                            {String(activeKgPathProvenance.kind || '—')}
                           </div>
                         </div>
                         <div className="rounded-lg border border-border/60 bg-background/60 p-2">
                           <div className="text-[11px] text-muted-foreground">hops</div>
                           <div className="mt-1 font-mono tabular-nums text-foreground/90">
-                            {Number.isFinite(Number(((activeHit as any).kg_path_provenance)?.hops))
-                              ? Number(((activeHit as any).kg_path_provenance)?.hops)
+                            {Number.isFinite(Number(activeKgPathProvenance.hops))
+                              ? Number(activeKgPathProvenance.hops)
                               : '—'}
                           </div>
                         </div>
                       </div>
 
-                      {Array.isArray(((activeHit as any).kg_path_provenance)?.nodes) &&
-                      (((activeHit as any).kg_path_provenance)?.nodes || []).length ? (
+                      {activeKgPathNodes.length ? (
                         <div className="mt-3">
                           <div className="text-xs font-semibold text-foreground mb-2">Nodes</div>
                           <div className="space-y-2 text-xs">
-                            {(((activeHit as any).kg_path_provenance)?.nodes || []).slice(0, 12).map((n: any) => {
-                              const kind = String(n?.kind || 'node')
-                              const id = String(n?.entity_id || n?.event_id || '—')
-                              const typ = String(n?.type || '')
-                              const doc = n?.document_id ? shortId(String(n.document_id)) : ''
-                              const chunk = n?.chunk_id ? shortId(String(n.chunk_id)) : ''
+                            {activeKgPathNodes.slice(0, 12).map((node) => {
+                              const kind = String(node.kind || 'node')
+                              const id = String(node.entity_id || node.event_id || '—')
+                              const typ = String(node.type || '')
+                              const doc = node.document_id ? shortId(String(node.document_id)) : ''
+                              const chunk = node.chunk_id ? shortId(String(node.chunk_id)) : ''
                               return (
                                 <div
                                   key={`${kind}:${id}:${typ}:${doc}:${chunk}`}
@@ -1177,19 +1370,18 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                         </div>
                       ) : null}
 
-                      {Array.isArray(((activeHit as any).kg_path_provenance)?.edges) &&
-                      (((activeHit as any).kg_path_provenance)?.edges || []).length ? (
+                      {activeKgPathEdges.length ? (
                         <div className="mt-3">
                           <div className="text-xs font-semibold text-foreground mb-2">Edges</div>
                           <div className="space-y-2 text-xs">
-                            {(((activeHit as any).kg_path_provenance)?.edges || []).slice(0, 12).map((e: any) => {
-                              const kind = String(e?.kind || 'edge')
-                              const pred = String(e?.predicate || '')
-                              const bucket = String(e?.confidence_bucket || '')
-                              const src = String(e?.evidence_source || '')
-                              const rel = e?.relation_id ? shortId(String(e.relation_id)) : ''
-                              const doc = e?.document_id ? shortId(String(e.document_id)) : ''
-                              const chunk = e?.chunk_id ? shortId(String(e.chunk_id)) : ''
+                            {activeKgPathEdges.slice(0, 12).map((edge) => {
+                              const kind = String(edge.kind || 'edge')
+                              const pred = String(edge.predicate || '')
+                              const bucket = String(edge.confidence_bucket || '')
+                              const src = String(edge.evidence_source || '')
+                              const rel = edge.relation_id ? shortId(String(edge.relation_id)) : ''
+                              const doc = edge.document_id ? shortId(String(edge.document_id)) : ''
+                              const chunk = edge.chunk_id ? shortId(String(edge.chunk_id)) : ''
                               return (
                                 <div
                                   key={`${kind}:${pred}:${bucket}:${src}:${rel}:${doc}:${chunk}`}
