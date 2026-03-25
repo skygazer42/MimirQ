@@ -2,9 +2,12 @@
 
 import dynamic from 'next/dynamic'
 import { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
+import { useTheme } from 'next-themes'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
+import { getCssHslColor, getCssHslaColor } from '@/lib/css-vars'
 import { decorateLinksForDisplay } from '@/lib/graph-edge-display'
 import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
+import { GraphMinimap } from './graph-minimap'
 import { Loader2 } from 'lucide-react'
 
 export const NODE_COLOR_PALETTE = [
@@ -15,6 +18,36 @@ export const NODE_COLOR_PALETTE = [
   '#facc15', '#a3e635', '#67e8f9', '#f43f5e',
 ]
 export const EVENT_COLOR = '#6366f1'
+
+export const EDGE_KIND_COLORS: Record<string, string> = {
+  entity_relation: '#3b82f6', // blue
+  event_entity: '#a855f7', // purple
+  entity_entity: '#22d3ee', // cyan
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(1, Math.max(0, value))
+}
+
+function getLinkKind(link: any): string {
+  return String(link?.meta?.kind ?? link?.kind ?? '').trim()
+}
+
+function getLinkConfidence(link: any): number | null {
+  const raw = link?.meta?.confidence ?? link?.confidence ?? link?.weight
+  const num = Number(raw)
+  return Number.isFinite(num) ? num : null
+}
+
+function confidenceToWidth(confidence: number | null, opts: { isLargeGraph: boolean }): number {
+  // Map [0..1] -> stroke width. Keep this bounded so large graphs remain readable.
+  const isLargeGraph = Boolean(opts?.isLargeGraph)
+  const c = confidence == null ? 0.55 : clamp01(confidence)
+  const base = isLargeGraph ? 0.45 : 0.75
+  const span = isLargeGraph ? 1.35 : 2.25
+  return base + c * span
+}
 
 function hashTypeToIndex(type: string): number {
   let hash = 0
@@ -51,6 +84,8 @@ export interface GraphViewerRef {
   zoomOut: () => void
   zoomToFit: () => void
   focusNode: (nodeId: string) => void
+  exportPngDataUrl: () => string | null
+  exportSvgString: () => string | null
 }
 
 export type LayoutMode = 'force' | 'tree' | 'radial'
@@ -61,25 +96,33 @@ interface GraphViewerProps {
     links: any[]
   }
   readonly onNodeClick?: (node: any) => void
+  readonly onNodeRightClick?: (node: any, event: MouseEvent) => void
   readonly onLinkClick?: (link: any) => void
+  readonly onLinkRightClick?: (link: any, event: MouseEvent) => void
   readonly onBackgroundClick?: () => void
+  readonly onBackgroundRightClick?: (event: MouseEvent) => void
   readonly highlightedNodeIds?: Set<string>
   readonly highlightedLinkIds?: Set<string>
   readonly selectedNodeId?: string | null
   readonly showEdgeLabels?: boolean
   readonly layoutMode?: LayoutMode
+  readonly showMinimap?: boolean
 }
 
 export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({ 
   data, 
   onNodeClick,
+  onNodeRightClick,
   onLinkClick,
+  onLinkRightClick,
   onBackgroundClick,
+  onBackgroundRightClick,
   highlightedNodeIds = new Set(),
   highlightedLinkIds = new Set(),
   selectedNodeId = null,
   showEdgeLabels = true,
-  layoutMode = 'force'
+  layoutMode = 'force',
+  showMinimap = true
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const fgRef = useRef<any>(null)
@@ -87,6 +130,33 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const [mounted, setMounted] = useState(false)
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+  const canvasColors = useMemo(() => {
+    const fg = getCssHslColor('--foreground', isDark ? '#e2e8f0' : '#1e293b')
+    const muted = getCssHslColor('--muted-foreground', isDark ? '#94a3b8' : '#475569')
+    const bgStroke = getCssHslaColor(
+      '--background',
+      isDark ? 0.86 : 0.94,
+      isDark ? 'rgba(2, 6, 23, 0.86)' : 'rgba(255, 255, 255, 0.94)'
+    )
+    const edgeLabelBg = getCssHslaColor(
+      '--background',
+      isDark ? 0.82 : 0.95,
+      isDark ? 'rgba(15, 23, 42, 0.86)' : 'rgba(255, 255, 255, 0.95)'
+    )
+    return {
+      nodeDim: isDark ? '#334155' : '#cbd5e1',
+      linkDim: isDark ? 'rgba(148, 163, 184, 0.18)' : '#e2e8f0',
+      linkMid: isDark ? '#64748b' : '#94a3b8',
+      labelStroke: bgStroke,
+      labelFill: fg,
+      labelDim: muted,
+      edgeLabelBg,
+      edgeLabelText: isDark ? fg : '#475569',
+      edgeLabelHoverText: isDark ? fg : '#0c4a6e',
+    }
+  }, [isDark])
 
   const neighborSet = useMemo(() => {
     if (!selectedNodeId) return null
@@ -224,7 +294,42 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
         fgRef.current.centerAt(node.x, node.y, 1000)
         fgRef.current.zoom(3, 1000)
       }
-    }
+    },
+    exportPngDataUrl: () => {
+      const host = containerRef.current
+      if (!host) return null
+      const canvases = Array.from(host.querySelectorAll('canvas')) as HTMLCanvasElement[]
+      if (!canvases.length) return null
+      const main = canvases
+        .filter((c) => c && Number.isFinite(c.width) && Number.isFinite(c.height))
+        .sort((a, b) => (b.width * b.height) - (a.width * a.height))[0]
+      if (!main) return null
+      try {
+        return main.toDataURL('image/png')
+      } catch {
+        return null
+      }
+    },
+    exportSvgString: () => {
+      const host = containerRef.current
+      if (!host) return null
+      const canvases = Array.from(host.querySelectorAll('canvas')) as HTMLCanvasElement[]
+      if (!canvases.length) return null
+      const main = canvases
+        .filter((c) => c && Number.isFinite(c.width) && Number.isFinite(c.height))
+        .sort((a, b) => (b.width * b.height) - (a.width * a.height))[0]
+      if (!main) return null
+      let pngDataUrl = ''
+      try {
+        pngDataUrl = main.toDataURL('image/png')
+      } catch {
+        return null
+      }
+      if (!pngDataUrl) return null
+      const w = Math.max(1, main.width || 1)
+      const h = Math.max(1, main.height || 1)
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n  <image href="${pngDataUrl}" width="${w}" height="${h}" />\n</svg>\n`
+    },
   }))
 
   // Auto zoom fit on data change
@@ -254,6 +359,13 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     }
   }, [sanitizedData])
 
+  // Layout transitions (U9): reheat the simulation so layout changes animate smoothly.
+  useEffect(() => {
+    if (fgRef.current) {
+      fgRef.current.d3ReheatSimulation?.()
+    }
+  }, [layoutMode])
+
   const handleNodeClick = useCallback((node: any) => {
     if (fgRef.current) {
       fgRef.current.centerAt(node.x, node.y, 400)
@@ -267,7 +379,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const getNodeColor = useCallback((node: any) => {
     const hasHighlights = highlightedNodeIds.size > 0
     if (hasHighlights && !highlightedNodeIds.has(node.id)) {
-      return '#cbd5e1'
+      return canvasColors.nodeDim
     }
 
     if (node.color) return node.color
@@ -283,7 +395,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     }
 
     return NODE_COLOR_PALETTE[hashTypeToIndex(node.id || '')]
-  }, [highlightedNodeIds, typeColorMap])
+  }, [highlightedNodeIds, typeColorMap, canvasColors.nodeDim])
 
   // Determine DAG mode based on layoutMode
   const getDagMode = () => {
@@ -295,12 +407,12 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full relative bg-slate-50/50">
+    <div ref={containerRef} className="w-full h-full relative bg-background">
       {(!mounted || width === 0 || height === 0) ? (
-        <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
 	           {mounted ? (
 	              <div className="flex flex-col items-center gap-2">
-	                 <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-sky-500" />
+	                 <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-primary" />
 	                 <span className="text-xs">Initializing Layout... ({Math.round(width)}x{Math.round(height)})</span>
 	              </div>
 	           ) : (
@@ -308,6 +420,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 	           )}
         </div>
       ) : (
+        <>
         <ForceGraph2DNoSSR
           graphRef={fgRef}
           width={width}
@@ -332,7 +445,8 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           }}
           linkColor={(link: any) => {
              const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
-             const linkKind = link?.meta?.kind || link?.kind
+             const linkKind = getLinkKind(link)
+             const baseColor = EDGE_KIND_COLORS[linkKind] || canvasColors.nodeDim
               if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                  return '#f59e0b'
               }
@@ -343,25 +457,25 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                 const targetId = typeof link.target === 'object' ? link.target.id : link.target
                 if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
-                  return '#94a3b8' 
+                  return canvasColors.linkMid
                 }
-                return '#e2e8f0' 
+                return canvasColors.linkDim
               }
               if (selectedNodeId && !isLargeGraph) {
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                 const targetId = typeof link.target === 'object' ? link.target.id : link.target
                 if (sourceId === selectedNodeId || targetId === selectedNodeId) {
-                  return '#e879a0'
+                  return baseColor
                 }
-                return '#e2e8f0'
+                return canvasColors.linkDim
               }
 
-              if (linkKind === 'entity_entity') return '#67e8f9'
-              return '#cbd5e1'
+              return baseColor
            }}
           linkWidth={(link: any) => {
              const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
-             const linkKind = link?.meta?.kind || link?.kind
+             const confidence = getLinkConfidence(link)
+             const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
              if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
                  return 4 
               }
@@ -372,11 +486,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               if (selectedNodeId && !isLargeGraph) {
                 const sourceId = typeof link.source === 'object' ? link.source.id : link.source
                 const targetId = typeof link.target === 'object' ? link.target.id : link.target
-                if (sourceId === selectedNodeId || targetId === selectedNodeId) return 2.5
+                if (sourceId === selectedNodeId || targetId === selectedNodeId) return Math.max(2.5, baseWidth + 0.6)
                 return 0.5
               }
-              if (linkKind === 'entity_entity') return 1
-              return 1.5
+              return Math.min(4, Math.max(0.5, baseWidth))
            }}
           linkDirectionalArrowLength={(link: any) => (link?.isSelfLoop ? 0 : arrowLength)}
           linkDirectionalArrowRelPos={1}
@@ -384,8 +497,17 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
           cooldownTicks={cooldownTicks}
           cooldownTime={cooldownTime}
           onNodeClick={handleNodeClick}
+          onNodeRightClick={(node: any, event: MouseEvent) => {
+            onNodeRightClick?.(node, event)
+          }}
           onLinkClick={(link: any) => { onLinkClick?.(link) }}
+          onLinkRightClick={(link: any, event: MouseEvent) => {
+            onLinkRightClick?.(link, event)
+          }}
           onBackgroundClick={onBackgroundClick}
+          onBackgroundRightClick={(event: MouseEvent) => {
+            onBackgroundRightClick?.(event)
+          }}
           onNodeHover={(node: any) => {
             if (isLargeGraph) return
             const id = node?.id ?? null
@@ -448,7 +570,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               nx - radius * 0.3, ny - radius * 0.3, radius * 0.1,
               nx, ny, radius
             )
-            grad.addColorStop(0, '#ffffff60')
+            grad.addColorStop(0, isDark ? 'rgba(255,255,255,0.14)' : '#ffffff60')
             grad.addColorStop(0.4, color)
             grad.addColorStop(1, color + 'cc')
 
@@ -495,11 +617,11 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               ctx.textAlign = 'center'
               ctx.textBaseline = 'middle'
 
-              ctx.strokeStyle = 'rgba(255,255,255,0.94)'
+              ctx.strokeStyle = canvasColors.labelStroke
               ctx.lineWidth = 4 / globalScale
               ctx.strokeText(label, nx, labelY)
 
-              ctx.fillStyle = isDimmed ? '#94a3b8' : '#1e293b'
+              ctx.fillStyle = isDimmed ? canvasColors.labelDim : canvasColors.labelFill
               ctx.fillText(label, nx, labelY)
             }
 
@@ -574,18 +696,30 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
             } else if (isHoveredLink) {
               ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
             } else {
-              ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+              ctx.fillStyle = canvasColors.edgeLabelBg
             }
             ctx.fill()
 
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
-            ctx.fillStyle = isPathLink ? '#ffffff' : isHoveredLink ? '#0c4a6e' : '#475569'
+            ctx.fillStyle = isPathLink ? '#ffffff' : isHoveredLink ? canvasColors.edgeLabelHoverText : canvasColors.edgeLabelText
             ctx.fillText(label, 0, 0)
 
             ctx.restore()
           }}
         />
+        {showMinimap && !isLargeGraph && sanitizedData.nodes.length > 0 && (
+          <div className="absolute bottom-24 right-6 z-10">
+            <GraphMinimap
+              graphRef={fgRef}
+              data={sanitizedData}
+              graphWidth={width}
+              graphHeight={height}
+              isDark={isDark}
+            />
+          </div>
+        )}
+        </>
       )}
     </div>
   )

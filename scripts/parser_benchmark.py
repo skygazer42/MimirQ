@@ -23,6 +23,8 @@ _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S+")
 _LIST_ITEM_RE = re.compile(r"(?m)^\s*(?:[-*+]|\d+\.)\s+\S+")
 _FENCE_RE = re.compile(r"(?m)^\s*```")
 _TABLE_SEP_RE = re.compile(r"(?m)^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$")
+_MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]+\)")
+_HTML_IMG_RE = re.compile(r"(?i)<img\\b[^>]*>")
 _STRICT_PROFILE_SCHEMA_V1 = "mimirq.parser_benchmark_strict_profile.v1"
 
 
@@ -77,6 +79,7 @@ def _structure_metrics(markdown: str) -> dict[str, Any]:
         "list_items": int(len(_LIST_ITEM_RE.findall(md))),
         "fences": int(len(_FENCE_RE.findall(md))),
         "table_separators": int(len(_TABLE_SEP_RE.findall(md))),
+        "image_refs": int(len(_MD_IMAGE_RE.findall(md)) + len(_HTML_IMG_RE.findall(md))),
     }
 
 
@@ -401,7 +404,15 @@ def main() -> int:
     }
 
     by_backend: dict[str, dict[str, Any]] = {
-        b: {"attempts": 0, "ok": 0, "elapsed_ms": [], "parse_score": [], "similarity": [], "coverage_ratio": []}
+        b: {
+            "attempts": 0,
+            "ok": 0,
+            "elapsed_ms": [],
+            "parse_score": [],
+            "similarity": [],
+            "coverage_ratio": [],
+            "image_ref_recall": [],
+        }
         for b in backends
     }
 
@@ -419,6 +430,7 @@ def main() -> int:
             golden_md = _read_text(case.golden_markdown_path)
         golden_struct = _structure_metrics(golden_md) if golden_md else None
         golden_plain_chars = int(golden_struct.get("plain_chars") or 0) if isinstance(golden_struct, dict) else 0
+        golden_image_refs = int(golden_struct.get("image_refs") or 0) if isinstance(golden_struct, dict) else 0
 
         case_row: dict[str, Any] = {
             "id": case.case_id,
@@ -462,6 +474,10 @@ def main() -> int:
                         attempt["golden_coverage_ratio"] = round(float(cov), 4)
                         by_backend[backend]["coverage_ratio"].append(float(cov))
                     by_backend[backend]["similarity"].append(float(sim))
+                    if golden_image_refs > 0:
+                        img_recall = float(struct.get("image_refs") or 0) / float(golden_image_refs)
+                        attempt["golden_image_ref_recall"] = round(float(img_recall), 4)
+                        by_backend[backend]["image_ref_recall"].append(float(img_recall))
 
                 by_backend[backend]["ok"] += 1
                 by_backend[backend]["parse_score"].append(float(pq.get("score") or 0.0))
@@ -488,6 +504,7 @@ def main() -> int:
         parse_scores = [float(x) for x in stats.get("parse_score") or []]
         sims = [float(x) for x in stats.get("similarity") or []]
         covs = [float(x) for x in stats.get("coverage_ratio") or []]
+        img_recalls = [float(x) for x in stats.get("image_ref_recall") or []]
 
         def _pct(vals: list[int], p: float) -> int | None:
             if not vals:
@@ -505,6 +522,7 @@ def main() -> int:
             "parse_score_mean": (round(sum(parse_scores) / len(parse_scores), 4) if parse_scores else None),
             "golden_similarity_mean": (round(sum(sims) / len(sims), 4) if sims else None),
             "golden_coverage_ratio_mean": (round(sum(covs) / len(covs), 4) if covs else None),
+            "golden_image_ref_recall_mean": (round(sum(img_recalls) / len(img_recalls), 4) if img_recalls else None),
         }
 
     report["summary"] = summary

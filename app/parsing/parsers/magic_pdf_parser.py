@@ -87,9 +87,10 @@ class MagicPDFParser:
             "models-dir": str(models_dir),
             # Prefer the lightweight YOLO layout model (weights live in the PDF-Extract-Kit pipeline).
             "layout-config": {"model": "doclayout_yolo"},
-            # Disable formula recognition by default to avoid heavy Unimernet deps and
-            # version coupling issues with `transformers` generation APIs.
-            "formula-config": {"enable": False},
+            # Keep formula recognition off by default to avoid heavy Unimernet deps and
+            # version coupling issues with `transformers` generation APIs. Enable explicitly
+            # via MAGIC_PDF_FORMULA_ENABLED=true when the runtime has the required deps.
+            "formula-config": {"enable": bool(getattr(settings, "MAGIC_PDF_FORMULA_ENABLED", False))},
         }
         cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
         return cfg_path

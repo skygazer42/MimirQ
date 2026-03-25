@@ -5,6 +5,7 @@ from uuid import uuid4
 
 
 def test_build_regression_sample_includes_reference_context_ids_and_abstain_meta():
+    from app.rag.core.hashing import stable_hash
     from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
 
     ds = uuid4()
@@ -47,6 +48,8 @@ def test_build_regression_sample_includes_reference_context_ids_and_abstain_meta
     assert sample_kwargs["retrieved_context_ids"] == [str(got_chunk_a), str(got_chunk_b)]
     assert sample_kwargs["reference_contexts"] == ["ref a", "ref b"]
 
+    missed_b = stable_hash(str(ref_chunk_b), length=16)
+
     assert meta == {
         "abstain_triggered": True,
         "abstain_reason": "citations_lt_min",
@@ -66,6 +69,23 @@ def test_build_regression_sample_includes_reference_context_ids_and_abstain_meta
         "retrieval_family_recall": None,
         "retrieval_family_hit": None,
         "faithfulness_det": 1.0,
+        "chunk_utilization": None,
+        "chunk_attribution": None,
+        "noise_sensitivity": None,
+        "self_knowledge_ratio": None,
+        "chunk_diag_counts": {
+            "claims_total": 0,
+            "claims_supported": 0,
+            "claims_noisy": 0,
+            "claims_correct_total": 0,
+            "claims_correct_uncited": 0,
+            "chunks_total": 2,
+            "chunks_used": 0,
+        },
+        "explanations": {
+            "chunk_utilization": "chunks_used=0/2",
+            "retrieval_recall": f"ref_sources=2, matched=1, missed=1, missed_ids=['{missed_b}']",
+        },
         "expected_refusal": None,
         "reasoning_hops_count": 0,
         "evidence_chain_steps": 0,

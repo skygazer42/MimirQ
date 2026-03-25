@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
+
+from app.parsing.artifact_stats import POSITION_TAG_RE
 
 
 def _coerce_float(value: Any) -> float | None:
     try:
-        if value is None:
-            return None
-        if isinstance(value, bool):
+        if value is None or isinstance(value, bool):
             return None
         out = float(value)
         if out != out:
@@ -21,9 +22,7 @@ def _coerce_float(value: Any) -> float | None:
 
 def _coerce_int(value: Any) -> int | None:
     try:
-        if value is None:
-            return None
-        if isinstance(value, bool):
+        if value is None or isinstance(value, bool):
             return None
         return int(value)
     except Exception:
@@ -118,7 +117,7 @@ def _expected_order_for_page(page_items: Sequence[dict[str, Any]]) -> tuple[list
     )
 
 
-def score_reading_order(items: Sequence[Any] | None) -> dict[str, Any]:
+def _score_reading_order_items(items: Sequence[Any] | None) -> dict[str, Any]:
     normalized = _normalize_items(items)
     if not normalized:
         return {
@@ -179,7 +178,247 @@ def score_pdfplumber_reading_order(pages: Iterable[Any] | None) -> dict[str, Any
                     "y1": word.get("bottom"),
                 }
             )
-    return score_reading_order(items)
+    return _score_reading_order_items(items)
+
+
+@dataclass(frozen=True, slots=True)
+class _Tag:
+    pages: tuple[int, ...]
+    left: float
+    right: float
+    top: float
+    bottom: float
+
+
+@dataclass(frozen=True, slots=True)
+class _Block:
+    idx: int
+    page: int
+    left: float
+    right: float
+    top: float
+    bottom: float
+
+
+def _parse_pages(raw: str) -> tuple[int, ...]:
+    s = str(raw or "").strip()
+    if not s:
+        return ()
+    out: list[int] = []
+    for part in s.split("-"):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            n = int(part)
+        except Exception:
+            continue
+        if n <= 0:
+            continue
+        out.append(n)
+    seen: set[int] = set()
+    uniq: list[int] = []
+    for n in out:
+        if n in seen:
+            continue
+        seen.add(n)
+        uniq.append(n)
+    return tuple(uniq)
+
+
+def _parse_tag(match) -> _Tag | None:
+    try:
+        pages = _parse_pages(match.group(1))
+        left = float(match.group(2))
+        right = float(match.group(3))
+        top = float(match.group(4))
+        bottom = float(match.group(5))
+    except Exception:
+        return None
+    if not pages:
+        return None
+    return _Tag(pages=pages, left=float(left), right=float(right), top=float(top), bottom=float(bottom))
+
+
+def _extract_blocks(markdown: str) -> tuple[list[_Block], int]:
+    if not markdown:
+        return [], 0
+
+    blocks_tags: list[list[_Tag]] = []
+    blocks_boxes: list[tuple[float, float, float, float]] = []
+    blocks_pages: list[int] = []
+    tag_count = 0
+    cursor = 0
+    has_last_block = False
+
+    for match in POSITION_TAG_RE.finditer(markdown):
+        tag = _parse_tag(match)
+        cursor_text = markdown[cursor:match.start()]
+        has_text = bool(cursor_text.strip())
+        if has_text or not has_last_block:
+            blocks_tags.append([])
+            blocks_boxes.append((float("inf"), float("-inf"), float("inf"), float("-inf")))
+            blocks_pages.append(0)
+            has_last_block = True
+
+        if tag is not None:
+            tag_count += 1
+            blocks_tags[-1].append(tag)
+            left, right, top, bottom = blocks_boxes[-1]
+            left = min(left, float(tag.left))
+            right = max(right, float(tag.right))
+            top = min(top, float(tag.top))
+            bottom = max(bottom, float(tag.bottom))
+            blocks_boxes[-1] = (left, right, top, bottom)
+            page = min(tag.pages) if tag.pages else 0
+            if blocks_pages[-1] <= 0 or (page > 0 and page < blocks_pages[-1]):
+                blocks_pages[-1] = int(page)
+
+        cursor = int(match.end())
+
+    out: list[_Block] = []
+    for idx, (tags, box, page) in enumerate(zip(blocks_tags, blocks_boxes, blocks_pages, strict=False)):
+        if not tags:
+            continue
+        left, right, top, bottom = box
+        if page <= 0:
+            page = 1
+        out.append(
+            _Block(
+                idx=int(idx),
+                page=int(page),
+                left=float(left if left != float("inf") else 0.0),
+                right=float(right if right != float("-inf") else 0.0),
+                top=float(top if top != float("inf") else 0.0),
+                bottom=float(bottom if bottom != float("-inf") else 0.0),
+            )
+        )
+    return out, int(tag_count)
+
+
+def _count_inversions(ranks: list[int]) -> int:
+    n = int(len(ranks))
+    if n <= 1:
+        return 0
+    bit = [0] * (n + 2)
+
+    def add(i: int, delta: int) -> None:
+        while i <= n:
+            bit[i] += delta
+            i += i & -i
+
+    def prefix_sum(i: int) -> int:
+        total = 0
+        while i > 0:
+            total += bit[i]
+            i -= i & -i
+        return total
+
+    inversions = 0
+    seen = 0
+    for rank in ranks:
+        value = int(rank)
+        if value <= 0:
+            continue
+        inversions += seen - prefix_sum(value)
+        add(value, 1)
+        seen += 1
+    return int(inversions)
+
+
+def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_blocks: int = 6) -> dict[str, Any]:
+    blocks, tag_count = _extract_blocks(str(markdown or ""))
+    if not blocks:
+        return {
+            "schema": "mimirq.reading_order_score.v1",
+            "method": "position_tags",
+            "score": None,
+            "nid": None,
+            "blocks": 0,
+            "tag_count": int(tag_count),
+            "pages": [],
+            "column_pages": 0,
+            "warnings": ["missing_position_tags"],
+        }
+
+    blocks_total = int(len(blocks))
+    if int(max_blocks or 0) > 0 and blocks_total > int(max_blocks):
+        keep = int(max_blocks)
+        head = keep // 2
+        tail = keep - head
+        blocks = list(blocks[:head]) + list(blocks[-tail:])
+
+    if len(blocks) < int(min_blocks):
+        pages = sorted({int(block.page) for block in blocks if int(block.page) > 0})
+        return {
+            "schema": "mimirq.reading_order_score.v1",
+            "method": "position_tags",
+            "score": None,
+            "nid": None,
+            "blocks": int(len(blocks)),
+            "tag_count": int(tag_count),
+            "pages": pages,
+            "column_pages": 0,
+            "warnings": ["insufficient_blocks"],
+        }
+
+    by_page: dict[int, list[_Block]] = {}
+    for block in blocks:
+        by_page.setdefault(int(block.page), []).append(block)
+
+    page_width: dict[int, float] = {}
+    for page, items in by_page.items():
+        width = max((float(item.right) for item in items), default=0.0)
+        page_width[int(page)] = float(width if width > 0.0 else 1.0)
+
+    page_is_two_col: dict[int, bool] = {}
+    for page, items in by_page.items():
+        width = page_width.get(int(page), 1.0) or 1.0
+        centers = [((float(item.left) + float(item.right)) / 2.0) / float(width) for item in items]
+        left_any = any(center < 0.45 for center in centers)
+        right_any = any(center > 0.55 for center in centers)
+        page_is_two_col[int(page)] = bool(left_any and right_any)
+
+    def col_idx(block: _Block) -> int:
+        if not page_is_two_col.get(int(block.page), False):
+            return 0
+        width = page_width.get(int(block.page), 1.0) or 1.0
+        center = ((float(block.left) + float(block.right)) / 2.0) / float(width)
+        return 1 if center > 0.5 else 0
+
+    expected = sorted(
+        blocks,
+        key=lambda block: (int(block.page), col_idx(block), float(block.top), float(block.left), int(block.idx)),
+    )
+    expected_rank = {int(block.idx): index + 1 for index, block in enumerate(expected)}
+    observed_ranks = [expected_rank.get(int(block.idx), 0) for block in blocks]
+    inversions = _count_inversions(observed_ranks)
+
+    n = int(len(observed_ranks))
+    denom = n * (n - 1) / 2.0
+    nid = float(inversions) / float(denom) if denom > 0 else 0.0
+    nid = max(0.0, min(1.0, nid))
+    score = 1.0 - nid
+    pages = sorted({int(block.page) for block in blocks if int(block.page) > 0})
+    column_pages = sum(1 for page in pages if page_is_two_col.get(int(page), False))
+
+    return {
+        "schema": "mimirq.reading_order_score.v1",
+        "method": "position_tags",
+        "score": round(float(score), 4),
+        "nid": round(float(nid), 4),
+        "blocks": int(n),
+        "tag_count": int(tag_count),
+        "pages": pages,
+        "column_pages": int(column_pages),
+        "warnings": [],
+    }
+
+
+def score_reading_order(subject: str | Sequence[Any] | None, *, max_blocks: int = 600, min_blocks: int = 6) -> dict[str, Any]:
+    if isinstance(subject, str):
+        return _score_reading_order_markdown(subject, max_blocks=max_blocks, min_blocks=min_blocks)
+    return _score_reading_order_items(subject)
 
 
 __all__ = ["score_pdfplumber_reading_order", "score_reading_order"]

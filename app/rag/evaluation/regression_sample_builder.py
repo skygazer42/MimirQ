@@ -4,7 +4,9 @@ import math
 import re
 from typing import Any
 
+from app.rag.core.hashing import stable_hash
 from app.rag.core.text import is_claim_supported, split_into_claims
+from app.rag.evaluation.chunk_diagnostics import compute_chunk_diagnostics
 from app.rag.evaluation.multihop import score_multihop_citation_chain
 
 
@@ -280,6 +282,10 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     retrieval_doc_hit: bool | None = None
     retrieval_family_recall: float | None = None
     retrieval_family_hit: bool | None = None
+    relevance_flags: list[bool] = []
+    ref_total: int | None = None
+    matched_refs: int | None = None
+    missed_ref_ids: list[str] = []
     if reference_sources:
         ref_total = len(list(reference_sources or []))
         matched_refs = sum(1 for src in (reference_sources or []) if _ref_source_matched(src))
@@ -288,7 +294,6 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
         # Rank-based metrics consider a citation "relevant" if it matches any reference source.
         rank_first: int | None = None
-        relevance_flags: list[bool] = []
         for i in range(len(citations_ranked)):
             rel = _citation_matches_any_ref(i)
             relevance_flags.append(rel)
@@ -347,6 +352,19 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             retrieval_family_recall = round(float(matched_fams) / max(1, int(len(ref_fam_set))), 4)
             retrieval_family_hit = bool(matched_fams > 0)
 
+        # Missed reference sources (PII-minimal ids only, for explanations/debug).
+        for src in (reference_sources or []):
+            if _ref_source_matched(src):
+                continue
+            sk = _stable_ref_key(src)
+            fallback = str(_coerce_dict(src).get("chunk_id") or "").strip()
+            raw_id = sk or fallback
+            if not raw_id:
+                continue
+            missed_ref_ids.append(stable_hash(raw_id, length=16))
+            if len(missed_ref_ids) >= 6:
+                break
+
     top_rel = item.get("top_relevance_score")
     try:
         top_rel_f = float(top_rel) if top_rel is not None else None
@@ -362,6 +380,26 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             break
 
     faithfulness_det = _deterministic_faithfulness(response, retrieved_contexts)
+
+    # Chunk-level diagnostics (P0): attribution/utilization/noise/self-knowledge.
+    ref_evidence_parts: list[str] = []
+    if reference.strip():
+        ref_evidence_parts.append(reference.strip())
+    ref_evidence_parts.extend([str(x or "").strip() for x in (reference_contexts or []) if str(x or "").strip()])
+    reference_evidence_text = "\n".join(ref_evidence_parts).strip() or None
+
+    context_relevance: list[bool] | None = None
+    if reference_sources:
+        context_relevance = []
+        for i in range(len(retrieved_contexts or [])):
+            context_relevance.append(bool(relevance_flags[i]) if i < len(relevance_flags) else False)
+
+    chunk_diag = compute_chunk_diagnostics(
+        answer=response,
+        retrieved_contexts=[str(c or "") for c in (retrieved_contexts or [])],
+        context_relevance=context_relevance,
+        reference_evidence_text=reference_evidence_text,
+    )
 
     reasoning_hops_raw = _get(case, "reasoning_hops", None)
     if not isinstance(reasoning_hops_raw, list):
@@ -408,6 +446,11 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "retrieval_family_recall": retrieval_family_recall,
         "retrieval_family_hit": retrieval_family_hit,
         "faithfulness_det": faithfulness_det,
+        "chunk_utilization": chunk_diag.get("chunk_utilization"),
+        "chunk_attribution": chunk_diag.get("chunk_attribution"),
+        "noise_sensitivity": chunk_diag.get("noise_sensitivity"),
+        "self_knowledge_ratio": chunk_diag.get("self_knowledge_ratio"),
+        "chunk_diag_counts": chunk_diag.get("counts") if isinstance(chunk_diag.get("counts"), dict) else None,
         "expected_refusal": expected_refusal,
         "reasoning_hops_count": int(len(reasoning_hops)),
         "evidence_chain_steps": int(len(evidence_chain)),
@@ -416,6 +459,41 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "multihop_order_consistency": multihop.get("order_consistency"),
         "multihop_chain_hit": multihop.get("chain_hit"),
     }
+
+    # Per-case explanations (P0): numeric-only, PII-minimal (safe for bundle exports).
+    try:
+        explanations: dict[str, str] = {}
+        counts = meta.get("chunk_diag_counts") if isinstance(meta.get("chunk_diag_counts"), dict) else {}
+        ct = int(counts.get("claims_total") or 0)
+        cs = int(counts.get("claims_supported") or 0)
+        cn = int(counts.get("claims_noisy") or 0)
+        cct = int(counts.get("claims_correct_total") or 0)
+        ccu = int(counts.get("claims_correct_uncited") or 0)
+        kt = int(counts.get("chunks_total") or 0)
+        ku = int(counts.get("chunks_used") or 0)
+
+        if ct > 0:
+            explanations["chunk_attribution"] = f"claims_supported={cs}/{ct}"
+        if kt > 0:
+            explanations["chunk_utilization"] = f"chunks_used={ku}/{kt}"
+        if meta.get("noise_sensitivity") is not None and cs > 0:
+            explanations["noise_sensitivity"] = f"noise_claims={cn}/{cs}"
+        if meta.get("self_knowledge_ratio") is not None and cct > 0:
+            explanations["self_knowledge_ratio"] = f"correct_uncited={ccu}/{cct}"
+        if meta.get("faithfulness_det") is not None and ct > 0:
+            explanations["faithfulness_det"] = f"claims_supported={cs}/{ct} (deterministic)"
+        if retrieval_recall is not None and ref_total is not None and matched_refs is not None:
+            missed = int(ref_total) - int(matched_refs)
+            suffix = f", missed={missed}" if missed >= 0 else ""
+            msg = f"ref_sources={int(ref_total)}, matched={int(matched_refs)}{suffix}"
+            if missed_ref_ids:
+                msg = msg + f", missed_ids={missed_ref_ids[:3]}"
+            explanations["retrieval_recall"] = msg[:220]
+
+        if explanations:
+            meta["explanations"] = explanations
+    except Exception:
+        pass
 
     # Per-item refusal correctness (only when expected_refusal is labeled).
     try:
@@ -454,6 +532,8 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "slice_hit_type": meta.get("slice_hit_type"),
         "slice_modality": meta.get("slice_modality"),
         "slice_quality_bucket": meta.get("slice_quality_bucket"),
+        "slice_parse_quality": meta.get("slice_parse_quality"),
+        "slice_chunk_quality": meta.get("slice_chunk_quality"),
         "slice_pipeline_hash": meta.get("slice_pipeline_hash"),
         # Multi-modal injection/debug metadata (best-effort).
         "multimodal_router": meta.get("multimodal_router"),
@@ -474,6 +554,14 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_hit_at_20": meta.get("retrieval_hit_at_20"),
         # Answer-level deterministic gate signals (best-effort; may be null in retrieval-only mode).
         "faithfulness_det": meta.get("faithfulness_det"),
+        "chunk_utilization": meta.get("chunk_utilization"),
+        "chunk_attribution": meta.get("chunk_attribution"),
+        "noise_sensitivity": meta.get("noise_sensitivity"),
+        "self_knowledge_ratio": meta.get("self_knowledge_ratio"),
+        "chunk_diag_counts": meta.get("chunk_diag_counts"),
+        "explanations": meta.get("explanations"),
         "expected_refusal": meta.get("expected_refusal"),
         "refusal_correct": meta.get("refusal_correct"),
+        # LLM-as-judge (optional; enabled per regression run).
+        "llm_judge": meta.get("llm_judge"),
     }

@@ -452,6 +452,65 @@ class MinIOService:
             kwargs["length"] = int(length)
         return client.get_object(bucket_name=self._bucket_name, object_name=object_name, **kwargs)
 
+    def put_object_bytes(
+        self,
+        *,
+        object_name: str,
+        data: bytes,
+        content_type: str | None = None,
+    ) -> str:
+        """
+        Upload a small in-memory object (bytes) to MinIO and return a minio:// URI.
+
+        This is used by lightweight services (e.g., parse_cache) that want MinIO storage
+        without writing temporary files.
+        """
+        client = self._get_client()
+        t0 = time.perf_counter()
+        obj = str(object_name or "").lstrip("/").strip()
+        if not obj:
+            raise ValueError("object_name_required")
+        blob = data if isinstance(data, (bytes, bytearray)) else bytes(data)
+        stream = io.BytesIO(blob)
+        client.put_object(
+            bucket_name=self._bucket_name,
+            object_name=obj,
+            data=stream,
+            length=len(blob),
+            content_type=content_type or "application/octet-stream",
+        )
+        self._log_metric("put_bytes", True, time.perf_counter() - t0, obj)
+        return build_minio_uri(self._bucket_name, obj)
+
+    def get_object_bytes(self, *, object_name: str, max_bytes: int = 0) -> bytes:
+        """
+        Download an object into memory (best-effort).
+
+        Args:
+            object_name: object key in the configured bucket.
+            max_bytes: hard cap (0 means "no cap").
+        """
+        obj = str(object_name or "").lstrip("/").strip()
+        if not obj:
+            raise ValueError("object_name_required")
+        max_bytes_i = max(0, int(max_bytes or 0))
+        if max_bytes_i > 0:
+            stat = self.stat_object(object_name=obj)
+            size = int(getattr(stat, "size", 0) or 0)
+            if size > max_bytes_i:
+                raise ValueError("object_too_large")
+
+        resp = None
+        try:
+            resp = self.open_object(object_name=obj)
+            return resp.read()  # type: ignore[no-any-return]
+        finally:
+            if resp is not None:
+                with contextlib.suppress(Exception):
+                    resp.close()
+                with contextlib.suppress(Exception):
+                    resp.release_conn()
+
     def download_object_to_path(self, *, object_name: str, destination: Path, max_bytes: int = 0) -> Path:
         """
         Download an object to a local file path.

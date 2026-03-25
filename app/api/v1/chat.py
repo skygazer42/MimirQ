@@ -1214,6 +1214,43 @@ async def chat(
             skip_reason=None if cache_hit else cache_skip_reason,
         )
 
+        # Best-effort: sampled online evaluation (async, PII-minimal outputs).
+        #
+        # - Engine path already enqueues online eval inside `RAGEngine.stream_chat`.
+        # - Graph path and cache-hit path need an explicit enqueue here.
+        try:
+            if bool(effective_rag_config.use_graph) or bool(cache_hit):
+                from app.services.online_eval_service import maybe_enqueue_online_eval
+
+                contexts: list[str] = []
+                for c in citations_data or []:
+                    if hasattr(c, "model_dump"):
+                        try:
+                            c = c.model_dump(mode="json")
+                        except Exception:
+                            continue
+                    if not isinstance(c, dict):
+                        continue
+                    text = str(c.get("chunk_content") or c.get("quote") or c.get("text") or "").strip()
+                    if not text:
+                        continue
+                    if text not in contexts:
+                        contexts.append(text)
+                    if len(contexts) >= 24:
+                        break
+
+                maybe_enqueue_online_eval(
+                    tenant_id=tenant_id,
+                    dataset_id=(dataset_id_used or scope_dataset_id),
+                    request_id=str(request_id),
+                    answer=str(full_response or ""),
+                    contexts=contexts,
+                    retrieval_mode=str(metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode or "") or None,
+                    citations_count=int(len(citations_data or [])),
+                )
+        except Exception:
+            pass
+
         # 3) Persist assistant response.
         # Persist dataset-level default metadata into the stored message for later analytics/debugging.
         if dataset_id_used is not None:

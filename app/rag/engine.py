@@ -2189,6 +2189,21 @@ Requirements:
                         "request_id": request_id,
                     }
                 )
+                # Best-effort: sampled online evaluation (async, PII-minimal outputs).
+                try:
+                    from app.services.online_eval_service import maybe_enqueue_online_eval
+
+                    maybe_enqueue_online_eval(
+                        tenant_id=tenant_id,
+                        dataset_id=dataset_id,
+                        request_id=str(request_id),
+                        answer=str(full_response or ""),
+                        contexts=[str(getattr(d, "page_content", "") or "") for d in (docs or [])],
+                        retrieval_mode=str(mode_used or "") or None,
+                        citations_count=int(len(citations or [])),
+                    )
+                except Exception:
+                    pass
                 return
 
             # Step 2: Additional KG event recall (optional).
@@ -3104,6 +3119,21 @@ Requirements:
             except Exception:
                 pass
             log_metrics(rag_trace_payload)
+            # Best-effort: sampled online evaluation (async, PII-minimal outputs).
+            try:
+                from app.services.online_eval_service import maybe_enqueue_online_eval
+
+                maybe_enqueue_online_eval(
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    request_id=str(request_id),
+                    answer=str(full_response or ""),
+                    contexts=[str(getattr(d, "page_content", "") or "") for d in (docs or [])],
+                    retrieval_mode=str(mode_used or "") or None,
+                    citations_count=int(len(citations or [])),
+                )
+            except Exception:
+                pass
 
             # Step 5: Send completion signal.
             generation_elapsed = time.time() - gen_start
