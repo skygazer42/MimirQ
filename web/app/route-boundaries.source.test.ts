@@ -26,6 +26,13 @@ describe('route boundaries source', () => {
     './history',
     './reports',
     './observability',
+    './audit',
+    './usage',
+    './diagnostics',
+    './prompts',
+    './data-governance',
+    './data-governance/profiles',
+    './data-governance/common-lines',
   ])('adds shared loading and error boundaries for %s', (routeDir) => {
     const loadingPath = `${routeDir}/loading.tsx`
     const errorPath = `${routeDir}/error.tsx`
