@@ -41,6 +41,58 @@ describe('type safety hotspots', () => {
     expect(types).not.toContain('metrics: Record<string, any>')
   })
 
+  it('keeps ragviz similarity result payloads on unknown-safe objects', () => {
+    const types = read('types/index.ts')
+    const start = types.indexOf('export interface RagvizSimilarityMatrixResult {')
+    const end = types.indexOf('export interface RagvizSimilarityCalculateResponse {')
+    const ragvizBlock = start >= 0 && end > start ? types.slice(start, end) : types
+
+    expect(ragvizBlock).not.toContain('x_data: Record<string, any>[]')
+    expect(ragvizBlock).not.toContain('y_data: Record<string, any>[]')
+    expect(ragvizBlock).not.toContain('metadata: Record<string, any>')
+  })
+
+  it('keeps chunk preview payload types on unknown-safe objects', () => {
+    const types = read('types/index.ts')
+    const start = types.indexOf('export interface ParsedSegment {')
+    const end = types.indexOf('export interface ChunkPreviewResponse {')
+    const chunkPreviewBlock = start >= 0 && end > start ? types.slice(start, end) : types
+
+    expect(chunkPreviewBlock).not.toContain('metadata?: Record<string, any>')
+    expect(chunkPreviewBlock).not.toContain('payload: Record<string, any>')
+    expect(chunkPreviewBlock).not.toContain('strategy_params?: Record<string, any>')
+    expect(chunkPreviewBlock).not.toContain('meta?: Record<string, any>')
+    expect(chunkPreviewBlock).not.toContain('patch?: Record<string, any>')
+  })
+
+  it('keeps connector and ingestion run payloads on unknown-safe objects', () => {
+    const types = read('types/index.ts')
+    const start = types.indexOf('export interface ConnectorRunOut {')
+    const end = types.indexOf('export interface ConnectorConfigCreateRequest {')
+    const connectorRunBlock = start >= 0 && end > start ? types.slice(start, end) : types
+
+    expect(connectorRunBlock).not.toContain('config?: Record<string, any>')
+    expect(connectorRunBlock).not.toContain('stats?: Record<string, any>')
+    expect(connectorRunBlock).not.toContain('diff: Record<string, any>')
+  })
+
+  it('keeps regression payload types on unknown-safe objects', () => {
+    const types = read('types/index.ts')
+    const start = types.indexOf('export interface RegressionRun {')
+    const end = types.indexOf('// ==================== RAGViz（相似度热力图） ====================')
+    const regressionBlock = start >= 0 && end > start ? types.slice(start, end) : types
+
+    expect(regressionBlock).not.toContain('params: Record<string, any>')
+    expect(regressionBlock).not.toContain('summary: Record<string, any>')
+    expect(regressionBlock).not.toContain('citations: any[]')
+    expect(regressionBlock).not.toContain('scores: Record<string, any>')
+    expect(regressionBlock).not.toContain('meta?: Record<string, any>')
+    expect(regressionBlock).not.toContain('before?: any')
+    expect(regressionBlock).not.toContain('after?: any')
+    expect(regressionBlock).not.toContain('base_params: Record<string, any>')
+    expect(regressionBlock).not.toContain('target_params: Record<string, any>')
+  })
+
   it('keeps ragviz evidence workbench free of any-casts', () => {
     const src = read('components/ragviz/evidence-workbench.tsx')
 

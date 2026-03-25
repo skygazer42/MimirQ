@@ -8,12 +8,16 @@ import { BarChart3, Copy, Download, FileUp, Loader2, Plus, RefreshCw, Search, Sh
 import type {
   Citation,
   Dataset,
+  EvidenceCoverageHeatmap,
   EvidenceHardcaseDiscovery,
   EvidenceItem,
   EvidenceItemCreate,
   EvidenceItemStatus,
+  EvidenceReferenceDriftDetail,
+  EvidenceRetrieveResponse,
   EvidenceSuite,
   EvidenceSuiteDashboard,
+  JsonObject,
   ReferenceSource,
 } from '@/types'
 import { datasetApi, evidenceApi, feedbackApi, ragApi } from '@/lib/api'
@@ -51,20 +55,17 @@ import {
 
 type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
 
-type EvidenceRetrieveResult = {
+type JsonRecord = JsonObject
+
+type EvidenceRetrieveResult = Omit<EvidenceRetrieveResponse, 'citations'> & {
   citations?: Citation[]
-  has_evidence?: boolean | null
-  abstain_triggered?: boolean | null
-  abstain_reason?: string | null
-  [key: string]: unknown
 }
 
-type EvidenceImportPack = {
+type EvidenceImportPack = JsonObject & {
   citations?: Citation[]
-  selected_chunk_ids?: unknown[]
+  selected_chunk_ids?: string[]
   retrieval_profile?: string | null
   version?: string | number | null
-  [key: string]: unknown
 }
 
 const RETRIEVAL_PROFILE_VALUES = ['recall50', 'coverage80', 'recall20'] as const
@@ -96,7 +97,92 @@ function heatmapCellBg(v: number, ratio: number): string {
   return 'bg-primary/5'
 }
 
-function renderLanguageXFileTypeHeatmap(hm: any): ReactNode {
+function isRecord(value: unknown): value is JsonRecord {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  const next = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(next) ? next : undefined
+}
+
+function toStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const items = value.map((item) => String(item || '').trim()).filter(Boolean)
+  return items.length ? items : undefined
+}
+
+function toCitation(value: unknown): Citation | null {
+  if (!isRecord(value)) return null
+  const document_id = toOptionalString(value.document_id) ?? ''
+  const document_name = toOptionalString(value.document_name) ?? ''
+  const chunk_content = typeof value.chunk_content === 'string' ? value.chunk_content : ''
+  const relevance_score = toOptionalNumber(value.relevance_score) ?? 0
+
+  if (!document_id || !document_name) return null
+
+  const citation: Citation = {
+    document_id,
+    document_name,
+    chunk_content,
+    relevance_score,
+  }
+
+  citation.chunk_id = toOptionalString(value.chunk_id)
+  citation.page_number = toOptionalNumber(value.page_number)
+  citation.chunk_index = toOptionalNumber(value.chunk_index)
+  citation.start_char = toOptionalNumber(value.start_char)
+  citation.end_char = toOptionalNumber(value.end_char)
+  citation.header_path = toOptionalString(value.header_path)
+  citation.doc_pipeline_key = toOptionalString(value.doc_pipeline_key)
+  citation.pipeline_hash = toOptionalString(value.pipeline_hash)
+  citation.hit_type = toOptionalString(value.hit_type)
+  citation.retrieval_score = toOptionalNumber(value.retrieval_score)
+  citation.rerank_score = toOptionalNumber(value.rerank_score)
+  citation.vector_score = toOptionalNumber(value.vector_score)
+  citation.bm25_score = toOptionalNumber(value.bm25_score)
+  citation.keyword_score = toOptionalNumber(value.keyword_score)
+  citation.matched_terms = toStringList(value.matched_terms)
+
+  return citation
+}
+
+function normalizeCitations(value: unknown): Citation[] {
+  if (!Array.isArray(value)) return EMPTY_CITATIONS
+  const citations = value.map(toCitation).filter((citation): citation is Citation => citation !== null)
+  return citations.length ? citations : EMPTY_CITATIONS
+}
+
+function normalizeRetrieveResult(value: EvidenceRetrieveResponse | null | undefined): EvidenceRetrieveResult | null {
+  if (!value) return null
+  return {
+    ...value,
+    citations: normalizeCitations(value.citations),
+  }
+}
+
+function normalizeImportPack(value: unknown): EvidenceImportPack | null {
+  if (!isRecord(value)) return null
+  return {
+    ...value,
+    citations: normalizeCitations(value.citations),
+    selected_chunk_ids: toStringList(value.selected_chunk_ids),
+    retrieval_profile: typeof value.retrieval_profile === 'string' ? value.retrieval_profile : null,
+    version: typeof value.version === 'string' || typeof value.version === 'number' ? value.version : null,
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message
+  const text = String(error || '').trim()
+  return text || 'unknown'
+}
+
+function renderLanguageXFileTypeHeatmap(hm: EvidenceCoverageHeatmap | null | undefined): ReactNode {
   const x = Array.isArray(hm?.x) ? hm.x : []
   const y = Array.isArray(hm?.y) ? hm.y : []
   const z = Array.isArray(hm?.z) ? hm.z : []
@@ -166,7 +252,7 @@ function asDatasetId(raw: unknown): string | null {
   return null
 }
 
-function downloadJson(filename: string, data: any) {
+function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   try {
@@ -278,7 +364,7 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
   const [whyMissedCitations, setWhyMissedCitations] = useState<Citation[]>([])
   const [whyMissedDriftLoading, setWhyMissedDriftLoading] = useState(false)
   const [whyMissedDriftError, setWhyMissedDriftError] = useState<string | null>(null)
-  const [whyMissedDriftedRefs, setWhyMissedDriftedRefs] = useState<any[]>([])
+  const [whyMissedDriftedRefs, setWhyMissedDriftedRefs] = useState<EvidenceReferenceDriftDetail[]>([])
 
   // Suite dashboard
   const [dashboardOpen, setDashboardOpen] = useState(false)
@@ -359,8 +445,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     try {
       const ds = await datasetApi.get(datasetId)
       setDataset(ds)
-    } catch (e: any) {
-      toast.error(formatApiError(e, '加载数据集失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '加载数据集失败'))
     } finally {
       setDatasetLoading(false)
     }
@@ -383,8 +469,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       } else if (selectedSuiteId && !next.some((s) => s.id === selectedSuiteId)) {
         setSelectedSuiteId(next[0]?.id ? String(next[0].id) : '')
       }
-    } catch (e: any) {
-      setSuitesError(formatApiError(e, '加载 Evidence Suites 失败'))
+    } catch (error: unknown) {
+      setSuitesError(formatApiError(error, '加载 Evidence Suites 失败'))
     } finally {
       setSuitesLoading(false)
     }
@@ -408,8 +494,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       if (selectedItemId && !next.some((it) => it.id === selectedItemId)) {
         setSelectedItemId('')
       }
-    } catch (e: any) {
-      setItemsError(formatApiError(e, '加载 Evidence Items 失败'))
+    } catch (error: unknown) {
+      setItemsError(formatApiError(error, '加载 Evidence Items 失败'))
     } finally {
       setItemsLoading(false)
     }
@@ -428,8 +514,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
         include_archived_items: dashboardIncludeArchived,
       })
       setDashboard(res)
-    } catch (e: any) {
-      setDashboardError(formatApiError(e, '加载 Dashboard 失败'))
+    } catch (error: unknown) {
+      setDashboardError(formatApiError(error, '加载 Dashboard 失败'))
     } finally {
       setDashboardLoading(false)
     }
@@ -450,8 +536,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
         max_candidates: hardcaseMaxCandidates,
       })
       setHardcaseRes(res)
-    } catch (e: any) {
-      setHardcaseError(formatApiError(e, '加载 Hardcase candidates 失败'))
+    } catch (error: unknown) {
+      setHardcaseError(formatApiError(error, '加载 Hardcase candidates 失败'))
       setHardcaseRes(null)
     } finally {
       setHardcaseLoading(false)
@@ -464,8 +550,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     try {
       await navigator.clipboard.writeText(value)
       toast.success(`${label} 已复制`)
-    } catch (e: any) {
-      toast.error(formatApiError(e, '复制失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '复制失败'))
     }
   }, [])
 
@@ -492,8 +578,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       if (createdId) {
         setSelectedItemId(createdId)
       }
-    } catch (e: any) {
-      toast.error(formatApiError(e, '转为 EvidenceItem 失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '转为 EvidenceItem 失败'))
     } finally {
       setConvertingFeedbackId('')
     }
@@ -555,8 +641,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       setCreateSuiteOpen(false)
       setSuites((prev) => [suite, ...(prev || [])])
       setSelectedSuiteId(String(suite.id))
-    } catch (e: any) {
-      toast.error(formatApiError(e, '创建 Suite 失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '创建 Suite 失败'))
     } finally {
       setCreatingSuite(false)
     }
@@ -604,13 +690,13 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
           visible_evidence_only: false,
         },
       })
-      const normalizedCitations = Array.isArray(res?.citations) ? (res.citations as unknown as Citation[]) : EMPTY_CITATIONS
-      setRetrieveRes(res ? { ...res, citations: normalizedCitations } : null)
+      const normalized = normalizeRetrieveResult(res)
+      setRetrieveRes(normalized)
       if (res?.has_evidence) toast.success('找到证据')
       else if (res?.abstain_triggered) toast.warning(`已触发 abstain：${res?.abstain_reason || 'unknown'}`)
       else toast.message('未找到证据')
-    } catch (e: any) {
-      setRetrieveError(formatApiError(e, '检索失败'))
+    } catch (error: unknown) {
+      setRetrieveError(formatApiError(error, '检索失败'))
     } finally {
       setRetrieving(false)
     }
@@ -641,12 +727,15 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
     setImportSelectedChunkIds([])
     try {
       const text = await file.text()
-      const payload = JSON.parse(text)
+      const parsed = JSON.parse(text) as unknown
+      const payload = normalizeImportPack(parsed)
+      if (!payload) {
+        throw new Error('invalid evidence pack')
+      }
       setImportPack(payload)
-      const selectedFromFile = Array.isArray(payload?.selected_chunk_ids) ? payload.selected_chunk_ids.map(String) : []
-      setImportSelectedChunkIds(selectedFromFile)
-    } catch (e: any) {
-      setImportError(`解析失败：${String(e?.message || e)}`)
+      setImportSelectedChunkIds(payload.selected_chunk_ids ?? [])
+    } catch (error: unknown) {
+      setImportError(`解析失败：${getErrorMessage(error)}`)
     }
   }, [])
 
@@ -661,16 +750,16 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       return
     }
 
-	    let citations: Citation[] = []
-	    let selected: string[] = []
-	    let retrievalSnapshot: any = null
-	    let ragSnapshot: any
+    let citations: Citation[] = []
+    let selected: string[] = []
+    let retrievalSnapshot: JsonObject | null = null
+    let ragSnapshot: JsonObject | null = null
 
-	    if (createItemTab === 'retrieve') {
-	      citations = retrieveRes?.citations || []
-	      selected = selectedChunkIds || []
+    if (createItemTab === 'retrieve') {
+      citations = retrieveRes?.citations || []
+      selected = selectedChunkIds || []
       retrievalSnapshot = {
-        ...retrieveRes,
+        ...(retrieveRes ?? {}),
         selected_chunk_ids: selected,
         created_from: 'retrieve',
       }
@@ -715,8 +804,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       setSelectedItemId(String(created.id))
       // Refresh suite counts (best-effort)
       detachPromise(loadSuites())
-    } catch (e: any) {
-      toast.error(formatApiError(e, '创建 Evidence Item 失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '创建 Evidence Item 失败'))
     } finally {
       setCreatingItem(false)
     }
@@ -754,8 +843,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
         )
         detachPromise(loadItems())
         detachPromise(loadSuites())
-      } catch (e: any) {
-        toast.error(formatApiError(e, '导入失败'))
+      } catch (error: unknown) {
+        toast.error(formatApiError(error, '导入失败'))
       } finally {
         setImportingQAFaq(false)
         if (qaFaqInputRef.current) qaFaqInputRef.current.value = ''
@@ -772,8 +861,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       const name = (selectedSuite.name || 'evidence-suite').replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
       downloadJson(`${name}.${safeTs}.json`, res)
       toast.success('已导出 Evidence Suite')
-    } catch (e: any) {
-      toast.error(formatApiError(e, '导出失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '导出失败'))
     }
   }, [selectedSuite])
 
@@ -788,8 +877,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       const name = (selectedSuite.name || 'evidence-suite').replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
       downloadBlob(`${name}.${safeTs}.ltr_training.zip`, blob)
       toast.success('已导出 LTR 训练数据')
-    } catch (e: any) {
-      toast.error(formatApiError(e, '导出 LTR 训练数据失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '导出 LTR 训练数据失败'))
     }
   }, [selectedSuite])
 
@@ -805,8 +894,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       }
       detachPromise(loadItems())
       detachPromise(loadSuites())
-    } catch (e: any) {
-      toast.error(formatApiError(e, '同步失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '同步失败'))
     }
   }, [loadItems, loadSuites, selectedSuite])
 
@@ -817,8 +906,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       setItems((prev) => (prev || []).map((it) => (it.id === itemId ? updated : it)))
       toast.success('已归档')
       detachPromise(loadSuites())
-    } catch (e: any) {
-      toast.error(formatApiError(e, '归档失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '归档失败'))
     }
   }, [loadSuites])
 
@@ -829,8 +918,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       setItems((prev) => (prev || []).map((it) => (it.id === itemId ? updated : it)))
       toast.success('已提交 Review')
       detachPromise(loadSuites())
-    } catch (e: any) {
-      toast.error(formatApiError(e, '提交 Review 失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '提交 Review 失败'))
     }
   }, [loadSuites])
 
@@ -841,8 +930,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       setItems((prev) => (prev || []).map((it) => (it.id === itemId ? updated : it)))
       toast.success('已批准（approved）')
       detachPromise(loadSuites())
-    } catch (e: any) {
-      toast.error(formatApiError(e, '批准失败'))
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '批准失败'))
     }
   }, [loadSuites])
 
@@ -916,8 +1005,8 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
       const details = audit.drifted_references ?? []
       const itemId = String(selectedItem.id)
       setWhyMissedDriftedRefs(details.filter((d) => String(d?.item_id || '') === itemId))
-    } catch (e: any) {
-      setWhyMissedDriftError(formatApiError(e, '加载 Drift Audit 失败'))
+    } catch (error: unknown) {
+      setWhyMissedDriftError(formatApiError(error, '加载 Drift Audit 失败'))
     } finally {
       setWhyMissedDriftLoading(false)
     }
@@ -957,12 +1046,12 @@ export function EvidenceSuiteWorkbench({ datasetId: datasetIdRaw }: Readonly<{ d
           visible_evidence_only: false,
         },
       })
-      const nextCitations = (res?.citations || []) as unknown as Citation[]
+      const nextCitations = normalizeRetrieveResult(res)?.citations ?? EMPTY_CITATIONS
       setWhyMissedCitations(nextCitations)
       setWhyMissedRanRetrieve(true)
       toast.success(`检索完成：citations=${nextCitations.length}`)
-    } catch (e: any) {
-      setWhyMissedError(formatApiError(e, '检索失败'))
+    } catch (error: unknown) {
+      setWhyMissedError(formatApiError(error, '检索失败'))
     } finally {
       setWhyMissedRetrieving(false)
     }

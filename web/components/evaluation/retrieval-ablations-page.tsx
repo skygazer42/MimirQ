@@ -65,7 +65,7 @@ function downloadBlob(blob: Blob, filename: string): void {
   globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function toNumber(value: any): number | null {
+function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
@@ -136,14 +136,14 @@ export function RetrievalAblationsPage() {
   const diffScore = diff?.diff_score ?? null
 
   const diffScoreFmt = useMemo(() => {
-    const b = toNumber((diffScore as any)?.base_score)
-    const a = toNumber((diffScore as any)?.target_score)
-    const d = toNumber((diffScore as any)?.delta)
+    const b = toNumber(diffScore?.base_score)
+    const a = toNumber(diffScore?.target_score)
+    const d = toNumber(diffScore?.delta)
     return {
       base: b == null ? '-' : b.toFixed(4),
       target: a == null ? '-' : a.toFixed(4),
       delta: d == null ? '-' : d.toFixed(4),
-      usedKeys: Array.isArray((diffScore as any)?.used_metric_keys) ? ((diffScore as any)?.used_metric_keys as string[]) : [],
+      usedKeys: Array.isArray(diffScore?.used_metric_keys) ? diffScore.used_metric_keys.map(String) : [],
     }
   }, [diffScore])
 
@@ -716,7 +716,7 @@ export function RetrievalAblationsPage() {
                 <div className="rounded-2xl border border-border bg-muted/20 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-xs font-semibold text-muted-foreground">Diff Score</div>
-                    <div className="text-[10px] font-mono text-muted-foreground">v{String((diffScore as any)?.version || '1')}</div>
+                    <div className="text-[10px] font-mono text-muted-foreground">v{String(diffScore.version || '1')}</div>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-3">
                     <div className="rounded-xl border border-border bg-background/60 p-3">

@@ -10,4 +10,11 @@ describe('EvidenceSuiteWorkbench guards', () => {
     expect(src).toContain('if (!query) {')
     expect(src).toContain('return')
   })
+
+  it('avoids any-based helpers and state in the evidence suite workbench', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'evidence-suite-workbench.tsx'), 'utf8')
+
+    expect(src).not.toContain(': any')
+    expect(src).not.toContain('Record<string, any>')
+  })
 })

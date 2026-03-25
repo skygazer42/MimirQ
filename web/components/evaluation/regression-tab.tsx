@@ -182,6 +182,10 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
   }
 
   const summary = runDetail?.run?.summary || {}
+  const summaryItems = typeof summary.items === 'number' ? summary.items : '-'
+  const summaryTokens = typeof summary.total_tokens === 'number' ? summary.total_tokens : '-'
+  const summaryCost =
+    typeof summary.total_cost === 'number' || typeof summary.total_cost === 'string' ? summary.total_cost : '-'
   const displayMetrics = Object.entries(summary)
     .filter(([k, v]) => !['items', 'total_tokens', 'total_cost'].includes(k) && typeof v === 'number')
     .map(([k, v]) => ({ key: k, value: Number(v) }))
@@ -513,10 +517,10 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
 	                      className="shadow-sm"
 	                    />
 	                  ))}
-	                </StatsGrid>
-	                <div className="mt-3 text-xs text-muted-foreground">
-	                  items: {summary.items ?? '-'} · tokens: {summary.total_tokens ?? '-'} · cost: {summary.total_cost ?? '-'}
-	                </div>
+		                </StatsGrid>
+		                <div className="mt-3 text-xs text-muted-foreground">
+		                  items: {summaryItems} · tokens: {summaryTokens} · cost: {summaryCost}
+		                </div>
                   {(() => {
                     const slices = (summary as any)?.retrieval_slices
                     const pq = (slices as any)?.parse_quality?.buckets
