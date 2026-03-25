@@ -25,7 +25,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { StepIndicator } from '@/components/ui/step-indicator'
 
-import { datasetApi, documentApi, kgApi } from '@/lib/api-client'
+import { datasetApi, documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { GraphService } from '@/services/graph-service'

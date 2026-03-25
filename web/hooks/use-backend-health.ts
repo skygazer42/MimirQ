@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 
-import { healthApi } from '@/lib/api-client'
+import { healthApi } from '@/lib/api'
 import type { HealthResponse } from '@/types/backend'
 
 export type BackendHealthSnapshot = {

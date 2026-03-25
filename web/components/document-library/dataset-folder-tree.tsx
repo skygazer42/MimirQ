@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { cn, detachPromise } from '@/lib/utils'
-import { documentApi } from '@/lib/api-client'
+import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 
 import type { DocumentFolderNode, DocumentFolderTreeResponse } from '@/types'

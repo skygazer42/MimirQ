@@ -6,7 +6,7 @@ import { User, Mail, Lock, Sparkles, ArrowRight, Loader2, Copy } from 'lucide-re
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { authApi } from '@/lib/api-client'
+import { authApi } from '@/lib/api'
 import { setAuthSession } from '@/lib/auth-storage'
 import { startOidcLogin } from '@/lib/oidc'
 import { getOidcPublicProvidersFromEnv } from '@/lib/oidc-providers'

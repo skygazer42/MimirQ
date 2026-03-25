@@ -11,7 +11,7 @@
 'use client'
 
 import { useMemo, useRef, useState, useEffect, useCallback, type MouseEvent, type ReactNode } from 'react'
-import { evaluationApi, ragApi } from '@/lib/api-client'
+import { evaluationApi, ragApi } from '@/lib/api'
 import type { Citation, RegressionCase, RegressionCaseCreate, RegressionReferenceSource } from '@/types'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'

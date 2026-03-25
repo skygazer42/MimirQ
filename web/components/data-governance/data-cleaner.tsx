@@ -5,7 +5,7 @@ import { Wrench, Sparkles, Undo, TextCursorInput, Loader2, Info, AlertTriangle }
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { pipelineApi, promptTemplateApi, PromptTemplate } from '@/lib/api-client'
+import { pipelineApi, promptTemplateApi, PromptTemplate } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { coerceOneOf } from '@/lib/one-of'
 import type { CleanPreviewRequest, CleanPreviewResponse, DocumentPipelineOptions, LLMCleanPreviewRequest } from '@/types'

@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { AuthImage, AuthImageLink } from '@/components/auth-image'
 import type { Citation, Dataset, EvidenceRetrieveResponse } from '@/types'
-import { datasetApi, ragApi } from '@/lib/api-client'
+import { datasetApi, ragApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
 import { cn, detachPromise } from '@/lib/utils'

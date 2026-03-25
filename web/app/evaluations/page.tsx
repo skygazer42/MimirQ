@@ -21,7 +21,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
-import { evaluationApi, chatApi, type RagasRun, type RagasRunDetail } from '@/lib/api-client'
+import { evaluationApi, chatApi, type RagasRun, type RagasRunDetail } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { Conversation } from '@/types'
 import {

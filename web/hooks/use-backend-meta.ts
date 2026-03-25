@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 
-import { metaApi, type BackendMeta } from '@/lib/api-client'
+import { metaApi, type BackendMeta } from '@/lib/api'
 
 export function useBackendMeta() {
   return useQuery<BackendMeta>({

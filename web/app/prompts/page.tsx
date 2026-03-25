@@ -35,7 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api-client'
+import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api'
 import { Plus, Edit, Trash2, Copy, Check, X, Eye, Filter, Wand2, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { KgExtractPromptSettings } from '@/components/kg-extract-prompt-settings'

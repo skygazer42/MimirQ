@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Citation, Message, StreamEvent } from '@/types'
 import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS } from '@/lib/env'
-import { chatApi } from '@/lib/api-client'
+import { chatApi } from '@/lib/api'
 
 interface UseChatOptions {
   conversationId?: string

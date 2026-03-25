@@ -35,7 +35,7 @@ import {
   type LangGraphConfig,
   type CacheConfig,
   type LTRModelInfo,
-} from '@/lib/api-client'
+} from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'

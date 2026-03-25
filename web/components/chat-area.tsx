@@ -11,7 +11,7 @@ import { useChat } from '@/hooks/use-chat'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { cn, detachPromise } from '@/lib/utils'
-import { datasetApi, documentApi, promptTemplateApi, settingsApi, type PromptTemplate } from '@/lib/api-client'
+import { datasetApi, documentApi, promptTemplateApi, settingsApi, type PromptTemplate } from '@/lib/api'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import {
   Select,

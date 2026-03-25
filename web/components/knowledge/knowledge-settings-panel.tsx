@@ -34,7 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { connectorApi, datasetApi } from '@/lib/api-client'
+import { connectorApi, datasetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatDate, detachPromise } from '@/lib/utils'
 

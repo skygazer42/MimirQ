@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
-import { groupApi } from '@/lib/api-client'
+import { groupApi } from '@/lib/api'
 import type { TenantGroupOut } from '@/types/backend'
 import { EmptyState } from '@/components/ui/empty-state'
 import {

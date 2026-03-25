@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
-import { settingsApi } from '@/lib/api-client'
+import { settingsApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { ModelProvider, ProviderConfig } from '@/types/models'
 

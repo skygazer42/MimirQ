@@ -6,7 +6,7 @@ import { Blocks, FileText, Loader2, Eye, Code, Download, Copy, Check, RotateCcw,
 import { AppFrame } from '@/components/app-frame'
 import { PipelineRail, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { Button } from '@/components/ui/button'
-import { documentApi, parsingApi } from '@/lib/api-client'
+import { documentApi, parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { generateRequestId } from '@/lib/request-id'

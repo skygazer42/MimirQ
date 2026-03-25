@@ -6,7 +6,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { cn, detachPromise } from '@/lib/utils'
-import { datasetCategoryApi } from '@/lib/api-client'
+import { datasetCategoryApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 
 import type { DatasetCategoryNode, DatasetCategoryTreeResponse } from '@/types'

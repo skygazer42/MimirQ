@@ -1,3 +1,5 @@
+export * from '@/lib/api-client'
+
 export { authApi } from './auth'
 export { connectorApi } from './connectors'
 export { datasetApi, datasetCategoryApi } from './datasets'

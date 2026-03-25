@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Edit, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 
-import { kgApi } from '@/lib/api-client'
+import { kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import type { KGPredicateOntologyItem } from '@/types'

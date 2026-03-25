@@ -16,7 +16,7 @@ import type {
   EvidenceSuiteDashboard,
   ReferenceSource,
 } from '@/types'
-import { datasetApi, evidenceApi, feedbackApi, ragApi } from '@/lib/api-client'
+import { datasetApi, evidenceApi, feedbackApi, ragApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { buildWhyMissedReport } from '@/lib/evidence-why-missed'
 import { extractEvidenceNeedles, rankEvidenceCitations } from '@/lib/evidence-suggestions'

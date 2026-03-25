@@ -35,7 +35,7 @@ import { QualityChecker } from '@/components/data-governance/quality-checker'
 import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
-import { documentApi, parsingApi } from '@/lib/api-client'
+import { documentApi, parsingApi } from '@/lib/api'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 

@@ -11,7 +11,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { evaluationApi, documentApi, chatApi, datasetApi } from '@/lib/api-client'
+import { evaluationApi, documentApi, chatApi, datasetApi } from '@/lib/api'
 import type {
   GeneratedQuestion,
   TestGenFromDocsRequest,

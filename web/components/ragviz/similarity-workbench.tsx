@@ -2,7 +2,7 @@
 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ragvizApi } from '@/lib/api-client'
+import { ragvizApi } from '@/lib/api'
 import type {
   RagvizSimilarityCollection,
   RagvizSimilarityCalculateResponse,

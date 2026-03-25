@@ -30,7 +30,7 @@ import { Switch } from '@/components/ui/switch'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { datasetApi, sseApi } from '@/lib/api-client'
+import { datasetApi, sseApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 

@@ -13,7 +13,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
-import { rbacApi, type TenantMember } from '@/lib/api-client'
+import { rbacApi, type TenantMember } from '@/lib/api'
 import { EmptyState } from '@/components/ui/empty-state'
 
 const ROLE_OPTIONS = [

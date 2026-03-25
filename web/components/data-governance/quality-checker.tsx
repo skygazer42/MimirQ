@@ -8,7 +8,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { ScanLine, Play, CheckCircle, AlertTriangle, Info, FileText, Languages, Code, List, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { pipelineApi } from '@/lib/api-client'
+import { pipelineApi } from '@/lib/api'
 
 interface QualityIssue {
   id: string

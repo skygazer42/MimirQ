@@ -20,7 +20,7 @@ import { Panel } from '@/components/ui/panel'
 import { formatApiError } from '@/lib/api-errors'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
 import { cn, detachPromise } from '@/lib/utils'
-import { evaluationApi, ragApi } from '@/lib/api-client'
+import { evaluationApi, ragApi } from '@/lib/api'
 import { toast } from 'sonner'
 
 type RetrievePreviewPanelProps = {
