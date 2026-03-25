@@ -40,15 +40,15 @@
 
     /* Destructive - Refined Red */
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 222.2 47.4% 11.2%;
 
     /* Semantic - Status colors (success/warning/info) */
     --success: 142 76% 36%;
-    --success-foreground: 210 40% 98%;
+    --success-foreground: 222.2 47.4% 11.2%;
     --warning: 38 92% 50%;
     --warning-foreground: 222.2 84% 4.9%;
     --info: 210 90% 50%;
-    --info-foreground: 210 40% 98%;
+    --info-foreground: 222.2 47.4% 11.2%;
 
     /* Borders & Inputs - Subtle Cool Gray */
     --border: 214.3 31.8% 91.4%;

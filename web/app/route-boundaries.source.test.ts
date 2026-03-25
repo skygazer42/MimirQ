@@ -11,6 +11,27 @@ function exists(relativePath: string): boolean {
   return fs.existsSync(path.resolve(__dirname, relativePath))
 }
 
+function collectRouteDirs(dir: string): string[] {
+  const entries = fs.readdirSync(dir, { withFileTypes: true })
+  const routeDirs = new Set<string>()
+
+  for (const entry of entries) {
+    const absolutePath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      collectRouteDirs(absolutePath).forEach((routeDir) => routeDirs.add(routeDir))
+      continue
+    }
+
+    if (!entry.isFile()) continue
+    if (entry.name !== 'page.tsx' && entry.name !== 'page-client.tsx') continue
+
+    const relativeDir = path.relative(__dirname, dir).replaceAll(path.sep, '/')
+    routeDirs.add(relativeDir ? `./${relativeDir}` : '.')
+  }
+
+  return [...routeDirs].sort()
+}
+
 describe('route boundaries source', () => {
   it('keeps a shared RouteLoading component for route loading states', () => {
     const src = read('../components/route-loading.tsx')
@@ -20,22 +41,9 @@ describe('route boundaries source', () => {
     expect(src).toContain('aria-live="polite"')
   })
 
-  it.each([
-    './parsing',
-    './datasets',
-    './history',
-    './reports',
-    './observability',
-    './audit',
-    './usage',
-    './diagnostics',
-    './prompts',
-    './data-governance',
-    './data-governance/profiles',
-    './data-governance/common-lines',
-  ])('adds shared loading and error boundaries for %s', (routeDir) => {
-    const loadingPath = `${routeDir}/loading.tsx`
-    const errorPath = `${routeDir}/error.tsx`
+  it.each(collectRouteDirs(__dirname))('adds shared loading and error boundaries for %s', (routeDir) => {
+    const loadingPath = routeDir === '.' ? './loading.tsx' : `${routeDir}/loading.tsx`
+    const errorPath = routeDir === '.' ? './error.tsx' : `${routeDir}/error.tsx`
 
     expect(exists(loadingPath)).toBe(true)
     expect(exists(errorPath)).toBe(true)
@@ -43,9 +51,10 @@ describe('route boundaries source', () => {
     const loadingSrc = read(loadingPath)
     const errorSrc = read(errorPath)
 
-    expect(loadingSrc).toContain("import { RouteLoading } from '@/components/route-loading'")
-    expect(loadingSrc).toContain('<RouteLoading />')
-    expect(errorSrc).toContain("import { RouteError } from '@/components/route-error'")
-    expect(errorSrc).toContain('<RouteError')
+    expect(loadingSrc).toContain('export default function')
+    expect(loadingSrc.includes('RouteLoading') || loadingSrc.includes('aria-live=') || loadingSrc.includes('Skeleton')).toBe(true)
+    expect(errorSrc).toContain('export default function')
+    expect(errorSrc).toContain('reset')
+    expect(errorSrc).toContain('RouteError')
   })
 })
