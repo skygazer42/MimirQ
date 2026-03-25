@@ -354,6 +354,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{document_id}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document Health Card
+         * @description Consolidated document health card (Gap10).
+         *
+         *     PII-safe: returns aggregate signals only (no raw chunk text).
+         */
+        get: operations["get_document_health_card_api_v1_documents__document_id__health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{document_id}/timeline": {
         parameters: {
             query?: never;
@@ -3948,6 +3970,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluations/kg/quality/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kg Quality Report
+         * @description Aggregate KG extraction quality report for a dataset (PII-minimal).
+         *
+         *     This is intentionally best-effort and returns only aggregate statistics (counts/ratios).
+         */
+        get: operations["get_kg_quality_report_api_v1_evaluations_kg_quality_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluations/ragas/test-gen/from-conversations": {
         parameters: {
             query?: never;
@@ -5868,6 +5912,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/observability/embedding-drift/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Embedding Drift Snapshot
+         * @description Embedding drift snapshot (admin-only, PII-safe).
+         *
+         *     Compares stored vectors with re-embedded vectors for a bounded sample of active chunks
+         *     and returns aggregate drift statistics. Output never includes chunk/document identifiers
+         *     or raw content.
+         */
+        get: operations["get_embedding_drift_snapshot_api_v1_observability_embedding_drift_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/perf-suite/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Perf Suite
+         * @description Run a minimal, PII-safe perf suite and diff vs the checked-in baseline (admin-only).
+         *
+         *     Intended for ad-hoc diagnostics. Nightly gating is implemented in GitHub Actions.
+         */
+        post: operations["run_perf_suite_api_v1_observability_perf_suite_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/index-drift": {
         parameters: {
             query?: never;
@@ -6563,6 +6653,10 @@ export interface components {
             chunk_strategy: string;
             /** Pipeline */
             pipeline?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** User Metadata */
+            user_metadata?: string | null;
             /** Governance Enabled */
             governance_enabled?: boolean | null;
             /** Governance Remove Toc Lines */
@@ -6597,10 +6691,6 @@ export interface components {
             event_vector_enabled?: boolean | null;
             /** Entity Vector Enabled */
             entity_vector_enabled?: boolean | null;
-            /** Dataset Id */
-            dataset_id?: string | null;
-            /** User Metadata */
-            user_metadata?: string | null;
         };
         /** Body_upload_documents_batch_api_v1_documents_upload_batch_post */
         Body_upload_documents_batch_api_v1_documents_upload_batch_post: {
@@ -6618,6 +6708,20 @@ export interface components {
             chunk_strategy: string;
             /** Pipeline */
             pipeline?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /**
+             * Precheck First
+             * @default false
+             */
+            precheck_first: boolean;
+            /** User Metadata Map */
+            user_metadata_map?: string | null;
+            /**
+             * Max Concurrent
+             * @default 5
+             */
+            max_concurrent: number;
             /** Governance Enabled */
             governance_enabled?: boolean | null;
             /** Governance Remove Toc Lines */
@@ -6652,20 +6756,6 @@ export interface components {
             event_vector_enabled?: boolean | null;
             /** Entity Vector Enabled */
             entity_vector_enabled?: boolean | null;
-            /** Dataset Id */
-            dataset_id?: string | null;
-            /**
-             * Precheck First
-             * @default false
-             */
-            precheck_first: boolean;
-            /** User Metadata Map */
-            user_metadata_map?: string | null;
-            /**
-             * Max Concurrent
-             * @default 5
-             */
-            max_concurrent: number;
         };
         /** Body_upload_parsing_document_api_v1_parsing_documents_post */
         Body_upload_parsing_document_api_v1_parsing_documents_post: {
@@ -6957,6 +7047,11 @@ export interface components {
              * @default false
              */
             enable_summary_memory: boolean;
+            /**
+             * Enable Structured Memory
+             * @default false
+             */
+            enable_structured_memory: boolean;
             /** Prompt Template Id */
             prompt_template_id?: string | null;
             /** Prompt Template Key */
@@ -7008,6 +7103,10 @@ export interface components {
             retrieval_mode?: string | null;
             /** Vector Backend */
             vector_backend?: string | null;
+            /** Confidence Score */
+            confidence_score?: number | null;
+            /** Followup Questions */
+            followup_questions?: string[];
             /** Metrics */
             metrics?: {
                 [key: string]: unknown;
@@ -8794,8 +8893,13 @@ export interface components {
             default_prompt_ab_experiment_key?: string | null;
             chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+            retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
             ingestion_policy?: components["schemas"]["IngestionPolicy-Input"] | null;
             fls_policy?: components["schemas"]["FlsPolicy"] | null;
+            /** Workflow Layout */
+            workflow_layout?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * DatasetConfigBundle
@@ -8824,8 +8928,13 @@ export interface components {
             default_prompt_ab_experiment_key?: string | null;
             chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+            retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
             ingestion_policy?: components["schemas"]["IngestionPolicy-Output"] | null;
             fls_policy?: components["schemas"]["FlsPolicy"] | null;
+            /** Workflow Layout */
+            workflow_layout?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** DatasetConfigExport */
         DatasetConfigExport: {
@@ -8888,6 +8997,7 @@ export interface components {
             default_prompt_ab_experiment_key?: string | null;
             chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+            retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
         };
         /**
          * DatasetGovernanceAuditOut
@@ -9387,6 +9497,7 @@ export interface components {
             default_prompt_ab_experiment_key?: string | null;
             chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+            retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
         };
         /** DatasetParseRiskDocumentOut */
         DatasetParseRiskDocumentOut: {
@@ -10806,6 +10917,40 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /**
+         * DatasetRetentionPolicy
+         * @description Dataset-level retention policy (Gap9).
+         *
+         *     Stored in datasets.metadata.retention_policy.
+         */
+        DatasetRetentionPolicy: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Action
+             * @default archive
+             * @enum {string}
+             */
+            action: "archive" | "delete";
+            /**
+             * Max Age Days
+             * @description Expire docs older than this many days
+             */
+            max_age_days?: number | null;
+            /**
+             * Max Inactive Days
+             * @description Expire docs with no recent activity (best-effort; uses updated_at fallback)
+             */
+            max_inactive_days?: number | null;
+            /**
+             * Max Versions
+             * @description Keep at most N pipeline versions per doc
+             */
+            max_versions?: number | null;
+        };
         /** DatasetTableRoutingPolicyAudit */
         DatasetTableRoutingPolicyAudit: {
             /**
@@ -10863,6 +11008,7 @@ export interface components {
             default_prompt_ab_experiment_key?: string | null;
             chunk_targets_v2?: components["schemas"]["DatasetChunkTargetsV2"] | null;
             pipeline?: components["schemas"]["DocumentPipelineOptions"] | null;
+            retention_policy?: components["schemas"]["DatasetRetentionPolicy"] | null;
         };
         /** DbCatalogColumnOut */
         DbCatalogColumnOut: {
@@ -11625,6 +11771,192 @@ export interface components {
             total_with_source_path: number;
             root: components["schemas"]["DocumentFolderNode"];
         };
+        /** DocumentHealthCard */
+        DocumentHealthCard: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** File Type */
+            file_type?: string | null;
+            /** File Size */
+            file_size?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Status */
+            status?: string | null;
+            parsing: components["schemas"]["DocumentHealthParsing"];
+            chunking: components["schemas"]["DocumentHealthChunking"];
+            /** Kg */
+            kg?: {
+                [key: string]: unknown;
+            } | null;
+            retrieval_hits?: components["schemas"]["DocumentHealthRetrievalHits"] | null;
+        };
+        /** DocumentHealthChunkCoverage */
+        DocumentHealthChunkCoverage: {
+            /**
+             * Sum Chunk Chars
+             * @default 0
+             */
+            sum_chunk_chars: number;
+            /**
+             * Covered Chars
+             * @default 0
+             */
+            covered_chars: number;
+            /**
+             * Coverage Ratio
+             * @default 0
+             */
+            coverage_ratio: number;
+            /**
+             * Overlap Waste Ratio
+             * @default 0
+             */
+            overlap_waste_ratio: number;
+            /**
+             * Gap Count
+             * @default 0
+             */
+            gap_count: number;
+            /**
+             * Largest Gap
+             * @default 0
+             */
+            largest_gap: number;
+        };
+        /** DocumentHealthChunking */
+        DocumentHealthChunking: {
+            /** Chunk Strategy */
+            chunk_strategy?: string | null;
+            /** Chunk Strategy Requested */
+            chunk_strategy_requested?: string | null;
+            /**
+             * Chunk Count
+             * @default 0
+             */
+            chunk_count: number;
+            /**
+             * Total Characters
+             * @default 0
+             */
+            total_characters: number;
+            coverage?: components["schemas"]["DocumentHealthChunkCoverage"];
+            semantic_quality?: components["schemas"]["DocumentHealthSemanticQualitySummary"] | null;
+        };
+        /** DocumentHealthParsing */
+        DocumentHealthParsing: {
+            /** Parser Backend */
+            parser_backend?: string | null;
+            /** Parser Backend Requested */
+            parser_backend_requested?: string | null;
+            /** Parse Quality */
+            parse_quality?: {
+                [key: string]: unknown;
+            } | null;
+            /** Pdf Quality */
+            pdf_quality?: {
+                [key: string]: unknown;
+            } | null;
+            /** Is Scanned */
+            is_scanned?: boolean | null;
+            /** Page Count */
+            page_count?: number | null;
+            /** Processed At */
+            processed_at?: string | null;
+        };
+        /** DocumentHealthRetrievalHits */
+        DocumentHealthRetrievalHits: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /** Path */
+            path?: string | null;
+            /**
+             * Window Minutes
+             * @default 60
+             */
+            window_minutes: number;
+            /**
+             * Max Bytes
+             * @default 0
+             */
+            max_bytes: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Traces Scanned
+             * @default 0
+             */
+            traces_scanned: number;
+            /**
+             * Traces With Hits
+             * @default 0
+             */
+            traces_with_hits: number;
+            /**
+             * Citations Matched
+             * @default 0
+             */
+            citations_matched: number;
+            /** Unique Chunks Matched */
+            unique_chunks_matched?: number | null;
+            /** Hit Rate */
+            hit_rate?: number | null;
+        };
+        /** DocumentHealthSemanticQualitySummary */
+        DocumentHealthSemanticQualitySummary: {
+            /**
+             * Sampled Chunks
+             * @default 0
+             */
+            sampled_chunks: number;
+            /**
+             * Needs Review
+             * @default 0
+             */
+            needs_review: number;
+            /**
+             * Needs Review Ratio
+             * @default 0
+             */
+            needs_review_ratio: number;
+            /** Mean Information Density */
+            mean_information_density?: number | null;
+            /** Mean Semantic Completeness */
+            mean_semantic_completeness?: number | null;
+            /** Mean Self Containedness */
+            mean_self_containedness?: number | null;
+            /** Mean Pronoun Ratio */
+            mean_pronoun_ratio?: number | null;
+            /** Overall Histogram 10 */
+            overall_histogram_10?: number[];
+            /** Note */
+            note?: string | null;
+        };
         /**
          * DocumentLifecycleMetadata
          * @description Document lifecycle governance metadata.
@@ -11981,6 +12313,46 @@ export interface components {
              */
             parse_fallback_max_retries?: number | null;
             /**
+             * Cross Page Merge Enabled
+             * @description Merge cross-page table/list continuations before chunking
+             */
+            cross_page_merge_enabled?: boolean | null;
+            /**
+             * Cross Page Merge Max Page Gap
+             * @description Maximum page gap allowed for cross-page merging
+             */
+            cross_page_merge_max_page_gap?: number | null;
+            /**
+             * Reading Order Enabled
+             * @description Track reading-order quality signals for parse scoring and diagnostics
+             */
+            reading_order_enabled?: boolean | null;
+            /**
+             * Parse Cache Enabled
+             * @description Enable persisted parse cache keyed by file_sha256 + parser_backend + pipeline_hash
+             */
+            parse_cache_enabled?: boolean | null;
+            /**
+             * Parse Cache Ttl Sec
+             * @description Persisted parse cache TTL in seconds
+             */
+            parse_cache_ttl_sec?: number | null;
+            /**
+             * Vlm Correction Enabled
+             * @description Enable best-effort VLM parse correction for low-quality PDF pages
+             */
+            vlm_correction_enabled?: boolean | null;
+            /**
+             * Vlm Correction Min Table Score
+             * @description Run VLM correction when table_quality_score is below this threshold
+             */
+            vlm_correction_min_table_score?: number | null;
+            /**
+             * Vlm Correction Max Pages
+             * @description Max pages corrected by VLM per document
+             */
+            vlm_correction_max_pages?: number | null;
+            /**
              * Persist Parsed Content
              * @description Persist parsed markdown (raw+clean) into document_parsed_contents
              */
@@ -12032,6 +12404,11 @@ export interface components {
              * @description Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).
              */
             embedding_context_prefix_enabled?: boolean | null;
+            /**
+             * Embedding Contextual Retrieval Enabled
+             * @description Inject a short document/section-level context prefix before embedding (vector-only). Does not change stored chunk content (DB).
+             */
+            embedding_contextual_retrieval_enabled?: boolean | null;
             /**
              * Embedding Field Aware Enabled
              * @description When enabled, store extra field-aware embeddings (title/heading) alongside body embeddings to improve recall. Backwards compatible but increases vector write volume.
@@ -16116,6 +16493,11 @@ export interface components {
              */
             table_quality_score: number;
             /**
+             * Reading Order Score
+             * @description Reading-order consistency (0-1)
+             */
+            reading_order_score?: number | null;
+            /**
              * Is Scanned
              * @description Whether it is a scanned document
              */
@@ -16251,6 +16633,43 @@ export interface components {
             reasons?: string[];
             /** Evidence */
             evidence?: {
+                [key: string]: unknown;
+            };
+        };
+        /** PerfSuiteRunRequest */
+        PerfSuiteRunRequest: {
+            /**
+             * Iterations
+             * @description Iterations per case (bounded)
+             * @default 10
+             */
+            iterations: number;
+            /**
+             * Timeout Sec
+             * @description Timeout per request in seconds (bounded)
+             * @default 2
+             */
+            timeout_sec: number;
+        };
+        /** PerfSuiteRunResponse */
+        PerfSuiteRunResponse: {
+            /** Schema */
+            schema: string;
+            /** Baseline Path */
+            baseline_path: string;
+            /** Policy Path */
+            policy_path: string;
+            /**
+             * Baseline Ts
+             * @default
+             */
+            baseline_ts: string;
+            /** Current Report */
+            current_report?: {
+                [key: string]: unknown;
+            };
+            /** Diff */
+            diff?: {
                 [key: string]: unknown;
             };
         };
@@ -20670,6 +21089,83 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_health_card_api_v1_documents__document_id__health_get: {
+        parameters: {
+            query?: {
+                /** @description Metrics lookback window (minutes) */
+                window_minutes?: number;
+                /** @description Max bytes to read from metrics JSONL tail */
+                max_bytes?: number;
+                /** @description Max chunks to score for semantic quality */
+                max_chunks_scored?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentHealthCard"];
+                };
             };
             /** @description Bad Request */
             400: {
@@ -35774,6 +36270,83 @@ export interface operations {
             };
         };
     };
+    get_kg_quality_report_api_v1_evaluations_kg_quality_report_get: {
+        parameters: {
+            query: {
+                /** @description Dataset ID (required) */
+                dataset_id: string;
+                /** @description Max documents sampled for the report */
+                document_limit?: number;
+                /** @description Optional pipeline hash filter */
+                pipeline_hash?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_test_cases_from_conversations_api_v1_evaluations_ragas_test_gen_from_conversations_post: {
         parameters: {
             query?: never;
@@ -43638,6 +44211,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IndexAuditResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_embedding_drift_snapshot_api_v1_observability_embedding_drift_snapshot_get: {
+        parameters: {
+            query?: {
+                /** @description Optional dataset_id scope */
+                dataset_id?: string | null;
+                /** @description Optional document_id scope */
+                document_id?: string | null;
+                /** @description Max chunks sampled (bounded) */
+                sample_n?: number;
+                /** @description Cosine distance threshold */
+                drift_threshold?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_perf_suite_api_v1_observability_perf_suite_run_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PerfSuiteRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PerfSuiteRunResponse"];
                 };
             };
             /** @description Bad Request */

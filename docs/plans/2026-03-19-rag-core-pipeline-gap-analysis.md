@@ -24,6 +24,25 @@
 
 ---
 
+## 实施进度（2026-03-19）
+
+本文提出的 Gap 中，**Phase 2 → Phase 3 → Phase 4** 已在本仓库落地（以分支 `gap-20260319-ph2-4` 为准）：
+
+| Phase | Gap | 状态 | 关键实现（入口文件） |
+|------|-----|------|---------------------|
+| 2 | Gap 1 Contextual Retrieval | ✅ 已实现 | `app/rag/chunking/contextual_enrichment.py`, `app/services/indexer.py`, `app/core/config.py` |
+| 2 | Gap 4 语义缓存 | ✅ 已实现 | `app/services/semantic_cache.py`, `app/rag/retriever.py`, `app/core/config.py` |
+| 2 | Gap 6 KG 质量评分 | ✅ 已实现 | `app/rag/kg/quality/kg_completeness_scorer.py`, `app/api/v1/evaluations.py` |
+| 3 | Gap 2 Proposition Chunking | ✅ 已实现（baseline） | `app/rag/chunking/strategies/proposition.py`, `app/rag/chunking/factory.py` |
+| 3 | Gap 5 Embedding 热切换 | ✅ 已实现（blue-green tooling） | `app/services/embedding_migration.py`, `app/services/pipeline_config.py` |
+| 3 | Gap 9 数据保留策略 | ✅ 已实现 | `app/services/retention_policy.py`, `app/api/v1/datasets.py`, `scripts/run_retention_jobs.py` |
+| 4 | Gap 10 端到端质量仪表盘 | ✅ 已实现（Document Health Card） | `app/api/v1/documents.py`, `web/app/knowledge/[id]/health/page.tsx` |
+
+说明：
+- 文档中“建议方案”的实现细节可能与当时设想略有调整，但目标能力已覆盖并且全部纳入接口 smoke 测试覆盖。
+
+---
+
 ## Gap 1: Contextual Retrieval / Late Chunking — 分块丢失文档级上下文
 
 **现状**: 分块后每个 chunk 独立 embedding，丢失了在原文档中的位置和角色语境。检索时短 chunk 缺少自解释能力。
