@@ -10,5 +10,6 @@ describe('navbar command trigger source', () => {
     expect(src).toContain('打开命令搜索')
     expect(src).toContain('⌘K')
     expect(src).toContain('setCommandMenuOpen')
+    expect(src).toContain('backdrop-blur-xl')
   })
 })

@@ -313,7 +313,7 @@ export function QuerysetHealthTab({ embedded = false }: Readonly<{ embedded?: bo
         <div className="text-xs text-muted-foreground mt-1">展示最近 {runs?.items?.length ?? 0} 条（newest-first）</div>
 
         <div className="mt-4 overflow-auto">
-          <table className="w-full text-sm">
+          <table aria-label="Queryset Health 指标差异" className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/60 text-xs text-muted-foreground">
                 <th className="text-left py-2 pr-4">generated_at</th>

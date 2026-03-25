@@ -11,6 +11,7 @@ import { useDocumentView } from '@/store/document-view'
 export function ChatPageClient({
   initialConversationId,
   initialPrompt,
+  initialAutoSendPrompt,
   initialOpenRagSettings,
   initialDocumentId,
   initialChunkId,
@@ -19,6 +20,7 @@ export function ChatPageClient({
 }: Readonly<{
   initialConversationId?: string
   initialPrompt?: string
+  initialAutoSendPrompt?: boolean
   initialOpenRagSettings?: boolean
   initialDocumentId?: string
   initialChunkId?: string
@@ -69,6 +71,7 @@ export function ChatPageClient({
       <ChatArea
         initialConversationId={initialConversationId}
         initialPrompt={initialPrompt}
+        initialAutoSendPrompt={initialAutoSendPrompt}
         initialOpenRagSettings={initialOpenRagSettings}
         onConversationId={handleConversationId}
       />

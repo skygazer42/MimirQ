@@ -535,7 +535,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
                         <div className="rounded-xl border border-border bg-muted/20 p-3">
                           <div className="text-xs font-semibold text-foreground mb-2">{title}</div>
                           <div className="overflow-auto">
-                            <table className="w-full text-xs">
+                            <table aria-label={`${title} 分桶统计`} className="w-full text-xs">
                               <thead>
                                 <tr className="text-muted-foreground border-b border-border/60">
                                   <th className="text-left py-1 pr-2">bucket</th>

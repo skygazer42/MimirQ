@@ -16,13 +16,13 @@ describe('security hotspot source guards', () => {
     expect(src).not.toContain('/^https?:\\/\\//i.test(path)')
   })
 
-  it('avoids Math.random fallbacks in request and local parsed file ids', () => {
+  it('avoids Math.random fallbacks in request ids and parsed file store ids', () => {
     expect(read('./request-id.ts')).not.toContain('Math.random(')
-    expect(read('../hooks/use-parsed-files.ts')).not.toContain('Math.random(')
+    expect(read('../store/use-parsed-files-store.ts')).not.toContain('Math.random(')
   })
 
-  it('avoids Math.random in graph mock expansion', () => {
-    expect(read('../services/graph-service.ts')).not.toContain('Math.random(')
+  it('avoids Math.random in graph mock expansion utilities', () => {
+    expect(read('./graph-service.ts')).not.toContain('Math.random(')
   })
 
   it('runs the dev container as a non-root user and hardens copied files after staging', () => {

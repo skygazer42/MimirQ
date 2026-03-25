@@ -508,7 +508,7 @@ function EvaluationsPageContent() {
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table aria-label="评测结果列表" className="w-full text-sm">
                     <thead className="bg-muted/30 text-muted-foreground">
                       <tr>
                         <th className="text-left px-4 py-3 w-16">#</th>

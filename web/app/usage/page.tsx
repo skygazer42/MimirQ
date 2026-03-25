@@ -208,7 +208,7 @@ export default function UsagePage() {
                 </div>
 
                 <div className="overflow-auto">
-                  <table className="w-full text-sm">
+                  <table aria-label="令牌用量明细" className="w-full text-sm">
                     <thead>
                       <tr className="text-xs text-muted-foreground border-b border-border/60">
                         <th className="text-left py-2 pr-3 font-medium">数据集</th>
@@ -246,7 +246,7 @@ export default function UsagePage() {
                   </div>
 
                   <div className="overflow-auto">
-                    <table className="w-full text-sm">
+                    <table aria-label="成本用量明细" className="w-full text-sm">
                       <thead>
                         <tr className="text-xs text-muted-foreground border-b border-border/60">
                           <th className="text-left py-2 pr-3 font-medium">数据集</th>

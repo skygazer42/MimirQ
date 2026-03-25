@@ -6,6 +6,7 @@ import { ChatPageClient } from '@/components/chat-page-client'
 type HomeSearchParams = {
   conversation?: string
   prompt?: string
+  autorun?: string
   rag?: string
   doc?: string
   chunk?: string
@@ -24,6 +25,7 @@ export default async function Home({
     <ChatPageClient
       initialConversationId={sp?.conversation}
       initialPrompt={sp?.prompt}
+      initialAutoSendPrompt={sp?.autorun === '1' || sp?.autorun === 'true'}
       initialOpenRagSettings={sp?.rag === '1' || sp?.rag === 'true'}
       initialDocumentId={sp?.doc}
       initialChunkId={sp?.chunk}
