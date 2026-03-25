@@ -1,9 +1,9 @@
 'use client'
 
-import type { ChatRequest, ChatResponse, Citation, Message } from '@/types'
+import type { ChatRequest, ChatResponse, Citation, JsonObject, Message } from '@/types'
 
 export type ChatRagConfig = Partial<Omit<NonNullable<ChatRequest['rag_config']>, 'metadata_filter'>> & {
-  metadata_filter?: Record<string, any> | null
+  metadata_filter?: JsonObject | null
 }
 
 export type UseChatOptions = {

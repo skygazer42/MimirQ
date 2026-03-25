@@ -5,7 +5,7 @@ export const runtime = 'nodejs'
 const REFRESH_COOKIE_NAME = 'mimirq_oidc_refresh_token'
 const PROVIDER_COOKIE_NAME = 'mimirq_oidc_provider_id'
 
-function jsonNoStore(data: any, init?: { status?: number }) {
+function jsonNoStore(data: unknown, init?: { status?: number }) {
   const resp = NextResponse.json(data, init)
   resp.headers.set('Cache-Control', 'no-store')
   resp.headers.set('Pragma', 'no-cache')

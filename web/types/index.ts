@@ -7,6 +7,7 @@
 export type PermissionEnum = 'only_me' | 'all_team_members' | 'partial_members'
 export type DocumentAccessMode = 'inherit' | PermissionEnum
 export type LooseString<T extends string> = T | (string & {})
+export type JsonObject = Record<string, unknown>
 
 // ==================== 文档相关类型 ====================
 
@@ -1718,7 +1719,7 @@ export interface RagTraceListResponse {
 
 export interface StreamEvent {
   type: 'citations' | 'token' | 'done' | 'error' | 'route' | 'rewrite' | 'graph' | 'event'
-  data: any
+  data: unknown
   request_id?: string
 }
 
@@ -1755,7 +1756,7 @@ export interface ChatRequest {
     reranker_provider?: string
     reranker_top_n?: number
     use_graph?: boolean
-    metadata_filter?: Record<string, any>
+    metadata_filter?: JsonObject
   }
 }
 
@@ -1897,18 +1898,18 @@ export interface ChatResponse {
   vector_backend?: string | null
   confidence_score?: number | null
   followup_questions?: string[]
-  metrics: Record<string, any>
+  metrics: JsonObject
   structured: boolean
-  structured_data?: any
+  structured_data?: unknown
 }
 
 export interface CheckpointItem {
   checkpoint_id?: string | null
   checkpoint_ns?: string
   created_at?: string | null
-  next?: any
-  metadata?: Record<string, any> | null
-  values?: Record<string, any> | null
+  next?: unknown
+  metadata?: JsonObject | null
+  values?: JsonObject | null
 }
 
 export interface CheckpointListResponse {
@@ -1921,9 +1922,9 @@ export interface CheckpointDetailResponse {
   checkpoint_id?: string | null
   checkpoint_ns?: string
   created_at?: string | null
-  next?: any
-  metadata?: Record<string, any> | null
-  values?: Record<string, any> | null
+  next?: unknown
+  metadata?: JsonObject | null
+  values?: JsonObject | null
 }
 
 // ==================== 反馈相关类型 ====================

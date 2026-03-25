@@ -18,7 +18,9 @@ import { Textarea } from '@/components/ui/textarea'
 
 type RetrievalProfile = 'recall50' | 'coverage80' | 'recall20'
 
-function downloadJson(filename: string, data: any) {
+type JsonRecord = Record<string, unknown>
+
+function downloadJson(filename: string, data: unknown) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   try {
@@ -32,7 +34,7 @@ function downloadJson(filename: string, data: any) {
 }
 
 function scoreLabel(c: Citation): string {
-  const raw = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0) as any
+  const raw = c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0
   const n = Number(raw)
   if (Number.isFinite(n)) return n.toFixed(4)
   return '0.0000'
@@ -46,8 +48,27 @@ function titleForCitation(c: Citation): string {
   return parts.join(' · ') || (c.document_id ? String(c.document_id) : 'Citation')
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
+function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  const next = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(next) ? next : undefined
+}
+
+function toOptionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function toMetricLabel(value: unknown): string {
+  if (value == null) return '-'
+  const text = String(value).trim()
+  return text || '-'
 }
 
 function toCitation(value: unknown): Citation | null {
@@ -58,7 +79,15 @@ function toCitation(value: unknown): Citation | null {
   const relevance_score =
     typeof value.relevance_score === 'number' ? value.relevance_score : Number(value.relevance_score ?? 0) || 0
   if (!document_id || !document_name) return null
-  return { ...(value as any), document_id, document_name, chunk_content, relevance_score } as Citation
+
+  const citation: Citation = { document_id, document_name, chunk_content, relevance_score }
+  citation.chunk_id = toOptionalString(value.chunk_id)
+  citation.page_number = toOptionalNumber(value.page_number)
+  citation.chunk_index = toOptionalNumber(value.chunk_index)
+  citation.header_path = toOptionalString(value.header_path)
+  citation.has_image = toOptionalBoolean(value.has_image)
+  citation.img_url = toOptionalString(value.img_url)
+  return citation
 }
 
 export function EvidenceWorkbench() {
@@ -83,8 +112,8 @@ export function EvidenceWorkbench() {
     try {
       const res = await datasetApi.list({ limit: 200 })
       setDatasets(res.items || [])
-    } catch (e: any) {
-      setDatasetsError(formatApiError(e, '加载数据集失败'))
+    } catch (error: unknown) {
+      setDatasetsError(formatApiError(error, '加载数据集失败'))
     } finally {
       setDatasetsLoading(false)
     }
@@ -142,8 +171,8 @@ export function EvidenceWorkbench() {
       } else {
         toast.message('未找到证据')
       }
-    } catch (e: any) {
-      setError(formatApiError(e, '检索失败，请检查后端服务状态'))
+    } catch (error: unknown) {
+      setError(formatApiError(error, '检索失败，请检查后端服务状态'))
     } finally {
       setRunning(false)
     }
@@ -178,11 +207,11 @@ export function EvidenceWorkbench() {
   const citations: Citation[] = useMemo(() => {
     const raw = result?.citations
     if (!Array.isArray(raw)) return []
-    return raw.map(toCitation).filter(Boolean) as Citation[]
+    return raw.map(toCitation).filter((citation): citation is Citation => citation !== null)
   }, [result?.citations])
-  const metrics = result?.metrics || null
-  const topRel = (metrics as any)?.top_relevance_score
-  const elapsed = (metrics as any)?.retrieval_elapsed_sec
+  const metrics = isRecord(result?.metrics) ? result.metrics : null
+  const topRel = toMetricLabel(metrics?.top_relevance_score)
+  const elapsed = toMetricLabel(metrics?.retrieval_elapsed_sec)
 
   return (
     <div className="space-y-4">
@@ -324,11 +353,11 @@ export function EvidenceWorkbench() {
               </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-muted-foreground">top_relevance_score</div>
-                <div className="font-mono">{topRel ?? '-'}</div>
+                <div className="font-mono">{topRel}</div>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-muted-foreground">retrieval_elapsed_sec</div>
-                <div className="font-mono">{elapsed ?? '-'}</div>
+                <div className="font-mono">{elapsed}</div>
               </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-muted-foreground">citations</div>

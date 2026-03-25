@@ -15,4 +15,12 @@ describe('retrieve preview panel source', () => {
     expect(src).toContain('family_hit')
     expect(src).toContain('expanded')
   })
+
+  it('avoids any-casts in retrieval detail rendering', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
+
+    expect(src).not.toContain('as any')
+    expect(src).not.toContain(': any')
+    expect(src).not.toContain('Record<string, any>')
+  })
 })
