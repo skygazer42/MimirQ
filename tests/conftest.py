@@ -84,7 +84,64 @@ def _disable_proxy_env_for_tests() -> None:
     os.environ["no_proxy"] = merged
 
 
+def _block_outbound_network_for_tests() -> None:
+    """
+    Keep pytest hermetic by rejecting outbound non-local network access.
+
+    This converts accidental public-network calls into immediate test failures instead of
+    long hangs caused by blocked TLS/proxy egress in sandboxed environments.
+    """
+
+    orig_connect = socket.socket.connect
+    orig_connect_ex = socket.socket.connect_ex
+    orig_create_connection = socket.create_connection
+    orig_getaddrinfo = socket.getaddrinfo
+
+    def _host_allowed(host: object) -> bool:
+        if isinstance(host, bytes):
+            host = host.decode(errors="ignore")
+        raw = str(host or "").strip().lower()
+        if not raw:
+            return False
+        if raw in {"localhost", "::1"}:
+            return True
+        if raw.startswith("127."):
+            return True
+        return False
+
+    def _guard(kind: str, address: object) -> None:
+        if not isinstance(address, tuple) or not address:
+            return
+        host = address[0]
+        if _host_allowed(host):
+            return
+        raise RuntimeError(f"Outbound network is disabled during pytest ({kind}): {address!r}")
+
+    def guarded_connect(self, address):  # type: ignore[no-untyped-def]
+        _guard("connect", address)
+        return orig_connect(self, address)
+
+    def guarded_connect_ex(self, address):  # type: ignore[no-untyped-def]
+        _guard("connect_ex", address)
+        return orig_connect_ex(self, address)
+
+    def guarded_create_connection(address, *args, **kwargs):  # type: ignore[no-untyped-def]
+        _guard("create_connection", address)
+        return orig_create_connection(address, *args, **kwargs)
+
+    def guarded_getaddrinfo(host, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if not _host_allowed(host):
+            raise RuntimeError(f"Outbound network is disabled during pytest (getaddrinfo): {host!r}")
+        return orig_getaddrinfo(host, *args, **kwargs)
+
+    socket.socket.connect = guarded_connect
+    socket.socket.connect_ex = guarded_connect_ex
+    socket.create_connection = guarded_create_connection
+    socket.getaddrinfo = guarded_getaddrinfo
+
+
 _disable_proxy_env_for_tests()
+_block_outbound_network_for_tests()
 _patch_asyncio_threadsafe_wakeup_for_sandbox()
 
 # Ensure `app.__init__` runs early in the pytest process so it can backfill
