@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery } from '@tanstack/react-query'
-import { documentApi } from '@/lib/api-client'
+import { documentApi } from '@/lib/api'
 import { Loader2, AlertCircle, X, Ban, RotateCcw, ArrowUpRight, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'

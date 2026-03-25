@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
-import { auditApi } from '@/lib/api-client'
+import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { coerceOneOf } from '@/lib/one-of'
 import { cn, detachPromise } from '@/lib/utils'

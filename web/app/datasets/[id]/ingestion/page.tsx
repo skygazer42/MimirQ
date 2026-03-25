@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
-import { datasetApi, pipelineApi } from '@/lib/api-client'
+import { datasetApi, pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { RefreshCw, Save } from 'lucide-react'
 
-import { settingsApi, type KGConfig, type PromptTemplate } from '@/lib/api-client'
+import { settingsApi, type KGConfig, type PromptTemplate } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'

@@ -17,7 +17,7 @@ import {
 import { useTheme } from "next-themes"
 
 import type { Document } from "@/types"
-import { documentApi } from "@/lib/api-client"
+import { documentApi } from "@/lib/api"
 import { globalEventBus } from "@/lib/event-bus"
 import { useDocumentView } from "@/store/document-view"
 

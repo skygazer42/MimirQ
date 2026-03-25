@@ -20,7 +20,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Textarea } from '@/components/ui/textarea'
 import { cn, formatDate, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
-import { groupApi } from '@/lib/api-client'
+import { groupApi } from '@/lib/api'
 import type { TenantGroupMemberOut, TenantGroupOut } from '@/types/backend'
 import {
   AlertDialog,

@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn, detachPromise } from '@/lib/utils'
-import { chunkPresetApi } from '@/lib/api-client'
+import { chunkPresetApi } from '@/lib/api'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'

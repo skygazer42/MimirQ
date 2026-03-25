@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { documentApi } from '@/lib/api-client'
+import { documentApi } from '@/lib/api'
 import type { Document, DocumentVersionDiff, DocumentVersionList } from '@/types'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'

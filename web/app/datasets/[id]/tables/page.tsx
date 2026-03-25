@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
-import { datasetApi } from '@/lib/api-client'
+import { datasetApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 import type { Dataset, DatasetTableAsset, TableAskResponse, TableQueryResponse } from '@/types'

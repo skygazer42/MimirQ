@@ -17,7 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { formatApiError } from '@/lib/api-errors'
-import { connectorApi, datasetApi } from '@/lib/api-client'
+import { connectorApi, datasetApi } from '@/lib/api'
 import { cn, detachPromise } from '@/lib/utils'
 
 import type { ConnectorRunOut, Dataset, DbCatalogTableDetail, DbCatalogTableSummary, DbProfileSnapshot } from '@/types'

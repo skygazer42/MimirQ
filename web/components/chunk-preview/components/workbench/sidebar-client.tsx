@@ -31,7 +31,7 @@ import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-contex
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { computeChunkLengthStats } from '@/components/chunk-preview/utils/stats'
-import { datasetApi, pipelineApi } from '@/lib/api-client'
+import { datasetApi, pipelineApi } from '@/lib/api'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 import { ChunkPresetPanel } from '@/components/chunk-preview/components/chunk-preset-panel'

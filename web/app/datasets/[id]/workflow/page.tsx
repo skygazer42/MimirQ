@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from '@/components/ui/textarea'
 
 import { WorkflowEditor } from '@/components/workflow/workflow-editor'
-import { datasetApi } from '@/lib/api-client'
+import { datasetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { buildDatasetConfigGraph } from '@/lib/dataset-config-graph'
 import type { GraphNode } from '@/lib/graph-parser'

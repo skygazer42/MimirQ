@@ -16,7 +16,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { documentApi } from '@/lib/api-client'
+import { documentApi } from '@/lib/api'
 import { cn, formatFileSize } from '@/lib/utils'
 import type { DocumentPreview, ManualChunk } from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'

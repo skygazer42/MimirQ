@@ -1,5 +1,5 @@
 import { GraphData, GraphNode, GraphLink } from '@/lib/graph-parser'
-import { kgApi } from '@/lib/api-client'
+import { kgApi } from '@/lib/api'
 
 // Mock delay to simulate network request
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))

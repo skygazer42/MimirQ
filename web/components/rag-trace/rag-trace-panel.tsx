@@ -4,7 +4,7 @@
 	import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download, GitCompare } from 'lucide-react'
 	import { toast } from 'sonner'
 
-import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api-client'
+import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'

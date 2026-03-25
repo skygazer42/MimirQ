@@ -10,7 +10,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { datasetApi, evaluationApi } from '@/lib/api-client'
+import { datasetApi, evaluationApi } from '@/lib/api'
 import type { Dataset, RegressionRun, RegressionRunCreate, RegressionRunDetail } from '@/types'
 import { Button } from '@/components/ui/button'
 import { TestCaseManager } from '@/components/test-case-manager'

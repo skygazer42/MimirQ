@@ -12,7 +12,7 @@ import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
-import { documentApi } from '@/lib/api-client'
+import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 
 type QualityBadgeTone = 'bad' | 'warn' | 'ok'

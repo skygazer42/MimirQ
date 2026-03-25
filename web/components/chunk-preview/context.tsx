@@ -7,7 +7,7 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { documentApi } from '@/lib/api-client'
+import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { generateRequestId } from '@/lib/request-id'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'

@@ -13,7 +13,7 @@ import * as React from 'react'
 import { Copy, RefreshCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { chatApi } from '@/lib/api-client'
+import { chatApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'

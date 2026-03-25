@@ -42,7 +42,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-import { datasetApi, documentApi } from '@/lib/api-client'
+import { datasetApi, documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { Breadcrumb, usePathBreadcrumbs } from '@/components/ui/breadcrumb'

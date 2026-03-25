@@ -18,7 +18,7 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
-import { connectorApi } from '@/lib/api-client'
+import { connectorApi } from '@/lib/api'
 import { coerceOneOf } from '@/lib/one-of'
 import { detachPromise } from '@/lib/utils'
 

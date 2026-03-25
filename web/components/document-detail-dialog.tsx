@@ -22,7 +22,7 @@ import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badg
 import { TagInput } from '@/components/ui/tag-input'
 import { Textarea } from '@/components/ui/textarea'
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
-import { documentApi, kgApi } from '@/lib/api-client'
+import { documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'

@@ -21,7 +21,7 @@ import { EvidenceViewerDialog } from '@/components/evidence/evidence-viewer-dial
 import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { feedbackApi } from '@/lib/api-client'
+import { feedbackApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
 
