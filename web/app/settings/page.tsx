@@ -10,7 +10,13 @@ import { ModelConfigDialog } from '@/components/model-config-dialog'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { MODEL_PROVIDERS } from '@/types/models'
 import type { ModelProvider, ProviderConfig, ProviderCategory } from '@/types/models'
+import { GovernanceSection } from './_sections/governance-section'
+import { ObservabilitySection } from './_sections/observability-section'
+import { RagSection } from './_sections/rag-section'
+import { RuntimeControlsSection } from './_sections/runtime-controls-section'
+import { UrlIngestSection } from './_sections/url-ingest-section'
 import {
+  type LucideIcon,
   Settings2, Database, Sliders, Lightbulb, Server, Cpu, Layers, LayoutGrid,
   ToggleLeft, ToggleRight, Save, RefreshCw, CheckCircle2, XCircle,
   Zap, FileSearch, Sparkles, Network, CloudCog, AlertCircle, Eye, EyeOff, ScanLine, FileCode, Wand2,
@@ -37,7 +43,7 @@ import {
   type LTRModelInfo,
 } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
+import { formatApiError } from '@/lib/api-errors'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
 import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -58,7 +64,18 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
-const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: any }> = {
+type RagSettings = NonNullable<SystemSettings['rag']>
+type UrlIngestSettings = NonNullable<SystemSettings['url_ingest']>
+type GovernanceSettings = NonNullable<SystemSettings['governance']>
+
+function mergeConfig<T extends object>(current: T, patch: Partial<T>): T {
+  return {
+    ...current,
+    ...patch,
+  }
+}
+
+const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: string; icon: LucideIcon }> = {
   model: {
     title: '语言模型',
     description: '用于对话和文本生成的大语言模型',
@@ -194,6 +211,46 @@ const DEFAULT_CACHE: CacheConfig = {
   chat_response_cache_require_empty_history: true,
 }
 
+const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
+  kg_enabled: false,
+  deepdoc_enabled: false,
+  docling_enabled: false,
+  etl4llm_enabled: false,
+  marker_enabled: false,
+  paddle_vl_enabled: false,
+  markitdown_enabled: false,
+  llama_index_enabled: false,
+  mineru_enabled: false,
+  magicpdf_enabled: false,
+}
+
+const DEFAULT_RAG: RagSettings = {
+  chunk_size: 1000,
+  chunk_overlap: 200,
+  chunk_min_chars: 30,
+  retrieval_top_k: 5,
+  similarity_threshold: 0.7,
+  default_parser_backend: 'auto',
+  default_chunk_strategy: 'recursive',
+  bm25_index_enabled: true,
+  enable_reranker: false,
+}
+
+const DEFAULT_URL_INGEST: UrlIngestSettings = {
+  enabled: false,
+  max_bytes: 50_000_000,
+  timeout_sec: 30,
+  allow_private_ips: false,
+  follow_redirects: false,
+}
+
+const DEFAULT_GOVERNANCE: GovernanceSettings = {
+  enabled: false,
+  pii_anonymize: false,
+  secrets_redact: false,
+  quarantine_on_drop: false,
+}
+
 const DEFAULT_MAGICPDF: MagicPDFConfig = {
   cli: 'magic-pdf',
   method: 'auto',
@@ -262,23 +319,37 @@ export default function SettingsPage() {
   const [ltrBusyModelId, setLtrBusyModelId] = useState<string | null>(null)
 
   const ragMerged = useMemo(
-    () => ({ ...settings?.rag, ...editedSettings.rag }) as Partial<SystemSettings['rag']>,
+    () => ({ ...DEFAULT_RAG, ...settings?.rag, ...editedSettings.rag }),
     [settings?.rag, editedSettings.rag]
   )
   const urlIngestMerged = useMemo(
-    () =>
-      ({ ...settings?.url_ingest, ...editedSettings.url_ingest }) as Partial<SystemSettings['url_ingest']>,
+    () => ({ ...DEFAULT_URL_INGEST, ...settings?.url_ingest, ...editedSettings.url_ingest }),
     [settings?.url_ingest, editedSettings.url_ingest]
   )
   const governanceMerged = useMemo(
-    () => ({ ...settings?.governance, ...editedSettings.governance }) as Partial<SystemSettings['governance']>,
+    () => ({ ...DEFAULT_GOVERNANCE, ...settings?.governance, ...editedSettings.governance }),
     [settings?.governance, editedSettings.governance]
   )
-  const isBm25IndexEnabled = ragMerged.bm25_index_enabled ?? true
-  const isRerankerEnabled = ragMerged.enable_reranker ?? false
-  const isUrlIngestEnabled = urlIngestMerged.enabled ?? false
-  const allowsPrivateIps = urlIngestMerged.allow_private_ips ?? false
-  const followsRedirects = urlIngestMerged.follow_redirects ?? false
+  const observabilityMerged = useMemo(
+    () => ({ ...DEFAULT_OBSERVABILITY, ...settings?.observability, ...editedSettings.observability }),
+    [settings?.observability, editedSettings.observability]
+  )
+  const safetyMerged = useMemo(
+    () => ({ ...DEFAULT_SAFETY, ...settings?.safety, ...editedSettings.safety }),
+    [settings?.safety, editedSettings.safety]
+  )
+  const chatMerged = useMemo(
+    () => ({ ...DEFAULT_CHAT, ...settings?.chat, ...editedSettings.chat }),
+    [settings?.chat, editedSettings.chat]
+  )
+  const langGraphMerged = useMemo(
+    () => ({ ...DEFAULT_LANGGRAPH, ...settings?.langgraph, ...editedSettings.langgraph }),
+    [settings?.langgraph, editedSettings.langgraph]
+  )
+  const cacheMerged = useMemo(
+    () => ({ ...DEFAULT_CACHE, ...settings?.cache, ...editedSettings.cache }),
+    [settings?.cache, editedSettings.cache]
+  )
   const isGovernanceEnabled = governanceMerged.enabled ?? false
   const isPiiAnonymizeEnabled = governanceMerged.pii_anonymize ?? false
   const isSecretsRedactEnabled = governanceMerged.secrets_redact ?? false
@@ -304,11 +375,7 @@ export default function SettingsPage() {
       setBackendMeta(metaData)
       setEditedSettings({})
     } catch (error) {
-      const err = error as any
-      const data = err?.response?.data
-      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
-      const msg = extractBackendMessage(data) || err?.message || '加载失败'
-      setLoadError(withRequestId(msg, requestId))
+      setLoadError(formatApiError(error, '加载失败'))
     } finally {
       setLoading(false)
     }
@@ -321,11 +388,7 @@ export default function SettingsPage() {
       const res = await ltrApi.listModels()
       setLtrModels(Array.isArray(res.items) ? res.items : [])
     } catch (error) {
-      const err = error as any
-      const data = err?.response?.data
-      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
-      const msg = extractBackendMessage(data) || err?.message || '加载失败'
-      setLtrError(withRequestId(msg, requestId))
+      setLtrError(formatApiError(error, '加载失败'))
     } finally {
       setLtrLoading(false)
     }
@@ -381,11 +444,7 @@ export default function SettingsPage() {
       setLtrUploadResetKey((k) => k + 1)
       await loadLtrModels()
     } catch (error) {
-      const err = error as any
-      const data = err?.response?.data
-      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
-      const msg = extractBackendMessage(data) || err?.message || '注册失败'
-      setLtrMessage({ type: 'error', text: withRequestId(msg, requestId) })
+      setLtrMessage({ type: 'error', text: formatApiError(error, '注册失败') })
     } finally {
       setLtrUploading(false)
     }
@@ -401,11 +460,7 @@ export default function SettingsPage() {
       setLtrMessage({ type: 'success', text: `已激活模型: ${shortId(mid, 12)}` })
       await loadLtrModels()
     } catch (error) {
-      const err = error as any
-      const data = err?.response?.data
-      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
-      const msg = extractBackendMessage(data) || err?.message || '激活失败'
-      setLtrMessage({ type: 'error', text: withRequestId(msg, requestId) })
+      setLtrMessage({ type: 'error', text: formatApiError(error, '激活失败') })
     } finally {
       setLtrBusyModelId(null)
     }
@@ -419,11 +474,7 @@ export default function SettingsPage() {
       setLtrMessage({ type: 'success', text: '已回滚到上一版本' })
       await loadLtrModels()
     } catch (error) {
-      const err = error as any
-      const data = err?.response?.data
-      const requestId = err?.response?.headers?.['x-request-id'] || data?.request_id
-      const msg = extractBackendMessage(data) || err?.message || '回滚失败'
-      setLtrMessage({ type: 'error', text: withRequestId(msg, requestId) })
+      setLtrMessage({ type: 'error', text: formatApiError(error, '回滚失败') })
     } finally {
       setLtrBusyModelId(null)
     }
@@ -442,11 +493,8 @@ export default function SettingsPage() {
       setLastUpdatedKeys(result.updated_keys || [])
       await loadSettings()
       refreshCapabilities().catch(() => null)
-    } catch (error: any) {
-      const data = error?.response?.data
-      const requestId = error?.response?.headers?.['x-request-id'] || data?.request_id
-      const msg = extractBackendMessage(data) || error?.message || '保存失败'
-      setSaveMessage({ type: 'error', text: withRequestId(msg, requestId) })
+    } catch (error) {
+      setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })
     } finally {
       setSaving(false)
       setTimeout(() => setSaveMessage(null), 5000)
@@ -455,9 +503,20 @@ export default function SettingsPage() {
 
   // 更新功能开关
   const toggleFeature = (key: keyof FeatureFlags) => {
-    const currentFlags = editedSettings.feature_flags || settings?.feature_flags || {} as FeatureFlags
-    const newFlags = { ...currentFlags, [key]: !currentFlags[key] }
-    setEditedSettings(prev => ({ ...prev, feature_flags: newFlags as FeatureFlags }))
+    setEditedSettings((prev) => {
+      const currentFlags = {
+        ...DEFAULT_FEATURE_FLAGS,
+        ...settings?.feature_flags,
+        ...prev.feature_flags,
+      }
+      return {
+        ...prev,
+        feature_flags: {
+          ...currentFlags,
+          [key]: !currentFlags[key],
+        },
+      }
+    })
   }
 
   // 获取当前功能开关状态
@@ -469,33 +528,73 @@ export default function SettingsPage() {
   }
 
   const updateObservability = (patch: Partial<ObservabilityConfig>) => {
-    const current = (editedSettings.observability || settings?.observability || DEFAULT_OBSERVABILITY)
-    const next = { ...current, ...patch }
-    setEditedSettings((prev) => ({ ...prev, observability: next }))
+    setEditedSettings((prev) => ({
+      ...prev,
+      observability: mergeConfig<ObservabilityConfig>(
+        {
+          ...DEFAULT_OBSERVABILITY,
+          ...settings?.observability,
+          ...prev.observability,
+        },
+        patch
+      ),
+    }))
   }
 
   const updateSafety = (patch: Partial<SafetyConfig>) => {
-    const current = (editedSettings.safety || settings?.safety || DEFAULT_SAFETY)
-    const next = { ...current, ...patch }
-    setEditedSettings((prev) => ({ ...prev, safety: next }))
+    setEditedSettings((prev) => ({
+      ...prev,
+      safety: mergeConfig<SafetyConfig>(
+        {
+          ...DEFAULT_SAFETY,
+          ...settings?.safety,
+          ...prev.safety,
+        },
+        patch
+      ),
+    }))
   }
 
   const updateLangGraph = (patch: Partial<LangGraphConfig>) => {
-    const current = (editedSettings.langgraph || settings?.langgraph || DEFAULT_LANGGRAPH)
-    const next = { ...current, ...patch }
-    setEditedSettings((prev) => ({ ...prev, langgraph: next }))
+    setEditedSettings((prev) => ({
+      ...prev,
+      langgraph: mergeConfig<LangGraphConfig>(
+        {
+          ...DEFAULT_LANGGRAPH,
+          ...settings?.langgraph,
+          ...prev.langgraph,
+        },
+        patch
+      ),
+    }))
   }
 
   const updateChat = (patch: Partial<ChatConfig>) => {
-    const current = (editedSettings.chat || settings?.chat || DEFAULT_CHAT)
-    const next = { ...current, ...patch }
-    setEditedSettings((prev) => ({ ...prev, chat: next }))
+    setEditedSettings((prev) => ({
+      ...prev,
+      chat: mergeConfig<ChatConfig>(
+        {
+          ...DEFAULT_CHAT,
+          ...settings?.chat,
+          ...prev.chat,
+        },
+        patch
+      ),
+    }))
   }
 
   const updateCache = (patch: Partial<CacheConfig>) => {
-    const current = (editedSettings.cache || settings?.cache || DEFAULT_CACHE)
-    const next = { ...current, ...patch }
-    setEditedSettings((prev) => ({ ...prev, cache: next }))
+    setEditedSettings((prev) => ({
+      ...prev,
+      cache: mergeConfig<CacheConfig>(
+        {
+          ...DEFAULT_CACHE,
+          ...settings?.cache,
+          ...prev.cache,
+        },
+        patch
+      ),
+    }))
   }
 
   const updateMagicPDF = (patch: Partial<MagicPDFConfig>) => {
@@ -523,21 +622,45 @@ export default function SettingsPage() {
   }
 
   const updateRag = (patch: Partial<SystemSettings['rag']>) => {
-    const current = (editedSettings.rag || settings?.rag || {}) as SystemSettings['rag']
-    const next = { ...current, ...patch }
-    setEditedSettings((prev) => ({ ...prev, rag: next as any }))
+    setEditedSettings((prev) => ({
+      ...prev,
+      rag: mergeConfig<RagSettings>(
+        {
+          ...DEFAULT_RAG,
+          ...settings?.rag,
+          ...prev.rag,
+        },
+        patch
+      ),
+    }))
   }
 
   const updateUrlIngest = (patch: Partial<SystemSettings['url_ingest']>) => {
-    const current = (editedSettings.url_ingest || settings?.url_ingest || {}) as SystemSettings['url_ingest']
-    const next = { ...current, ...patch }
-    setEditedSettings((prev) => ({ ...prev, url_ingest: next as any }))
+    setEditedSettings((prev) => ({
+      ...prev,
+      url_ingest: mergeConfig<UrlIngestSettings>(
+        {
+          ...DEFAULT_URL_INGEST,
+          ...settings?.url_ingest,
+          ...prev.url_ingest,
+        },
+        patch
+      ),
+    }))
   }
 
   const updateGovernance = (patch: Partial<SystemSettings['governance']>) => {
-    const current = (editedSettings.governance || settings?.governance || {}) as SystemSettings['governance']
-    const next = { ...current, ...patch }
-    setEditedSettings((prev) => ({ ...prev, governance: next as any }))
+    setEditedSettings((prev) => ({
+      ...prev,
+      governance: mergeConfig<GovernanceSettings>(
+        {
+          ...DEFAULT_GOVERNANCE,
+          ...settings?.governance,
+          ...prev.governance,
+        },
+        patch
+      ),
+    }))
   }
 
   // 检查是否有未保存的更改
@@ -588,11 +711,8 @@ export default function SettingsPage() {
         })
         setSaveMessage({ type: 'success', text: result.message })
         await loadSettings()
-      } catch (error: any) {
-        const data = error?.response?.data
-        const requestId = error?.response?.headers?.['x-request-id'] || data?.request_id
-        const msg = extractBackendMessage(data) || error?.message || '保存失败'
-        setSaveMessage({ type: 'error', text: withRequestId(msg, requestId) })
+      } catch (error) {
+        setSaveMessage({ type: 'error', text: formatApiError(error, '保存失败') })
       } finally {
         setSaving(false)
       }
@@ -1474,847 +1594,41 @@ export default function SettingsPage() {
                 </div>
               </section>
 
-              {/* RAG 参数设置 */}
-              <section>
-                <h2 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
-                    <Sliders className="h-5 w-5 text-primary" />
-                  RAG 参数
-                </h2>
+	              <RagSection rag={ragMerged} updateRag={updateRag} />
 
-	                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-	                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-	                    <div>
-	                      <div className="flex justify-between items-center mb-2">
-	                        <div className="text-sm font-medium text-foreground/80">Top K</div>
-	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-	                          {ragMerged.retrieval_top_k ?? 5}
-	                        </span>
-	                      </div>
-	                      <input
-	                        type="range"
-	                        min="1"
-	                        max="20"
-	                        value={ragMerged.retrieval_top_k ?? 5}
-	                        onChange={(e) => updateRag({ retrieval_top_k: Number.parseInt(e.target.value, 10) })}
-	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-	                      />
-	                      <p className="text-xs text-muted-foreground mt-2">
-	                        每次检索返回的最相关文档片段数量
-	                      </p>
-	                    </div>
+	              <UrlIngestSection
+	                urlIngest={urlIngestMerged}
+	                updateUrlIngest={updateUrlIngest}
+	              />
 
-	                    <div>
-	                      <div className="flex justify-between items-center mb-2">
-	                        <div className="text-sm font-medium text-foreground/80">相似度阈值</div>
-	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-	                          {(ragMerged.similarity_threshold ?? 0.7).toFixed(1)}
-	                        </span>
-	                      </div>
-	                      <input
-	                        type="range"
-	                        min="0"
-	                        max="1"
-	                        step="0.1"
-	                        value={ragMerged.similarity_threshold ?? 0.7}
-                        onChange={(e) => updateRag({ similarity_threshold: Number.parseFloat(e.target.value) })}
-	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-	                      />
-	                      <p className="text-xs text-muted-foreground mt-2">
-	                        过滤掉相关性得分低于此值的片段
-	                      </p>
-	                    </div>
+	              <GovernanceSection
+	                isGovernanceEnabled={isGovernanceEnabled}
+	                isPiiAnonymizeEnabled={isPiiAnonymizeEnabled}
+	                isSecretsRedactEnabled={isSecretsRedactEnabled}
+	                isQuarantineOnDropEnabled={isQuarantineOnDropEnabled}
+	                updateGovernance={updateGovernance}
+	              />
 
-	                    <div className="rounded-xl border border-border p-4 bg-muted/30">
-	                      <div className="flex items-start justify-between gap-4">
-	                        <div>
-	                          <div className="text-sm font-semibold text-foreground">BM25 关键字检索</div>
-	                          <div className="text-xs text-muted-foreground mt-1">
-	                            启用关键词通道（hybrid/keyword 模式），对“精确词匹配”召回更友好
-	                          </div>
-	                        </div>
-	                        <button
-	                          type="button"
-                          onClick={() => updateRag({ bm25_index_enabled: !isBm25IndexEnabled })}
-                          className="shrink-0"
-                          aria-label="Toggle BM25"
-                        >
-                          {isBm25IndexEnabled ? (
-                            <ToggleRight className="w-10 h-10 text-primary" />
-                          ) : (
-                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                          )}
-	                        </button>
-	                      </div>
-	                      <p className="text-xs text-muted-foreground mt-3">
-	                        关闭后将不会使用/构建 BM25 索引（更省内存/CPU，但可能降低召回）
-	                      </p>
-	                    </div>
+	              <ObservabilitySection
+	                observability={observabilityMerged}
+	                defaults={DEFAULT_OBSERVABILITY}
+	                updateObservability={updateObservability}
+	              />
 
-	                    <div className="rounded-xl border border-border p-4 bg-muted/30">
-	                      <div className="flex items-start justify-between gap-4">
-	                        <div>
-	                          <div className="text-sm font-semibold text-foreground">启用重排序（Reranker）</div>
-	                          <div className="text-xs text-muted-foreground mt-1">
-	                            用重排序模型对候选片段二次排序，通常可提升答案质量（会增加延迟/成本）
-	                          </div>
-	                        </div>
-	                        <button
-	                          type="button"
-                          onClick={() => updateRag({ enable_reranker: !isRerankerEnabled })}
-                          className="shrink-0"
-                          aria-label="Toggle reranker"
-                        >
-                          {isRerankerEnabled ? (
-                            <ToggleRight className="w-10 h-10 text-primary" />
-                          ) : (
-                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                          )}
-	                        </button>
-	                      </div>
-	                      <p className="text-xs text-muted-foreground mt-3">
-	                        需要先在“重排序模型”里配置 Provider（否则可能无效果）
-	                      </p>
-	                    </div>
-
-	                    <div>
-	                      <div className="flex justify-between items-center mb-2">
-	                        <div className="text-sm font-medium text-foreground/80">分块大小</div>
-	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-	                          {ragMerged.chunk_size ?? 1000}
-	                        </span>
-	                      </div>
-	                      <input
-	                        type="range"
-	                        min="200"
-	                        max="4000"
-	                        step="100"
-	                        value={ragMerged.chunk_size ?? 1000}
-	                        onChange={(e) => updateRag({ chunk_size: Number.parseInt(e.target.value, 10) })}
-	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-	                      />
-	                      <p className="text-xs text-muted-foreground mt-2">
-	                        文档分块的目标字符数
-	                      </p>
-	                    </div>
-
-	                    <div>
-	                      <div className="flex justify-between items-center mb-2">
-	                        <div className="text-sm font-medium text-foreground/80">分块重叠</div>
-	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-	                          {ragMerged.chunk_overlap ?? 200}
-	                        </span>
-	                      </div>
-	                      <input
-	                        type="range"
-	                        min="0"
-	                        max="1000"
-	                        step="50"
-	                        value={ragMerged.chunk_overlap ?? 200}
-	                        onChange={(e) => updateRag({ chunk_overlap: Number.parseInt(e.target.value, 10) })}
-	                        className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
-	                      />
-	                      <p className="text-xs text-muted-foreground mt-2">
-	                        相邻 chunk 的重叠字符数（提高连续性，但会增加索引体积）
-	                      </p>
-	                    </div>
-
-	                    <div>
-	                      <div className="flex justify-between items-center mb-2">
-	                        <div className="text-sm font-medium text-foreground/80">最小分块长度</div>
-	                        <span className="text-xs bg-muted px-2 py-0.5 rounded text-muted-foreground">
-	                          {ragMerged.chunk_min_chars ?? 30}
-	                        </span>
-	                      </div>
-	                      <Input
-	                        type="number"
-	                        min={0}
-	                        max={5000}
-	                        value={ragMerged.chunk_min_chars ?? 30}
-	                        onChange={(e) => updateRag({ chunk_min_chars: Math.max(0, Number.parseInt(e.target.value || "0", 10)) })}
-	                      />
-	                      <p className="text-xs text-muted-foreground mt-2">
-	                        入库时丢弃过短 chunk（0 表示关闭；图片/表格 chunk 会尽量保留）
-	                      </p>
-	                    </div>
-	                  </div>
-	                </div>
-	              </section>
-
-	              {/* URL 导入（后端拉取） */}
-	              <section>
-	                <div className="flex items-center justify-between mb-6">
-	                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-	                    <Network className="h-5 w-5 text-primary" />
-	                    URL 导入
-	                  </h2>
-	                  <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium border border-primary/20">
-	                    <span>保存后通常可立即生效</span>
-	                  </div>
-	                </div>
-
-	                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
-	                  <Alert variant="destructive" className="shadow-soft/40">
-	                    <AlertCircle className="h-4 w-4" />
-	                    <div>
-	                      <AlertTitle>安全提示</AlertTitle>
-	                      <AlertDescription className="text-foreground/80">
-	                        URL 导入会由后端发起网络请求，存在 SSRF 风险。生产环境建议保持关闭，或配置 egress 防火墙/allowlist。
-	                      </AlertDescription>
-	                    </div>
-	                  </Alert>
-
-	                  <div className="flex items-start justify-between gap-4">
-	                    <div>
-	                      <div className="text-sm font-semibold text-foreground">启用 URL 导入</div>
-	                      <div className="text-xs text-muted-foreground mt-1">
-	                        允许通过 URL 拉取内容并入库（知识库页面的“URL 导入”会依赖此开关）
-	                      </div>
-	                    </div>
-		                    {isUrlIngestEnabled ? (
-	                      <button
-	                        type="button"
-	                        onClick={() => updateUrlIngest({ enabled: false })}
-	                        className="shrink-0"
-	                        aria-label="Toggle URL ingest"
-	                      >
-	                        <ToggleRight className="w-10 h-10 text-primary" />
-	                      </button>
-	                    ) : (
-	                      <AlertDialog>
-	                        <AlertDialogTrigger asChild>
-	                          <button type="button" className="shrink-0" aria-label="Toggle URL ingest">
-	                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                          </button>
-	                        </AlertDialogTrigger>
-	                        <AlertDialogContent>
-	                          <AlertDialogHeader>
-	                            <AlertDialogTitle>启用 URL 导入？</AlertDialogTitle>
-	                            <AlertDialogDescription>
-	                              启用后端 URL 导入会让服务端对外发起网络请求，存在 SSRF 风险。生产环境建议保持关闭，或配置 egress 防火墙/allowlist。
-	                            </AlertDialogDescription>
-	                          </AlertDialogHeader>
-	                          <AlertDialogFooter>
-	                            <AlertDialogCancel>取消</AlertDialogCancel>
-	                            <AlertDialogAction onClick={() => updateUrlIngest({ enabled: true })}>启用</AlertDialogAction>
-	                          </AlertDialogFooter>
-	                        </AlertDialogContent>
-	                      </AlertDialog>
-	                    )}
-	                  </div>
-
-	                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-	                    <div>
-	                      <div className="text-xs text-muted-foreground mb-1">最大下载大小（字节）</div>
-	                      <Input
-	                        type="number"
-	                        min={0}
-	                        value={urlIngestMerged.max_bytes ?? 50_000_000}
-	                        onChange={(e) => updateUrlIngest({ max_bytes: Math.max(0, Number.parseInt(e.target.value || '0', 10)) })}
-	                      />
-	                    </div>
-	                    <div>
-	                      <div className="text-xs text-muted-foreground mb-1">下载超时（秒）</div>
-	                      <Input
-	                        type="number"
-	                        min={0}
-                        step="0.5"
-                        value={urlIngestMerged.timeout_sec ?? 30}
-                        onChange={(e) =>
-                          updateUrlIngest({ timeout_sec: Math.max(0, Number.parseFloat(e.target.value || '0')) })
-                        }
-                      />
-	                    </div>
-	                  </div>
-
-	                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
-	                      <div>
-	                        <div className="text-sm font-semibold text-foreground">允许访问内网/私网 IP</div>
-	                        <div className="text-xs text-muted-foreground mt-1">
-	                          高风险：可能导致 SSRF 打到内网服务（强烈不建议）
-	                        </div>
-	                      </div>
-		                      {allowsPrivateIps ? (
-	                        <button
-	                          type="button"
-	                          onClick={() => updateUrlIngest({ allow_private_ips: false })}
-	                          className="shrink-0"
-	                          aria-label="Toggle allow private IPs"
-	                        >
-	                          <ToggleRight className="w-10 h-10 text-primary" />
-	                        </button>
-	                      ) : (
-	                        <AlertDialog>
-	                          <AlertDialogTrigger asChild>
-	                            <button type="button" className="shrink-0" aria-label="Toggle allow private IPs">
-	                              <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                            </button>
-	                          </AlertDialogTrigger>
-	                          <AlertDialogContent>
-	                            <AlertDialogHeader>
-	                              <AlertDialogTitle>允许访问内网/私网 IP？</AlertDialogTitle>
-	                              <AlertDialogDescription>
-	                                风险极高：可能导致 SSRF 打到内网服务（强烈不建议）。确认开启后，后端 URL 导入可能访问内网/私网地址。
-	                              </AlertDialogDescription>
-	                            </AlertDialogHeader>
-	                            <AlertDialogFooter>
-	                              <AlertDialogCancel>取消</AlertDialogCancel>
-	                              <AlertDialogAction onClick={() => updateUrlIngest({ allow_private_ips: true })}>开启</AlertDialogAction>
-	                            </AlertDialogFooter>
-	                          </AlertDialogContent>
-	                        </AlertDialog>
-	                      )}
-	                    </div>
-
-	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
-	                      <div>
-	                        <div className="text-sm font-semibold text-foreground">跟随重定向</div>
-	                        <div className="text-xs text-muted-foreground mt-1">
-	                          可能重定向到内网/大文件；建议保持关闭
-	                        </div>
-	                      </div>
-		                      {followsRedirects ? (
-	                        <button
-	                          type="button"
-	                          onClick={() => updateUrlIngest({ follow_redirects: false })}
-	                          className="shrink-0"
-	                          aria-label="Toggle follow redirects"
-	                        >
-	                          <ToggleRight className="w-10 h-10 text-primary" />
-	                        </button>
-	                      ) : (
-	                        <AlertDialog>
-	                          <AlertDialogTrigger asChild>
-	                            <button type="button" className="shrink-0" aria-label="Toggle follow redirects">
-	                              <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                            </button>
-	                          </AlertDialogTrigger>
-	                          <AlertDialogContent>
-	                            <AlertDialogHeader>
-	                              <AlertDialogTitle>跟随重定向？</AlertDialogTitle>
-	                              <AlertDialogDescription>
-	                                开启后，URL 导入可能跟随重定向到内网地址或大文件，存在 SSRF/资源消耗风险。确认开启吗？
-	                              </AlertDialogDescription>
-	                            </AlertDialogHeader>
-	                            <AlertDialogFooter>
-	                              <AlertDialogCancel>取消</AlertDialogCancel>
-	                              <AlertDialogAction onClick={() => updateUrlIngest({ follow_redirects: true })}>开启</AlertDialogAction>
-	                            </AlertDialogFooter>
-	                          </AlertDialogContent>
-	                        </AlertDialog>
-	                      )}
-	                    </div>
-	                  </div>
-	                </div>
-	              </section>
-
-	              {/* 数据治理（入库清洗/脱敏） */}
-	              <section>
-	                <div className="flex items-center justify-between mb-6">
-	                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-	                    <EyeOff className="h-5 w-5 text-primary" />
-	                    数据治理
-	                  </h2>
-	                  <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium border border-primary/20">
-	                    <span>保存后通常可立即生效</span>
-	                  </div>
-	                </div>
-
-	                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-6">
-	                  <Alert className="shadow-soft/40">
-	                    <AlertCircle className="h-4 w-4" />
-	                    <div>
-	                      <AlertTitle>默认治理规则</AlertTitle>
-	                      <AlertDescription className="text-foreground/80">
-	                        这些开关会影响“入库前清洗/脱敏”，用于没有单独配置管线（dataset/document pipeline overrides）的场景。
-	                      </AlertDescription>
-	                    </div>
-	                  </Alert>
-
-	                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
-	                      <div>
-	                        <div className="text-sm font-semibold text-foreground">启用数据治理</div>
-	                        <div className="text-xs text-muted-foreground mt-1">
-	                          打开后才会应用下方治理项（对新入库文档生效）
-	                        </div>
-	                      </div>
-	                      <button
-	                        type="button"
-	                        onClick={() => updateGovernance({ enabled: !isGovernanceEnabled })}
-                        className="shrink-0"
-                        aria-label="Toggle governance"
-                      >
-	                        {isGovernanceEnabled ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                        )}
-	                      </button>
-	                    </div>
-
-	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
-	                      <div>
-	                        <div className="text-sm font-semibold text-foreground">PII 脱敏</div>
-	                        <div className="text-xs text-muted-foreground mt-1">
-	                          尝试识别并匿名化手机号/邮箱等个人信息（可能影响检索/可读性）
-	                        </div>
-	                      </div>
-	                      <button
-	                        type="button"
-	                        onClick={() => updateGovernance({ pii_anonymize: !isPiiAnonymizeEnabled })}
-                        className="shrink-0"
-                        aria-label="Toggle PII anonymize"
-                      >
-	                        {isPiiAnonymizeEnabled ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                        )}
-	                      </button>
-	                    </div>
-
-	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
-	                      <div>
-	                        <div className="text-sm font-semibold text-foreground">Secrets 脱敏</div>
-	                        <div className="text-xs text-muted-foreground mt-1">
-	                          尝试识别并遮蔽 API Key/Token 等敏感信息
-	                        </div>
-	                      </div>
-	                      <button
-	                        type="button"
-	                        onClick={() => updateGovernance({ secrets_redact: !isSecretsRedactEnabled })}
-                        className="shrink-0"
-                        aria-label="Toggle secrets redact"
-                      >
-	                        {isSecretsRedactEnabled ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                        )}
-	                      </button>
-	                    </div>
-
-	                    <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
-	                      <div>
-	                        <div className="text-sm font-semibold text-foreground">质量过滤触发时隔离</div>
-	                        <div className="text-xs text-muted-foreground mt-1">
-	                          当触发“低密度/仅目录”等过滤时，将文档标记为 quarantined（便于排查）
-	                        </div>
-	                      </div>
-	                      <button
-	                        type="button"
-	                        onClick={() => updateGovernance({ quarantine_on_drop: !isQuarantineOnDropEnabled })}
-                        className="shrink-0"
-                        aria-label="Toggle quarantine on drop"
-                      >
-	                        {isQuarantineOnDropEnabled ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-	                        )}
-	                      </button>
-	                    </div>
-	                  </div>
-	                </div>
-	              </section>
-
-	              {/* 观测与调试 */}
-	              <section>
-	                <div className="flex items-center justify-between mb-6">
-	                  <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-	                    <Eye className="h-5 w-5 text-primary" />
-                    观测与调试
-                  </h2>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium border border-primary/20">
-                    <span>保存后通常可立即生效</span>
-                  </div>
-                </div>
-
-                <div className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-8">
-                  {/* Tool call logging */}
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          <FileSearch className="h-4 w-4 text-muted-foreground" />
-                          Tool Call 日志
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          记录工具调用耗时、成功/失败与参数键名（preview 可选，建议配合 PII 脱敏）
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateObservability({
-                            tool_call_log_enabled: !((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled),
-                          })
-                        }
-                        className="shrink-0"
-                      >
-                        {((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-                        )}
-                      </button>
-                    </div>
-
-                    {((editedSettings.observability?.tool_call_log_enabled ?? settings?.observability?.tool_call_log_enabled) ?? DEFAULT_OBSERVABILITY.tool_call_log_enabled) && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={((editedSettings.observability?.tool_call_log_include_preview ?? settings?.observability?.tool_call_log_include_preview) ?? DEFAULT_OBSERVABILITY.tool_call_log_include_preview)}
-                            onChange={(e) => updateObservability({ tool_call_log_include_preview: e.target.checked })}
-                            className="h-4 w-4 accent-primary"
-                          />
-                          <span className="text-sm text-foreground/80">包含结果 preview</span>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground mb-1">preview 最大字符数</div>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={5000}
-                            value={((editedSettings.observability?.tool_call_log_max_preview_chars ?? settings?.observability?.tool_call_log_max_preview_chars) ?? DEFAULT_OBSERVABILITY.tool_call_log_max_preview_chars)}
-                            onChange={(e) => updateObservability({ tool_call_log_max_preview_chars: Number.parseInt(e.target.value || '0', 10) })}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Agent/workflow logging */}
-                  <div className="space-y-3 border-t pt-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          <Settings2 className="h-4 w-4 text-muted-foreground" />
-                          Workflow 生命周期日志
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          记录工作流总耗时、steps、success/fail（可选携带 execution path）
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateObservability({
-                            agent_log_enabled: !((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled),
-                          })
-                        }
-                        className="shrink-0"
-                      >
-                        {((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-                        )}
-                      </button>
-                    </div>
-
-                    {((editedSettings.observability?.agent_log_enabled ?? settings?.observability?.agent_log_enabled) ?? DEFAULT_OBSERVABILITY.agent_log_enabled) && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={((editedSettings.observability?.agent_log_include_execution_path ?? settings?.observability?.agent_log_include_execution_path) ?? DEFAULT_OBSERVABILITY.agent_log_include_execution_path)}
-                            onChange={(e) => updateObservability({ agent_log_include_execution_path: e.target.checked })}
-                            className="h-4 w-4 accent-primary"
-                          />
-                          <span className="text-sm text-foreground/80">包含 execution path</span>
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground mb-1">错误 preview 最大字符数</div>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={5000}
-                            value={((editedSettings.observability?.agent_log_max_preview_chars ?? settings?.observability?.agent_log_max_preview_chars) ?? DEFAULT_OBSERVABILITY.agent_log_max_preview_chars)}
-                            onChange={(e) => updateObservability({ agent_log_max_preview_chars: Number.parseInt(e.target.value || '0', 10) })}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Metrics log (JSONL) */}
-                  <div className="space-y-3 border-t pt-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          <Eye className="h-4 w-4 text-muted-foreground" />
-                          RAG Metrics 日志（JSONL）
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          写入 RAG 过程指标到 logs/rag_metrics.jsonl（建议线上关闭 “包含原始文本”）
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateObservability({
-                            metrics_log_enabled: !((editedSettings.observability?.metrics_log_enabled ?? settings?.observability?.metrics_log_enabled) ?? DEFAULT_OBSERVABILITY.metrics_log_enabled),
-                          })
-                        }
-                        className="shrink-0"
-                      >
-                        {((editedSettings.observability?.metrics_log_enabled ?? settings?.observability?.metrics_log_enabled) ?? DEFAULT_OBSERVABILITY.metrics_log_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-                        )}
-                      </button>
-                    </div>
-
-                    {((editedSettings.observability?.metrics_log_enabled ?? settings?.observability?.metrics_log_enabled) ?? DEFAULT_OBSERVABILITY.metrics_log_enabled) && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={((editedSettings.observability?.metrics_log_include_text ?? settings?.observability?.metrics_log_include_text) ?? DEFAULT_OBSERVABILITY.metrics_log_include_text)}
-                            onChange={(e) => updateObservability({ metrics_log_include_text: e.target.checked })}
-                            className="h-4 w-4 accent-primary"
-                          />
-                          <span className="text-sm text-foreground/80">包含原始文本</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Chat streaming */}
-                  <div className="space-y-3 border-t pt-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          <Server className="h-4 w-4 text-muted-foreground" />
-                          Chat 流式稳定性（SSE）
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Heartbeat 用于保活连接；断连自动取消可减少浪费（保存后通常可立即生效）
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateChat({
-                            stream_cancel_on_disconnect: !((editedSettings.chat?.stream_cancel_on_disconnect ?? settings?.chat?.stream_cancel_on_disconnect) ?? DEFAULT_CHAT.stream_cancel_on_disconnect),
-                          })
-                        }
-                        className="shrink-0"
-                      >
-                        {((editedSettings.chat?.stream_cancel_on_disconnect ?? settings?.chat?.stream_cancel_on_disconnect) ?? DEFAULT_CHAT.stream_cancel_on_disconnect) ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-                        )}
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                      <div>
-                        <div className="text-xs text-muted-foreground mb-1">Heartbeat（秒）</div>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={120}
-                          step={1}
-                          value={editedSettings.chat?.stream_heartbeat_sec ?? settings?.chat?.stream_heartbeat_sec ?? DEFAULT_CHAT.stream_heartbeat_sec}
-                          onChange={(e) => updateChat({ stream_heartbeat_sec: Number.parseFloat(e.target.value || '0') })}
-                        />
-                      </div>
-                      <div className="text-xs text-muted-foreground md:col-span-2 flex items-center">
-                        设为 0 将禁用心跳（不推荐，可能被代理/负载均衡断开）
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Cache / performance */}
-                  <div className="space-y-3 border-t pt-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          <Database className="h-4 w-4 text-muted-foreground" />
-                          性能与缓存
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          去重/缓存属于“best-effort”，依赖 Redis 时会 fail-open（不可用时不影响主流程）
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
-                        <div>
-                          <div className="text-sm font-semibold text-foreground">上传去重（Dataset 内）</div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            同 file_sha256 + pipeline_hash 时直接复用已存在文档，减少重复入库/embedding
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateCache({
-                              upload_dedup_enabled: !((editedSettings.cache?.upload_dedup_enabled ?? settings?.cache?.upload_dedup_enabled) ?? DEFAULT_CACHE.upload_dedup_enabled),
-                            })
-                          }
-                          className="shrink-0"
-                          aria-label="Toggle upload dedup"
-                        >
-                          {((editedSettings.cache?.upload_dedup_enabled ?? settings?.cache?.upload_dedup_enabled) ?? DEFAULT_CACHE.upload_dedup_enabled) ? (
-                            <ToggleRight className="w-10 h-10 text-primary" />
-                          ) : (
-                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4 bg-muted/30">
-                        <div>
-                          <div className="text-sm font-semibold text-foreground">Chat 响应缓存（Redis）</div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            相同问题+相同文档范围+相同配置命中后直接返回，降低 LLM/检索成本
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateCache({
-                              chat_response_cache_enabled: !((editedSettings.cache?.chat_response_cache_enabled ?? settings?.cache?.chat_response_cache_enabled) ?? DEFAULT_CACHE.chat_response_cache_enabled),
-                            })
-                          }
-                          className="shrink-0"
-                          aria-label="Toggle chat response cache"
-                        >
-                          {((editedSettings.cache?.chat_response_cache_enabled ?? settings?.cache?.chat_response_cache_enabled) ?? DEFAULT_CACHE.chat_response_cache_enabled) ? (
-                            <ToggleRight className="w-10 h-10 text-primary" />
-                          ) : (
-                            <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    {((editedSettings.cache?.chat_response_cache_enabled ?? settings?.cache?.chat_response_cache_enabled) ?? DEFAULT_CACHE.chat_response_cache_enabled) && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                        <div>
-                          <div className="text-xs text-muted-foreground mb-1">TTL（秒）</div>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={86400}
-                            value={editedSettings.cache?.chat_response_cache_ttl_sec ?? settings?.cache?.chat_response_cache_ttl_sec ?? DEFAULT_CACHE.chat_response_cache_ttl_sec}
-                            onChange={(e) => updateCache({ chat_response_cache_ttl_sec: Number.parseInt(e.target.value || '0', 10) })}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground mb-1">最大 value bytes</div>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={5000000}
-                            value={editedSettings.cache?.chat_response_cache_max_value_bytes ?? settings?.cache?.chat_response_cache_max_value_bytes ?? DEFAULT_CACHE.chat_response_cache_max_value_bytes}
-                            onChange={(e) => updateCache({ chat_response_cache_max_value_bytes: Number.parseInt(e.target.value || '0', 10) })}
-                          />
-                        </div>
-                        <div className="flex items-center gap-2 pt-5">
-                          <input
-                            type="checkbox"
-                            checked={((editedSettings.cache?.chat_response_cache_require_empty_history ?? settings?.cache?.chat_response_cache_require_empty_history) ?? DEFAULT_CACHE.chat_response_cache_require_empty_history)}
-                            onChange={(e) => updateCache({ chat_response_cache_require_empty_history: e.target.checked })}
-                            className="h-4 w-4 accent-primary"
-                          />
-                          <span className="text-sm text-foreground/80">仅缓存无历史请求</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Safety / PII */}
-                  <div className="space-y-3 border-t pt-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          <EyeOff className="h-4 w-4 text-muted-foreground" />
-                          PII 脱敏
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          对模型输入/输出与工具调用做脱敏（流式输出会做 holdback 以减少漏出）
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateSafety({
-                            pii_redaction_enabled: !((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled),
-                          })
-                        }
-                        className="shrink-0"
-                      >
-                        {((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled) ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-                        )}
-                      </button>
-                    </div>
-
-                    {((editedSettings.safety?.pii_redaction_enabled ?? settings?.safety?.pii_redaction_enabled) ?? DEFAULT_SAFETY.pii_redaction_enabled) && (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                        <div>
-                          <div className="text-xs text-muted-foreground mb-1">脱敏占位符</div>
-                          <Input
-                            value={editedSettings.safety?.pii_redaction_mask ?? settings?.safety?.pii_redaction_mask ?? DEFAULT_SAFETY.pii_redaction_mask}
-                            onChange={(e) => updateSafety({ pii_redaction_mask: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-xs text-muted-foreground mb-1">流式 holdback 字符数</div>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={2048}
-                            value={editedSettings.safety?.pii_stream_holdback_chars ?? settings?.safety?.pii_stream_holdback_chars ?? DEFAULT_SAFETY.pii_stream_holdback_chars}
-                            onChange={(e) => updateSafety({ pii_stream_holdback_chars: Number.parseInt(e.target.value || '0', 10) })}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* LangGraph */}
-                  <div className="space-y-3 border-t pt-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
-                          <Network className="h-4 w-4 text-muted-foreground" />
-                          LangGraph 子图组合（Subgraph）
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          将 retrieve/generate 作为子图节点组合（更模块化，便于后续扩展）
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateLangGraph({
-                            use_subgraphs: !((editedSettings.langgraph?.use_subgraphs ?? settings?.langgraph?.use_subgraphs) ?? DEFAULT_LANGGRAPH.use_subgraphs),
-                          })
-                        }
-                        className="shrink-0"
-                      >
-                        {((editedSettings.langgraph?.use_subgraphs ?? settings?.langgraph?.use_subgraphs) ?? DEFAULT_LANGGRAPH.use_subgraphs) ? (
-                          <ToggleRight className="w-10 h-10 text-primary" />
-                        ) : (
-                          <ToggleLeft className="w-10 h-10 text-muted-foreground hover:text-muted-foreground" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </section>
+	              <RuntimeControlsSection
+	                chat={chatMerged}
+	                chatDefaults={DEFAULT_CHAT}
+	                updateChat={updateChat}
+	                cache={cacheMerged}
+	                cacheDefaults={DEFAULT_CACHE}
+	                updateCache={updateCache}
+	                safety={safetyMerged}
+	                safetyDefaults={DEFAULT_SAFETY}
+	                updateSafety={updateSafety}
+	                langgraph={langGraphMerged}
+	                langGraphDefaults={DEFAULT_LANGGRAPH}
+	                updateLangGraph={updateLangGraph}
+	              />
             </div>
           )}
       </PageScaffold>
