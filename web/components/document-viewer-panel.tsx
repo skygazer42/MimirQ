@@ -7,15 +7,14 @@ import { cn, detachPromise } from '@/lib/utils'
 import { useResolvedAuthAssetUrl } from "@/components/auth-image"
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { documentApi, ragApi } from "@/lib/api"
 import { API_V1_BASE_URL } from "@/lib/env"
 import type { Citation, Document, DocumentChunk, DocumentParsedContentResponse, DocumentQAGenerateResponse } from "@/types"
+import { ChunkEditorDialog } from "@/components/document-viewer/chunk-editor-dialog"
 import { DocumentChunkCard } from "@/components/document-viewer/chunk-renderer"
 import { FloatingMenu } from "@/components/document-viewer/floating-menu"
+import { QAGenerationDialog } from "@/components/document-viewer/qa-generation-dialog"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
 import { OriginalPreviewMonaco } from "@/components/chunk-preview/components/workbench/preview/original-preview-monaco"
@@ -700,8 +699,14 @@ export function DocumentViewerPanel() {
   return (
     <>
     <FloatingMenu />
-    <Dialog
+    <ChunkEditorDialog
       open={chunkEditorOpen}
+      mode={chunkEditorMode}
+      target={chunkEditorTarget}
+      content={chunkEditorContent}
+      pageNumber={chunkEditorPageNumber}
+      submitting={chunkEditorSubmitting}
+      canEditChunks={canEditChunks}
       onOpenChange={(open) => {
         if (!open) {
           setChunkEditorOpen(false)
@@ -710,160 +715,30 @@ export function DocumentViewerPanel() {
         }
         setChunkEditorOpen(true)
       }}
-    >
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {chunkEditorMode === "create"
-              ? "Add chunk"
-              : `Edit chunk #${chunkEditorTarget?.chunk_index ?? "-"}`}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-foreground/80">Content</div>
-            <Textarea
-              value={chunkEditorContent}
-              onChange={(e) => setChunkEditorContent(e.target.value)}
-              className="min-h-[220px] font-mono"
-              placeholder="Paste or edit chunk content..."
-            />
-            <div className="text-xs text-muted-foreground tabular-nums">
-              {chunkEditorContent.length.toLocaleString()} chars
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">Page (optional)</div>
-              <Input
-                value={chunkEditorPageNumber}
-                onChange={(e) => setChunkEditorPageNumber(e.target.value)}
-                inputMode="numeric"
-                placeholder="e.g. 12"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">Status</div>
-              <div className="text-xs text-muted-foreground">
-                {canEditChunks ? "Editable" : "Document is processing; editing disabled"}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setChunkEditorOpen(false)}
-            disabled={chunkEditorSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={() => detachPromise(submitChunkEditor())}
-            disabled={chunkEditorSubmitting || !canEditChunks || !chunkEditorContent.trim()}
-            className="gap-2"
-          >
-            {chunkEditorSubmitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
-            Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <Dialog
+      onContentChange={setChunkEditorContent}
+      onPageNumberChange={setChunkEditorPageNumber}
+      onSubmit={() => detachPromise(submitChunkEditor())}
+    />
+    <QAGenerationDialog
       open={qaDialogOpen}
+      qaNumPairs={qaNumPairs}
+      qaMaxSourceChars={qaMaxSourceChars}
+      qaReplaceExisting={qaReplaceExisting}
+      qaPreferLlm={qaPreferLlm}
+      qaSubmitting={qaSubmitting}
+      qaLastResult={qaLastResult}
+      canEditChunks={canEditChunks}
+      documentId={documentId}
       onOpenChange={(open) => {
         setQaDialogOpen(open)
         if (open) setQaLastResult(null)
       }}
-    >
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Generate Q&A chunks</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">Num pairs</div>
-              <Input
-                value={String(qaNumPairs)}
-                onChange={(e) => setQaNumPairs(Number(e.target.value || 0))}
-                inputMode="numeric"
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-foreground/80">Max source chars</div>
-              <Input
-                value={String(qaMaxSourceChars)}
-                onChange={(e) => setQaMaxSourceChars(Number(e.target.value || 0))}
-                inputMode="numeric"
-              />
-            </div>
-          </div>
-
-          <label className="flex items-center justify-between gap-3 text-sm cursor-pointer select-none rounded-md border border-border bg-muted/20 px-3 py-2">
-            <span className="text-muted-foreground">Replace existing QA chunks</span>
-            <input
-              type="checkbox"
-              checked={qaReplaceExisting}
-              onChange={(e) => setQaReplaceExisting(e.target.checked)}
-              className="accent-primary h-4 w-4"
-            />
-          </label>
-
-          <label className="flex items-center justify-between gap-3 text-sm cursor-pointer select-none rounded-md border border-border bg-muted/20 px-3 py-2">
-            <span className="text-muted-foreground">Prefer LLM (if configured)</span>
-            <input
-              type="checkbox"
-              checked={qaPreferLlm}
-              onChange={(e) => setQaPreferLlm(e.target.checked)}
-              className="accent-primary h-4 w-4"
-            />
-          </label>
-
-          <div className="text-[11px] text-muted-foreground">
-            Generated chunks are tagged with <span className="font-mono">file_type=qa</span> in metadata.
-            You can include/exclude them via <span className="font-mono">metadata_filter</span>.
-          </div>
-
-          {qaLastResult?.preview?.length ? (
-            <div className="rounded-xl border border-border bg-background/60 p-3">
-              <div className="text-xs font-semibold text-foreground mb-2">Preview</div>
-              <div className="space-y-2 max-h-[220px] overflow-auto">
-                {qaLastResult.preview.slice(0, 10).map((p) => (
-                  <div key={`${p.question}-${p.answer}`} className="rounded-lg border border-border/60 bg-muted/10 p-2">
-                    <div className="text-[11px] text-muted-foreground">Q</div>
-                    <div className="text-xs text-foreground whitespace-pre-wrap">{p.question}</div>
-                    <div className="mt-2 text-[11px] text-muted-foreground">A</div>
-                    <div className="text-xs text-foreground whitespace-pre-wrap">{p.answer}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => setQaDialogOpen(false)} disabled={qaSubmitting}>
-            Close
-          </Button>
-          <Button
-            type="button"
-            onClick={() => detachPromise(runQaGeneration())}
-            disabled={!canEditChunks || qaSubmitting || !documentId}
-            className="gap-2"
-          >
-            {qaSubmitting ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="h-4 w-4" />}
-            Generate
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-	    </Dialog>
+      onNumPairsChange={setQaNumPairs}
+      onMaxSourceCharsChange={setQaMaxSourceChars}
+      onReplaceExistingChange={setQaReplaceExisting}
+      onPreferLlmChange={setQaPreferLlm}
+      onSubmit={() => detachPromise(runQaGeneration())}
+    />
 	    <div 
 	        className={cn(
 	            "fixed inset-y-0 right-0 z-50 flex flex-col bg-background border-l border-border shadow-strong",
