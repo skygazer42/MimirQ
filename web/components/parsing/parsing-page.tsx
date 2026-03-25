@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Blocks, FileText, Loader2, Eye, Code, Download, Copy, Check, RotateCcw, Sparkles, FileStack, Clock, Heading1, Table2, Image, ChevronRight, ShieldCheck, Edit3, Save, X, FolderOpen, Play, Paperclip, FolderUp, Plus, Settings2, Layers, MoreVertical } from 'lucide-react'
+import { FileText, FolderOpen, Loader2, Eye, Code, Download, Copy, Check, Sparkles, FileStack, Clock, Play, Paperclip, FolderUp, Plus, Settings2 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PipelineRail, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { Button } from '@/components/ui/button'
@@ -13,21 +13,12 @@ import { generateRequestId } from '@/lib/request-id'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
 import { ParserDropdown } from '@/components/ui/parser-dropdown'
-import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings } from '@/lib/markdown'
-import { DocumentFolderTree, getFileIcon } from '@/components/document-library/folder-tree'
+import { DocumentFolderTree } from '@/components/document-library/folder-tree'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
-import dynamic from 'next/dynamic'
-import { Skeleton } from '@/components/ui/skeleton'
-
-const PdfViewer = dynamic(() => import('@/components/parsing/pdf-viewer').then((mod) => mod.PdfViewer), {
-  ssr: false,
-  loading: () => <Skeleton className="h-[400px] w-full" />,
-})
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 import { toast } from 'sonner'
@@ -41,70 +32,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { ParseCompareDialog } from '@/components/parsing/parse-compare-dialog'
+import { ParsingActiveFilePane } from '@/components/parsing/parsing-active-file-pane'
+import { ParsingLibraryPreviewPane } from '@/components/parsing/parsing-library-preview-pane'
 import { Switch } from '@/components/ui/switch'
 import { ParsingLeftPanel } from '@/components/parsing/parsing-left-panel'
 import { ParsingMainPanel } from '@/components/parsing/parsing-main-panel'
-import { ParsingRightPanel } from '@/components/parsing/parsing-right-panel'
-
-
-interface ParseRun {
-  id: string
-  parserBackend: string
-  parserLabel: string
-  rawMarkdown: string
-  cleanedMarkdown: string
-  blocks: ParsingBlock[]
-  createdAt: number
-  pdfQuality?: any
-  qualityGate?: any
-}
-
-interface ParseFailureDiagnostics {
-  file_type?: string
-  parser_backend_requested?: string
-  parser_backend?: string
-  error_type?: string
-  error_message?: string
-  pdf_sample?: {
-    page_count?: number
-    is_scanned?: boolean
-    samples?: { page: number; text_chars: number; excerpt: string }[]
-  }
-  suggested_backends?: string[]
-}
+import type { ParsedFile, ParseFailureDiagnostics, ParseRun } from '@/components/parsing/parsing-types'
 
 // 解析后的文件（扩展版）
-interface ParsedFile extends FileQueueItemData {
-  file: File
-  folderId: string
-  sourcePath?: string
-  markdownContent: string | null
-  parserBackend: string
-  parserLabel: string
-  /**
-   * Persisted library id in Zustand (`useParsedFiles.files`).
-   * Used to keep document library stable across route changes.
-   */
-  libraryId?: string
-  runs?: ParseRun[]
-  activeRunId?: string
-  parseStartTime?: number
-  createdAt?: number
-  stats?: {
-    charCount: number
-    lineCount: number
-    headingCount: number
-    pageCount?: number
-    tableCount?: number
-    imageCount?: number
-    blockCount?: number
-  }
-  pdfQuality?: any
-  qualityGate?: any
-  parseDiagnostics?: ParseFailureDiagnostics
-}
-
 function countMarkdownHeadings(markdown: string) {
   const md = String(markdown || '').trim()
   if (!md) return 0
@@ -228,7 +163,6 @@ export default function ParsingPage() {
   const [rightPanelMode, setRightPanelMode] = useState<'blocks' | 'markdown'>('blocks')
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null)
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null)
-  const [compareOpen, setCompareOpen] = useState(false)
 
   // 解析器设置
   const { parserBackend, setParserBackend } = useParserBackendPreference()
@@ -467,6 +401,7 @@ export default function ParsingPage() {
   const activeLibraryFolderId = activeLibraryFile?.folderId || ROOT_FOLDER_ID
   const activeLibraryFolderPathLabel = folderPathById[activeLibraryFolderId] || '根目录'
   const activeLibraryFolderName = (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
+  const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(activeLibraryFile.status) : null
 
   const requestUploadToFolder = useCallback(
     (folderId: string) => {
@@ -1698,17 +1633,6 @@ export default function ParsingPage() {
         }
         mainPanel={
           <>
-        <ParseCompareDialog
-          open={compareOpen}
-          onOpenChange={setCompareOpen}
-          runs={(activeFile?.runs || []) as any}
-          defaultBaseRunId={activeFile?.activeRunId || activeRun?.id || null}
-          onUseRun={(runId) => {
-            handleSelectRun(runId)
-            setCompareOpen(false)
-          }}
-        />
-
         <ParsingMainPanel>
           {/* 左侧：文件列表面板 */}
           <ParsingLeftPanel
@@ -1921,725 +1845,79 @@ export default function ParsingPage() {
           </ParsingLeftPanel>
 
           {/* 右侧：预览区域 */}
-          <div className="flex-1 min-w-0 flex flex-col bg-card dark:bg-background overflow-hidden min-h-0 ring-1 ring-border/40 shadow-sm dark:shadow-none">
-	              {(activeFile || activeLibraryFile) ? (
-                <>
-                  {/* Library-only selection (no File object in current session) */}
-                  {!activeFile && activeLibraryFile ? (
-                    <div className="flex-1 flex flex-col min-h-0">
-	                      <div className="px-6 py-2 border-b border-border/60 bg-card/80 dark:bg-background/60">
-	                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-	                          <div className="min-w-0">
-	                            <div className="flex flex-wrap items-center gap-2">
-	                              <span className="inline-flex max-w-[560px] min-w-0 items-center gap-2 rounded-xl border border-border/60 bg-background/70 dark:bg-background/20 px-2.5 py-1 text-sm font-semibold  text-foreground">
-	                                {getFileIcon(activeLibraryFile.filename, 'w-7 h-7 rounded-lg')}
-	                                <span className="min-w-0 truncate">{activeLibraryFile.filename}</span>
-	                              </span>
-	                              <span
-	                                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground dark:text-muted-foreground bg-muted/60 dark:bg-muted/60 px-2 py-0.5 rounded-full"
-	                                title={activeLibraryFolderPathLabel}
-                              >
-                                <FolderOpen className="h-3 w-3" />
-                                {activeLibraryFolderName}
-                              </span>
-                              {activeLibraryFile.status ? (
-                                <span
-                                  className={cn(
-                                    'text-[10px] font-medium px-2 py-0.5 rounded-full border',
-                                    getLibraryStatusBadge(activeLibraryFile.status).cls
-                                  )}
-                                  title={activeLibraryFile.status}
-                                >
-                                  {getLibraryStatusBadge(activeLibraryFile.status).label}
-                                </span>
-                              ) : null}
-                            </div>
-	                          </div>
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0 bg-card ring-1 ring-border/40 shadow-sm dark:bg-background dark:shadow-none">
+            {activeFile || activeLibraryFile ? (
+              <>
+                {!activeFile && activeLibraryFile ? (
+                  <ParsingLibraryPreviewPane
+                    file={activeLibraryFile}
+                    activeMarkdown={activeMarkdown}
+                    folderName={activeLibraryFolderName}
+                    folderPathLabel={activeLibraryFolderPathLabel}
+                    sourceStatus={activeLibrarySourceStatus}
+                    defaultParserBackend={parserBackend}
+                    statusBadge={activeLibraryStatusBadge}
+                    onClose={() => setActiveLibraryFileId(null)}
+                    onUpdateParser={(backend) => {
+                      const resolved = resolveParserBackendForFilename(activeLibraryFile.filename, backend)
+                      updateParsedFile(activeLibraryFile.id, {
+                        parserBackend: resolved.backend,
+                        parser: getParserLabel(resolved.backend),
+                      })
+                    }}
+                    onRestoreSource={(autoParse) => restoreLibraryFileFromCache(activeLibraryFile.id, autoParse)}
+                    onRequestRebind={(autoParse) => requestRebindForLibraryFile(activeLibraryFile.id, autoParse)}
+                  />
+                ) : null}
 
-	                          <div className="flex flex-wrap items-center gap-2 justify-end">
-	                            {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' ? (
-	                              <ParserDropdown
-	                                value={
-	                                  resolveParserBackendForFilename(
-                                    activeLibraryFile.filename,
-                                    activeLibraryFile.parserBackend || parserBackend
-                                  ).backend
-                                }
-                                filename={activeLibraryFile.filename}
-                                onChange={(backend) => {
-                                  const resolved = resolveParserBackendForFilename(activeLibraryFile.filename, backend)
-                                  updateParsedFile(activeLibraryFile.id, {
-                                    parserBackend: resolved.backend,
-	                                    parser: getParserLabel(resolved.backend),
-	                                  })
-	                                }}
-	                                className="w-full sm:w-64"
-	                                compact
-	                              />
-	                            ) : (
-	                              <span className="text-xs text-muted-foreground">
-	                                解析方式：<span className="text-foreground/80 dark:text-muted-foreground font-medium">{activeLibraryFile.parser || '-'}</span>
-                              </span>
-                            )}
-
-	                            {activeLibrarySourceStatus === 'available' ? (
-	                              <Button
-	                                variant="outline"
-	                                size="sm"
-	                                className="h-8 px-3 text-[11px] gap-1.5 rounded-full"
-	                                onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, false)}
-	                                title="从服务器下载源文件到队列（用于 PDF 预览或继续解析）"
-	                              >
-	                                <Paperclip className="w-3.5 h-3.5" />
-                                恢复源文件
-                              </Button>
-                            ) : (
-	                              <Button
-	                                variant="outline"
-	                                size="sm"
-	                                className="h-8 px-3 text-[11px] gap-1.5 rounded-full"
-	                                onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, false)}
-	                                title="重新上传源文件以替换服务器上的源文件"
-	                              >
-	                                <Paperclip className="w-3.5 h-3.5" />
-                                重新上传
-                              </Button>
-                            )}
-
-	                            {activeLibraryFile.status && activeLibraryFile.status !== 'parsed' && (
-		                            activeLibrarySourceStatus === 'available' ? (
-		                              <Button
-		                                size="sm"
-		                                className="h-8 px-3 text-[11px] gap-1.5 rounded-full bg-sky-600 hover:bg-sky-700"
-		                                onClick={() => restoreLibraryFileFromCache(activeLibraryFile.id, true)}
-		                                title="恢复并开始解析"
-		                              >
-		                                <Play className="w-3.5 h-3.5" />
-		                                继续解析
-		                              </Button>
-		                            ) : (
-		                              <Button
-		                                size="sm"
-		                                className="h-8 px-3 text-[11px] gap-1.5 rounded-full bg-sky-600 hover:bg-sky-700"
-		                                onClick={() => requestRebindForLibraryFile(activeLibraryFile.id, true)}
-		                                title="重新上传并开始解析"
-		                              >
-		                                <Play className="w-3.5 h-3.5" />
-		                                上传并解析
-		                              </Button>
-		                            )
-	                            )}
-
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-8 w-8 rounded-full"
-                                  aria-label="更多操作"
-                                  title="更多"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-44">
-                                <DropdownMenuItem
-                                  className="gap-2 cursor-pointer"
-                                  onClick={async () => {
-                                    try {
-                                      await navigator.clipboard.writeText(activeLibraryFile.filename)
-                                      toast.success('已复制文件名')
-                                    } catch {
-                                      toast.error('复制失败')
-                                    }
-                                  }}
-                                >
-                                  <Copy className="h-4 w-4 text-muted-foreground" />
-                                  复制文件名
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  className="gap-2 cursor-pointer"
-                                  onClick={() => setActiveLibraryFileId(null)}
-                                >
-                                  <X className="h-4 w-4 text-muted-foreground" />
-                                  关闭
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex-1 overflow-hidden min-h-0">
-                        {activeMarkdown ? (
-                          <ParsingRightPanel className="h-full no-scrollbar px-6 py-6">
-                            <MarkdownRenderer markdown={activeMarkdown} />
-                          </ParsingRightPanel>
-		                        ) : (
-		                          <div className="h-full flex items-center justify-center">
-		                            <div className="text-center max-w-md">
-	                              <div className="size-16 mx-auto mb-3 rounded-2xl border border-border/60 bg-card flex items-center justify-center shadow-soft">
-	                                <FileText className="w-8 h-8 text-muted-foreground dark:text-muted-foreground" />
-	                              </div>
-	                              <p className="text-muted-foreground dark:text-muted-foreground text-sm font-medium">暂无可展示的解析内容</p>
-                              <p className="text-muted-foreground dark:text-muted-foreground text-xs mt-1">若该文件还未解析，或内容未缓存，请重新选择文件并解析。</p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                  {activeFile ? (
-                    <>
-	                      {/* 统计卡片区 - 解析完成后显示 */}
-	                      {activeFile.status === 'parsed' && activeFile.stats && (
-	                        <div className="px-6 py-4 border-b border-border/60 bg-card/70 dark:bg-background/40">
-	                          <StatsGrid>
-	                            <StatCard
-	                              icon={FileText}
-                              label="字符数"
-                              value={activeFile.stats.charCount.toLocaleString()}
-                              color="blue"
-                            />
-                            <StatCard
-                              icon={FileStack}
-                              label="行数"
-                              value={activeFile.stats.lineCount.toLocaleString()}
-                              color="cyan"
-                            />
-                            <StatCard
-                              icon={Heading1}
-                              label="Headings"
-                              value={(activeFile.stats.headingCount || 0).toLocaleString()}
-                              color="teal"
-                            />
-                            <StatCard
-                              icon={Layers}
-                              label="页数"
-                              value={
-                                typeof activeFile.stats.pageCount === 'number' && activeFile.stats.pageCount > 0
-                                  ? activeFile.stats.pageCount
-                                  : '-'
-                              }
-                              color="sky"
-                            />
-                            <StatCard
-                              icon={Blocks}
-                              label="定位块"
-                              value={Math.floor(activeFile.stats.blockCount || 0)}
-                              color="amber"
-                            />
-                            <StatCard
-                              icon={Table2}
-                              label="表格"
-                              value={Math.floor(activeFile.stats.tableCount || 0)}
-                              color="green"
-                            />
-                            <StatCard
-                              icon={Image}
-                              label="图片"
-                              value={activeFile.stats.imageCount || 0}
-                              color="red"
-                            />
-	                            <StatCard
-	                              icon={Clock}
-	                              label="耗时"
-	                              value={
-	                                typeof activeFile.duration === 'number' && Number.isFinite(activeFile.duration)
-	                                  ? `${activeFile.duration}s`
-	                                  : '-'
-	                              }
-	                              subValue={activeFile.parserLabel}
-	                              color="gray"
-	                            />
-                          </StatsGrid>
-                          {activeQualityGate ? (
-                            <div className="mt-3 flex flex-col gap-1">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border',
-                                    (() => {
-    if (activeQualityGate.grade === 'fail') {
-        return 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20';
-    }
-    else if (activeQualityGate.grade === 'warn') {
-            return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20';
-        }
-        else {
-            return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20';
-        }
-})()
-                                  )}
-                                  title="解析质量门禁（best-effort）"
-                                >
-                                  {String(activeQualityGate.grade || 'pass').toUpperCase()}
-                                </span>
-                                <div className="text-xs text-muted-foreground">
-                                  {(activeQualityGate.reasons || []).length
-                                    ? (activeQualityGate.reasons || []).join(' · ')
-                                    : '无明显风险信号'}
-                                </div>
-                              </div>
-                              <div className="text-[11px] text-muted-foreground font-mono">
-                                {(() => {
-                                  const ev = (activeQualityGate)?.evidence || {}
-                                  const tq = ev?.text_quality || {}
-                                  const pq = ev?.parse_quality || {}
-                                  const pieces: string[] = []
-                                  if (activePdfQuality && typeof (activePdfQuality)?.score === 'number') {
-                                    pieces.push(`pdf_score=${Number((activePdfQuality).score).toFixed(3)}`)
-                                  }
-                                  if (typeof pq?.score === 'number') pieces.push(`parse_score=${Number(pq.score).toFixed(3)}`)
-                                  if (typeof tq?.content_chars === 'number') pieces.push(`content_chars=${tq.content_chars}`)
-                                  if (typeof tq?.density === 'number') pieces.push(`density=${Number(tq.density).toFixed(3)}`)
-                                  if (typeof tq?.replacement_ratio === 'number') pieces.push(`replacement_ratio=${Number(tq.replacement_ratio).toFixed(3)}`)
-                                  const fa = ev?.fallback_attempts
-                                  if (Array.isArray(fa) && fa.length) {
-                                    pieces.push(`fallback=${String(ev?.fallback_initial_backend || '')}→${String(ev?.fallback_final_backend || '')}`)
-                                  }
-                                  return pieces.join(' · ')
-                                })()}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      )}
-
-                      {/* 工具栏 */}
-                      <div className="flex items-center justify-between px-6 py-3 border-b border-border/60 bg-muted/20 dark:bg-muted/40">
-                        <div className="flex items-center gap-3">
-                          <span className="font-medium text-foreground dark:text-foreground truncate max-w-[200px]">
-                            {activeFile.file.name}
-                          </span>
-                          <span className="text-xs text-muted-foreground dark:text-muted-foreground bg-muted/60 dark:bg-muted/60 px-2 py-0.5 rounded">
-                            {activeFile.parserLabel}
-                          </span>
-                          {activeFile.runs && activeFile.runs.length > 1 && (
-                            <select
-                              value={activeRun?.id || ''}
-                              onChange={(e) => handleSelectRun(e.target.value)}
-                              className="text-xs border border-border dark:border-border rounded px-2 py-1 bg-card dark:bg-muted text-foreground/80 dark:text-muted-foreground"
-                            >
-                              {activeFile.runs.map((run) => (
-                                <option key={run.id} value={run.id}>
-                                  {run.parserLabel} ? {new Date(run.createdAt).toLocaleTimeString()}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-                          {isEditing && (
-                            <span className="text-xs text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900/30 px-2 py-0.5 rounded flex items-center gap-1">
-                              <Edit3 className="w-3 h-3" />
-                              编辑中
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {activeFile.status === 'parsed' && (
-                            <>
-                              {activeFile.runs && activeFile.runs.length > 1 ? (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setCompareOpen(true)}
-                                  disabled={isEditing}
-                                  className="gap-1.5"
-                                >
-                                  <FileStack className="w-4 h-4" />
-                                  对比
-                                </Button>
-                              ) : null}
-                              {isEditing ? (
-                                // 编辑模式按钮
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={handleCancelEdit}
-                                    className="gap-1.5 text-muted-foreground"
-                                  >
-                                    <X className="w-4 h-4" />
-                                    取消
-                                  </Button>
-                                  <Button
-                                    onClick={handleSaveEdit}
-                                    size="sm"
-                                    className="gap-1.5 bg-sky-600 hover:bg-sky-700"
-                                  >
-                                    <Save className="w-4 h-4" />
-                                    保存修改
-                                  </Button>
-                                </>
-                              ) : (
-                                // 预览模式按钮
-                                <>
-                                  {activeBlocksWithPositions.length > 0 && (
-                                    <div className="flex items-center bg-muted dark:bg-muted rounded-lg p-0.5 mr-2">
-                                      <button
-	                                        onClick={() => setRightPanelMode('blocks')}
-	                                        className={cn(
-	                                          'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
-	                                          rightPanelMode === 'blocks'
-	                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
-	                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
-	                                        )}
-                                      >
-                                        <FileStack className="w-3.5 h-3.5" />
-                                        版面
-                                      </button>
-                                      <button
-	                                        onClick={() => setRightPanelMode('markdown')}
-	                                        className={cn(
-	                                          'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
-	                                          rightPanelMode === 'markdown'
-	                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
-	                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
-	                                        )}
-                                      >
-                                        <FileText className="w-3.5 h-3.5" />
-                                        Markdown
-                                      </button>
-                                    </div>
-                                  )}
-
-                                  {rightPanelMode === 'markdown' && (
-                                    <div className="flex items-center bg-muted dark:bg-muted rounded-lg p-0.5 mr-2">
-                                      <button
-	                                        onClick={() => setPreviewMode('rendered')}
-	                                        className={cn(
-	                                          'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
-	                                          previewMode === 'rendered'
-	                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
-	                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
-	                                        )}
-                                      >
-                                        <Eye className="w-3.5 h-3.5" />
-                                        预览
-                                      </button>
-                                      <button
-	                                        onClick={() => setPreviewMode('raw')}
-	                                        className={cn(
-	                                          'px-3 py-1.5 text-xs rounded-md flex items-center gap-1 focus-ring transition-colors duration-200 motion-reduce:transition-none',
-	                                          previewMode === 'raw'
-	                                            ? 'bg-card dark:bg-background text-foreground dark:text-foreground shadow-sm dark:shadow-none'
-	                                            : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground/80 dark:hover:text-muted-foreground'
-	                                        )}
-                                      >
-                                        <Code className="w-3.5 h-3.5" />
-                                        源码
-                                      </button>
-                                    </div>
-                                  )}
-
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleStartEdit}
-                                    className="gap-1.5"
-                                  >
-                                    <Edit3 className="w-4 h-4" />
-                                    编辑
-                                  </Button>
-
-                                  <Button variant="outline" size="sm" onClick={copyMarkdown} className="gap-1.5">
-                                    {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
-                                    {copied ? '已复制' : '复制'}
-                                  </Button>
-
-                                  <Button variant="outline" size="sm" onClick={downloadMarkdown} className="gap-1.5">
-                                    <Download className="w-4 h-4" />
-                                    下载
-                                  </Button>
-                                </>
-                              )}
-                            </>
-                          )}
-
-                          {activeFile.status === 'pending' && (
-                            <div className="flex items-center gap-2 mr-2">
-                              <span className="text-xs font-medium text-muted-foreground">解析方式</span>
-                              <ParserDropdown
-                                value={activeFile.parserBackend}
-                                filename={activeFile.file.name}
-                                onChange={(backend) =>
-                                  setQueueFileParserBackend({
-                                    fileId: activeFile.id,
-                                    filename: activeFile.file.name,
-                                    backend,
-                                  })
-                                }
-                                className="w-56"
-                              />
-                            </div>
-                          )}
-
-                          {activeFile.status === 'error' && (
-                            <div className="flex items-center gap-2 mr-2">
-                              <span className="text-xs font-medium text-muted-foreground">解析方式</span>
-                              <ParserDropdown
-                                value={activeFile.parserBackend}
-                                filename={activeFile.file.name}
-                                onChange={(backend) =>
-                                  setQueueFileParserBackend({
-                                    fileId: activeFile.id,
-                                    filename: activeFile.file.name,
-                                    backend,
-                                  })
-                                }
-                                className="w-56"
-                              />
-                            </div>
-                          )}
-
-                          {activeFile.status === 'pending' && (
-                            <Button onClick={() => parseFile(activeFile.id)} className="gap-2 bg-sky-600 hover:bg-sky-700">
-                              <Sparkles className="w-4 h-4 text-sky-200" />
-                              开始解析
-                            </Button>
-                          )}
-
-                          {activeFile.status === 'error' && (
-                            <Button onClick={() => parseFile(activeFile.id)} variant="outline" className="gap-2">
-                              <RotateCcw className="w-4 h-4" />
-                              重试
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* 内容区 */}
-                      <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar">
-                        {activeFile.status === 'pending' && (
-                          <div className="flex items-center justify-center h-full">
-                            <div className="text-center">
-                              <div className="w-16 h-16 mx-auto mb-4 bg-sky-100 dark:bg-sky-900/30 rounded-xl flex items-center justify-center">
-                                <Sparkles className="w-8 h-8 text-sky-700 dark:text-sky-300" />
-                              </div>
-                              <p className="text-foreground/80 dark:text-muted-foreground mb-2">准备就绪</p>
-                              <p className="text-muted-foreground dark:text-muted-foreground text-sm">
-                                先在上方选择解析方式（当前：{activeFile.parserLabel}），再点击开始解析
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {activeFile.status === 'parsing' && (
-                          <div className="flex items-center justify-center h-full">
-                            <div className="text-center">
-                              <div className="relative">
-	                                <Loader2 className="w-12 h-12 animate-spin motion-reduce:animate-none text-sky-700 dark:text-sky-300 mx-auto" />
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  <span className="text-xs font-medium text-sky-700 dark:text-sky-200">
-                                    {Math.round(activeFile.progress || 0)}%
-                                  </span>
-                                </div>
-                              </div>
-                              <p className="text-foreground/80 dark:text-muted-foreground mt-4">正在解析...</p>
-                              <p className="text-muted-foreground dark:text-muted-foreground text-sm mt-1">{activeFile.parserLabel}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        {activeFile.status === 'error' && (
-                          <div className="flex items-center justify-center h-full">
-                            <div className="text-center max-w-md">
-                              <div className="w-16 h-16 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center">
-                                <FileText className="w-8 h-8 text-red-600 dark:text-red-400" />
-                              </div>
-                              <p className="text-red-700 dark:text-red-400 font-medium mb-2">解析失败</p>
-                              <p className="text-muted-foreground dark:text-muted-foreground text-sm">{activeFile.error}</p>
-
-                              {Array.isArray(activeFile.parseDiagnostics?.suggested_backends) &&
-                                activeFile.parseDiagnostics?.suggested_backends?.length ? (
-                                <div className="mt-4 flex flex-wrap justify-center gap-2">
-                                  {activeFile.parseDiagnostics.suggested_backends.slice(0, 6).map((backend) => {
-                                    const resolved = resolveParserBackendForFilename(activeFile.file.name, backend)
-                                    const label = getParserLabel(resolved.backend)
-                                    return (
-                                      <Button
-                                        key={backend}
-                                        variant="outline"
-                                        size="sm"
-                                        className="gap-2"
-                                        onClick={() => parseFile(activeFile.id, backend)}
-                                      >
-                                        <RotateCcw className="w-3.5 h-3.5" />
-                                        用 {label} 重试
-                                      </Button>
-                                    )
-                                  })}
-                                </div>
-                              ) : null}
-
-                              {activeFile.parseDiagnostics?.pdf_sample ? (
-                                <div className="mt-4 text-left">
-                                  <div className="text-xs text-muted-foreground">
-                                    PDF 采样
-                                    {typeof activeFile.parseDiagnostics.pdf_sample.page_count === 'number'
-                                      ? `（${activeFile.parseDiagnostics.pdf_sample.page_count} 页）`
-                                      : ''}
-                                    {activeFile.parseDiagnostics.pdf_sample.is_scanned ? ' · 可能是扫描件（可选文本很少）' : ''}
-                                  </div>
-                                  {Array.isArray(activeFile.parseDiagnostics.pdf_sample.samples) &&
-                                    activeFile.parseDiagnostics.pdf_sample.samples.length ? (
-                                    <div className="mt-2 max-h-48 overflow-y-auto overscroll-contain space-y-2 rounded-lg border border-border/50 dark:border-border/60 bg-muted/30 dark:bg-background/40 p-2">
-                                      {activeFile.parseDiagnostics.pdf_sample.samples.slice(0, 3).map((s) => (
-                                        <div
-                                          key={s.page}
-                                          className="rounded-md border border-border/40 dark:border-border/60 bg-card/70 dark:bg-background/60 p-2"
-                                        >
-                                          <div className="text-xs text-muted-foreground">
-                                            页 {s.page} · {s.text_chars} 字符
-                                          </div>
-                                          {s.excerpt ? (
-                                            <div className="mt-1 text-xs whitespace-pre-wrap text-foreground/80 dark:text-muted-foreground">
-                                              {s.excerpt}
-                                            </div>
-                                          ) : (
-                                            <div className="mt-1 text-xs italic text-muted-foreground">无可选中文本</div>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        )}
-
-                        {activeFile.status === 'parsed' && activeMarkdown && (
-                          <div className="h-full">
-                            {isEditing ? (
-                              <div className="p-6">
-                                <textarea
-                                  value={editedContent}
-                                  onChange={(e) => setEditedContent(e.target.value)}
-                                  className="w-full min-h-[500px] p-4 font-mono text-sm leading-relaxed text-foreground/80 dark:text-muted-foreground whitespace-pre-wrap bg-muted dark:bg-background border border-border dark:border-border rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
-                                  placeholder="在此编辑内容..."
-                                  autoFocus
-                                />
-                              </div>
-                            ) : (
-                              <div className="flex h-full min-h-[520px] flex-col lg:flex-row">
-                                {isPdf ? (
-                                  <div className="w-full lg:w-1/2 border-b lg:border-b-0 lg:border-r border-border/70 dark:border-border/60 bg-muted/70 dark:bg-background/40">
-                                    <PdfViewer
-                                      file={activeFile.file}
-                                      blocks={activeBlocksWithPositions}
-                                      activeBlockIds={activeBlockId ? [activeBlockId] : []}
-                                      hoveredBlockIds={hoveredBlockId ? [hoveredBlockId] : []}
-                                    />
-                                  </div>
-                                ) : null}
-                                  <div className={isPdf ? 'w-full lg:w-1/2' : 'w-full'}>
-                                  {rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0 ? (
-                                    <ParsingRightPanel className="h-full no-scrollbar p-6 space-y-4">
-                                      {activeBlocksWithPositions
-                                        .filter((block) => (block.text || '').trim().length > 0)
-                                        .map((block, idx) => {
-                                          const pageIndex = block.positions?.[0]?.pages?.[0]
-                                          const isActive = block.id === activeBlockId
-                                          return (
-                                            <button
-                                              key={block.id}
-                                              type="button"
-                                              onClick={() => setActiveBlockId(block.id)}
-                                              onMouseEnter={() => setHoveredBlockId(block.id)}
-                                              onMouseLeave={() => setHoveredBlockId(null)}
-                                              className={cn(
-                                                'w-full text-left rounded-xl border p-4 transition shadow-sm',
-                                                isActive
-                                                  ? 'border-sky-400 dark:border-sky-700/40 bg-sky-50 dark:bg-sky-950/30'
-                                                  : 'border-border/50 dark:border-border/60 bg-card dark:bg-background/40 hover:border-sky-300 dark:hover:border-sky-700/40'
-                                              )}
-                                            >
-                                              <div className="text-xs text-muted-foreground dark:text-muted-foreground mb-2">
-                                                块 {idx + 1}
-                                                {Number.isFinite(pageIndex) ? ` · 页 ${Number(pageIndex) + 1}` : ''}
-                                              </div>
-                                              <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground dark:prose-headings:text-foreground prose-p:text-foreground/80 dark:prose-p:text-muted-foreground prose-a:text-sky-700 dark:prose-a:text-sky-300 prose-code:text-sky-700 dark:prose-code:text-sky-300 prose-code:bg-sky-500/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-900 prose-table:border-collapse prose-th:bg-sky-500/10 dark:prose-th:bg-sky-500/20 prose-th:border prose-th:border-sky-200 dark:prose-th:border-sky-500/30 prose-th:p-2 prose-td:border prose-td:border-sky-200 dark:prose-td:border-sky-500/30 prose-td:p-2">
-                                                <MarkdownRenderer markdown={block.text} />
-                                              </div>
-                                            </button>
-                                          )
-                                        })}
-                                    </ParsingRightPanel>
-                                  ) : (
-                                    <ParsingRightPanel className="h-full no-scrollbar p-6">
-                                      {previewMode === 'rendered' ? (
-                                        <div className="flex gap-8">
-                                          <div className="min-w-0 flex-1 prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground dark:prose-headings:text-foreground prose-p:text-foreground/80 dark:prose-p:text-muted-foreground prose-a:text-sky-700 dark:prose-a:text-sky-300 prose-code:text-sky-700 dark:prose-code:text-sky-300 prose-code:bg-sky-500/10 dark:prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-900 prose-table:border-collapse prose-th:bg-sky-500/10 dark:prose-th:bg-sky-500/20 prose-th:border prose-th:border-sky-200 dark:prose-th:border-sky-500/30 prose-th:p-2 prose-td:border prose-td:border-sky-200 dark:prose-td:border-sky-500/30 prose-td:p-2">
-                                            <MarkdownRenderer markdown={activeMarkdown} autoScrollToHash />
-                                          </div>
-                                          {tocEnabled && (
-                                            <aside className="hidden xl:block w-64 shrink-0">
-                                              <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/70 dark:border-border/60 bg-muted/40 dark:bg-background/40 p-3">
-                                                <MarkdownToc markdown={activeMarkdown} />
-                                              </div>
-                                            </aside>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <pre className="font-mono text-sm leading-relaxed text-foreground/80 dark:text-muted-foreground whitespace-pre-wrap bg-muted/70 dark:bg-background/40 p-6 rounded-xl border border-border dark:border-border">
-                                          {activeMarkdown}
-                                        </pre>
-                                      )}
-                                    </ParsingRightPanel>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-	                      {/* 底部操作栏 */}
-	                      {activeFile.status === 'parsed' && activeMarkdown && (
-	                        <div className="px-6 py-4 border-t border-border/60 bg-card/70 dark:bg-background/40">
-	                          <div className="flex items-center justify-between">
-	                            <div className="text-sm text-muted-foreground dark:text-muted-foreground">
-	                              {isEditing
-	                                ? '编辑完成后点击"保存修改"，然后提交到数据治理'
-	                                : '确认解析内容无误后，提交到数据治理工作台'
-	                              }
-	                            </div>
-	                            <div className="flex items-center gap-3">
-	                              {!isEditing && (
-	                                <Button
-	                                  onClick={handleSubmitToGovernance}
-	                                  className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-	                                >
-	                                  <ShieldCheck className="w-4 h-4" />
-	                                  提交到数据治理
-                                  <ChevronRight className="w-4 h-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  ) : null}
-                </>
-              ) : (
-	                // 空状态
-	                <div className="flex-1 flex items-center justify-center">
-	                  <div className="text-center max-w-md">
-	                    <div className="size-20 mx-auto mb-4 rounded-2xl border border-border/60 bg-card flex items-center justify-center shadow-soft">
-	                      <FileText className="w-10 h-10 text-muted-foreground dark:text-muted-foreground" />
-	                    </div>
-	                    <h3 className="text-lg font-medium text-foreground/80 dark:text-muted-foreground mb-2">选择文件开始</h3>
-                    <p className="text-muted-foreground dark:text-muted-foreground text-sm">
-                      从左侧上传或选择文件，系统将使用 AI 智能解析文档结构
-                    </p>
+                {activeFile ? (
+                  <ParsingActiveFilePane
+                    activeFile={activeFile}
+                    activeRun={activeRun}
+                    activeMarkdown={activeMarkdown}
+                    activeQualityGate={activeQualityGate}
+                    activePdfQuality={activePdfQuality}
+                    activeBlocksWithPositions={activeBlocksWithPositions}
+                    isPdf={isPdf}
+                    tocEnabled={tocEnabled}
+                    previewMode={previewMode}
+                    rightPanelMode={rightPanelMode}
+                    isEditing={isEditing}
+                    editedContent={editedContent}
+                    copied={copied}
+                    activeBlockId={activeBlockId}
+                    hoveredBlockId={hoveredBlockId}
+                    onSelectRun={handleSelectRun}
+                    onPreviewModeChange={setPreviewMode}
+                    onRightPanelModeChange={setRightPanelMode}
+                    onStartEdit={handleStartEdit}
+                    onCancelEdit={handleCancelEdit}
+                    onSaveEdit={() => detachPromise(handleSaveEdit())}
+                    onCopyMarkdown={() => detachPromise(copyMarkdown())}
+                    onDownloadMarkdown={downloadMarkdown}
+                    onParseFile={parseFile}
+                    onSetQueueFileParserBackend={setQueueFileParserBackend}
+                    onSubmitToGovernance={handleSubmitToGovernance}
+                    onEditedContentChange={setEditedContent}
+                    onActiveBlockIdChange={setActiveBlockId}
+                    onHoveredBlockIdChange={setHoveredBlockId}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <div className="flex flex-1 items-center justify-center">
+                <div className="max-w-md text-center">
+                  <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-2xl border border-border/60 bg-card shadow-soft">
+                    <FileText className="h-10 w-10 text-muted-foreground dark:text-muted-foreground" />
                   </div>
+                  <h3 className="mb-2 text-lg font-medium text-foreground/80 dark:text-muted-foreground">选择文件开始</h3>
+                  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
+                    从左侧上传或选择文件，系统将使用 AI 智能解析文档结构
+                  </p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
         </ParsingMainPanel>
           </>
         }
