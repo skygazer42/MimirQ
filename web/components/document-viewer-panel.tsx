@@ -1,13 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { X, Maximize2, Minimize2, FileText, Loader2, Download, Copy, Link2, Pencil, Trash2, Plus, Sparkles } from "lucide-react"
+import { X, Maximize2, Minimize2, FileText, Loader2, Download, Plus, Sparkles } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn, detachPromise } from '@/lib/utils'
 import { useResolvedAuthAssetUrl } from "@/components/auth-image"
 import { useDocumentView } from "@/store/document-view"
 import { Button } from "@/components/ui/button"
-import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -15,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { documentApi, ragApi } from "@/lib/api"
 import { API_V1_BASE_URL } from "@/lib/env"
 import type { Citation, Document, DocumentChunk, DocumentParsedContentResponse, DocumentQAGenerateResponse } from "@/types"
+import { DocumentChunkCard } from "@/components/document-viewer/chunk-renderer"
 import { FloatingMenu } from "@/components/document-viewer/floating-menu"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
@@ -22,12 +22,14 @@ import { OriginalPreviewMonaco } from "@/components/chunk-preview/components/wor
 import { formatApiError } from "@/lib/api-errors"
 import { toast } from "sonner"
 
-function escapeRegExp(value: string): string {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
 }
 
 function toCitation(value: unknown): Citation | null {
@@ -35,41 +37,29 @@ function toCitation(value: unknown): Citation | null {
   const document_id = typeof value.document_id === "string" ? value.document_id : ""
   const document_name = typeof value.document_name === "string" ? value.document_name : ""
   const chunk_content = typeof value.chunk_content === "string" ? value.chunk_content : ""
-  const relevance_score =
-    typeof value.relevance_score === "number" ? value.relevance_score : Number(value.relevance_score ?? 0) || 0
+  const relevance_score = toFiniteNumber(value.relevance_score) ?? 0
   if (!document_id || !document_name) return null
-  return { ...(value as any), document_id, document_name, chunk_content, relevance_score } as Citation
-}
+  const matched_terms = Array.isArray(value.matched_terms)
+    ? value.matched_terms.filter((item): item is string => typeof item === "string")
+    : undefined
+  const chunk_id = typeof value.chunk_id === "string" ? value.chunk_id : undefined
+  const page_number = toFiniteNumber(value.page_number)
+  const chunk_index = toFiniteNumber(value.chunk_index)
+  const start_char = toFiniteNumber(value.start_char)
+  const end_char = toFiniteNumber(value.end_char)
 
-function highlightText(content: string, query: string) {
-  const q = (query || "").trim()
-  if (!q) return content
-  const re = new RegExp(escapeRegExp(q), "ig")
-  const out: React.ReactNode[] = []
-  let lastIndex = 0
-  let matchCount = 0
-
-  for (const match of content.matchAll(re)) {
-    const idx = match.index
-    if (idx == null) continue
-    const matched = match[0] || ""
-    if (!matched) continue
-    if (idx > lastIndex) out.push(content.slice(lastIndex, idx))
-    out.push(
-      <mark
-        key={`${idx}-${matched}`}
-        className="rounded bg-yellow-200/60 px-0.5 text-foreground dark:bg-yellow-400/20"
-      >
-        {content.slice(idx, idx + matched.length)}
-      </mark>
-    )
-    lastIndex = idx + matched.length
-    matchCount += 1
-    if (matchCount >= 50) break
+  return {
+    document_id,
+    document_name,
+    chunk_content,
+    relevance_score,
+    ...(chunk_id ? { chunk_id } : {}),
+    ...(matched_terms?.length ? { matched_terms } : {}),
+    ...(page_number !== undefined ? { page_number } : {}),
+    ...(chunk_index !== undefined ? { chunk_index } : {}),
+    ...(start_char !== undefined ? { start_char } : {}),
+    ...(end_char !== undefined ? { end_char } : {}),
   }
-
-  if (lastIndex < content.length) out.push(content.slice(lastIndex))
-  return out.length ? out : content
 }
 
 export function DocumentViewerPanel() {
@@ -493,6 +483,20 @@ export function DocumentViewerPanel() {
     }
   }, [])
 
+  const copyChunkContent = React.useCallback((content: string) => {
+    detachPromise(copyText(content, "已复制切片内容"))
+  }, [copyText])
+
+  const copyChunkLink = React.useCallback((chunk: DocumentChunk) => {
+    detachPromise(copyText(
+      buildChunkLink(chunk.id, {
+        start: typeof chunk.start_char === "number" ? chunk.start_char : null,
+        end: typeof chunk.end_char === "number" ? chunk.end_char : null,
+      }),
+      "已复制定位链接"
+    ))
+  }, [buildChunkLink, copyText])
+
   const canEditChunks = Boolean(doc && !["pending", "processing"].includes(String(doc.status || "").toLowerCase()))
 
   const openCreateChunk = React.useCallback(() => {
@@ -563,7 +567,7 @@ export function DocumentViewerPanel() {
       globalThis.window.requestAnimationFrame(() => rowVirtualizer.measure())
 
       setChunkEditorOpen(false)
-    } catch (err: any) {
+    } catch (err) {
       console.error(err)
       toast.error(formatApiError(err, "切片保存失败"))
     } finally {
@@ -614,6 +618,10 @@ export function DocumentViewerPanel() {
     },
     [canEditChunks, documentId, highlightChunkId, rowVirtualizer, setHighlightChunk]
   )
+
+  const handleDeleteChunk = React.useCallback((chunk: DocumentChunk) => {
+    detachPromise(deleteChunk(chunk))
+  }, [deleteChunk])
 
   const runQaGeneration = React.useCallback(async () => {
     if (!documentId) return
@@ -1340,38 +1348,7 @@ export function DocumentViewerPanel() {
                            </div>);
     }
     else if (highlightChunk) {
-            return (<div className="rounded-xl border border-border bg-background p-4">
-                             <div className="flex items-center justify-between mb-2">
-                               <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                 #{highlightChunk.chunk_index}
-                               </span>
-                               <div className="flex items-center gap-2">
-                                 {highlightChunk.page_number == null ? null : (<span className="text-xs text-muted-foreground">P.{highlightChunk.page_number}</span>)}
-                                 <div className="flex items-center gap-1">
-                                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyText(highlightChunk.content, "已复制切片内容")} aria-label="复制切片内容" title="复制切片内容">
-                                     <Copy className="h-4 w-4"/>
-                                   </Button>
-                                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => copyText(buildChunkLink(highlightChunk.id, {
-                    start: typeof highlightChunk.start_char === "number" ? highlightChunk.start_char : null,
-                    end: typeof highlightChunk.end_char === "number" ? highlightChunk.end_char : null,
-                }), "已复制定位链接")} aria-label="复制定位链接" title="复制定位链接">
-                                     <Link2 className="h-4 w-4"/>
-                                   </Button>
-                                   <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditChunk(highlightChunk)} disabled={!canEditChunks || chunkEditorSubmitting} aria-label="Edit chunk" title="Edit chunk">
-                                     <Pencil className="h-4 w-4"/>
-                                   </Button>
-                                   <ConfirmDialog title={`Delete chunk #${highlightChunk.chunk_index}?`} description="This cannot be undone." confirmLabel="Delete" cancelLabel="Cancel" confirmVariant="destructive" confirmDisabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id} onConfirm={() => detachPromise(deleteChunk(highlightChunk))}>
-                                     <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" disabled={!canEditChunks || chunkDeleteSubmitting === highlightChunk.id} aria-label="Delete chunk" title="Delete chunk">
-                                       {chunkDeleteSubmitting === highlightChunk.id ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : (<Trash2 className="h-4 w-4"/>)}
-                                     </Button>
-                                   </ConfirmDialog>
-                                 </div>
-                               </div>
-                             </div>
-                             <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
-                               {highlightText(highlightChunk.content, chunkQuery)}
-                             </p>
-                           </div>);
+            return (<DocumentChunkCard chunk={highlightChunk} query={chunkQuery} isActive canEditChunks={canEditChunks} chunkEditorSubmitting={chunkEditorSubmitting} chunkDeleteSubmitting={chunkDeleteSubmitting} showHoverActions={false} onCopyContent={copyChunkContent} onCopyLink={copyChunkLink} onEdit={openEditChunk} onDelete={handleDeleteChunk}/>);
         }
         else {
             return (<div className="text-xs text-muted-foreground">未找到命中切片（可能已被删除或无权限）</div>);
@@ -1414,98 +1391,18 @@ export function DocumentViewerPanel() {
                               }}
                               className="pb-4"
                             >
-                                <div
-                                  id={`chunk-${chunk.id}`}
-                                  className={cn(
-                                  "group p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none",
-                                  highlightChunkId === chunk.id
-                                    ? "bg-primary/5 border-primary shadow-[0_0_0_1px_rgba(var(--primary),0.2)] ring-1 ring-primary/20"
-                                    : "bg-background border-border hover:border-primary/30 hover:shadow-sm"
-                                )}
-                              >
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-xs font-mono font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                    #{chunk.chunk_index}
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    {chunk.page_number == null ? null : (
-                                      <span className="text-xs text-muted-foreground">P.{chunk.page_number}</span>
-                                    )}
-                                    <div className="flex items-center gap-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7"
-                                        onClick={() => copyText(chunk.content, "已复制切片内容")}
-                                        aria-label="复制切片内容"
-                                        title="复制切片内容"
-                                      >
-                                        <Copy className="h-4 w-4" />
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7"
-                                        onClick={() =>
-                                          copyText(
-                                            buildChunkLink(chunk.id, {
-                                              start: typeof chunk.start_char === "number" ? chunk.start_char : null,
-                                              end: typeof chunk.end_char === "number" ? chunk.end_char : null,
-                                            }),
-                                            "已复制定位链接"
-                                          )
-                                        }
-                                        aria-label="复制定位链接"
-                                        title="复制定位链接"
-                                      >
-                                        <Link2 className="h-4 w-4" />
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7"
-                                        onClick={() => openEditChunk(chunk)}
-                                        disabled={!canEditChunks || chunkEditorSubmitting}
-                                        aria-label="Edit chunk"
-                                        title="Edit chunk"
-                                      >
-                                        <Pencil className="h-4 w-4" />
-                                      </Button>
-                                      <ConfirmDialog
-                                        title={`Delete chunk #${chunk.chunk_index}?`}
-                                        description="This cannot be undone."
-                                        confirmLabel="Delete"
-                                        cancelLabel="Cancel"
-                                        confirmVariant="destructive"
-                                        confirmDisabled={!canEditChunks || chunkDeleteSubmitting === chunk.id}
-                                        onConfirm={() => detachPromise(deleteChunk(chunk))}
-                                      >
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-7 w-7 text-destructive hover:text-destructive"
-                                          disabled={!canEditChunks || chunkDeleteSubmitting === chunk.id}
-                                          aria-label="Delete chunk"
-                                          title="Delete chunk"
-                                        >
-                                          {chunkDeleteSubmitting === chunk.id ? (
-                                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                                          ) : (
-                                            <Trash2 className="h-4 w-4" />
-                                          )}
-                                        </Button>
-                                      </ConfirmDialog>
-                                    </div>
-                                  </div>
-                                </div>
-                                <p className="text-sm leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap">
-                                  {highlightText(chunk.content, chunkQuery)}
-                                </p>
-                              </div>
+                              <DocumentChunkCard
+                                chunk={chunk}
+                                query={chunkQuery}
+                                isActive={highlightChunkId === chunk.id}
+                                canEditChunks={canEditChunks}
+                                chunkEditorSubmitting={chunkEditorSubmitting}
+                                chunkDeleteSubmitting={chunkDeleteSubmitting}
+                                onCopyContent={copyChunkContent}
+                                onCopyLink={copyChunkLink}
+                                onEdit={openEditChunk}
+                                onDelete={handleDeleteChunk}
+                              />
                             </div>
                           )
                         })}

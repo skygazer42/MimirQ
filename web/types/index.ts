@@ -28,8 +28,8 @@ export type DocumentFolderTreeResponse = import('./backend').DocumentFolderTreeR
 export interface DocumentHealthParsing {
   parser_backend?: string | null
   parser_backend_requested?: string | null
-  parse_quality?: Record<string, any> | null
-  pdf_quality?: Record<string, any> | null
+  parse_quality?: JsonObject | null
+  pdf_quality?: JsonObject | null
 
   is_scanned?: boolean | null
   page_count?: number | null
@@ -100,7 +100,7 @@ export interface DocumentHealthCard {
 
   parsing: DocumentHealthParsing
   chunking: DocumentHealthChunking
-  kg?: Record<string, any> | null
+  kg?: JsonObject | null
   retrieval_hits?: DocumentHealthRetrievalHits | null
 }
 
@@ -703,7 +703,7 @@ export interface Citation {
   retrieval_role?: string
   neighbor_of?: string
   kg_path?: Array<{ entity_id: string; type?: string }>
-  kg_path_provenance?: Record<string, any>
+  kg_path_provenance?: JsonObject
   doc_pipeline_key?: string
   pipeline_hash?: string
   relevance_score: number
@@ -1664,7 +1664,7 @@ export interface RagTraceRetrievalQuery {
   query_chars?: number | null
   elapsed_sec?: number | null
   ok?: boolean | null
-  retriever_debug?: Record<string, any> | null
+  retriever_debug?: JsonObject | null
 }
 
 export interface RagTraceRetrieval {
@@ -1877,7 +1877,7 @@ export interface AuditLogItem {
   request_id?: string | null
   ip?: string | null
   user_agent?: string | null
-  details: Record<string, any>
+  details: JsonObject
   created_at: string
 }
 
@@ -1939,7 +1939,7 @@ export interface MessageFeedback {
   reason?: string
   tags: string[]
   expected_answer?: string
-  extra?: Record<string, any>
+  extra?: JsonObject
   created_at: string
   updated_at: string
 }
@@ -1950,7 +1950,7 @@ export interface MessageFeedbackCreate {
   reason?: string
   tags?: string[]
   expected_answer?: string
-  extra?: Record<string, any>
+  extra?: JsonObject
 }
 
 export interface MessageFeedbackListResponse {
@@ -1999,7 +1999,7 @@ export interface KGSearchRequest {
 }
 
 export interface KGSearchResponse {
-  result: Record<string, any>
+  result: JsonObject
   query: string
 }
 
@@ -2008,7 +2008,7 @@ export interface KGGraphNode {
   label: string
   group?: number
   val?: number
-  meta?: Record<string, any>
+  meta?: JsonObject
 }
 
 export interface KGGraphLink {
@@ -2016,13 +2016,13 @@ export interface KGGraphLink {
   target: string
   label?: string
   weight?: number
-  meta?: Record<string, any>
+  meta?: JsonObject
 }
 
 export interface KGGraphResponse {
   nodes: KGGraphNode[]
   links: KGGraphLink[]
-  stats?: Record<string, any>
+  stats?: JsonObject
 }
 
 export interface KGEntityItem {
@@ -2031,7 +2031,7 @@ export interface KGEntityItem {
   type: string
   normalized_name: string
   description?: string | null
-  extra_data?: Record<string, any>
+  extra_data?: JsonObject
   created_at?: string | null
   updated_at?: string | null
 }
@@ -2043,8 +2043,8 @@ export interface KGEventItem {
   content: string
   document_id?: string | null
   chunk_id?: string | null
-  references?: Record<string, any>
-  extra_data?: Record<string, any>
+  references?: JsonObject
+  extra_data?: JsonObject
   created_at?: string | null
   updated_at?: string | null
 }
@@ -2071,7 +2071,7 @@ export interface KGEntityDetailResponse {
   entity: KGEntityItem
   events: KGEventItem[]
   neighbors: KGEntityNeighbor[]
-  stats?: Record<string, any>
+  stats?: JsonObject
 }
 
 export interface KGEntityTypeCount {
@@ -2101,20 +2101,20 @@ export interface KGEntityMergeRequest {
 export interface KGEntityMergePreviewResponse {
   source_entity_id: string
   target_entity_id: string
-  stats?: Record<string, any>
+  stats?: JsonObject
 }
 
 export interface KGEntityMergeResponse {
   action_id: string
   source_entity_id: string
   target_entity_id: string
-  stats?: Record<string, any>
+  stats?: JsonObject
 }
 
 export interface KGEntityResolutionUndoResponse {
   action_id: string
   status: string
-  stats?: Record<string, any>
+  stats?: JsonObject
 }
 
 export interface KGEntitySplitRequest {
@@ -2127,7 +2127,7 @@ export interface KGEntitySplitResponse {
   action_id: string
   original_entity_id: string
   new_entity_id: string
-  stats?: Record<string, any>
+  stats?: JsonObject
 }
 
 export interface KGEntityAliasCreateRequest {
@@ -2140,7 +2140,7 @@ export interface KGEntityAliasItem {
   alias: string
   normalized_alias: string
   created_by?: string | null
-  extra_data?: Record<string, any>
+  extra_data?: JsonObject
   created_at?: string | null
   updated_at?: string | null
 }
@@ -2163,7 +2163,7 @@ export interface KGEntityAliasSuggestionsResponse {
   entity_id: string
   suggestions: KGEntityAliasSuggestionItem[]
   mode?: string
-  stats?: Record<string, any>
+  stats?: JsonObject
 }
 
 export interface KGPredicateOntologyItem {
@@ -2173,7 +2173,7 @@ export interface KGPredicateOntologyItem {
   display_name?: string | null
   description?: string | null
   is_enabled: boolean
-  extra_data?: Record<string, any>
+  extra_data?: JsonObject
   created_at?: string | null
   updated_at?: string | null
 }
@@ -2264,7 +2264,7 @@ export interface RegressionCase {
   expected_answer?: string
   reference_sources: ReferenceSource[]
   tags: string[]
-  extra: Record<string, any>
+  extra: JsonObject
   created_by?: string
   created_at: string
   updated_at: string
@@ -2277,7 +2277,7 @@ export interface RegressionCaseCreate {
   expected_answer?: string
   reference_sources?: ReferenceSource[]
   tags?: string[]
-  extra?: Record<string, any>
+  extra?: JsonObject
 }
 
 export interface RegressionCasePatch {
@@ -2286,7 +2286,7 @@ export interface RegressionCasePatch {
   expected_answer?: string | null
   reference_sources?: ReferenceSource[]
   tags?: string[]
-  extra?: Record<string, any>
+  extra?: JsonObject
 }
 
 export interface RegressionCaseBundleItem {
@@ -2306,7 +2306,7 @@ export interface RegressionCaseImportResponse {
   created: number
   updated: number
   skipped: number
-  errors: Array<Record<string, any>>
+  errors: JsonObject[]
 }
 
 export interface RegressionCaseList {
@@ -2356,7 +2356,7 @@ export interface GeneratedQuestion {
   context?: string
   source_type: 'document' | 'conversation'
   source_id: string
-  metadata: Record<string, any>
+  metadata: JsonObject
 }
 
 export interface TestGenFromDocsRequest {
@@ -2578,8 +2578,8 @@ export interface DatasetProfileTargetCheck {
   key: string
   label: string
   status: DatasetProfileTargetCheckStatus
-  observed: Record<string, any>
-  target: Record<string, any>
+  observed: JsonObject
+  target: JsonObject
   message?: string | null
   suggestions: string[]
 }
@@ -2658,7 +2658,7 @@ export interface DatasetProfileDocumentOut {
   created_at?: string | null
   updated_at?: string | null
   error_message?: string | null
-  metadata: Record<string, any>
+  metadata: JsonObject
   preview?: string | null
   preview_truncated?: boolean
 }
@@ -2689,8 +2689,8 @@ export interface DatasetProfileScanRunOut {
   kind: string
   status: string
   progress: number
-  config: Record<string, any>
-  summary: Record<string, any>
+  config: JsonObject
+  summary: JsonObject
   error_message?: string | null
   started_at?: string | null
   finished_at?: string | null
@@ -2779,7 +2779,7 @@ export interface DatasetPrecheckSummary {
   length_histogram: DatasetPrecheckHistogramBin[]
 
   pdf_scan: DatasetPrecheckPdfScanStats
-  pdf_detection?: Record<string, any>
+  pdf_detection?: JsonObject
 
   pii_hits_total: Record<string, number>
   secrets_hits_total: Record<string, number>
@@ -2855,9 +2855,9 @@ export interface DatasetPrecheckScanRunOut {
   kind: string
   status: string
   progress: number
-  config: Record<string, any>
-  summary: Record<string, any>
-  artifacts: Record<string, any>
+  config: JsonObject
+  summary: JsonObject
+  artifacts: JsonObject
   error_message?: string | null
   started_at?: string | null
   finished_at?: string | null
@@ -2948,7 +2948,7 @@ export interface DatasetTableAsset {
   col_count: number
   truncated: boolean
   columns: DatasetTableColumn[]
-  sample_rows: Record<string, any>[]
+  sample_rows: JsonObject[]
 }
 
 export interface DatasetTablesListResponse {
@@ -2965,7 +2965,7 @@ export interface TableQueryRequest {
 export interface TableQueryResponse {
   sql: string
   columns: string[]
-  rows: any[][]
+  rows: unknown[][]
   truncated: boolean
 }
 
@@ -3027,8 +3027,8 @@ export interface DbProfileSnapshot {
   id: string
   table_id: string
   entitlement_hash: string
-  profile: Record<string, any>
-  sample_meta: Record<string, any>
+  profile: JsonObject
+  sample_meta: JsonObject
   created_at: string
 }
 

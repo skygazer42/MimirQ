@@ -6,18 +6,16 @@ import { Eye, FileSearch, Settings2, ToggleLeft, ToggleRight } from 'lucide-reac
 
 type ObservabilitySectionProps = {
   observability: ObservabilityConfig
-  defaults: ObservabilityConfig
   updateObservability: (patch: Partial<ObservabilityConfig>) => void
 }
 
 export function ObservabilitySection({
   observability,
-  defaults,
   updateObservability,
 }: Readonly<ObservabilitySectionProps>) {
-  const isToolCallLogEnabled = observability.tool_call_log_enabled ?? defaults.tool_call_log_enabled
-  const isAgentLogEnabled = observability.agent_log_enabled ?? defaults.agent_log_enabled
-  const isMetricsLogEnabled = observability.metrics_log_enabled ?? defaults.metrics_log_enabled
+  const isToolCallLogEnabled = observability.tool_call_log_enabled ?? false
+  const isAgentLogEnabled = observability.agent_log_enabled ?? false
+  const isMetricsLogEnabled = observability.metrics_log_enabled ?? false
 
   return (
     <section>
@@ -61,7 +59,7 @@ export function ObservabilitySection({
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={observability.tool_call_log_include_preview ?? defaults.tool_call_log_include_preview}
+                  checked={observability.tool_call_log_include_preview ?? false}
                   onChange={(event) => updateObservability({ tool_call_log_include_preview: event.target.checked })}
                   className="h-4 w-4 accent-primary"
                 />
@@ -73,7 +71,7 @@ export function ObservabilitySection({
                   type="number"
                   min={0}
                   max={5000}
-                  value={observability.tool_call_log_max_preview_chars ?? defaults.tool_call_log_max_preview_chars}
+                  value={observability.tool_call_log_max_preview_chars ?? 500}
                   onChange={(event) =>
                     updateObservability({
                       tool_call_log_max_preview_chars: Number.parseInt(event.target.value || '0', 10),
@@ -114,7 +112,7 @@ export function ObservabilitySection({
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={observability.agent_log_include_execution_path ?? defaults.agent_log_include_execution_path}
+                  checked={observability.agent_log_include_execution_path ?? false}
                   onChange={(event) =>
                     updateObservability({ agent_log_include_execution_path: event.target.checked })
                   }
@@ -128,7 +126,7 @@ export function ObservabilitySection({
                   type="number"
                   min={0}
                   max={5000}
-                  value={observability.agent_log_max_preview_chars ?? defaults.agent_log_max_preview_chars}
+                  value={observability.agent_log_max_preview_chars ?? 500}
                   onChange={(event) =>
                     updateObservability({
                       agent_log_max_preview_chars: Number.parseInt(event.target.value || '0', 10),
@@ -169,7 +167,7 @@ export function ObservabilitySection({
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={observability.metrics_log_include_text ?? defaults.metrics_log_include_text}
+                  checked={observability.metrics_log_include_text ?? false}
                   onChange={(event) => updateObservability({ metrics_log_include_text: event.target.checked })}
                   className="h-4 w-4 accent-primary"
                 />

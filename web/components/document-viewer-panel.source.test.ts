@@ -7,7 +7,9 @@ describe('document viewer panel source', () => {
   it('uses modern clipboard and string helpers', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'document-viewer-panel.tsx'), 'utf8')
 
-    expect(src).toContain('String.raw`\\$&`')
+    expect(fs.existsSync(path.resolve(__dirname, 'document-viewer/chunk-renderer.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'document-viewer/highlight-layer.tsx'))).toBe(true)
+    expect(src).toContain('DocumentChunkCard')
     expect(src).not.toContain('document.execCommand(')
     expect(src).not.toContain('removeChild(')
     expect(src).not.toContain('searchParams.set("token"')

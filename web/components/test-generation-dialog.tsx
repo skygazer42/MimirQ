@@ -40,6 +40,17 @@ interface TestGenerationDialogProps {
 type SourceType = 'documents' | 'conversations'
 type Step = 'select_source' | 'configure' | 'preview'
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function getQuestionType(metadata: unknown): string | null {
+  if (!isRecord(metadata)) return null
+  return typeof metadata.question_type === 'string' && metadata.question_type.trim()
+    ? metadata.question_type
+    : null
+}
+
 export function TestGenerationDialog({
   open,
   onClose,
@@ -525,9 +536,11 @@ export function TestGenerationDialog({
 
                   {/* 问题列表 */}
                   <div className="space-y-3">
-                    {generatedQuestions.map((q, index) => (
+                    {generatedQuestions.map((q, index) => {
+                      const questionType = getQuestionType(q.metadata)
+                      return (
 	                      <div
-	                        key={`${q.question}-${q.expected_answer || ''}-${q.metadata?.question_type || ''}`}
+	                        key={`${q.question}-${q.expected_answer || ''}-${questionType || ''}`}
 	                        className="p-4 rounded-lg border border-border bg-card"
 	                      >
                         <div className="flex items-start justify-between gap-3">
@@ -540,9 +553,9 @@ export function TestGenerationDialog({
                                 <span className="font-medium">参考答案:</span> {q.expected_answer}
                               </div>
                             )}
-                            {q.metadata?.question_type && (
+                            {questionType && (
                               <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/30 text-[10px] text-sky-700 dark:text-sky-300">
-                                {q.metadata.question_type}
+                                {questionType}
                               </span>
                             )}
 	                          </div>
@@ -556,7 +569,7 @@ export function TestGenerationDialog({
                           </button>
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </>
               )}

@@ -14,6 +14,10 @@ describe('EvidenceSuiteWorkbench guards', () => {
   it('avoids any-based helpers and state in the evidence suite workbench', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'evidence-suite-workbench.tsx'), 'utf8')
 
+    expect(fs.existsSync(path.resolve(__dirname, 'suite-list-panel.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'item-list-panel.tsx'))).toBe(true)
+    expect(src).toContain('SuiteListPanel')
+    expect(src).toContain('ItemListPanel')
     expect(src).not.toContain(': any')
     expect(src).not.toContain('Record<string, any>')
   })
