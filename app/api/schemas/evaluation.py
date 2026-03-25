@@ -77,8 +77,11 @@ class TestGenFromDocsRequest(BaseModel):
     document_ids: list[UUID] = Field(default_factory=list, description="Document ID list (takes priority over dataset_id)")
     num_questions: int = Field(default=10, ge=1, le=50, description="Number of questions to generate")
     question_types: list[str] = Field(
-        default_factory=lambda: ["factual", "reasoning", "comparison"],
-        description="Question types: factual, reasoning, comparison"
+        default_factory=lambda: ["factual", "multi_hop", "comparison"],
+        description=(
+            "Question types: factual, multi_hop (reasoning), comparison, conditional, unanswerable. "
+            "Back-compat: 'reasoning' is treated as 'multi_hop'."
+        ),
     )
     auto_save_as_cases: bool = Field(default=True, description="Auto-save as regression test cases")
 

@@ -30,6 +30,7 @@ from app.models.evaluation import (
     RagasRegressionItem,
     RagasRegressionRun,
 )
+from app.rag.core.text import parse_json_from_text
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.evaluation.regression_sample_builder import build_regression_item_meta, build_regression_sample
 from app.services.dataset_service import DatasetService
@@ -265,6 +266,11 @@ def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> dict[s
         # so RAGAS faithfulness wins when present.
         out["faithfulness"] = faith_det
 
+    for key in ("chunk_utilization", "chunk_attribution", "noise_sensitivity", "self_knowledge_ratio"):
+        v = _mean_float(key)
+        if v is not None:
+            out[key] = v
+
     labeled = 0
     correct = 0
     false_pos = 0
@@ -376,6 +382,8 @@ def _build_regression_slice_summaries(
         "access_mode": _bucketize(key="slice_access_mode"),
         "hit_type": _bucketize(key="slice_hit_type"),
         "quality": _bucketize(key="slice_quality_bucket"),
+        "parse_quality": _bucketize(key="slice_parse_quality"),
+        "chunk_quality": _bucketize(key="slice_chunk_quality"),
         "pipeline_hash": _bucketize(key="slice_pipeline_hash"),
     }
 
@@ -419,6 +427,221 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_json_safe(v) for v in value]
     return value
+
+
+def _clip_text(value: Any, *, max_len: int = 400) -> str:
+    text = str(value or "").strip()
+    max_len = max(0, int(max_len or 0))
+    if not max_len:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return f"{text[: max_len - 3].rstrip()}..."
+
+
+def _clip_contexts_for_judge(contexts: list[Any] | None, *, max_contexts: int = 6, max_chars: int = 900) -> list[str]:
+    cap_ctx = max(1, int(max_contexts or 1))
+    cap_chars = max(50, int(max_chars or 50))
+    out: list[str] = []
+    for raw in contexts or []:
+        t = str(raw or "").strip()
+        if not t:
+            continue
+        out.append(t[:cap_chars])
+        if len(out) >= cap_ctx:
+            break
+    return out
+
+
+def _llm_judge_prompt(*, kind: str, question: str, answer: str, contexts: list[str]) -> str:
+    """
+    Create a compact LLM-as-judge prompt that returns strict JSON.
+
+    `kind`:
+      - "retrieval": judge context quality only
+      - "generation": judge answer quality given contexts
+    """
+    ctx_lines = "\n".join([f"[C{i+1}] {c}" for i, c in enumerate(contexts or [])]).strip()
+    if kind == "retrieval":
+        return (
+            "You are a strict evaluator for a RAG system.\n"
+            "Evaluate retrieval quality ONLY (do not judge the final answer).\n\n"
+            f"Question:\n{question}\n\n"
+            "Retrieved contexts (snippets):\n"
+            f"{ctx_lines}\n\n"
+            "Return STRICT JSON only:\n"
+            '{\n'
+            '  "score": 0.0,\n'
+            '  "reason": "short reason",\n'
+            '  "evidence_quotes": ["quote copied verbatim from contexts (<=160 chars)", "..."]\n'
+            '}\n\n'
+            "Scoring guide:\n"
+            "- 1.0: contexts are highly relevant and sufficient to answer.\n"
+            "- 0.7: mostly relevant, small gaps.\n"
+            "- 0.4: weak relevance or missing key evidence.\n"
+            "- 0.0: irrelevant/noisy contexts.\n"
+            "Rules:\n"
+            "- evidence_quotes must be copied from the provided contexts.\n"
+            "- Keep reason <= 240 chars.\n"
+            "- evidence_quotes: 0-3 items.\n"
+        )
+
+    return (
+        "You are a strict evaluator for a RAG system.\n"
+        "Evaluate answer quality given the retrieved contexts.\n\n"
+        f"Question:\n{question}\n\n"
+        f"Answer:\n{answer}\n\n"
+        "Retrieved contexts (snippets):\n"
+        f"{ctx_lines}\n\n"
+        "Return STRICT JSON only:\n"
+        '{\n'
+        '  "score": 0.0,\n'
+        '  "reason": "short reason",\n'
+        '  "evidence_quotes": ["quote copied verbatim from contexts (<=160 chars)", "..."]\n'
+        '}\n\n'
+        "Scoring guide:\n"
+        "- 1.0: answers the question and is fully supported by contexts.\n"
+        "- 0.7: mostly supported, minor unsupported detail.\n"
+        "- 0.4: partially supported or incomplete.\n"
+        "- 0.0: mostly unsupported/hallucinated or wrong.\n"
+        "Rules:\n"
+        "- evidence_quotes must be copied from the provided contexts.\n"
+        "- Keep reason <= 240 chars.\n"
+        "- evidence_quotes: 0-3 items.\n"
+    )
+
+
+def _coerce_llm_judge_payload(raw: Any) -> dict[str, Any]:
+    obj = raw if isinstance(raw, dict) else {}
+    score_raw = obj.get("score")
+    try:
+        score = float(score_raw) if score_raw is not None else None
+    except Exception:
+        score = None
+    if score is not None:
+        score = min(1.0, max(0.0, float(score)))
+        score = round(float(score), 4)
+
+    reason = _clip_text(obj.get("reason") or obj.get("explanation") or "", max_len=240)
+
+    quotes_raw = obj.get("evidence_quotes") or obj.get("quotes") or obj.get("evidence") or []
+    quotes: list[str] = []
+    if isinstance(quotes_raw, list):
+        for q in quotes_raw:
+            t = _clip_text(q, max_len=160)
+            if not t:
+                continue
+            if t in quotes:
+                continue
+            quotes.append(t)
+            if len(quotes) >= 3:
+                break
+    elif isinstance(quotes_raw, str) and quotes_raw.strip():
+        quotes = [_clip_text(quotes_raw, max_len=160)]
+
+    return {"score": score, "reason": reason, "evidence_quotes": quotes}
+
+
+def _run_llm_judge(
+    *,
+    llm: Any,
+    kind: str,
+    question: str,
+    answer: str,
+    contexts: list[str],
+) -> dict[str, Any]:
+    prompt = _llm_judge_prompt(kind=kind, question=question, answer=answer, contexts=contexts)
+    content = ""
+    err: str | None = None
+    try:
+        resp = llm.invoke(prompt)
+        content = str(getattr(resp, "content", None) or resp or "")
+    except Exception as exc:  # noqa: BLE001
+        err = f"invoke_error:{type(exc).__name__}:{str(exc)[:120]}"
+        content = ""
+
+    obj, meta = parse_json_from_text(content, expected="object")
+    out = _coerce_llm_judge_payload(obj)
+    out["ok"] = bool(meta.get("ok"))
+    out["method"] = meta.get("method")
+    out["error"] = err or meta.get("error")
+    return out
+
+
+def _attach_llm_judge_to_eval_items(*, eval_items: list[dict[str, Any]], llm: Any) -> dict[str, Any]:
+    model_used = getattr(llm, "model_name", None) or getattr(llm, "model", None)
+    gen_scores: list[float] = []
+    ret_scores: list[float] = []
+    overall_scores: list[float] = []
+
+    def _run() -> None:
+        for item in eval_items:
+            if not isinstance(item, dict):
+                continue
+            q = str(item.get("question") or "")
+            a = str(item.get("response") or "")
+            ctx = _clip_contexts_for_judge(item.get("retrieved_contexts"), max_contexts=6, max_chars=900)
+            if not q.strip():
+                continue
+
+            retrieval = _run_llm_judge(llm=llm, kind="retrieval", question=q, answer="", contexts=ctx)
+            generation = _run_llm_judge(llm=llm, kind="generation", question=q, answer=a, contexts=ctx)
+
+            scores_for_overall: list[float] = []
+            r_score = retrieval.get("score")
+            g_score = generation.get("score")
+            if isinstance(r_score, (int, float)) and not isinstance(r_score, bool):
+                ret_scores.append(float(r_score))
+                scores_for_overall.append(float(r_score))
+            if isinstance(g_score, (int, float)) and not isinstance(g_score, bool):
+                gen_scores.append(float(g_score))
+                scores_for_overall.append(float(g_score))
+
+            overall = round(sum(scores_for_overall) / len(scores_for_overall), 4) if scores_for_overall else None
+            if overall is not None:
+                overall_scores.append(float(overall))
+
+            meta = item.get("item_meta") if isinstance(item.get("item_meta"), dict) else {}
+            meta["llm_judge"] = {
+                "enabled": True,
+                "model_used": model_used,
+                "retrieval": retrieval,
+                "generation": generation,
+                "overall_score": overall,
+            }
+            item["item_meta"] = meta
+
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_cost: float | None = None
+    get_openai_callback = None
+    try:  # best-effort; do not add a hard dependency for judge integration
+        from langchain_community.callbacks.manager import get_openai_callback as _get_openai_callback  # type: ignore
+
+        get_openai_callback = _get_openai_callback
+    except Exception:
+        get_openai_callback = None
+
+    if get_openai_callback is not None:
+        with get_openai_callback() as cb:
+            _run()
+        prompt_tokens = int(getattr(cb, "prompt_tokens", 0) or 0)
+        completion_tokens = int(getattr(cb, "completion_tokens", 0) or 0)
+        total_cost = float(getattr(cb, "total_cost", 0.0) or 0.0)
+    else:
+        _run()
+
+    return {
+        "llm_judge_model_used": str(model_used or "") or None,
+        "llm_judge_items": int(len(overall_scores)),
+        "llm_judge_retrieval_avg": _mean(ret_scores),
+        "llm_judge_generation_avg": _mean(gen_scores),
+        "llm_judge_overall_avg": _mean(overall_scores),
+        # Gap8 (P2): cost tracking for judge calls (best-effort).
+        "llm_judge_tokens_input": prompt_tokens,
+        "llm_judge_tokens_output": completion_tokens,
+        "llm_judge_estimated_cost_usd": (round(float(total_cost), 6) if total_cost is not None else None),
+    }
 
 
 def _resolve_case_scope(
@@ -679,15 +902,43 @@ def run_conversation_ragas_evaluation(
         ]
         dataset = EvaluationDataset(samples=samples)
 
-        result = evaluate(
-            dataset=dataset,
-            metrics=metrics,
-            llm=ragas_llm,
-            embeddings=ragas_embeddings,
-            show_progress=False,
-            raise_exceptions=False,
-            allow_nest_asyncio=False,
-        )
+        eval_prompt_tokens: int | None = None
+        eval_completion_tokens: int | None = None
+        eval_total_cost: float | None = None
+        get_openai_callback = None
+        try:  # best-effort; works with LangChain OpenAI-compatible backends
+            from langchain_community.callbacks.manager import (
+                get_openai_callback as _get_openai_callback,  # type: ignore
+            )
+
+            get_openai_callback = _get_openai_callback
+        except Exception:
+            get_openai_callback = None
+
+        if get_openai_callback is not None:
+            with get_openai_callback() as cb:
+                result = evaluate(
+                    dataset=dataset,
+                    metrics=metrics,
+                    llm=ragas_llm,
+                    embeddings=ragas_embeddings,
+                    show_progress=False,
+                    raise_exceptions=False,
+                    allow_nest_asyncio=False,
+                )
+            eval_prompt_tokens = int(getattr(cb, "prompt_tokens", 0) or 0)
+            eval_completion_tokens = int(getattr(cb, "completion_tokens", 0) or 0)
+            eval_total_cost = float(getattr(cb, "total_cost", 0.0) or 0.0)
+        else:
+            result = evaluate(
+                dataset=dataset,
+                metrics=metrics,
+                llm=ragas_llm,
+                embeddings=ragas_embeddings,
+                show_progress=False,
+                raise_exceptions=False,
+                allow_nest_asyncio=False,
+            )
 
         # Persist items
         db.query(RagasEvaluationItem).filter(
@@ -720,6 +971,13 @@ def run_conversation_ragas_evaluation(
             summary[key] = _mean(row.get(key) for row in result.scores)
         summary["total_tokens"] = getattr(result, "total_tokens", None)
         summary["total_cost"] = getattr(result, "total_cost", None)
+        # Gap8 (P2): eval cost tracking (best-effort).
+        summary["eval_llm_tokens_input_ragas"] = eval_prompt_tokens
+        summary["eval_llm_tokens_output_ragas"] = eval_completion_tokens
+        summary["eval_estimated_cost_usd_ragas"] = (round(float(eval_total_cost), 6) if eval_total_cost is not None else None)
+        summary["eval_llm_tokens_input"] = eval_prompt_tokens
+        summary["eval_llm_tokens_output"] = eval_completion_tokens
+        summary["eval_estimated_cost_usd"] = (round(float(eval_total_cost), 6) if eval_total_cost is not None else None)
         summary.update(_build_regression_gate_summary(eval_items))
 
         run.status = "completed"
@@ -762,6 +1020,7 @@ def run_regression_ragas_evaluation(
     case_ids: list[UUID],
     dataset_id: UUID | None,
     metric_names: list[str],
+    use_llm_judge: bool = False,
     skip_empty_contexts: bool,
     max_cases: int,
     rag_params: dict[str, Any],
@@ -891,6 +1150,31 @@ def run_regression_ragas_evaluation(
                 ph = _normalize_pipeline_hash(active_ph)
                 quality_bucket = quality_bucket_from_governance_quality(meta_dict.get("governance_quality"))
                 acc = _normalize_access_mode(access_mode)
+
+                # Parse quality slice (P1): bucketize persisted parse_quality.score.
+                pq_bucket = "unknown"
+                pq = meta_dict.get("parse_quality")
+                try:
+                    if isinstance(pq, dict) and pq.get("score") is not None:
+                        score = float(pq.get("score") or 0.0)
+                        if score < 0.35:
+                            pq_bucket = "low"
+                        elif score < 0.7:
+                            pq_bucket = "mid"
+                        else:
+                            pq_bucket = "high"
+                except Exception:
+                    pq_bucket = "unknown"
+
+                # Chunk quality slice (P1): persisted chunk_quality_gate.grade (pass|warn|fail).
+                cq_bucket = "unknown"
+                gate = meta_dict.get("chunk_quality_gate")
+                if isinstance(gate, dict):
+                    grade = str(gate.get("grade") or "").strip().lower()
+                    if grade in {"pass", "warn", "fail"}:
+                        cq_bucket = grade
+                    elif grade:
+                        cq_bucket = grade[:20]
                 doc_attr[doc_id] = {
                     "file_type": ft,
                     "language": lang,
@@ -898,6 +1182,8 @@ def run_regression_ragas_evaluation(
                     "pipeline_hash": ph,
                     "quality_bucket": quality_bucket,
                     "access_mode": acc,
+                    "parse_quality_bucket": pq_bucket,
+                    "chunk_quality_bucket": cq_bucket,
                 }
 
         case_slice_meta: dict[UUID, dict[str, str]] = {}
@@ -909,6 +1195,8 @@ def run_regression_ragas_evaluation(
             phs = {doc_attr.get(d, {}).get("pipeline_hash", "unknown") for d in docs}
             quals = {doc_attr.get(d, {}).get("quality_bucket", "unknown") for d in docs}
             accs = {doc_attr.get(d, {}).get("access_mode", "inherit") for d in docs}
+            pqs = {doc_attr.get(d, {}).get("parse_quality_bucket", "unknown") for d in docs}
+            cqs = {doc_attr.get(d, {}).get("chunk_quality_bucket", "unknown") for d in docs}
 
             def _stable_bucket(values: set[str], *, default: str) -> str:
                 cleaned = {str(v or "").strip().lower() for v in values if str(v or "").strip()}
@@ -925,6 +1213,8 @@ def run_regression_ragas_evaluation(
                 "slice_access_mode": _stable_bucket(accs, default="inherit"),
                 "slice_pipeline_hash": _stable_bucket(phs, default="unknown"),
                 "slice_quality_bucket": _stable_bucket(quals, default="unknown"),
+                "slice_parse_quality": _stable_bucket(pqs, default="unknown"),
+                "slice_chunk_quality": _stable_bucket(cqs, default="unknown"),
             }
 
         eval_items: list[dict[str, Any]] = []
@@ -1179,6 +1469,20 @@ def run_regression_ragas_evaluation(
             db.commit()
             return
 
+        llm_judge_summary: dict[str, Any] = {}
+        shared_llm: Any | None = None
+        shared_embeddings: Any | None = None
+        if bool(use_llm_judge) and not retrieval_only:
+            # LLM-as-judge is optional and should never fail the whole regression run.
+            try:
+                shared_llm, shared_embeddings = _build_llm_and_embeddings()
+                llm_judge_summary = _attach_llm_judge_to_eval_items(eval_items=eval_items, llm=shared_llm)
+            except Exception as exc:  # noqa: BLE001
+                llm_judge_summary = {
+                    "llm_judge_items": 0,
+                    "llm_judge_error": f"{type(exc).__name__}:{str(exc)[:160]}",
+                }
+
         # Retrieval-only mode: skip RAGAS imports/evaluation and persist gate-ready results.
         if retrieval_only:
             db.query(RagasRegressionItem).filter(
@@ -1206,6 +1510,12 @@ def run_regression_ragas_evaluation(
 
             summary: dict[str, Any] = {"items": len(eval_items)}
             summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
+            if llm_judge_summary:
+                summary.update(llm_judge_summary)
+            # Gap8 (P2): eval cost tracking (retrieval-only has no eval LLM calls).
+            summary["eval_llm_tokens_input"] = 0
+            summary["eval_llm_tokens_output"] = 0
+            summary["eval_estimated_cost_usd"] = 0.0
 
             run.status = "completed"
             run.metrics = []
@@ -1259,6 +1569,22 @@ def run_regression_ragas_evaluation(
 
             summary = {"items": len(eval_items)}
             summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
+            if llm_judge_summary:
+                summary.update(llm_judge_summary)
+            # Gap8 (P2): eval cost tracking (deterministic gate has no RAGAS; judge is optional).
+            judge_in = llm_judge_summary.get("llm_judge_tokens_input") if isinstance(llm_judge_summary, dict) else None
+            judge_out = llm_judge_summary.get("llm_judge_tokens_output") if isinstance(llm_judge_summary, dict) else None
+            judge_cost = llm_judge_summary.get("llm_judge_estimated_cost_usd") if isinstance(llm_judge_summary, dict) else None
+            if bool(use_llm_judge):
+                summary["eval_llm_tokens_input"] = (int(judge_in) if judge_in is not None else None)
+                summary["eval_llm_tokens_output"] = (int(judge_out) if judge_out is not None else None)
+                summary["eval_estimated_cost_usd"] = (
+                    round(float(judge_cost), 6) if judge_cost is not None else None
+                )
+            else:
+                summary["eval_llm_tokens_input"] = 0
+                summary["eval_llm_tokens_output"] = 0
+                summary["eval_estimated_cost_usd"] = 0.0
 
             run.status = "completed"
             run.metrics = list(normalized_metric_names)
@@ -1292,7 +1618,10 @@ def run_regression_ragas_evaluation(
             db.commit()
             raise
 
-        llm, embeddings = _build_llm_and_embeddings()
+        llm = shared_llm
+        embeddings = shared_embeddings
+        if llm is None or embeddings is None:
+            llm, embeddings = _build_llm_and_embeddings()
         ragas_llm = LangchainLLMWrapper(llm)
         ragas_embeddings = LangchainEmbeddingsWrapper(embeddings)
 
@@ -1301,15 +1630,43 @@ def run_regression_ragas_evaluation(
 
         samples = [SingleTurnSample(**(item.get("sample_kwargs") or {})) for item in eval_items]
         dataset = EvaluationDataset(samples=samples)
-        result = evaluate(
-            dataset=dataset,
-            metrics=metrics,
-            llm=ragas_llm,
-            embeddings=ragas_embeddings,
-            show_progress=False,
-            raise_exceptions=False,
-            allow_nest_asyncio=False,
-        )
+        eval_prompt_tokens: int | None = None
+        eval_completion_tokens: int | None = None
+        eval_total_cost: float | None = None
+        get_openai_callback = None
+        try:  # best-effort; works with LangChain OpenAI-compatible backends
+            from langchain_community.callbacks.manager import (
+                get_openai_callback as _get_openai_callback,  # type: ignore
+            )
+
+            get_openai_callback = _get_openai_callback
+        except Exception:
+            get_openai_callback = None
+
+        if get_openai_callback is not None:
+            with get_openai_callback() as cb:
+                result = evaluate(
+                    dataset=dataset,
+                    metrics=metrics,
+                    llm=ragas_llm,
+                    embeddings=ragas_embeddings,
+                    show_progress=False,
+                    raise_exceptions=False,
+                    allow_nest_asyncio=False,
+                )
+            eval_prompt_tokens = int(getattr(cb, "prompt_tokens", 0) or 0)
+            eval_completion_tokens = int(getattr(cb, "completion_tokens", 0) or 0)
+            eval_total_cost = float(getattr(cb, "total_cost", 0.0) or 0.0)
+        else:
+            result = evaluate(
+                dataset=dataset,
+                metrics=metrics,
+                llm=ragas_llm,
+                embeddings=ragas_embeddings,
+                show_progress=False,
+                raise_exceptions=False,
+                allow_nest_asyncio=False,
+            )
 
         db.query(RagasRegressionItem).filter(
             RagasRegressionItem.run_id == run_id,
@@ -1342,7 +1699,28 @@ def run_regression_ragas_evaluation(
             summary[key] = _mean(row.get(key) for row in result.scores)
         summary["total_tokens"] = getattr(result, "total_tokens", None)
         summary["total_cost"] = getattr(result, "total_cost", None)
+        # Gap8 (P2): eval cost tracking (best-effort; uses LangChain OpenAI callback when available).
+        summary["eval_llm_tokens_input_ragas"] = eval_prompt_tokens
+        summary["eval_llm_tokens_output_ragas"] = eval_completion_tokens
+        summary["eval_estimated_cost_usd_ragas"] = (round(float(eval_total_cost), 6) if eval_total_cost is not None else None)
         summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
+        if llm_judge_summary:
+            summary.update(llm_judge_summary)
+        judge_in = llm_judge_summary.get("llm_judge_tokens_input") if isinstance(llm_judge_summary, dict) else None
+        judge_out = llm_judge_summary.get("llm_judge_tokens_output") if isinstance(llm_judge_summary, dict) else None
+        judge_cost = llm_judge_summary.get("llm_judge_estimated_cost_usd") if isinstance(llm_judge_summary, dict) else None
+        token_in_known = (eval_prompt_tokens is not None) or (judge_in is not None)
+        token_out_known = (eval_completion_tokens is not None) or (judge_out is not None)
+        cost_known = (eval_total_cost is not None) or (judge_cost is not None)
+        summary["eval_llm_tokens_input"] = (
+            int(eval_prompt_tokens or 0) + int(judge_in or 0) if token_in_known else None
+        )
+        summary["eval_llm_tokens_output"] = (
+            int(eval_completion_tokens or 0) + int(judge_out or 0) if token_out_known else None
+        )
+        summary["eval_estimated_cost_usd"] = (
+            round(float(eval_total_cost or 0.0) + float(judge_cost or 0.0), 6) if cost_known else None
+        )
 
         run.status = "completed"
         run.metrics = metric_keys

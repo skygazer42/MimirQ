@@ -64,13 +64,14 @@ export function TestGenerationDialog({
 
   // 配置参数
   const [numQuestions, setNumQuestions] = useState(10)
-  const [questionTypes, setQuestionTypes] = useState<string[]>(['factual', 'reasoning'])
+  const [questionTypes, setQuestionTypes] = useState<string[]>(['factual', 'multi_hop', 'comparison'])
   const [qualityThreshold, setQualityThreshold] = useState(0.7)
   const [autoSave, setAutoSave] = useState(true)
 
   // 生成状态
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestion[]>([])
+  const [savedCaseIds, setSavedCaseIds] = useState<string[]>([])
   const [error, setError] = useState<string>('')
 
   // 加载数据
@@ -121,6 +122,7 @@ export function TestGenerationDialog({
     setSelectedDocumentIds(new Set())
     setSelectedConversationIds(new Set())
     setGeneratedQuestions([])
+    setSavedCaseIds([])
     setError('')
   }
 
@@ -205,8 +207,13 @@ export function TestGenerationDialog({
 
       if (result.status === 'completed') {
         setGeneratedQuestions(result.generated_questions)
+        setSavedCaseIds(result.saved_case_ids || [])
         setStep('preview')
-        toast.success(`成功生成 ${result.generated_questions.length} 个问题`)
+        if (autoSave) {
+          toast.success(`成功生成 ${result.generated_questions.length} 个问题，已保存 ${result.saved_case_ids?.length || 0} 个用例`)
+        } else {
+          toast.success(`成功生成 ${result.generated_questions.length} 个问题`)
+        }
       } else {
         setError(result.error_message || '生成失败')
         toast.error('生成失败')
@@ -431,8 +438,10 @@ export function TestGenerationDialog({
                   <div className="flex flex-wrap gap-2">
                     {[
                       { key: 'factual', label: '事实型', desc: '询问具体信息' },
-                      { key: 'reasoning', label: '推理型', desc: '需要理解推理' },
+                      { key: 'multi_hop', label: '多跳/推理', desc: '组合 2+ 信息推理' },
                       { key: 'comparison', label: '对比型', desc: '比较不同概念' },
+                      { key: 'conditional', label: '条件型', desc: '如果/当…会怎样' },
+                      { key: 'unanswerable', label: '不可答/拒答', desc: '文档中无法回答' },
                     ].map((type) => (
                       <button
                         key={type.key}
@@ -511,7 +520,7 @@ export function TestGenerationDialog({
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="w-4 h-4 text-green-600" />
                     成功生成 {generatedQuestions.length} 个问题
-                    {autoSave && '（已自动保存）'}
+                    {autoSave && `（已自动保存 ${savedCaseIds.length} 个用例）`}
                   </div>
 
                   {/* 问题列表 */}

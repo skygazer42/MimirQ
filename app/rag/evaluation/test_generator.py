@@ -43,18 +43,22 @@ Requirements:
 1. Generate {num_questions} questions
 2. Question types include: {question_types}
    - factual: Ask about specific information in the text
-   - reasoning: Requires understanding and reasoning to answer
+   - multi_hop: Requires combining 2+ pieces of information from the text
    - comparison: Compare different concepts or things in the text
+   - conditional: Ask "if/when" conditional questions based on the text
+   - unanswerable: Cannot be answered from the text; should be refused/abstained
 3. Questions should be clear, specific, and answerable from the text
-4. Each question should have a reference answer
+4. Each question should have a reference answer (except unanswerable)
+   - For unanswerable: expected_answer should be empty and expected_refusal=true
 
 Please return in JSON format as follows:
 {{
   "questions": [
     {{
       "question": "Question content",
-      "expected_answer": "Reference answer",
-      "question_type": "Question type"
+      "expected_answer": "Reference answer (empty string if unanswerable)",
+      "question_type": "factual|multi_hop|comparison|conditional|unanswerable",
+      "expected_refusal": false
     }}
   ]
 }}
@@ -203,49 +207,57 @@ def generate_questions_from_documents(
     Returns:
         Generated question list.
     """
+    allowed_types = {"factual", "multi_hop", "comparison", "conditional", "unanswerable"}
     if question_types is None:
-        question_types = ["factual", "reasoning", "comparison"]
-    
-    # Permission checks and document filtering.
+        question_types = ["factual", "multi_hop", "comparison"]
+
+    normalized_types: list[str] = []
+    for raw_type in question_types or []:
+        key = str(raw_type or "").strip().lower()
+        if not key:
+            continue
+        if key == "reasoning":
+            key = "multi_hop"
+        if key not in allowed_types or key in normalized_types:
+            continue
+        normalized_types.append(key)
+    if not normalized_types:
+        normalized_types = ["factual"]
+
     if document_ids:
-        allowed_doc_ids = filter_allowed_document_ids(
-            db, tenant_id, account_id, document_ids
-        )
+        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
     elif dataset_id:
         from app.services.dataset_service import DatasetService
+
         DatasetService.ensure_member(db, tenant_id, account_id)
         query = db.query(DBDocument).filter(
             DBDocument.tenant_id == tenant_id,
             DBDocument.dataset_id == dataset_id,
-            DBDocument.status == "completed"
+            DBDocument.status == "completed",
         )
         allowed_doc_ids = [doc.id for doc in query.all()]
     else:
-        # Fetch all accessible documents.
         from app.services.document_access import list_accessible_document_ids
+
         allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id)
-    
+
     if not allowed_doc_ids:
         return []
-    
-    # Query document chunks.
+
     chunks = (
         db.query(DocumentChunk)
         .filter(
             DocumentChunk.tenant_id == tenant_id,
-            DocumentChunk.document_id.in_(allowed_doc_ids)
+            DocumentChunk.document_id.in_(allowed_doc_ids),
         )
         .all()
     )
-    
     if not chunks:
         return []
-    
-    # Sample chunks (one chunk per 3-4 questions).
+
     num_chunks_needed = max(3, (num_questions + 2) // 3)
     sampled_chunks = _sample_diverse_chunks(chunks, num_chunks_needed)
-    
-    # Prepare LLM.
+
     proxy_url = get_proxy_url()
     timeout = int(getattr(settings, "LLM_TIMEOUT", 60) or 60)
     http_client = httpx.Client(proxy=proxy_url, timeout=timeout) if proxy_url else None
@@ -258,47 +270,55 @@ def generate_questions_from_documents(
             timeout=timeout,
             http_client=http_client,
         )
-        
+
         parser = JsonOutputParser()
         prompt = PromptTemplate(
             template=GENERATE_QUESTIONS_FROM_TEXT_PROMPT,
-            input_variables=["text", "num_questions", "question_types"]
+            input_variables=["text", "num_questions", "question_types"],
         )
-        
         chain = prompt | llm | parser
-        
-        # Generate questions for each chunk.
+
         all_questions: list[GeneratedQuestion] = []
         questions_per_chunk = max(1, num_questions // len(sampled_chunks))
-        
         for chunk in sampled_chunks:
             try:
-                result = chain.invoke({
-                    "text": chunk.content[:2000],  # Limit length.
-                    "num_questions": questions_per_chunk,
-                    "question_types": ", ".join(question_types)
-                })
-                
+                result = chain.invoke(
+                    {
+                        "text": chunk.content[:2000],
+                        "num_questions": questions_per_chunk,
+                        "question_types": ", ".join(normalized_types),
+                    }
+                )
                 if isinstance(result, dict) and "questions" in result:
                     for q in result["questions"]:
-                        all_questions.append(GeneratedQuestion(
-                            question=q.get("question", ""),
-                            expected_answer=q.get("expected_answer"),
-                            context=chunk.content[:500],
-                            metadata={
-                                "source_type": "document",
-                                "source_id": str(chunk.document_id),
-                                "chunk_id": str(chunk.id),
-                                "question_type": q.get("question_type", "factual")
-                            }
-                        ))
+                        q_type = str(q.get("question_type") or "factual").strip().lower() or "factual"
+                        if q_type == "reasoning":
+                            q_type = "multi_hop"
+                        if q_type not in allowed_types:
+                            q_type = normalized_types[0]
+                        expected_refusal = bool(q.get("expected_refusal")) or q_type == "unanswerable"
+                        all_questions.append(
+                            GeneratedQuestion(
+                                question=q.get("question", ""),
+                                expected_answer=(None if expected_refusal else q.get("expected_answer")),
+                                context=chunk.content[:500],
+                                metadata={
+                                    "source_type": "document",
+                                    "source_id": str(chunk.document_id),
+                                    "chunk_id": str(chunk.id),
+                                    "question_type": q_type,
+                                    "expected_refusal": expected_refusal,
+                                    "reference_chunk_ids": [str(chunk.id)],
+                                },
+                            )
+                        )
             except Exception as e:
                 print(f"Failed to generate questions: {e}")
                 continue
-            
+
             if len(all_questions) >= num_questions:
                 break
-        
+
         return all_questions[:num_questions]
     finally:
         if http_client is not None:

@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import json
 import re
 import time
 import uuid
@@ -44,8 +45,11 @@ from app.parsing.artifact_stats import compute_parsing_artifact_stats
 from app.parsing.diagnostics import build_parse_failure_diagnostics
 from app.parsing.enrich.image_caption import add_image_captions
 from app.parsing.factory import parser_factory
-from app.parsing.quality.competition import select_best_parse_attempt
+from app.parsing.processors.cross_page_merge import merge_cross_page_items
+from app.parsing.processors.vlm_correction import maybe_correct_markdown_pages
+from app.parsing.quality.competition import compute_competition_matrix_score, select_best_parse_attempt
 from app.parsing.quality.document_quality import score_document_parse_quality
+from app.parsing.quality.reading_order import score_reading_order
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.parsing.utils.cli import resolve_cli_command
@@ -202,6 +206,64 @@ def _compute_parsing_quality_gate(
         uniq.append(key)
 
     return ParsingQualityGate(grade=str(grade), reasons=uniq, evidence=evidence)
+
+
+def _coerce_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return float(int(value))
+        f = float(value)
+        if f != f:  # NaN
+            return None
+        return float(f)
+    except Exception:
+        return None
+
+
+def _coerce_int(value: Any) -> int:
+    try:
+        if value is None or isinstance(value, bool):
+            return 0
+        return int(value)
+    except Exception:
+        return 0
+
+
+def _count_to_score(count: int, *, scale: int) -> float:
+    """
+    Turn a non-negative count into a bounded [0..1] score (saturating).
+
+    Examples (scale=3):
+      0 -> 0.0
+      1 -> 0.25
+      3 -> 0.5
+      9 -> 0.75
+    """
+    c = max(0, int(count or 0))
+    s = max(1, int(scale or 1))
+    return round(float(c) / float(c + s), 4)
+
+
+def _load_competition_weights() -> dict[str, float] | None:
+    """
+    Parse weights JSON (Opt 8) from settings, with a safe default.
+    """
+    if not bool(getattr(settings, "PARSE_COMPETITION_MATRIX_ENABLED", False)):
+        return None
+
+    raw = str(getattr(settings, "PARSE_COMPETITION_MATRIX_WEIGHTS_JSON", "") or "").strip()
+    if raw:
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict) and obj:
+                return {str(k): float(v) for k, v in obj.items()}
+        except Exception:
+            return None
+
+    # Default weights from docs/plans/2026-03-19-document-parsing-optimization.md (Opt 8).
+    return {"text": 0.40, "table": 0.30, "image": 0.15, "reading_order": 0.15}
 
 
 def _build_pdf_fallback_candidates() -> list[str]:
@@ -604,15 +666,18 @@ async def parse_workspace_document(
 
         pdf_quality = parsed.get("pdf_quality") if isinstance(parsed.get("pdf_quality"), dict) else None
         artifact_docs = parsed.get("documents") if isinstance(parsed, dict) else None
+
+        # Opt2: cross-page merge (workspace preview, best-effort; off by default).
+        cross_page_merge_stats: dict[str, int] | None = None
+        if artifact_docs and bool(getattr(settings, "CROSS_PAGE_MERGE_ENABLED", False)):
+            try:
+                _docs, cross_page_merge_stats = merge_cross_page_items(artifact_docs)
+            except Exception:
+                cross_page_merge_stats = None
+
         original_markdown, markdown = _extract_markdown(parsed if isinstance(parsed, dict) else {})
 
         captions_added = 0
-        if bool(image_caption_enabled):
-            # Never fail the parsing request due to optional enrichment.
-            try:
-                markdown, captions_added = add_image_captions(markdown)
-            except Exception:
-                captions_added = 0
 
         min_chars = max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120))
         max_retries = max(0, int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1))
@@ -624,20 +689,66 @@ async def parse_workspace_document(
             is_pdf=(file_ext == ".pdf"),
         )
         initial_backend = resolved_backend
+        matrix_weights = _load_competition_weights()
 
         # Best-effort PDF fallback for auto parsing in workspace (interactive; safe bounded retries).
         fallback_attempts: list[dict[str, Any]] = []
-        attempt_candidates: list[dict[str, Any]] = [
-            {
-                "backend": resolved_backend,
+
+        def _build_attempt(
+            *,
+            backend: str,
+            gate: ParsingQualityGate,
+            artifact_docs: Any,
+            original_markdown: str,
+            markdown: str,
+            cross_page_merge_stats: dict[str, int] | None = None,
+        ) -> dict[str, Any]:
+            parse_score = _coerce_float(((gate.evidence or {}).get("parse_quality") or {}).get("score"))
+            content_chars = _coerce_int(((gate.evidence or {}).get("text_quality") or {}).get("content_chars"))
+
+            stats = compute_parsing_artifact_stats(
+                documents=artifact_docs,
+                original_markdown=original_markdown,
+                pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+            )
+            ro = score_reading_order(original_markdown) if file_ext == ".pdf" else None
+            ro_score = _coerce_float((ro or {}).get("score")) if isinstance(ro, dict) else None
+
+            attempt: dict[str, Any] = {
+                "backend": str(backend or "").strip(),
                 "grade": gate.grade,
-                "parse_score": ((gate.evidence or {}).get("parse_quality") or {}).get("score"),
-                "content_chars": ((gate.evidence or {}).get("text_quality") or {}).get("content_chars"),
+                "parse_score": parse_score,
+                "content_chars": content_chars,
+                # Opt8 matrix components (best-effort).
+                "text_score": parse_score,
+                "table_score": _count_to_score(_coerce_int(stats.get("table_count")), scale=3),
+                "image_score": _count_to_score(_coerce_int(stats.get("image_count")), scale=5),
+                "reading_order_score": ro_score,
+                "artifact_stats": stats,
+                "reading_order": ro,
+                "cross_page_merge_stats": dict(cross_page_merge_stats or {}) if isinstance(cross_page_merge_stats, dict) else None,
+                # For selection/debug.
                 "artifact_docs": artifact_docs,
                 "original_markdown": original_markdown,
                 "markdown": markdown,
                 "gate": gate,
             }
+            if matrix_weights:
+                attempt["matrix_score"] = round(
+                    float(compute_competition_matrix_score(attempt, weights=matrix_weights)),
+                    4,
+                )
+            return attempt
+
+        attempt_candidates: list[dict[str, Any]] = [
+            _build_attempt(
+                backend=resolved_backend,
+                gate=gate,
+                artifact_docs=artifact_docs,
+                original_markdown=original_markdown,
+                markdown=markdown,
+                cross_page_merge_stats=cross_page_merge_stats,
+            )
         ]
         if file_ext == ".pdf" and requested_backend in {"", "auto"} and gate.grade == "fail" and max_retries > 0:
             candidates = _build_pdf_fallback_candidates()
@@ -688,6 +799,14 @@ async def parse_workspace_document(
                     )
                     continue
 
+                alt_artifact_docs = alt_parsed.get("documents") if isinstance(alt_parsed, dict) else None
+                alt_cross_page_merge_stats: dict[str, int] | None = None
+                if alt_artifact_docs and bool(getattr(settings, "CROSS_PAGE_MERGE_ENABLED", False)):
+                    try:
+                        _docs, alt_cross_page_merge_stats = merge_cross_page_items(alt_artifact_docs)
+                    except Exception:
+                        alt_cross_page_merge_stats = None
+
                 alt_backend = str(alt_parsed.get("resolved_backend") or cand_backend)
                 alt_original, alt_markdown = _extract_markdown(alt_parsed if isinstance(alt_parsed, dict) else {})
                 alt_gate = _compute_parsing_quality_gate(
@@ -711,21 +830,19 @@ async def parse_workspace_document(
                 fallback_attempts.append(attempt)
 
                 attempt_candidates.append(
-                    {
-                        "backend": alt_backend,
-                        "grade": alt_gate.grade,
-                        "parse_score": ((alt_gate.evidence or {}).get("parse_quality") or {}).get("score"),
-                        "content_chars": ((alt_gate.evidence or {}).get("text_quality") or {}).get("content_chars"),
-                        "artifact_docs": alt_parsed.get("documents") if isinstance(alt_parsed, dict) else None,
-                        "original_markdown": alt_original,
-                        "markdown": alt_markdown,
-                        "gate": alt_gate,
-                    }
+                    _build_attempt(
+                        backend=alt_backend,
+                        gate=alt_gate,
+                        artifact_docs=alt_artifact_docs,
+                        original_markdown=alt_original,
+                        markdown=alt_markdown,
+                        cross_page_merge_stats=alt_cross_page_merge_stats,
+                    )
                 )
 
         if len(attempt_candidates) > 1:
             try:
-                best = select_best_parse_attempt(attempt_candidates)
+                best = select_best_parse_attempt(attempt_candidates, weights=matrix_weights)
             except Exception:
                 best = attempt_candidates[0]
 
@@ -735,6 +852,23 @@ async def parse_workspace_document(
             artifact_docs = best.get("artifact_docs") if best.get("artifact_docs") is not None else artifact_docs
             original_markdown = str(best.get("original_markdown") or original_markdown)
             markdown = str(best.get("markdown") or markdown)
+            best_cross_page = best.get("cross_page_merge_stats")
+            cross_page_merge_stats = dict(best_cross_page) if isinstance(best_cross_page, dict) else cross_page_merge_stats
+
+            # Attach best-effort artifacts to the gate evidence for UI/debug.
+            try:
+                evidence = dict((gate.evidence or {}) if hasattr(gate, "evidence") else {})
+                ro = best.get("reading_order")
+                stats = best.get("artifact_stats")
+                if isinstance(ro, dict) and ro:
+                    evidence["reading_order"] = ro
+                if isinstance(stats, dict) and stats:
+                    evidence["artifact_stats"] = stats
+                if isinstance(best.get("matrix_score"), (int, float)):
+                    evidence["matrix_score"] = float(best.get("matrix_score"))
+                gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=evidence)
+            except Exception:
+                pass
 
             for it in fallback_attempts:
                 try:
@@ -755,6 +889,101 @@ async def parse_workspace_document(
                     "fallback_max_retries": int(max_retries),
                 },
             )
+        # Persist attempt candidates (compact) for UI debugging when matrix is enabled.
+        if matrix_weights and attempt_candidates:
+            try:
+                evidence = dict(gate.evidence or {})
+                evidence["competition_matrix"] = {
+                    "schema": "mimirq.parse_competition_matrix.v1",
+                    "enabled": True,
+                    "weights": dict(matrix_weights),
+                    "attempts": [
+                        {
+                            "backend": str(a.get("backend") or ""),
+                            "grade": str(a.get("grade") or ""),
+                            "parse_score": a.get("parse_score"),
+                            "content_chars": a.get("content_chars"),
+                            "text_score": a.get("text_score"),
+                            "table_score": a.get("table_score"),
+                            "image_score": a.get("image_score"),
+                            "reading_order_score": a.get("reading_order_score"),
+                            "matrix_score": a.get("matrix_score"),
+                        }
+                        for a in attempt_candidates[:8]
+                    ],
+                }
+                gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=evidence)
+            except Exception:
+                pass
+
+        # Opt4: parse-then-correct (workspace preview; best-effort; off by default).
+        vlm_audit = None
+        if file_ext == ".pdf" and bool(getattr(settings, "VLM_CORRECTION_ENABLED", False)):
+            try:
+                pages = [
+                    _strip_position_tags(str(it.get("page_content") or "") if isinstance(it, dict) else "")
+                    for it in (artifact_docs or [])
+                    if isinstance(it, dict)
+                ]
+                corrected_pages, audit = maybe_correct_markdown_pages(
+                    pages,
+                    enabled=True,
+                    api_url=str(getattr(settings, "VLM_CORRECTION_API_URL", "") or ""),
+                    timeout_sec=float(getattr(settings, "VLM_CORRECTION_TIMEOUT_SEC", 60) or 60),
+                    max_pages=int(getattr(settings, "VLM_CORRECTION_MAX_PAGES", 3) or 3),
+                    max_chars=int(getattr(settings, "VLM_CORRECTION_MAX_CHARS", 40_000) or 40_000),
+                    pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+                    min_table_quality=float(getattr(settings, "VLM_CORRECTION_MIN_TABLE_QUALITY", 0.6) or 0.6),
+                    meta={"tenant_id": str(tenant_id), "document_id": str(doc.id)},
+                )
+                vlm_audit = audit.to_dict()
+                if len(corrected_pages) == len(pages) and corrected_pages:
+                    markdown = "\n\n".join([str(p or "") for p in corrected_pages]).strip()
+
+                    # Re-run the quality gate on the corrected output, but keep selection/debug evidence.
+                    gate_after = _compute_parsing_quality_gate(
+                        markdown,
+                        pdf_quality=pdf_quality,
+                        min_content_chars=min_chars,
+                        is_pdf=True,
+                    )
+                    prev_evidence = dict(gate.evidence or {})
+                    next_evidence = dict(gate_after.evidence or {})
+                    for k in (
+                        "fallback_attempts",
+                        "fallback_initial_backend",
+                        "fallback_final_backend",
+                        "fallback_selected_backend",
+                        "fallback_max_retries",
+                        "competition_matrix",
+                        "artifact_stats",
+                        "reading_order",
+                        "matrix_score",
+                    ):
+                        if k in prev_evidence:
+                            next_evidence[k] = prev_evidence.get(k)
+                    if vlm_audit:
+                        next_evidence["vlm_correction"] = {"schema": "mimirq.vlm_correction.v1", **vlm_audit}
+                    gate = ParsingQualityGate(
+                        grade=gate_after.grade,
+                        reasons=list(gate_after.reasons or []),
+                        evidence=next_evidence,
+                    )
+                else:
+                    # Keep a compact audit even when nothing changes.
+                    if vlm_audit:
+                        evidence = dict(gate.evidence or {})
+                        evidence["vlm_correction"] = {"schema": "mimirq.vlm_correction.v1", **vlm_audit}
+                        gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=evidence)
+            except Exception:
+                vlm_audit = None
+
+        # Opt5: image captions for workspace preview (best-effort; never fail the request).
+        if bool(image_caption_enabled):
+            try:
+                markdown, captions_added = add_image_captions(markdown)
+            except Exception:
+                captions_added = 0
 
         duration_sec = max(0.0, time.perf_counter() - t0)
         artifact_stats = compute_parsing_artifact_stats(
@@ -798,6 +1027,18 @@ async def parse_workspace_document(
             next_meta["image_captions_added"] = int(captions_added)
         if isinstance(pdf_quality, dict) and pdf_quality:
             next_meta["pdf_quality"] = dict(pdf_quality)
+        if isinstance(cross_page_merge_stats, dict) and cross_page_merge_stats:
+            next_meta["cross_page_merge"] = {"schema": "mimirq.cross_page_merge.v1", "enabled": True, **cross_page_merge_stats}
+        if isinstance(vlm_audit, dict) and vlm_audit:
+            next_meta["vlm_correction"] = {"schema": "mimirq.vlm_correction.v1", **vlm_audit}
+        ro = None
+        try:
+            if file_ext == ".pdf":
+                ro = score_reading_order(original_markdown)
+        except Exception:
+            ro = None
+        if isinstance(ro, dict) and ro:
+            next_meta["reading_order"] = ro
         if gate is not None:
             next_meta["quality_gate"] = gate.model_dump()
         next_meta["parsed_at"] = datetime.now(UTC).isoformat()

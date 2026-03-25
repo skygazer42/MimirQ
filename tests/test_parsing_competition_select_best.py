@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-def test_select_best_parse_attempt_prefers_grade_then_score_then_content():
+def test_select_best_parse_attempt_prefers_grade_then_score_then_content() -> None:
     from app.parsing.quality.competition import select_best_parse_attempt  # noqa: WPS433
 
     attempts = [
@@ -10,11 +10,10 @@ def test_select_best_parse_attempt_prefers_grade_then_score_then_content():
         {"backend": "c", "grade": "warn", "parse_score": 0.95, "content_chars": 5000},
     ]
 
-    # 'pass' wins even with lower score.
     assert select_best_parse_attempt(attempts)["backend"] == "b"
 
 
-def test_select_best_parse_attempt_breaks_ties_by_score_then_content():
+def test_select_best_parse_attempt_breaks_ties_by_score_then_content() -> None:
     from app.parsing.quality.competition import select_best_parse_attempt  # noqa: WPS433
 
     attempts = [
@@ -61,3 +60,14 @@ def test_select_best_parse_attempt_supports_weighted_quality_matrix() -> None:
     )
 
     assert best["backend"] == "balanced"
+
+
+def test_compute_competition_matrix_score_uses_explicit_text_score() -> None:
+    from app.parsing.quality.competition import compute_competition_matrix_score  # noqa: WPS433
+
+    score = compute_competition_matrix_score(
+        {"parse_score": 0.2, "text_score": 0.9},
+        weights={"text": 1.0},
+    )
+
+    assert score == 0.9

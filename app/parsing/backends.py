@@ -33,6 +33,9 @@ _BACKEND_ALIASES: dict[str, str] = {
     "paddle-vl": "paddle_vl",
     "paddleocr-vl": "paddle_vl",
     "paddleocrvl": "paddle_vl",
+    # GLM-OCR (PDF -> Markdown external service)
+    "glm-ocr": "glm_ocr",
+    "glmocr": "glm_ocr",
     # olmOCR (PDF -> Markdown external service)
     "olmocr": "olmocr",
     "olm-ocr": "olmocr",

@@ -6,6 +6,7 @@
  * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
 import { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react'
+import { useTheme } from 'next-themes'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
@@ -32,9 +33,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Upload, Share2, Info, RefreshCw, ZoomIn, ZoomOut, Maximize, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, PlayCircle, Layout, Link as LinkIcon, Lightbulb, Box, BoxSelect } from 'lucide-react'
+import { Upload, Share2, Info, RefreshCw, ZoomIn, ZoomOut, Maximize, Maximize2, Minimize2, ChevronDown, ChevronUp, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, PlayCircle, Layout, Link as LinkIcon, Lightbulb, Box, BoxSelect, Download, Copy } from 'lucide-react'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
-import { KnowledgeGraph3D } from '@/components/graph/force-graph-3d'
+import { KnowledgeGraph3D, type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphLegend } from '@/components/graph/graph-legend'
 import { GraphStatsBar } from '@/components/graph/graph-stats-bar'
 import { parseGraphML, GraphData, type GraphNode } from '@/lib/graph-parser'
@@ -57,11 +58,37 @@ import type {
   RagTrace,
   RagTraceListResponse,
 } from '@/types'
+import { useResizeObserver } from '@/hooks/use-resize-observer'
 
 type GraphConfBucket = 'high' | 'medium' | 'low'
 
+type GraphContextMenuTarget =
+  | { type: 'node'; node: any }
+  | { type: 'link'; link: any }
+  | { type: 'background' }
+
+type GraphContextMenuState = {
+  x: number
+  y: number
+  target: GraphContextMenuTarget
+}
+
 function coerceTrimmedString(value: unknown): string {
   return toTrimmedPrimitiveString(value)
+}
+
+function sanitizeFilename(name: string): string {
+  const trimmed = String(name || '').trim()
+  const base = trimmed || 'knowledge-graph'
+  return base.replaceAll(/[\\/:*?"<>|]+/g, '_')
+}
+
+function stripFilenameExtension(name: string): string {
+  const v = String(name || '').trim()
+  if (!v) return ''
+  const idx = v.lastIndexOf('.')
+  if (idx <= 0) return v
+  return v.slice(0, idx)
 }
 
 function getGraphNodeKind(node: any): string {
@@ -117,6 +144,8 @@ function coerceBoundedInt(value: string | null, fallback: number, min: number, m
 
 export default function GraphPage() {
   const router = useRouter()
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
   const searchParams = useSearchParams()
   const scopeParamKey = searchParams.toString()
   const scope = useMemo(() => {
@@ -148,6 +177,7 @@ export default function GraphPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [selectedLink, setSelectedLink] = useState<any | null>(null)
   const [isLinkDetailOpen, setIsLinkDetailOpen] = useState(false)
+  const [selfLoopGroupExpanded, setSelfLoopGroupExpanded] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [deleteNodeOpen, setDeleteNodeOpen] = useState(false)
   const [deleteNodeTarget, setDeleteNodeTarget] = useState<{ id: string; label: string } | null>(null)
@@ -162,6 +192,7 @@ export default function GraphPage() {
   // - /graph?dataset_id=...&doc_limit=200 (dataset scope; resolves to document ids client-side)
   const [scopedDatasetDocIds, setScopedDatasetDocIds] = useState<string[] | null>(null)
   const [scopedDatasetDocIdsLoading, setScopedDatasetDocIdsLoading] = useState(false)
+  const [scopedDatasetPendingDocs, setScopedDatasetPendingDocs] = useState<number | null>(null)
   const [scopeAutoLoaded, setScopeAutoLoaded] = useState(false)
 
   const scopedDocumentIds: string[] | null = useMemo(() => {
@@ -183,6 +214,7 @@ export default function GraphPage() {
     if (scope.directDocIds.length > 0) {
       setScopedDatasetDocIds(null)
       setScopedDatasetDocIdsLoading(false)
+      setScopedDatasetPendingDocs(null)
       return () => {
         cancelled = true
       }
@@ -192,12 +224,14 @@ export default function GraphPage() {
     if (!datasetId) {
       setScopedDatasetDocIds(null)
       setScopedDatasetDocIdsLoading(false)
+      setScopedDatasetPendingDocs(null)
       return () => {
         cancelled = true
       }
     }
 
     setScopedDatasetDocIdsLoading(true)
+    setScopedDatasetPendingDocs(null)
     ;(async () => {
       try {
         const list = await documentApi.list({
@@ -207,12 +241,17 @@ export default function GraphPage() {
           order_by: 'created_at',
           order_dir: 'desc',
         })
-        const ids = Array.isArray(list.items)
-          ? list.items.map((d: any) => String(d?.id || '').trim()).filter(Boolean)
-          : []
+        const items = Array.isArray(list.items) ? list.items : []
+        const ids = items.map((d: any) => String(d?.id || '').trim()).filter(Boolean)
+        const pending = items.filter((d: any) => {
+          const st = String(d?.status || '').trim().toLowerCase()
+          return st === 'pending' || st === 'processing'
+        }).length
         if (!cancelled) setScopedDatasetDocIds(ids)
+        if (!cancelled) setScopedDatasetPendingDocs(pending)
       } catch {
         if (!cancelled) setScopedDatasetDocIds([])
+        if (!cancelled) setScopedDatasetPendingDocs(null)
       } finally {
         if (!cancelled) setScopedDatasetDocIdsLoading(false)
       }
@@ -304,11 +343,86 @@ export default function GraphPage() {
   const [currentStepIndex, setCurrentStepIndex] = useState(-1)
   const [traceReplay, setTraceReplay] = useState<RagTrace | null>(null)
 
-  const graphRef = useRef<GraphViewerRef>(null)
+  const graphViewportRef = useRef<HTMLDivElement>(null)
+  const graph2dRef = useRef<GraphViewerRef>(null)
+  const graph3dRef = useRef<KnowledgeGraph3DRef>(null)
+  const { width: graphViewportWidth, height: graphViewportHeight } = useResizeObserver(graphViewportRef)
+
+  const getActiveGraph = useCallback(() => {
+    return viewMode === '3d' ? graph3dRef.current : graph2dRef.current
+  }, [viewMode])
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const traceFileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const deferredSearchTerm = useDeferredValue(searchTerm)
+
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null)
+  }, [])
+
+  const openContextMenu = useCallback((event: MouseEvent, target: GraphContextMenuTarget) => {
+    try {
+      event.preventDefault?.()
+      event.stopPropagation?.()
+    } catch {}
+
+    const rect = graphViewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    const menuW = 272
+    const menuH = 320
+    const pad = 12
+    let x = event.clientX - rect.left
+    let y = event.clientY - rect.top
+    x = Math.max(pad, Math.min(x, rect.width - menuW - pad))
+    y = Math.max(pad, Math.min(y, rect.height - menuH - pad))
+    setContextMenu({ x, y, target })
+  }, [])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const handle = () => setContextMenu(null)
+    globalThis.window.addEventListener('mousedown', handle)
+    globalThis.window.addEventListener('scroll', handle, true)
+    return () => {
+      globalThis.window.removeEventListener('mousedown', handle)
+      globalThis.window.removeEventListener('scroll', handle, true)
+    }
+  }, [contextMenu])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const handler = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+    handler()
+    document.addEventListener('fullscreenchange', handler)
+    return () => document.removeEventListener('fullscreenchange', handler)
+  }, [])
+
+  const toggleFullscreen = useCallback(async () => {
+    if (typeof document === 'undefined') return
+    try {
+      if (!document.fullscreenElement) {
+        await graphViewportRef.current?.requestFullscreen?.()
+      } else {
+        await document.exitFullscreen?.()
+      }
+    } catch {
+      toast.error('全屏切换失败')
+    }
+  }, [])
+
+  useEffect(() => {
+    // Reset per-link expanded state when the selection/panel changes.
+    setSelfLoopGroupExpanded(false)
+  }, [selectedLink, isLinkDetailOpen])
 
   const resetConnectMode = useCallback(() => {
     setIsConnectMode(false)
@@ -330,6 +444,44 @@ export default function GraphPage() {
     setHighlightedNodeIds(new Set())
     setHighlightedLinkIds(new Set())
   }, [])
+
+  const handleBackgroundClick = useCallback(() => {
+    setIsDetailOpen(false)
+    setIsLinkDetailOpen(false)
+    setSelectedLink(null)
+    closeContextMenu()
+  }, [closeContextMenu])
+
+  const handleNodeRightClick = useCallback(
+    (node: any, event: MouseEvent) => {
+      setSelectedNode(node)
+      setSelectedLink(null)
+      setIsDetailOpen(false)
+      setIsLinkDetailOpen(false)
+      openContextMenu(event, { type: 'node', node })
+    },
+    [openContextMenu]
+  )
+
+  const handleLinkRightClick = useCallback(
+    (link: any, event: MouseEvent) => {
+      setSelectedLink(link)
+      setSelectedNode(null)
+      setIsDetailOpen(false)
+      setIsLinkDetailOpen(false)
+      openContextMenu(event, { type: 'link', link })
+    },
+    [openContextMenu]
+  )
+
+  const handleBackgroundRightClick = useCallback(
+    (event: MouseEvent) => {
+      setIsDetailOpen(false)
+      setIsLinkDetailOpen(false)
+      openContextMenu(event, { type: 'background' })
+    },
+    [openContextMenu]
+  )
 
   const availableEntityTypes = useMemo(() => {
     const counts = new Map<string, number>()
@@ -465,6 +617,10 @@ export default function GraphPage() {
     }))
   }, [displayGraphData.links])
 
+  const graphRenderData = useMemo<GraphData>(() => {
+    return { nodes: displayGraphData.nodes, links: linksWithIds }
+  }, [displayGraphData.nodes, linksWithIds])
+
   const searchMatches = useMemo(() => {
     if (isPathMode || isConnectMode || isExplainMode) return []
     const term = deferredSearchTerm.trim().toLowerCase()
@@ -488,10 +644,10 @@ export default function GraphPage() {
     const nextIds = new Set(searchMatches.map((node) => node.id))
     setHighlightedNodeIds(nextIds)
 
-    if (searchMatches.length > 0 && graphRef.current) {
-      graphRef.current.focusNode(searchMatches[0].id)
+    if (searchMatches.length > 0) {
+      getActiveGraph()?.focusNode(searchMatches[0].id)
     }
-  }, [deferredSearchTerm, searchMatches, isPathMode, isConnectMode, isExplainMode])
+  }, [deferredSearchTerm, searchMatches, isPathMode, isConnectMode, isExplainMode, getActiveGraph])
 
   useEffect(() => {
     if (dataSource !== 'live') {
@@ -833,44 +989,57 @@ export default function GraphPage() {
     traceFileInputRef.current?.click()
   }
 
-	  const handleExpandNode = useCallback(async () => {
-	    if (!selectedNode) return
-	    
-	      setIsLoading(true)
-	      try {
-	      const newData = await GraphService.expandNode(selectedNode.id, {
-	        includeEntityLinks: includeEntityLinks && dataSource === 'live',
-	        includeRelationLinks: includeRelationLinks && dataSource === 'live',
-	        minSharedEvents,
-	        maxEntityLinks,
-	        documentIds: dataSource === 'live' ? (scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined) : undefined,
-	        pipelineHash: dataSource === 'live' ? (scope.pipelineHash || undefined) : undefined,
-	      })
-       
-       setGraphData(prev => {
-        const existingNodeIds = new Set(prev.nodes.map(n => n.id))
-        const uniqueNewNodes = newData.nodes.filter(n => !existingNodeIds.has(n.id))
-        
-        const existingLinks = new Set(prev.links.map((l) => `${getGraphLinkEndpointId(l.source)}-${getGraphLinkEndpointId(l.target)}`))
-        const uniqueNewLinks = newData.links.filter(l => !existingLinks.has(`${l.source}-${l.target}`))
+  const expandNodeById = useCallback(
+    async (nodeId: string) => {
+      const id = String(nodeId || '').trim()
+      if (!id) return
 
-        return {
-          nodes: [...prev.nodes, ...uniqueNewNodes],
-          links: [...prev.links, ...uniqueNewLinks]
-        }
-      })
-    } catch (error) {
-      console.error('Failed to expand node:', error)
-	    } finally {
-	      setIsLoading(false)
-	    }
-		  }, [selectedNode, includeEntityLinks, includeRelationLinks, minSharedEvents, maxEntityLinks, dataSource, scopedDocumentIds, scope.pipelineHash])
+      setIsLoading(true)
+      try {
+        const newData = await GraphService.expandNode(id, {
+          includeEntityLinks: includeEntityLinks && dataSource === 'live',
+          includeRelationLinks: includeRelationLinks && dataSource === 'live',
+          minSharedEvents,
+          maxEntityLinks,
+          documentIds:
+            dataSource === 'live' && scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined,
+          pipelineHash: dataSource === 'live' ? (scope.pipelineHash || undefined) : undefined,
+        })
 
-  const handleDeleteNode = useCallback(() => {
+        setGraphData((prev) => {
+          const existingNodeIds = new Set(prev.nodes.map((n) => n.id))
+          const uniqueNewNodes = newData.nodes.filter((n) => !existingNodeIds.has(n.id))
+
+          const existingLinks = new Set(
+            prev.links.map((l) => `${getGraphLinkEndpointId(l.source)}-${getGraphLinkEndpointId(l.target)}`)
+          )
+          const uniqueNewLinks = newData.links.filter((l) => !existingLinks.has(`${l.source}-${l.target}`))
+
+          return {
+            nodes: [...prev.nodes, ...uniqueNewNodes],
+            links: [...prev.links, ...uniqueNewLinks],
+          }
+        })
+      } catch (error) {
+        console.error('Failed to expand node:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [includeEntityLinks, includeRelationLinks, minSharedEvents, maxEntityLinks, dataSource, scopedDocumentIds, scope.pipelineHash]
+  )
+
+  const handleExpandNode = useCallback(() => {
     if (!selectedNode) return
+    detachPromise(expandNodeById(String(selectedNode.id)))
+  }, [expandNodeById, selectedNode])
+
+  const handleDeleteNode = useCallback((node?: any) => {
+    const target = node ?? selectedNode
+    if (!target) return
     setDeleteNodeTarget({
-      id: String(selectedNode.id),
-      label: String(selectedNode.label || selectedNode.id || ''),
+      id: String(target.id),
+      label: String(target.label || target.id || ''),
     })
     setDeleteNodeOpen(true)
   }, [selectedNode])
@@ -1143,6 +1312,7 @@ export default function GraphPage() {
         if (isPathMode) resetPathMode()
         if (isConnectMode) resetConnectMode()
         if (isExplainMode) resetExplainMode()
+        closeContextMenu()
         searchInputRef.current?.blur()
       }
 
@@ -1174,6 +1344,7 @@ export default function GraphPage() {
     resetPathMode,
     resetConnectMode,
     resetExplainMode,
+    closeContextMenu,
   ])
 
   const startConnectMode = () => {
@@ -1324,9 +1495,7 @@ export default function GraphPage() {
         
         setHighlightedNodeIds(prev => new Set([...Array.from(prev), step.node]))
         
-        if (graphRef.current) {
-            graphRef.current.focusNode(step.node)
-        }
+        getActiveGraph()?.focusNode(step.node)
 
         if (i > 0) {
             const prevNode = steps[i-1].node
@@ -1408,15 +1577,13 @@ export default function GraphPage() {
       if (result) {
         setHighlightedNodeIds(new Set(result.nodeIds))
         setHighlightedLinkIds(new Set(result.linkIds))
-        if (graphRef.current) {
-          graphRef.current.zoomToFit()
-        }
+        getActiveGraph()?.zoomToFit()
       } else {
         toast.info('未找到连接这两个节点的路径')
         setPathEndNode(null)
       }
     },
-    [displayGraphData.nodes, linksWithIds]
+    [displayGraphData.nodes, linksWithIds, getActiveGraph]
   )
 
   const togglePathMode = () => {
@@ -1439,7 +1606,7 @@ export default function GraphPage() {
       return 'force'
     })
     setTimeout(() => {
-       graphRef.current?.zoomToFit()
+       getActiveGraph()?.zoomToFit()
     }, 500)
   }
 
@@ -1496,6 +1663,104 @@ export default function GraphPage() {
     })
   }
 
+  const copyToClipboard = useCallback(async (text: string, label: string) => {
+    const v = String(text || '').trim()
+    if (!v) {
+      toast.error('无可复制内容')
+      return
+    }
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+        throw new Error('Clipboard API unavailable')
+      }
+      await navigator.clipboard.writeText(v)
+      toast.success(`已复制 ${label}`)
+    } catch (err) {
+      console.error('clipboard.writeText failed:', err)
+      toast.error('复制失败（浏览器权限限制）')
+    }
+  }, [])
+
+  const chatWithNode = useCallback(
+    (node?: any) => {
+      const target = node ?? selectedNode
+      const label = String(target?.label || '').trim()
+      if (!label) return
+      const prompt = `请告诉我关于 ${label} 的信息`
+      router.push(`/?prompt=${encodeURIComponent(prompt)}`)
+    },
+    [router, selectedNode]
+  )
+
+  const viewSourceForNode = useCallback(
+    (node?: any) => {
+      const target = node ?? selectedNode
+      const docId = target?.meta?.document_id || target?.source
+      if (docId) {
+        toast(`源文档：${docId}`)
+        return
+      }
+      toast('未找到源文档信息')
+    },
+    [selectedNode]
+  )
+
+  const exportBaseName = useMemo(() => {
+    const base =
+      stripFilenameExtension(fileName || '') ||
+      (scope.datasetId ? `dataset-${scope.datasetId}` : '') ||
+      'mimirq-kg'
+    return sanitizeFilename(`${base}-${viewMode}`)
+  }, [fileName, scope.datasetId, viewMode])
+
+  const exportGraph = useCallback(
+    async (format: 'png' | 'svg', mode: 'download' | 'copy') => {
+      const api = getActiveGraph()
+      if (!api) {
+        toast.error('图谱尚未就绪')
+        return
+      }
+
+      if (format === 'png') {
+        const dataUrl = api.exportPngDataUrl?.()
+        if (!dataUrl) {
+          toast.error('导出 PNG 失败')
+          return
+        }
+        if (mode === 'copy') {
+          await copyToClipboard(dataUrl, 'PNG DataURL')
+          return
+        }
+        const a = document.createElement('a')
+        a.href = dataUrl
+        a.download = `${exportBaseName}.png`
+        a.click()
+        toast.success('已导出 PNG')
+        return
+      }
+
+      const svg = api.exportSvgString?.()
+      if (!svg) {
+        toast.error('导出 SVG 失败')
+        return
+      }
+      if (mode === 'copy') {
+        await copyToClipboard(svg, 'SVG')
+        return
+      }
+
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${exportBaseName}.svg`
+      a.click()
+      globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      toast.success('已导出 SVG')
+    },
+    [copyToClipboard, exportBaseName, getActiveGraph]
+  )
+
   const handleExportGraphML = async () => {
     if (dataSource !== 'live') {
       toast.info('仅支持导出后端 KG 实时图谱')
@@ -1529,18 +1794,11 @@ export default function GraphPage() {
   }
 
   const handleChatWithNode = () => {
-    if (!selectedNode?.label) return
-    const prompt = `请告诉我关于 ${selectedNode.label} 的信息`
-    router.push(`/?prompt=${encodeURIComponent(prompt)}`)
+    chatWithNode()
   }
 
   const handleViewSource = () => {
-    const docId = selectedNode?.meta?.document_id || selectedNode?.source
-    if (docId) {
-      toast(`源文档：${docId}`)
-      return
-    }
-    toast('未找到源文档信息')
+    viewSourceForNode()
   }
 
   return (
@@ -1977,29 +2235,50 @@ export default function GraphPage() {
         </header>
 
         {/* Graph Area */}
-        <div className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px]">
+        <div ref={graphViewportRef} className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px]">
           {/* Dot Pattern Background */}
           <div className="absolute inset-0 z-0 opacity-[0.4]" style={{
-             backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', 
+             backgroundImage: isDark
+               ? 'radial-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px)'
+               : 'radial-gradient(rgba(203, 213, 225, 0.9) 1px, transparent 1px)',
              backgroundSize: '24px 24px'
           }}></div>
 
           { }
-          {displayGraphData.nodes.length > 0 ? (
+          {graphRenderData.nodes.length > 0 ? (
             viewMode === '3d' ? (
-                <KnowledgeGraph3D 
-                    data={displayGraphData}
-                    onNodeClick={(node) => {
-                        handleNodeClick(node)
-                    }}
+              graphViewportWidth > 0 && graphViewportHeight > 0 ? (
+                <KnowledgeGraph3D
+                  ref={graph3dRef}
+                  data={graphRenderData}
+                  width={graphViewportWidth}
+                  height={graphViewportHeight}
+                  onNodeClick={handleNodeClick}
+                  onNodeRightClick={handleNodeRightClick}
+                  onLinkClick={handleLinkClick}
+                  onLinkRightClick={handleLinkRightClick}
+                  onBackgroundClick={handleBackgroundClick}
+                  onBackgroundRightClick={handleBackgroundRightClick}
+                  highlightedNodeIds={highlightedNodeIds}
+                  highlightedLinkIds={highlightedLinkIds}
+                  selectedNodeId={selectedNode?.id ?? null}
+                  layoutMode={layoutMode}
                 />
+              ) : (
+                <div className="absolute inset-0 z-10 flex items-center justify-center text-muted-foreground">
+                  Loading graph...
+                </div>
+              )
             ) : (
                 <GraphViewer 
-                ref={graphRef as React.RefObject<GraphViewerRef>}
-                data={displayGraphData} 
+                ref={graph2dRef}
+                data={graphRenderData} 
                 onNodeClick={handleNodeClick}
+                onNodeRightClick={handleNodeRightClick}
                 onLinkClick={handleLinkClick}
-                onBackgroundClick={() => { setIsDetailOpen(false); setIsLinkDetailOpen(false); setSelectedLink(null) }}
+                onLinkRightClick={handleLinkRightClick}
+                onBackgroundClick={handleBackgroundClick}
+                onBackgroundRightClick={handleBackgroundRightClick}
                 highlightedNodeIds={highlightedNodeIds}
                 highlightedLinkIds={highlightedLinkIds}
                 selectedNodeId={selectedNode?.id ?? null}
@@ -2042,10 +2321,247 @@ export default function GraphPage() {
              </div>
            )}
 
+          {contextMenu && (
+            <div
+              className="absolute z-30"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              <div className="w-64 rounded-xl border border-border/60 bg-card/95 backdrop-blur-sm shadow-strong overflow-hidden">
+                {contextMenu.target.type === 'node' ? (
+                  (() => {
+                    const node = contextMenu.target.node
+                    return (
+                      <div>
+                        <div className="px-3 py-2 border-b border-border/60 bg-muted/30">
+                          <div className="text-[10px] font-medium text-muted-foreground uppercase">Node</div>
+                          <div className="text-sm font-semibold text-foreground truncate">
+                            {String(node?.label || node?.id || 'Node')}
+                          </div>
+                          <div className="text-[10px] font-mono text-muted-foreground truncate">
+                            {String(node?.id || '')}
+                          </div>
+                        </div>
+                        <div className="p-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8"
+                            onClick={() => {
+                              closeContextMenu()
+                              detachPromise(expandNodeById(String(node?.id || '')))
+                            }}
+                          >
+                            <Layers className="w-4 h-4 mr-2" />
+                            展开邻居
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8"
+                            onClick={() => {
+                              closeContextMenu()
+                              resetConnectMode()
+                              resetExplainMode()
+                              setIsPathMode(true)
+                              setPathStartNode(node)
+                              setPathEndNode(null)
+                              setHighlightedNodeIds(new Set())
+                              setHighlightedLinkIds(new Set())
+                              toast(`路径模式：请选择终点节点（起点：${String(node?.label || node?.id || '')}）`)
+                            }}
+                          >
+                            <Route className="w-4 h-4 mr-2" />
+                            查找路径
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8"
+                            onClick={() => {
+                              closeContextMenu()
+                              resetPathMode()
+                              resetExplainMode()
+                              setConnectSourceNode(node)
+                              setIsConnectMode(true)
+                              toast(`连线模式：请选择终点节点（起点：${String(node?.label || node?.id || '')}）`)
+                            }}
+                          >
+                            <LinkIcon className="w-4 h-4 mr-2" />
+                            连线
+                          </Button>
+                          <div className="my-1 h-px bg-border/60" />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8"
+                            onClick={() => {
+                              closeContextMenu()
+                              chatWithNode(node)
+                            }}
+                          >
+                            <MessageSquare className="w-4 h-4 mr-2" />
+                            对话
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8"
+                            onClick={() => {
+                              closeContextMenu()
+                              viewSourceForNode(node)
+                            }}
+                          >
+                            <FileText className="w-4 h-4 mr-2" />
+                            来源
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8"
+                            onClick={() => {
+                              closeContextMenu()
+                              detachPromise(copyToClipboard(String(node?.id || ''), '节点 ID'))
+                            }}
+                          >
+                            <Copy className="w-4 h-4 mr-2" />
+                            复制 ID
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8 text-red-600 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
+                            onClick={() => {
+                              closeContextMenu()
+                              handleDeleteNode(node)
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            删除
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })()
+                ) : contextMenu.target.type === 'link' ? (
+                  (() => {
+                    const link = contextMenu.target.link
+                    return (
+                      <div>
+                        <div className="px-3 py-2 border-b border-border/60 bg-muted/30">
+                          <div className="text-[10px] font-medium text-muted-foreground uppercase">Link</div>
+                          <div className="text-sm font-semibold text-foreground truncate">
+                            {getGraphLinkPredicate(link) || 'Relationship'}
+                          </div>
+                          <div className="text-[10px] font-mono text-muted-foreground truncate">
+                            {String(link?.id || link?.meta?.id || '')}
+                          </div>
+                        </div>
+                        <div className="p-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8"
+                            onClick={() => {
+                              closeContextMenu()
+                              setSelectedLink(link)
+                              setIsLinkDetailOpen(true)
+                              setIsDetailOpen(false)
+                              setSelectedNode(null)
+                            }}
+                          >
+                            <Info className="w-4 h-4 mr-2" />
+                            查看详情
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-8"
+                            onClick={() => {
+                              closeContextMenu()
+                              detachPromise(copyToClipboard(getGraphLinkPredicate(link) || '', 'Predicate'))
+                            }}
+                          >
+                            <Copy className="w-4 h-4 mr-2" />
+                            复制 Predicate
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })()
+                ) : (
+                  <div>
+                    <div className="px-3 py-2 border-b border-border/60 bg-muted/30">
+                      <div className="text-[10px] font-medium text-muted-foreground uppercase">Graph</div>
+                      <div className="text-sm font-semibold text-foreground truncate">
+                        {viewMode === '3d' ? '3D View' : '2D View'}
+                      </div>
+                    </div>
+                    <div className="p-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start h-8"
+                        onClick={() => {
+                          closeContextMenu()
+                          getActiveGraph()?.zoomToFit()
+                        }}
+                      >
+                        <Maximize className="w-4 h-4 mr-2" />
+                        适应屏幕
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start h-8"
+                        onClick={() => {
+                          closeContextMenu()
+                          setHighlightedNodeIds(new Set())
+                          setHighlightedLinkIds(new Set())
+                          setPathStartNode(null)
+                          setPathEndNode(null)
+                        }}
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        清除高亮
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start h-8"
+                        onClick={() => {
+                          closeContextMenu()
+                          setShowEdgeLabels((v) => !v)
+                        }}
+                      >
+                        <Type className="w-4 h-4 mr-2" />
+                        {showEdgeLabels ? '隐藏连线标签' : '显示连线标签'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Entity Type Legend (Bottom Left) */}
-          {displayGraphData.nodes.length > 0 && !isExplainMode && (
+          {graphRenderData.nodes.length > 0 && !isExplainMode && (
             <GraphLegend
-              nodes={displayGraphData.nodes}
+              nodes={graphRenderData.nodes}
+              links={graphRenderData.links}
               activeTypeFilters={entityTypeFilters}
               onToggleTypeFilter={(type) => {
                 setEntityTypeFilters((prev) => {
@@ -2097,11 +2613,20 @@ export default function GraphPage() {
           )}
 
           {/* Graph Stats Bar */}
-          {displayGraphData.nodes.length > 0 && (
+          {dataSource === 'live' && typeof scopedDatasetPendingDocs === 'number' && scopedDatasetPendingDocs > 0 && (
+            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20">
+              <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 shadow-sm animate-pulse motion-reduce:animate-none">
+                <span className="text-[11px] font-medium text-primary">KG 构建中</span>
+                <span className="text-[10px] text-muted-foreground">待处理文档</span>
+                <span className="text-[10px] font-mono text-foreground">{scopedDatasetPendingDocs}</span>
+              </div>
+            </div>
+          )}
+          {graphRenderData.nodes.length > 0 && (
             <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
               <GraphStatsBar
-                nodeCount={displayGraphData.nodes.length}
-                linkCount={displayGraphData.links.length}
+                nodeCount={graphRenderData.nodes.length}
+                linkCount={graphRenderData.links.length}
                 entityTypeCount={availableEntityTypes.length}
               />
             </div>
@@ -2111,14 +2636,14 @@ export default function GraphPage() {
           <div className="absolute bottom-8 right-8 z-10 flex flex-col gap-3">
              {/* Main Zoom Controls */}
              <div className="flex flex-col gap-1 bg-card/90 p-1.5 rounded-2xl shadow-md border border-border/50">
-	               <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomIn()} className="rounded-xl" title="放大" aria-label="放大">
+	               <Button variant="ghost" size="icon" onClick={() => getActiveGraph()?.zoomIn()} className="rounded-xl" title="放大" aria-label="放大">
 	                  <ZoomIn className="w-5 h-5" />
 	                </Button>
-	                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomOut()} className="rounded-xl" title="缩小" aria-label="缩小">
+	                <Button variant="ghost" size="icon" onClick={() => getActiveGraph()?.zoomOut()} className="rounded-xl" title="缩小" aria-label="缩小">
 	                  <ZoomOut className="w-5 h-5" />
 	                </Button>
                 <div className="h-px bg-muted mx-2 my-0.5"></div>
-	                <Button variant="ghost" size="icon" onClick={() => graphRef.current?.zoomToFit()} className="rounded-xl" title="适应屏幕" aria-label="适应屏幕">
+	                <Button variant="ghost" size="icon" onClick={() => getActiveGraph()?.zoomToFit()} className="rounded-xl" title="适应屏幕" aria-label="适应屏幕">
 	                  <Maximize className="w-5 h-5" />
 	                </Button>
              </div>
@@ -2185,6 +2710,89 @@ export default function GraphPage() {
 	                >
                   <Type className="w-5 h-5" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleFullscreen}
+                  className={cn("rounded-xl", isFullscreen && "bg-primary/10 text-primary ring-2 ring-primary/20")}
+                  title={isFullscreen ? "退出全屏" : "全屏模式"}
+                  aria-label={isFullscreen ? "退出全屏模式" : "进入全屏模式"}
+                >
+                  {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                </Button>
+                <Popover open={exportOpen} onOpenChange={setExportOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn("rounded-xl", exportOpen && "bg-primary/10 text-primary ring-2 ring-primary/20")}
+                      title="导出 PNG/SVG"
+                      aria-label="导出图谱"
+                    >
+                      <Download className="w-5 h-5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent side="left" align="end" className="w-64 p-2">
+                    <div className="px-1.5 py-1 text-[10px] font-semibold text-muted-foreground uppercase">Export</div>
+                    <div className="grid grid-cols-2 gap-2 p-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => {
+                          setExportOpen(false)
+                          detachPromise(exportGraph('png', 'download'))
+                        }}
+                      >
+                        PNG
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8"
+                        onClick={() => {
+                          setExportOpen(false)
+                          detachPromise(exportGraph('svg', 'download'))
+                        }}
+                      >
+                        SVG
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 p-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 justify-start"
+                        onClick={() => {
+                          setExportOpen(false)
+                          detachPromise(exportGraph('png', 'copy'))
+                        }}
+                      >
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copy PNG
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 justify-start"
+                        onClick={() => {
+                          setExportOpen(false)
+                          detachPromise(exportGraph('svg', 'copy'))
+                        }}
+                      >
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copy SVG
+                      </Button>
+                    </div>
+                    <div className="px-2 pb-1 text-[10px] text-muted-foreground">
+                      当前视图：{viewMode === '3d' ? '3D' : '2D'}
+                    </div>
+                  </PopoverContent>
+                </Popover>
              </div>
           </div>
 
@@ -2472,6 +3080,9 @@ export default function GraphPage() {
               const tgtObj = selectedLink.target
               const srcLabel = typeof srcObj === 'object' ? (srcObj?.label || srcObj?.id || '') : String(srcObj)
               const tgtLabel = typeof tgtObj === 'object' ? (tgtObj?.label || tgtObj?.id || '') : String(tgtObj)
+              const srcId = getGraphLinkEndpointId(srcObj)
+              const tgtId = getGraphLinkEndpointId(tgtObj)
+              const isSelfLoop = Boolean(srcId) && srcId === tgtId
               const kind = String(selectedLink?.meta?.kind ?? selectedLink?.kind ?? '').trim()
               const predicate = String(selectedLink?.meta?.predicate ?? selectedLink?.predicate ?? selectedLink?.label ?? '').trim()
               const confidence = selectedLink?.meta?.confidence ?? selectedLink?.confidence ?? selectedLink?.weight
@@ -2482,6 +3093,15 @@ export default function GraphPage() {
               const eventId = String(selectedLink?.meta?.event_id ?? '').trim()
               const page = String(selectedLink?.meta?.page ?? selectedLink?.meta?.page_number ?? '').trim()
               const sharedEvents = String(selectedLink?.meta?.shared_events ?? '').trim()
+
+              const selfLoopLinks = isSelfLoop
+                ? (graphRenderData.links || []).filter((l: any) => {
+                    const s = getGraphLinkEndpointId(l?.source)
+                    const t = getGraphLinkEndpointId(l?.target)
+                    return Boolean(s) && s === t && s === srcId
+                  })
+                : []
+              const showSelfLoopGroup = isSelfLoop && selfLoopLinks.length > 1
 
               const kindLabel = kind === 'entity_relation' ? 'Relation (triple)'
                 : kind === 'event_entity' ? 'Evidence (event → entity)'
@@ -2512,6 +3132,76 @@ export default function GraphPage() {
                   </div>
                   <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-5 space-y-4">
                     <div className="space-y-3">
+                      {showSelfLoopGroup && (
+                        <div className="bg-muted rounded-xl p-3 border border-border">
+                          <button
+                            type="button"
+                            onClick={() => setSelfLoopGroupExpanded((prev) => !prev)}
+                            className="w-full flex items-center justify-between gap-2 text-left"
+                            aria-expanded={selfLoopGroupExpanded}
+                          >
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-medium text-muted-foreground mb-1">Self-loop Group</div>
+                              <div className="text-sm font-medium text-foreground truncate">{srcLabel || srcId}</div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="text-[10px] font-mono text-muted-foreground">{selfLoopLinks.length}</span>
+                              {selfLoopGroupExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+                            </div>
+                          </button>
+                          {selfLoopGroupExpanded && (
+                            <div className="mt-3 space-y-2">
+                              {selfLoopLinks.slice(0, 12).map((l: any, idx: number) => {
+                                const edgeId = String(l?.id ?? l?.meta?.id ?? '').trim()
+                                const edgeKind = String(l?.meta?.kind ?? l?.kind ?? '').trim()
+                                const edgePredicate = String(l?.meta?.predicate ?? l?.predicate ?? l?.label ?? '').trim()
+                                const createdAt = String(l?.meta?.created_at ?? l?.meta?.created ?? '').trim()
+                                const episodesRaw = l?.meta?.episodes ?? l?.meta?.episode_ids ?? l?.meta?.episode_count
+                                const episodes = Array.isArray(episodesRaw) ? String(episodesRaw.length) : (episodesRaw == null ? '' : String(episodesRaw))
+                                const fact = String(l?.meta?.fact ?? l?.meta?.quote ?? l?.meta?.text ?? '').trim()
+                                const secondary = [edgeKind, edgePredicate].filter(Boolean).join(' · ')
+                                return (
+                                  <div key={edgeId || `${edgePredicate}-${idx}`} className="rounded-lg border border-border bg-background/60 px-3 py-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="text-xs font-medium text-foreground truncate">
+                                          {edgePredicate || edgeKind || 'self-loop'}
+                                        </div>
+                                        {secondary && <div className="text-[10px] text-muted-foreground truncate">{secondary}</div>}
+                                      </div>
+                                      {edgeId && <div className="text-[10px] font-mono text-muted-foreground">{edgeId.slice(0, 8)}</div>}
+                                    </div>
+                                    {(createdAt || episodes || fact) && (
+                                      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                                        {createdAt && (
+                                          <div className="truncate" title={createdAt}>
+                                            <span className="opacity-70">Created</span>: {createdAt}
+                                          </div>
+                                        )}
+                                        {episodes && (
+                                          <div className="truncate" title={episodes}>
+                                            <span className="opacity-70">Episodes</span>: {episodes}
+                                          </div>
+                                        )}
+                                        {fact && (
+                                          <div className="col-span-2 truncate" title={fact}>
+                                            <span className="opacity-70">Fact</span>: {fact}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )
+                              })}
+                              {selfLoopLinks.length > 12 && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  仅显示前 12 条（共 {selfLoopLinks.length} 条）
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="bg-muted rounded-xl p-3 border border-border">
                         <span className="block text-[10px] font-medium text-muted-foreground mb-1">Type</span>
                         <span className="block text-sm text-foreground">{kindLabel}</span>

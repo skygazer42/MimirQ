@@ -12,6 +12,7 @@ Final score 0-1; higher is cleaner. Low scores prefer OCR/structured flow.
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pdfplumber  # type: ignore
 
@@ -26,7 +27,7 @@ def score_pdf_quality(
     file_path: Path,
     sample_pages: int = 3,
     use_ocr_validation: bool = False
-) -> dict[str, float]:
+) -> dict[str, Any]:
     """
     Lightweight scoring for a PDF (sample first sample_pages).
 
@@ -56,6 +57,13 @@ def score_pdf_quality(
     table_quality_score = 0.0
     reading_order_score = 1.0
     is_scanned = False
+    preprocess_info: dict[str, Any] = {
+        "skew_angle": None,
+        "orientation": 0,
+        "watermark_detected": False,
+        "watermark_regions": [],
+        "geometric_distortion": None,
+    }
 
     try:
         with pdfplumber.open(str(file_path)) as pdf:
@@ -84,6 +92,11 @@ def score_pdf_quality(
         format_consistency_score = 0.0
         table_quality_score = 0.0
         reading_order_score = 1.0
+    finally:
+        try:
+            preprocess_info.update(_detect_preprocess_info(file_path, sample_pages=sample_pages))
+        except Exception:
+            pass
 
     # Weighted sum: text 40% + format 25% + table 20% + reading order 15%.
     final_score = (
@@ -102,7 +115,78 @@ def score_pdf_quality(
         "reading_order_score": round(reading_order_score, 3),
         "is_scanned": is_scanned,
         "page_count": float(page_count),
+        "preprocess_info": preprocess_info,
     }
+
+
+def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, Any]:
+    """
+    Best-effort PDF preprocess hints used by routing/diagnostics.
+
+    This is intentionally lightweight and does not run model inference.
+    """
+    info: dict[str, Any] = {
+        "skew_angle": None,
+        "orientation": 0,
+        "watermark_detected": False,
+        "watermark_regions": [],
+        "geometric_distortion": None,
+    }
+
+    try:
+        import fitz  # PyMuPDF
+    except Exception:
+        return info
+
+    doc = None
+    try:
+        doc = fitz.open(str(file_path))
+        n = int(getattr(doc, "page_count", 0) or 0)
+        k = max(1, min(int(sample_pages or 0) or 1, n if n > 0 else 1))
+
+        rot_counts: dict[int, int] = {}
+        watermark_annots = 0
+
+        for i in range(k):
+            page = doc.load_page(i)
+            rot = int(getattr(page, "rotation", 0) or 0) % 360
+            rot_counts[int(rot)] = rot_counts.get(int(rot), 0) + 1
+
+            try:
+                annots = list(page.annots() or [])
+            except Exception:
+                annots = []
+            for annot in annots:
+                try:
+                    typ = getattr(annot, "type", None)
+                    name = ""
+                    if isinstance(typ, (tuple, list)) and len(typ) >= 2:
+                        name = str(typ[1] or "")
+                    meta = getattr(annot, "info", None) or {}
+                    subject = str((meta or {}).get("subject") or (meta or {}).get("title") or "")
+                    hint = f"{name} {subject}".lower()
+                    if "watermark" in hint or name.strip().lower() in {"watermark", "stamp"}:
+                        watermark_annots += 1
+                except Exception:
+                    continue
+
+        if rot_counts:
+            orientation = max(rot_counts.items(), key=lambda kv: kv[1])[0]
+        else:
+            orientation = 0
+        info["orientation"] = int(orientation)
+        info["rotation_counts"] = {str(k): int(v) for k, v in sorted(rot_counts.items(), key=lambda kv: kv[0])}
+        info["watermark_annots"] = int(watermark_annots)
+        info["watermark_detected"] = bool(watermark_annots > 0)
+        return info
+    except Exception:
+        return info
+    finally:
+        try:
+            if doc is not None:
+                doc.close()
+        except Exception:
+            pass
 
 
 def _score_text_quality(

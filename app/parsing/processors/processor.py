@@ -27,12 +27,16 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
+from app.parsing.enrich.formula_ocr import add_formula_latex_blocks
+from app.parsing.enrich.image_caption import add_image_captions
+from app.parsing.enrich.vlm_image_caption import add_vlm_image_captions
 from app.parsing.errors import ParsingError
 from app.parsing.preprocess.file_preprocessor import preprocess_file
+from app.parsing.preprocess.image_preprocess import preprocess_image_document
 from app.parsing.processors.cross_page_merge import merge_cross_page_documents
-from app.parsing.processors.parse_cache import LocalParseCacheStore, ParseCacheEntry, build_parse_cache_key
 from app.parsing.processors.vlm_correction import apply_vlm_correction_async, should_apply_vlm_correction
 from app.parsing.quality.document_quality import score_document_parse_quality
+from app.parsing.quality.reading_order import score_reading_order
 from app.parsing.quality.text_quality import score_parsed_text_quality
 from app.parsing.routing import route_pdf_backend
 from app.parsing.subprocess_runner import SubprocessCancelled, run_parser_subprocess
@@ -56,6 +60,7 @@ from app.rag.preprocessing.rules import build_governance_rules
 from app.rag.preprocessing.simhash import simhash64, simhash64_hex
 from app.services.indexer import Indexer
 from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
+from app.services.parse_cache import ParseCacheEntry, build_parse_cache_key, parse_cache_service
 from app.services.pipeline_config import (
     build_indexing_options,
     resolve_pipeline_effective,
@@ -103,6 +108,12 @@ class InlineAssetResult:
     documents: list[Document]
     uploaded_img_ids: list[str]
     next_asset_index: int
+    captions_added: int = 0
+    caption_backend: str | None = None
+    caption_audit: dict[str, Any] | None = None
+    formulas_added: int = 0
+    formula_backend: str | None = None
+    formula_audit: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -625,12 +636,24 @@ class ParsingStage:
         effective_parser_backend = parser_backend
         file_ext = file_path.suffix.lower()
         pdf_quality = None
+        parse_cache_key: str | None = None
+        parse_cache_hit = False
+        parse_cache_age_ms: int | None = None
         if file_ext == ".pdf":
             requested = (parser_backend or "").strip().lower()
             if not requested or requested == "auto":
+                cached_quality = None
+                try:
+                    m0 = db_document.doc_metadata or {}
+                    q0 = m0.get("pdf_quality") if isinstance(m0, dict) else None
+                    if isinstance(q0, dict) and q0.get("score") is not None:
+                        cached_quality = dict(q0)
+                except Exception:
+                    cached_quality = None
                 effective_parser_backend, pdf_quality = route_pdf_backend(
                     file_path,
                     parser_backend,
+                    quality=cached_quality,
                     sample_pages=3,
                     use_ocr_validation=settings.RAPIDOCR_ENABLED,
                 )
@@ -641,61 +664,116 @@ class ParsingStage:
                     db.commit()
                     db.refresh(db_document)
 
-        artifact_root = (
-            Path(settings.UPLOAD_DIR)
-            / str(tenant_id)
-            / MIMIRQ_PARSE_DIRNAME
-            / f"{str(document_id)}-parse-{uuid.uuid4().hex}"
-        )
-        cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
+        parsed: dict[str, Any] | None = None
+        documents: list[Document] = []
 
-        async def cancel_check_worker() -> bool:
-            return await cancel_check()
-
+        # Optional: parse cache (MinIO). Best-effort and never blocks ingestion.
         try:
-            payload = {
-                "action": "parse_documents",
-                "tenant_id": str(tenant_id),
-                "file_path": str(file_path),
-                "parser_backend": effective_parser_backend,
-                "mode": "ingest",
-                "dataset_id": dataset_id,
-                "document_id": str(document_id),
-                "pdf_quality": pdf_quality,
-                "artifact_root": str(artifact_root),
-            }
-            if isinstance(html_xpath, str) and html_xpath.strip():
-                payload["html_xpath"] = html_xpath.strip()
-            parsed = await run_parser_subprocess(
-                tenant_id=tenant_id,
-                payload=payload,
-                cancel_check=cancel_check_worker,
-                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
-            )
-        except SubprocessCancelled as exc:
-            try:
-                shutil.rmtree(artifact_root, ignore_errors=True)
-            except Exception:
-                pass
-            raise DocumentCancelledError(str(exc)) from exc
-        except asyncio.CancelledError:
-            try:
-                shutil.rmtree(artifact_root, ignore_errors=True)
-            except Exception:
-                pass
-            raise
-        except ParsingError as exc:
-            raise RuntimeError(f"Parsing failed: {str(exc)[:200]}") from exc
+            if bool(getattr(settings, "PARSE_CACHE_ENABLED", False)) and bool(getattr(settings, "MINIO_ENABLED", False)):
+                meta0 = dict(db_document.doc_metadata or {})
+                file_sha = str(meta0.get("file_sha256") or "").strip().lower()
+                pipeline_hash = str(meta0.get("pipeline_hash") or meta0.get("active_pipeline_hash") or "").strip()
+                config_hash = pipeline_hash or "unknown"
+                backend_key = str(effective_parser_backend or "").strip().lower()
+                if file_sha and backend_key:
+                    parse_cache_key = build_parse_cache_key(
+                        file_sha256=file_sha,
+                        resolved_backend=backend_key,
+                        config_hash=config_hash,
+                        version=str(getattr(settings, "PARSE_CACHE_VERSION", "v1") or "v1"),
+                    )
+                    cached, age_ms = parse_cache_service.get(
+                        tenant_id=str(tenant_id),
+                        dataset_id=str(dataset_id),
+                        cache_key=parse_cache_key,
+                        ttl_sec=int(getattr(settings, "PARSE_CACHE_TTL_SEC", 0) or 0),
+                        max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
+                    )
+                    if cached is not None and list(getattr(cached, "documents", None) or []):
+                        parse_cache_hit = True
+                        parse_cache_age_ms = age_ms
+                        documents = [
+                            Document(
+                                page_content=str(item.get("page_content") or ""),
+                                metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                                id=item.get("id") if isinstance(item.get("id"), str) else None,
+                            )
+                            for item in (cached.documents or [])
+                            if isinstance(item, dict)
+                        ]
+                        # Record cache hit for observability (best-effort).
+                        try:
+                            meta_patch = dict(db_document.doc_metadata or {})
+                            meta_patch["parse_cache"] = {
+                                "schema": "mimirq.parse_cache_hit.v1",
+                                "hit": True,
+                                "age_ms": int(parse_cache_age_ms or 0),
+                                "backend": backend_key,
+                            }
+                            db_document.doc_metadata = meta_patch
+                            db.commit()
+                            db.refresh(db_document)
+                        except Exception:
+                            pass
+        except Exception:
+            parse_cache_hit = False
 
-        documents = [
-            Document(
-                page_content=str(item.get("page_content") or ""),
-                metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
-                id=item.get("id") if isinstance(item.get("id"), str) else None,
+        if not parse_cache_hit:
+            artifact_root = (
+                Path(settings.UPLOAD_DIR)
+                / str(tenant_id)
+                / MIMIRQ_PARSE_DIRNAME
+                / f"{str(document_id)}-parse-{uuid.uuid4().hex}"
             )
-            for item in (parsed.get("documents") or [])
-            if isinstance(item, dict)
-        ]
+            cancel_check = self._svc._build_cancel_check(db=db, tenant_id=tenant_id, document_id=document_id)
+
+            async def cancel_check_worker() -> bool:
+                return await cancel_check()
+
+            try:
+                payload = {
+                    "action": "parse_documents",
+                    "tenant_id": str(tenant_id),
+                    "file_path": str(file_path),
+                    "parser_backend": effective_parser_backend,
+                    "mode": "ingest",
+                    "dataset_id": dataset_id,
+                    "document_id": str(document_id),
+                    "pdf_quality": pdf_quality,
+                    "artifact_root": str(artifact_root),
+                }
+                if isinstance(html_xpath, str) and html_xpath.strip():
+                    payload["html_xpath"] = html_xpath.strip()
+                parsed = await run_parser_subprocess(
+                    tenant_id=tenant_id,
+                    payload=payload,
+                    cancel_check=cancel_check_worker,
+                    timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+                )
+            except SubprocessCancelled as exc:
+                try:
+                    shutil.rmtree(artifact_root, ignore_errors=True)
+                except Exception:
+                    pass
+                raise DocumentCancelledError(str(exc)) from exc
+            except asyncio.CancelledError:
+                try:
+                    shutil.rmtree(artifact_root, ignore_errors=True)
+                except Exception:
+                    pass
+                raise
+            except ParsingError as exc:
+                raise RuntimeError(f"Parsing failed: {str(exc)[:200]}") from exc
+
+            documents = [
+                Document(
+                    page_content=str(item.get("page_content") or ""),
+                    metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+                    id=item.get("id") if isinstance(item.get("id"), str) else None,
+                )
+                for item in (parsed.get("documents") or [])
+                if isinstance(item, dict)
+            ]
 
         # Persist parse provenance for audit/debug (best-effort).
         try:
@@ -742,7 +820,40 @@ class ParsingStage:
         except Exception:
             pass
 
-        resolved_backend = str(parsed.get("resolved_backend") or effective_parser_backend or parser_backend or "auto")
+        # Parse cache write-through (best-effort, only when miss).
+        if (not parse_cache_hit) and parse_cache_key and documents:
+            try:
+                meta0 = dict(db_document.doc_metadata or {})
+                file_sha = str(meta0.get("file_sha256") or "").strip().lower()
+                pipeline_hash = str(meta0.get("pipeline_hash") or meta0.get("active_pipeline_hash") or "").strip()
+                config_hash = pipeline_hash or "unknown"
+                backend_key = str(effective_parser_backend or "").strip().lower()
+                entry = ParseCacheEntry(
+                    created_at=dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat(),
+                    file_sha256=file_sha,
+                    resolved_backend=backend_key,
+                    config_hash=config_hash,
+                    documents=[
+                        {
+                            "page_content": str(d.page_content or ""),
+                            "metadata": dict(d.metadata or {}),
+                            "id": str(d.id) if isinstance(getattr(d, "id", None), str) else None,
+                        }
+                        for d in (documents or [])
+                    ],
+                )
+                parse_cache_service.set(
+                    tenant_id=str(tenant_id),
+                    dataset_id=str(dataset_id),
+                    cache_key=parse_cache_key,
+                    entry=entry,
+                    max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
+                )
+            except Exception:
+                pass
+
+        parsed_backend = parsed.get("resolved_backend") if isinstance(parsed, dict) else None
+        resolved_backend = str(parsed_backend or effective_parser_backend or parser_backend or "auto")
         self._svc._record_processing_metadata(
             db,
             tenant_id,
@@ -770,14 +881,25 @@ class InlineAssetStage:
         document_id: UUID,
         origin_path: Path,
         start_index: int = 0,
+        image_caption_enabled: bool = False,
     ) -> InlineAssetResult:
-        if not settings.MINIO_ENABLED:
+        upload_enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+        caption_enabled = bool(image_caption_enabled)
+        formula_url = str(getattr(settings, "FORMULA_OCR_API_URL", "") or "").strip()
+        formula_enabled = bool(getattr(settings, "FORMULA_OCR_ENABLED", False)) and bool(formula_url)
+        if not upload_enabled and not caption_enabled and not formula_enabled:
             return InlineAssetResult(documents=documents, uploaded_img_ids=[], next_asset_index=int(start_index or 0))
 
         inline_cache: dict[str, str] = {}
         asset_idx = int(start_index or 0)
         uploaded: list[str] = []
         processed_docs: list[Document] = []
+        captions_added_total = 0
+        caption_backend: str | None = None
+        caption_audit: dict[str, Any] | None = None
+        formulas_added_total = 0
+        formula_backend: str | None = None
+        formula_audit: dict[str, Any] | None = None
 
         for doc in documents:
             content = doc.page_content or ""
@@ -785,16 +907,71 @@ class InlineAssetStage:
             base_dir = (doc.metadata or {}).get("asset_base_dir")
             if isinstance(base_dir, str) and base_dir.strip():
                 origin_for_doc = Path(base_dir.strip())
-            new_content, new_img_ids, asset_idx = self._svc._upload_inline_images_to_minio(
-                markdown_text=content,
-                tenant_id=str(tenant_id),
-                dataset_id=dataset_id,
-                document_id=str(document_id),
-                cache=inline_cache,
-                start_index=asset_idx,
-                origin_path=origin_for_doc,
-            )
-            uploaded.extend(list(new_img_ids or []))
+
+            next_content = content
+            # Opt3: Formula OCR / LaTeX conversion (best-effort) before asset rewriting
+            # so we can still read local image files.
+            if formula_enabled and next_content:
+                try:
+                    next_content, added, audit = add_formula_latex_blocks(
+                        next_content,
+                        origin_path=origin_for_doc,
+                        api_url=formula_url,
+                        timeout_sec=float(getattr(settings, "FORMULA_OCR_TIMEOUT_SEC", 60) or 60),
+                        max_images=int(getattr(settings, "FORMULA_OCR_MAX_IMAGES", 12) or 12),
+                        max_image_bytes=int(getattr(settings, "FORMULA_OCR_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
+                        max_latex_chars=int(getattr(settings, "FORMULA_OCR_MAX_LATEX_CHARS", 2000) or 2000),
+                    )
+                    formulas_added_total += int(added or 0)
+                    formula_backend = "formula_http"
+                    formula_audit = audit.to_dict()
+                except Exception:
+                    # Never fail ingest due to optional enrichment.
+                    pass
+
+            # Opt5: image captions (best-effort) before asset rewriting so we can still
+            # read local image files when using an external VLM backend.
+            if caption_enabled:
+                try:
+                    if bool(getattr(settings, "IMAGE_CAPTION_VLM_ENABLED", False)) and str(
+                        getattr(settings, "IMAGE_CAPTION_VLM_API_URL", "") or ""
+                    ).strip():
+                        next_content, added, audit = add_vlm_image_captions(
+                            next_content,
+                            origin_path=origin_for_doc,
+                            api_url=str(getattr(settings, "IMAGE_CAPTION_VLM_API_URL", "") or ""),
+                            timeout_sec=float(getattr(settings, "IMAGE_CAPTION_VLM_TIMEOUT_SEC", 60) or 60),
+                            max_images=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_IMAGES", 20) or 20),
+                            max_image_bytes=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
+                            max_caption_chars=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_CAPTION_CHARS", 200) or 200),
+                        )
+                        captions_added_total += int(added or 0)
+                        caption_backend = "vlm_http"
+                        # Keep last audit (best-effort); do not grow unbounded.
+                        caption_audit = audit.to_dict()
+                    else:
+                        next_content, added = add_image_captions(next_content)
+                        captions_added_total += int(added or 0)
+                        caption_backend = "heuristic"
+                except Exception:
+                    # Never fail ingest due to optional captioning.
+                    pass
+
+            if upload_enabled:
+                new_content, new_img_ids, asset_idx = self._svc._upload_inline_images_to_minio(
+                    markdown_text=next_content,
+                    tenant_id=str(tenant_id),
+                    dataset_id=dataset_id,
+                    document_id=str(document_id),
+                    cache=inline_cache,
+                    start_index=asset_idx,
+                    origin_path=origin_for_doc,
+                )
+                uploaded.extend(list(new_img_ids or []))
+            else:
+                new_content = next_content
+                new_img_ids = []
+
             if new_content != content:
                 processed_docs.append(
                     Document(
@@ -806,7 +983,17 @@ class InlineAssetStage:
             else:
                 processed_docs.append(doc)
 
-        return InlineAssetResult(documents=processed_docs, uploaded_img_ids=uploaded, next_asset_index=asset_idx)
+        return InlineAssetResult(
+            documents=processed_docs,
+            uploaded_img_ids=uploaded,
+            next_asset_index=asset_idx,
+            captions_added=int(captions_added_total),
+            caption_backend=caption_backend,
+            caption_audit=(dict(caption_audit) if isinstance(caption_audit, dict) else None),
+            formulas_added=int(formulas_added_total),
+            formula_backend=formula_backend,
+            formula_audit=(dict(formula_audit) if isinstance(formula_audit, dict) else None),
+        )
 
 
 class GovernanceStage:
@@ -1530,6 +1717,58 @@ class DocumentProcessorService:
                 # Fail closed: when preprocessing is enabled, it is part of ingestion correctness.
                 raise RuntimeError(f"preprocess_failed: {str(exc)[:200]}") from exc
 
+            # Optional: image-level preprocessing before parsing (deskew/orientation/watermark).
+            # This is disabled by default to keep baseline ingest behavior unchanged.
+            try:
+                if bool(getattr(settings, "IMAGE_PREPROCESS_ENABLED", False)):
+                    ext = file_path.suffix.lower()
+                    if ext == ".pdf" or ext in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
+                        t0 = time.perf_counter()
+                        with metrics_span("ingest.image_preprocess", file_ext=ext):
+                            pdf_quality = None
+                            if ext == ".pdf":
+                                try:
+                                    from app.parsing.quality.scorer import score_pdf_quality
+
+                                    pdf_quality = score_pdf_quality(
+                                        file_path,
+                                        sample_pages=int(getattr(settings, "PREPROCESS_SAMPLE_PAGES", 3) or 3),
+                                        use_ocr_validation=False,
+                                    )
+                                    # Persist early so downstream routing can reuse it (best-effort).
+                                    try:
+                                        if isinstance(pdf_quality, dict) and pdf_quality.get("score") is not None:
+                                            next_meta = dict(db_document.doc_metadata or {})
+                                            next_meta["pdf_quality"] = pdf_quality
+                                            db_document.doc_metadata = next_meta
+                                            db.commit()
+                                            db.refresh(db_document)
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    pdf_quality = None
+                            result = preprocess_image_document(
+                                input_path=file_path,
+                                document_id=str(document_id) if document_id else None,
+                                pdf_quality=pdf_quality,
+                            )
+                        _add_stage_duration("image_preprocess", (time.perf_counter() - t0) * 1000)
+                        # Persist a lightweight audit record for debugging/tuning (best-effort).
+                        try:
+                            next_meta = dict(db_document.doc_metadata or {})
+                            next_meta["image_preprocess"] = result.to_dict()
+                            db_document.doc_metadata = next_meta
+                            db.commit()
+                            db.refresh(db_document)
+                        except Exception:
+                            pass
+                        if bool(getattr(result, "changed", False)):
+                            out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
+                            preprocessed_temp_path = out_path
+                            file_path = out_path
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(f"image_preprocess_failed: {str(exc)[:200]}") from exc
+
             # Structured Table Store (TAG): optionally import table-like documents and skip chunk/vector ingestion.
             #
             # Default behavior (table_store_auto_route=false):
@@ -2224,12 +2463,37 @@ class DocumentProcessorService:
                             document_id=document_id,
                             origin_path=file_path,
                             start_index=0,
+                            image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
                         )
                     _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
                     parsed_documents = inline_result.documents
                     for iid in inline_result.uploaded_img_ids:
                         if isinstance(iid, str) and iid.strip():
                             document_img_ids.add(iid)
+                    # Persist optional enrichment audit (best-effort; useful for dashboards/debug).
+                    if (
+                        int(getattr(inline_result, "captions_added", 0) or 0) > 0
+                        or isinstance(getattr(inline_result, "caption_audit", None), dict)
+                        or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
+                        or isinstance(getattr(inline_result, "formula_audit", None), dict)
+                    ):
+                        try:
+                            meta_patch = dict(db_document.doc_metadata or {})
+                            meta_patch["image_captions_added"] = int(getattr(inline_result, "captions_added", 0) or 0)
+                            if getattr(inline_result, "caption_backend", None):
+                                meta_patch["image_caption_backend"] = str(inline_result.caption_backend or "")
+                            if isinstance(getattr(inline_result, "caption_audit", None), dict):
+                                meta_patch["image_caption_audit"] = dict(inline_result.caption_audit or {})
+                            meta_patch["formula_ocr_added"] = int(getattr(inline_result, "formulas_added", 0) or 0)
+                            if getattr(inline_result, "formula_backend", None):
+                                meta_patch["formula_ocr_backend"] = str(inline_result.formula_backend or "")
+                            if isinstance(getattr(inline_result, "formula_audit", None), dict):
+                                meta_patch["formula_ocr_audit"] = dict(inline_result.formula_audit or {})
+                            db_document.doc_metadata = meta_patch
+                            db.commit()
+                            db.refresh(db_document)
+                        except Exception:
+                            pass
                 else:
                     parsed_documents = None
 
@@ -2241,6 +2505,44 @@ class DocumentProcessorService:
                             max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
                         )
                     _add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
+
+                if parsed_documents and file_path.suffix.lower() == ".pdf":
+                    try:
+                        joined_for_ro = "\n\n".join([(d.page_content or "") for d in parsed_documents])
+                        ro = score_reading_order(joined_for_ro)
+                        meta_patch = dict(db_document.doc_metadata or {})
+                        meta_patch["reading_order"] = ro
+                        db_document.doc_metadata = meta_patch
+                        db.commit()
+                        db.refresh(db_document)
+                    except Exception:
+                        pass
+
+                pdf_quality = (db_document.doc_metadata or {}).get("pdf_quality") if isinstance((db_document.doc_metadata or {}).get("pdf_quality"), dict) else None
+                if (
+                    parsed_documents
+                    and file_path.suffix.lower() == ".pdf"
+                    and should_apply_vlm_correction(
+                        enabled=bool(getattr(pipeline_effective, "vlm_correction_enabled", False)),
+                        pdf_quality=pdf_quality,
+                        min_table_score=float(getattr(pipeline_effective, "vlm_correction_min_table_score", 0.6) or 0.6),
+                    )
+                ):
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.vlm_correction"):
+                        corrected_docs, correction_meta = await apply_vlm_correction_async(
+                            documents=parsed_documents,
+                            file_path=file_path,
+                            max_pages=int(getattr(pipeline_effective, "vlm_correction_max_pages", 2) or 2),
+                        )
+                    _add_stage_duration("vlm_correction", (time.perf_counter() - t0) * 1000)
+                    parsed_documents = corrected_docs
+                    if bool(correction_meta.get("applied")):
+                        meta_vlm = dict(db_document.doc_metadata or {})
+                        meta_vlm["vlm_correction"] = correction_meta
+                        db_document.doc_metadata = meta_vlm
+                        db.commit()
+                        db.refresh(db_document)
 
                 # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
                 if parsed_documents and file_path.suffix.lower() == ".pdf":
@@ -2403,12 +2705,37 @@ class DocumentProcessorService:
                             document_id=document_id,
                             origin_path=file_path,
                             start_index=0,
+                            image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
                         )
                     _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
                     parsed_documents = inline_result.documents
                     for iid in inline_result.uploaded_img_ids:
                         if isinstance(iid, str) and iid.strip():
                             document_img_ids.add(iid)
+                    # Persist optional enrichment audit (best-effort; useful for dashboards/debug).
+                    if (
+                        int(getattr(inline_result, "captions_added", 0) or 0) > 0
+                        or isinstance(getattr(inline_result, "caption_audit", None), dict)
+                        or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
+                        or isinstance(getattr(inline_result, "formula_audit", None), dict)
+                    ):
+                        try:
+                            meta_patch = dict(db_document.doc_metadata or {})
+                            meta_patch["image_captions_added"] = int(getattr(inline_result, "captions_added", 0) or 0)
+                            if getattr(inline_result, "caption_backend", None):
+                                meta_patch["image_caption_backend"] = str(inline_result.caption_backend or "")
+                            if isinstance(getattr(inline_result, "caption_audit", None), dict):
+                                meta_patch["image_caption_audit"] = dict(inline_result.caption_audit or {})
+                            meta_patch["formula_ocr_added"] = int(getattr(inline_result, "formulas_added", 0) or 0)
+                            if getattr(inline_result, "formula_backend", None):
+                                meta_patch["formula_ocr_backend"] = str(inline_result.formula_backend or "")
+                            if isinstance(getattr(inline_result, "formula_audit", None), dict):
+                                meta_patch["formula_ocr_audit"] = dict(inline_result.formula_audit or {})
+                            db_document.doc_metadata = meta_patch
+                            db.commit()
+                            db.refresh(db_document)
+                        except Exception:
+                            pass
                 else:
                     parsed_documents = None
 
