@@ -14,7 +14,6 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { FileStatus } from '@/components/ui/file-queue-item'
 import { extractMarkdownHeadings } from '@/lib/markdown'
-import { extractBlocksFromMarkdown } from '@/lib/parsing-positions'
 import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP } from '@/lib/upload-extensions'
 import { toast } from 'sonner'
 import { getDocContentFromCache, getDocSourceFromCache } from '@/lib/doc-content-cache'
@@ -28,7 +27,8 @@ import { ParsingMobileInspectorContent } from '@/components/parsing/parsing-mobi
 import { ParsingMobileQueueContent } from '@/components/parsing/parsing-mobile-queue-content'
 import { ParsingSidebarPane } from '@/components/parsing/parsing-sidebar-pane'
 import { useParsingLibraryActions } from '@/components/parsing/use-parsing-library-actions'
-import type { ParsedFile, ParseFailureDiagnostics, ParseRun } from '@/components/parsing/parsing-types'
+import { useParsingRunActions } from '@/components/parsing/use-parsing-run-actions'
+import type { ParsedFile } from '@/components/parsing/parsing-types'
 
 // 解析后的文件（扩展版）
 function countMarkdownHeadings(markdown: string) {
@@ -600,270 +600,28 @@ export default function ParsingPage() {
     setDragOverFolderId(null)
   }, [moveFileToFolder, moveFolder])
 
-  // 解析文件（支持删除中断）
-  const parseFile = useCallback(async (fileId: string, backendOverride?: string) => {
-    const file = filesRef.current.find((f) => f.id === fileId) || null
-    if (!file) return
-
-    cancelParse(fileId)
-    const controller = new AbortController()
-    parseControllersRef.current.set(fileId, controller)
-
-    const resolvedRequested = resolveParserBackendForFilename(
-      file.file.name,
-      backendOverride || file.parserBackend || parserBackend
-    )
-    const requestedBackend = resolvedRequested.backend
-    const requestedLabel = getParserLabel(requestedBackend)
-
-    const startTime = Date.now()
-
-    setFiles((prev) =>
-      prev.map((f) =>
-        f.id === fileId
-          ? {
-              ...f,
-              status: 'parsing' as FileStatus,
-              error: undefined,
-              progress: 0,
-              parseStartTime: startTime,
-              parserBackend: requestedBackend,
-              parserLabel: requestedLabel,
-              parseDiagnostics: undefined,
-            }
-          : f
-      )
-    )
-    if (file.libraryId) {
-      updateParsedFile(file.libraryId, {
-        status: 'parsing',
-        error: undefined,
-        parser: requestedLabel,
-        parserBackend: requestedBackend,
-      })
-    }
-
-	    const progressInterval = setInterval(() => {
-	      setFiles((prev) => bumpParsingProgress(prev, fileId))
-	    }, 300)
-	    parseProgressIntervalsRef.current.set(fileId, progressInterval)
-
-    const clearProgressInterval = () => {
-      clearInterval(progressInterval)
-      if (parseProgressIntervalsRef.current.get(fileId) === progressInterval) {
-        parseProgressIntervalsRef.current.delete(fileId)
-      }
-    }
-
-    let libraryId = (file.libraryId || '').trim()
-
-    try {
-      if (!libraryId) {
-        const created = await parsingApi.upload(file.file, { parser_backend: requestedBackend })
-        libraryId = String(created.id || '').trim()
-        if (!libraryId) throw new Error('Missing document id from backend')
-
-        upsertParsedFile({
-          id: libraryId,
-          filename: created.filename || file.file.name,
-          fileType: created.file_type || file.file.name.split('.').pop()?.toLowerCase() || '',
-          fileSize: Number(created.file_size || file.file.size),
-          markdownContent: '',
-          originalMarkdownContent: '',
-          parsedAt: String(created.updated_at || created.created_at || new Date().toISOString()),
-          parser: requestedLabel,
-          parserBackend: requestedBackend,
-          folderId: file.folderId,
-          status: mapBackendStatusToLibraryStatus(created.status),
-          error: created.error_message || undefined,
-        })
-
-        setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, libraryId } : f)))
-      }
-
-      if (controller.signal.aborted) return
-      if (parseControllersRef.current.get(fileId) !== controller) return
-      if (!fileIdSetRef.current.has(fileId)) return
-
-      updateParsedFile(libraryId, {
-        status: 'parsing',
-        error: undefined,
-        parser: requestedLabel,
-        parserBackend: requestedBackend,
-        folderId: file.folderId,
-      })
-
-      const data = await parsingApi.parse(libraryId, {
-        parser_backend: requestedBackend,
-        image_caption_enabled: imageCaptionEnabled,
-        signal: controller.signal,
-      })
-      if (controller.signal.aborted) return
-      if (parseControllersRef.current.get(fileId) !== controller) return
-      if (!fileIdSetRef.current.has(fileId)) return
-
-      clearProgressInterval()
-
-      const rawMarkdown = (data.original_markdown_content || data.markdown_content || '').toString()
-      const resolvedBackend = data.parser_backend || requestedBackend
-      const resolvedLabel = getParserLabel(resolvedBackend)
-	      const fallbackDurationSec = Number.parseFloat(((Date.now() - startTime) / 1000).toFixed(1))
-	      const parsed = extractBlocksFromMarkdown(rawMarkdown)
-	      const markdownContent = (data.markdown_content || parsed.cleanedMarkdown).toString()
-	      const blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
-      const durationSec = Number.isFinite(Number(data.parse_duration_sec))
-        ? Number(data.parse_duration_sec)
-        : fallbackDurationSec
-      const runId = `${resolvedBackend}-${Date.now()}`
-      const run = {
-        id: runId,
-        parserBackend: resolvedBackend,
-        parserLabel: resolvedLabel,
-        rawMarkdown,
-        cleanedMarkdown: markdownContent,
-        blocks,
-        createdAt: Date.now(),
-        pdfQuality: (data as any).pdf_quality ?? null,
-        qualityGate: (data as any).quality_gate ?? null,
-      }
-
-      const apiStats = data.stats
-      const stats = {
-        charCount: markdownContent.length,
-        lineCount: markdownContent.split('\n').length,
-        headingCount: countMarkdownHeadings(markdownContent),
-        pageCount: typeof apiStats?.page_count === 'number' ? apiStats.page_count : undefined,
-        tableCount:
-          (() => {
-    if (typeof apiStats?.table_count === 'number') {
-        return apiStats.table_count;
-    }
-    else if ((markdownContent.match(/\|.*\|/g) || []).length > 0) {
-            return (markdownContent.match(/^\|/gm) || []).length / 2;
-        }
-        else {
-            return 0;
-        }
-})(),
-        imageCount:
-          typeof apiStats?.image_count === 'number'
-            ? apiStats.image_count
-            : (markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
-        blockCount: typeof apiStats?.block_count === 'number' ? apiStats.block_count : blocks.length,
-      }
-
-	      setFiles((prev) =>
-	        prev.map((f) =>
-	          f.id === fileId
-	            ? {
-	              ...f,
-	              status: 'parsed' as FileStatus,
-	              markdownContent,
-	              parserBackend: resolvedBackend,
-	              parserLabel: resolvedLabel,
-	              parser: resolvedLabel,
-	              progress: 100,
-	              duration: durationSec,
-	              stats,
-                pdfQuality: (data as any).pdf_quality ?? null,
-                qualityGate: (data as any).quality_gate ?? null,
-	              runs: [...(f.runs || []), run],
-	              activeRunId: runId,
-	            }
-            : f
-        )
-      )
-
-      setActiveBlockId(null)
-      setHoveredBlockId(null)
-      setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
-
-      // Sync persisted library entry (backend + local store cache).
-	      updateParsedFile(libraryId, {
-	        filename: file.file.name,
-	        fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
-	        fileSize: file.file.size,
-	        markdownContent,
-	        originalMarkdownContent: rawMarkdown,
-	        parser: resolvedLabel,
-	        parserBackend: resolvedBackend,
-	        durationSec,
-	        folderId: file.folderId,
-	        parsedAt: new Date().toISOString(),
-	        status: 'parsed',
-	        error: undefined,
-	      })
-    } catch (err: any) {
-      if (controller.signal.aborted) return
-      if (parseControllersRef.current.get(fileId) !== controller) return
-      if (!fileIdSetRef.current.has(fileId)) return
-      const errorMessage = formatApiError(err, '文档解析失败')
-      const detail = err?.response?.data?.detail
-      const diagnostics: ParseFailureDiagnostics | undefined =
-        detail && typeof detail === 'object' && !Array.isArray(detail)
-          ? ((detail).diagnostics as ParseFailureDiagnostics | undefined)
-          : undefined
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.id === fileId
-            ? {
-              ...f,
-              status: 'error' as FileStatus,
-              error: errorMessage,
-              progress: 0,
-              parseDiagnostics: diagnostics,
-            }
-            : f
-        )
-      )
-      if (libraryId) {
-        updateParsedFile(libraryId, { status: 'error', error: errorMessage, parserBackend: requestedBackend })
-      }
-    } finally {
-      if (parseControllersRef.current.get(fileId) === controller) {
-        parseControllersRef.current.delete(fileId)
-      }
-      clearProgressInterval()
-    }
-  }, [cancelParse, imageCaptionEnabled, mapBackendStatusToLibraryStatus, parserBackend, updateParsedFile, upsertParsedFile])
-
-  useEffect(() => {
-    if (!autoParseFileId) return
-    const id = autoParseFileId
-    setAutoParseFileId(null)
-    detachPromise(parseFile(id))
-  }, [autoParseFileId, parseFile])
-
-  const parseAllPending = async () => {
-    const targets = visibleQueueFiles.filter((f) => f.status === 'pending' || f.status === 'error')
-    for (const file of targets) {
-      await parseFile(file.id)
-    }
-  }
-
-	  const handleSelectRun = (runId: string) => {
-	    if (!activeFile) return
-	    const nextRun = activeFile.runs?.find((run) => run.id === runId)
-	    if (!nextRun) return
-
-	    setFiles((prev) =>
-      prev.map((f) =>
-        f.id === activeFile.id
-          ? {
-            ...f,
-            activeRunId: runId,
-            markdownContent: nextRun.cleanedMarkdown,
-            parserBackend: nextRun.parserBackend,
-            parserLabel: nextRun.parserLabel,
-          }
-          : f
-      )
-    )
-
-    setActiveBlockId(null)
-    setHoveredBlockId(null)
-    setRightPanelMode(nextRun.blocks.length ? 'blocks' : 'markdown')
-  }
+  const { handleSelectRun, parseAllPending, parseFile } = useParsingRunActions({
+    activeFile,
+    autoParseFileId,
+    bumpParsingProgress,
+    cancelParse,
+    countMarkdownHeadings,
+    fileIdSetRef,
+    filesRef,
+    imageCaptionEnabled,
+    mapBackendStatusToLibraryStatus,
+    parseControllersRef,
+    parseProgressIntervalsRef,
+    parserBackend,
+    setActiveBlockId,
+    setAutoParseFileId,
+    setFiles,
+    setHoveredBlockId,
+    setRightPanelMode,
+    updateParsedFile,
+    upsertParsedFile,
+    visibleQueueFiles,
+  })
 
   // 复制 Markdown
   const copyMarkdown = async () => {
