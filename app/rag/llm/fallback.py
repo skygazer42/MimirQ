@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import httpx
+import openai
 
 from app.rag.core.logging import get_logger
 from app.rag.llm.base import BaseLLMClient
@@ -10,11 +11,29 @@ from app.rag.llm.models import LLMMessage, LLMResponse
 
 logger = get_logger("rag.llm.fallback")
 
-_RETRYABLE_EXCEPTIONS = (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError)
-
 
 class AllProvidersFailedError(RuntimeError):
     """Raised when all configured fallback providers fail with retryable errors."""
+
+
+def is_retryable_provider_error(exc: Exception) -> bool:
+    if isinstance(
+        exc,
+        (
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+            openai.RateLimitError,
+        ),
+    ):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code >= 500 or exc.response.status_code == 429
+    if isinstance(exc, openai.APIStatusError):
+        status_code = int(getattr(exc, "status_code", 0) or 0)
+        return status_code >= 500 or status_code == 429
+    return False
 
 
 class FallbackLLMClient(BaseLLMClient):
@@ -36,7 +55,9 @@ class FallbackLLMClient(BaseLLMClient):
         for idx, client in enumerate(self._clients):
             try:
                 return await client.chat(messages, temperature=temperature, max_tokens=max_tokens, **kwargs)
-            except _RETRYABLE_EXCEPTIONS as exc:
+            except Exception as exc:  # noqa: BLE001
+                if not is_retryable_provider_error(exc):
+                    raise
                 last_exc = exc
                 logger.warning(
                     "LLM provider %d/%d failed with retryable error: %s",
@@ -70,7 +91,9 @@ class FallbackLLMClient(BaseLLMClient):
                     ):
                         yield chunk
                     return
-                except _RETRYABLE_EXCEPTIONS as exc:
+                except Exception as exc:  # noqa: BLE001
+                    if not is_retryable_provider_error(exc):
+                        raise
                     last_exc = exc
                     logger.warning(
                         "LLM stream provider %d/%d failed with retryable error: %s",
@@ -86,4 +109,4 @@ class FallbackLLMClient(BaseLLMClient):
         return _gen()
 
 
-__all__ = ["FallbackLLMClient", "AllProvidersFailedError"]
+__all__ = ["FallbackLLMClient", "AllProvidersFailedError", "is_retryable_provider_error"]

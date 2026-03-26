@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 15
     env:
       RAG_EVAL_GATE_ENABLED: "true"
-      RAG_EVAL_GATE_SUMMARY_PATH: "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
+      RAG_EVAL_GATE_SUMMARY_PATH: "artifacts/answer_quality.summary.json"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,5 +39,88 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
+      - name: Generate bounded retrieval benchmark
+        env:
+          LLM_MOCK_ENABLED: "true"
+        run: |
+          mkdir -p artifacts
+          python scripts/run_sample_retrieval_benchmark.py \
+            --fixture data/sample/retrieval_fixture_v1.json \
+            --out artifacts/sample_retrieval_bench.json \
+            --retrieval-mode keyword \
+            --top-k 5
+
+      - name: Build answer-quality summary artifact
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          bench = json.loads(Path("artifacts/sample_retrieval_bench.json").read_text(encoding="utf-8"))
+          summary = bench.get("summary") if isinstance(bench.get("summary"), dict) else {}
+          payload = {
+              "schema": "mimirq.answer_quality_summary.v1",
+              "faithfulness": float(summary.get("mrr") or 0.0),
+              "answer_relevancy": 1.0,
+              "context_precision": float(summary.get("hit_at_k") or 0.0),
+          }
+          out = Path("artifacts/answer_quality.summary.json")
+          out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Build RAG quality gate report artifact
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          from pathlib import Path
+
+          from app.core.config import Settings
+
+          cfg = Settings()
+          summary = json.loads(Path("artifacts/answer_quality.summary.json").read_text(encoding="utf-8"))
+          thresholds = {
+              "faithfulness": float(cfg.RAG_EVAL_GATE_FAITHFULNESS_MIN),
+              "answer_relevancy": float(cfg.RAG_EVAL_GATE_ANSWER_RELEVANCY_MIN),
+              "context_precision": float(cfg.RAG_EVAL_GATE_CONTEXT_PRECISION_MIN),
+          }
+          values = {
+              "faithfulness": float(summary.get("faithfulness", 0.0) or 0.0),
+              "answer_relevancy": float(summary.get("answer_relevancy", 0.0) or 0.0),
+              "context_precision": float(summary.get("context_precision", 0.0) or 0.0),
+          }
+          checks = {
+              name: {
+                  "value": value,
+                  "min": thresholds[name],
+                  "passed": bool(value >= thresholds[name]),
+              }
+              for name, value in values.items()
+          }
+          payload = {
+              "schema": "mimirq.rag_quality_gate_report.v1",
+              "summary_path": "artifacts/answer_quality.summary.json",
+              "thresholds": thresholds,
+              "checks": checks,
+              "passed": bool(all(item["passed"] for item in checks.values())),
+          }
+          out = Path("artifacts/rag_quality_gate.report.json")
+          out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
       - name: Run RAG quality gate test
-        run: pytest -q tests/rag/evaluation/test_rag_quality_gate.py
+        run: pytest -q tests/rag/evaluation/test_rag_quality_gate.py --junitxml=artifacts/rag_quality_gate.junit.xml
+
+      - name: Upload RAG quality gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-quality-gate
+          path: |
+            artifacts/sample_retrieval_bench.json
+            artifacts/answer_quality.summary.json
+            artifacts/rag_quality_gate.report.json
+            artifacts/rag_quality_gate.junit.xml

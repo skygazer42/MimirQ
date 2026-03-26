@@ -17,15 +17,40 @@ from app.rag.core.logging import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.fallback import FallbackLLMClient
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
+from app.rag.llm.prompt_cache import annotate_prompt_cache_content, detect_anthropic_compatible
 from app.storage.vector.milvus import milvus_store
 
 logger = get_logger("rag.llm.factory")
 
 
+def _message_content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type") or "").strip().lower() != "text":
+                continue
+            parts.append(str(item.get("text") or ""))
+        return "".join(parts)
+    return str(content or "")
+
+
 class OpenAIChatClient(BaseLLMClient):
     """Thin wrapper around langchain_openai.ChatOpenAI to match BaseLLMClient."""
 
-    def __init__(self, model_config: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        model_config: dict[str, Any] | None = None,
+        *,
+        http_client: httpx.Client | None = None,
+        http_async_client: httpx.AsyncClient | None = None,
+    ) -> None:
         trust_env = httpx_trust_env(logger=logger)
 
         cfg = model_config or {}
@@ -39,13 +64,16 @@ class OpenAIChatClient(BaseLLMClient):
         if not api_key or not model_name:
             raise ConfigError("LLM configuration missing api_key or model")
 
-        self._is_anthropic_compatible = self._detect_anthropic_compatible(
+        self.model_name = str(model_name)
+        self._is_anthropic_compatible = detect_anthropic_compatible(
             model_name=str(model_name),
             base_url=str(base_url),
         )
 
-        http_client = httpx.Client(trust_env=trust_env, timeout=timeout)
-        http_async_client = httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
+        if http_client is None:
+            http_client = httpx.Client(trust_env=trust_env, timeout=timeout)
+        if http_async_client is None:
+            http_async_client = httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
         self._client = ChatOpenAI(
             model=model_name,
             api_key=api_key,
@@ -58,34 +86,37 @@ class OpenAIChatClient(BaseLLMClient):
             http_async_client=http_async_client,
         )
 
-    @staticmethod
-    def _detect_anthropic_compatible(*, model_name: str, base_url: str) -> bool:
-        model_lower = str(model_name or "").strip().lower()
-        base_lower = str(base_url or "").strip().lower()
-        return model_lower.startswith("claude") or ("anthropic" in base_lower)
-
     def _should_cache_message(self, msg: LLMMessage) -> bool:
-        if not bool(getattr(settings, "PROMPT_CACHE_ENABLED", False)):
-            return False
-        if not bool(self._is_anthropic_compatible):
-            return False
-        min_chars = int(getattr(settings, "PROMPT_CACHE_MIN_CHARS", 1000) or 1000)
-        if msg.role == LLMRole.SYSTEM:
-            return True
-        return len(msg.content or "") >= max(0, min_chars)
+        _content, applied = annotate_prompt_cache_content(
+            role=str(msg.role or ""),
+            content=msg.content,
+            anthropic_compatible=bool(self._is_anthropic_compatible),
+        )
+        return bool(applied)
 
     def _convert_messages(self, messages: list[LLMMessage]):
         converted = []
+        cached_count = 0
         for msg in messages:
-            content: str | list[dict[str, Any]] = msg.content
-            if self._should_cache_message(msg):
-                content = [{"type": "text", "text": msg.content, "cache_control": {"type": "ephemeral"}}]
+            content, applied = annotate_prompt_cache_content(
+                role=str(msg.role or ""),
+                content=msg.content,
+                anthropic_compatible=bool(self._is_anthropic_compatible),
+            )
+            if applied:
+                cached_count += 1
             if msg.role == LLMRole.SYSTEM:
                 converted.append(SystemMessage(content=content))
             elif msg.role == LLMRole.ASSISTANT:
                 converted.append(AIMessage(content=content))
             else:
                 converted.append(HumanMessage(content=content))
+        self._last_invocation_meta = {
+            "selected_model": getattr(self, "model_name", None),
+            "prompt_cache_applied": bool(cached_count),
+            "prompt_cache_message_count": int(cached_count),
+            "provider_anthropic_compatible": bool(self._is_anthropic_compatible),
+        }
         return converted
 
     async def chat(
@@ -102,7 +133,7 @@ class OpenAIChatClient(BaseLLMClient):
             max_tokens=max_tokens,
             **kwargs,
         )
-        return LLMResponse(content=resp.content, raw=resp)
+        return LLMResponse(content=_message_content_to_text(resp.content), raw=resp)
 
     def chat_stream(
         self,
@@ -115,8 +146,16 @@ class OpenAIChatClient(BaseLLMClient):
         _ = include_reasoning
 
         async def _gen():
-            resp = await self.chat(messages, temperature=temperature, max_tokens=max_tokens, **kwargs)
-            yield resp.content, None
+            converted = self._convert_messages(messages)
+            async for chunk in self._client.astream(
+                converted,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **kwargs,
+            ):
+                text = _message_content_to_text(getattr(chunk, "content", ""))
+                if text:
+                    yield text, None
 
         return _gen()
 
@@ -212,7 +251,14 @@ async def create_llm_client(
 ) -> BaseLLMClient:
     _ = scenario
     _ = kwargs
-    primary = await asyncio.to_thread(OpenAIChatClient, model_config=model_config)
+    http_client = kwargs.get("http_client")
+    http_async_client = kwargs.get("http_async_client")
+    ctor_kwargs: dict[str, Any] = {"model_config": model_config}
+    if http_client is not None:
+        ctor_kwargs["http_client"] = http_client
+    if http_async_client is not None:
+        ctor_kwargs["http_async_client"] = http_async_client
+    primary = await asyncio.to_thread(OpenAIChatClient, **ctor_kwargs)
 
     if not bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)):
         return primary
@@ -229,7 +275,12 @@ async def create_llm_client(
         if not model_name or model_name in seen_models:
             continue
         try:
-            fallback_client = await asyncio.to_thread(OpenAIChatClient, model_config=spec)
+            fallback_ctor_kwargs: dict[str, Any] = {"model_config": spec}
+            if http_client is not None:
+                fallback_ctor_kwargs["http_client"] = http_client
+            if http_async_client is not None:
+                fallback_ctor_kwargs["http_async_client"] = http_async_client
+            fallback_client = await asyncio.to_thread(OpenAIChatClient, **fallback_ctor_kwargs)
             clients.append(fallback_client)
             seen_models.add(model_name)
         except Exception as exc:

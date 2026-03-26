@@ -63,6 +63,7 @@ from app.rag.core.vision_reader import (
     build_vision_reader_context_docs,
     stream_vision_chat_completions_tokens,
 )
+from app.rag.llm.langchain_chat import build_chat_model_from_config
 from app.rag.kg.pipeline import kg_search
 from app.rag.policy.intent_router import route_retrieval_preset
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
@@ -355,6 +356,7 @@ Requirements:
 
         In dev/E2E we optionally use a fake streaming LLM to avoid external network calls.
         """
+        _ = chat_cls
         if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
             # Lazy import to keep default startup lightweight.
             from langchain_core.language_models.fake import FakeStreamingListLLM
@@ -362,16 +364,18 @@ Requirements:
             response = str(getattr(settings, "LLM_MOCK_RESPONSE", "") or "Hello from mock LLM.")
             return FakeStreamingListLLM(responses=[response])
 
-        return chat_cls(
-            model=model_name,
-            api_key=settings.LLM_API_KEY,
-            base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
-            temperature=settings.LLM_TEMPERATURE,
-            streaming=True,
-            timeout=settings.LLM_TIMEOUT,
-            max_retries=settings.LLM_MAX_RETRIES,
+        return build_chat_model_from_config(
+            model_config={
+                "model": model_name,
+                "api_key": settings.LLM_API_KEY,
+                "base_url": normalize_openai_compatible_base_url(settings.LLM_API_BASE),
+                "temperature": settings.LLM_TEMPERATURE,
+                "timeout": settings.LLM_TIMEOUT,
+                "max_retries": settings.LLM_MAX_RETRIES,
+            },
             http_client=self.http_client,
             http_async_client=self.http_async_client,
+            streaming=True,
         )
 
     def _score_question_complexity(self, question: str, history: list[dict[str, str]] | None) -> float:
@@ -3325,6 +3329,14 @@ Requirements:
                     full_response += emit_safe
                     yield {"type": "token", "data": {"content": emit_safe}}
 
+            llm_invocation_meta: dict[str, Any] = {}
+            get_last_invocation_meta = getattr(llm, "get_last_invocation_meta", None)
+            if callable(get_last_invocation_meta):
+                try:
+                    llm_invocation_meta = dict(get_last_invocation_meta() or {})
+                except Exception:
+                    llm_invocation_meta = {}
+
             if claim_check_applied:
                 evidence_text = context_for_model
                 if claim_check_mode == "text":
@@ -3774,6 +3786,13 @@ Requirements:
                         "retrieval_min_distinct_docs": int(settings.RETRIEVAL_MIN_DISTINCT_DOCS or 0),
                         "vector_backend": settings.VECTOR_BACKEND,
                         "model_route": model_route,
+                        "llm_provider_fallback_used": bool(llm_invocation_meta.get("fallback_used")),
+                        "llm_provider_fallback_target": llm_invocation_meta.get("selected_model"),
+                        "llm_provider_fallback_failures": int(llm_invocation_meta.get("failure_count") or 0),
+                        "llm_provider_fallback_attempts": list(llm_invocation_meta.get("attempts") or []),
+                        "llm_prompt_cache_applied": bool(llm_invocation_meta.get("prompt_cache_applied")),
+                        "llm_prompt_cache_message_count": int(llm_invocation_meta.get("prompt_cache_message_count") or 0),
+                        "llm_provider_anthropic_compatible": bool(llm_invocation_meta.get("provider_anthropic_compatible")),
                         "top_k": top_k,
                         "docs_returned": len(docs),
                         "kg_chunks_injected": int(kg_chunks_injected or 0),
