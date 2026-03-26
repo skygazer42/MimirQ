@@ -5,7 +5,9 @@ on:
     paths:
       - "app/rag/**"
       - "app/core/config.py"
+      - "scripts/run_sample_retrieval_benchmark.py"
       - "scripts/build_rag_quality_gate_artifacts.py"
+      - "data/sample/retrieval_fixture_v1.json"
       - "tests/rag/evaluation/**"
       - ".github/workflows/rag-quality-gate.yml"
   push:
@@ -13,7 +15,9 @@ on:
     paths:
       - "app/rag/**"
       - "app/core/config.py"
+      - "scripts/run_sample_retrieval_benchmark.py"
       - "scripts/build_rag_quality_gate_artifacts.py"
+      - "data/sample/retrieval_fixture_v1.json"
       - "tests/rag/evaluation/**"
       - ".github/workflows/rag-quality-gate.yml"
 

@@ -164,8 +164,11 @@ def test_rag_quality_gate_workflow_exists() -> None:
     assert "RAG_EVAL_GATE_ENABLED" in text
     assert "RAG_EVAL_GATE_SUMMARY_PATH" in text
     assert "scripts/run_sample_retrieval_benchmark.py" in text
+    assert text.count("scripts/run_sample_retrieval_benchmark.py") >= 2
     assert "scripts/build_rag_quality_gate_artifacts.py" in text
     assert text.count("scripts/build_rag_quality_gate_artifacts.py") >= 2
+    assert "data/sample/retrieval_fixture_v1.json" in text
+    assert text.count("data/sample/retrieval_fixture_v1.json") >= 2
     assert "artifacts/answer_quality.summary.json" in text
     assert "artifacts/rag_quality_gate.report.json" in text
     assert "actions/upload-artifact@v4" in text
