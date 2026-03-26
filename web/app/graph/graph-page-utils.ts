@@ -1,5 +1,6 @@
 import type { GraphData, GraphLink, GraphNode } from '@/lib/graph-parser'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+import type { RagTrace } from '@/types'
 
 export type GraphConfBucket = 'high' | 'medium' | 'low'
 export type GraphRecord = Record<string, unknown>
@@ -142,4 +143,107 @@ export function isGraphData(value: unknown): value is GraphData {
       Array.isArray((value as GraphData).nodes) &&
       Array.isArray((value as GraphData).links)
   )
+}
+
+export function isRagTraceValue(value: unknown): value is RagTrace {
+  const record = asGraphRecord(value)
+  return Boolean(record && typeof record.ts_ms === 'number' && Array.isArray(record.steps))
+}
+
+export function extractTraceFromPayload(payload: unknown): RagTrace | null {
+  if (!payload) return null
+
+  if (Array.isArray(payload)) {
+    const [first] = payload
+    return isRagTraceValue(first) ? first : null
+  }
+
+  const payloadRecord = asGraphRecord(payload)
+  if (!payloadRecord) return null
+
+  const responseItems = payloadRecord.items
+  if (Array.isArray(responseItems)) {
+    const [first] = responseItems
+    return isRagTraceValue(first) ? first : null
+  }
+
+  return isRagTraceValue(payloadRecord) ? payloadRecord : null
+}
+
+export function buildGraphFromTrace(trace: RagTrace): {
+  graph: GraphData
+  steps: { node: string; reason: string }[]
+} {
+  const rootId = `rag-trace:${trace.request_id || trace.ts_ms}`
+  const nodes: GraphData['nodes'] = []
+  const links: GraphData['links'] = []
+
+  const hasRerank = Boolean(trace?.rerank?.enabled || trace?.rerank?.elapsed_sec != null)
+  const idRetrieve = `${rootId}:retrieve`
+  const idRerank = `${rootId}:rerank`
+  const idCitations = `${rootId}:citations`
+
+  nodes.push(
+    { id: rootId, label: 'RAG Trace', kind: 'trace', val: 2.5, color: '#0ea5e9' },
+    { id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2.0, color: '#2563eb' }
+  )
+  if (hasRerank) {
+    nodes.push({ id: idRerank, label: 'Rerank', kind: 'step', val: 2.0, color: '#14b8a6' })
+  }
+  nodes.push({ id: idCitations, label: 'Citations', kind: 'step', val: 2.0, color: '#f97316' })
+
+  links.push({ source: rootId, target: idRetrieve, label: 'start' })
+  if (hasRerank) {
+    links.push(
+      { source: idRetrieve, target: idRerank, label: 'rerank' },
+      { source: idRerank, target: idCitations, label: 'cite' }
+    )
+  } else {
+    links.push({ source: idRetrieve, target: idCitations, label: 'cite' })
+  }
+
+  const citations = (trace.citations || []).slice(0, 20)
+  const citationNodeIds: string[] = []
+  citations.forEach((citation, idx) => {
+    const doc = String(citation.document_id || '').slice(0, 8) || 'doc'
+    const page = citation.page_number == null ? '' : `p${citation.page_number}`
+    const score = citation.rerank_score ?? citation.retrieval_score ?? citation.relevance_score
+    const scoreText = score == null ? '' : ` score=${Number(score).toFixed(3)}`
+    const id = `${rootId}:c${idx}`
+
+    citationNodeIds.push(id)
+    nodes.push({
+      id,
+      label: `#${idx + 1} ${doc}${page ? ` · ${page}` : ''}${scoreText}`,
+      kind: 'citation',
+      val: 1.2,
+      color: '#64748b',
+      meta: citation,
+    })
+  })
+
+  if (citationNodeIds.length > 0) {
+    links.push({ source: idCitations, target: citationNodeIds[0], label: 'topk' })
+    for (let idx = 1; idx < citationNodeIds.length; idx += 1) {
+      links.push({ source: citationNodeIds[idx - 1], target: citationNodeIds[idx], label: 'next' })
+    }
+  }
+
+  const steps: { node: string; reason: string }[] = []
+  steps.push({
+    node: idRetrieve,
+    reason: `mode=${trace?.retrieval?.mode || '—'} · elapsed=${trace?.retrieval?.elapsed_sec ?? '—'}s`,
+  })
+  if (hasRerank) {
+    steps.push({
+      node: idRerank,
+      reason: `provider=${trace?.rerank?.provider || '—'} · elapsed=${trace?.rerank?.elapsed_sec ?? '—'}s`,
+    })
+  }
+  steps.push({ node: idCitations, reason: `count=${trace.citations_count}` })
+  citationNodeIds.forEach((id) => {
+    steps.push({ node: id, reason: 'retrieved citation' })
+  })
+
+  return { graph: { nodes, links }, steps }
 }

@@ -13,24 +13,18 @@ import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Share2, Database, Route } from 'lucide-react'
 import { GraphActionDialogs } from './_components/graph-action-dialogs'
-import { GraphCanvas } from './_components/graph-canvas'
-import { GraphContextMenu } from './_components/graph-context-menu'
-import { GraphExplainabilityPanel } from './_components/graph-explainability-panel'
-import { GraphFloatingControls } from './_components/graph-floating-controls'
+import { GraphPageBody } from './_components/graph-page-body'
 import { GraphPageHeader } from './_components/graph-page-header'
 import { GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
-import { GraphLegend } from '@/components/graph/graph-legend'
-import { GraphStatsBar } from '@/components/graph/graph-stats-bar'
-import { GraphLinkDetailPanel } from './_components/graph-link-detail-panel'
-import { GraphNodeDetailPanel } from './_components/graph-node-detail-panel'
-import { parseGraphML, GraphData } from '@/lib/graph-parser'
+import { GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/lib/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { documentApi } from '@/lib/api/documents'
 import { kgApi } from '@/lib/api/graph'
+import { useGraphDataLoading } from './use-graph-data-loading'
 import {
   GraphConfBucket,
   GraphContextMenuTarget,
@@ -39,6 +33,7 @@ import {
   type GraphLinkLike,
   type GraphNodeLike,
   asGraphRecord,
+  buildGraphFromTrace,
   bucketConfidence,
   coerceBoundedInt,
   coerceTrimmedString,
@@ -120,7 +115,6 @@ export default function GraphPage() {
   const [scopedDatasetDocIds, setScopedDatasetDocIds] = useState<string[] | null>(null)
   const [scopedDatasetDocIdsLoading, setScopedDatasetDocIdsLoading] = useState(false)
   const [scopedDatasetPendingDocs, setScopedDatasetPendingDocs] = useState<number | null>(null)
-  const [scopeAutoLoaded, setScopeAutoLoaded] = useState(false)
 
   const scopedDocumentIds: string[] | null = useMemo(() => {
     if (scope.directDocIds.length > 0) return scope.directDocIds
@@ -368,6 +362,38 @@ export default function GraphPage() {
     setHighlightedNodeIds(new Set())
     setHighlightedLinkIds(new Set())
   }, [])
+
+  const {
+    loadInitialData,
+    handleFileUpload,
+    triggerFileUpload,
+    handleTraceFileUpload,
+    triggerTraceUpload,
+  } = useGraphDataLoading({
+    scope,
+    scopedDocumentIds,
+    scopedDatasetDocIdsLoading,
+    scopeParams,
+    includeEntityLinks,
+    includeRelationLinks,
+    minSharedEvents,
+    maxEntityLinks,
+    setGraphData,
+    setFileName,
+    setDataSource,
+    setTraceReplay,
+    setKgStats,
+    setKgNodeDetail,
+    setIsLoading,
+    setIsDetailOpen,
+    setSelectedNode,
+    setViewMode,
+    fileInputRef,
+    traceFileInputRef,
+    resetPathMode,
+    resetConnectMode,
+    resetExplainMode,
+  })
 
   const handleBackgroundClick = useCallback(() => {
     setIsDetailOpen(false)
@@ -667,258 +693,6 @@ export default function GraphPage() {
       cancelled = true
     }
   }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind])
-
-  // Initialize with real (mock) data from service
-  const loadInitialData = useCallback(async (
-    source: 'live' | 'mock' = 'live',
-    opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
-  ) => {
-    if (
-      source === 'live'
-      && scope.hasScope
-      && scope.datasetId
-      && scope.directDocIds.length === 0
-      && scopedDocumentIds === null
-      && scopedDatasetDocIdsLoading
-    ) {
-      toast.message('正在解析 dataset scope 的文档列表…')
-      return
-    }
-
-    setIsLoading(true)
-    try {
-      const includeLinks = opts?.includeEntityLinks ?? includeEntityLinks
-      const includeRels = opts?.includeRelationLinks ?? includeRelationLinks
-      const sharedThreshold = opts?.minSharedEvents ?? minSharedEvents
-
-      const data = await GraphService.fetchInitialGraph({
-        preferMock: source === 'mock',
-        includeEntityLinks: source === 'live' ? includeLinks : undefined,
-        includeRelationLinks: source === 'live' ? includeRels : undefined,
-        minSharedEvents: source === 'live' ? sharedThreshold : undefined,
-        maxEntityLinks: source === 'live' ? maxEntityLinks : undefined,
-        documentIds: source === 'live' ? (scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined) : undefined,
-        pipelineHash: source === 'live' ? (scope.pipelineHash || undefined) : undefined,
-      })
-      setGraphData(data)
-      setDataSource(source)
-      setTraceReplay(null)
-      setKgNodeDetail(null)
-      setFileName(source === 'mock' ? '示例数据' : (scopeParams ? 'Knowledge Base (Scoped)' : 'Knowledge Base (Live)'))
-
-      if (source === 'live') {
-        try {
-          const stats = await kgApi.getStats(scopeParams || undefined)
-          setKgStats(stats)
-        } catch {
-          setKgStats(null)
-        }
-      } else {
-        setKgStats(null)
-      }
-
-      setIsDetailOpen(false)
-      setSelectedNode(null)
-      resetPathMode()
-      resetConnectMode()
-      resetExplainMode()
-    } catch (error) {
-      console.error('Failed to fetch graph data:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }, [
-    includeEntityLinks,
-    includeRelationLinks,
-    maxEntityLinks,
-    minSharedEvents,
-    resetConnectMode,
-    resetExplainMode,
-    resetPathMode,
-    scope.hasScope,
-    scope.datasetId,
-    scope.directDocIds,
-    scope.pipelineHash,
-    scopedDatasetDocIdsLoading,
-    scopeParams,
-    scopedDocumentIds,
-  ])
-
-  useEffect(() => {
-    if (scopeAutoLoaded) return
-    if (!scope.hasScope) return
-
-    // If we need to resolve dataset -> document ids, wait for that first.
-    if (scope.datasetId && scope.directDocIds.length === 0 && scopedDocumentIds === null) return
-
-    setScopeAutoLoaded(true)
-    detachPromise(loadInitialData('live'))
-  }, [loadInitialData, scope.hasScope, scope.datasetId, scope.directDocIds, scopeAutoLoaded, scopedDocumentIds])
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setIsLoading(true)
-    setFileName(file.name)
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string
-        const parsedData = parseGraphML(content)
-        setGraphData(parsedData)
-        setDataSource('file')
-        setTraceReplay(null)
-        setKgStats(null)
-        setKgNodeDetail(null)
-        setIsDetailOpen(false)
-        setSelectedNode(null)
-        resetPathMode()
-        resetConnectMode()
-        resetExplainMode()
-      } catch (error) {
-        console.error('Failed to parse graph file:', error)
-        toast.error('解析文件失败，请确保是有效的 GraphML 文件')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    reader.readAsText(file)
-    e.target.value = '' 
-  }
-
-  const triggerFileUpload = () => {
-    fileInputRef.current?.click()
-  }
-
-  const isRagTraceValue = (value: unknown): value is RagTrace => {
-    const record = asGraphRecord(value)
-    return Boolean(record && typeof record.ts_ms === 'number' && Array.isArray(record.steps))
-  }
-
-  const _extractTraceFromPayload = (payload: unknown): RagTrace | null => {
-    if (!payload) return null
-    if (Array.isArray(payload)) {
-      const first = payload[0]
-      return isRagTraceValue(first) ? first : null
-    }
-    const payloadRecord = asGraphRecord(payload)
-    if (!payloadRecord) return null
-
-    // API response: { enabled, items: [...] }
-    const responseItems = payloadRecord.items
-    if (Array.isArray(responseItems)) {
-      const first = responseItems[0]
-      return isRagTraceValue(first) ? first : null
-    }
-
-    // Single item.
-    if (isRagTraceValue(payloadRecord)) {
-      return payloadRecord
-    }
-
-    return null
-  }
-
-  const _buildGraphFromTrace = (trace: RagTrace): { graph: GraphData; steps: { node: string; reason: string }[] } => {
-    const rootId = `rag-trace:${trace.request_id || trace.ts_ms}`
-    const nodes: GraphData['nodes'] = []
-    const links: GraphData['links'] = []
-
-    const hasRerank = Boolean(trace?.rerank?.enabled || trace?.rerank?.elapsed_sec != null)
-
-    const idRetrieve = `${rootId}:retrieve`
-    const idRerank = `${rootId}:rerank`
-    const idCitations = `${rootId}:citations`
-
-        nodes.push({ id: rootId, label: 'RAG Trace', kind: 'trace', val: 2.5, color: '#0ea5e9' }, { id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2.0, color: '#2563eb' })
-    if (hasRerank) nodes.push({ id: idRerank, label: 'Rerank', kind: 'step', val: 2.0, color: '#14b8a6' })
-    nodes.push({ id: idCitations, label: 'Citations', kind: 'step', val: 2.0, color: '#f97316' })
-
-    links.push({ source: rootId, target: idRetrieve, label: 'start' })
-    if (hasRerank) {
-            links.push({ source: idRetrieve, target: idRerank, label: 'rerank' }, { source: idRerank, target: idCitations, label: 'cite' })
-    } else {
-      links.push({ source: idRetrieve, target: idCitations, label: 'cite' })
-    }
-
-    const citations = (trace.citations || []).slice(0, 20)
-    const citationNodeIds: string[] = []
-    citations.forEach((c, idx) => {
-      const doc = String(c.document_id || '').slice(0, 8) || 'doc'
-      const page = c.page_number == null ? '' : `p${c.page_number}`
-      const score = (c.rerank_score ?? c.retrieval_score ?? c.relevance_score)
-      const scoreTxt = score == null ? '' : ` score=${Number(score).toFixed(3)}`
-      const id = `${rootId}:c${idx}`
-      citationNodeIds.push(id)
-      nodes.push({
-        id,
-        label: `#${idx + 1} ${doc}${page ? ` · ${page}` : ''}${scoreTxt}`,
-        kind: 'citation',
-        val: 1.2,
-        color: '#64748b',
-        meta: c,
-      })
-    })
-
-    if (citationNodeIds.length) {
-      links.push({ source: idCitations, target: citationNodeIds[0], label: 'topk' })
-      for (let i = 1; i < citationNodeIds.length; i++) {
-        links.push({ source: citationNodeIds[i - 1], target: citationNodeIds[i], label: 'next' })
-      }
-    }
-
-    const steps: { node: string; reason: string }[] = []
-    steps.push({ node: idRetrieve, reason: `mode=${trace?.retrieval?.mode || '—'} · elapsed=${trace?.retrieval?.elapsed_sec ?? '—'}s` })
-    if (hasRerank) {
-      steps.push({ node: idRerank, reason: `provider=${trace?.rerank?.provider || '—'} · elapsed=${trace?.rerank?.elapsed_sec ?? '—'}s` })
-    }
-    steps.push({ node: idCitations, reason: `count=${trace.citations_count}` })
-    citationNodeIds.forEach((id) => steps.push({ node: id, reason: 'retrieved citation' }))
-
-    return { graph: { nodes, links }, steps }
-  }
-
-  const handleTraceFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setIsLoading(true)
-    setFileName(file.name)
-    try {
-      const text = await file.text()
-      const payload = JSON.parse(text)
-      const trace = _extractTraceFromPayload(payload)
-      if (!trace) {
-        throw new Error('Invalid trace JSON')
-      }
-
-      const built = _buildGraphFromTrace(trace)
-      setTraceReplay(trace)
-      setGraphData(built.graph)
-      setDataSource('file')
-      setKgStats(null)
-      setKgNodeDetail(null)
-      setIsDetailOpen(false)
-      setSelectedNode(null)
-      resetPathMode()
-      resetConnectMode()
-      resetExplainMode()
-      setViewMode('2d')
-      toast.success('Trace 已导入（可点击右下角 Play 回放）')
-    } catch (error) {
-      console.error('Failed to import trace JSON:', error)
-      setTraceReplay(null)
-      toast.error('导入 Trace 失败：请检查 JSON 格式或粘贴/导出内容是否完整')
-    } finally {
-      setIsLoading(false)
-      e.target.value = ''
-    }
-  }
-
-  const triggerTraceUpload = () => {
-    traceFileInputRef.current?.click()
-  }
 
   const expandNodeById = useCallback(
     async (nodeId: string) => {
@@ -1343,7 +1117,7 @@ export default function GraphPage() {
     // Trace replay mode: when user imported a RAG trace JSON, prefer replaying the
     // real retrieve/rerank/citations path instead of a random walk.
     if (traceReplay) {
-      const built = _buildGraphFromTrace(traceReplay)
+      const built = buildGraphFromTrace(traceReplay)
 
       // Ensure 2D so highlight/focus works consistently.
       if (viewMode === '3d') {
@@ -1913,187 +1687,158 @@ export default function GraphPage() {
           onFileUpload={handleFileUpload}
         />
 
-        {/* Graph Area */}
-        <div className="relative flex-1 w-full min-h-[500px]">
-          <GraphCanvas
-            viewportRef={graphViewportRef}
-            graph2dRef={graph2dRef}
-            graph3dRef={graph3dRef}
-            isDark={isDark}
-            graphRenderData={graphRenderData}
-            viewMode={viewMode}
-            graphViewportWidth={graphViewportWidth}
-            graphViewportHeight={graphViewportHeight}
-            selectedNodeId={selectedNode?.id ?? null}
-            highlightedNodeIds={highlightedNodeIds}
-            highlightedLinkIds={highlightedLinkIds}
-            showEdgeLabels={showEdgeLabels}
-            layoutMode={layoutMode}
-            isLoading={isLoading}
-            onNodeClick={handleNodeClick}
-            onNodeRightClick={handleNodeRightClick}
-            onLinkClick={handleLinkClick}
-            onLinkRightClick={handleLinkRightClick}
-            onBackgroundClick={handleBackgroundClick}
-            onBackgroundRightClick={handleBackgroundRightClick}
-            onLoadMock={() => {
+        <GraphPageBody
+          canvasProps={{
+            viewportRef: graphViewportRef,
+            graph2dRef,
+            graph3dRef,
+            isDark,
+            graphRenderData,
+            viewMode,
+            graphViewportWidth,
+            graphViewportHeight,
+            selectedNodeId: selectedNode?.id ?? null,
+            highlightedNodeIds,
+            highlightedLinkIds,
+            showEdgeLabels,
+            layoutMode,
+            isLoading,
+            onNodeClick: handleNodeClick,
+            onNodeRightClick: handleNodeRightClick,
+            onLinkClick: handleLinkClick,
+            onLinkRightClick: handleLinkRightClick,
+            onBackgroundClick: handleBackgroundClick,
+            onBackgroundRightClick: handleBackgroundRightClick,
+            onLoadMock: () => {
               detachPromise(loadInitialData('mock'))
-            }}
-            onTriggerFileUpload={triggerFileUpload}
-          />
-
-          <GraphContextMenu
-            contextMenu={contextMenu}
-            viewMode={viewMode}
-            showEdgeLabels={showEdgeLabels}
-            onClose={closeContextMenu}
-            onExpandNode={(nodeId) => {
+            },
+            onTriggerFileUpload: triggerFileUpload,
+          }}
+          contextMenuProps={{
+            contextMenu,
+            viewMode,
+            showEdgeLabels,
+            onClose: closeContextMenu,
+            onExpandNode: (nodeId) => {
               detachPromise(expandNodeById(nodeId))
-            }}
-            onStartPathFromNode={handleStartPathFromContextNode}
-            onStartConnectFromNode={handleStartConnectFromContextNode}
-            onChatWithNode={chatWithNode}
-            onViewSourceForNode={viewSourceForNode}
-            onCopyNodeId={(nodeId) => {
+            },
+            onStartPathFromNode: handleStartPathFromContextNode,
+            onStartConnectFromNode: handleStartConnectFromContextNode,
+            onChatWithNode: chatWithNode,
+            onViewSourceForNode: viewSourceForNode,
+            onCopyNodeId: (nodeId) => {
               detachPromise(copyToClipboard(nodeId, '节点 ID'))
-            }}
-            onDeleteNode={handleDeleteNode}
-            onOpenLinkDetail={handleOpenLinkDetailFromContextMenu}
-            onCopyLinkPredicate={(predicate) => {
+            },
+            onDeleteNode: handleDeleteNode,
+            onOpenLinkDetail: handleOpenLinkDetailFromContextMenu,
+            onCopyLinkPredicate: (predicate) => {
               detachPromise(copyToClipboard(predicate, 'Predicate'))
-            }}
-            onZoomToFit={() => getActiveGraph()?.zoomToFit()}
-            onClearHighlights={handleClearHighlightsFromContextMenu}
-            onToggleShowEdgeLabels={() => setShowEdgeLabels((value) => !value)}
-          />
-
-          {/* Entity Type Legend (Bottom Left) */}
-          {graphRenderData.nodes.length > 0 && !isExplainMode && (
-            <GraphLegend
-              nodes={graphRenderData.nodes}
-              links={graphRenderData.links}
-              activeTypeFilters={entityTypeFilters}
-              onToggleTypeFilter={(type) => {
-                setEntityTypeFilters((prev) => {
-                  const set = new Set(prev)
-                  if (set.has(type)) set.delete(type)
-                  else set.add(type)
-                  return Array.from(set)
-                })
-              }}
-            />
-          )}
-
-          {/* Explainability Panel (Bottom Left) */}
-          <GraphExplainabilityPanel
-            open={isExplainMode}
-            explainSteps={explainSteps}
-            currentStepIndex={currentStepIndex}
-            nodes={displayGraphData.nodes}
-          />
-
-          {/* Graph Stats Bar */}
-          {dataSource === 'live' && typeof scopedDatasetPendingDocs === 'number' && scopedDatasetPendingDocs > 0 && (
-            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-20">
-              <div className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 shadow-sm animate-pulse motion-reduce:animate-none">
-                <span className="text-[11px] font-medium text-primary">KG 构建中</span>
-                <span className="text-[10px] text-muted-foreground">待处理文档</span>
-                <span className="text-[10px] font-mono text-foreground">{scopedDatasetPendingDocs}</span>
-              </div>
-            </div>
-          )}
-          {graphRenderData.nodes.length > 0 && (
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
-              <GraphStatsBar
-                nodeCount={graphRenderData.nodes.length}
-                linkCount={graphRenderData.links.length}
-                entityTypeCount={availableEntityTypes.length}
-              />
-            </div>
-          )}
-
-          {/* Floating Controls */}
-          <GraphFloatingControls
-            viewMode={viewMode}
-            isExplainMode={isExplainMode}
-            isPathMode={isPathMode}
-            showEdgeLabels={showEdgeLabels}
-            isFullscreen={isFullscreen}
-            exportOpen={exportOpen}
-            layoutLabel={getLayoutLabel()}
-            onZoomIn={() => getActiveGraph()?.zoomIn()}
-            onZoomOut={() => getActiveGraph()?.zoomOut()}
-            onZoomToFit={() => getActiveGraph()?.zoomToFit()}
-            onToggleViewMode={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
-            onStartExplainMode={startExplainMode}
-            onCycleLayoutMode={cycleLayoutMode}
-            onTogglePathMode={togglePathMode}
-            onToggleShowEdgeLabels={() => setShowEdgeLabels((value) => !value)}
-            onToggleFullscreen={() => {
+            },
+            onZoomToFit: () => getActiveGraph()?.zoomToFit(),
+            onClearHighlights: handleClearHighlightsFromContextMenu,
+            onToggleShowEdgeLabels: () => setShowEdgeLabels((value) => !value),
+          }}
+          legendVisible={graphRenderData.nodes.length > 0 && !isExplainMode}
+          legendNodes={graphRenderData.nodes}
+          legendLinks={graphRenderData.links}
+          activeTypeFilters={entityTypeFilters}
+          onToggleTypeFilter={(type) => {
+            setEntityTypeFilters((prev) => {
+              const next = new Set(prev)
+              if (next.has(type)) next.delete(type)
+              else next.add(type)
+              return Array.from(next)
+            })
+          }}
+          explainabilityOpen={isExplainMode}
+          explainSteps={explainSteps}
+          currentStepIndex={currentStepIndex}
+          displayNodes={displayGraphData.nodes}
+          showPendingDocs={dataSource === 'live' && typeof scopedDatasetPendingDocs === 'number' && scopedDatasetPendingDocs > 0}
+          pendingDocCount={scopedDatasetPendingDocs}
+          showStatsBar={graphRenderData.nodes.length > 0}
+          statsNodeCount={graphRenderData.nodes.length}
+          statsLinkCount={graphRenderData.links.length}
+          statsEntityTypeCount={availableEntityTypes.length}
+          floatingControlsProps={{
+            viewMode,
+            isExplainMode,
+            isPathMode,
+            showEdgeLabels,
+            isFullscreen,
+            exportOpen,
+            layoutLabel: getLayoutLabel(),
+            onZoomIn: () => getActiveGraph()?.zoomIn(),
+            onZoomOut: () => getActiveGraph()?.zoomOut(),
+            onZoomToFit: () => getActiveGraph()?.zoomToFit(),
+            onToggleViewMode: () => setViewMode(viewMode === '3d' ? '2d' : '3d'),
+            onStartExplainMode: startExplainMode,
+            onCycleLayoutMode: cycleLayoutMode,
+            onTogglePathMode: togglePathMode,
+            onToggleShowEdgeLabels: () => setShowEdgeLabels((value) => !value),
+            onToggleFullscreen: () => {
               detachPromise(toggleFullscreen())
-            }}
-            onExportOpenChange={setExportOpen}
-            onExportPngDownload={() => {
+            },
+            onExportOpenChange: setExportOpen,
+            onExportPngDownload: () => {
               setExportOpen(false)
               detachPromise(exportGraph('png', 'download'))
-            }}
-            onExportSvgDownload={() => {
+            },
+            onExportSvgDownload: () => {
               setExportOpen(false)
               detachPromise(exportGraph('svg', 'download'))
-            }}
-            onExportPngCopy={() => {
+            },
+            onExportPngCopy: () => {
               setExportOpen(false)
               detachPromise(exportGraph('png', 'copy'))
-            }}
-            onExportSvgCopy={() => {
+            },
+            onExportSvgCopy: () => {
               setExportOpen(false)
               detachPromise(exportGraph('svg', 'copy'))
-            }}
-          />
-
-          <GraphNodeDetailPanel
-            open={isDetailOpen}
-            selectedNode={selectedNode}
-            detailScrollRef={detailScrollRef}
-            dataSource={dataSource}
-            kgNodeDetailLoading={kgNodeDetailLoading}
-            kgNodeDetail={kgNodeDetail}
-            entityAliasesLoading={entityAliasesLoading}
-            entityAliases={entityAliases}
-            aliasDraft={aliasDraft}
-            aliasSaving={aliasSaving}
-            aliasSuggestionsLoading={aliasSuggestionsLoading}
-            aliasSuggestions={aliasSuggestions}
-            lastResolutionActionId={lastResolutionActionId}
-            undoSubmitting={undoSubmitting}
-            isLoading={isLoading}
-            onClose={() => setIsDetailOpen(false)}
-            onChat={handleChatWithNode}
-            onViewSource={handleViewSource}
-            onExpandNode={handleExpandNode}
-            onStartConnectMode={startConnectMode}
-            onDeleteNode={() => handleDeleteNode()}
-            onOpenMerge={openMergeDialog}
-            onOpenSplit={openSplitDialog}
-            onUndoLastResolution={undoLastResolution}
-            onAliasDraftChange={setAliasDraft}
-            onSaveAlias={handleSaveAlias}
-            onRequestDeleteAlias={requestDeleteAlias}
-            onMergeAliasSuggestion={handleMergeAliasSuggestion}
-          />
-
-          <GraphLinkDetailPanel
-            open={isLinkDetailOpen}
-            selectedLink={selectedLink}
-            graphLinks={linksWithIds}
-            selfLoopGroupExpanded={selfLoopGroupExpanded}
-            onToggleSelfLoopGroup={() => setSelfLoopGroupExpanded((prev) => !prev)}
-            onClose={() => {
+            },
+          }}
+          nodeDetailPanelProps={{
+            open: isDetailOpen,
+            selectedNode,
+            detailScrollRef,
+            dataSource,
+            kgNodeDetailLoading,
+            kgNodeDetail,
+            entityAliasesLoading,
+            entityAliases,
+            aliasDraft,
+            aliasSaving,
+            aliasSuggestionsLoading,
+            aliasSuggestions,
+            lastResolutionActionId,
+            undoSubmitting,
+            isLoading,
+            onClose: () => setIsDetailOpen(false),
+            onChat: handleChatWithNode,
+            onViewSource: handleViewSource,
+            onExpandNode: handleExpandNode,
+            onStartConnectMode: startConnectMode,
+            onDeleteNode: () => handleDeleteNode(),
+            onOpenMerge: openMergeDialog,
+            onOpenSplit: openSplitDialog,
+            onUndoLastResolution: undoLastResolution,
+            onAliasDraftChange: setAliasDraft,
+            onSaveAlias: handleSaveAlias,
+            onRequestDeleteAlias: requestDeleteAlias,
+            onMergeAliasSuggestion: handleMergeAliasSuggestion,
+          }}
+          linkDetailPanelProps={{
+            open: isLinkDetailOpen,
+            selectedLink,
+            graphLinks: linksWithIds,
+            selfLoopGroupExpanded,
+            onToggleSelfLoopGroup: () => setSelfLoopGroupExpanded((prev) => !prev),
+            onClose: () => {
               setIsLinkDetailOpen(false)
               setSelectedLink(null)
-            }}
-          />
-        </div>
+            },
+          }}
+        />
 
         <GraphActionDialogs
           deleteNodeOpen={deleteNodeOpen}

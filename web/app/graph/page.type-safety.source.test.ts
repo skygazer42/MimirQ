@@ -37,15 +37,21 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('(node?: any)')
     expect(page).not.toContain('.filter((l: any)')
     expect(page).not.toContain('.map((l: any, idx: number)')
+    expect(utils).toContain('export function extractTraceFromPayload')
+    expect(utils).toContain('export function buildGraphFromTrace')
+    expect(page).not.toContain('const _extractTraceFromPayload = (payload: unknown)')
+    expect(page).not.toContain('const _buildGraphFromTrace = (trace: RagTrace)')
   })
 
   it('keeps heavy right-side detail panels extracted into dedicated graph components', () => {
     const page = read('./page.tsx')
+    const body = read('./_components/graph-page-body.tsx')
     const nodePanel = read('./_components/graph-node-detail-panel.tsx')
     const linkPanel = read('./_components/graph-link-detail-panel.tsx')
 
-    expect(page).toContain('GraphNodeDetailPanel')
-    expect(page).toContain('GraphLinkDetailPanel')
+    expect(page).toContain('GraphPageBody')
+    expect(body).toContain('GraphNodeDetailPanel')
+    expect(body).toContain('GraphLinkDetailPanel')
     expect(nodePanel).toContain('export function GraphNodeDetailPanel')
     expect(linkPanel).toContain('export function GraphLinkDetailPanel')
     expect(page).not.toContain('属性详情')
@@ -67,11 +73,13 @@ describe('graph page type safety', () => {
 
   it('keeps explainability and floating graph controls extracted into dedicated components', () => {
     const page = read('./page.tsx')
+    const body = read('./_components/graph-page-body.tsx')
     const explainabilityPanel = read('./_components/graph-explainability-panel.tsx')
     const floatingControls = read('./_components/graph-floating-controls.tsx')
 
-    expect(page).toContain('GraphExplainabilityPanel')
-    expect(page).toContain('GraphFloatingControls')
+    expect(page).toContain('GraphPageBody')
+    expect(body).toContain('GraphExplainabilityPanel')
+    expect(body).toContain('GraphFloatingControls')
     expect(explainabilityPanel).toContain('export function GraphExplainabilityPanel')
     expect(floatingControls).toContain('export function GraphFloatingControls')
     expect(page).not.toContain('RAG 推理过程')
@@ -101,11 +109,13 @@ describe('graph page type safety', () => {
 
   it('keeps graph canvas and context menu extracted into dedicated components', () => {
     const page = read('./page.tsx')
+    const body = read('./_components/graph-page-body.tsx')
     const graphCanvas = read('./_components/graph-canvas.tsx')
     const graphContextMenu = read('./_components/graph-context-menu.tsx')
 
-    expect(page).toContain('GraphCanvas')
-    expect(page).toContain('GraphContextMenu')
+    expect(page).toContain('GraphPageBody')
+    expect(body).toContain('GraphCanvas')
+    expect(body).toContain('GraphContextMenu')
     expect(graphCanvas).toContain('export function GraphCanvas')
     expect(graphContextMenu).toContain('export function GraphContextMenu')
     expect(page).not.toContain('Loading graph...')
@@ -124,5 +134,30 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('title="导入 RAG trace JSON（回放检索路径）"')
     expect(page).not.toContain('accept=".graphml,.xml"')
     expect(page).not.toContain('accept=".json,application/json"')
+  })
+
+  it('keeps the graph page body extracted into a dedicated component', () => {
+    const page = read('./page.tsx')
+    const body = read('./_components/graph-page-body.tsx')
+
+    expect(page).toContain('GraphPageBody')
+    expect(body).toContain('export function GraphPageBody')
+    expect(body).toContain('GraphStatsBar')
+    expect(body).toContain('GraphLegend')
+    expect(page).not.toContain('待处理文档')
+    expect(page).not.toContain('GraphStatsBar')
+    expect(page).not.toContain('GraphLegend')
+  })
+
+  it('keeps graph data loading and trace import logic extracted into a dedicated hook', () => {
+    const page = read('./page.tsx')
+    const hook = read('./use-graph-data-loading.ts')
+
+    expect(page).toContain('useGraphDataLoading')
+    expect(hook).toContain('export function useGraphDataLoading')
+    expect(hook).toContain('buildGraphFromTrace')
+    expect(page).not.toContain('const handleFileUpload = async')
+    expect(page).not.toContain('const handleTraceFileUpload = async')
+    expect(page).not.toContain('const triggerTraceUpload = () =>')
   })
 })
