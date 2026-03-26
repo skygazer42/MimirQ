@@ -6,10 +6,12 @@ import time
 from typing import Any
 
 from app.core.config import settings
-from app.rag.kg.community import build_community_reports
+from app.rag.kg.community import build_community_reports, lazy_summarize
+from app.rag.kg.search.cache import build_kg_community_summary_cache_key, kg_community_summary_cache
 from app.rag.kg.search.config import ReturnType, SearchConfig
 from app.rag.kg.search.expand import ExpandSearcher
 from app.rag.kg.search.recall import RecallSearcher
+from app.rag.llm.factory import create_llm_client
 from app.rag.reranker.kg import get_kg_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.services.metrics_logger import log_metrics
@@ -39,6 +41,73 @@ class KGSearcher:
             return False, ["missing_global_pattern"]
 
         return True, ["enabled"]
+
+    async def _apply_lazy_community_summaries(
+        self,
+        *,
+        reports: list[dict[str, Any]],
+        query: str,
+    ) -> dict[str, Any]:
+        """
+        Best-effort query-aware community summary enrichment.
+        """
+        enabled = bool(getattr(settings, "KG_LAZY_COMMUNITY_SUMMARY_ENABLED", False))
+        top_n = max(0, int(getattr(settings, "KG_LAZY_COMMUNITY_SUMMARY_TOP_N", 3) or 3))
+        max_tokens = max(1, int(getattr(settings, "KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS", 300) or 300))
+        ttl_sec = max(0, int(getattr(settings, "KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC", 86400) or 86400))
+        max_entries = max(0, int(getattr(settings, "KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES", 1024) or 1024))
+
+        meta: dict[str, Any] = {
+            "enabled": enabled,
+            "used": False,
+            "cache_hits": 0,
+            "generated": 0,
+            "errors": 0,
+        }
+        if not enabled or not reports or top_n <= 0:
+            return meta
+
+        llm_client = None
+        cache_enabled = ttl_sec > 0 and max_entries > 0
+        for report in reports[:top_n]:
+            if not isinstance(report, dict):
+                continue
+            community_id = str(report.get("community_id") or report.get("label") or "").strip()
+            if not community_id:
+                continue
+
+            cache_key = build_kg_community_summary_cache_key(community_id=community_id, query=query)
+            if cache_enabled:
+                cached_summary, _age_ms = kg_community_summary_cache.get(cache_key, ttl_sec=ttl_sec)
+                if cached_summary:
+                    report["llm_summary"] = cached_summary
+                    meta["cache_hits"] = int(meta["cache_hits"]) + 1
+                    continue
+
+            try:
+                if llm_client is None:
+                    llm_client = await create_llm_client(scenario="kg_community_summary")
+                summary = await lazy_summarize(
+                    community_report=report,
+                    query=query,
+                    llm_client=llm_client,
+                    max_tokens=max_tokens,
+                )
+                if summary:
+                    report["llm_summary"] = summary
+                    meta["generated"] = int(meta["generated"]) + 1
+                    if cache_enabled:
+                        kg_community_summary_cache.set(
+                            cache_key,
+                            summary,
+                            ttl_sec=ttl_sec,
+                            max_entries=max_entries,
+                        )
+            except Exception:
+                meta["errors"] = int(meta["errors"]) + 1
+
+        meta["used"] = bool(int(meta["cache_hits"]) > 0 or int(meta["generated"]) > 0)
+        return meta
 
     async def search(self, config: SearchConfig) -> dict[str, Any]:
         timeout_sec = float(getattr(settings, "KG_SEARCH_TIMEOUT_SEC", 0.0) or 0.0)
@@ -237,6 +306,11 @@ class KGSearcher:
                         getattr(settings, "KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS", 3200) or 3200
                     ),
                 )
+                lazy_summary_meta = await self._apply_lazy_community_summaries(
+                    reports=community_reports,
+                    query=str(config.query or ""),
+                )
+                community_meta["lazy_summary"] = lazy_summary_meta
                 community_meta["used"] = True
             except Exception as exc:  # noqa: BLE001
                 community_meta["used"] = False

@@ -1664,6 +1664,13 @@ class Settings(BaseSettings):
     KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY: int = 12
     KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY: int = 6
     KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS: int = 3200
+    # Query-aware LLM community summaries (LazyGraphRAG style).
+    # Disabled by default to preserve latency/cost characteristics.
+    KG_LAZY_COMMUNITY_SUMMARY_ENABLED: bool = False
+    KG_LAZY_COMMUNITY_SUMMARY_TOP_N: int = 3
+    KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC: int = 86400
+    KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES: int = 1024
+    KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS: int = 300
     # Entity resolution (Wave15): merge/split actions may optionally update KG entity vectors.
     #
     # Why off by default:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_label_propagation_communities_is_deterministic_for_disconnected_components() -> None:
     from app.rag.kg.community import CommunityEdge, label_propagation_communities
@@ -58,3 +60,25 @@ def test_build_community_reports_groups_entities_and_emits_global_summary() -> N
         assert rep.get("events")
         assert rep.get("summary")
 
+
+@pytest.mark.asyncio
+async def test_lazy_summarize_returns_trimmed_llm_text() -> None:
+    from app.rag.kg.community import lazy_summarize
+    from app.rag.llm.models import LLMResponse
+
+    class _FakeLLM:
+        async def chat(self, _messages, **_kwargs):  # noqa: ANN001, ANN003
+            return LLMResponse(content="  concise summary  ")
+
+    summary = await lazy_summarize(
+        community_report={
+            "community_id": "1",
+            "entities": [{"name": "Alpha", "type": "Thing"}],
+            "events": [{"title": "Event A"}],
+        },
+        query="What happened with Alpha?",
+        llm_client=_FakeLLM(),
+        max_tokens=120,
+    )
+
+    assert summary == "concise summary"
