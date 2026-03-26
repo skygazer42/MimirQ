@@ -82,13 +82,15 @@ describe('graph page type safety', () => {
 
   it('keeps graph search, filter, and status overlays extracted into dedicated components', () => {
     const page = read('./page.tsx')
+    const header = read('./_components/graph-page-header.tsx')
     const searchOverlay = read('./_components/graph-search-overlay.tsx')
     const statusBanners = read('./_components/graph-status-banners.tsx')
     const filtersPopover = read('./_components/graph-filters-popover.tsx')
 
-    expect(page).toContain('GraphSearchOverlay')
-    expect(page).toContain('GraphStatusBanners')
-    expect(page).toContain('GraphFiltersPopover')
+    expect(page).toContain('GraphPageHeader')
+    expect(header).toContain('GraphSearchOverlay')
+    expect(header).toContain('GraphStatusBanners')
+    expect(header).toContain('GraphFiltersPopover')
     expect(searchOverlay).toContain('export function GraphSearchOverlay')
     expect(statusBanners).toContain('export function GraphStatusBanners')
     expect(filtersPopover).toContain('export function GraphFiltersPopover')
@@ -110,5 +112,17 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('探索知识网络')
     expect(page).not.toContain('展开邻居')
     expect(page).not.toContain('复制 Predicate')
+  })
+
+  it('keeps the graph page header extracted into a dedicated component', () => {
+    const page = read('./page.tsx')
+    const header = read('./_components/graph-page-header.tsx')
+
+    expect(page).toContain('GraphPageHeader')
+    expect(header).toContain('export function GraphPageHeader')
+    expect(page).not.toContain('title="实体-实体共现连线"')
+    expect(page).not.toContain('title="导入 RAG trace JSON（回放检索路径）"')
+    expect(page).not.toContain('accept=".graphml,.xml"')
+    expect(page).not.toContain('accept=".json,application/json"')
   })
 })

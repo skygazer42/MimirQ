@@ -10,17 +10,14 @@ import { useTheme } from 'next-themes'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
-import { Button } from '@/components/ui/button'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Upload, Share2, RefreshCw, BarChart3, Database, Filter, FileCode, FileText, Network, Route, Link as LinkIcon } from 'lucide-react'
+import { Share2, Database, Route } from 'lucide-react'
 import { GraphActionDialogs } from './_components/graph-action-dialogs'
 import { GraphCanvas } from './_components/graph-canvas'
 import { GraphContextMenu } from './_components/graph-context-menu'
 import { GraphExplainabilityPanel } from './_components/graph-explainability-panel'
-import { GraphFiltersPopover } from './_components/graph-filters-popover'
 import { GraphFloatingControls } from './_components/graph-floating-controls'
-import { GraphSearchOverlay } from './_components/graph-search-overlay'
-import { GraphStatusBanners } from './_components/graph-status-banners'
+import { GraphPageHeader } from './_components/graph-page-header'
 import { GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphLegend } from '@/components/graph/graph-legend'
@@ -1856,177 +1853,65 @@ export default function GraphPage() {
         bodyClassName="px-0 pb-0 overflow-hidden"
         bodyContainerClassName="flex h-full min-h-0 flex-col"
       >
-         {/* Header */}
-         <header className="absolute top-0 left-0 right-0 z-20 h-16 px-6 flex items-center justify-between bg-card border-b border-border/50 pointer-events-none">
-	          <div className="flex items-center gap-3 pointer-events-auto">
-		            <div className="p-2 rounded-lg bg-primary text-primary-foreground shadow-sm border border-primary/20">
-		              <Share2 className="w-5 h-5" />
-		            </div>
-	            <div>
-	              <h1 className="text-3xl font-bold text-foreground ">知识图谱</h1>
-	            </div>
-	          </div>
-          
-          <GraphSearchOverlay
-            open={displayGraphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode}
-            inputRef={searchInputRef}
-            searchTerm={searchTerm}
-            highlightedMatchCount={highlightedNodeIds.size}
-            onSearchTermChange={setSearchTerm}
-          />
-
-          <GraphStatusBanners
-            isPathMode={isPathMode}
-            hasPathStart={Boolean(pathStartNode)}
-            hasPathEnd={Boolean(pathEndNode)}
-            isConnectMode={isConnectMode}
-            connectSourceLabel={connectSourceNode?.label ?? null}
-            isExplainMode={isExplainMode}
-            currentStepIndex={currentStepIndex}
-            explainStepCount={explainSteps.length}
-            onExitPathMode={resetPathMode}
-            onExitConnectMode={resetConnectMode}
-            onExitExplainMode={resetExplainMode}
-          />
-
-           <div className="flex items-center gap-3 pointer-events-auto">
-              {fileName && (
-               <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-border rounded-full text-xs text-muted-foreground font-medium">
-                 <FileCode className="w-3.5 h-3.5 text-muted-foreground" />
-                 <span className="truncate max-w-[150px]">{fileName}</span>
-               </div>
-              )}
-
-              {dataSource === 'live' && kgStats && (
-                <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-muted/50 border border-border rounded-full text-xs text-muted-foreground font-medium">
-                  <BarChart3 className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="font-mono">
-                    E:{kgStats.events} N:{kgStats.entities} L:{kgStats.links}
-                  </span>
-                </div>
-              )}
-
-              {dataSource === 'live' && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleEntityLinks}
-                    className={cn(
-                      "text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20",
-                      includeEntityLinks && "bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300"
-                    )}
-                    title="实体-实体共现连线"
-                  >
-                    <LinkIcon className="w-4 h-4 mr-2" />
-                    {includeEntityLinks ? '实体连线: ON' : '实体连线: OFF'}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleRelationLinks}
-                    className={cn(
-                      "text-muted-foreground hover:text-teal-600 dark:hover:text-teal-300 hover:bg-teal-500/10 dark:hover:bg-teal-500/20",
-                      includeRelationLinks && "bg-teal-500/10 dark:bg-teal-500/20 text-teal-600 dark:text-teal-300"
-                    )}
-                    title="实体-实体关系连线（来自 KG triples / kg_relations）"
-                  >
-                    <Network className="w-4 h-4 mr-2" />
-                    {includeRelationLinks ? '关系连线: ON' : '关系连线: OFF'}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={cycleMinSharedEvents}
-                    className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20"
-                    title="最小共现事件数（点击循环）"
-                  >
-                    <Filter className="w-4 h-4 mr-2" />
-                    Co≥{minSharedEvents}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleExportGraphML}
-                    disabled={isLoading}
-                    className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20"
-                    title="导出 GraphML"
-                  >
-                    <FileCode className="w-4 h-4 mr-2" />
-                    导出
-                  </Button>
-                </>
-              )}
-
-              {(graphData.nodes.length > 0 || activeGraphFilterCount > 0) && (
-                <GraphFiltersPopover
-                  open={filtersOpen}
-                  onOpenChange={setFiltersOpen}
-                  activeGraphFilterCount={activeGraphFilterCount}
-                  graphNodeCount={displayGraphData.nodes.length}
-                  graphLinkCount={displayGraphData.links.length}
-                  entityTypeQuery={entityTypeQuery}
-                  onEntityTypeQueryChange={setEntityTypeQuery}
-                  entityTypeFilters={entityTypeFilters}
-                  filteredEntityTypes={filteredEntityTypes}
-                  onEntityTypeCheckedChange={handleEntityTypeCheckedChange}
-                  onResetEntityTypeFilters={() => setEntityTypeFilters([])}
-                  predicateQuery={predicateQuery}
-                  onPredicateQueryChange={setPredicateQuery}
-                  predicateFilters={predicateFilters}
-                  filteredPredicates={filteredPredicates}
-                  onPredicateCheckedChange={handlePredicateCheckedChange}
-                  onResetPredicateFilters={() => setPredicateFilters([])}
-                  confidenceBucketFilters={confidenceBucketFilters}
-                  onResetConfidenceBuckets={() => setConfidenceBucketFilters([])}
-                  onToggleConfidenceBucket={toggleConfidenceBucket}
-                  onResetGraphFilters={resetGraphFilters}
-                />
-              )}
- 
-             <div className="h-6 w-px bg-muted mx-1 hidden sm:block"></div>
- 
-	             <Button variant="ghost" size="sm" onClick={() => loadInitialData('live')} disabled={isLoading} className="text-muted-foreground hover:text-sky-600 dark:hover:text-sky-300 hover:bg-sky-500/10 dark:hover:bg-sky-500/20">
-	               <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin motion-reduce:animate-none")} />
-	              {isLoading ? '加载中...' : '刷新'}
-	            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={triggerTraceUpload}
-              className="text-muted-foreground hover:text-teal-600 dark:hover:text-teal-300 hover:bg-teal-500/10 dark:hover:bg-teal-500/20"
-              title="导入 RAG trace JSON（回放检索路径）"
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Trace
-            </Button>
-            <input
-              ref={traceFileInputRef}
-              type="file"
-              accept=".json,application/json"
-              className="hidden"
-              onChange={handleTraceFileUpload}
-            />
-
-	            <Button 
-	              variant="info"
-	              size="sm" 
-	              className="gap-2"
-	              onClick={triggerFileUpload}
-	            >
-              <Upload className="w-4 h-4" />
-              导入
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".graphml,.xml"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-          </div>
-        </header>
+        <GraphPageHeader
+          fileName={fileName}
+          dataSource={dataSource}
+          kgStats={kgStats}
+          graphNodeCount={displayGraphData.nodes.length}
+          graphLinkCount={displayGraphData.links.length}
+          activeGraphFilterCount={activeGraphFilterCount}
+          searchOpen={displayGraphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode}
+          searchInputRef={searchInputRef}
+          searchTerm={searchTerm}
+          highlightedMatchCount={highlightedNodeIds.size}
+          onSearchTermChange={setSearchTerm}
+          isPathMode={isPathMode}
+          hasPathStart={Boolean(pathStartNode)}
+          hasPathEnd={Boolean(pathEndNode)}
+          isConnectMode={isConnectMode}
+          connectSourceLabel={connectSourceNode?.label ?? null}
+          isExplainMode={isExplainMode}
+          currentStepIndex={currentStepIndex}
+          explainStepCount={explainSteps.length}
+          onExitPathMode={resetPathMode}
+          onExitConnectMode={resetConnectMode}
+          onExitExplainMode={resetExplainMode}
+          includeEntityLinks={includeEntityLinks}
+          includeRelationLinks={includeRelationLinks}
+          minSharedEvents={minSharedEvents}
+          onToggleEntityLinks={toggleEntityLinks}
+          onToggleRelationLinks={toggleRelationLinks}
+          onCycleMinSharedEvents={cycleMinSharedEvents}
+          onExportGraphML={handleExportGraphML}
+          isLoading={isLoading}
+          filtersOpen={filtersOpen}
+          onFiltersOpenChange={setFiltersOpen}
+          entityTypeQuery={entityTypeQuery}
+          onEntityTypeQueryChange={setEntityTypeQuery}
+          entityTypeFilters={entityTypeFilters}
+          filteredEntityTypes={filteredEntityTypes}
+          onEntityTypeCheckedChange={handleEntityTypeCheckedChange}
+          onResetEntityTypeFilters={() => setEntityTypeFilters([])}
+          predicateQuery={predicateQuery}
+          onPredicateQueryChange={setPredicateQuery}
+          predicateFilters={predicateFilters}
+          filteredPredicates={filteredPredicates}
+          onPredicateCheckedChange={handlePredicateCheckedChange}
+          onResetPredicateFilters={() => setPredicateFilters([])}
+          confidenceBucketFilters={confidenceBucketFilters}
+          onResetConfidenceBuckets={() => setConfidenceBucketFilters([])}
+          onToggleConfidenceBucket={toggleConfidenceBucket}
+          onResetGraphFilters={resetGraphFilters}
+          onRefreshLiveData={() => {
+            detachPromise(loadInitialData('live'))
+          }}
+          onTriggerTraceUpload={triggerTraceUpload}
+          traceFileInputRef={traceFileInputRef}
+          onTraceFileUpload={handleTraceFileUpload}
+          onTriggerFileUpload={triggerFileUpload}
+          fileInputRef={fileInputRef}
+          onFileUpload={handleFileUpload}
+        />
 
         {/* Graph Area */}
         <div className="relative flex-1 w-full min-h-[500px]">
