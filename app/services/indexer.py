@@ -367,6 +367,94 @@ def _extract_heading_for_embedding(meta: dict[str, Any]) -> str | None:
     return header_str
 
 
+def _build_llm_contextual_summary(
+    *,
+    raw_body: str,
+    document_title: str | None,
+    meta: dict[str, Any],
+) -> str | None:
+    """
+    Best-effort short summary for contextual embedding prefixes.
+
+    Safe-by-default behavior:
+    - Disabled unless CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED=true.
+    - Any failure falls back to deterministic prefixing.
+    """
+    if not bool(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED", False)):
+        return None
+    text = str(raw_body or "").strip()
+    if not text:
+        return None
+
+    max_input_chars = max(0, int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS", 2400) or 2400))
+    max_summary_chars = max(0, int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS", 180) or 180))
+    if max_summary_chars <= 0:
+        return None
+    sample = text[:max_input_chars] if max_input_chars else text
+
+    section = _extract_heading_for_embedding(meta) or ""
+    title = str(document_title or "").strip()
+    try:
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from langchain_openai import ChatOpenAI
+
+        llm = ChatOpenAI(
+            model=settings.LLM_MODEL,
+            api_key=settings.LLM_API_KEY,
+            base_url=settings.LLM_API_BASE,
+            temperature=0,
+            timeout=max(5, int(getattr(settings, "LLM_TIMEOUT", 60) or 60)),
+            max_retries=0,
+            streaming=False,
+        )
+        system = SystemMessage(
+            content=(
+                "Write one concise retrieval-oriented summary sentence for embedding enrichment. "
+                "Output plain text only. No markdown. No lists."
+            )
+        )
+        human = HumanMessage(
+            content=(
+                f"Title: {title or 'N/A'}\n"
+                f"Section: {section or 'N/A'}\n"
+                f"Chunk:\n{sample}\n\n"
+                f"Constraints: <= {max_summary_chars} chars, factual, no speculation."
+            )
+        )
+        resp = llm.invoke([system, human])
+        summary = str(getattr(resp, "content", "") or "").strip()
+    except Exception:
+        return None
+
+    if not summary:
+        return None
+    if len(summary) > max_summary_chars:
+        summary = summary[:max_summary_chars].rstrip()
+    return summary or None
+
+
+def _build_contextual_prefix_for_chunk(
+    *,
+    raw_body: str,
+    document_title: str | None,
+    meta: dict[str, Any],
+) -> str | None:
+    from app.rag.chunking.contextual_enrichment import build_context_prefix
+
+    summary = _build_llm_contextual_summary(raw_body=raw_body, document_title=document_title, meta=meta)
+    if summary:
+        return summary
+
+    return build_context_prefix(
+        raw_body,
+        document_title=document_title,
+        meta=meta,
+        max_prefix_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS", 240) or 240),
+        keywords_top_k=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K", 6) or 6),
+        keywords_max_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS", 2000) or 2000),
+    )
+
+
 class Indexer:
     """
     Unified Indexer for chunk/event indexing.
@@ -627,16 +715,11 @@ class Indexer:
             embed_text = raw_body
             if contextual_retrieval_enabled and raw_body and _should_prefix_embedding(meta):
                 try:
-                    from app.rag.chunking.contextual_enrichment import build_context_prefix
-
                     title = document_title or _extract_title_for_embedding(meta)
-                    prefix = build_context_prefix(
-                        raw_body,
+                    prefix = _build_contextual_prefix_for_chunk(
+                        raw_body=raw_body,
                         document_title=title,
                         meta=meta,
-                        max_prefix_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS", 240) or 240),
-                        keywords_top_k=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K", 6) or 6),
-                        keywords_max_chars=int(getattr(settings, "CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS", 2000) or 2000),
                     )
                     if prefix:
                         embed_text = prefix + "\n" + raw_body

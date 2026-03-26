@@ -1002,6 +1002,13 @@ class Settings(BaseSettings):
     RAG_CONTEXT_COMPRESSION_ENABLED: bool = False
     # Optional lightweight generation-time reordering for better reading flow.
     RAG_CONTEXT_REORDER_ENABLED: bool = False
+    # Optional lost-in-middle mitigation at context de-noise stage.
+    # Disabled by default to preserve historical ordering.
+    RAG_CONTEXT_LOST_IN_MIDDLE_REORDER_ENABLED: bool = False
+    # Optional token-budget-aware trim during context de-noise.
+    # Disabled by default; when enabled, keeps docs in order until the budget is exhausted.
+    RAG_CONTEXT_TOKEN_BUDGET_TRIM_ENABLED: bool = False
+    RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS: int = 0
     # Context evidence extraction (query-focused sentence selection)
     RAG_CONTEXT_EVIDENCE_ENABLED: bool = False
     RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK: int = 6
@@ -1115,6 +1122,12 @@ class Settings(BaseSettings):
     CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS: int = 240
     CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K: int = 6
     CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS: int = 2000
+    # Optional LLM enrichment mode for contextual retrieval prefixes (default off).
+    # When enabled, the indexer first asks an LLM for a short summary prefix and falls
+    # back to deterministic prefix generation on any error.
+    CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED: bool = False
+    CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS: int = 2400
+    CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS: int = 180
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True
@@ -2521,6 +2534,12 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS must be >= 0")
         if self.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS != contextual_followup_latency_budget_ms:
             self.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS = contextual_followup_latency_budget_ms
+        if int(getattr(self, "RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS", 0) or 0) < 0:
+            raise ValueError("RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS must be >= 0")
+        if int(getattr(self, "CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS", 0) or 0) < 0:
+            raise ValueError("CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS must be >= 0")
+        if int(getattr(self, "CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS", 0) or 0) < 0:
+            raise ValueError("CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS must be >= 0")
         intent_router_model_confidence_min = float(
             getattr(self, "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", 0.7) or 0.7
         )
