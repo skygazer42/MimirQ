@@ -96,4 +96,19 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('Predicate 仅对关系边生效；Type 仅对实体节点生效。')
     expect(page).not.toContain('推理路径演示中...')
   })
+
+  it('keeps graph canvas and context menu extracted into dedicated components', () => {
+    const page = read('./page.tsx')
+    const graphCanvas = read('./_components/graph-canvas.tsx')
+    const graphContextMenu = read('./_components/graph-context-menu.tsx')
+
+    expect(page).toContain('GraphCanvas')
+    expect(page).toContain('GraphContextMenu')
+    expect(graphCanvas).toContain('export function GraphCanvas')
+    expect(graphContextMenu).toContain('export function GraphContextMenu')
+    expect(page).not.toContain('Loading graph...')
+    expect(page).not.toContain('探索知识网络')
+    expect(page).not.toContain('展开邻居')
+    expect(page).not.toContain('复制 Predicate')
+  })
 })
