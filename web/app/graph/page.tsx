@@ -11,19 +11,15 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { IconButton } from '@/components/ui/icon-button'
-import { Kbd } from '@/components/ui/kbd'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { SearchInput } from '@/components/ui/search-input'
-import { Input } from '@/components/ui/input'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Upload, Share2, Info, RefreshCw, Maximize, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, Copy, Lightbulb, Link as LinkIcon } from 'lucide-react'
+import { Upload, Share2, Info, RefreshCw, Maximize, X, BarChart3, Database, Filter, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, Copy, Link as LinkIcon } from 'lucide-react'
 import { GraphActionDialogs } from './_components/graph-action-dialogs'
 import { GraphExplainabilityPanel } from './_components/graph-explainability-panel'
+import { GraphFiltersPopover } from './_components/graph-filters-popover'
 import { GraphFloatingControls } from './_components/graph-floating-controls'
+import { GraphSearchOverlay } from './_components/graph-search-overlay'
+import { GraphStatusBanners } from './_components/graph-status-banners'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { KnowledgeGraph3D, type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphLegend } from '@/components/graph/graph-legend'
@@ -1603,6 +1599,24 @@ export default function GraphPage() {
     setPredicateQuery('')
   }
 
+  const handleEntityTypeCheckedChange = useCallback((value: string, checked: boolean) => {
+    setEntityTypeFilters((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(value)
+      else next.delete(value)
+      return Array.from(next)
+    })
+  }, [])
+
+  const handlePredicateCheckedChange = useCallback((value: string, checked: boolean) => {
+    setPredicateFilters((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(value)
+      else next.delete(value)
+      return Array.from(next)
+    })
+  }, [])
+
   const toggleConfidenceBucket = (bucket: GraphConfBucket) => {
     setConfidenceBucketFilters((prev) => {
       const has = prev.includes(bucket)
@@ -1813,87 +1827,27 @@ export default function GraphPage() {
 	            </div>
 	          </div>
           
-          {/* Centered Search Bar */}
-          {displayGraphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode && (
-            <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 w-full max-w-md">
-              <div className="relative">
-                <SearchInput
-                  ref={searchInputRef}
-                  value={searchTerm}
-                  onValueChange={setSearchTerm}
-                  placeholder="搜索实体节点..."
-                  aria-label="搜索实体节点"
-                  inputClassName="h-10 rounded-full bg-muted/60 shadow-sm pr-16"
-                />
-                <div className="pointer-events-none absolute right-11 top-1/2 -translate-y-1/2 flex items-center gap-2 text-xs text-muted-foreground">
-                  {searchTerm ? <span>{highlightedNodeIds.size} 匹配</span> : null}
-                  <span className="flex items-center gap-1">
-                    <Kbd className="h-5 px-1.5">Ctrl</Kbd>
-                    <Kbd className="h-5 px-1.5">F</Kbd>
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
+          <GraphSearchOverlay
+            open={displayGraphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode}
+            inputRef={searchInputRef}
+            searchTerm={searchTerm}
+            highlightedMatchCount={highlightedNodeIds.size}
+            onSearchTermChange={setSearchTerm}
+          />
 
-	          {/* Status Banners */}
-	           {isPathMode && (
-	              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 motion-reduce:animate-none">
-	                 <Route className="w-4 h-4" />
-	                 <span className="text-sm font-medium">
-	                   {(() => {
-    if (pathStartNode) {
-        if (pathEndNode) {
-            return "路径分析完成";
-        }
-        else {
-            return "请点击选择【终点】";
-        }
-    }
-    else {
-        return "请点击选择【起点】";
-    }
-})()}
-	                 </span>
-	                 <IconButton
-	                   label="退出路径分析"
-	                   onClick={resetPathMode}
-	                   className="ml-2 h-7 w-7 rounded-full text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
-	                 >
-	                   <X className="w-4 h-4" />
-	                 </IconButton>
-	              </div>
-	           )}
-	            {isConnectMode && (
-	              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-success text-success-foreground rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 motion-reduce:animate-none">
-	                 <LinkIcon className="w-4 h-4" />
-	                 <span className="text-sm font-medium">
-	                    正在连接: {connectSourceNode?.label} ... 请点击目标节点
-	                 </span>
-	                 <IconButton
-	                   label="退出连接模式"
-	                   onClick={resetConnectMode}
-	                   className="ml-2 h-7 w-7 rounded-full text-success-foreground/80 hover:text-success-foreground hover:bg-success-foreground/10"
-	                 >
-	                   <X className="w-4 h-4" />
-	                 </IconButton>
-	              </div>
-	           )}
-	           {isExplainMode && (
-	              <div className="pointer-events-auto absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex items-center gap-2 px-4 py-2 bg-info text-info-foreground rounded-full shadow-lg animate-in fade-in slide-in-from-top-4 motion-reduce:animate-none">
-	                 <Lightbulb className="w-4 h-4" />
-	                 <span className="text-sm font-medium">
-	                    推理路径演示中... ({currentStepIndex + 1}/{explainSteps.length})
-	                 </span>
-	                 <IconButton
-	                   label="退出推理演示"
-	                   onClick={resetExplainMode}
-	                   className="ml-2 h-7 w-7 rounded-full text-info-foreground/80 hover:text-info-foreground hover:bg-info-foreground/10"
-	                 >
-	                   <X className="w-4 h-4" />
-	                 </IconButton>
-	              </div>
-	           )}
+          <GraphStatusBanners
+            isPathMode={isPathMode}
+            hasPathStart={Boolean(pathStartNode)}
+            hasPathEnd={Boolean(pathEndNode)}
+            isConnectMode={isConnectMode}
+            connectSourceLabel={connectSourceNode?.label ?? null}
+            isExplainMode={isExplainMode}
+            currentStepIndex={currentStepIndex}
+            explainStepCount={explainSteps.length}
+            onExitPathMode={resetPathMode}
+            onExitConnectMode={resetConnectMode}
+            onExitExplainMode={resetExplainMode}
+          />
 
            <div className="flex items-center gap-3 pointer-events-auto">
               {fileName && (
@@ -1965,219 +1919,29 @@ export default function GraphPage() {
               )}
 
               {(graphData.nodes.length > 0 || activeGraphFilterCount > 0) && (
-                <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "text-muted-foreground hover:text-foreground hover:bg-muted/60",
-                        activeGraphFilterCount > 0 && "bg-primary/10 text-primary hover:text-primary"
-                      )}
-                      title="图谱筛选：predicate / entity type / confidence bucket"
-                    >
-                      <SlidersHorizontal className="w-4 h-4 mr-2" />
-                      筛选
-                      {activeGraphFilterCount > 0 ? (
-                        <Badge variant="soft" className="ml-2 px-2 py-0.5 text-[10px]">
-                          {activeGraphFilterCount}
-                        </Badge>
-                      ) : null}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-[420px] p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
-                          <div className="text-sm font-semibold text-foreground">图谱筛选</div>
-                          <div className="text-[11px] text-muted-foreground font-mono">
-                            {displayGraphData.nodes.length}N / {displayGraphData.links.length}L
-                          </div>
-                        </div>
-                        <div className="mt-1 text-[11px] text-muted-foreground">
-                          Predicate 仅对关系边生效；Type 仅对实体节点生效。
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
-                          onClick={resetGraphFilters}
-                          disabled={activeGraphFilterCount === 0 && !entityTypeQuery && !predicateQuery}
-                        >
-                          清除
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 space-y-5">
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div className="text-[11px] font-semibold text-muted-foreground uppercase">Entity Type</div>
-                          {entityTypeFilters.length === 0 ? (
-                            <span className="text-[11px] text-muted-foreground">Any</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="text-[11px] text-primary hover:underline"
-                              onClick={() => setEntityTypeFilters([])}
-                            >
-                              Any
-                            </button>
-                          )}
-                        </div>
-                        <Input
-                          value={entityTypeQuery}
-                          onChange={(e) => setEntityTypeQuery(e.target.value)}
-                          placeholder="Search types…"
-                          className="mt-2 h-8 text-xs"
-                        />
-                        <div className="mt-2 max-h-36 overflow-y-auto overscroll-contain no-scrollbar pr-1 space-y-1">
-                          {filteredEntityTypes.length === 0 ? (
-                            <div className="text-xs text-muted-foreground">No entity types found</div>
-                          ) : (
-                            filteredEntityTypes.map((t) => {
-                              const checked = entityTypeFilters.includes(t.value)
-                              return (
-                                <label
-                                  key={t.value}
-                                  className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60"
-                                >
-                                  <Checkbox
-                                    checked={checked}
-                                    onCheckedChange={(next) => {
-                                      const isChecked = !!next
-                                      setEntityTypeFilters((prev) => {
-                                        const set = new Set(prev)
-                                        if (isChecked) set.add(t.value)
-                                        else set.delete(t.value)
-                                        return Array.from(set)
-                                      })
-                                    }}
-                                  />
-                                  <span className="flex-1 min-w-0 text-xs text-foreground truncate">{t.value}</span>
-                                  <span className="text-[11px] text-muted-foreground font-mono">{t.count}</span>
-                                </label>
-                              )
-                            })
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div className="text-[11px] font-semibold text-muted-foreground uppercase">Predicate</div>
-                          {predicateFilters.length === 0 ? (
-                            <span className="text-[11px] text-muted-foreground">Any</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="text-[11px] text-primary hover:underline"
-                              onClick={() => setPredicateFilters([])}
-                            >
-                              Any
-                            </button>
-                          )}
-                        </div>
-                        <Input
-                          value={predicateQuery}
-                          onChange={(e) => setPredicateQuery(e.target.value)}
-                          placeholder="Search predicates…"
-                          className="mt-2 h-8 text-xs"
-                        />
-                        <div className="mt-2 max-h-36 overflow-y-auto overscroll-contain no-scrollbar pr-1 space-y-1">
-                          {filteredPredicates.length === 0 ? (
-                            <div className="text-xs text-muted-foreground">No predicates found</div>
-                          ) : (
-                            filteredPredicates.map((p) => {
-                              const checked = predicateFilters.includes(p.value)
-                              return (
-                                <label
-                                  key={p.value}
-                                  className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-muted/60"
-                                >
-                                  <Checkbox
-                                    checked={checked}
-                                    onCheckedChange={(next) => {
-                                      const isChecked = !!next
-                                      setPredicateFilters((prev) => {
-                                        const set = new Set(prev)
-                                        if (isChecked) set.add(p.value)
-                                        else set.delete(p.value)
-                                        return Array.from(set)
-                                      })
-                                    }}
-                                  />
-                                  <span className="flex-1 min-w-0 text-xs text-foreground truncate">{p.value}</span>
-                                  <span className="text-[11px] text-muted-foreground font-mono">{p.count}</span>
-                                </label>
-                              )
-                            })
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div className="text-[11px] font-semibold text-muted-foreground uppercase">Confidence</div>
-                          {confidenceBucketFilters.length === 0 ? (
-                            <span className="text-[11px] text-muted-foreground">Any</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="text-[11px] text-primary hover:underline"
-                              onClick={() => setConfidenceBucketFilters([])}
-                            >
-                              Any
-                            </button>
-                          )}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={confidenceBucketFilters.length === 0 ? 'info' : 'outline'}
-                            className="h-7 px-2 text-xs"
-                            onClick={() => setConfidenceBucketFilters([])}
-                          >
-                            Any
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={confidenceBucketFilters.includes('high') ? 'info' : 'outline'}
-                            className="h-7 px-2 text-xs"
-                            onClick={() => toggleConfidenceBucket('high')}
-                          >
-                            High (≥0.8)
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={confidenceBucketFilters.includes('medium') ? 'info' : 'outline'}
-                            className="h-7 px-2 text-xs"
-                            onClick={() => toggleConfidenceBucket('medium')}
-                          >
-                            Mid (0.5-0.8)
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={confidenceBucketFilters.includes('low') ? 'info' : 'outline'}
-                            className="h-7 px-2 text-xs"
-                            onClick={() => toggleConfidenceBucket('low')}
-                          >
-                            Low (&lt;0.5)
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <GraphFiltersPopover
+                  open={filtersOpen}
+                  onOpenChange={setFiltersOpen}
+                  activeGraphFilterCount={activeGraphFilterCount}
+                  graphNodeCount={displayGraphData.nodes.length}
+                  graphLinkCount={displayGraphData.links.length}
+                  entityTypeQuery={entityTypeQuery}
+                  onEntityTypeQueryChange={setEntityTypeQuery}
+                  entityTypeFilters={entityTypeFilters}
+                  filteredEntityTypes={filteredEntityTypes}
+                  onEntityTypeCheckedChange={handleEntityTypeCheckedChange}
+                  onResetEntityTypeFilters={() => setEntityTypeFilters([])}
+                  predicateQuery={predicateQuery}
+                  onPredicateQueryChange={setPredicateQuery}
+                  predicateFilters={predicateFilters}
+                  filteredPredicates={filteredPredicates}
+                  onPredicateCheckedChange={handlePredicateCheckedChange}
+                  onResetPredicateFilters={() => setPredicateFilters([])}
+                  confidenceBucketFilters={confidenceBucketFilters}
+                  onResetConfidenceBuckets={() => setConfidenceBucketFilters([])}
+                  onToggleConfidenceBucket={toggleConfidenceBucket}
+                  onResetGraphFilters={resetGraphFilters}
+                />
               )}
  
              <div className="h-6 w-px bg-muted mx-1 hidden sm:block"></div>
