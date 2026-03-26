@@ -1009,6 +1009,9 @@ class Settings(BaseSettings):
     # Disabled by default; when enabled, keeps docs in order until the budget is exhausted.
     RAG_CONTEXT_TOKEN_BUDGET_TRIM_ENABLED: bool = False
     RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS: int = 0
+    # Optional query-aware LLM compression for final prompt context assembly.
+    RAG_CONTEXT_LLM_COMPRESSION_ENABLED: bool = False
+    RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO: float = 0.5
     # Context evidence extraction (query-focused sentence selection)
     RAG_CONTEXT_EVIDENCE_ENABLED: bool = False
     RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK: int = 6

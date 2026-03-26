@@ -247,7 +247,14 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
         logger.debug("Context denoise failed, falling back to raw docs: %s", exc)
         usable_docs = list(docs)
 
-    if bool(getattr(settings, "RAG_CONTEXT_COMPRESSION_ENABLED", False)):
+    if bool(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_ENABLED", False)):
+        try:
+            from app.rag.core.context_denoise import compress_context_docs_with_llm
+
+            usable_docs = compress_context_docs_with_llm(usable_docs, query=query) or list(usable_docs)
+        except Exception as exc:
+            logger.debug("LLM context compression failed, skipping compression: %s", exc)
+    elif bool(getattr(settings, "RAG_CONTEXT_COMPRESSION_ENABLED", False)):
         try:
             from app.rag.core.context_compression import compress_context_docs
 
