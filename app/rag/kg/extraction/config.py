@@ -22,6 +22,7 @@ class ExtractConfig(KGBaseModel):
     prompt_template_key: str | None = None
     prompt_ab_experiment_key: str | None = None
     ab_user_key: str | None = None
+    extraction_backend: str | None = Field(default=None, description="Extraction backend override: llm|gliner|hybrid")
 
 
 # Legacy compatibility alias

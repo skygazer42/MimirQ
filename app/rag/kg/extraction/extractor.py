@@ -18,6 +18,7 @@ from app.rag.kg.extraction.alias import (
     is_abbrev_token,
     split_trailing_parenthetical_alias,
 )
+from app.rag.kg.extraction.backend_router import resolve_extraction_backend
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 from app.rag.kg.extraction.evidence import coerce_evidence, surface_mentioned
@@ -299,7 +300,12 @@ class EventExtractor:
                         logger.warning("Failed to update kg extract prompt usage_count for template %s", chosen_template_id)
 
             llm_client = await create_llm_client(scenario="extract", model_config=self.model_config)
-            processor = EventProcessor(llm_client=llm_client, prompt_template=prompt_template_content)
+            llm_processor = EventProcessor(llm_client=llm_client, prompt_template=prompt_template_content)
+            backend_selection = resolve_extraction_backend(
+                llm_processor=llm_processor,
+                requested_backend=getattr(config, "extraction_backend", None),
+            )
+            processor = backend_selection.processor
             embedder = DocumentProcessor()
 
             max_concurrency = max(
