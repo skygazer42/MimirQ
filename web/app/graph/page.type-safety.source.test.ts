@@ -234,4 +234,21 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('const handleExportGraphML = async')
     expect(page).not.toContain('const handleDeleteNodeOpenChange = useCallback')
   })
+
+  it('keeps graph node detail loading and node operations extracted into a dedicated hook', () => {
+    const page = read('./page.tsx')
+    const hook = read('./use-graph-node-operations.ts')
+
+    expect(page).toContain('useGraphNodeOperations')
+    expect(hook).toContain('export function useGraphNodeOperations')
+    expect(hook).toContain('const expandNodeById = useCallback')
+    expect(hook).toContain("console.error('Fetch KG node detail failed:'")
+    expect(page).not.toContain("console.error('Fetch KG node detail failed:'")
+    expect(page).not.toContain('const expandNodeById = useCallback')
+    expect(page).not.toContain('const handleExpandNode = useCallback')
+    expect(page).not.toContain('const handleDeleteNode = useCallback')
+    expect(page).not.toContain('const confirmDeleteNode = useCallback')
+    expect(page).not.toContain('await kgApi.getEntity(selectedNode.id, scopeParams || undefined)')
+    expect(page).not.toContain('await kgApi.getEvent(selectedNode.id, scopeParams || undefined)')
+  })
 })
