@@ -36,7 +36,14 @@ import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 import { ChunkPresetPanel } from '@/components/chunk-preview/components/chunk-preset-panel'
 import { ChunkAutoTuneDialog } from '@/components/chunk-preview/components/chunk-auto-tune-dialog'
-import type { Dataset, IngestionPreviewResponse } from '@/types'
+import type {
+  ChunkPreviewHistogramBin,
+  ChunkPreviewRecommendationPatch,
+  Dataset,
+  DocumentPipelineOptions,
+  IngestionPreviewResponse,
+  JsonObject,
+} from '@/types'
 import {
   ResponsiveContainer,
   BarChart,
@@ -55,6 +62,11 @@ const DATASET_DEFAULT_VALUE = '__mimirq_dataset_default__'
 
 type SidebarVariant = 'panel' | 'dialog' | 'pane'
 type SidebarProps = Readonly<{ variant?: SidebarVariant }>
+type HistogramDatum = { label: string; min: number | null; max: number | null; count: number }
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
 
 export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const {
@@ -99,6 +111,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   } = useChunkPreview()
   const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
   const pipelineCtx = usePipelineOptions()
+  type PreviewSettingsPatch = Parameters<typeof updateSettings>[0]
+  type PerfSettingsPatch = Parameters<typeof updatePerfSettings>[0]
+  type ChunkStrategyParams = NonNullable<DocumentPipelineOptions['chunk_strategy_params']>
 
   const chunkStrategyOption = getChunkStrategyOption(chunkStrategy)
   const resolvedChunkStrategy = previewData?.chunk_strategy || chunkStrategy
@@ -150,13 +165,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   }, [previewData?.chunks, isTokenStrategy])
 
   const histogramData = useMemo(() => {
-    const serverBins = previewData?.stats?.histogram as any
+    const serverBins = previewData?.stats?.histogram
     if (Array.isArray(serverBins) && serverBins.length) {
-      return serverBins.map((b: any) => ({
-        label: String(b?.label ?? ''),
-        min: typeof b?.min === 'number' ? Math.trunc(b.min) : null,
-        max: typeof b?.max === 'number' ? Math.trunc(b.max) : null,
-        count: Math.max(0, Math.trunc(Number(b?.count ?? 0) || 0)),
+      return serverBins.map((bin: ChunkPreviewHistogramBin): HistogramDatum => ({
+        label: String(bin.label ?? ''),
+        min: typeof bin.min === 'number' ? Math.trunc(bin.min) : null,
+        max: typeof bin.max === 'number' ? Math.trunc(bin.max) : null,
+        count: Math.max(0, Math.trunc(Number(bin.count ?? 0) || 0)),
       }))
     }
 
@@ -174,9 +189,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   }, [previewData?.stats?.histogram, chunkStats?.histogram])
 
   const histogramMax = useMemo(() => {
-    const last = histogramData[histogramData.length - 1] as any
+    const last = histogramData[histogramData.length - 1]
     if (!last) return chunkStats?.max ?? 0
-    if (typeof last?.max === 'number' && Number.isFinite(last.max)) return Math.trunc(last.max)
+    if (typeof last.max === 'number' && Number.isFinite(last.max)) return Math.trunc(last.max)
     return chunkStats?.max ?? 0
   }, [histogramData, chunkStats?.max])
 
@@ -242,7 +257,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
   const parentChildEffective = useMemo(() => {
     if (!isParentChildStrategy) return null
-    const sp = (previewData?.params as any)?.strategy_params
+    const sp = previewData?.params?.strategy_params
     const ratio = typeof sp?.child_ratio === 'number' && Number.isFinite(sp.child_ratio) ? sp.child_ratio : parentChildRatio
     const minSize =
       typeof sp?.min_child_size === 'number' && Number.isFinite(sp.min_child_size) ? sp.min_child_size : parentChildMinChildSize
@@ -275,6 +290,49 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const [ingestionError, setIngestionError] = useState<string | null>(null)
   const [ingestionDetailsOpen, setIngestionDetailsOpen] = useState(false)
 
+  const applyPipelinePatch = (
+    patch: DocumentPipelineOptions | JsonObject | null | undefined,
+    options?: { successMessage?: string; errorMessage?: string }
+  ) => {
+    if (!patch || typeof patch !== 'object') return false
+
+    const result = pipelineCtx.importJson(
+      JSON.stringify({
+        enabled: true,
+        options: {
+          ...pipelineCtx.options,
+          ...patch,
+        },
+      })
+    )
+
+    if (!result.ok) {
+      toast.error(result.error || options?.errorMessage || '应用入库管线 patch 失败')
+      return false
+    }
+
+    if (options?.successMessage) toast.success(options.successMessage)
+    return true
+  }
+
+  const buildPreviewSettingsPatch = (patch: JsonObject): PreviewSettingsPatch => {
+    const next: PreviewSettingsPatch = {}
+    if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size)) next.chunkSize = Math.trunc(patch.chunk_size)
+    if (typeof patch.chunk_overlap === 'number' && Number.isFinite(patch.chunk_overlap)) next.chunkOverlap = Math.trunc(patch.chunk_overlap)
+    if (typeof patch.chunk_strategy === 'string' && patch.chunk_strategy.trim()) next.strategy = patch.chunk_strategy.trim()
+    return next
+  }
+
+  const buildPerfSettingsPatch = (patch: JsonObject): PerfSettingsPatch => {
+    const next: PerfSettingsPatch = {}
+    if (typeof patch.include_original_text === 'boolean') next.includeOriginalText = patch.include_original_text
+    if (typeof patch.original_text_max_chars === 'number' && Number.isFinite(patch.original_text_max_chars)) {
+      next.originalTextMaxChars = Math.trunc(patch.original_text_max_chars)
+    }
+    if (typeof patch.max_chunks === 'number' && Number.isFinite(patch.max_chunks)) next.maxChunks = Math.trunc(patch.max_chunks)
+    return next
+  }
+
   useEffect(() => {
     let alive = true
     setDatasetsLoading(true)
@@ -285,9 +343,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         if (!alive) return
         setDatasets(res.items || [])
       })
-      .catch((err: any) => {
+      .catch((error: unknown) => {
         if (!alive) return
-        setDatasetsError((err?.message as string) || '加载数据集失败')
+        setDatasetsError(getErrorMessage(error, '加载数据集失败'))
       })
       .finally(() => {
         if (!alive) return
@@ -607,21 +665,17 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     size="sm"
                     className="h-7 px-2 text-[11px]"
                     onClick={() => {
-                      const patch = selectedDataset.pipeline as any
-                      pipelineCtx.setEnabled(true)
-                      for (const [k, v] of Object.entries(patch || {})) {
-                        if (k in pipelineCtx.options) {
-                          pipelineCtx.updateOption(k as any, v as any)
-                        }
-                      }
-                      toast.success('已应用数据集 Pipeline 到当前预览')
+                      applyPipelinePatch(selectedDataset.pipeline, {
+                        successMessage: '已应用数据集 Pipeline 到当前预览',
+                        errorMessage: '应用数据集 Pipeline 失败',
+                      })
                     }}
                   >
                     应用
                   </Button>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
-                  {(selectedDataset.pipeline as any).governance_enabled ? (
+                  {selectedDataset.pipeline.governance_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-200 border border-sky-500/20">
                       Governance
                     </span>
@@ -630,7 +684,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       Governance Off
                     </span>
                   )}
-                  {(selectedDataset.pipeline as any).chunk_vector_enabled ? (
+                  {selectedDataset.pipeline.chunk_vector_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                       Vector
                     </span>
@@ -639,7 +693,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       Vector Off
                     </span>
                   )}
-                  {(selectedDataset.pipeline as any).bm25_index_enabled ? (
+                  {selectedDataset.pipeline.bm25_index_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                       BM25
                     </span>
@@ -648,7 +702,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       BM25 Off
                     </span>
                   )}
-                  {(selectedDataset.pipeline as any).kg_enabled ? (
+                  {selectedDataset.pipeline.kg_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700 dark:text-purple-200 border border-purple-500/20">
                       KG
                     </span>
@@ -679,8 +733,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   })
                   setIngestionPreview(result)
                   toast.success('已生成入库策略预览（可应用推荐）')
-                } catch (err: any) {
-                  setIngestionError((err?.message as string) || '入库策略预览失败')
+                } catch (error: unknown) {
+                  setIngestionError(getErrorMessage(error, '入库策略预览失败'))
                 } finally {
                   setIngestionLoading(false)
                 }
@@ -786,12 +840,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	              preview={ingestionPreview}
 	              datasetId={datasetId}
 	              onApplyPipelinePatch={(patch) => {
-	                pipelineCtx.setEnabled(true)
-	                for (const [k, v] of Object.entries(patch || {})) {
-	                  if (k in pipelineCtx.options) {
-	                    pipelineCtx.updateOption(k as any, v)
-	                  }
-	                }
+	                applyPipelinePatch(patch, { errorMessage: '应用 suggested pipeline patch 失败' })
 	              }}
 	            />
 	          </div>
@@ -879,7 +928,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   className="h-7 px-2 text-[11px]"
                   onClick={() => {
                     const preset = separatorPreset || 'paragraph'
-                    const patch: Record<string, any> = {
+                    const patch: ChunkStrategyParams = {
                       separator_preset: preset,
                       keep_separator: !!keepSeparator,
                       separator_max_chunk_size: Number(separatorMaxChunkSize) || 0,
@@ -1000,7 +1049,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   variant="outline"
                   className="h-7 px-2 text-[11px]"
                   onClick={() => {
-                    const patch: Record<string, any> = {
+                    const patch: ChunkStrategyParams = {
                       child_ratio: Number(parentChildRatio),
                       min_child_size: Number(parentChildMinChildSize),
                     }
@@ -1361,13 +1410,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                           <XAxis dataKey="label" hide />
                           <YAxis hide />
                           <Tooltip
-                            formatter={(value: any) => [value, 'count']}
-                            labelFormatter={(_label: any, payload: any) => {
+                            formatter={(value) => [value ?? 0, 'count']}
+                            labelFormatter={(label, payload) => {
                               const p = payload?.[0]?.payload
                               const min = typeof p?.min === 'number' ? p.min : null
                               const max = typeof p?.max === 'number' ? p.max : null
                               if (min != null && max != null) return `${min}-${max} ${statsUnitLabel}`
-                              return String(_label ?? '')
+                              return String(label ?? '')
                             }}
                           />
                           <Bar dataKey="count" fill="hsl(var(--primary))" fillOpacity={0.25} radius={[2, 2, 0, 0]} />
@@ -1394,25 +1443,15 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                           className="h-7 px-2 text-[11px]"
                           onClick={() => {
                             for (const item of previewData.recommendation_patches || []) {
-                              const target = (item as any)?.target || 'preview'
-                              const patch = ((item as any)?.patch || {})
+                              const target = item.target || 'preview'
+                              const patch = item.patch || {}
                               if (target === 'preview') {
-                                const next: any = {}
-                                if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size)) next.chunkSize = Math.trunc(patch.chunk_size)
-                                if (typeof patch.chunk_overlap === 'number' && Number.isFinite(patch.chunk_overlap)) next.chunkOverlap = Math.trunc(patch.chunk_overlap)
+                                const next = buildPreviewSettingsPatch(patch)
                                 if (Object.keys(next).length) updateSettings(next)
                               } else if (target === 'pipeline') {
-                                pipelineCtx.setEnabled(true)
-                                for (const [k, v] of Object.entries(patch || {})) {
-                                  if (k in pipelineCtx.options) pipelineCtx.updateOption(k as any, v as any)
-                                }
+                                applyPipelinePatch(patch, { errorMessage: '应用推荐的入库管线 patch 失败' })
                               } else if (target === 'perf') {
-                                const next: any = {}
-                                if (typeof patch.include_original_text === 'boolean') next.includeOriginalText = patch.include_original_text
-                                if (typeof patch.original_text_max_chars === 'number' && Number.isFinite(patch.original_text_max_chars)) {
-                                  next.originalTextMaxChars = Math.trunc(patch.original_text_max_chars)
-                                }
-                                if (typeof patch.max_chunks === 'number' && Number.isFinite(patch.max_chunks)) next.maxChunks = Math.trunc(patch.max_chunks)
+                                const next = buildPerfSettingsPatch(patch)
                                 if (Object.keys(next).length) updatePerfSettings(next)
                               }
                             }
@@ -1426,13 +1465,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
                     {previewData?.recommendation_patches?.length ? (
                       <div className="mt-2 space-y-2">
-                        {(previewData.recommendation_patches || []).slice(0, 6).map((p) => {
-                          const title = String((p as any)?.title || (p as any)?.id || 'patch')
-                          const desc = String((p as any)?.description || '')
-                          const target = String((p as any)?.target || 'preview')
-                          const patch = ((p as any)?.patch || {})
+                        {(previewData.recommendation_patches || []).slice(0, 6).map((patchItem: ChunkPreviewRecommendationPatch) => {
+                          const title = patchItem.title || patchItem.id || 'patch'
+                          const desc = patchItem.description || ''
+                          const target = patchItem.target || 'preview'
+                          const patch = patchItem.patch || {}
                           return (
-                            <div key={String((p as any)?.id || title)} className="rounded-lg border border-border/60 bg-background p-2">
+                            <div key={patchItem.id || title} className="rounded-lg border border-border/60 bg-background p-2">
                               <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
                                   <div className="text-[11px] font-medium text-foreground/90">{title}</div>
@@ -1444,9 +1483,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                                   className="h-7 px-2 text-[11px]"
                                   onClick={() => {
                                     if (target === 'preview') {
-                                      const next: any = {}
-                                      if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size)) next.chunkSize = Math.trunc(patch.chunk_size)
-                                      if (typeof patch.chunk_overlap === 'number' && Number.isFinite(patch.chunk_overlap)) next.chunkOverlap = Math.trunc(patch.chunk_overlap)
+                                      const next = buildPreviewSettingsPatch(patch)
                                       if (Object.keys(next).length) {
                                         updateSettings(next)
                                         toast.success('已应用到预览参数')
@@ -1454,20 +1491,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                                       return
                                     }
                                     if (target === 'pipeline') {
-                                      pipelineCtx.setEnabled(true)
-                                      for (const [k, v] of Object.entries(patch || {})) {
-                                        if (k in pipelineCtx.options) pipelineCtx.updateOption(k as any, v as any)
+                                      if (applyPipelinePatch(patch, { errorMessage: '应用到入库管线失败' })) {
+                                        toast.success('已应用到入库管线')
                                       }
-                                      toast.success('已应用到入库管线')
                                       return
                                     }
                                     if (target === 'perf') {
-                                      const next: any = {}
-                                      if (typeof patch.include_original_text === 'boolean') next.includeOriginalText = patch.include_original_text
-                                      if (typeof patch.original_text_max_chars === 'number' && Number.isFinite(patch.original_text_max_chars)) {
-                                        next.originalTextMaxChars = Math.trunc(patch.original_text_max_chars)
-                                      }
-                                      if (typeof patch.max_chunks === 'number' && Number.isFinite(patch.max_chunks)) next.maxChunks = Math.trunc(patch.max_chunks)
+                                      const next = buildPerfSettingsPatch(patch)
                                       if (Object.keys(next).length) {
                                         updatePerfSettings(next)
                                         toast.success('已应用到性能参数')

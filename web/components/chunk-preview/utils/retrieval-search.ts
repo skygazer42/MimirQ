@@ -18,6 +18,10 @@ export type ChunkSearchResult = {
   snippet: string
 }
 
+type ChunkSearchHit = ChunkSearchDoc & {
+  score?: number
+}
+
 function makeSnippet(content: string, query: string) {
   const text = String(content || '')
   const q = (query || '').trim()
@@ -46,12 +50,12 @@ export function buildChunkSearchIndex(chunks: ChunkPreviewItem[]) {
   })
 
   const docs: ChunkSearchDoc[] = (chunks || []).map((c) => {
-    const idx = Number((c as any)?.index)
+    const idx = Number(c.index)
     return {
       id: String(idx),
       index: idx,
-      content: String((c as any)?.content ?? ''),
-      page_number: typeof (c as any)?.page_number === 'number' ? Number((c as any).page_number) : undefined,
+      content: String(c.content ?? ''),
+      page_number: typeof c.page_number === 'number' ? Number(c.page_number) : undefined,
       section: getChunkSectionPath(c) || undefined,
     }
   })
@@ -69,14 +73,15 @@ export function searchChunkIndex(
   if (!q) return []
   const limit = Math.max(1, Math.min(50, Number(options?.limit ?? 10)))
 
-  const results = index.search(q) as any[]
-  return results.slice(0, limit).map((r) => {
-    const content = String(r.content ?? '')
+  const results = index.search(q)
+  return results.slice(0, limit).map((result) => {
+    const hit = result as unknown as ChunkSearchHit
+    const content = String(hit.content ?? '')
     return {
-      index: Number(r.index),
-      score: Number(r.score || 0),
-      page_number: typeof r.page_number === 'number' ? Number(r.page_number) : undefined,
-      section: typeof r.section === 'string' && r.section.trim() ? String(r.section) : undefined,
+      index: Number(hit.index),
+      score: Number(hit.score || 0),
+      page_number: typeof hit.page_number === 'number' ? Number(hit.page_number) : undefined,
+      section: typeof hit.section === 'string' && hit.section.trim() ? String(hit.section) : undefined,
       snippet: makeSnippet(content, q),
     }
   })

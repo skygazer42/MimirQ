@@ -17,8 +17,8 @@ import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { useParsedFiles } from '@/store/use-parsed-files-store'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
-import type { ChunkPreviewResponse } from '@/types'
-import type { ChunkPreviewState, ChunkPreviewFileItem, ChunkPreviewContextType } from './types'
+import type { ChunkPreviewResponse, ManualChunk } from '@/types'
+import type { ChunkOverride, ChunkOverrides, ChunkPreviewState, ChunkPreviewFileItem, ChunkPreviewContextType } from './types'
 import { EXAMPLE_TEXT } from './constants'
 import { scanFiles } from './utils/file-scanner'
 
@@ -37,6 +37,12 @@ function decodeSeparatorInput(raw: string) {
   } catch {
     return value
   }
+}
+
+function getApiErrorStatus(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+  const response = (error as { response?: { status?: unknown } }).response
+  return typeof response?.status === 'number' ? response.status : undefined
 }
 
 export function useChunkPreview() {
@@ -81,9 +87,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const [datasetId, setDatasetIdState] = useState<string>('')
 
   const [previewData, setPreviewData] = useState<ChunkPreviewResponse | null>(null)
-  const [chunkOverrides, setChunkOverrides] = useState<
-    Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }>
-  >({})
+  const [chunkOverrides, setChunkOverrides] = useState<ChunkOverrides>({})
   const [hoveredChunkIndex, setHoveredChunkIndex] = useState<number | null>(null)
   const [selectedChunkIndex, setSelectedChunkIndex] = useState<number | null>(null)
   const [lastPreviewAt, setLastPreviewAt] = useState<number | null>(null)
@@ -685,8 +689,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       // Enterprise UX: when parse cache is enabled and we have a prior file_sha256, avoid re-uploading the file.
       // If server cache miss/disabled, fall back to uploading.
       let data: ChunkPreviewResponse
-      const sha = (previewData as any)?.file_sha256 as string | undefined
-      const fileType = (previewData as any)?.file_type as string | undefined
+      const sha = previewData?.file_sha256
+      const fileType = previewData?.file_type
       if (useParseCache && sha && (fileType || file.name)) {
         try {
           data = await documentApi.chunkPreviewBySha(
@@ -695,12 +699,12 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
               file_type: fileType || undefined,
               filename: file.name,
               file_size: file.size,
-              ...baseParams,
+             ...baseParams,
             },
             { signal: controller.signal }
           )
-        } catch (err: any) {
-          const status = err?.response?.status
+        } catch (err: unknown) {
+          const status = getApiErrorStatus(err)
           if (status === 400 || status === 404) {
             data = await documentApi.chunkPreview(file, baseParams, { signal: controller.signal })
           } else {
@@ -737,7 +741,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
         },
         ...prev,
       ].slice(0, 20))
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (controller.signal.aborted) return
       if (previewRequestIdRef.current !== requestId) return
       setError(formatApiError(err, '预览失败'))
@@ -794,7 +798,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setError(null)
 
     try {
-      const chunks = previewData.chunks.reduce((acc, chunk) => {
+      const chunks = previewData.chunks.reduce<ManualChunk[]>((acc, chunk) => {
         const idx = typeof chunk.index === 'number' ? chunk.index : previewData.chunks.indexOf(chunk)
         const override = chunkOverrides[idx] || null
         if (override?.disabled) return acc
@@ -808,7 +812,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
           metadata,
         })
         return acc
-      }, [] as any[])
+      }, [])
 
       if (!chunks.length) {
         setError('No chunks to submit (all skipped)')
@@ -857,7 +861,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'success' }))
       onConfirm?.({ chunk_size: chunkSize, chunk_overlap: chunkOverlap })
       toast.success('已成功入库')
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(formatApiError(err, '入库失败'))
       setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'error' }))
     } finally {
@@ -882,7 +886,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   // Actions: 更新配置
   const updateChunkOverride = useCallback(
-    (index: number, override: { content?: string; metadata?: Record<string, any> }) => {
+    (index: number, override: ChunkOverride) => {
       const idx = Math.trunc(Number(index))
       if (!Number.isFinite(idx) || idx < 0) return
       setChunkOverrides((prev) => {
@@ -902,14 +906,14 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setChunkOverrides((prev) => {
       const next = { ...prev }
       const cur = next[idx] || {}
-      const nextDisabled = !Boolean((cur as any).disabled)
+      const nextDisabled = !Boolean(cur.disabled)
 
       if (nextDisabled) {
         next[idx] = { ...cur, disabled: true, updatedAt: Date.now() }
         return next
       }
 
-      const { disabled: _omit, ...rest } = cur as any
+      const { disabled: _omit, ...rest } = cur
       const hasOther = rest.content !== undefined || rest.metadata !== undefined
       if (!hasOther) {
         delete next[idx]
@@ -932,7 +936,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
       for (const idx of list) {
         const cur = next[idx] || {}
-        const curDisabled = Boolean((cur as any).disabled)
+        const curDisabled = Boolean(cur.disabled)
 
         if (disabled) {
           if (curDisabled) continue
@@ -942,7 +946,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
         }
 
         if (!curDisabled) continue
-        const { disabled: _omit, ...rest } = cur as any
+        const { disabled: _omit, ...rest } = cur
         const hasOther = rest.content !== undefined || rest.metadata !== undefined
         if (hasOther) {
           next[idx] = { ...rest, updatedAt: now }

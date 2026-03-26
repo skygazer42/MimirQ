@@ -11,6 +11,7 @@
 import { useMemo } from 'react'
 
 import type { ChunkPreviewItem } from '@/types'
+import { chunkNeedsReview, getSemanticQualityMetadata } from '@/components/chunk-preview/utils/metadata'
 import { cn } from '@/lib/utils'
 
 function clampInt(value: number, min: number, max: number) {
@@ -25,15 +26,6 @@ function clamp01(value: number) {
   if (n < 0) return 0
   if (n > 1) return 1
   return n
-}
-
-type SemanticQuality = {
-  information_density?: number
-  semantic_completeness?: number
-  self_containedness?: number
-  dedup_risk_prev_jaccard?: number | null
-  needs_review?: boolean
-  reasons?: string[]
 }
 
 export function SemanticQualityHeatmapMini(props: Readonly<{ chunks: ChunkPreviewItem[]; bins?: number; className?: string }>) {
@@ -57,24 +49,23 @@ export function SemanticQualityHeatmapMini(props: Readonly<{ chunks: ChunkPrevie
 
     for (let i = 0; i < raw.length; i += 1) {
       const chunk = raw[i]
-      const meta = ((chunk as any)?.metadata || {}) as Record<string, any>
-      const q = (meta.semantic_quality || {}) as SemanticQuality
-      if (meta.semantic_quality) anySemantic = true
+      const q = getSemanticQualityMetadata(chunk)
+      if (q) anySemantic = true
 
       const b = Math.min(outBins - 1, Math.floor((i / total) * outBins))
       counts[b] += 1
 
-      const isNeeds = Boolean(meta.needs_review || q.needs_review)
+      const isNeeds = chunkNeedsReview(chunk)
       if (isNeeds) {
         needs[b] += 1
         needsTotal += 1
       }
 
-      densSum[b] += clamp01(Number(q.information_density ?? 0))
-      compSum[b] += clamp01(Number(q.semantic_completeness ?? 0))
-      selfSum[b] += clamp01(Number(q.self_containedness ?? 0))
+      densSum[b] += clamp01(q?.information_density ?? 0)
+      compSum[b] += clamp01(q?.semantic_completeness ?? 0)
+      selfSum[b] += clamp01(q?.self_containedness ?? 0)
 
-      const dedupRiskRaw = q.dedup_risk_prev_jaccard
+      const dedupRiskRaw = q?.dedup_risk_prev_jaccard
       const risk = dedupRiskRaw == null ? 0 : clamp01(Number(dedupRiskRaw))
       dedupGoodSum[b] += clamp01(1 - risk)
     }
@@ -146,4 +137,3 @@ export function SemanticQualityHeatmapMini(props: Readonly<{ chunks: ChunkPrevie
     </div>
   )
 }
-

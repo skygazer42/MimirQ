@@ -13,6 +13,7 @@ import { buildBlockIdToBestChunkIndex } from '@/components/chunk-preview/utils/p
 import dynamic from 'next/dynamic'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import type { ChunkPreviewItem } from '@/types'
 
 const PdfViewer = dynamic(() => import('@/components/parsing/pdf-viewer').then((mod) => mod.PdfViewer), {
   ssr: false,
@@ -50,7 +51,7 @@ function computeBlockRanges(
 
 function blockIdsForChunk(params: {
   chunkIndex: number | null
-  previewChunks: Array<{ start_index: number; end_index: number }> | undefined
+  previewChunks: Array<Pick<ChunkPreviewItem, 'start_index' | 'end_index'>>
   blockRanges: Array<{ id: string; start: number; end: number }>
   mapIndex: (rawIndex: number) => number
 }): string[] {
@@ -111,13 +112,12 @@ export function PdfPreview() {
 
   const blockRanges = useMemo(() => computeBlockRanges(blocksWithPositions, mapIndex), [blocksWithPositions, mapIndex])
 
-  const previewChunks = previewData?.chunks as any
+  const previewChunks = previewData?.chunks ?? []
   const chunkRanges = useMemo(() => {
-    if (!Array.isArray(previewChunks)) return []
-    return previewChunks.map((chunk: any, index: number) => ({
+    return previewChunks.map((chunk, index) => ({
       index,
-      start_index: mapIndex(asInt(chunk?.start_index)),
-      end_index: mapIndex(asInt(chunk?.end_index)),
+      start_index: mapIndex(asInt(chunk.start_index)),
+      end_index: mapIndex(asInt(chunk.end_index)),
     }))
   }, [mapIndex, previewChunks])
 

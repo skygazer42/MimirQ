@@ -55,7 +55,7 @@ export function rerankChunkSearchResults(
   const maxRetrieval = Math.max(0, ...(results || []).map((r) => Number(r.score || 0)))
 
   const byIndex = new Map<number, ChunkPreviewItem>()
-  for (const c of chunks || []) byIndex.set(Number((c as any)?.index), c)
+  for (const chunk of chunks || []) byIndex.set(Number(chunk.index), chunk)
 
   const enriched: RerankedChunkSearchResult[] = (results || []).map((r) => {
     const retrievalScore = Number(r.score || 0)
@@ -83,4 +83,3 @@ export function rerankChunkSearchResults(
 
   return q ? enriched : []
 }
-

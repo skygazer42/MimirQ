@@ -3,7 +3,7 @@ import type { ChunkPreviewResponse } from '@/types'
 import { fnv1a32 } from './review-signals'
 import { toChunkPreviewExport } from './export'
 
-function safeNum(value: any): number | null {
+function safeNum(value: unknown): number | null {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
 }
@@ -65,31 +65,31 @@ export type ChunkPreviewDiffSummary = {
 }
 
 export function computeChunkPreviewDiff(a: ChunkPreviewResponse, b: ChunkPreviewResponse): ChunkPreviewDiffSummary {
-  const aStats = a.stats || {}
-  const bStats = b.stats || {}
+  const aStats = a.stats
+  const bStats = b.stats
 
   const unit = (b.params?.unit || a.params?.unit || 'chars') as string
 
-  const aAvg = safeNum((aStats as any).avg)
-  const bAvg = safeNum((bStats as any).avg)
-  const aP10 = safeNum((aStats as any).p10)
-  const bP10 = safeNum((bStats as any).p10)
-  const aP90 = safeNum((aStats as any).p90)
-  const bP90 = safeNum((bStats as any).p90)
+  const aAvg = safeNum(aStats?.avg)
+  const bAvg = safeNum(bStats?.avg)
+  const aP10 = safeNum(aStats?.p10)
+  const bP10 = safeNum(bStats?.p10)
+  const aP90 = safeNum(aStats?.p90)
+  const bP90 = safeNum(bStats?.p90)
 
-  const aCoverage = safeNum((aStats as any).coverage_ratio)
-  const bCoverage = safeNum((bStats as any).coverage_ratio)
-  const aWaste = safeNum((aStats as any).overlap_waste_ratio)
-  const bWaste = safeNum((bStats as any).overlap_waste_ratio)
-  const aGapCount = safeNum((aStats as any).gap_count)
-  const bGapCount = safeNum((bStats as any).gap_count)
+  const aCoverage = safeNum(aStats?.coverage_ratio)
+  const bCoverage = safeNum(bStats?.coverage_ratio)
+  const aWaste = safeNum(aStats?.overlap_waste_ratio)
+  const bWaste = safeNum(bStats?.overlap_waste_ratio)
+  const aGapCount = safeNum(aStats?.gap_count)
+  const bGapCount = safeNum(bStats?.gap_count)
 
   const computePctl = (preview: ChunkPreviewResponse, pct: number) => {
     const lengths = (preview.chunks || []).map((c) => {
-      const len = Number((c as any)?.length || 0) || 0
+      const len = Number(c.length || 0) || 0
       const tokensFallback = Math.max(0, Math.trunc(len / 4))
       if (unit === 'tokens') {
-        return typeof (c as any)?.tokens_est === 'number' ? Math.max(0, Math.trunc((c as any).tokens_est)) : tokensFallback
+        return typeof c.tokens_est === 'number' ? Math.max(0, Math.trunc(c.tokens_est)) : tokensFallback
       }
       return Math.max(0, Math.trunc(len))
     })
@@ -181,4 +181,3 @@ export function chunkPreviewDiffToExport(
     diff: computeChunkPreviewDiff(baseline, current),
   }
 }
-

@@ -82,13 +82,13 @@ export function ChunkAutoTuneDialog() {
 
   const [results, setResults] = useState<TuneCandidate[]>([])
 
-  const sha = (previewData as any)?.file_sha256 as string | undefined
-  const fileType = (previewData as any)?.file_type as string | undefined
-  const fileSize = (previewData as any)?.file_size as number | undefined
-  const filename = currentFile?.name || currentFileItem?.displayName || (previewData as any)?.filename || 'file'
+  const sha = previewData?.file_sha256
+  const fileType = previewData?.file_type
+  const fileSize = previewData?.file_size
+  const filename = currentFile?.name || currentFileItem?.displayName || previewData?.filename || 'file'
 
-  const isTokenStrategy = (previewData as any)?.params?.unit === 'tokens' || chunkStrategy === 'langchain_token'
-  const isSeparatorStrategy = chunkStrategy === 'separator' || (previewData as any)?.chunk_strategy === 'separator'
+  const isTokenStrategy = previewData?.params?.unit === 'tokens' || chunkStrategy === 'langchain_token'
+  const isSeparatorStrategy = chunkStrategy === 'separator' || previewData?.chunk_strategy === 'separator'
   const isAutoTuneAvailable = Boolean(sha && currentFile && !isSeparatorStrategy)
 
   const effectiveStep = isTokenStrategy ? 50 : 100
@@ -210,7 +210,7 @@ export function ChunkAutoTuneDialog() {
             { signal: controller.signal }
           )
           const dur = Math.max(0, Math.round(performance.now() - t0))
-          const s: any = res?.stats
+          const s = res.stats
           out.push({
             chunkSize: c.chunkSize,
             chunkOverlap: c.chunkOverlap,
@@ -226,9 +226,9 @@ export function ChunkAutoTuneDialog() {
                   overlap_waste_ratio: Number(s.overlap_waste_ratio ?? 0) || 0,
                 }
               : undefined,
-            quality: (res as any)?.quality_gate ?? null,
+            quality: res.quality_gate ?? null,
           })
-        } catch (err: any) {
+        } catch (err: unknown) {
           out.push({
             chunkSize: c.chunkSize,
             chunkOverlap: c.chunkOverlap,

@@ -37,6 +37,7 @@ import { cn, formatFileSize, detachPromise } from '@/lib/utils'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
+import { isChunkOverrideDisabled } from '@/components/chunk-preview/utils/metadata'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import { applyChunkOverridesToPreview, chunkPreviewToCsv, chunkPreviewToJsonl, chunkPreviewToMarkdown, chunkPreviewToReviewMarkdown, chunkPreviewToReviewReport, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
@@ -44,6 +45,29 @@ import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunki
 import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
 import { useRouter } from 'next/navigation'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getStringValue(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+function getFiniteNumber(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key]
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
 
 export function TopBar() {
   const router = useRouter()
@@ -96,10 +120,7 @@ export function TopBar() {
 
   const effectiveParserBackend = previewData?.parser_backend || parserBackend
   const effectiveChunkStrategy = previewData?.chunk_strategy || chunkStrategy
-  const skippedCount = Object.values(chunkOverrides || {}).reduce(
-    (acc, o: any) => acc + (o?.disabled ? 1 : 0),
-    0
-  )
+  const skippedCount = Object.values(chunkOverrides).reduce((acc, override) => acc + (isChunkOverrideDisabled(override) ? 1 : 0), 0)
 
   const exportPreviewEnabledOnly = previewData ? applyChunkOverridesToPreview(previewData, chunkOverrides) : null
   const exportPreviewAll = previewData
@@ -149,57 +170,74 @@ export function TopBar() {
   }
 
   const applyConfigFromText = async (text: string) => {
-    const parsed = JSON.parse(text || '{}')
-    if (!parsed || typeof parsed !== 'object') {
+    const parsed = JSON.parse(text || '{}') as unknown
+    if (!isRecord(parsed)) {
       toast.error('配置格式错误：不是有效的 JSON 对象')
-      return
+      return false
     }
 
-    if (typeof (parsed).dataset_id === 'string') {
-      setDatasetId(String((parsed).dataset_id))
-    } else if ((parsed).dataset_id == null) {
+    const datasetIdValue = getStringValue(parsed, 'dataset_id')
+    if (datasetIdValue !== undefined) {
+      setDatasetId(datasetIdValue)
+    } else if (parsed.dataset_id == null) {
       setDatasetId('')
     }
 
-    if (typeof (parsed).parser_backend === 'string') {
-      setParserBackend(String((parsed).parser_backend))
+    const parserBackendValue = getStringValue(parsed, 'parser_backend')
+    if (parserBackendValue !== undefined) {
+      setParserBackend(parserBackendValue)
     }
 
-    const nextStrategy = typeof (parsed).chunk_strategy === 'string' ? String((parsed).chunk_strategy) : undefined
-    const nextSize = Number((parsed).chunk_size)
-    const nextOverlap = Number((parsed).chunk_overlap)
+    const nextStrategy = getStringValue(parsed, 'chunk_strategy')
+    const nextSize = getFiniteNumber(parsed, 'chunk_size')
+    const nextOverlap = getFiniteNumber(parsed, 'chunk_overlap')
 
     updateSettings({
       ...(nextStrategy ? { strategy: nextStrategy } : {}),
-      ...(Number.isFinite(nextSize) ? { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) } : {}),
-      ...(Number.isFinite(nextOverlap) ? { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) } : {}),
+      ...(nextSize !== undefined ? { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) } : {}),
+      ...(nextOverlap !== undefined ? { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) } : {}),
     })
 
-    if (typeof (parsed).separator_preset === 'string') {
-      updateSeparatorSettings({ separatorPreset: String((parsed).separator_preset) })
+    const separatorPresetValue = getStringValue(parsed, 'separator_preset')
+    if (separatorPresetValue !== undefined) {
+      updateSeparatorSettings({ separatorPreset: separatorPresetValue })
     }
-    if (typeof (parsed).separator === 'string') {
-      updateSeparatorSettings({ separatorCustom: String((parsed).separator) })
+
+    const separatorValue = getStringValue(parsed, 'separator')
+    if (separatorValue !== undefined) {
+      updateSeparatorSettings({ separatorCustom: separatorValue })
     }
-    if (typeof (parsed).keep_separator === 'boolean') {
-      updateSeparatorSettings({ keepSeparator: Boolean((parsed).keep_separator) })
+
+    if (typeof parsed.keep_separator === 'boolean') {
+      updateSeparatorSettings({ keepSeparator: parsed.keep_separator })
     }
-    if (Number.isFinite(Number((parsed).separator_max_chunk_size))) {
+
+    const separatorMaxChunkSizeValue = getFiniteNumber(parsed, 'separator_max_chunk_size')
+    if (separatorMaxChunkSizeValue !== undefined) {
       updateSeparatorSettings({
-        separatorMaxChunkSize: Math.max(0, Math.min(20000, Math.trunc(Number((parsed).separator_max_chunk_size)))),
+        separatorMaxChunkSize: Math.max(0, Math.min(20000, Math.trunc(separatorMaxChunkSizeValue))),
       })
     }
 
-    const pipeline = (parsed).pipeline
-    if (pipeline && typeof pipeline === 'object') {
-      pipelineCtx.setEnabled(true)
-      for (const [k, v] of Object.entries(pipeline)) {
-        if (k in pipelineCtx.options) {
-          pipelineCtx.updateOption(k as any, v as any)
-        }
+    const pipeline = parsed.pipeline
+    if (isRecord(pipeline)) {
+      const importResult = pipelineCtx.importJson(
+        JSON.stringify({
+          enabled: true,
+          options: {
+            ...pipelineCtx.options,
+            ...pipeline,
+          },
+        })
+      )
+
+      if (!importResult.ok) {
+        toast.error(importResult.error || '配置格式错误：pipeline 配置无效')
+        return false
       }
     }
 
+    return true
   }
 
   return (
@@ -424,10 +462,10 @@ export function TopBar() {
                 file
                   .text()
                   .then(async (text) => {
-                    await applyConfigFromText(text)
-                    toast.success('已从文件导入配置')
+                    const ok = await applyConfigFromText(text)
+                    if (ok) toast.success('已从文件导入配置')
                   })
-                  .catch((err: any) => toast.error((err?.message as string) || '读取配置文件失败'))
+                  .catch((error: unknown) => toast.error(getErrorMessage(error, '读取配置文件失败')))
               }}
             />
             <DropdownMenuItem
@@ -496,10 +534,10 @@ export function TopBar() {
                     return
                   }
                   const text = await navigator.clipboard.readText()
-                  await applyConfigFromText(text)
-                  toast.success('已从剪贴板导入配置')
-                } catch (e: any) {
-                  toast.error((e?.message as string) || '导入配置失败')
+                  const ok = await applyConfigFromText(text)
+                  if (ok) toast.success('已从剪贴板导入配置')
+                } catch (error: unknown) {
+                  toast.error(getErrorMessage(error, '导入配置失败'))
                 }
               }}
             >
