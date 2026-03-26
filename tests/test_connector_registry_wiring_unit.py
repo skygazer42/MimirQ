@@ -6,6 +6,14 @@ import types
 import pytest
 
 
+def test_has_write_privileges_from_text_does_not_flag_read_only_mysql_grants() -> None:
+    from app.connectors.db.catalog_connectors import _has_write_privileges_from_text
+
+    assert _has_write_privileges_from_text("GRANT SELECT ON *.* TO 'svc'@'%'") is False
+    assert _has_write_privileges_from_text("GRANT OPTION") is True
+    assert _has_write_privileges_from_text("UPDATE") is True
+
+
 @pytest.mark.asyncio
 async def test_check_db_connectivity_uses_connector_registry(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.connectors as connectors_module

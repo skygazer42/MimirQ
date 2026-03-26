@@ -125,6 +125,31 @@ def test_build_rag_quality_gate_report_uses_threshold_checks() -> None:
     assert report["passed"] is False
 
 
+def test_rag_quality_gate_builder_main_preserves_relative_summary_path(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    mod = _load_builder_module()
+    bench_path = tmp_path / "sample_retrieval_bench.json"
+    bench_path.write_text(
+        json.dumps({"summary": {"mrr": 0.91, "ndcg_at_k": 0.42, "hit_at_k": 0.73}}),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+    rc = mod.main(  # type: ignore[attr-defined]
+        [
+            "--benchmark",
+            str(bench_path),
+            "--summary-out",
+            "artifacts/answer_quality.summary.json",
+            "--report-out",
+            "artifacts/rag_quality_gate.report.json",
+        ]
+    )
+
+    assert rc == 0
+    report = json.loads((tmp_path / "artifacts" / "rag_quality_gate.report.json").read_text(encoding="utf-8"))
+    assert report["summary_path"] == "artifacts/answer_quality.summary.json"
+
+
 @pytest.mark.skipif(not Settings().RAG_EVAL_GATE_ENABLED, reason="RAG quality gate disabled")
 def test_rag_quality_gate_uses_sample_summary() -> None:
     cfg = Settings()
@@ -140,6 +165,7 @@ def test_rag_quality_gate_workflow_exists() -> None:
     assert "RAG_EVAL_GATE_SUMMARY_PATH" in text
     assert "scripts/run_sample_retrieval_benchmark.py" in text
     assert "scripts/build_rag_quality_gate_artifacts.py" in text
+    assert text.count("scripts/build_rag_quality_gate_artifacts.py") >= 2
     assert "artifacts/answer_quality.summary.json" in text
     assert "artifacts/rag_quality_gate.report.json" in text
     assert "actions/upload-artifact@v4" in text

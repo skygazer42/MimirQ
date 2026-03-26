@@ -25,7 +25,7 @@ def _has_write_privileges_from_text(text: str) -> bool:
         "create",
         "drop",
         "alter",
-        "grant",
+        "grant option",
         "super",
         "owner",
         "control",

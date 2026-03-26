@@ -5,6 +5,7 @@ on:
     paths:
       - "app/rag/**"
       - "app/core/config.py"
+      - "scripts/build_rag_quality_gate_artifacts.py"
       - "tests/rag/evaluation/**"
       - ".github/workflows/rag-quality-gate.yml"
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - "app/rag/**"
       - "app/core/config.py"
+      - "scripts/build_rag_quality_gate_artifacts.py"
       - "tests/rag/evaluation/**"
       - ".github/workflows/rag-quality-gate.yml"
 
