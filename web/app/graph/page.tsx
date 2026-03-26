@@ -5,247 +5,29 @@
  * 功能：上传 .graphml 文件并进行可视化展示
  * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useTheme } from 'next-themes'
-import { useSearchParams } from 'next/navigation'
+import { Share2 } from 'lucide-react'
+
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Share2 } from 'lucide-react'
+import { detachPromise } from '@/lib/utils'
+import type { KGEntityDetailResponse } from '@/types'
+
 import { GraphActionDialogs } from './_components/graph-action-dialogs'
 import { GraphPageBody } from './_components/graph-page-body'
 import { GraphPageHeader } from './_components/graph-page-header'
-import { GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
-import { type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
-import { GraphData } from '@/lib/graph-parser'
-import { detachPromise } from '@/lib/utils'
-import { documentApi } from '@/lib/api/documents'
 import { useGraphDataLoading } from './use-graph-data-loading'
 import { useGraphDisplayFilters } from './use-graph-display-filters'
 import { useGraphEntityResolution } from './use-graph-entity-resolution'
 import { useGraphInteractionModes } from './use-graph-interaction-modes'
 import { useGraphNodeOperations } from './use-graph-node-operations'
 import { useGraphPageActions } from './use-graph-page-actions'
-import {
-  GraphConfBucket,
-  type GraphDatasetDocumentSummary,
-  type GraphLinkLike,
-  type GraphNodeLike,
-  coerceBoundedInt,
-  getScopedDocumentId,
-  isPendingScopedDocument,
-  parseCsvList,
-} from './graph-page-utils'
-import type {
-  KGEntityDetailResponse,
-  KGEventDetailResponse,
-  KGStatsResponse,
-  RagTrace,
-} from '@/types'
-import { useResizeObserver } from '@/hooks/use-resize-observer'
+import { useGraphPageState } from './use-graph-page-state'
 
 export default function GraphPage() {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
-  const searchParams = useSearchParams()
-  const scopeParamKey = searchParams.toString()
-  const scope = useMemo(() => {
-    const sp = new URLSearchParams(scopeParamKey)
-    const directDocIds = [
-      ...parseCsvList(sp.get('document_ids')),
-      ...sp.getAll('document_id'),
-    ]
-      .map((s) => String(s || '').trim())
-      .filter(Boolean)
-
-    const uniqDocIds = Array.from(new Set(directDocIds))
-    const datasetId = (sp.get('dataset_id') || '').trim() || null
-    const pipelineHash = (sp.get('pipeline_hash') || '').trim() || null
-    const docLimit = coerceBoundedInt(sp.get('doc_limit'), 200, 1, 500)
-    const hasScope = uniqDocIds.length > 0 || Boolean(datasetId) || Boolean(pipelineHash)
-    return {
-      hasScope,
-      directDocIds: uniqDocIds,
-      datasetId,
-      pipelineHash,
-      docLimit,
-    }
-  }, [scopeParamKey])
-
-  const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
-  const [fileName, setFileName] = useState<string | null>(null)
-  const [selectedNode, setSelectedNode] = useState<GraphNodeLike | null>(null)
-  const [isDetailOpen, setIsDetailOpen] = useState(false)
-  const [selectedLink, setSelectedLink] = useState<GraphLinkLike | null>(null)
-  const [isLinkDetailOpen, setIsLinkDetailOpen] = useState(false)
-  const [selfLoopGroupExpanded, setSelfLoopGroupExpanded] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [deleteNodeOpen, setDeleteNodeOpen] = useState(false)
-  const [deleteNodeTarget, setDeleteNodeTarget] = useState<{ id: string; label: string } | null>(null)
-  const [dataSource, setDataSource] = useState<'live' | 'mock' | 'file'>('live')
-  const [includeEntityLinks, setIncludeEntityLinks] = useState(true)
-  const [includeRelationLinks, setIncludeRelationLinks] = useState(false)
-  const [minSharedEvents, setMinSharedEvents] = useState(2)
-  const maxEntityLinks = 1000
-
-  // Optional scope:
-  // - /graph?document_ids=a,b,c&pipeline_hash=... (direct scope)
-  // - /graph?dataset_id=...&doc_limit=200 (dataset scope; resolves to document ids client-side)
-  const [scopedDatasetDocIds, setScopedDatasetDocIds] = useState<string[] | null>(null)
-  const [scopedDatasetDocIdsLoading, setScopedDatasetDocIdsLoading] = useState(false)
-  const [scopedDatasetPendingDocs, setScopedDatasetPendingDocs] = useState<number | null>(null)
-
-  const scopedDocumentIds: string[] | null = useMemo(() => {
-    if (scope.directDocIds.length > 0) return scope.directDocIds
-    if (scope.datasetId) return scopedDatasetDocIds
-    return null
-  }, [scope.datasetId, scope.directDocIds, scopedDatasetDocIds])
-  const scopedDocumentIdsKey = useMemo(() => (scopedDocumentIds ? scopedDocumentIds.join(',') : ''), [scopedDocumentIds])
-  const scopeParams = useMemo(() => {
-    const document_ids = scopedDocumentIds && scopedDocumentIds.length > 0 ? scopedDocumentIds : undefined
-    const pipeline_hash = scope.pipelineHash ? scope.pipelineHash : undefined
-    if (!document_ids && !pipeline_hash) return null
-    return { document_ids, pipeline_hash }
-  }, [scopedDocumentIds, scope.pipelineHash])
-
-  useEffect(() => {
-    let cancelled = false
-
-    if (scope.directDocIds.length > 0) {
-      setScopedDatasetDocIds(null)
-      setScopedDatasetDocIdsLoading(false)
-      setScopedDatasetPendingDocs(null)
-      return () => {
-        cancelled = true
-      }
-    }
-
-    const datasetId = scope.datasetId
-    if (!datasetId) {
-      setScopedDatasetDocIds(null)
-      setScopedDatasetDocIdsLoading(false)
-      setScopedDatasetPendingDocs(null)
-      return () => {
-        cancelled = true
-      }
-    }
-
-    setScopedDatasetDocIdsLoading(true)
-    setScopedDatasetPendingDocs(null)
-    ;(async () => {
-      try {
-        const list = await documentApi.list({
-          skip: 0,
-          limit: scope.docLimit,
-          dataset_id: datasetId,
-          order_by: 'created_at',
-          order_dir: 'desc',
-        })
-        const items: GraphDatasetDocumentSummary[] = Array.isArray(list.items) ? list.items : []
-        const ids = items.map((item) => getScopedDocumentId(item)).filter(Boolean)
-        const pending = items.filter((item) => isPendingScopedDocument(item)).length
-        if (!cancelled) setScopedDatasetDocIds(ids)
-        if (!cancelled) setScopedDatasetPendingDocs(pending)
-      } catch {
-        if (!cancelled) setScopedDatasetDocIds([])
-        if (!cancelled) setScopedDatasetPendingDocs(null)
-      } finally {
-        if (!cancelled) setScopedDatasetDocIdsLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [scope.datasetId, scope.docLimit, scope.directDocIds])
-
-  const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
-  const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
-  const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d')
-  const [filtersOpen, setFiltersOpen] = useState(false)
-  const [entityTypeFilters, setEntityTypeFilters] = useState<string[]>([])
-  const [predicateFilters, setPredicateFilters] = useState<string[]>([])
-  const [confidenceBucketFilters, setConfidenceBucketFilters] = useState<GraphConfBucket[]>([])
-  const [entityTypeQuery, setEntityTypeQuery] = useState('')
-  const [predicateQuery, setPredicateQuery] = useState('')
-  
-  // Search & Filter State
-  const [searchTerm, setSearchTerm] = useState('')
-  const [showEdgeLabels, setShowEdgeLabels] = useState(true)
-  const [highlightedNodeIds, setHighlightedNodeIds] = useState<Set<string>>(new Set())
-  const [highlightedLinkIds, setHighlightedLinkIds] = useState<Set<string>>(new Set())
-
-  // Path Finding State
-  const [isPathMode, setIsPathMode] = useState(false)
-  const [pathStartNode, setPathStartNode] = useState<GraphNodeLike | null>(null)
-  const [pathEndNode, setPathEndNode] = useState<GraphNodeLike | null>(null)
-
-  // Layout & View Mode
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>('force')
-
-  // Editing State
-  const [isConnectMode, setIsConnectMode] = useState(false)
-  const [connectSourceNode, setConnectSourceNode] = useState<GraphNodeLike | null>(null)
-  const [connectLabelOpen, setConnectLabelOpen] = useState(false)
-  const [connectTargetNode, setConnectTargetNode] = useState<GraphNodeLike | null>(null)
-  const [connectLabelDraft, setConnectLabelDraft] = useState('related_to')
-
-  const detailScrollRef = useRef<HTMLDivElement>(null)
-  const selectedNodeId = selectedNode?.id
-
-  // Reset the detail panel scroll when switching nodes so it doesn't appear "half scrolled".
-  useEffect(() => {
-    if (!isDetailOpen || !selectedNodeId) return
-    const raf = globalThis.window.requestAnimationFrame(() => {
-      detailScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    })
-    return () => globalThis.window.cancelAnimationFrame(raf)
-  }, [isDetailOpen, selectedNodeId])
-
-  // Explainability State
-  const [isExplainMode, setIsExplainMode] = useState(false)
-  const [explainSteps, setExplainSteps] = useState<{node: string, reason: string}[]>([])
-  const [currentStepIndex, setCurrentStepIndex] = useState(-1)
-  const [traceReplay, setTraceReplay] = useState<RagTrace | null>(null)
-
-  const graphViewportRef = useRef<HTMLDivElement>(null)
-  const graph2dRef = useRef<GraphViewerRef>(null)
-  const graph3dRef = useRef<KnowledgeGraph3DRef>(null)
-  const { width: graphViewportWidth, height: graphViewportHeight } = useResizeObserver(graphViewportRef)
-
-  const getActiveGraph = useCallback(() => {
-    return viewMode === '3d' ? graph3dRef.current : graph2dRef.current
-  }, [viewMode])
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const traceFileInputRef = useRef<HTMLInputElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    // Reset per-link expanded state when the selection/panel changes.
-    setSelfLoopGroupExpanded(false)
-  }, [selectedLink, isLinkDetailOpen])
-
-  const resetConnectMode = useCallback(() => {
-    setIsConnectMode(false)
-    setConnectSourceNode(null)
-  }, [])
-
-  const resetExplainMode = useCallback(() => {
-    setIsExplainMode(false)
-    setExplainSteps([])
-    setCurrentStepIndex(-1)
-    setHighlightedNodeIds(new Set())
-    setHighlightedLinkIds(new Set())
-  }, [])
-
-  const resetPathMode = useCallback(() => {
-    setIsPathMode(false)
-    setPathStartNode(null)
-    setPathEndNode(null)
-    setHighlightedNodeIds(new Set())
-    setHighlightedLinkIds(new Set())
-  }, [])
+  const state = useGraphPageState()
 
   const {
     loadInitialData,
@@ -254,29 +36,29 @@ export default function GraphPage() {
     handleTraceFileUpload,
     triggerTraceUpload,
   } = useGraphDataLoading({
-    scope,
-    scopedDocumentIds,
-    scopedDatasetDocIdsLoading,
-    scopeParams,
-    includeEntityLinks,
-    includeRelationLinks,
-    minSharedEvents,
-    maxEntityLinks,
-    setGraphData,
-    setFileName,
-    setDataSource,
-    setTraceReplay,
-    setKgStats,
-    setKgNodeDetail,
-    setIsLoading,
-    setIsDetailOpen,
-    setSelectedNode,
-    setViewMode,
-    fileInputRef,
-    traceFileInputRef,
-    resetPathMode,
-    resetConnectMode,
-    resetExplainMode,
+    scope: state.scope,
+    scopedDocumentIds: state.scopedDocumentIds,
+    scopedDatasetDocIdsLoading: state.scopedDatasetDocIdsLoading,
+    scopeParams: state.scopeParams,
+    includeEntityLinks: state.includeEntityLinks,
+    includeRelationLinks: state.includeRelationLinks,
+    minSharedEvents: state.minSharedEvents,
+    maxEntityLinks: state.maxEntityLinks,
+    setGraphData: state.setGraphData,
+    setFileName: state.setFileName,
+    setDataSource: state.setDataSource,
+    setTraceReplay: state.setTraceReplay,
+    setKgStats: state.setKgStats,
+    setKgNodeDetail: state.setKgNodeDetail,
+    setIsLoading: state.setIsLoading,
+    setIsDetailOpen: state.setIsDetailOpen,
+    setSelectedNode: state.setSelectedNode,
+    setViewMode: state.setViewMode,
+    fileInputRef: state.fileInputRef,
+    traceFileInputRef: state.traceFileInputRef,
+    resetPathMode: state.resetPathMode,
+    resetConnectMode: state.resetConnectMode,
+    resetExplainMode: state.resetExplainMode,
   })
 
   const {
@@ -324,10 +106,10 @@ export default function GraphPage() {
     handleMergeOpenChange,
     handleSplitOpenChange,
   } = useGraphEntityResolution({
-    dataSource,
-    isDetailOpen,
-    selectedNode,
-    scopeParams,
+    dataSource: state.dataSource,
+    isDetailOpen: state.isDetailOpen,
+    selectedNode: state.selectedNode,
+    scopeParams: state.scopeParams,
     loadInitialData,
   })
 
@@ -345,30 +127,30 @@ export default function GraphPage() {
     toggleConfidenceBucket,
     toggleEntityTypeFilter,
   } = useGraphDisplayFilters({
-    graphData,
-    searchTerm,
-    entityTypeFilters,
-    predicateFilters,
-    confidenceBucketFilters,
-    entityTypeQuery,
-    predicateQuery,
-    isPathMode,
-    isConnectMode,
-    isExplainMode,
-    selectedNodeId: selectedNodeId ?? null,
-    isDetailOpen,
-    getActiveGraph,
-    setIsDetailOpen,
-    setSelectedNode,
-    setEntityTypeFilters,
-    setPredicateFilters,
-    setConfidenceBucketFilters,
-    setEntityTypeQuery,
-    setPredicateQuery,
-    setHighlightedNodeIds,
-    setHighlightedLinkIds,
-    setPathStartNode,
-    setPathEndNode,
+    graphData: state.graphData,
+    searchTerm: state.searchTerm,
+    entityTypeFilters: state.entityTypeFilters,
+    predicateFilters: state.predicateFilters,
+    confidenceBucketFilters: state.confidenceBucketFilters,
+    entityTypeQuery: state.entityTypeQuery,
+    predicateQuery: state.predicateQuery,
+    isPathMode: state.isPathMode,
+    isConnectMode: state.isConnectMode,
+    isExplainMode: state.isExplainMode,
+    selectedNodeId: state.selectedNodeId,
+    isDetailOpen: state.isDetailOpen,
+    getActiveGraph: state.getActiveGraph,
+    setIsDetailOpen: state.setIsDetailOpen,
+    setSelectedNode: state.setSelectedNode,
+    setEntityTypeFilters: state.setEntityTypeFilters,
+    setPredicateFilters: state.setPredicateFilters,
+    setConfidenceBucketFilters: state.setConfidenceBucketFilters,
+    setEntityTypeQuery: state.setEntityTypeQuery,
+    setPredicateQuery: state.setPredicateQuery,
+    setHighlightedNodeIds: state.setHighlightedNodeIds,
+    setHighlightedLinkIds: state.setHighlightedLinkIds,
+    setPathStartNode: state.setPathStartNode,
+    setPathEndNode: state.setPathEndNode,
   })
 
   const {
@@ -377,25 +159,25 @@ export default function GraphPage() {
     handleDeleteNode,
     confirmDeleteNode,
   } = useGraphNodeOperations({
-    dataSource,
-    isDetailOpen,
-    selectedNode,
-    scopeParams,
-    includeEntityLinks,
-    includeRelationLinks,
-    minSharedEvents,
-    maxEntityLinks,
-    scopedDocumentIds,
-    pipelineHash: scope.pipelineHash,
-    deleteNodeTarget,
-    setGraphData,
-    setIsLoading,
-    setDeleteNodeOpen,
-    setDeleteNodeTarget,
-    setSelectedNode,
-    setIsDetailOpen,
-    setKgNodeDetail,
-    setKgNodeDetailLoading,
+    dataSource: state.dataSource,
+    isDetailOpen: state.isDetailOpen,
+    selectedNode: state.selectedNode,
+    scopeParams: state.scopeParams,
+    includeEntityLinks: state.includeEntityLinks,
+    includeRelationLinks: state.includeRelationLinks,
+    minSharedEvents: state.minSharedEvents,
+    maxEntityLinks: state.maxEntityLinks,
+    scopedDocumentIds: state.scopedDocumentIds,
+    pipelineHash: state.scope.pipelineHash,
+    deleteNodeTarget: state.deleteNodeTarget,
+    setGraphData: state.setGraphData,
+    setIsLoading: state.setIsLoading,
+    setDeleteNodeOpen: state.setDeleteNodeOpen,
+    setDeleteNodeTarget: state.setDeleteNodeTarget,
+    setSelectedNode: state.setSelectedNode,
+    setIsDetailOpen: state.setIsDetailOpen,
+    setKgNodeDetail: state.setKgNodeDetail,
+    setKgNodeDetailLoading: state.setKgNodeDetailLoading,
   })
 
   const {
@@ -422,25 +204,25 @@ export default function GraphPage() {
     handleExportGraphML,
     handleDeleteNodeOpenChange,
   } = useGraphPageActions({
-    graphViewportRef,
-    getActiveGraph,
-    selectedNode,
-    fileName,
-    viewMode,
-    datasetId: scope.datasetId,
-    dataSource,
-    scopeParams,
-    includeEntityLinks,
-    includeRelationLinks,
-    minSharedEvents,
-    maxEntityLinks,
-    setIsLoading,
-    setIsDetailOpen,
-    setIsLinkDetailOpen,
-    setSelectedNode,
-    setSelectedLink,
-    setDeleteNodeOpen,
-    setDeleteNodeTarget,
+    graphViewportRef: state.graphViewportRef,
+    getActiveGraph: state.getActiveGraph,
+    selectedNode: state.selectedNode,
+    fileName: state.fileName,
+    viewMode: state.viewMode,
+    datasetId: state.scope.datasetId,
+    dataSource: state.dataSource,
+    scopeParams: state.scopeParams,
+    includeEntityLinks: state.includeEntityLinks,
+    includeRelationLinks: state.includeRelationLinks,
+    minSharedEvents: state.minSharedEvents,
+    maxEntityLinks: state.maxEntityLinks,
+    setIsLoading: state.setIsLoading,
+    setIsDetailOpen: state.setIsDetailOpen,
+    setIsLinkDetailOpen: state.setIsLinkDetailOpen,
+    setSelectedNode: state.setSelectedNode,
+    setSelectedLink: state.setSelectedLink,
+    setDeleteNodeOpen: state.setDeleteNodeOpen,
+    setDeleteNodeTarget: state.setDeleteNodeTarget,
   })
 
   const {
@@ -461,63 +243,63 @@ export default function GraphPage() {
     handleClearHighlightsFromContextMenu,
     handleConnectLabelOpenChange,
   } = useGraphInteractionModes({
-    searchInputRef,
+    searchInputRef: state.searchInputRef,
     closeContextMenu,
     handleExpandNode,
     handleDeleteNode,
-    getActiveGraph,
+    getActiveGraph: state.getActiveGraph,
     loadInitialData,
-    selectedNode,
-    isDetailOpen,
-    isLinkDetailOpen,
-    isPathMode,
-    isConnectMode,
-    isExplainMode,
-    pathStartNode,
-    pathEndNode,
-    connectSourceNode,
-    connectTargetNode,
-    connectLabelDraft,
-    viewMode,
-    layoutMode,
-    dataSource,
-    traceReplay,
-    graphData,
+    selectedNode: state.selectedNode,
+    isDetailOpen: state.isDetailOpen,
+    isLinkDetailOpen: state.isLinkDetailOpen,
+    isPathMode: state.isPathMode,
+    isConnectMode: state.isConnectMode,
+    isExplainMode: state.isExplainMode,
+    pathStartNode: state.pathStartNode,
+    pathEndNode: state.pathEndNode,
+    connectSourceNode: state.connectSourceNode,
+    connectTargetNode: state.connectTargetNode,
+    connectLabelDraft: state.connectLabelDraft,
+    viewMode: state.viewMode,
+    layoutMode: state.layoutMode,
+    dataSource: state.dataSource,
+    traceReplay: state.traceReplay,
+    graphData: state.graphData,
     displayGraphData,
     linksWithIds,
-    includeEntityLinks,
-    includeRelationLinks,
-    minSharedEvents,
-    setIsPathMode,
-    setPathStartNode,
-    setPathEndNode,
-    setHighlightedNodeIds,
-    setHighlightedLinkIds,
-    setIsDetailOpen,
-    setSelectedNode,
-    setIsLinkDetailOpen,
-    setSelectedLink,
-    setConnectSourceNode,
-    setIsConnectMode,
-    setConnectTargetNode,
-    setConnectLabelDraft,
-    setConnectLabelOpen,
-    setCurrentStepIndex,
-    setExplainSteps,
-    setIsExplainMode,
-    setViewMode,
-    setGraphData,
-    setDataSource,
-    setKgStats,
-    setKgNodeDetail,
-    setFileName,
-    setLayoutMode,
-    setIncludeEntityLinks,
-    setIncludeRelationLinks,
-    setMinSharedEvents,
-    resetPathMode,
-    resetConnectMode,
-    resetExplainMode,
+    includeEntityLinks: state.includeEntityLinks,
+    includeRelationLinks: state.includeRelationLinks,
+    minSharedEvents: state.minSharedEvents,
+    setIsPathMode: state.setIsPathMode,
+    setPathStartNode: state.setPathStartNode,
+    setPathEndNode: state.setPathEndNode,
+    setHighlightedNodeIds: state.setHighlightedNodeIds,
+    setHighlightedLinkIds: state.setHighlightedLinkIds,
+    setIsDetailOpen: state.setIsDetailOpen,
+    setSelectedNode: state.setSelectedNode,
+    setIsLinkDetailOpen: state.setIsLinkDetailOpen,
+    setSelectedLink: state.setSelectedLink,
+    setConnectSourceNode: state.setConnectSourceNode,
+    setIsConnectMode: state.setIsConnectMode,
+    setConnectTargetNode: state.setConnectTargetNode,
+    setConnectLabelDraft: state.setConnectLabelDraft,
+    setConnectLabelOpen: state.setConnectLabelOpen,
+    setCurrentStepIndex: state.setCurrentStepIndex,
+    setExplainSteps: state.setExplainSteps,
+    setIsExplainMode: state.setIsExplainMode,
+    setViewMode: state.setViewMode,
+    setGraphData: state.setGraphData,
+    setDataSource: state.setDataSource,
+    setKgStats: state.setKgStats,
+    setKgNodeDetail: state.setKgNodeDetail,
+    setFileName: state.setFileName,
+    setLayoutMode: state.setLayoutMode,
+    setIncludeEntityLinks: state.setIncludeEntityLinks,
+    setIncludeRelationLinks: state.setIncludeRelationLinks,
+    setMinSharedEvents: state.setMinSharedEvents,
+    resetPathMode: state.resetPathMode,
+    resetConnectMode: state.resetConnectMode,
+    resetExplainMode: state.resetExplainMode,
   })
 
   return (
@@ -532,81 +314,81 @@ export default function GraphPage() {
         bodyContainerClassName="flex h-full min-h-0 flex-col"
       >
         <GraphPageHeader
-          fileName={fileName}
-          dataSource={dataSource}
-          kgStats={kgStats}
+          fileName={state.fileName}
+          dataSource={state.dataSource}
+          kgStats={state.kgStats}
           graphNodeCount={displayGraphData.nodes.length}
           graphLinkCount={displayGraphData.links.length}
           activeGraphFilterCount={activeGraphFilterCount}
-          searchOpen={displayGraphData.nodes.length > 0 && !isPathMode && !isConnectMode && !isExplainMode}
-          searchInputRef={searchInputRef}
-          searchTerm={searchTerm}
-          highlightedMatchCount={highlightedNodeIds.size}
-          onSearchTermChange={setSearchTerm}
-          isPathMode={isPathMode}
-          hasPathStart={Boolean(pathStartNode)}
-          hasPathEnd={Boolean(pathEndNode)}
-          isConnectMode={isConnectMode}
-          connectSourceLabel={connectSourceNode?.label ?? null}
-          isExplainMode={isExplainMode}
-          currentStepIndex={currentStepIndex}
-          explainStepCount={explainSteps.length}
-          onExitPathMode={resetPathMode}
-          onExitConnectMode={resetConnectMode}
-          onExitExplainMode={resetExplainMode}
-          includeEntityLinks={includeEntityLinks}
-          includeRelationLinks={includeRelationLinks}
-          minSharedEvents={minSharedEvents}
+          searchOpen={displayGraphData.nodes.length > 0 && !state.isPathMode && !state.isConnectMode && !state.isExplainMode}
+          searchInputRef={state.searchInputRef}
+          searchTerm={state.searchTerm}
+          highlightedMatchCount={state.highlightedNodeIds.size}
+          onSearchTermChange={state.setSearchTerm}
+          isPathMode={state.isPathMode}
+          hasPathStart={Boolean(state.pathStartNode)}
+          hasPathEnd={Boolean(state.pathEndNode)}
+          isConnectMode={state.isConnectMode}
+          connectSourceLabel={state.connectSourceNode?.label ?? null}
+          isExplainMode={state.isExplainMode}
+          currentStepIndex={state.currentStepIndex}
+          explainStepCount={state.explainSteps.length}
+          onExitPathMode={state.resetPathMode}
+          onExitConnectMode={state.resetConnectMode}
+          onExitExplainMode={state.resetExplainMode}
+          includeEntityLinks={state.includeEntityLinks}
+          includeRelationLinks={state.includeRelationLinks}
+          minSharedEvents={state.minSharedEvents}
           onToggleEntityLinks={toggleEntityLinks}
           onToggleRelationLinks={toggleRelationLinks}
           onCycleMinSharedEvents={cycleMinSharedEvents}
           onExportGraphML={handleExportGraphML}
-          isLoading={isLoading}
-          filtersOpen={filtersOpen}
-          onFiltersOpenChange={setFiltersOpen}
-          entityTypeQuery={entityTypeQuery}
-          onEntityTypeQueryChange={setEntityTypeQuery}
-          entityTypeFilters={entityTypeFilters}
+          isLoading={state.isLoading}
+          filtersOpen={state.filtersOpen}
+          onFiltersOpenChange={state.setFiltersOpen}
+          entityTypeQuery={state.entityTypeQuery}
+          onEntityTypeQueryChange={state.setEntityTypeQuery}
+          entityTypeFilters={state.entityTypeFilters}
           filteredEntityTypes={filteredEntityTypes}
           onEntityTypeCheckedChange={handleEntityTypeCheckedChange}
-          onResetEntityTypeFilters={() => setEntityTypeFilters([])}
-          predicateQuery={predicateQuery}
-          onPredicateQueryChange={setPredicateQuery}
-          predicateFilters={predicateFilters}
+          onResetEntityTypeFilters={() => state.setEntityTypeFilters([])}
+          predicateQuery={state.predicateQuery}
+          onPredicateQueryChange={state.setPredicateQuery}
+          predicateFilters={state.predicateFilters}
           filteredPredicates={filteredPredicates}
           onPredicateCheckedChange={handlePredicateCheckedChange}
-          onResetPredicateFilters={() => setPredicateFilters([])}
-          confidenceBucketFilters={confidenceBucketFilters}
-          onResetConfidenceBuckets={() => setConfidenceBucketFilters([])}
+          onResetPredicateFilters={() => state.setPredicateFilters([])}
+          confidenceBucketFilters={state.confidenceBucketFilters}
+          onResetConfidenceBuckets={() => state.setConfidenceBucketFilters([])}
           onToggleConfidenceBucket={toggleConfidenceBucket}
           onResetGraphFilters={resetGraphFilters}
           onRefreshLiveData={() => {
             detachPromise(loadInitialData('live'))
           }}
           onTriggerTraceUpload={triggerTraceUpload}
-          traceFileInputRef={traceFileInputRef}
+          traceFileInputRef={state.traceFileInputRef}
           onTraceFileUpload={handleTraceFileUpload}
           onTriggerFileUpload={triggerFileUpload}
-          fileInputRef={fileInputRef}
+          fileInputRef={state.fileInputRef}
           onFileUpload={handleFileUpload}
         />
 
         <GraphPageBody
           canvasProps={{
-            viewportRef: graphViewportRef,
-            graph2dRef,
-            graph3dRef,
+            viewportRef: state.graphViewportRef,
+            graph2dRef: state.graph2dRef,
+            graph3dRef: state.graph3dRef,
             isDark,
             graphRenderData,
-            viewMode,
-            graphViewportWidth,
-            graphViewportHeight,
-            selectedNodeId: selectedNode?.id ?? null,
-            highlightedNodeIds,
-            highlightedLinkIds,
-            showEdgeLabels,
-            layoutMode,
-            isLoading,
+            viewMode: state.viewMode,
+            graphViewportWidth: state.graphViewportWidth,
+            graphViewportHeight: state.graphViewportHeight,
+            selectedNodeId: state.selectedNode?.id ?? null,
+            highlightedNodeIds: state.highlightedNodeIds,
+            highlightedLinkIds: state.highlightedLinkIds,
+            showEdgeLabels: state.showEdgeLabels,
+            layoutMode: state.layoutMode,
+            isLoading: state.isLoading,
             onNodeClick: handleNodeClick,
             onNodeRightClick: handleNodeRightClick,
             onLinkClick: handleLinkClick,
@@ -620,8 +402,8 @@ export default function GraphPage() {
           }}
           contextMenuProps={{
             contextMenu,
-            viewMode,
-            showEdgeLabels,
+            viewMode: state.viewMode,
+            showEdgeLabels: state.showEdgeLabels,
             onClose: closeContextMenu,
             onExpandNode: handleExpandNodeById,
             onStartPathFromNode: handleStartPathFromContextNode,
@@ -632,41 +414,45 @@ export default function GraphPage() {
             onDeleteNode: handleDeleteNode,
             onOpenLinkDetail: handleOpenLinkDetailFromContextMenu,
             onCopyLinkPredicate: handleCopyLinkPredicate,
-            onZoomToFit: () => getActiveGraph()?.zoomToFit(),
+            onZoomToFit: () => state.getActiveGraph()?.zoomToFit?.(),
             onClearHighlights: handleClearHighlightsFromContextMenu,
-            onToggleShowEdgeLabels: () => setShowEdgeLabels((value) => !value),
+            onToggleShowEdgeLabels: () => state.setShowEdgeLabels((value) => !value),
           }}
-          legendVisible={graphRenderData.nodes.length > 0 && !isExplainMode}
+          legendVisible={graphRenderData.nodes.length > 0 && !state.isExplainMode}
           legendNodes={graphRenderData.nodes}
           legendLinks={graphRenderData.links}
-          activeTypeFilters={entityTypeFilters}
+          activeTypeFilters={state.entityTypeFilters}
           onToggleTypeFilter={toggleEntityTypeFilter}
-          explainabilityOpen={isExplainMode}
-          explainSteps={explainSteps}
-          currentStepIndex={currentStepIndex}
+          explainabilityOpen={state.isExplainMode}
+          explainSteps={state.explainSteps}
+          currentStepIndex={state.currentStepIndex}
           displayNodes={displayGraphData.nodes}
-          showPendingDocs={dataSource === 'live' && typeof scopedDatasetPendingDocs === 'number' && scopedDatasetPendingDocs > 0}
-          pendingDocCount={scopedDatasetPendingDocs}
+          showPendingDocs={
+            state.dataSource === 'live' &&
+            typeof state.scopedDatasetPendingDocs === 'number' &&
+            state.scopedDatasetPendingDocs > 0
+          }
+          pendingDocCount={state.scopedDatasetPendingDocs}
           showStatsBar={graphRenderData.nodes.length > 0}
           statsNodeCount={graphRenderData.nodes.length}
           statsLinkCount={graphRenderData.links.length}
           statsEntityTypeCount={availableEntityTypes.length}
           floatingControlsProps={{
-            viewMode,
-            isExplainMode,
-            isPathMode,
-            showEdgeLabels,
+            viewMode: state.viewMode,
+            isExplainMode: state.isExplainMode,
+            isPathMode: state.isPathMode,
+            showEdgeLabels: state.showEdgeLabels,
             isFullscreen,
             exportOpen,
             layoutLabel,
-            onZoomIn: () => getActiveGraph()?.zoomIn(),
-            onZoomOut: () => getActiveGraph()?.zoomOut(),
-            onZoomToFit: () => getActiveGraph()?.zoomToFit(),
-            onToggleViewMode: () => setViewMode(viewMode === '3d' ? '2d' : '3d'),
+            onZoomIn: () => state.getActiveGraph()?.zoomIn?.(),
+            onZoomOut: () => state.getActiveGraph()?.zoomOut?.(),
+            onZoomToFit: () => state.getActiveGraph()?.zoomToFit?.(),
+            onToggleViewMode: () => state.setViewMode(state.viewMode === '3d' ? '2d' : '3d'),
             onStartExplainMode: startExplainMode,
             onCycleLayoutMode: cycleLayoutMode,
             onTogglePathMode: togglePathMode,
-            onToggleShowEdgeLabels: () => setShowEdgeLabels((value) => !value),
+            onToggleShowEdgeLabels: () => state.setShowEdgeLabels((value) => !value),
             onToggleFullscreen: handleToggleFullscreen,
             onExportOpenChange: setExportOpen,
             onExportPngDownload: handleExportPngDownload,
@@ -675,12 +461,12 @@ export default function GraphPage() {
             onExportSvgCopy: handleExportSvgCopy,
           }}
           nodeDetailPanelProps={{
-            open: isDetailOpen,
-            selectedNode,
-            detailScrollRef,
-            dataSource,
-            kgNodeDetailLoading,
-            kgNodeDetail,
+            open: state.isDetailOpen,
+            selectedNode: state.selectedNode,
+            detailScrollRef: state.detailScrollRef,
+            dataSource: state.dataSource,
+            kgNodeDetailLoading: state.kgNodeDetailLoading,
+            kgNodeDetail: state.kgNodeDetail,
             entityAliasesLoading,
             entityAliases,
             aliasDraft,
@@ -689,8 +475,8 @@ export default function GraphPage() {
             aliasSuggestions,
             lastResolutionActionId,
             undoSubmitting,
-            isLoading,
-            onClose: () => setIsDetailOpen(false),
+            isLoading: state.isLoading,
+            onClose: () => state.setIsDetailOpen(false),
             onChat: handleChatWithNode,
             onViewSource: handleViewSource,
             onExpandNode: handleExpandNode,
@@ -705,21 +491,21 @@ export default function GraphPage() {
             onMergeAliasSuggestion: handleMergeAliasSuggestion,
           }}
           linkDetailPanelProps={{
-            open: isLinkDetailOpen,
-            selectedLink,
+            open: state.isLinkDetailOpen,
+            selectedLink: state.selectedLink,
             graphLinks: linksWithIds,
-            selfLoopGroupExpanded,
-            onToggleSelfLoopGroup: () => setSelfLoopGroupExpanded((prev) => !prev),
+            selfLoopGroupExpanded: state.selfLoopGroupExpanded,
+            onToggleSelfLoopGroup: () => state.setSelfLoopGroupExpanded((prev) => !prev),
             onClose: () => {
-              setIsLinkDetailOpen(false)
-              setSelectedLink(null)
+              state.setIsLinkDetailOpen(false)
+              state.setSelectedLink(null)
             },
           }}
         />
 
         <GraphActionDialogs
-          deleteNodeOpen={deleteNodeOpen}
-          deleteNodeTarget={deleteNodeTarget}
+          deleteNodeOpen={state.deleteNodeOpen}
+          deleteNodeTarget={state.deleteNodeTarget}
           onDeleteNodeOpenChange={handleDeleteNodeOpenChange}
           onConfirmDeleteNode={confirmDeleteNode}
           aliasDeleteOpen={aliasDeleteOpen}
@@ -750,15 +536,15 @@ export default function GraphPage() {
           splitSelectedEventIds={splitSelectedEventIds}
           splitSubmitting={splitSubmitting}
           splitError={splitError}
-          splitEvents={(kgNodeDetail as KGEntityDetailResponse | null)?.events ?? []}
+          splitEvents={(state.kgNodeDetail as KGEntityDetailResponse | null)?.events ?? []}
           onToggleSplitEvent={toggleSplitEvent}
           onSubmitSplit={submitSplit}
-          connectLabelOpen={connectLabelOpen}
+          connectLabelOpen={state.connectLabelOpen}
           onConnectLabelOpenChange={handleConnectLabelOpenChange}
-          connectSourceNode={connectSourceNode}
-          connectTargetNode={connectTargetNode}
-          connectLabelDraft={connectLabelDraft}
-          onConnectLabelDraftChange={setConnectLabelDraft}
+          connectSourceNode={state.connectSourceNode}
+          connectTargetNode={state.connectTargetNode}
+          connectLabelDraft={state.connectLabelDraft}
+          onConnectLabelDraftChange={state.setConnectLabelDraft}
           onConfirmConnectionLabel={confirmConnectionLabel}
         />
       </PageScaffold>

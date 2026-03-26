@@ -10,9 +10,10 @@ function read(relativePath: string): string {
 describe('graph page type safety', () => {
   it('extracts graph helper types and removes the most obvious any-based hotspots from the page', () => {
     const page = read('./page.tsx')
+    const pageState = read('./use-graph-page-state.ts')
     const utils = read('./graph-page-utils.ts')
 
-    expect(page).toContain("from './graph-page-utils'")
+    expect(pageState).toContain("from './graph-page-utils'")
     expect(utils).toContain('export type GraphNodeLike')
     expect(utils).toContain('export type GraphLinkLike')
     expect(utils).toContain('export function getGraphNodeKind')
@@ -41,6 +42,28 @@ describe('graph page type safety', () => {
     expect(utils).toContain('export function buildGraphFromTrace')
     expect(page).not.toContain('const _extractTraceFromPayload = (payload: unknown)')
     expect(page).not.toContain('const _buildGraphFromTrace = (trace: RagTrace)')
+  })
+
+  it('keeps graph page scope parsing and local UI state extracted into a dedicated hook', () => {
+    const page = read('./page.tsx')
+    const hook = read('./use-graph-page-state.ts')
+
+    expect(page).toContain('useGraphPageState')
+    expect(hook).toContain('export function useGraphPageState')
+    expect(hook).toContain('const scope = useMemo<GraphScope>')
+    expect(hook).toContain('documentApi.list')
+    expect(hook).toContain('const resetConnectMode = useCallback')
+    expect(hook).toContain('const resetExplainMode = useCallback')
+    expect(hook).toContain('const resetPathMode = useCallback')
+    expect(page).not.toContain('useSearchParams()')
+    expect(page).not.toContain('const scope = useMemo(() =>')
+    expect(page).not.toContain('documentApi.list({')
+    expect(page).not.toContain('const [graphData, setGraphData] = useState')
+    expect(page).not.toContain('const [scopedDatasetDocIds, setScopedDatasetDocIds] = useState')
+    expect(page).not.toContain('const [isExplainMode, setIsExplainMode] = useState')
+    expect(page).not.toContain('const resetConnectMode = useCallback(() =>')
+    expect(page).not.toContain('const resetExplainMode = useCallback(() =>')
+    expect(page).not.toContain('const resetPathMode = useCallback(() =>')
   })
 
   it('keeps heavy right-side detail panels extracted into dedicated graph components', () => {
