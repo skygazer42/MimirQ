@@ -18,6 +18,7 @@ from collections.abc import Iterable
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.token_utils import num_tokens_from_string
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.normalization import normalize_text
 
@@ -150,6 +151,36 @@ def _apply_jaccard_dedup(
     return out
 
 
+def _apply_lost_in_middle_reorder(docs: list[Document]) -> list[Document]:
+    if not docs:
+        return docs
+    try:
+        from app.rag.core.doc_ordering import reorder_docs_for_generation
+
+        return reorder_docs_for_generation(docs)
+    except Exception:
+        return docs
+
+
+def _apply_token_budget_trim(docs: list[Document], *, max_total_tokens: int) -> list[Document]:
+    cap = int(max_total_tokens or 0)
+    if cap <= 0 or not docs:
+        return docs
+
+    out: list[Document] = []
+    used = 0
+    for doc in docs:
+        content = str(getattr(doc, "page_content", "") or "").strip()
+        if not content:
+            continue
+        n = int(num_tokens_from_string(content) or 0)
+        if out and (used + n) > cap:
+            break
+        out.append(doc)
+        used += max(0, n)
+    return out
+
+
 def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     """
     Clean and deduplicate retrieved context docs before prompt assembly.
@@ -191,10 +222,20 @@ def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     max_per_doc = int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0)
     cleaned = _apply_per_doc_cap(cleaned, max_per_doc=max_per_doc)
 
+    # 4) Optional lost-in-middle mitigation via deterministic interleaving.
+    if bool(getattr(settings, "RAG_CONTEXT_LOST_IN_MIDDLE_REORDER_ENABLED", False)):
+        cleaned = _apply_lost_in_middle_reorder(cleaned)
+
+    # 5) Optional token-budget-aware trim for pre-prompt context packing.
+    if bool(getattr(settings, "RAG_CONTEXT_TOKEN_BUDGET_TRIM_ENABLED", False)):
+        cleaned = _apply_token_budget_trim(
+            cleaned,
+            max_total_tokens=int(getattr(settings, "RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS", 0) or 0),
+        )
+
     return cleaned
 
 
 __all__ = [
     "denoise_context_docs",
 ]
-
