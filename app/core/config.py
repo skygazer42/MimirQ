@@ -1341,6 +1341,12 @@ class Settings(BaseSettings):
     RAG_CORRECTIVE_SECOND_PASS_PROFILE: str = "recall50"
     RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY: bool = True
     RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT: int = 5
+    RAG_AGENTIC_MODE_ENABLED: bool = False
+    RAG_AGENTIC_COMPLEXITY_THRESHOLD: float = 250.0
+    RAG_AGENTIC_MAX_RETRIEVE_ROUNDS: int = 3
+    RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN: int = 1
+    RAG_AGENTIC_REFLECT_TOP_SCORE_MIN: float = 0.35
+    RAG_AGENTIC_REFLECT_MODEL: str = ""
     RAG_STREAM_STATUS_EVENTS_ENABLED: bool = False
     RAG_STREAM_RETRIEVAL_PROGRESS_ENABLED: bool = False
     # When enabled, use a deterministic heuristic decomposition fallback when LLM decomposition
