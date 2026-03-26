@@ -20,6 +20,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.rag.llm.base import BaseLLMClient
+from app.rag.llm.models import LLMMessage, LLMRole
+
 
 @dataclass(frozen=True)
 class CommunityEdge:
@@ -378,10 +381,64 @@ def build_community_reports(
     return reports, global_summary
 
 
+async def lazy_summarize(
+    *,
+    community_report: dict[str, Any],
+    query: str,
+    llm_client: BaseLLMClient,
+    max_tokens: int = 300,
+) -> str:
+    """
+    Generate a query-aware community summary lazily at search time.
+
+    This is intentionally best-effort and compact to keep latency/cost bounded.
+    """
+    entities = community_report.get("entities", []) if isinstance(community_report, dict) else []
+    events = community_report.get("events", []) if isinstance(community_report, dict) else []
+
+    entity_lines: list[str] = []
+    for ent in entities[:15]:
+        if not isinstance(ent, dict):
+            continue
+        name = str(ent.get("name") or ent.get("entity_id") or "").strip()
+        if not name:
+            continue
+        etype = str(ent.get("type") or "unknown").strip() or "unknown"
+        entity_lines.append(f"- {name} ({etype})")
+
+    event_lines: list[str] = []
+    for ev in events[:10]:
+        if not isinstance(ev, dict):
+            continue
+        title = str(ev.get("title") or ev.get("summary") or ev.get("id") or "").strip()
+        if not title:
+            continue
+        event_lines.append(f"- {title}")
+
+    prompt = (
+        "Summarize the following knowledge graph community in the context of the user query.\n"
+        "Focus on information relevant to the query. Be concise (2-3 sentences).\n\n"
+        f"User Query: {str(query or '').strip()}\n\n"
+        "Community Entities:\n"
+        f"{chr(10).join(entity_lines) if entity_lines else '- (none)'}\n\n"
+        "Community Events:\n"
+        f"{chr(10).join(event_lines) if event_lines else '- (none)'}\n\n"
+        "Community Summary:"
+    )
+
+    response = await llm_client.chat(
+        [LLMMessage(role=LLMRole.USER, content=prompt)],
+        temperature=0.3,
+        max_tokens=max(1, int(max_tokens or 300)),
+    )
+    return str(getattr(response, "content", "") or "").strip()
+
+
 __all__ = [
     "CommunityEdge",
     "assign_events_to_communities",
     "build_community_reports",
     "build_entity_cooccurrence_edges",
+    "lazy_summarize",
     "label_propagation_communities",
 ]
