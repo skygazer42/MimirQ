@@ -5,7 +5,7 @@
  * 功能：上传 .graphml 文件并进行可视化展示
  * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
-import { useState, useRef, useEffect, useCallback, useDeferredValue, useMemo } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useTheme } from 'next-themes'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
@@ -23,6 +23,7 @@ import { cn, detachPromise } from '@/lib/utils'
 import { documentApi } from '@/lib/api/documents'
 import { kgApi } from '@/lib/api/graph'
 import { useGraphDataLoading } from './use-graph-data-loading'
+import { useGraphDisplayFilters } from './use-graph-display-filters'
 import { useGraphEntityResolution } from './use-graph-entity-resolution'
 import { useGraphInteractionModes } from './use-graph-interaction-modes'
 import {
@@ -32,15 +33,8 @@ import {
   type GraphDatasetDocumentSummary,
   type GraphLinkLike,
   type GraphNodeLike,
-  bucketConfidence,
   coerceBoundedInt,
-  coerceTrimmedString,
-  getGraphLinkConfidence,
   getGraphLinkEndpointId,
-  getGraphLinkKind,
-  getGraphLinkPredicate,
-  getGraphNodeKind,
-  getGraphNodeType,
   getScopedDocumentId,
   isPendingScopedDocument,
   parseCsvList,
@@ -233,7 +227,6 @@ export default function GraphPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const traceFileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const deferredSearchTerm = useDeferredValue(searchTerm)
 
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -445,171 +438,45 @@ export default function GraphPage() {
     [openContextMenu]
   )
 
-  const availableEntityTypes = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const node of graphData.nodes) {
-      if (getGraphNodeKind(node) !== 'entity') continue
-      const t = getGraphNodeType(node) || 'unknown'
-      counts.set(t, (counts.get(t) || 0) + 1)
-    }
-    return Array.from(counts.entries())
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
-  }, [graphData.nodes])
-
-  const availablePredicates = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const link of graphData.links) {
-      if (getGraphLinkKind(link) !== 'entity_relation') continue
-      const p = getGraphLinkPredicate(link)
-      if (!p) continue
-      counts.set(p, (counts.get(p) || 0) + 1)
-    }
-    return Array.from(counts.entries())
-      .map(([value, count]) => ({ value, count }))
-      .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
-  }, [graphData.links])
-
-  const filteredEntityTypes = useMemo(() => {
-    const q = entityTypeQuery.trim().toLowerCase()
-    const base = availableEntityTypes
-    if (!q) return base.slice(0, 40)
-    return base.filter((t) => t.value.toLowerCase().includes(q)).slice(0, 40)
-  }, [availableEntityTypes, entityTypeQuery])
-
-  const filteredPredicates = useMemo(() => {
-    const q = predicateQuery.trim().toLowerCase()
-    const base = availablePredicates
-    if (!q) return base.slice(0, 40)
-    return base.filter((p) => p.value.toLowerCase().includes(q)).slice(0, 40)
-  }, [availablePredicates, predicateQuery])
-
-  const activeGraphFilterCount = entityTypeFilters.length + predicateFilters.length + confidenceBucketFilters.length
-
-  const displayGraphData = useMemo<GraphData>(() => {
-    const hasTypeFilter = entityTypeFilters.length > 0
-    const hasPredicateFilter = predicateFilters.length > 0
-    const hasConfBucketFilter = confidenceBucketFilters.length > 0
-
-    if (!hasTypeFilter && !hasPredicateFilter && !hasConfBucketFilter) {
-      return graphData
-    }
-
-    const allowedTypes = new Set(entityTypeFilters.map((t) => coerceTrimmedString(t)))
-    const allowedPredicates = new Set(predicateFilters.map((p) => coerceTrimmedString(p)))
-    const allowedBuckets = new Set(confidenceBucketFilters)
-
-    const allowedNodeIds = new Set<string>()
-    for (const node of graphData.nodes) {
-      const id = coerceTrimmedString(node?.id)
-      if (!id) continue
-
-      const kind = getGraphNodeKind(node)
-      if (kind === 'entity') {
-        const t = getGraphNodeType(node) || 'unknown'
-        if (!hasTypeFilter || allowedTypes.has(t)) {
-          allowedNodeIds.add(id)
-        }
-        continue
-      }
-
-      allowedNodeIds.add(id)
-    }
-
-    const nextLinks: GraphData['links'] = []
-    for (const link of graphData.links) {
-      const sourceId = getGraphLinkEndpointId(link?.source)
-      const targetId = getGraphLinkEndpointId(link?.target)
-      if (!sourceId || !targetId) continue
-      if (!allowedNodeIds.has(sourceId) || !allowedNodeIds.has(targetId)) continue
-
-      const kind = getGraphLinkKind(link)
-      if (kind === 'entity_relation') {
-        if (hasPredicateFilter) {
-          const pred = getGraphLinkPredicate(link)
-          if (!pred || !allowedPredicates.has(pred)) continue
-        }
-
-        if (hasConfBucketFilter) {
-          const conf = getGraphLinkConfidence(link)
-          const bucket = bucketConfidence(conf)
-          if (!bucket || !allowedBuckets.has(bucket)) continue
-        }
-      }
-
-      nextLinks.push({ ...link, source: sourceId, target: targetId })
-    }
-
-    const linkedNodeIds = new Set<string>()
-    for (const link of nextLinks) {
-      const s = getGraphLinkEndpointId(link?.source)
-      const t = getGraphLinkEndpointId(link?.target)
-      if (s) linkedNodeIds.add(s)
-      if (t) linkedNodeIds.add(t)
-    }
-
-    const nextNodes = graphData.nodes.filter((node) => linkedNodeIds.has(coerceTrimmedString(node?.id)))
-    return { nodes: nextNodes, links: nextLinks }
-  }, [graphData, entityTypeFilters, predicateFilters, confidenceBucketFilters])
-
-  const displayNodeIds = useMemo(() => {
-    return new Set(displayGraphData.nodes.map((node) => coerceTrimmedString(node?.id)))
-  }, [displayGraphData.nodes])
-
-  // Close node detail panel if the current node is filtered out.
-  useEffect(() => {
-    if (!isDetailOpen || !selectedNodeId) return
-    if (displayNodeIds.has(String(selectedNodeId))) return
-    setIsDetailOpen(false)
-    setSelectedNode(null)
-  }, [displayNodeIds, isDetailOpen, selectedNodeId])
-
-  // Filters can invalidate highlights (e.g. path/search results). Fail open: clear highlights on filter changes.
-  useEffect(() => {
-    setHighlightedNodeIds(new Set())
-    setHighlightedLinkIds(new Set())
-    setPathStartNode(null)
-    setPathEndNode(null)
-  }, [entityTypeFilters, predicateFilters, confidenceBucketFilters])
-
-  const linksWithIds = useMemo<GraphLinkLike[]>(() => {
-    return displayGraphData.links.map((link, index) => ({
-      ...link,
-      id: link.id || `link-${index}`,
-    }))
-  }, [displayGraphData.links])
-
-  const graphRenderData = useMemo<GraphData>(() => {
-    return { nodes: displayGraphData.nodes, links: linksWithIds as GraphData['links'] }
-  }, [displayGraphData.nodes, linksWithIds])
-
-  const searchMatches = useMemo(() => {
-    if (isPathMode || isConnectMode || isExplainMode) return []
-    const term = deferredSearchTerm.trim().toLowerCase()
-    if (!term) return []
-
-    return displayGraphData.nodes.filter((node) => {
-      const label = (node.label || '').toLowerCase()
-      const id = (node.id || '').toLowerCase()
-      return label.includes(term) || id.includes(term)
-    })
-  }, [deferredSearchTerm, displayGraphData.nodes, isPathMode, isConnectMode, isExplainMode])
-
-  useEffect(() => {
-    if (isPathMode || isConnectMode || isExplainMode) return
-    const term = deferredSearchTerm.trim()
-    if (!term) {
-      setHighlightedNodeIds(new Set())
-      return
-    }
-
-    const nextIds = new Set(searchMatches.map((node) => node.id))
-    setHighlightedNodeIds(nextIds)
-
-    if (searchMatches.length > 0) {
-      getActiveGraph()?.focusNode(searchMatches[0].id)
-    }
-  }, [deferredSearchTerm, searchMatches, isPathMode, isConnectMode, isExplainMode, getActiveGraph])
+  const {
+    availableEntityTypes,
+    filteredEntityTypes,
+    filteredPredicates,
+    activeGraphFilterCount,
+    displayGraphData,
+    linksWithIds,
+    graphRenderData,
+    resetGraphFilters,
+    handleEntityTypeCheckedChange,
+    handlePredicateCheckedChange,
+    toggleConfidenceBucket,
+    toggleEntityTypeFilter,
+  } = useGraphDisplayFilters({
+    graphData,
+    searchTerm,
+    entityTypeFilters,
+    predicateFilters,
+    confidenceBucketFilters,
+    entityTypeQuery,
+    predicateQuery,
+    isPathMode,
+    isConnectMode,
+    isExplainMode,
+    selectedNodeId: selectedNodeId ?? null,
+    isDetailOpen,
+    getActiveGraph,
+    setIsDetailOpen,
+    setSelectedNode,
+    setEntityTypeFilters,
+    setPredicateFilters,
+    setConfidenceBucketFilters,
+    setEntityTypeQuery,
+    setPredicateQuery,
+    setHighlightedNodeIds,
+    setHighlightedLinkIds,
+    setPathStartNode,
+    setPathEndNode,
+  })
 
   useEffect(() => {
     if (dataSource !== 'live') {
@@ -803,43 +670,6 @@ export default function GraphPage() {
     resetConnectMode,
     resetExplainMode,
   })
-
-  const resetGraphFilters = () => {
-    setEntityTypeFilters([])
-    setPredicateFilters([])
-    setConfidenceBucketFilters([])
-    setEntityTypeQuery('')
-    setPredicateQuery('')
-  }
-
-  const handleEntityTypeCheckedChange = useCallback((value: string, checked: boolean) => {
-    setEntityTypeFilters((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(value)
-      else next.delete(value)
-      return Array.from(next)
-    })
-  }, [])
-
-  const handlePredicateCheckedChange = useCallback((value: string, checked: boolean) => {
-    setPredicateFilters((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(value)
-      else next.delete(value)
-      return Array.from(next)
-    })
-  }, [])
-
-  const toggleConfidenceBucket = (bucket: GraphConfBucket) => {
-    setConfidenceBucketFilters((prev) => {
-      const has = prev.includes(bucket)
-      const next = has ? prev.filter((b) => b !== bucket) : [...prev, bucket]
-      const unique = Array.from(new Set(next))
-      // Selecting all buckets is equivalent to "Any" (no filter).
-      if (unique.length >= 3) return []
-      return unique
-    })
-  }
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {
     const v = String(text || '').trim()
@@ -1110,14 +940,7 @@ export default function GraphPage() {
           legendNodes={graphRenderData.nodes}
           legendLinks={graphRenderData.links}
           activeTypeFilters={entityTypeFilters}
-          onToggleTypeFilter={(type) => {
-            setEntityTypeFilters((prev) => {
-              const next = new Set(prev)
-              if (next.has(type)) next.delete(type)
-              else next.add(type)
-              return Array.from(next)
-            })
-          }}
+          onToggleTypeFilter={toggleEntityTypeFilter}
           explainabilityOpen={isExplainMode}
           explainSteps={explainSteps}
           currentStepIndex={currentStepIndex}
