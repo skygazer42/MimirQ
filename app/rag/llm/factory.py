@@ -2,6 +2,7 @@
 Factory for LLM and embedding clients backed by the existing project settings.
 """
 import asyncio
+import json
 from typing import Any
 
 import httpx
@@ -14,6 +15,7 @@ from app.rag.core.errors import ConfigError
 from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
 from app.rag.llm.base import BaseLLMClient
+from app.rag.llm.fallback import FallbackLLMClient
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
 from app.storage.vector.milvus import milvus_store
 
@@ -37,6 +39,11 @@ class OpenAIChatClient(BaseLLMClient):
         if not api_key or not model_name:
             raise ConfigError("LLM configuration missing api_key or model")
 
+        self._is_anthropic_compatible = self._detect_anthropic_compatible(
+            model_name=str(model_name),
+            base_url=str(base_url),
+        )
+
         http_client = httpx.Client(trust_env=trust_env, timeout=timeout)
         http_async_client = httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
         self._client = ChatOpenAI(
@@ -51,15 +58,34 @@ class OpenAIChatClient(BaseLLMClient):
             http_async_client=http_async_client,
         )
 
+    @staticmethod
+    def _detect_anthropic_compatible(*, model_name: str, base_url: str) -> bool:
+        model_lower = str(model_name or "").strip().lower()
+        base_lower = str(base_url or "").strip().lower()
+        return model_lower.startswith("claude") or ("anthropic" in base_lower)
+
+    def _should_cache_message(self, msg: LLMMessage) -> bool:
+        if not bool(getattr(settings, "PROMPT_CACHE_ENABLED", False)):
+            return False
+        if not bool(self._is_anthropic_compatible):
+            return False
+        min_chars = int(getattr(settings, "PROMPT_CACHE_MIN_CHARS", 1000) or 1000)
+        if msg.role == LLMRole.SYSTEM:
+            return True
+        return len(msg.content or "") >= max(0, min_chars)
+
     def _convert_messages(self, messages: list[LLMMessage]):
         converted = []
         for msg in messages:
+            content: str | list[dict[str, Any]] = msg.content
+            if self._should_cache_message(msg):
+                content = [{"type": "text", "text": msg.content, "cache_control": {"type": "ephemeral"}}]
             if msg.role == LLMRole.SYSTEM:
-                converted.append(SystemMessage(content=msg.content))
+                converted.append(SystemMessage(content=content))
             elif msg.role == LLMRole.ASSISTANT:
-                converted.append(AIMessage(content=msg.content))
+                converted.append(AIMessage(content=content))
             else:
-                converted.append(HumanMessage(content=msg.content))
+                converted.append(HumanMessage(content=content))
         return converted
 
     async def chat(
@@ -117,6 +143,68 @@ class EmbeddingClient:
         return [await self.generate(t) for t in texts]
 
 
+def _normalize_fallback_spec(spec: object) -> dict[str, Any] | None:
+    if isinstance(spec, dict):
+        out = {str(k): v for k, v in spec.items()}
+        model_name = str(out.get("model") or "").strip()
+        if not model_name:
+            return None
+        out["model"] = model_name
+        return out
+    if isinstance(spec, str):
+        model_name = spec.strip()
+        if model_name:
+            return {"model": model_name}
+    return None
+
+
+def _parse_fallback_specs(raw: str) -> list[dict[str, Any]]:
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    if text.startswith("{") or text.startswith("["):
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            logger.warning("Invalid JSON in LLM_FALLBACK_MODELS; ignoring")
+            return []
+        if isinstance(parsed, dict):
+            one = _normalize_fallback_spec(parsed)
+            return [one] if one else []
+        if isinstance(parsed, list):
+            out: list[dict[str, Any]] = []
+            for item in parsed:
+                normalized = _normalize_fallback_spec(item)
+                if normalized is not None:
+                    out.append(normalized)
+            return out
+        return []
+
+    out: list[dict[str, Any]] = []
+    for part in text.split(","):
+        normalized = _normalize_fallback_spec(part)
+        if normalized is not None:
+            out.append(normalized)
+    return out
+
+
+def _resolve_fallback_specs(*, base_config: dict[str, Any] | None) -> list[dict[str, Any]]:
+    raw = str(getattr(settings, "LLM_FALLBACK_MODELS", "") or "").strip()
+    parsed = _parse_fallback_specs(raw)
+    if not parsed:
+        return []
+    base = dict(base_config or {})
+    inherited_keys = ("api_key", "base_url", "temperature", "timeout", "max_retries")
+    resolved: list[dict[str, Any]] = []
+    for spec in parsed:
+        merged = dict(spec)
+        for key in inherited_keys:
+            if key not in merged and key in base:
+                merged[key] = base[key]
+        resolved.append(merged)
+    return resolved
+
+
 async def create_llm_client(
     scenario: str = "general",
     model_config: dict[str, Any] | None = None,
@@ -124,7 +212,32 @@ async def create_llm_client(
 ) -> BaseLLMClient:
     _ = scenario
     _ = kwargs
-    return await asyncio.to_thread(OpenAIChatClient, model_config=model_config)
+    primary = await asyncio.to_thread(OpenAIChatClient, model_config=model_config)
+
+    if not bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)):
+        return primary
+
+    specs = _resolve_fallback_specs(base_config=model_config)
+    if not specs:
+        return primary
+
+    primary_model = str((model_config or {}).get("model") or settings.LLM_MODEL or "").strip()
+    clients: list[BaseLLMClient] = [primary]
+    seen_models = {primary_model} if primary_model else set()
+    for spec in specs:
+        model_name = str(spec.get("model") or "").strip()
+        if not model_name or model_name in seen_models:
+            continue
+        try:
+            fallback_client = await asyncio.to_thread(OpenAIChatClient, model_config=spec)
+            clients.append(fallback_client)
+            seen_models.add(model_name)
+        except Exception as exc:
+            logger.warning("Failed to initialize fallback LLM model '%s': %s", model_name, str(exc)[:200])
+
+    if len(clients) <= 1:
+        return primary
+    return FallbackLLMClient(clients)
 
 
 async def get_embedding_client(
@@ -141,4 +254,5 @@ __all__ = [
     "EmbeddingClient",
     "create_llm_client",
     "get_embedding_client",
+    "_parse_fallback_specs",
 ]
