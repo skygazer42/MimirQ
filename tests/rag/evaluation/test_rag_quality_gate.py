@@ -71,3 +71,7 @@ def test_rag_quality_gate_workflow_exists() -> None:
     assert "tests/rag/evaluation/test_rag_quality_gate.py" in text
     assert "RAG_EVAL_GATE_ENABLED" in text
     assert "RAG_EVAL_GATE_SUMMARY_PATH" in text
+    assert "scripts/run_sample_retrieval_benchmark.py" in text
+    assert "artifacts/answer_quality.summary.json" in text
+    assert "artifacts/rag_quality_gate.report.json" in text
+    assert "actions/upload-artifact@v4" in text

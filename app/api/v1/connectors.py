@@ -58,6 +58,7 @@ from app.api.v1.documents import (
     _normalize_datetime_utc_iso,
     _resolve_writable_dataset,
 )
+from app.connectors.registry import ConnectorNotFoundError, registry as connector_class_registry
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.http_client import get_http_client_pool
@@ -1670,12 +1671,29 @@ async def _check_db_connectivity_best_effort(*, connector_id: str, cfg: Any) -> 
     Unit tests should monkeypatch this function to avoid real outbound DB calls.
     """
 
+    # Ensure DB catalog connector classes are imported so registration side-effects run.
+    from app.connectors import db as _db_connectors  # noqa: F401
+
     cid = str(connector_id or "").strip()
-    if cid == "mysql_catalog":
-        return await asyncio.to_thread(_mysql_connectivity_check_sync, cfg)
-    if cid == "sqlserver_catalog":
-        return await asyncio.to_thread(_sqlserver_connectivity_check_sync, cfg)
-    return {}, []
+    try:
+        connector_cls = connector_class_registry.get(cid)
+    except ConnectorNotFoundError:
+        return {}, []
+
+    connector = connector_cls()
+    result = await connector.test_connection(cfg)
+    details = dict(getattr(result, "details", None) or {})
+    warnings = details.get("warnings") if isinstance(details.get("warnings"), list) else []
+    check: dict[str, Any] = {
+        "ok": bool(getattr(result, "ok", False)),
+        "latency_ms": details.get("latency_ms"),
+        "read_only": details.get("read_only"),
+    }
+    if details.get("error"):
+        check["error"] = details.get("error")
+    elif not bool(getattr(result, "ok", False)):
+        check["error"] = str(getattr(result, "message", "") or "connection_failed")
+    return check, list(warnings)
 
 
 @router.post("/validate", response_model=ConnectorValidateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

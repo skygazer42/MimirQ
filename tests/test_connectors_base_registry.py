@@ -11,6 +11,7 @@ from app.connectors import (
     ConnectorRegistry,
     RawDocument,
 )
+from app.connectors.registry import registry as global_registry
 
 
 @dataclass
@@ -65,3 +66,12 @@ def test_registry_get_missing_raises() -> None:
     registry = ConnectorRegistry()
     with pytest.raises(ConnectorNotFoundError):
         registry.get("missing")
+
+
+def test_db_catalog_connectors_are_registered_in_global_registry() -> None:
+    from app.connectors import db as _db_connectors  # noqa: F401
+
+    mysql_cls = global_registry.get("mysql_catalog")
+    sqlserver_cls = global_registry.get("sqlserver_catalog")
+    assert issubclass(mysql_cls, ConnectorBase)
+    assert issubclass(sqlserver_cls, ConnectorBase)
