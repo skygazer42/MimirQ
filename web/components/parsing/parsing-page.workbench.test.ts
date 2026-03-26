@@ -13,6 +13,7 @@ describe('ParsingPage workbench scaffold', () => {
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-mobile-queue-content.tsx'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-mobile-inspector-content.tsx'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-types.ts'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-library-actions.ts'))).toBe(true)
     expect(src).toContain('WorkbenchScaffold')
     expect(src).toContain('ParsingActiveFilePane')
     expect(src).toContain('ParsingLibraryBrowser')
@@ -31,5 +32,18 @@ describe('ParsingPage workbench scaffold', () => {
     expect(browserSrc).toContain('const isLibraryEmpty =')
     expect(browserSrc).toContain('<FileQueueItem')
     expect(browserSrc).toContain('draggable')
+  })
+
+  it('moves upload and library restore callbacks into the dedicated hook', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
+    const hookSrc = fs.readFileSync(path.resolve(__dirname, 'use-parsing-library-actions.ts'), 'utf8')
+
+    expect(src).toContain('useParsingLibraryActions')
+    expect(src).not.toContain('const addFiles = useCallback(')
+    expect(src).not.toContain('const mountLibraryFileToQueue = useCallback(')
+
+    expect(hookSrc).toContain('export function useParsingLibraryActions(')
+    expect(hookSrc).toContain('const addFiles = useCallback(')
+    expect(hookSrc).toContain('const mountLibraryFileToQueue = useCallback(')
   })
 })

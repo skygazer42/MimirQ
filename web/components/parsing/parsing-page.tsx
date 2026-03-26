@@ -6,20 +6,18 @@ import { FileText, Sparkles, FileStack, Settings2 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PipelineRail, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { Button } from '@/components/ui/button'
-import { documentApi, parsingApi } from '@/lib/api'
+import { parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { detachPromise } from '@/lib/utils'
-import { generateRequestId } from '@/lib/request-id'
 import { ROOT_FOLDER_ID, useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { FileStatus } from '@/components/ui/file-queue-item'
 import { extractMarkdownHeadings } from '@/lib/markdown'
-import { extractZipFiles, isZipFile } from '@/lib/zip'
-import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
-import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
+import { extractBlocksFromMarkdown } from '@/lib/parsing-positions'
+import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP } from '@/lib/upload-extensions'
 import { toast } from 'sonner'
-import { deleteDocContentFromCache, deleteDocSourceFromCache, getDocContentFromCache, getDocSourceFromCache, saveDocSourceToCache } from '@/lib/doc-content-cache'
+import { getDocContentFromCache, getDocSourceFromCache } from '@/lib/doc-content-cache'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { ParsingActiveFilePane } from '@/components/parsing/parsing-active-file-pane'
 import { ParsingLibraryBrowser } from '@/components/parsing/parsing-library-browser'
@@ -29,6 +27,7 @@ import { ParsingMainPanel } from '@/components/parsing/parsing-main-panel'
 import { ParsingMobileInspectorContent } from '@/components/parsing/parsing-mobile-inspector-content'
 import { ParsingMobileQueueContent } from '@/components/parsing/parsing-mobile-queue-content'
 import { ParsingSidebarPane } from '@/components/parsing/parsing-sidebar-pane'
+import { useParsingLibraryActions } from '@/components/parsing/use-parsing-library-actions'
 import type { ParsedFile, ParseFailureDiagnostics, ParseRun } from '@/components/parsing/parsing-types'
 
 // 解析后的文件（扩展版）
@@ -395,459 +394,41 @@ export default function ParsingPage() {
   const activeLibraryFolderName = (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
   const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(activeLibraryFile.status) : null
 
-  const requestUploadToFolder = useCallback(
-    (folderId: string) => {
-      const targetId = folderId || ROOT_FOLDER_ID
-      uploadTargetFolderIdRef.current = targetId
-      setActiveFolderId(targetId)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-        fileInputRef.current.click()
-      }
-    },
-    [setActiveFolderId]
-  )
-
-  const requestUploadFolder = useCallback(
-    (folderId: string) => {
-      const targetId = folderId || ROOT_FOLDER_ID
-      uploadTargetFolderIdRef.current = targetId
-      setActiveFolderId(targetId)
-      if (folderInputRef.current) {
-        folderInputRef.current.value = ''
-        folderInputRef.current.click()
-      }
-    },
-    [setActiveFolderId]
-  )
-
-  // 生成唯一 ID
-  const generateId = useCallback(() => generateRequestId(), [])
-
-  const requestRebindForLibraryFile = useCallback((libraryId: string, autoParse: boolean) => {
-    const id = (libraryId || '').trim()
-    if (!id) return
-    rebindTargetRef.current = { libraryId: id, autoParse }
-    if (rebindInputRef.current) {
-      rebindInputRef.current.value = ''
-      rebindInputRef.current.click()
-    }
-  }, [])
-
-  const mountLibraryFileToQueue = useCallback(
-    async (
-      libraryId: string,
-      sourceFile: File,
-      options: { autoParse?: boolean; select?: boolean } = {}
-    ) => {
-      const id = (libraryId || '').trim()
-      if (!id) return null
-      if (!sourceFile) return null
-
-      const libEntry = libraryFiles.find((f) => f.id === id) || null
-      if (!libEntry) {
-        toast.error('文档库条目不存在，无法恢复/重新绑定')
-        return null
-      }
-
-      const preferredBackend = libEntry.parserBackend || parserBackend
-      const resolved = resolveParserBackendForFilename(sourceFile.name, preferredBackend)
-      const backend = resolved.backend
-      const label = getParserLabel(backend)
-      const folderId = libEntry.folderId || ROOT_FOLDER_ID
-      const parsedAtTs = Date.parse(libEntry.parsedAt || '')
-	      const createdAt = Number.isFinite(parsedAtTs) ? parsedAtTs : Date.now()
-	      const queueId = generateId()
-	      const autoParse = Boolean(options.autoParse)
-	      const select = options.select ?? true
-	      const restoredDurationSec =
-	        !autoParse && Number.isFinite(Number(libEntry.durationSec)) ? Number(libEntry.durationSec) : undefined
-
-      const libStatus = (libEntry.status || 'parsed') as FileStatus
-
-	      let status: FileStatus
-      let errorMessage: string | undefined
-      let markdownContent: string | null = null
-      let runs: ParseRun[] | undefined
-      let activeRunId: string | undefined
-      let stats: ParsedFile['stats'] | undefined
-      let blocks: ParsingBlock[] = []
-
-      if (autoParse) {
-        status = 'pending'
-        errorMessage = undefined
-        updateParsedFile(id, {
-          filename: sourceFile.name,
-          fileType: sourceFile.name.split('.').pop()?.toLowerCase() || '',
-          fileSize: sourceFile.size,
-          folderId,
-          status: 'pending',
-          error: undefined,
-          parser: label,
-          parserBackend: backend,
-        })
-      } else if (libStatus === 'parsed') {
-        try {
-          const cached = await getDocContentFromCache(id)
-          const raw = (cached?.originalMarkdownContent || cached?.markdownContent || libEntry.markdownContent || '').trim()
-          if (raw) {
-            const parsed = extractBlocksFromMarkdown(raw)
-            markdownContent = parsed.cleanedMarkdown
-            blocks = parsed.blocks.filter((block) => (block.positions || []).length > 0)
-            const runId = `restored-${Date.now()}`
-            runs = [
-              {
-                id: runId,
-                parserBackend: backend,
-                parserLabel: label,
-                rawMarkdown: raw,
-                cleanedMarkdown: markdownContent,
-                blocks,
-                createdAt: Date.now(),
-              },
-            ]
-            activeRunId = runId
-            stats = {
-              charCount: markdownContent.length,
-              lineCount: markdownContent.split('\n').length,
-              headingCount: countMarkdownHeadings(markdownContent),
-              tableCount: (markdownContent.match(/\|.*\|/g) || []).length > 0
-                ? (markdownContent.match(/^\|/gm) || []).length / 2
-                : 0,
-              imageCount: (markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
-              blockCount: blocks.length,
-            }
-          }
-        } catch {
-          // ignore
-        }
-        status = markdownContent ? 'parsed' : 'pending'
-      } else if (libStatus === 'error') {
-        status = 'error'
-        errorMessage = (libEntry.error || '').trim() || '解析失败'
-      } else if (libStatus === 'parsing') {
-        status = 'error'
-        errorMessage = '上次解析被中断，请重试'
-        updateParsedFile(id, { status: 'error', error: errorMessage })
-      } else {
-        status = 'pending'
-      }
-
-	      const queueItem: ParsedFile = {
-	        id: queueId,
-	        file: sourceFile,
-	        folderId,
-	        name: sourceFile.name,
-	        size: sourceFile.size,
-	        status,
-	        duration: restoredDurationSec,
-	        markdownContent,
-	        error: errorMessage,
-	        parserBackend: backend,
-	        parserLabel: label,
-	        libraryId: id,
-        createdAt,
-        runs,
-        activeRunId,
-        stats,
-      }
-
-      setFiles((prev) => [...prev.filter((f) => f.libraryId !== id), queueItem])
-      if (select) {
-        setActiveFileId(queueId)
-        setActiveLibraryFileId(null)
-        setActiveBlockId(null)
-        setHoveredBlockId(null)
-        setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
-      }
-
-      if (autoParse) setAutoParseFileId(queueId)
-      return queueId
-    },
-    [generateId, libraryFiles, parserBackend, updateParsedFile]
-  )
-
-  const handleRebindFileSelect = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const target = rebindTargetRef.current
-      rebindTargetRef.current = null
-
-      const selectedFile = e.target.files?.[0] || null
-      e.target.value = ''
-
-      if (!target?.libraryId) return
-      if (!selectedFile) return
-
-      try {
-        await saveDocSourceToCache({ id: target.libraryId, file: selectedFile })
-        setActiveLibrarySourceStatus('available')
-      } catch (err) {
-        console.warn('Failed to cache source file:', err)
-        toast.warning('源文件本地缓存失败：刷新后需要预览时将从服务器重新下载')
-      }
-
-      detachPromise(mountLibraryFileToQueue(target.libraryId, selectedFile, { autoParse: target.autoParse }))
-    },
-    [mountLibraryFileToQueue]
-  )
-
-  const restoreLibraryFileFromCache = useCallback(
-    async (libraryId: string, autoParse: boolean) => {
-      const id = (libraryId || '').trim()
-      if (!id) return
-      const existing = filesRef.current.find((f) => f.libraryId === id) || null
-      if (existing) {
-        setActiveFileId(existing.id)
-        setActiveLibraryFileId(null)
-        if (autoParse) setAutoParseFileId(existing.id)
-        return
-      }
-
-      try {
-        const nameFromLibrary = libraryFiles.find((f) => f.id === id)?.filename || 'document'
-
-        const cached = await getDocSourceFromCache(id).catch(() => null)
-        if (cached?.blob) {
-          const file = new File([cached.blob], cached.filename || nameFromLibrary, {
-            type: cached.mimeType || cached.blob.type || 'application/octet-stream',
-            lastModified: cached.lastModified || Date.now(),
-          })
-          setActiveLibrarySourceStatus('available')
-          detachPromise(mountLibraryFileToQueue(id, file, { autoParse }))
-          return
-        }
-
-        const blob = await documentApi.download(id, { inline: true })
-        const file = new File([blob], nameFromLibrary, {
-          type: (blob as any)?.type || 'application/octet-stream',
-          lastModified: Date.now(),
-        })
-        setActiveLibrarySourceStatus('available')
-        detachPromise(mountLibraryFileToQueue(id, file, { autoParse }))
-      } catch (err) {
-        console.warn('Failed to restore source file:', err)
-        setActiveLibrarySourceStatus('missing')
-        toast.error('从服务器下载源文件失败，请稍后重试')
-      }
-    },
-    [libraryFiles, mountLibraryFileToQueue]
-  )
-
-  // 添加文件（支持 .zip 批量解压，支持文件夹上传）
-  const addFiles = useCallback(
-    async (incomingFiles: File[], baseFolderIdOverride?: string) => {
-      const baseFolderId = baseFolderIdOverride || activeFolderId || ROOT_FOLDER_ID
-      const now = Date.now()
-
-      const folderIdByKey = new Map<string, string>()
-      // Pre-populate with existing folders
-      for (const f of folders) {
-        folderIdByKey.set(`${f.parentId || ROOT_FOLDER_ID}::${f.name}`, f.id)
-      }
-
-      const getOrCreateFolder = (parentId: string, name: string) => {
-        const trimmed = name.trim()
-        if (!trimmed) return parentId
-        const key = `${parentId}::${trimmed}`
-        const cached = folderIdByKey.get(key)
-        if (cached) return cached
-
-        // Check if exists in store but not in local map
-        const existing = folders.find((f) => (f.parentId || ROOT_FOLDER_ID) === parentId && f.name === trimmed)
-        if (existing) {
-          folderIdByKey.set(key, existing.id)
-          return existing.id
-        }
-
-        const newId = createFolder(trimmed, parentId)
-        folderIdByKey.set(key, newId)
-        return newId
-      }
-
-      const queued: ParsedFile[] = []
-      let skipped = 0
-      let added = 0
-
-      for (const file of incomingFiles) {
-        // Check for webkitRelativePath (Folder upload)
-        const relativePath = (file as any).webkitRelativePath as string
-        if (relativePath) {
-          const parts = relativePath.split('/')
-          const filename = parts.pop() // Remove filename
-          // parts now contains the folder path relative to the upload root
-          // For folder upload, the first part is the folder name itself.
-          // E.g. "MyDocs/sub/file.txt".
-
-          if (!filename) continue
-          const ext = filename.split('.').pop()?.toLowerCase() || ''
-          if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
-            skipped += 1
-            continue
-          }
-
-          let currentFolderId = baseFolderId
-          // Create folders recursively
-          for (const segment of parts) {
-            currentFolderId = getOrCreateFolder(currentFolderId, segment)
-          }
-
-          queued.push({
-            id: generateId(),
-            file,
-            folderId: currentFolderId,
-            name: filename,
-            sourcePath: relativePath,
-            size: file.size,
-            status: 'pending' as FileStatus,
-            markdownContent: null,
-            error: undefined,
-            parserBackend: resolveParserBackendForFilename(filename, parserBackend).backend,
-            parserLabel: getParserLabel(resolveParserBackendForFilename(filename, parserBackend).backend),
-            createdAt: now,
-          })
-          added += 1
-          continue
-        }
-
-        // Regular file or ZIP
-        if (isZipFile(file)) {
-          let extractedCount = 0
-          let addedInZip = 0
-          let skippedInZip = 0
-          try {
-            const extracted = await extractZipFiles(file)
-            extractedCount = extracted.length
-            for (const item of extracted) {
-              const path = item.path
-              const parts = path.split('/').filter(Boolean)
-              const filename = parts.pop()
-              if (!filename) continue
-
-              const ext = filename.split('.').pop()?.toLowerCase() || ''
-              if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
-                skipped += 1
-                skippedInZip += 1
-                continue
-              }
-
-              let folderId = baseFolderId
-              for (const segment of parts) {
-                folderId = getOrCreateFolder(folderId, segment)
-              }
-
-              queued.push({
-                id: generateId(),
-                file: item.file,
-                folderId,
-                name: item.file.name,
-                sourcePath: path,
-                size: item.file.size,
-                status: 'pending' as FileStatus,
-                markdownContent: null,
-                error: undefined,
-                parserBackend: resolveParserBackendForFilename(filename, parserBackend).backend,
-                parserLabel: getParserLabel(resolveParserBackendForFilename(filename, parserBackend).backend),
-                createdAt: now,
-              })
-              added += 1
-              addedInZip += 1
-            }
-          } catch (e) {
-            console.error('Failed to extract zip:', e)
-            toast.error(`ZIP 解压失败：${file.name}`)
-          }
-
-          if (addedInZip === 0) {
-            toast.warning(
-              extractedCount === 0
-                ? `ZIP 中未找到文件：${file.name}`
-                : `ZIP 中没有可解析文件：${file.name}`
-            )
-          } else {
-            toast.success(
-              skippedInZip > 0
-                ? `已从 ZIP 添加 ${addedInZip} 个文件（跳过 ${skippedInZip} 个）`
-                : `已从 ZIP 添加 ${addedInZip} 个文件`
-            )
-          }
-          continue
-        }
-
-        const ext = file.name.split('.').pop()?.toLowerCase() || ''
-        if (!ZIP_ALLOWED_EXTENSIONS.has(ext)) {
-          skipped += 1
-          continue
-        }
-
-        const resolvedParser = resolveParserBackendForFilename(file.name, parserBackend)
-        queued.push({
-          id: generateId(),
-          file,
-          folderId: baseFolderId,
-          name: file.name,
-          size: file.size,
-          status: 'pending' as FileStatus,
-          markdownContent: null,
-          error: undefined,
-          parserBackend: resolvedParser.backend,
-          parserLabel: getParserLabel(resolvedParser.backend),
-          createdAt: now,
-        })
-        added += 1
-      }
-
-      if (queued.length === 0) {
-        if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
-        return
-      }
-
-      // Enterprise persistence: upload sources to backend immediately so restarts keep the library.
-      const queuedWithLibrary: ParsedFile[] = []
-      let uploadFailed = 0
-
-      for (const q of queued) {
-        try {
-          const doc = await parsingApi.upload(q.file, { parser_backend: q.parserBackend })
-          const libId = String(doc.id || '').trim()
-          if (!libId) throw new Error('Missing document id from backend')
-
-          const requestedBackend = String((doc.metadata as any)?.parser_backend_requested || q.parserBackend || 'auto')
-
-          upsertParsedFile({
-            id: libId,
-            filename: doc.filename || q.name,
-            fileType: doc.file_type || q.name.split('.').pop()?.toLowerCase() || '',
-            fileSize: Number(doc.file_size || q.size),
-            markdownContent: '',
-            originalMarkdownContent: '',
-            parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
-            parser: getParserLabel(requestedBackend),
-            parserBackend: requestedBackend,
-            folderId: q.folderId,
-            status: mapBackendStatusToLibraryStatus(doc.status),
-            error: doc.error_message || undefined,
-          })
-
-          queuedWithLibrary.push({ ...q, libraryId: libId })
-        } catch (err: any) {
-          uploadFailed += 1
-          queuedWithLibrary.push({
-            ...q,
-            status: 'error' as FileStatus,
-            error: formatApiError(err, '上传失败'),
-          })
-        }
-      }
-
-      setFiles((prev) => [...prev, ...queuedWithLibrary])
-      setActiveFileId((prev) => prev ?? queuedWithLibrary[0].id)
-
-      if (added > 0) toast.success(`已加入队列：${added} 个文件`)
-      if (uploadFailed > 0) toast.warning(`有 ${uploadFailed} 个文件上传失败（可稍后重试）`)
-      if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
-    },
-    [parserBackend, activeFolderId, folders, createFolder, generateId, mapBackendStatusToLibraryStatus, upsertParsedFile]
-  )
+  const {
+    addFiles,
+    handleRebindFileSelect,
+    mountLibraryFileToQueue,
+    removeLibraryCaches,
+    requestRebindForLibraryFile,
+    requestUploadFolder,
+    requestUploadToFolder,
+    restoreLibraryFileFromCache,
+  } = useParsingLibraryActions({
+    activeFolderId,
+    countMarkdownHeadings,
+    createFolder,
+    fileInputRef,
+    filesRef,
+    folderInputRef,
+    folders,
+    libraryFiles,
+    mapBackendStatusToLibraryStatus,
+    parserBackend,
+    rebindInputRef,
+    rebindTargetRef,
+    setActiveBlockId,
+    setActiveFileId,
+    setActiveFolderId,
+    setActiveLibraryFileId,
+    setActiveLibrarySourceStatus,
+    setAutoParseFileId,
+    setFiles,
+    setHoveredBlockId,
+    setRightPanelMode,
+    updateParsedFile,
+    uploadTargetFolderIdRef,
+    upsertParsedFile,
+  })
 
   const currentFolderId = activeFolderId || ROOT_FOLDER_ID
 
@@ -974,8 +555,7 @@ export default function ParsingPage() {
         }
       })())
       removeParsedFile(libId)
-      detachPromise(deleteDocContentFromCache(libId))
-      detachPromise(deleteDocSourceFromCache(libId))
+      removeLibraryCaches(libId)
       if (activeLibraryFileId === libId) setActiveLibraryFileId(null)
     }
   }
