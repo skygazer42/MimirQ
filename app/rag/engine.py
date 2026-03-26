@@ -417,6 +417,33 @@ Requirements:
 
         return self.models["default"], "default", "fallback to default"
 
+    def _route_retrieval_params(self, complexity_score: float) -> dict[str, Any]:
+        """Apply coarse retrieval overrides for simple vs. complex queries."""
+        if not bool(getattr(settings, "ADAPTIVE_RETRIEVAL_ROUTING_ENABLED", False)):
+            return {}
+
+        simple_threshold = float(getattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD", 80.0) or 80.0)
+        complex_threshold = float(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD", 200.0) or 200.0)
+
+        if complexity_score < simple_threshold:
+            return {
+                "top_k": max(1, int(getattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K", 10) or 10)),
+                "enable_multi_query": False,
+            }
+
+        if complexity_score >= complex_threshold:
+            return {
+                "top_k": max(1, int(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K", 40) or 40)),
+                "enable_multi_query": True,
+                "multi_query_count": max(
+                    1,
+                    int(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT", 5) or 5),
+                ),
+                "retrieval_profile": "recall50",
+            }
+
+        return {}
+
     @staticmethod
     def _doc_key(doc: Document) -> str:
         meta = doc.metadata or {}
@@ -1021,6 +1048,23 @@ Requirements:
                 evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
             )
             retrieval_contract_mode_effective = str(retrieval_contract_policy.get("mode") or "").strip()
+            complexity_score = self._score_question_complexity(question, history)
+            adaptive_retrieval_overrides = self._route_retrieval_params(complexity_score)
+            adaptive_retrieval_used = bool(adaptive_retrieval_overrides)
+            if adaptive_retrieval_overrides:
+                if adaptive_retrieval_overrides.get("top_k") is not None:
+                    top_k = max(1, int(adaptive_retrieval_overrides.get("top_k") or top_k or 1))
+                if adaptive_retrieval_overrides.get("enable_multi_query") is not None:
+                    enable_multi_query = bool(adaptive_retrieval_overrides.get("enable_multi_query"))
+                if adaptive_retrieval_overrides.get("multi_query_count") is not None:
+                    multi_query_count = max(0, int(adaptive_retrieval_overrides.get("multi_query_count") or 0))
+                if adaptive_retrieval_overrides.get("retrieval_profile") is not None:
+                    retrieval_profile = (
+                        str(adaptive_retrieval_overrides.get("retrieval_profile") or "").strip() or retrieval_profile
+                    )
+                    profile_norm = str(retrieval_profile or "").strip().lower()
+                    if is_recall_first_profile(profile_norm):
+                        score_threshold_used = 0.0
 
             # Step 0.5: Query Expansion (Multi-Query / HyDE, optional).
             alias_elapsed = 0.0
@@ -2075,6 +2119,9 @@ Requirements:
                             "intent_router_enabled": bool(intent_router_meta.get("enabled")),
                             "intent_router_used": bool(intent_router_meta.get("used")),
                             "intent_router": intent_router_meta,
+                            "complexity_score": round(float(complexity_score), 3),
+                            "adaptive_retrieval_used": bool(adaptive_retrieval_used),
+                            "adaptive_retrieval_overrides": dict(adaptive_retrieval_overrides),
                             "vector_backend": settings.VECTOR_BACKEND,
                             "model_route": model_route,
                             "top_k": top_k,
@@ -3169,6 +3216,9 @@ Requirements:
                         "intent_router_enabled": bool(intent_router_meta.get("enabled")),
                         "intent_router_used": bool(intent_router_meta.get("used")),
                         "intent_router": intent_router_meta,
+                        "complexity_score": round(float(complexity_score), 3),
+                        "adaptive_retrieval_used": bool(adaptive_retrieval_used),
+                        "adaptive_retrieval_overrides": dict(adaptive_retrieval_overrides),
                         "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
                         "retrieval_rrf_k": settings.RETRIEVAL_RRF_K if settings.RETRIEVAL_FUSION_STRATEGY == "rrf" else None,
                         "retrieval_dedup_enabled": bool(settings.RETRIEVAL_DEDUP_ENABLED),

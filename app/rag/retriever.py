@@ -3224,6 +3224,8 @@ class HybridRetriever(BaseRetriever):
                 "model_used": None,
                 "error": None,
                 "skip_reason": None,
+                "skip_top_score": None,
+                "skip_score_gap": None,
             }
             provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
             rerank_meta["provider"] = provider
@@ -3236,81 +3238,101 @@ class HybridRetriever(BaseRetriever):
                 final_k = int(requested_k) if requested_k is not None else int(top_k or 0)
                 final_k = max(1, final_k)
 
-                reranker = get_reranker(provider)
                 candidates_n = int(self.reranker_top_n or settings.RERANKER_TOP_N or 20)
                 candidates_n = max(candidates_n, final_k)
                 candidates_n = min(candidates_n, len(merged_results))
                 rerank_meta["candidates_n"] = int(candidates_n)
 
-                candidates: list[RerankCandidate] = []
-                id_to_doc: dict[str, dict[str, Any]] = {}
-                for doc in merged_results[:candidates_n]:
-                    rid = self._result_key(doc)
-                    text = (doc.get("content") or "").strip()
-                    if not rid or not text:
-                        continue
-                    meta = dict(doc.get("metadata") or {})
-                    meta["score"] = float(doc.get("score", 0.0) or 0.0)
-                    candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
-                    id_to_doc[rid] = doc
-
-                if not candidates:
-                    rerank_meta["skip_reason"] = "no_candidates"
-                else:
+                conditional_rerank_enabled = bool(getattr(settings, "RERANK_CONDITIONAL_ENABLED", False))
+                top_score = float(merged_results[0].get("score", 0.0) or 0.0)
+                second_score = float(merged_results[1].get("score", 0.0) or 0.0) if len(merged_results) > 1 else 0.0
+                score_gap = top_score - second_score
+                rerank_meta["skip_top_score"] = round(float(top_score), 6)
+                rerank_meta["skip_score_gap"] = round(float(score_gap), 6)
+                skip_threshold = float(getattr(settings, "RERANK_SKIP_THRESHOLD", 0.85) or 0.85)
+                skip_gap = float(getattr(settings, "RERANK_SKIP_GAP", 0.15) or 0.15)
+                if conditional_rerank_enabled and top_score >= skip_threshold and score_gap >= skip_gap:
+                    rerank_meta["skip_reason"] = "high_confidence"
                     try:
-                        start = time.time()
-                        result = reranker.rerank(
-                            query=query,
-                            candidates=candidates,
-                            top_n=candidates_n,
-                        )
-                        rerank_elapsed = result.elapsed_sec or (time.time() - start)
-                        rerank_provider = result.provider or provider
+                        if isinstance(self._last_channel_metrics, dict):
+                            self._last_channel_metrics["rerank"] = rerank_meta
+                    except Exception:
+                        pass
+                    if isinstance(self._last_channel_metrics, dict):
+                        self._last_channel_metrics["merged_post_rerank"] = len(merged_results or [])
+                    merged_results = merged_results
+                else:
+                    reranker = get_reranker(provider)
 
-                        rerank_meta["used"] = True
-                        rerank_meta["elapsed_sec"] = round(float(rerank_elapsed), 3)
-                        rerank_meta["model_used"] = result.model_used
-                        rerank_meta["provider"] = rerank_provider
+                    candidates: list[RerankCandidate] = []
+                    id_to_doc: dict[str, dict[str, Any]] = {}
+                    for doc in merged_results[:candidates_n]:
+                        rid = self._result_key(doc)
+                        text = (doc.get("content") or "").strip()
+                        if not rid or not text:
+                            continue
+                        meta = dict(doc.get("metadata") or {})
+                        meta["score"] = float(doc.get("score", 0.0) or 0.0)
+                        candidates.append(RerankCandidate(id=rid, text=text, metadata=meta))
+                        id_to_doc[rid] = doc
 
-                        ordered = []
-                        used: set[str] = set()
-                        for rid in result.ordered_ids:
-                            d = id_to_doc.get(rid)
-                            if not d or rid in used:
-                                continue
-                            used.add(rid)
-                            new_doc = dict(d)
-                            new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
-                            if rid in result.score_map:
-                                new_doc["rerank_score"] = float(result.score_map[rid])
-                                new_doc["score"] = float(result.score_map[rid])
-                            new_doc["reranker_provider"] = rerank_provider
-                            new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
-                            new_doc["rerank_model_used"] = result.model_used
-                            ordered.append(new_doc)
+                    if not candidates:
+                        rerank_meta["skip_reason"] = "no_candidates"
+                    else:
+                        try:
+                            start = time.time()
+                            result = reranker.rerank(
+                                query=query,
+                                candidates=candidates,
+                                top_n=candidates_n,
+                            )
+                            rerank_elapsed = result.elapsed_sec or (time.time() - start)
+                            rerank_provider = result.provider or provider
 
-                        # Append candidates not returned by reranker (maintain original order)
-                        for doc in merged_results[:candidates_n]:
-                            rid = self._result_key(doc)
-                            if rid in used:
-                                continue
-                            new_doc = dict(doc)
-                            new_doc.setdefault("reranker_provider", rerank_provider)
-                            new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
-                            new_doc.setdefault("rerank_model_used", result.model_used)
-                            ordered.append(new_doc)
+                            rerank_meta["used"] = True
+                            rerank_meta["elapsed_sec"] = round(float(rerank_elapsed), 3)
+                            rerank_meta["model_used"] = result.model_used
+                            rerank_meta["provider"] = rerank_provider
 
-                        merged_results = ordered + merged_results[candidates_n:]
-                    except Exception as exc:
-                        rerank_meta["used"] = False
-                        rerank_meta["error"] = str(exc)[:200]
-                        rerank_meta["skip_reason"] = "error"
-                        logger.warning("Reranker failed (%s): %s", provider, exc)
-                        for doc in merged_results[:candidates_n]:
-                            meta = dict(doc.get("metadata") or {})
-                            meta.setdefault("reranker_provider", provider)
-                            meta.setdefault("reranker_error", str(exc)[:200])
-                            doc["metadata"] = meta
+                            ordered = []
+                            used: set[str] = set()
+                            for rid in result.ordered_ids:
+                                d = id_to_doc.get(rid)
+                                if not d or rid in used:
+                                    continue
+                                used.add(rid)
+                                new_doc = dict(d)
+                                new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
+                                if rid in result.score_map:
+                                    new_doc["rerank_score"] = float(result.score_map[rid])
+                                    new_doc["score"] = float(result.score_map[rid])
+                                new_doc["reranker_provider"] = rerank_provider
+                                new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
+                                new_doc["rerank_model_used"] = result.model_used
+                                ordered.append(new_doc)
+
+                            # Append candidates not returned by reranker (maintain original order)
+                            for doc in merged_results[:candidates_n]:
+                                rid = self._result_key(doc)
+                                if rid in used:
+                                    continue
+                                new_doc = dict(doc)
+                                new_doc.setdefault("reranker_provider", rerank_provider)
+                                new_doc.setdefault("rerank_elapsed_sec", round(float(rerank_elapsed), 3))
+                                new_doc.setdefault("rerank_model_used", result.model_used)
+                                ordered.append(new_doc)
+
+                            merged_results = ordered + merged_results[candidates_n:]
+                        except Exception as exc:
+                            rerank_meta["used"] = False
+                            rerank_meta["error"] = str(exc)[:200]
+                            rerank_meta["skip_reason"] = "error"
+                            logger.warning("Reranker failed (%s): %s", provider, exc)
+                            for doc in merged_results[:candidates_n]:
+                                meta = dict(doc.get("metadata") or {})
+                                meta.setdefault("reranker_provider", provider)
+                                meta.setdefault("reranker_error", str(exc)[:200])
+                                doc["metadata"] = meta
 
             try:
                 if isinstance(self._last_channel_metrics, dict):
