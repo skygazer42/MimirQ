@@ -58,6 +58,56 @@ class _DummyClient(BaseLLMClient):
         return _gen()
 
 
+class _ScriptedStreamClient(BaseLLMClient):
+    def __init__(
+        self,
+        *,
+        chunks: list[str] | None = None,
+        exc_before_first_chunk: Exception | None = None,
+        exc_after_chunks: Exception | None = None,
+    ) -> None:
+        self._chunks = list(chunks or [])
+        self._exc_before_first_chunk = exc_before_first_chunk
+        self._exc_after_chunks = exc_after_chunks
+
+    async def chat(
+        self,
+        messages: list[LLMMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        **kwargs: object,
+    ) -> LLMResponse:
+        _ = messages
+        _ = temperature
+        _ = max_tokens
+        _ = kwargs
+        return LLMResponse(content="unused")
+
+    def chat_stream(
+        self,
+        messages: list[LLMMessage],
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        include_reasoning: bool = False,
+        **kwargs: object,
+    ):
+        _ = messages
+        _ = temperature
+        _ = max_tokens
+        _ = include_reasoning
+        _ = kwargs
+
+        async def _gen():
+            if self._exc_before_first_chunk is not None:
+                raise self._exc_before_first_chunk
+            for chunk in self._chunks:
+                yield chunk, None
+            if self._exc_after_chunks is not None:
+                raise self._exc_after_chunks
+
+        return _gen()
+
+
 def test_parse_fallback_specs_supports_json_and_csv() -> None:
     from app.rag.llm.factory import _parse_fallback_specs
 
@@ -178,3 +228,35 @@ def test_prompt_cache_is_skipped_for_non_anthropic_or_disabled(monkeypatch: pyte
 
     converted = client._convert_messages([LLMMessage(role=LLMRole.USER, content="hello")])
     assert converted[0].content == "hello"
+
+
+@pytest.mark.asyncio
+async def test_fallback_client_chat_stream_retries_before_first_chunk() -> None:
+    timeout_exc = httpx.TimeoutException("timeout")
+    chain = FallbackLLMClient(
+        [
+            _ScriptedStreamClient(exc_before_first_chunk=timeout_exc),
+            _ScriptedStreamClient(chunks=["from-backup"]),
+        ]
+    )
+
+    chunks = [chunk async for chunk in chain.chat_stream([LLMMessage(role=LLMRole.USER, content="hello")])]
+    assert chunks == [("from-backup", None)]
+
+
+@pytest.mark.asyncio
+async def test_fallback_client_chat_stream_raises_after_partial_output() -> None:
+    timeout_exc = httpx.TimeoutException("timeout")
+    chain = FallbackLLMClient(
+        [
+            _ScriptedStreamClient(chunks=["partial"], exc_after_chunks=timeout_exc),
+            _ScriptedStreamClient(chunks=["should-not-appear"]),
+        ]
+    )
+
+    chunks: list[tuple[str, str | None]] = []
+    with pytest.raises(httpx.TimeoutException, match="timeout"):
+        async for chunk in chain.chat_stream([LLMMessage(role=LLMRole.USER, content="hello")]):
+            chunks.append(chunk)
+
+    assert chunks == [("partial", None)]

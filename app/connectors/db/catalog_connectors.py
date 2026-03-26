@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import time
 from collections.abc import AsyncIterator
@@ -83,7 +84,10 @@ class MySQLCatalogConnector(_BaseCatalogConnector):
         return "mysql_catalog"
 
     async def test_connection(self, config: dict[str, Any] | Any) -> ConnectionTestResult:
-        cfg = _extract_cfg(config)
+        # PyMySQL connect/cursor APIs are synchronous, so keep them off the event loop.
+        return await asyncio.to_thread(self._test_connection_sync, _extract_cfg(config))
+
+    def _test_connection_sync(self, cfg: dict[str, Any]) -> ConnectionTestResult:
         warnings: list[dict[str, Any]] = []
         details: dict[str, Any] = {"latency_ms": None, "read_only": None}
         try:
@@ -144,7 +148,10 @@ class SQLServerCatalogConnector(_BaseCatalogConnector):
         return "sqlserver_catalog"
 
     async def test_connection(self, config: dict[str, Any] | Any) -> ConnectionTestResult:
-        cfg = _extract_cfg(config)
+        # pyodbc connect/cursor APIs are synchronous, so keep them off the event loop.
+        return await asyncio.to_thread(self._test_connection_sync, _extract_cfg(config))
+
+    def _test_connection_sync(self, cfg: dict[str, Any]) -> ConnectionTestResult:
         warnings: list[dict[str, Any]] = []
         details: dict[str, Any] = {"latency_ms": None, "read_only": None}
         try:
@@ -209,4 +216,3 @@ class SQLServerCatalogConnector(_BaseCatalogConnector):
 
         details["warnings"] = warnings
         return ConnectionTestResult(ok=True, message="connected", details=details)
-
