@@ -16,8 +16,12 @@ from app.rag.agents.prebuilt import (
     create_search_tool,
     tools_condition,
 )
+from app.rag.agents.rag_agent import AgenticPlanStep, AgenticRAGRunner, get_agentic_runner
 
 __all__ = [
+    "AgenticPlanStep",
+    "AgenticRAGRunner",
+    "get_agentic_runner",
     "create_rag_agent",
     "create_rag_tool_node",
     "create_retriever_tool",

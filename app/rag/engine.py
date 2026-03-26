@@ -178,6 +178,12 @@ def _resolve_stream_chat_inputs(
     )
 
 
+def get_agentic_runner(*, engine: "RAGEngine | None" = None) -> Any:
+    from app.rag.agents.rag_agent import get_agentic_runner as _get_agentic_runner
+
+    return _get_agentic_runner(engine=engine)
+
+
 class RAGEngine:
     """RAG Conversation Engine"""
 
@@ -812,6 +818,68 @@ Requirements:
                 }
 
         try:
+            complexity_score = self._score_question_complexity(question, history)
+            agentic_threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
+            if bool(getattr(settings, "RAG_AGENTIC_MODE_ENABLED", False)) and complexity_score >= agentic_threshold:
+                runner = get_agentic_runner(engine=self)
+                async for event in runner.stream(
+                    question=question,
+                    history=history,
+                    conversation_id=conversation_id,
+                    document_ids=document_ids,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    dataset_id=dataset_id,
+                    top_k=top_k,
+                    score_threshold=score_threshold,
+                    retrieval_mode=retrieval_mode,
+                    retrieval_profile=retrieval_profile,
+                    retrieval_contract_mode=retrieval_contract_mode,
+                    must_recall=must_recall,
+                    must_recall_expected_source_keys=must_recall_expected_source_keys,
+                    must_recall_required_anchor_fields=must_recall_required_anchor_fields,
+                    intent_router=intent_router,
+                    intent_router_policy=intent_router_policy,
+                    enable_query_alias_expansion=enable_query_alias_expansion,
+                    query_aliases=query_aliases,
+                    query_alias_max_queries=query_alias_max_queries,
+                    enable_multi_query=enable_multi_query,
+                    multi_query_count=multi_query_count,
+                    multi_query_temperature=multi_query_temperature,
+                    multi_query_max_chars=multi_query_max_chars,
+                    enable_hierarchy_recall=enable_hierarchy_recall,
+                    hierarchy_family_collapse=hierarchy_family_collapse,
+                    hierarchy_family_aggregation=hierarchy_family_aggregation,
+                    hierarchy_tree_dedup=hierarchy_tree_dedup,
+                    hierarchy_parent_depth=hierarchy_parent_depth,
+                    hierarchy_sibling_window=hierarchy_sibling_window,
+                    hierarchy_overfetch_factor=hierarchy_overfetch_factor,
+                    alpha=alpha,
+                    fusion_strategy=fusion_strategy,
+                    fusion_budgets=fusion_budgets,
+                    fusion_min_scores=fusion_min_scores,
+                    fusion_weights=fusion_weights,
+                    enable_weight_rerank=enable_weight_rerank,
+                    vector_weight=vector_weight,
+                    keyword_weight=keyword_weight,
+                    mmr_lambda=mmr_lambda,
+                    enable_reranker=enable_reranker,
+                    reranker_provider=reranker_provider,
+                    reranker_top_n=reranker_top_n,
+                    metadata_filter=metadata_filter,
+                    structured_output=structured_output,
+                    structured_preset=structured_preset,
+                    visible_evidence_only=visible_evidence_only,
+                    prompt_template_id=prompt_template_id,
+                    prompt_template_key=prompt_template_key,
+                    prompt_ab_experiment_key=prompt_ab_experiment_key,
+                    ab_user_key=ab_user_key,
+                    request_id=request_id,
+                    db=db,
+                ):
+                    yield event
+                return
+
             llm, model_route, routing_reason = self._select_llm(question, history)
 
             # Load prompt template (id / key latest / A/B experiment)
@@ -1173,7 +1241,6 @@ Requirements:
                 evidence_span_strict_setting=bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False)),
             )
             retrieval_contract_mode_effective = str(retrieval_contract_policy.get("mode") or "").strip()
-            complexity_score = self._score_question_complexity(question, history)
             adaptive_retrieval_overrides = self._route_retrieval_params(complexity_score)
             adaptive_retrieval_used = bool(adaptive_retrieval_overrides)
             if adaptive_retrieval_overrides:
