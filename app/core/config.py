@@ -235,6 +235,12 @@ class Settings(BaseSettings):
     ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD: float = 200.0
     ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K: int = 40
     ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT: int = 5
+    INPUT_GUARD_ENABLED: bool = False
+    INPUT_GUARD_MODE: str = "warn"  # warn | block
+    INPUT_GUARD_SCORE_THRESHOLD: float = 0.7
+    INPUT_GUARD_WARN_THRESHOLD: float = 0.35
+    INPUT_GUARD_LOG_BLOCKED: bool = True
+    OUTPUT_GUARD_ENABLED: bool = False
     LLM_TEMPERATURE: float = 0.7
     LLM_TIMEOUT: int = 60
     LLM_MAX_RETRIES: int = 3
@@ -1322,6 +1328,8 @@ class Settings(BaseSettings):
     RAG_CORRECTIVE_SECOND_PASS_PROFILE: str = "recall50"
     RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY: bool = True
     RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT: int = 5
+    RAG_STREAM_STATUS_EVENTS_ENABLED: bool = False
+    RAG_STREAM_RETRIEVAL_PROGRESS_ENABLED: bool = False
     # When enabled, use a deterministic heuristic decomposition fallback when LLM decomposition
     # is unavailable/fails. Keeps "no LLM" deployments usable.
     QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED: bool = True

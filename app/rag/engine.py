@@ -444,6 +444,99 @@ Requirements:
 
         return {}
 
+    async def _generate_multi_queries(
+        self,
+        *,
+        query: str,
+        llm: Any,
+        enabled: bool,
+        count: int,
+        temperature: float,
+        max_chars: int,
+    ) -> tuple[list[str], float, str | None, dict[str, Any]]:
+        if not enabled or count <= 0 or max_chars <= 0 or len(query or "") > max_chars:
+            return [], 0.0, None, {"ok": False, "method": None, "error": None}
+
+        mq_llm = self.models.get("fast") or llm
+        model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
+        parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
+        queries: list[str] = []
+        elapsed = 0.0
+
+        try:
+            mq_chain = self.multi_query_prompt | mq_llm.bind(temperature=temperature) | StrOutputParser()
+            mq_start = time.time()
+            mq_raw = await mq_chain.ainvoke({"query": query, "n": count})
+            elapsed = time.time() - mq_start
+            mq_data, parse_meta = parse_json_from_text(mq_raw, expected="array")
+
+            if isinstance(mq_data, list):
+                seen: set[str] = set()
+                for item in mq_data:
+                    if not isinstance(item, str):
+                        continue
+                    candidate = (item or "").strip().strip('"').strip()
+                    if not candidate or candidate == query or candidate in seen:
+                        continue
+                    if len(candidate) > 400:
+                        candidate = candidate[:400] + "..."
+                    seen.add(candidate)
+                    queries.append(candidate)
+                    if len(queries) >= count:
+                        break
+        except Exception as exc:  # noqa: BLE001
+            elapsed = 0.0
+            parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
+            queries = []
+
+        return queries, elapsed, model_used, parse_meta
+
+    @staticmethod
+    def _build_stream_status_event(
+        *,
+        stage: str,
+        state: str,
+        message: str | None = None,
+        attempt: int | None = None,
+        max_attempts: int | None = None,
+    ) -> dict[str, Any] | None:
+        if not bool(getattr(settings, "RAG_STREAM_STATUS_EVENTS_ENABLED", False)):
+            return None
+
+        data: dict[str, Any] = {"stage": str(stage), "state": str(state)}
+        if message:
+            data["message"] = str(message)
+        if attempt is not None:
+            data["attempt"] = int(attempt)
+        if max_attempts is not None:
+            data["max_attempts"] = int(max_attempts)
+        return {"type": "status", "data": data}
+
+    @staticmethod
+    def _build_retrieval_info_event(
+        *,
+        attempt: int,
+        query_count: int,
+        docs_count: int,
+        citations_count: int,
+        abstain_triggered: bool,
+        retrieval_profile: str | None,
+    ) -> dict[str, Any] | None:
+        if not bool(getattr(settings, "RAG_STREAM_RETRIEVAL_PROGRESS_ENABLED", False)):
+            return None
+
+        return {
+            "type": "retrieval_info",
+            "data": {
+                "attempt": int(attempt),
+                "query_count": int(query_count),
+                "docs_count": int(docs_count),
+                "citations_count": int(citations_count),
+                "abstain_triggered": bool(abstain_triggered),
+                "retrieval_profile": (str(retrieval_profile).strip().lower() or None) if retrieval_profile is not None else None,
+            },
+        }
+
     @staticmethod
     def _doc_key(doc: Document) -> str:
         meta = doc.metadata or {}
@@ -685,6 +778,38 @@ Requirements:
         prompt_ab_experiment_key = prompt_selection.prompt_ab_experiment_key
         rag_config_template = prompt_selection.rag_config_template
         ab_user_key = prompt_selection.ab_user_key
+
+        input_guard_result: dict[str, Any] = {
+            "enabled": bool(getattr(settings, "INPUT_GUARD_ENABLED", False)),
+            "action": "allow",
+            "score": 0.0,
+            "matched_rules": [],
+        }
+
+        if bool(getattr(settings, "INPUT_GUARD_ENABLED", False)):
+            try:
+                from app.rag.safety import get_input_guard
+
+                guard = get_input_guard()
+                guard_result = await guard.check(question, history)
+                input_guard_result = {
+                    "enabled": True,
+                    "action": str(guard_result.action or "allow"),
+                    "score": float(guard_result.score or 0.0),
+                    "matched_rules": list(guard_result.matched_rules or []),
+                }
+                if guard_result.action == "block":
+                    yield {"type": "error", "data": {"message": "Query blocked by safety filter"}}
+                    return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Input guard failed open: %s", str(exc)[:160])
+                input_guard_result = {
+                    "enabled": True,
+                    "action": "allow",
+                    "score": 0.0,
+                    "matched_rules": [],
+                    "error": str(exc)[:160],
+                }
 
         try:
             llm, model_route, routing_reason = self._select_llm(question, history)
@@ -1235,42 +1360,14 @@ Requirements:
             mq_temp = min(2.0, max(0.0, float(mq_temp or 0.0)))
             mq_max_chars = max(0, int(mq_max_chars or 0))
 
-            if mq_enabled and mq_n > 0 and mq_max_chars > 0 and len(query_for_retrieval) <= mq_max_chars:
-                mq_llm = self.models.get("fast") or llm
-                multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
-                try:
-                    mq_chain = (
-                        self.multi_query_prompt
-                        | mq_llm.bind(temperature=mq_temp)
-                        | StrOutputParser()
-                    )
-                    mq_start = time.time()
-                    mq_raw = await mq_chain.ainvoke({"query": query_for_retrieval, "n": mq_n})
-                    multi_query_elapsed = time.time() - mq_start
-                    mq_data, multi_query_parse_meta = parse_json_from_text(mq_raw, expected="array")
-
-                    if isinstance(mq_data, list):
-                        seen: set[str] = set()
-                        for item in mq_data:
-                            if not isinstance(item, str):
-                                continue
-                            q = (item or "").strip().strip('"').strip()
-                            if not q:
-                                continue
-                            if q == query_for_retrieval:
-                                continue
-                            if q in seen:
-                                continue
-                            if len(q) > 400:
-                                q = q[:400] + "..."
-                            seen.add(q)
-                            multi_queries.append(q)
-                            if len(multi_queries) >= mq_n:
-                                break
-                except Exception as exc:  # noqa: BLE001
-                    multi_query_elapsed = 0.0
-                    multi_query_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-                    multi_queries = []
+            multi_queries, multi_query_elapsed, multi_query_model_used, multi_query_parse_meta = await self._generate_multi_queries(
+                query=query_for_retrieval,
+                llm=llm,
+                enabled=bool(mq_enabled),
+                count=int(mq_n or 0),
+                temperature=float(mq_temp or 0.0),
+                max_chars=int(mq_max_chars or 0),
+            )
 
             multi_query_used = bool(multi_queries)
 
@@ -1422,8 +1519,44 @@ Requirements:
 
             decompose_used = bool(sub_questions)
 
+            corrective_enabled = bool(getattr(settings, "RAG_CORRECTIVE_ENABLED", False))
+            corrective_max_attempts = max(1, min(int(getattr(settings, "RAG_CORRECTIVE_MAX_ATTEMPTS", 2) or 2), 3))
+            corrective_min_faithfulness = float(
+                getattr(settings, "RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE", 0.75) or 0.75
+            )
+            corrective_second_profile = (
+                str(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_PROFILE", "recall50") or "recall50").strip().lower()
+                or "recall50"
+            )
+            if corrective_second_profile not in {"recall20", "recall50", "coverage80", "hierarchy_recall20", "hierarchy_recall20_expand"}:
+                corrective_second_profile = "recall50"
+            corrective_second_enable_mq = bool(
+                getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY", True)
+            )
+            corrective_second_mq_count = max(
+                0,
+                min(
+                    int(getattr(settings, "RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT", 5) or 5),
+                    int(getattr(settings, "MULTI_QUERY_COUNT_CAP", 8) or 8),
+                ),
+            )
+            corrective_reason_codes: list[str] = []
+            corrective_attempts: list[dict[str, Any]] = []
+            corrective_used = False
+            corrective_attempt_count = 1
+
             # Step 1: Hybrid retrieval (LangChain Retriever).
-            yield {"type": "event", "data": {"message": "正在从知识库中检索相关资料..."}}
+            retrieval_message = "正在从知识库中检索相关资料..."
+            yield {"type": "event", "data": {"message": retrieval_message}}
+            status_event = self._build_stream_status_event(
+                stage="retrieval",
+                state="running",
+                message=retrieval_message,
+                attempt=1,
+                max_attempts=corrective_max_attempts,
+            )
+            if status_event is not None:
+                yield status_event
             retriever_update: dict[str, Any] = {
                 "k": top_k,
                 "score_threshold": score_threshold_used,
@@ -1463,28 +1596,29 @@ Requirements:
 
             retriever = hybrid_retriever.model_copy(update=retriever_update)
 
-            retrieval_queries: list[tuple[str, str]] = [("main", query_for_retrieval)]
+            retrieval_queries_base: list[tuple[str, str]] = [("main", query_for_retrieval)]
             for q in alias_queries:
-                retrieval_queries.append(("alias", q))
+                retrieval_queries_base.append(("alias", q))
             for e in dict_expansions:
                 q = e.get("expanded_text") if isinstance(e, dict) else None
                 if q:
-                    retrieval_queries.append(("dict", str(q)))
+                    retrieval_queries_base.append(("dict", str(q)))
             for q in kg_query_expansion_queries:
-                retrieval_queries.append(("kgq", q))
+                retrieval_queries_base.append(("kgq", q))
             # Policy/manual "fast lane": when users mention clause numbers, add a clause-only
             # retrieval query to improve exact-match recall without invoking the LLM.
             for q in build_clause_fastlane_queries(query_for_retrieval):
-                retrieval_queries.append(("clause", q))
+                retrieval_queries_base.append(("clause", q))
+            if step_back_used and step_back_query:
+                retrieval_queries_base.append(("step_back", step_back_query))
+            for q in sub_questions:
+                retrieval_queries_base.append(("subq", q))
+            if hyde_used and hyde_text:
+                retrieval_queries_base.append(("hyde", hyde_text))
+
+            retrieval_queries: list[tuple[str, str]] = list(retrieval_queries_base)
             for q in multi_queries:
                 retrieval_queries.append(("mq", q))
-            if step_back_used and step_back_query:
-                retrieval_queries.append(("step_back", step_back_query))
-            for q in sub_questions:
-                retrieval_queries.append(("subq", q))
-            if hyde_used and hyde_text:
-                retrieval_queries.append(("hyde", hyde_text))
-
             retrieval_queries = self._dedup_retrieval_queries(retrieval_queries)
 
             docs_by_query: list[list[Document]] = []
@@ -2010,6 +2144,287 @@ Requirements:
                     abstain_triggered = True
                     abstain_reason = "top_relevance_lt_min"
 
+            retrieval_info_event = self._build_retrieval_info_event(
+                attempt=corrective_attempt_count,
+                query_count=len(retrieval_queries),
+                docs_count=len(docs),
+                citations_count=len(citations),
+                abstain_triggered=abstain_triggered,
+                retrieval_profile=profile_norm or None,
+            )
+            if retrieval_info_event is not None:
+                yield retrieval_info_event
+
+            corrective_attempts.append(
+                {
+                    "attempt": int(corrective_attempt_count),
+                    "retrieval_profile": profile_norm or None,
+                    "query_count": int(len(retrieval_queries)),
+                    "docs_count": int(len(docs)),
+                    "citations_count": int(len(citations)),
+                    "abstain_triggered": bool(abstain_triggered),
+                    "top_relevance_score": round(float(top_rel or 0.0), 3),
+                }
+            )
+
+            if corrective_enabled and abstain_triggered and corrective_attempt_count < corrective_max_attempts:
+                if "abstain" not in corrective_reason_codes:
+                    corrective_reason_codes.append("abstain")
+                corrective_used = True
+                corrective_attempt_count += 1
+                retry_message = "检索证据偏弱，正在进行一次 recall-first 重试..."
+                yield {"type": "event", "data": {"message": retry_message}}
+                retry_status = self._build_stream_status_event(
+                    stage="retrieval",
+                    state="retrying",
+                    message=retry_message,
+                    attempt=corrective_attempt_count,
+                    max_attempts=corrective_max_attempts,
+                )
+                if retry_status is not None:
+                    yield retry_status
+
+                retry_profile_norm = corrective_second_profile
+                retry_score_threshold = 0.0 if is_recall_first_profile(retry_profile_norm) else score_threshold_used
+                retry_multi_queries = list(multi_queries)
+                if corrective_second_enable_mq and not retry_multi_queries:
+                    retry_multi_queries, retry_mq_elapsed, retry_mq_model_used, retry_mq_parse_meta = await self._generate_multi_queries(
+                        query=query_for_retrieval,
+                        llm=llm,
+                        enabled=True,
+                        count=int(corrective_second_mq_count or 0),
+                        temperature=float(mq_temp or 0.0),
+                        max_chars=int(mq_max_chars or 0),
+                    )
+                    if retry_multi_queries:
+                        multi_queries = list(retry_multi_queries)
+                        multi_query_used = True
+                        multi_query_elapsed = max(float(multi_query_elapsed or 0.0), float(retry_mq_elapsed or 0.0))
+                        multi_query_model_used = retry_mq_model_used or multi_query_model_used
+                        multi_query_parse_meta = dict(retry_mq_parse_meta or {})
+
+                retry_retriever_update = dict(retriever_update)
+                retry_retriever_update["retrieval_profile"] = retry_profile_norm
+                retry_retriever_update["score_threshold"] = retry_score_threshold
+                if is_recall_first_profile(retry_profile_norm):
+                    retry_retriever_update.update(
+                        {
+                            "dedup_enabled": False,
+                            "max_chunks_per_doc": 0,
+                            "max_chunks_per_page": 0,
+                            "min_distinct_docs": 0,
+                        }
+                    )
+                retry_retriever = hybrid_retriever.model_copy(update=retry_retriever_update)
+                retry_queries: list[tuple[str, str]] = list(retrieval_queries_base)
+                for q in retry_multi_queries:
+                    retry_queries.append(("mq", q))
+                retry_queries = self._dedup_retrieval_queries(retry_queries)
+
+                retry_docs_by_query: list[list[Document]] = []
+                retry_docs_by_query_kinds: list[str] = []
+                retry_errors: list[str] = []
+                retry_per_query: list[dict[str, Any]] = []
+                t_retry_start = time.time()
+                for kind, q in retry_queries:
+                    retry_runner = retry_retriever
+                    if kind != "main":
+                        if kind == "hyde":
+                            retry_runner = retry_retriever.model_copy(
+                                update={
+                                    "enable_reranker": False,
+                                    "retrieval_mode": "vector",
+                                    "enable_weight_rerank": False,
+                                }
+                            )
+                        else:
+                            retry_runner = retry_retriever.model_copy(update={"enable_reranker": False})
+                    t0 = time.time()
+                    try:
+                        docs_i = retry_runner.invoke(q)
+                        err = None
+                    except Exception as exc:  # noqa: BLE001
+                        docs_i = []
+                        err = str(exc)[:200]
+                    elapsed_i = time.time() - t0
+                    dbg = getattr(retry_runner, "_last_debug_metrics", None)
+                    dbg = dbg if isinstance(dbg, dict) else None
+                    retry_per_query.append(
+                        {
+                            "kind": kind,
+                            "query_chars": len(q or ""),
+                            "query_tokens": num_tokens_from_string(q or ""),
+                            "elapsed_sec": round(elapsed_i, 3),
+                            "ok": err is None,
+                            "retriever_debug": dbg,
+                        }
+                    )
+                    if err:
+                        retry_errors.append(f"{kind}:{err[:160]}")
+                        if kind == "main":
+                            yield {"type": "error", "data": {"message": f"retrieval failed: {err}"}}
+                    retry_docs_by_query_kinds.append(kind)
+                    retry_docs_by_query.append(self._annotate_docs_with_role(docs_i or [], kind))
+
+                retrieval_elapsed = time.time() - t_retry_start
+                retrieval_errors = retry_errors
+                retrieval_per_query = retry_per_query
+                profile_norm = retry_profile_norm
+                retrieval_profile = retry_profile_norm
+
+                retry_mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False))
+                retry_mq_diversify_enabled = retry_mq_diversify_enabled and bool(corrective_second_enable_mq or multi_query_used)
+                try:
+                    retry_mq_budget_raw = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
+                except Exception:
+                    retry_mq_budget_raw = 0
+                mq_diversify_budget = max(0, min(int(retry_mq_budget_raw or 0), int(top_k or 0)))
+                mq_diversify_used = False
+                mq_diversify_selected_mq = 0
+                mq_diversify_selected_non_mq = 0
+                mq_diversify_fill_from_fused = 0
+                if len(retry_docs_by_query) <= 1:
+                    docs = retry_docs_by_query[0] if retry_docs_by_query else []
+                else:
+                    docs_fused_all = self.fuse_docs_rrf(
+                        retry_docs_by_query,
+                        rrf_k=settings.RETRIEVAL_RRF_K,
+                        meta_prefix="query_expansion",
+                    )
+                    if retry_mq_diversify_enabled and mq_diversify_budget > 0:
+                        mq_lists: list[list[Document]] = []
+                        non_mq_lists: list[list[Document]] = []
+                        for kind, docs_i in zip(retry_docs_by_query_kinds, retry_docs_by_query, strict=False):
+                            if kind == "mq":
+                                mq_lists.append(docs_i or [])
+                            else:
+                                non_mq_lists.append(docs_i or [])
+
+                        if mq_lists and non_mq_lists:
+                            mq_diversify_used = True
+                            docs_non_mq = (
+                                self.fuse_docs_rrf(non_mq_lists, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
+                                if len(non_mq_lists) > 1
+                                else (non_mq_lists[0] or [])
+                            )
+                            docs_mq = (
+                                self.fuse_docs_rrf(mq_lists, rrf_k=settings.RETRIEVAL_RRF_K, meta_prefix="query_expansion")
+                                if len(mq_lists) > 1
+                                else (mq_lists[0] or [])
+                            )
+                            want_non_mq = max(0, int(top_k or 0) - int(mq_diversify_budget))
+                            want_mq = int(mq_diversify_budget)
+                            selected: list[Document] = []
+                            selected_keys: set[str] = set()
+
+                            for d in docs_non_mq:
+                                key = self._doc_key(d)
+                                if key in selected_keys:
+                                    continue
+                                selected_keys.add(key)
+                                selected.append(d)
+                                if len(selected) >= want_non_mq:
+                                    break
+
+                            mq_added = 0
+                            mq_diversify_selected_non_mq = int(len(selected))
+                            for d in docs_mq:
+                                if mq_added >= want_mq:
+                                    break
+                                key = self._doc_key(d)
+                                if key in selected_keys:
+                                    continue
+                                selected_keys.add(key)
+                                selected.append(d)
+                                mq_added += 1
+                            mq_diversify_selected_mq = int(mq_added)
+
+                            for d in docs_fused_all:
+                                if len(selected) >= int(top_k or 0):
+                                    break
+                                key = self._doc_key(d)
+                                if key in selected_keys:
+                                    continue
+                                selected_keys.add(key)
+                                selected.append(d)
+                                mq_diversify_fill_from_fused += 1
+                            docs = selected
+                        else:
+                            docs = docs_fused_all
+                    else:
+                        docs = docs_fused_all
+                docs = docs[: max(0, int(top_k or 0))] if docs else []
+
+                citations = build_citations_from_docs(
+                    docs,
+                    retrieval_elapsed_sec=retrieval_elapsed,
+                    retrieval_mode=mode_used,
+                    query=query_for_retrieval,
+                )
+                evidence_span_missing_citations = 0
+                if evidence_span_strict_enabled and citations:
+                    filtered_citations = []
+                    for item in citations:
+                        if not isinstance(item, dict):
+                            continue
+                        start = item.get("evidence_start_char")
+                        end = item.get("evidence_end_char")
+                        try:
+                            start_i = int(start) if start is not None else None
+                            end_i = int(end) if end is not None else None
+                        except Exception:
+                            start_i = None
+                            end_i = None
+                        if start_i is None or end_i is None or end_i <= start_i:
+                            evidence_span_missing_citations += 1
+                            continue
+                        filtered_citations.append(item)
+                    citations = filtered_citations
+
+                yield {"type": "citations", "data": citations}
+                top_rel = 0.0
+                if citations:
+                    try:
+                        top_rel = max(
+                            float((c.get("relevance_score") if c.get("relevance_score") is not None else c.get("retrieval_score")) or 0.0)
+                            for c in citations
+                        )
+                    except Exception:
+                        top_rel = 0.0
+                abstain_triggered = False
+                abstain_reason = None
+                if abstain_enabled:
+                    min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
+                    min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+                    if min_citations > 0 and len(citations) < min_citations:
+                        abstain_triggered = True
+                        abstain_reason = "citations_lt_min"
+                    elif min_top_rel > 0 and top_rel < min_top_rel:
+                        abstain_triggered = True
+                        abstain_reason = "top_relevance_lt_min"
+
+                retry_info_event = self._build_retrieval_info_event(
+                    attempt=corrective_attempt_count,
+                    query_count=len(retry_queries),
+                    docs_count=len(docs),
+                    citations_count=len(citations),
+                    abstain_triggered=abstain_triggered,
+                    retrieval_profile=profile_norm or None,
+                )
+                if retry_info_event is not None:
+                    yield retry_info_event
+                corrective_attempts.append(
+                    {
+                        "attempt": int(corrective_attempt_count),
+                        "retrieval_profile": profile_norm or None,
+                        "query_count": int(len(retry_queries)),
+                        "docs_count": int(len(docs)),
+                        "citations_count": int(len(citations)),
+                        "abstain_triggered": bool(abstain_triggered),
+                        "top_relevance_score": round(float(top_rel or 0.0), 3),
+                    }
+                )
+
             if abstain_triggered:
                 abstain_message = _UNABLE_TO_ANSWER_MESSAGE
 
@@ -2122,6 +2537,17 @@ Requirements:
                             "complexity_score": round(float(complexity_score), 3),
                             "adaptive_retrieval_used": bool(adaptive_retrieval_used),
                             "adaptive_retrieval_overrides": dict(adaptive_retrieval_overrides),
+                            "input_guard": dict(input_guard_result),
+                            "corrective_enabled": bool(corrective_enabled),
+                            "corrective_used": bool(corrective_used),
+                            "corrective_attempt_count": int(corrective_attempt_count),
+                            "corrective_reason_codes": list(corrective_reason_codes or []),
+                            "corrective_attempts": list(corrective_attempts[:3]),
+                            "corrective_second_pass": {
+                                "retrieval_profile": corrective_second_profile,
+                                "enable_multi_query": bool(corrective_second_enable_mq),
+                                "multi_query_count": int(corrective_second_mq_count),
+                            },
                             "vector_backend": settings.VECTOR_BACKEND,
                             "model_route": model_route,
                             "top_k": top_k,
@@ -2685,6 +3111,15 @@ Requirements:
                 "question": question_for_model,
                 "format_instructions": format_instructions,
             }
+            generation_status = self._build_stream_status_event(
+                stage="generation",
+                state="running",
+                message="正在生成回答...",
+                attempt=corrective_attempt_count,
+                max_attempts=corrective_max_attempts,
+            )
+            if generation_status is not None:
+                yield generation_status
 
             # Optional: Vision-native generation path (direct VLM answer generation).
             token_stream = None
@@ -2964,6 +3399,30 @@ Requirements:
                 claim_supported=faithfulness_meta.get("supported_claims"),
                 evidence_gap=None,
             )
+            try:
+                faithfulness_score_value = (
+                    float(faithfulness_meta.get("score"))
+                    if faithfulness_meta.get("score") is not None
+                    else None
+                )
+            except Exception:
+                faithfulness_score_value = None
+            if (
+                corrective_enabled
+                and faithfulness_score_value is not None
+                and faithfulness_score_value < corrective_min_faithfulness
+            ):
+                if "faithfulness_lt_min" not in corrective_reason_codes:
+                    corrective_reason_codes.append("faithfulness_lt_min")
+                yield {
+                    "type": "quality_warning",
+                    "data": {
+                        "kind": "faithfulness_low",
+                        "faithfulness_score": round(faithfulness_score_value, 3),
+                        "threshold": round(float(corrective_min_faithfulness), 3),
+                        "corrective_available": True,
+                    },
+                }
 
             # Optional: inline per-claim citations (only safe when claim-check produced a claim list).
             if (
@@ -3219,6 +3678,17 @@ Requirements:
                         "complexity_score": round(float(complexity_score), 3),
                         "adaptive_retrieval_used": bool(adaptive_retrieval_used),
                         "adaptive_retrieval_overrides": dict(adaptive_retrieval_overrides),
+                        "input_guard": dict(input_guard_result),
+                        "corrective_enabled": bool(corrective_enabled),
+                        "corrective_used": bool(corrective_used),
+                        "corrective_attempt_count": int(corrective_attempt_count),
+                        "corrective_reason_codes": list(corrective_reason_codes or []),
+                        "corrective_attempts": list(corrective_attempts[:3]),
+                        "corrective_second_pass": {
+                            "retrieval_profile": corrective_second_profile,
+                            "enable_multi_query": bool(corrective_second_enable_mq),
+                            "multi_query_count": int(corrective_second_mq_count),
+                        },
                         "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
                         "retrieval_rrf_k": settings.RETRIEVAL_RRF_K if settings.RETRIEVAL_FUSION_STRATEGY == "rrf" else None,
                         "retrieval_dedup_enabled": bool(settings.RETRIEVAL_DEDUP_ENABLED),
