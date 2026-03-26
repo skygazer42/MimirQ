@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -89,6 +90,21 @@ class AgenticPlanStep:
     rationale: str | None = None
 
 
+@dataclass(frozen=True)
+class AgenticToolInvocation:
+    name: str
+    arguments: dict[str, Any]
+    rationale: str | None = None
+
+
+def get_agentic_tool_registry() -> Any:
+    from app.rag.tools.mcp_client import get_mcp_registry
+    from app.rag.tools.mcp_tools import register_default_tools
+
+    registry = get_mcp_registry()
+    return register_default_tools(registry)
+
+
 class AgenticRAGRunner:
     def __init__(self, engine: RAGEngine) -> None:
         self._engine = engine
@@ -160,6 +176,106 @@ class AgenticRAGRunner:
             return float(metrics.get("top_relevance_score") or 0.0) >= min_top_score
         except Exception:
             return False
+
+    @staticmethod
+    def _extract_math_expression(question: str) -> str | None:
+        candidates = re.findall(r"[-+/*().\d\s]{5,}", question or "")
+        for candidate in candidates:
+            expr = " ".join(candidate.split()).strip(" =?")
+            if not expr:
+                continue
+            if not any(op in expr for op in ("+", "-", "*", "/")):
+                continue
+            if not any(ch.isdigit() for ch in expr):
+                continue
+            return expr
+        return None
+
+    def _plan_tool_invocations(
+        self,
+        *,
+        question: str,
+        document_ids: list[UUID] | None,
+        dataset_id: UUID | None,
+        account_id: str | None,
+    ) -> list[AgenticToolInvocation]:
+        if not bool(getattr(settings, "RAG_AGENTIC_TOOLS_ENABLED", False)):
+            return []
+
+        question_norm = " ".join((question or "").split())
+        question_lower = question_norm.casefold()
+        invocations: list[AgenticToolInvocation] = []
+
+        math_expr = self._extract_math_expression(question_norm)
+        if math_expr:
+            invocations.append(
+                AgenticToolInvocation(
+                    name="calculate",
+                    arguments={"expression": math_expr},
+                    rationale="math_expression_detected",
+                )
+            )
+
+        if any(phrase in question_lower for phrase in ("current time", "what time", "current date", "today date")):
+            invocations.append(
+                AgenticToolInvocation(
+                    name="get_current_time",
+                    arguments={},
+                    rationale="temporal_tool_detected",
+                )
+            )
+
+        if dataset_id and len(document_ids or []) == 1 and any(
+            phrase in question_lower
+            for phrase in ("full document", "whole document", "entire document", "document content", "read the document")
+        ):
+            page_match = re.search(r"\bpage\s+(\d+)\b", question_lower)
+            args: dict[str, Any] = {
+                "document_id": str(document_ids[0]),
+                "dataset_id": str(dataset_id),
+                "account_id": account_id,
+            }
+            if page_match:
+                args["page"] = int(page_match.group(1))
+            invocations.append(
+                AgenticToolInvocation(
+                    name="get_document_content",
+                    arguments=args,
+                    rationale="single_document_read_detected",
+                )
+            )
+
+        deduped: list[AgenticToolInvocation] = []
+        seen: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
+        for invocation in invocations:
+            key = (
+                invocation.name,
+                tuple(sorted((str(k), str(v)) for k, v in invocation.arguments.items())),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(invocation)
+        return deduped
+
+    @staticmethod
+    def _format_tool_context(tool_name: str, data: Any) -> str:
+        if isinstance(data, dict):
+            if tool_name == "calculate":
+                if data.get("success"):
+                    return f"[Tool: calculate]\nExpression: {data.get('expression')}\nResult: {data.get('result')}"
+                return f"[Tool: calculate]\nError: {data.get('error')}"
+            if tool_name == "get_current_time":
+                return f"[Tool: get_current_time]\nCurrent datetime: {data.get('datetime') or data.get('date') or data}"
+            if tool_name == "get_document_content":
+                content = str(data.get("content") or "").strip()
+                if not content:
+                    return f"[Tool: get_document_content]\nError: {data.get('error') or 'No content returned'}"
+                return f"[Tool: get_document_content]\n{content}"
+        text = str(data or "").strip()
+        if not text:
+            return ""
+        return f"[Tool: {tool_name}]\n{text}"
 
     async def stream(
         self,
@@ -237,6 +353,8 @@ class AgenticRAGRunner:
         prior_findings: list[str] = []
         retrieval_elapsed_total = 0.0
         rounds_executed = 0
+        tool_context_blocks: list[str] = []
+        tool_metrics: list[dict[str, Any]] = []
         final_result: dict[str, Any] = {
             "docs": [],
             "citations": [],
@@ -244,6 +362,53 @@ class AgenticRAGRunner:
             "abstain_triggered": True,
             "abstain_reason": "no_rounds",
         }
+
+        tool_invocations = self._plan_tool_invocations(
+            question=question,
+            document_ids=document_ids,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
+        if tool_invocations:
+            try:
+                registry = get_agentic_tool_registry()
+                for invocation in tool_invocations:
+                    yield {
+                        "type": "agentic_step",
+                        "data": {
+                            "step": "tool_call",
+                            "tool": invocation.name,
+                            "rationale": invocation.rationale,
+                        },
+                    }
+                    result = await registry.call_tool(invocation.name, invocation.arguments)
+                    success = bool(getattr(result, "success", False))
+                    data = getattr(result, "data", None)
+                    error = getattr(result, "error", None)
+                    metadata = dict(getattr(result, "metadata", None) or {})
+                    tool_metrics.append(
+                        {
+                            "name": invocation.name,
+                            "success": success,
+                            "backend": metadata.get("backend"),
+                            "error": str(error)[:200] if error else None,
+                        }
+                    )
+                    if success:
+                        context_block = self._format_tool_context(invocation.name, data)
+                        if context_block:
+                            tool_context_blocks.append(context_block)
+                    yield {
+                        "type": "agentic_step",
+                        "data": {
+                            "step": "tool_result",
+                            "tool": invocation.name,
+                            "success": success,
+                            "error": str(error)[:200] if error else None,
+                        },
+                    }
+            except Exception:
+                tool_metrics.append({"name": "registry_init", "success": False, "backend": None, "error": "tool_registry_failed"})
 
         for round_idx, step in enumerate(plan_steps[:max_rounds], 1):
             retrieval_query = build_chained_query(step.query, prior_findings) or step.query
@@ -278,7 +443,7 @@ class AgenticRAGRunner:
         )
         yield {"type": "citations", "data": citations}
 
-        if not collected_docs:
+        if not collected_docs and not tool_context_blocks:
             full_response = _UNABLE_TO_ANSWER_MESSAGE
             yield {"type": "token", "data": {"content": full_response}}
             generation_elapsed = 0.0
@@ -295,6 +460,12 @@ class AgenticRAGRunner:
             )
             history_text = _build_history_text(history)
             context = _build_context(collected_docs, query=question)
+            if tool_context_blocks:
+                tool_context = "\n\n".join(tool_context_blocks)
+                if context and context != "No relevant reference materials found.":
+                    context = f"{tool_context}\n\n[Retrieved Materials]\n{context}"
+                else:
+                    context = tool_context
             format_instructions = str(base_state.get("format_instructions") or "")
             generation_inputs = {
                 "context": context,
@@ -333,6 +504,8 @@ class AgenticRAGRunner:
             "abstain_triggered": bool(final_result.get("abstain_triggered")),
             "abstain_reason": final_result.get("abstain_reason"),
             "docs_returned": int(len(collected_docs)),
+            "agentic_tools_used": int(sum(1 for item in tool_metrics if item.get("success"))),
+            "agentic_tool_calls": tool_metrics,
         }
 
         yield {
@@ -369,5 +542,10 @@ def get_agentic_runner(*, engine: RAGEngine | None = None) -> AgenticRAGRunner:
                 _AGENTIC_RUNNER = AgenticRAGRunner(engine=get_rag_engine())
     return _AGENTIC_RUNNER
 
-
-__all__ = ["AgenticPlanStep", "AgenticRAGRunner", "get_agentic_runner"]
+__all__ = [
+    "AgenticPlanStep",
+    "AgenticToolInvocation",
+    "AgenticRAGRunner",
+    "get_agentic_runner",
+    "get_agentic_tool_registry",
+]

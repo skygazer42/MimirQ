@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from langchain_core.documents import Document
@@ -148,3 +149,176 @@ async def test_agentic_runner_streams_planning_retrieval_and_answer(
     assert done_metrics.get("agentic_used") is True
     assert done_metrics.get("agentic_rounds") == 1
     assert done_metrics.get("agentic_planned_steps") == 1
+
+
+@pytest.mark.asyncio
+async def test_agentic_runner_calls_math_tool_before_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.agents.rag_agent as rag_agent_mod
+    from app.core.config import settings
+    from app.rag.agents.rag_agent import AgenticPlanStep, AgenticRAGRunner
+    from app.rag.engine import RAGEngine
+
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "tool-backed answer", raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "RAG_AGENTIC_TOOLS_ENABLED", True, raising=False)
+
+    engine = RAGEngine()
+    runner = AgenticRAGRunner(engine=engine)
+
+    async def _fake_plan(*_args, **_kwargs):  # noqa: ANN003
+        return [AgenticPlanStep(query="focused retrieval query", rationale="Follow the strongest lead.")]
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class _Registry:
+        async def call_tool(self, name: str, arguments: dict[str, object]):  # noqa: ANN201
+            calls.append((name, dict(arguments)))
+            return SimpleNamespace(
+                success=True,
+                data={"expression": "2 + 2", "result": 4, "success": True},
+                error=None,
+                metadata={"backend": "local"},
+            )
+
+    monkeypatch.setattr(runner, "_plan", _fake_plan, raising=True)
+    monkeypatch.setattr(
+        rag_agent_mod,
+        "build_rag_state",
+        lambda **_kwargs: {"question": "focused retrieval query", "history": [], "top_k": 3},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        rag_agent_mod,
+        "run_retrieval",
+        lambda _state: {
+            "docs": [],
+            "citations": [],
+            "metrics": {"retrieval_mode": "vector", "top_relevance_score": 0.0},
+            "abstain_triggered": True,
+            "abstain_reason": "no_docs",
+        },
+        raising=True,
+    )
+    monkeypatch.setattr(rag_agent_mod, "get_agentic_tool_registry", lambda: _Registry(), raising=True)
+
+    events: list[dict[str, object]] = []
+    agen = runner.stream(
+        question="What is 2 + 2?",
+        history=[],
+        conversation_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        account_id="u",
+        document_ids=[uuid.uuid4()],
+        dataset_id=uuid.uuid4(),
+        top_k=3,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        request_id="agentic-tool-test",
+    )
+
+    async for event in agen:
+        events.append(event)
+        if event.get("type") == "done":
+            break
+
+    assert calls == [("calculate", {"expression": "2 + 2"})]
+    step_names = [event.get("data", {}).get("step") for event in events if event.get("type") == "agentic_step"]
+    assert "tool_call" in step_names
+    assert "tool_result" in step_names
+
+    done_metrics = (events[-1].get("data") or {}).get("metrics") or {}
+    assert done_metrics.get("agentic_tools_used") == 1
+    assert done_metrics.get("agentic_tool_calls") == [
+        {"name": "calculate", "success": True, "backend": "local", "error": None}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agentic_runner_reads_single_document_with_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.agents.rag_agent as rag_agent_mod
+    from app.core.config import settings
+    from app.rag.agents.rag_agent import AgenticPlanStep, AgenticRAGRunner
+    from app.rag.engine import RAGEngine
+
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "document-backed answer", raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "RAG_AGENTIC_TOOLS_ENABLED", True, raising=False)
+
+    engine = RAGEngine()
+    runner = AgenticRAGRunner(engine=engine)
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    captured: list[tuple[str, dict[str, object]]] = []
+
+    async def _fake_plan(*_args, **_kwargs):  # noqa: ANN003
+        return [AgenticPlanStep(query="focused retrieval query", rationale="Read the provided document first.")]
+
+    class _Registry:
+        async def call_tool(self, name: str, arguments: dict[str, object]):  # noqa: ANN201
+            captured.append((name, dict(arguments)))
+            return SimpleNamespace(
+                success=True,
+                data={"content": "Full document content.", "chunk_count": 1},
+                error=None,
+                metadata={"backend": "local"},
+            )
+
+    monkeypatch.setattr(runner, "_plan", _fake_plan, raising=True)
+    monkeypatch.setattr(
+        rag_agent_mod,
+        "build_rag_state",
+        lambda **_kwargs: {"question": "focused retrieval query", "history": [], "top_k": 3},
+        raising=True,
+    )
+    monkeypatch.setattr(
+        rag_agent_mod,
+        "run_retrieval",
+        lambda _state: {
+            "docs": [],
+            "citations": [],
+            "metrics": {"retrieval_mode": "vector", "top_relevance_score": 0.0},
+            "abstain_triggered": True,
+            "abstain_reason": "no_docs",
+        },
+        raising=True,
+    )
+    monkeypatch.setattr(rag_agent_mod, "get_agentic_tool_registry", lambda: _Registry(), raising=True)
+
+    events: list[dict[str, object]] = []
+    agen = runner.stream(
+        question="Read the full document and summarize it for me.",
+        history=[],
+        conversation_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        account_id="user-1",
+        document_ids=[document_id],
+        dataset_id=dataset_id,
+        top_k=3,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        request_id="agentic-doc-tool-test",
+    )
+
+    async for event in agen:
+        events.append(event)
+        if event.get("type") == "done":
+            break
+
+    assert captured == [
+        (
+            "get_document_content",
+            {
+                "document_id": str(document_id),
+                "dataset_id": str(dataset_id),
+                "account_id": "user-1",
+            },
+        )
+    ]
+    done_metrics = (events[-1].get("data") or {}).get("metrics") or {}
+    assert done_metrics.get("agentic_tools_used") == 1
