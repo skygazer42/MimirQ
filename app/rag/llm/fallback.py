@@ -81,6 +81,7 @@ class FallbackLLMClient(BaseLLMClient):
         async def _gen() -> AsyncIterator[tuple[str, str | None]]:
             last_exc: Exception | None = None
             for idx, client in enumerate(self._clients):
+                yielded_any = False
                 try:
                     async for chunk in client.chat_stream(
                         messages,
@@ -89,9 +90,12 @@ class FallbackLLMClient(BaseLLMClient):
                         include_reasoning=include_reasoning,
                         **kwargs,
                     ):
+                        yielded_any = True
                         yield chunk
                     return
                 except Exception as exc:  # noqa: BLE001
+                    if yielded_any:
+                        raise
                     if not is_retryable_provider_error(exc):
                         raise
                     last_exc = exc

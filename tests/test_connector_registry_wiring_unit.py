@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 
@@ -54,3 +57,106 @@ async def test_check_db_connectivity_returns_empty_when_not_registered(monkeypat
     assert check == {}
     assert warnings == []
 
+
+class _MySQLCursor:
+    def __init__(self) -> None:
+        self._last_query = ""
+
+    def execute(self, query: str) -> None:
+        self._last_query = query
+
+    def fetchone(self):  # noqa: ANN201
+        return (1,)
+
+    def fetchall(self):  # noqa: ANN201
+        if self._last_query == "SHOW GRANTS":
+            return [("GRANT SELECT ON *.* TO 'svc'@'%'",)]
+        return []
+
+    def __enter__(self) -> "_MySQLCursor":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:  # noqa: ANN001, ANN201
+        _ = (exc_type, exc, tb)
+        return False
+
+
+class _MySQLConnection:
+    def cursor(self) -> _MySQLCursor:
+        return _MySQLCursor()
+
+    def close(self) -> None:
+        return None
+
+
+class _SQLServerCursor:
+    def __init__(self) -> None:
+        self._last_query = ""
+
+    def execute(self, query: str) -> None:
+        self._last_query = query
+
+    def fetchone(self):  # noqa: ANN201
+        return (1,)
+
+    def fetchall(self):  # noqa: ANN201
+        if "fn_my_permissions" in self._last_query:
+            return [("SELECT",)]
+        return []
+
+
+class _SQLServerConnection:
+    def cursor(self) -> _SQLServerCursor:
+        return _SQLServerCursor()
+
+    def close(self) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("connector_cls_name", "module_name", "module_stub"),
+    [
+        (
+            "MySQLCatalogConnector",
+            "pymysql",
+            types.SimpleNamespace(connect=lambda **kwargs: _MySQLConnection()),
+        ),
+        (
+            "SQLServerCatalogConnector",
+            "pyodbc",
+            types.SimpleNamespace(
+                drivers=lambda: ["ODBC Driver 18 for SQL Server"],
+                connect=lambda conn_str, timeout=0: _SQLServerConnection(),
+            ),
+        ),
+    ],
+)
+async def test_catalog_connectors_offload_sync_db_checks_to_thread(
+    monkeypatch: pytest.MonkeyPatch,
+    connector_cls_name: str,
+    module_name: str,
+    module_stub: object,
+) -> None:
+    import app.connectors.db.catalog_connectors as catalog_module
+
+    calls: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
+
+    async def _fake_to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN202
+        calls.append((func, args, kwargs))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(catalog_module.asyncio, "to_thread", _fake_to_thread, raising=True)
+    monkeypatch.setitem(sys.modules, module_name, module_stub)
+
+    connector_cls = getattr(catalog_module, connector_cls_name)
+    result = await connector_cls().test_connection(
+        {"host": "localhost", "port": 1, "database": "demo", "username": "svc", "password": "secret"}
+    )
+
+    assert result.ok is True
+    assert len(calls) == 1
+    func, args, kwargs = calls[0]
+    assert kwargs == {}
+    assert func.__name__ == "_test_connection_sync"
+    assert args and isinstance(args[0], dict)
