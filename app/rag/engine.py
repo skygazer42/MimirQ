@@ -2172,6 +2172,7 @@ Requirements:
                     corrective_reason_codes.append("abstain")
                 corrective_used = True
                 corrective_attempt_count += 1
+                baseline_retry_docs = list(docs or [])
                 retry_message = "检索证据偏弱，正在进行一次 recall-first 重试..."
                 yield {"type": "event", "data": {"message": retry_message}}
                 retry_status = self._build_stream_status_event(
@@ -2266,7 +2267,7 @@ Requirements:
                     retry_docs_by_query_kinds.append(kind)
                     retry_docs_by_query.append(self._annotate_docs_with_role(docs_i or [], kind))
 
-                retrieval_elapsed = time.time() - t_retry_start
+                retrieval_elapsed += time.time() - t_retry_start
                 retrieval_errors = retry_errors
                 retrieval_per_query = retry_per_query
                 profile_norm = retry_profile_norm
@@ -2354,6 +2355,16 @@ Requirements:
                     else:
                         docs = docs_fused_all
                 docs = docs[: max(0, int(top_k or 0))] if docs else []
+                if baseline_retry_docs:
+                    merged_retry_docs: list[Document] = []
+                    merged_keys: set[str] = set()
+                    for doc in (docs or []) + baseline_retry_docs:
+                        key = self._doc_key(doc)
+                        if key in merged_keys:
+                            continue
+                        merged_keys.add(key)
+                        merged_retry_docs.append(doc)
+                    docs = merged_retry_docs[: max(0, int(top_k or 0))] if merged_retry_docs else []
 
                 citations = build_citations_from_docs(
                     docs,
