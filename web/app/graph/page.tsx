@@ -11,17 +11,18 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { Upload, Share2, Info, RefreshCw, Maximize, X, BarChart3, Database, Filter, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, Copy, Link as LinkIcon } from 'lucide-react'
+import { Upload, Share2, RefreshCw, BarChart3, Database, Filter, FileCode, FileText, Network, Route, Link as LinkIcon } from 'lucide-react'
 import { GraphActionDialogs } from './_components/graph-action-dialogs'
+import { GraphCanvas } from './_components/graph-canvas'
+import { GraphContextMenu } from './_components/graph-context-menu'
 import { GraphExplainabilityPanel } from './_components/graph-explainability-panel'
 import { GraphFiltersPopover } from './_components/graph-filters-popover'
 import { GraphFloatingControls } from './_components/graph-floating-controls'
 import { GraphSearchOverlay } from './_components/graph-search-overlay'
 import { GraphStatusBanners } from './_components/graph-status-banners'
-import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
-import { KnowledgeGraph3D, type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
+import { GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
+import { type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphLegend } from '@/components/graph/graph-legend'
 import { GraphStatsBar } from '@/components/graph/graph-stats-bar'
 import { GraphLinkDetailPanel } from './_components/graph-link-detail-panel'
@@ -1766,6 +1767,45 @@ export default function GraphPage() {
     viewSourceForNode()
   }
 
+  const handleStartPathFromContextNode = useCallback(
+    (node: GraphNodeLike) => {
+      resetConnectMode()
+      resetExplainMode()
+      setIsPathMode(true)
+      setPathStartNode(node)
+      setPathEndNode(null)
+      setHighlightedNodeIds(new Set())
+      setHighlightedLinkIds(new Set())
+      toast(`路径模式：请选择终点节点（起点：${String(node?.label || node?.id || '')}）`)
+    },
+    [resetConnectMode, resetExplainMode]
+  )
+
+  const handleStartConnectFromContextNode = useCallback(
+    (node: GraphNodeLike) => {
+      resetPathMode()
+      resetExplainMode()
+      setConnectSourceNode(node)
+      setIsConnectMode(true)
+      toast(`连线模式：请选择终点节点（起点：${String(node?.label || node?.id || '')}）`)
+    },
+    [resetPathMode, resetExplainMode]
+  )
+
+  const handleOpenLinkDetailFromContextMenu = useCallback((link: GraphLinkLike) => {
+    setSelectedLink(link)
+    setIsLinkDetailOpen(true)
+    setIsDetailOpen(false)
+    setSelectedNode(null)
+  }, [])
+
+  const handleClearHighlightsFromContextMenu = useCallback(() => {
+    setHighlightedNodeIds(new Set())
+    setHighlightedLinkIds(new Set())
+    setPathStartNode(null)
+    setPathEndNode(null)
+  }, [])
+
   const handleDeleteNodeOpenChange = useCallback((open: boolean) => {
     setDeleteNodeOpen(open)
     if (!open) setDeleteNodeTarget(null)
@@ -1989,327 +2029,58 @@ export default function GraphPage() {
         </header>
 
         {/* Graph Area */}
-        <div ref={graphViewportRef} className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px]">
-          {/* Dot Pattern Background */}
-          <div className="absolute inset-0 z-0 opacity-[0.4]" style={{
-             backgroundImage: isDark
-               ? 'radial-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1px)'
-               : 'radial-gradient(rgba(203, 213, 225, 0.9) 1px, transparent 1px)',
-             backgroundSize: '24px 24px'
-          }}></div>
+        <div className="relative flex-1 w-full min-h-[500px]">
+          <GraphCanvas
+            viewportRef={graphViewportRef}
+            graph2dRef={graph2dRef}
+            graph3dRef={graph3dRef}
+            isDark={isDark}
+            graphRenderData={graphRenderData}
+            viewMode={viewMode}
+            graphViewportWidth={graphViewportWidth}
+            graphViewportHeight={graphViewportHeight}
+            selectedNodeId={selectedNode?.id ?? null}
+            highlightedNodeIds={highlightedNodeIds}
+            highlightedLinkIds={highlightedLinkIds}
+            showEdgeLabels={showEdgeLabels}
+            layoutMode={layoutMode}
+            isLoading={isLoading}
+            onNodeClick={handleNodeClick}
+            onNodeRightClick={handleNodeRightClick}
+            onLinkClick={handleLinkClick}
+            onLinkRightClick={handleLinkRightClick}
+            onBackgroundClick={handleBackgroundClick}
+            onBackgroundRightClick={handleBackgroundRightClick}
+            onLoadMock={() => {
+              detachPromise(loadInitialData('mock'))
+            }}
+            onTriggerFileUpload={triggerFileUpload}
+          />
 
-          { }
-          {graphRenderData.nodes.length > 0 ? (
-            viewMode === '3d' ? (
-              graphViewportWidth > 0 && graphViewportHeight > 0 ? (
-                <KnowledgeGraph3D
-                  ref={graph3dRef}
-                  data={graphRenderData}
-                  width={graphViewportWidth}
-                  height={graphViewportHeight}
-                  onNodeClick={handleNodeClick}
-                  onNodeRightClick={handleNodeRightClick}
-                  onLinkClick={handleLinkClick}
-                  onLinkRightClick={handleLinkRightClick}
-                  onBackgroundClick={handleBackgroundClick}
-                  onBackgroundRightClick={handleBackgroundRightClick}
-                  highlightedNodeIds={highlightedNodeIds}
-                  highlightedLinkIds={highlightedLinkIds}
-                  selectedNodeId={selectedNode?.id ?? null}
-                  layoutMode={layoutMode}
-                />
-              ) : (
-                <div className="absolute inset-0 z-10 flex items-center justify-center text-muted-foreground">
-                  Loading graph...
-                </div>
-              )
-            ) : (
-                <GraphViewer 
-                ref={graph2dRef}
-                data={graphRenderData} 
-                onNodeClick={handleNodeClick}
-                onNodeRightClick={handleNodeRightClick}
-                onLinkClick={handleLinkClick}
-                onLinkRightClick={handleLinkRightClick}
-                onBackgroundClick={handleBackgroundClick}
-                onBackgroundRightClick={handleBackgroundRightClick}
-                highlightedNodeIds={highlightedNodeIds}
-                highlightedLinkIds={highlightedLinkIds}
-                selectedNodeId={selectedNode?.id ?? null}
-                showEdgeLabels={showEdgeLabels}
-                layoutMode={layoutMode}
-                />
-            )
-           ) : (
-             <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
-               <EmptyState
-                 icon={Share2}
-                 iconClassName="text-sky-500 dark:text-sky-300"
-                 title="探索知识网络"
-                 description={
-                   <>
-                     连接知识孤岛，发现潜在关联。<br />
-                     支持实时数据加载、搜索与深度分析。
-                   </>
-                 }
-                 className="w-full max-w-2xl bg-card/80 border-border"
-               >
-                 <Button
-                   size="lg"
-                   variant="outline"
-                   onClick={() => loadInitialData('mock')}
-                   disabled={isLoading}
-                   className="border-border hover:bg-muted hover:text-foreground"
-                 >
-                   {isLoading ? '加载中...' : '加载示例数据'}
-                 </Button>
-	               <Button
-	                 size="lg"
-	                 className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-soft"
-	                 onClick={triggerFileUpload}
-	               >
-	                 <Upload className="w-5 h-5" />
-	                 开始上传
-	               </Button>
-               </EmptyState>
-             </div>
-           )}
-
-          {contextMenu && (
-            <div
-              className="absolute z-30"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              <div className="w-64 rounded-xl border border-border/60 bg-card/95 backdrop-blur-sm shadow-strong overflow-hidden">
-                {contextMenu.target.type === 'node' ? (
-                  (() => {
-                    const node = contextMenu.target.node
-                    return (
-                      <div>
-                        <div className="px-3 py-2 border-b border-border/60 bg-muted/30">
-                          <div className="text-[10px] font-medium text-muted-foreground uppercase">Node</div>
-                          <div className="text-sm font-semibold text-foreground truncate">
-                            {String(node?.label || node?.id || 'Node')}
-                          </div>
-                          <div className="text-[10px] font-mono text-muted-foreground truncate">
-                            {String(node?.id || '')}
-                          </div>
-                        </div>
-                        <div className="p-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8"
-                            onClick={() => {
-                              closeContextMenu()
-                              detachPromise(expandNodeById(String(node?.id || '')))
-                            }}
-                          >
-                            <Layers className="w-4 h-4 mr-2" />
-                            展开邻居
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8"
-                            onClick={() => {
-                              closeContextMenu()
-                              resetConnectMode()
-                              resetExplainMode()
-                              setIsPathMode(true)
-                              setPathStartNode(node)
-                              setPathEndNode(null)
-                              setHighlightedNodeIds(new Set())
-                              setHighlightedLinkIds(new Set())
-                              toast(`路径模式：请选择终点节点（起点：${String(node?.label || node?.id || '')}）`)
-                            }}
-                          >
-                            <Route className="w-4 h-4 mr-2" />
-                            查找路径
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8"
-                            onClick={() => {
-                              closeContextMenu()
-                              resetPathMode()
-                              resetExplainMode()
-                              setConnectSourceNode(node)
-                              setIsConnectMode(true)
-                              toast(`连线模式：请选择终点节点（起点：${String(node?.label || node?.id || '')}）`)
-                            }}
-                          >
-                            <LinkIcon className="w-4 h-4 mr-2" />
-                            连线
-                          </Button>
-                          <div className="my-1 h-px bg-border/60" />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8"
-                            onClick={() => {
-                              closeContextMenu()
-                              chatWithNode(node)
-                            }}
-                          >
-                            <MessageSquare className="w-4 h-4 mr-2" />
-                            对话
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8"
-                            onClick={() => {
-                              closeContextMenu()
-                              viewSourceForNode(node)
-                            }}
-                          >
-                            <FileText className="w-4 h-4 mr-2" />
-                            来源
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8"
-                            onClick={() => {
-                              closeContextMenu()
-                              detachPromise(copyToClipboard(String(node?.id || ''), '节点 ID'))
-                            }}
-                          >
-                            <Copy className="w-4 h-4 mr-2" />
-                            复制 ID
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8 text-red-600 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200"
-                            onClick={() => {
-                              closeContextMenu()
-                              handleDeleteNode(node)
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            删除
-                          </Button>
-                        </div>
-                      </div>
-                    )
-                  })()
-                ) : contextMenu.target.type === 'link' ? (
-                  (() => {
-                    const link = contextMenu.target.link
-                    return (
-                      <div>
-                        <div className="px-3 py-2 border-b border-border/60 bg-muted/30">
-                          <div className="text-[10px] font-medium text-muted-foreground uppercase">Link</div>
-                          <div className="text-sm font-semibold text-foreground truncate">
-                            {getGraphLinkPredicate(link) || 'Relationship'}
-                          </div>
-                          <div className="text-[10px] font-mono text-muted-foreground truncate">
-                            {String(link?.id || link?.meta?.id || '')}
-                          </div>
-                        </div>
-                        <div className="p-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8"
-                            onClick={() => {
-                              closeContextMenu()
-                              setSelectedLink(link)
-                              setIsLinkDetailOpen(true)
-                              setIsDetailOpen(false)
-                              setSelectedNode(null)
-                            }}
-                          >
-                            <Info className="w-4 h-4 mr-2" />
-                            查看详情
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start h-8"
-                            onClick={() => {
-                              closeContextMenu()
-                              detachPromise(copyToClipboard(getGraphLinkPredicate(link) || '', 'Predicate'))
-                            }}
-                          >
-                            <Copy className="w-4 h-4 mr-2" />
-                            复制 Predicate
-                          </Button>
-                        </div>
-                      </div>
-                    )
-                  })()
-                ) : (
-                  <div>
-                    <div className="px-3 py-2 border-b border-border/60 bg-muted/30">
-                      <div className="text-[10px] font-medium text-muted-foreground uppercase">Graph</div>
-                      <div className="text-sm font-semibold text-foreground truncate">
-                        {viewMode === '3d' ? '3D View' : '2D View'}
-                      </div>
-                    </div>
-                    <div className="p-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start h-8"
-                        onClick={() => {
-                          closeContextMenu()
-                          getActiveGraph()?.zoomToFit()
-                        }}
-                      >
-                        <Maximize className="w-4 h-4 mr-2" />
-                        适应屏幕
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start h-8"
-                        onClick={() => {
-                          closeContextMenu()
-                          setHighlightedNodeIds(new Set())
-                          setHighlightedLinkIds(new Set())
-                          setPathStartNode(null)
-                          setPathEndNode(null)
-                        }}
-                      >
-                        <X className="w-4 h-4 mr-2" />
-                        清除高亮
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="w-full justify-start h-8"
-                        onClick={() => {
-                          closeContextMenu()
-                          setShowEdgeLabels((v) => !v)
-                        }}
-                      >
-                        <Type className="w-4 h-4 mr-2" />
-                        {showEdgeLabels ? '隐藏连线标签' : '显示连线标签'}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+          <GraphContextMenu
+            contextMenu={contextMenu}
+            viewMode={viewMode}
+            showEdgeLabels={showEdgeLabels}
+            onClose={closeContextMenu}
+            onExpandNode={(nodeId) => {
+              detachPromise(expandNodeById(nodeId))
+            }}
+            onStartPathFromNode={handleStartPathFromContextNode}
+            onStartConnectFromNode={handleStartConnectFromContextNode}
+            onChatWithNode={chatWithNode}
+            onViewSourceForNode={viewSourceForNode}
+            onCopyNodeId={(nodeId) => {
+              detachPromise(copyToClipboard(nodeId, '节点 ID'))
+            }}
+            onDeleteNode={handleDeleteNode}
+            onOpenLinkDetail={handleOpenLinkDetailFromContextMenu}
+            onCopyLinkPredicate={(predicate) => {
+              detachPromise(copyToClipboard(predicate, 'Predicate'))
+            }}
+            onZoomToFit={() => getActiveGraph()?.zoomToFit()}
+            onClearHighlights={handleClearHighlightsFromContextMenu}
+            onToggleShowEdgeLabels={() => setShowEdgeLabels((value) => !value)}
+          />
 
           {/* Entity Type Legend (Bottom Left) */}
           {graphRenderData.nodes.length > 0 && !isExplainMode && (
