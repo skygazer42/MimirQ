@@ -396,3 +396,5 @@ export function useGraphPageActions({
     handleDeleteNodeOpenChange,
   }
 }
+
+export type UseGraphPageActionsResult = ReturnType<typeof useGraphPageActions>

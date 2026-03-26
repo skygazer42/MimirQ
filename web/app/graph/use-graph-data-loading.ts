@@ -284,3 +284,5 @@ export function useGraphDataLoading({
     triggerTraceUpload,
   }
 }
+
+export type { UseGraphDataLoadingResult }

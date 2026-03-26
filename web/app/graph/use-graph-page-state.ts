@@ -369,3 +369,5 @@ export function useGraphPageState() {
     resetPathMode,
   }
 }
+
+export type UseGraphPageStateResult = ReturnType<typeof useGraphPageState>

@@ -343,3 +343,5 @@ export function useGraphDisplayFilters({
     toggleEntityTypeFilter,
   }
 }
+
+export type UseGraphDisplayFiltersResult = ReturnType<typeof useGraphDisplayFilters>

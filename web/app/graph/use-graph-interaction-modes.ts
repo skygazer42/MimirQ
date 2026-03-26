@@ -653,3 +653,5 @@ export function useGraphInteractionModes({
     handleConnectLabelOpenChange,
   }
 }
+
+export type UseGraphInteractionModesResult = ReturnType<typeof useGraphInteractionModes>
