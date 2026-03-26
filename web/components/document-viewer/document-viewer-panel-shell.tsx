@@ -1,0 +1,262 @@
+"use client"
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ChunkEditorDialog } from "@/components/document-viewer/chunk-editor-dialog"
+import { ChunksTabPanel } from "@/components/document-viewer/chunks-tab-panel"
+import { DocumentViewerHeader } from "@/components/document-viewer/document-viewer-header"
+import { FloatingMenu } from "@/components/document-viewer/floating-menu"
+import { PreviewTabPanel } from "@/components/document-viewer/preview-tab-panel"
+import { QAGenerationDialog } from "@/components/document-viewer/qa-generation-dialog"
+import { TextTabPanel } from "@/components/document-viewer/text-tab-panel"
+import { cn, detachPromise } from "@/lib/utils"
+
+import type { DocumentViewerPanelState } from "./use-document-viewer-panel-state"
+
+export function DocumentViewerPanelShell({
+  activeTab,
+  canEditChunks,
+  canInlinePreview,
+  chunkDeleteSubmitting,
+  chunkEditorContent,
+  chunkEditorMode,
+  chunkEditorOpen,
+  chunkEditorPageNumber,
+  chunkEditorSubmitting,
+  chunkEditorTarget,
+  chunkMatchSummary,
+  chunkQuery,
+  chunkSearchPlaceholder,
+  chunkSearchRef,
+  chunks,
+  chunksListRef,
+  chunksLoaded,
+  chunksLoading,
+  closeDocument,
+  copyChunkContent,
+  copyChunkLink,
+  doc,
+  documentId,
+  downloadUrl,
+  fileUrl,
+  handleActiveTabChange,
+  handleChunkEditorOpenChange,
+  handleChunkSearchKeyDown,
+  handleDeleteChunk,
+  handleQaDialogOpenChange,
+  handleSelectTextChunkIndex,
+  highlightChunk,
+  highlightChunkId,
+  highlightChunkLoading,
+  highlightRange,
+  isExpanded,
+  isLoading,
+  isOpen,
+  jumpToMatch,
+  loadAllChunks,
+  matchCursor,
+  matchChunkIds,
+  openCreateChunk,
+  openEditChunk,
+  parsedContent,
+  parsedContentError,
+  parsedContentLoading,
+  qaDialogOpen,
+  qaLastResult,
+  qaMaxSourceChars,
+  qaNumPairs,
+  qaPreferLlm,
+  qaReplaceExisting,
+  qaSubmitting,
+  rawFileUrl,
+  retrieveCitations,
+  retrieveError,
+  retrieveLoading,
+  retrieveQuery,
+  rowVirtualizer,
+  runQaGeneration,
+  runRetrievePreview,
+  serverMatchTruncated,
+  setChunkEditorContent,
+  setChunkEditorPageNumber,
+  setChunkQuery,
+  setHighlightChunk,
+  setIsExpanded,
+  setLoadAllChunks,
+  setQaMaxSourceChars,
+  setQaNumPairs,
+  setQaPreferLlm,
+  setQaReplaceExisting,
+  setRetrieveCitations,
+  setRetrieveError,
+  setRetrieveQuery,
+  setTextMode,
+  submitChunkEditor,
+  textActiveChunkIndex,
+  textChunkItems,
+  textMode,
+  textValue,
+}: Readonly<DocumentViewerPanelState>) {
+  if (!isOpen) return null
+
+  return (
+    <>
+      <FloatingMenu />
+      <ChunkEditorDialog
+        open={chunkEditorOpen}
+        mode={chunkEditorMode}
+        target={chunkEditorTarget}
+        content={chunkEditorContent}
+        pageNumber={chunkEditorPageNumber}
+        submitting={chunkEditorSubmitting}
+        canEditChunks={canEditChunks}
+        onOpenChange={handleChunkEditorOpenChange}
+        onContentChange={setChunkEditorContent}
+        onPageNumberChange={setChunkEditorPageNumber}
+        onSubmit={() => detachPromise(submitChunkEditor())}
+      />
+      <QAGenerationDialog
+        open={qaDialogOpen}
+        qaNumPairs={qaNumPairs}
+        qaMaxSourceChars={qaMaxSourceChars}
+        qaReplaceExisting={qaReplaceExisting}
+        qaPreferLlm={qaPreferLlm}
+        qaSubmitting={qaSubmitting}
+        qaLastResult={qaLastResult}
+        canEditChunks={canEditChunks}
+        documentId={documentId}
+        onOpenChange={handleQaDialogOpenChange}
+        onNumPairsChange={setQaNumPairs}
+        onMaxSourceCharsChange={setQaMaxSourceChars}
+        onReplaceExistingChange={setQaReplaceExisting}
+        onPreferLlmChange={setQaPreferLlm}
+        onSubmit={() => detachPromise(runQaGeneration())}
+      />
+      <div
+        className={cn(
+          "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-border bg-background shadow-strong",
+          isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
+        )}
+      >
+        <DocumentViewerHeader
+          filename={doc?.filename}
+          chunkCount={doc?.chunk_count ?? chunks.length}
+          isExpanded={isExpanded}
+          downloadUrl={downloadUrl}
+          onToggleExpanded={() => setIsExpanded(!isExpanded)}
+          onClose={closeDocument}
+        />
+
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={handleActiveTabChange} className="flex flex-1 flex-col">
+            <div className="border-b border-border bg-background px-4">
+              <TabsList className="h-10 w-full justify-start gap-6 bg-transparent p-0">
+                <TabsTrigger
+                  value="preview"
+                  className="h-10 rounded-none border-b-2 border-transparent px-2 font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                >
+                  原文
+                </TabsTrigger>
+                <TabsTrigger
+                  value="text"
+                  className="h-10 rounded-none border-b-2 border-transparent px-2 font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                >
+                  文本定位
+                </TabsTrigger>
+                <TabsTrigger
+                  value="chunks"
+                  className="h-10 rounded-none border-b-2 border-transparent px-2 font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                >
+                  智能切片
+                </TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="preview" className="relative m-0 h-full flex-1 bg-muted/30 dark:bg-muted/20">
+              <PreviewTabPanel
+                isLoading={isLoading}
+                doc={doc}
+                canInlinePreview={canInlinePreview}
+                fileUrl={fileUrl}
+                rawFileUrl={rawFileUrl}
+                downloadUrl={downloadUrl}
+                onViewChunks={() => handleActiveTabChange("chunks")}
+              />
+            </TabsContent>
+
+            <TabsContent value="text" className="m-0 h-full flex-1 overflow-hidden">
+              <TextTabPanel
+                textMode={textMode}
+                highlightChunkId={highlightChunkId}
+                loadAllChunks={loadAllChunks}
+                chunksLoaded={chunksLoaded}
+                chunksLoading={chunksLoading}
+                retrieveQuery={retrieveQuery}
+                retrieveLoading={retrieveLoading}
+                retrieveError={retrieveError}
+                retrieveCitations={retrieveCitations}
+                parsedContent={parsedContent}
+                parsedContentLoading={parsedContentLoading}
+                parsedContentError={parsedContentError}
+                textValue={textValue}
+                textChunkItems={textChunkItems}
+                textActiveChunkIndex={textActiveChunkIndex}
+                highlightRange={highlightRange}
+                onTextModeChange={setTextMode}
+                onClearHighlight={() => setHighlightChunk(null)}
+                onLoadAllChunks={() => setLoadAllChunks(true)}
+                onRetrieveQueryChange={setRetrieveQuery}
+                onRunRetrieve={() => detachPromise(runRetrievePreview())}
+                onClearRetrieve={() => {
+                  setRetrieveCitations([])
+                  setRetrieveError(null)
+                }}
+                onSelectRetrieveChunk={(chunkId) => {
+                  handleActiveTabChange("text")
+                  setHighlightChunk(chunkId)
+                }}
+                onSelectChunkIndex={handleSelectTextChunkIndex}
+                onGoToChunks={() => handleActiveTabChange("chunks")}
+                onGoToPreview={() => handleActiveTabChange("preview")}
+              />
+            </TabsContent>
+
+            <TabsContent value="chunks" className="m-0 h-full flex-1 overflow-hidden">
+              <ChunksTabPanel
+                chunkSearchRef={chunkSearchRef}
+                chunksListRef={chunksListRef}
+                rowVirtualizer={rowVirtualizer}
+                chunkQuery={chunkQuery}
+                searchPlaceholder={chunkSearchPlaceholder}
+                matchSummary={chunkMatchSummary}
+                canJumpMatches={Boolean(matchChunkIds.length)}
+                canEditChunks={canEditChunks}
+                serverMatchTruncatedHint={Boolean(!chunksLoaded && chunkQuery.trim() && serverMatchTruncated)}
+                highlightChunkId={highlightChunkId}
+                loadAllChunks={loadAllChunks}
+                chunksLoaded={chunksLoaded}
+                chunksLoading={chunksLoading}
+                highlightChunkLoading={highlightChunkLoading}
+                highlightChunk={highlightChunk}
+                chunkEditorSubmitting={chunkEditorSubmitting}
+                chunkDeleteSubmitting={chunkDeleteSubmitting}
+                matchCursor={matchCursor}
+                chunks={chunks}
+                onChunkQueryChange={setChunkQuery}
+                onSearchKeyDown={handleChunkSearchKeyDown}
+                onJumpToMatch={jumpToMatch}
+                onOpenCreateChunk={openCreateChunk}
+                onOpenQaDialog={() => handleQaDialogOpenChange(true)}
+                onClearHighlight={() => setHighlightChunk(null)}
+                onLoadAllChunks={() => setLoadAllChunks(true)}
+                onCopyContent={copyChunkContent}
+                onCopyLink={copyChunkLink}
+                onEditChunk={openEditChunk}
+                onDeleteChunk={handleDeleteChunk}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </>
+  )
+}
