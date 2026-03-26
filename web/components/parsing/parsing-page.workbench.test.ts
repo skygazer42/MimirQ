@@ -13,6 +13,7 @@ describe('ParsingPage workbench scaffold', () => {
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-mobile-queue-content.tsx'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-mobile-inspector-content.tsx'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-types.ts'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-editor-actions.ts'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-library-actions.ts'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-run-actions.ts'))).toBe(true)
     expect(src).toContain('WorkbenchScaffold')
@@ -61,5 +62,20 @@ describe('ParsingPage workbench scaffold', () => {
     expect(hookSrc).toContain('const parseFile = useCallback(')
     expect(hookSrc).toContain('const parseAllPending = useCallback(')
     expect(hookSrc).toContain('const handleSelectRun = useCallback(')
+  })
+
+  it('moves editor and governance callbacks into the dedicated hook', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
+    const hookSrc = fs.readFileSync(path.resolve(__dirname, 'use-parsing-editor-actions.ts'), 'utf8')
+
+    expect(src).toContain('useParsingEditorActions')
+    expect(src).not.toContain('const copyMarkdown = async () =>')
+    expect(src).not.toContain('const handleSaveEdit = async () =>')
+    expect(src).not.toContain('const handleSubmitToGovernance = () =>')
+
+    expect(hookSrc).toContain('export function useParsingEditorActions(')
+    expect(hookSrc).toContain('const copyMarkdown = useCallback(')
+    expect(hookSrc).toContain('const handleSaveEdit = useCallback(')
+    expect(hookSrc).toContain('const handleSubmitToGovernance = useCallback(')
   })
 })
