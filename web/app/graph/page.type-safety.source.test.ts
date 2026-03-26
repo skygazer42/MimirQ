@@ -79,4 +79,21 @@ describe('graph page type safety', () => {
     expect(page).not.toContain("title=\"推理演示 (Explain)\"")
     expect(page).not.toContain("title=\"路径发现 (Shortest Path)\"")
   })
+
+  it('keeps graph search, filter, and status overlays extracted into dedicated components', () => {
+    const page = read('./page.tsx')
+    const searchOverlay = read('./_components/graph-search-overlay.tsx')
+    const statusBanners = read('./_components/graph-status-banners.tsx')
+    const filtersPopover = read('./_components/graph-filters-popover.tsx')
+
+    expect(page).toContain('GraphSearchOverlay')
+    expect(page).toContain('GraphStatusBanners')
+    expect(page).toContain('GraphFiltersPopover')
+    expect(searchOverlay).toContain('export function GraphSearchOverlay')
+    expect(statusBanners).toContain('export function GraphStatusBanners')
+    expect(filtersPopover).toContain('export function GraphFiltersPopover')
+    expect(page).not.toContain('placeholder="搜索实体节点..."')
+    expect(page).not.toContain('Predicate 仅对关系边生效；Type 仅对实体节点生效。')
+    expect(page).not.toContain('推理路径演示中...')
+  })
 })
