@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { FileText, Sparkles, FileStack, Settings2 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PipelineRail, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
@@ -26,6 +25,7 @@ import { ParsingMainPanel } from '@/components/parsing/parsing-main-panel'
 import { ParsingMobileInspectorContent } from '@/components/parsing/parsing-mobile-inspector-content'
 import { ParsingMobileQueueContent } from '@/components/parsing/parsing-mobile-queue-content'
 import { ParsingSidebarPane } from '@/components/parsing/parsing-sidebar-pane'
+import { useParsingEditorActions } from '@/components/parsing/use-parsing-editor-actions'
 import { useParsingLibraryActions } from '@/components/parsing/use-parsing-library-actions'
 import { useParsingRunActions } from '@/components/parsing/use-parsing-run-actions'
 import type { ParsedFile } from '@/components/parsing/parsing-types'
@@ -45,49 +45,7 @@ function bumpParsingProgress(prev: ParsedFile[], fileId: string): ParsedFile[] {
   )
 }
 
-function applyEditedMarkdown(
-  prev: ParsedFile[],
-  fileId: string,
-  targetRunId: string | undefined,
-  editedContent: string
-): ParsedFile[] {
-  return prev.map((f) => {
-    if (f.id !== fileId) return f
-
-    const runs =
-      targetRunId && f.runs
-        ? f.runs.map((run) =>
-            run.id === targetRunId
-              ? {
-                  ...run,
-                  cleanedMarkdown: editedContent,
-                  rawMarkdown: editedContent,
-                  blocks: [],
-                }
-              : run
-          )
-        : f.runs
-
-    return {
-      ...f,
-      markdownContent: editedContent,
-      runs,
-      stats: f.stats
-        ? {
-            ...f.stats,
-            charCount: editedContent.length,
-            lineCount: editedContent.split('\n').length,
-            headingCount: countMarkdownHeadings(editedContent),
-            blockCount: 0,
-          }
-        : undefined,
-    }
-  })
-}
-
 export default function ParsingPage() {
-  const router = useRouter()
-
   // 文件状态
   const [files, setFiles] = useState<ParsedFile[]>([])
   const [activeFileId, setActiveFileId] = useState<string | null>(null)
@@ -622,102 +580,29 @@ export default function ParsingPage() {
     upsertParsedFile,
     visibleQueueFiles,
   })
-
-  // 复制 Markdown
-  const copyMarkdown = async () => {
-    if (!activeMarkdown) return
-    await navigator.clipboard.writeText(activeMarkdown)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  // 下载 Markdown
-  const downloadMarkdown = () => {
-    if (!activeFile || !activeMarkdown) return
-    const blob = new Blob([activeMarkdown], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = activeFile.file.name.replace(/\.[^/.]+$/, '') + '.md'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  // 开始编辑
-  const handleStartEdit = () => {
-    if (!activeMarkdown) return
-    setEditedContent(activeMarkdown)
-    setIsEditing(true)
-  }
-
-  // 取消编辑
-  const handleCancelEdit = () => {
-    setIsEditing(false)
-    setEditedContent('')
-  }
-
-  // 保存编辑
-  const handleSaveEdit = async () => {
-    if (!activeFile) return
-    const targetRunId = activeRun?.id ?? activeFile.activeRunId
-
-	    // 更新文件内容
-	    setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, editedContent))
-
-    setRightPanelMode('markdown')
-    setActiveBlockId(null)
-    setHoveredBlockId(null)
-
-    setIsEditing(false)
-
-    const libId = (activeFile.libraryId || '').trim()
-    if (!libId) return
-
-    try {
-      const saved = await parsingApi.updateContent(libId, { markdown_content: editedContent })
-      updateParsedFile(libId, {
-        markdownContent: saved.markdown_content || editedContent,
-        originalMarkdownContent: saved.original_markdown_content || editedContent,
-        status: 'parsed',
-        error: undefined,
-        parser: getParserLabel(saved.parser_backend || 'auto'),
-      })
-      toast.success('已保存到服务器')
-    } catch (err: any) {
-      toast.error(formatApiError(err, '保存失败'))
-    }
-  }
-
-  // 提交到数据治理
-  const handleSubmitToGovernance = () => {
-    if (!activeFile || !activeMarkdown) return
-
-    // 使用当前内容（可能是编辑后的）提交到数据治理
-    if (activeFile.libraryId) {
-      updateParsedFile(activeFile.libraryId, {
-        markdownContent: activeMarkdown,
-        originalMarkdownContent: activeMarkdown,
-        parser: activeFile.parserLabel,
-        status: 'parsed',
-        error: undefined,
-      })
-    } else {
-      const libId = addParsedFile({
-        filename: activeFile.file.name,
-        fileType: activeFile.file.name.split('.').pop()?.toLowerCase() || '',
-        fileSize: activeFile.file.size,
-        markdownContent: activeMarkdown,
-        originalMarkdownContent: activeMarkdown,
-        parser: activeFile.parserLabel,
-        folderId: activeFile.folderId,
-        status: 'parsed',
-        error: undefined,
-      })
-      setFiles((prev) => prev.map((f) => (f.id === activeFile.id ? { ...f, libraryId: libId } : f)))
-    }
-
-    router.push('/data-governance')
-  }
+  const {
+    copyMarkdown,
+    downloadMarkdown,
+    handleCancelEdit,
+    handleSaveEdit,
+    handleStartEdit,
+    handleSubmitToGovernance,
+  } = useParsingEditorActions({
+    activeFile,
+    activeMarkdown,
+    activeRun,
+    addParsedFile,
+    countMarkdownHeadings,
+    editedContent,
+    setActiveBlockId,
+    setCopied,
+    setEditedContent,
+    setFiles,
+    setHoveredBlockId,
+    setIsEditing,
+    setRightPanelMode,
+    updateParsedFile,
+  })
 
   const handleDeleteFolder = useCallback((folderIds: string[]) => {
     setFiles((prev) => prev.filter((f) => !f.folderId || !folderIds.includes(f.folderId)))
