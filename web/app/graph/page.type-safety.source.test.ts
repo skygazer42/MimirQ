@@ -64,4 +64,19 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('拆分实体')
     expect(page).not.toContain('关系名称')
   })
+
+  it('keeps explainability and floating graph controls extracted into dedicated components', () => {
+    const page = read('./page.tsx')
+    const explainabilityPanel = read('./_components/graph-explainability-panel.tsx')
+    const floatingControls = read('./_components/graph-floating-controls.tsx')
+
+    expect(page).toContain('GraphExplainabilityPanel')
+    expect(page).toContain('GraphFloatingControls')
+    expect(explainabilityPanel).toContain('export function GraphExplainabilityPanel')
+    expect(floatingControls).toContain('export function GraphFloatingControls')
+    expect(page).not.toContain('RAG 推理过程')
+    expect(page).not.toContain('title="导出 PNG/SVG"')
+    expect(page).not.toContain("title=\"推理演示 (Explain)\"")
+    expect(page).not.toContain("title=\"路径发现 (Shortest Path)\"")
+  })
 })

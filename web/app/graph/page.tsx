@@ -20,8 +20,10 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { SearchInput } from '@/components/ui/search-input'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Upload, Share2, Info, RefreshCw, ZoomIn, ZoomOut, Maximize, Maximize2, Minimize2, ChevronDown, ChevronUp, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, PlayCircle, Layout, Link as LinkIcon, Lightbulb, Box, BoxSelect, Download, Copy } from 'lucide-react'
+import { Upload, Share2, Info, RefreshCw, Maximize, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, Copy, Lightbulb, Link as LinkIcon } from 'lucide-react'
 import { GraphActionDialogs } from './_components/graph-action-dialogs'
+import { GraphExplainabilityPanel } from './_components/graph-explainability-panel'
+import { GraphFloatingControls } from './_components/graph-floating-controls'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { KnowledgeGraph3D, type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphLegend } from '@/components/graph/graph-legend'
@@ -2562,43 +2564,13 @@ export default function GraphPage() {
             />
           )}
 
-	          {/* Explainability Panel (Bottom Left) */}
-		          {isExplainMode && (
-		            <div className="absolute bottom-8 left-8 z-20 w-80 bg-card rounded-2xl shadow-strong border border-border overflow-hidden">
-		               <div className="p-4 border-b border-border bg-muted/30 flex items-center gap-2">
-		                 <Lightbulb className="w-4 h-4 text-primary" />
-		                 <h3 className="font-bold text-foreground text-sm">RAG 推理过程</h3>
-		               </div>
-               <div className="p-4 space-y-4 max-h-[300px] overflow-y-auto overscroll-contain no-scrollbar">
-                  {explainSteps.map((step, idx) => {
-                    const node = displayGraphData.nodes.find(n => n.id === step.node)
-                    const isActive = idx === currentStepIndex
-                    const isDone = idx < currentStepIndex
-                    let borderClass = "border-border opacity-50"
-                    let dotClass = "bg-muted"
-                    if (isActive) {
-                      borderClass = "border-teal-500"
-                      dotClass = "bg-teal-500"
-                    } else if (isDone) {
-                      borderClass = "border-teal-500/30"
-                      dotClass = "bg-teal-500/20"
-                    }
-                    
-                    return (
-	                     <div key={`${step.node}-${step.reason}`} className={cn("relative pl-4 border-l-2 transition-colors duration-150 motion-reduce:transition-none", borderClass)}>
-                        <div className={cn("absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors", dotClass)}></div>
-                        <p className="text-xs font-semibold text-foreground mb-0.5">
-                          {node?.label || step.node}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground leading-snug">
-                          {step.reason}
-                        </p>
-                     </div>
-                   )
-                 })}
-               </div>
-            </div>
-          )}
+          {/* Explainability Panel (Bottom Left) */}
+          <GraphExplainabilityPanel
+            open={isExplainMode}
+            explainSteps={explainSteps}
+            currentStepIndex={currentStepIndex}
+            nodes={displayGraphData.nodes}
+          />
 
           {/* Graph Stats Bar */}
           {dataSource === 'live' && typeof scopedDatasetPendingDocs === 'number' && scopedDatasetPendingDocs > 0 && (
@@ -2621,168 +2593,43 @@ export default function GraphPage() {
           )}
 
           {/* Floating Controls */}
-          <div className="absolute bottom-8 right-8 z-10 flex flex-col gap-3">
-             {/* Main Zoom Controls */}
-             <div className="flex flex-col gap-1 bg-card/90 p-1.5 rounded-2xl shadow-md border border-border/50">
-	               <Button variant="ghost" size="icon" onClick={() => getActiveGraph()?.zoomIn()} className="rounded-xl" title="放大" aria-label="放大">
-	                  <ZoomIn className="w-5 h-5" />
-	                </Button>
-	                <Button variant="ghost" size="icon" onClick={() => getActiveGraph()?.zoomOut()} className="rounded-xl" title="缩小" aria-label="缩小">
-	                  <ZoomOut className="w-5 h-5" />
-	                </Button>
-                <div className="h-px bg-muted mx-2 my-0.5"></div>
-	                <Button variant="ghost" size="icon" onClick={() => getActiveGraph()?.zoomToFit()} className="rounded-xl" title="适应屏幕" aria-label="适应屏幕">
-	                  <Maximize className="w-5 h-5" />
-	                </Button>
-             </div>
-             
-             {/* View Options */}
-             <div className="bg-card/90 p-1.5 rounded-2xl shadow-md border border-border/50 flex flex-col gap-1">
-	                <Button 
-	                   variant="ghost" 
-	                   size="icon" 
-	                   onClick={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
-                   className={cn(
-                     "rounded-xl",
-                     viewMode === '3d' && "bg-primary/10 text-primary ring-2 ring-primary/20"
-	                   )}
-	                   title={viewMode === '3d' ? "切换至 2D 平面" : "切换至 3D 空间"}
-	                   aria-label={viewMode === '3d' ? "切换至 2D 平面" : "切换至 3D 空间"}
-	                >
-                  {viewMode === '3d' ? <Box className="w-5 h-5" /> : <BoxSelect className="w-5 h-5" />}
-                </Button>
-	                <Button 
-	                   variant="ghost" 
-	                   size="icon" 
-	                   onClick={startExplainMode}
-                   className={cn(
-                     "rounded-xl",
-                     isExplainMode && "bg-primary/10 text-primary ring-2 ring-primary/20"
-	                   )}
-	                   title="推理演示 (Explain)"
-	                   aria-label="推理演示"
-	                >
-                  <PlayCircle className="w-5 h-5" />
-                </Button>
-	                <Button 
-	                   variant="ghost" 
-	                   size="icon" 
-	                   onClick={cycleLayoutMode}
-	                   className="rounded-xl"
-	                   title={`切换布局: ${getLayoutLabel()}`}
-	                   aria-label={`切换布局：${getLayoutLabel()}`}
-	                >
-                  <Layout className="w-5 h-5" />
-                  <span className="sr-only">{getLayoutLabel()}</span>
-                </Button>
-	                <Button 
-	                   variant="ghost" 
-	                   size="icon" 
-	                   onClick={togglePathMode}
-                   className={cn(
-                     "rounded-xl",
-                     isPathMode && "bg-primary/10 text-primary ring-2 ring-primary/20"
-	                   )}
-	                   title="路径发现 (Shortest Path)"
-	                   aria-label="路径发现"
-	                >
-                  <Route className="w-5 h-5" />
-                </Button>
-	                <Button 
-	                  variant="ghost" 
-	                  size="icon" 
-	                  onClick={() => setShowEdgeLabels(!showEdgeLabels)} 
-	                  className={cn("rounded-xl", showEdgeLabels && "bg-primary/10 text-primary ring-2 ring-primary/20")} 
-	                  title="显示/隐藏连线标签"
-	                  aria-label="显示或隐藏连线标签"
-	                >
-                  <Type className="w-5 h-5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleFullscreen}
-                  className={cn("rounded-xl", isFullscreen && "bg-primary/10 text-primary ring-2 ring-primary/20")}
-                  title={isFullscreen ? "退出全屏" : "全屏模式"}
-                  aria-label={isFullscreen ? "退出全屏模式" : "进入全屏模式"}
-                >
-                  {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
-                </Button>
-                <Popover open={exportOpen} onOpenChange={setExportOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn("rounded-xl", exportOpen && "bg-primary/10 text-primary ring-2 ring-primary/20")}
-                      title="导出 PNG/SVG"
-                      aria-label="导出图谱"
-                    >
-                      <Download className="w-5 h-5" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent side="left" align="end" className="w-64 p-2">
-                    <div className="px-1.5 py-1 text-[10px] font-semibold text-muted-foreground uppercase">Export</div>
-                    <div className="grid grid-cols-2 gap-2 p-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        onClick={() => {
-                          setExportOpen(false)
-                          detachPromise(exportGraph('png', 'download'))
-                        }}
-                      >
-                        PNG
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8"
-                        onClick={() => {
-                          setExportOpen(false)
-                          detachPromise(exportGraph('svg', 'download'))
-                        }}
-                      >
-                        SVG
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 p-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 justify-start"
-                        onClick={() => {
-                          setExportOpen(false)
-                          detachPromise(exportGraph('png', 'copy'))
-                        }}
-                      >
-                        <Copy className="w-4 h-4 mr-2" />
-                        Copy PNG
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 justify-start"
-                        onClick={() => {
-                          setExportOpen(false)
-                          detachPromise(exportGraph('svg', 'copy'))
-                        }}
-                      >
-                        <Copy className="w-4 h-4 mr-2" />
-                        Copy SVG
-                      </Button>
-                    </div>
-                    <div className="px-2 pb-1 text-[10px] text-muted-foreground">
-                      当前视图：{viewMode === '3d' ? '3D' : '2D'}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-             </div>
-          </div>
+          <GraphFloatingControls
+            viewMode={viewMode}
+            isExplainMode={isExplainMode}
+            isPathMode={isPathMode}
+            showEdgeLabels={showEdgeLabels}
+            isFullscreen={isFullscreen}
+            exportOpen={exportOpen}
+            layoutLabel={getLayoutLabel()}
+            onZoomIn={() => getActiveGraph()?.zoomIn()}
+            onZoomOut={() => getActiveGraph()?.zoomOut()}
+            onZoomToFit={() => getActiveGraph()?.zoomToFit()}
+            onToggleViewMode={() => setViewMode(viewMode === '3d' ? '2d' : '3d')}
+            onStartExplainMode={startExplainMode}
+            onCycleLayoutMode={cycleLayoutMode}
+            onTogglePathMode={togglePathMode}
+            onToggleShowEdgeLabels={() => setShowEdgeLabels((value) => !value)}
+            onToggleFullscreen={() => {
+              detachPromise(toggleFullscreen())
+            }}
+            onExportOpenChange={setExportOpen}
+            onExportPngDownload={() => {
+              setExportOpen(false)
+              detachPromise(exportGraph('png', 'download'))
+            }}
+            onExportSvgDownload={() => {
+              setExportOpen(false)
+              detachPromise(exportGraph('svg', 'download'))
+            }}
+            onExportPngCopy={() => {
+              setExportOpen(false)
+              detachPromise(exportGraph('png', 'copy'))
+            }}
+            onExportSvgCopy={() => {
+              setExportOpen(false)
+              detachPromise(exportGraph('svg', 'copy'))
+            }}
+          />
 
           <GraphNodeDetailPanel
             open={isDetailOpen}
