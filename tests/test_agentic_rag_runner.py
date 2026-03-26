@@ -322,3 +322,58 @@ async def test_agentic_runner_reads_single_document_with_tool(
     ]
     done_metrics = (events[-1].get("data") or {}).get("metrics") or {}
     assert done_metrics.get("agentic_tools_used") == 1
+
+
+@pytest.mark.asyncio
+async def test_agentic_runner_delegates_to_multi_agent_runner_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.agents.rag_agent as rag_agent_mod
+    from app.core.config import settings
+    from app.rag.agents.rag_agent import AgenticPlanStep, AgenticRAGRunner
+    from app.rag.engine import RAGEngine
+
+    monkeypatch.setattr(settings, "LLM_MOCK_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LLM_MOCK_RESPONSE", "delegated answer", raising=False)
+    monkeypatch.setattr(settings, "LLM_API_KEY", "", raising=False)
+    monkeypatch.setattr(settings, "RAG_MULTI_AGENT_ENABLED", True, raising=False)
+
+    engine = RAGEngine()
+    runner = AgenticRAGRunner(engine=engine)
+
+    async def _fake_plan(*_args, **_kwargs):  # noqa: ANN003
+        return [
+            AgenticPlanStep(query="sub-question one", rationale="part_one"),
+            AgenticPlanStep(query="sub-question two", rationale="part_two"),
+        ]
+
+    class _DummyMultiRunner:
+        async def stream(self, **kwargs):  # noqa: ANN003
+            yield {"type": "route", "data": {"route": "multi_agent", "question": kwargs["question"]}}
+            yield {"type": "done", "data": {"metrics": {"agentic_used": True, "delegated": True}}}
+
+    monkeypatch.setattr(runner, "_plan", _fake_plan, raising=True)
+    monkeypatch.setattr(rag_agent_mod, "get_multi_agent_runner", lambda **_kwargs: _DummyMultiRunner(), raising=True)
+
+    events: list[dict[str, object]] = []
+    agen = runner.stream(
+        question="Compare the two issues and synthesize a final answer.",
+        history=[],
+        conversation_id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        account_id="u",
+        document_ids=[uuid.uuid4()],
+        dataset_id=uuid.uuid4(),
+        top_k=3,
+        score_threshold=0.0,
+        retrieval_mode="vector",
+        request_id="agentic-delegate-test",
+    )
+
+    async for event in agen:
+        events.append(event)
+        if event.get("type") == "done":
+            break
+
+    assert [event.get("type") for event in events] == ["route", "done"]
+    assert (events[-1].get("data") or {}).get("metrics") == {"agentic_used": True, "delegated": True}

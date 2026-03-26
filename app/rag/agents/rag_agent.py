@@ -105,6 +105,12 @@ def get_agentic_tool_registry() -> Any:
     return register_default_tools(registry)
 
 
+def get_multi_agent_runner(*, engine: RAGEngine | None = None) -> Any:
+    from app.rag.agents.multi_agent import get_multi_agent_runner as _get_multi_agent_runner
+
+    return _get_multi_agent_runner(engine=engine)
+
+
 class AgenticRAGRunner:
     def __init__(self, engine: RAGEngine) -> None:
         self._engine = engine
@@ -306,6 +312,35 @@ class AgenticRAGRunner:
         complexity_score = self._engine._score_question_complexity(question, history)
         threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
+        max_rounds = max(1, int(getattr(settings, "RAG_AGENTIC_MAX_RETRIEVE_ROUNDS", 3) or 3))
+        plan_steps = await self._plan(question=question, history=history, llm=llm, max_steps=max_rounds)
+
+        if bool(getattr(settings, "RAG_MULTI_AGENT_ENABLED", False)) and len(plan_steps) > 1:
+            runner = get_multi_agent_runner(engine=self._engine)
+            async for event in runner.stream(
+                question=question,
+                history=history,
+                conversation_id=conversation_id,
+                document_ids=document_ids,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                retrieval_mode=retrieval_mode,
+                retrieval_profile=retrieval_profile,
+                structured_output=structured_output,
+                structured_preset=structured_preset,
+                prompt_template_id=prompt_template_id,
+                prompt_template_key=prompt_template_key,
+                prompt_ab_experiment_key=prompt_ab_experiment_key,
+                ab_user_key=ab_user_key,
+                request_id=request_id,
+                db=db,
+                **_kwargs,
+            ):
+                yield event
+            return
 
         base_state_kwargs = {key: value for key, value in _kwargs.items() if key in _RAG_STATE_BUILD_KEYS}
         base_state_kwargs.update(
@@ -345,9 +380,7 @@ class AgenticRAGRunner:
             },
         }
 
-        max_rounds = max(1, int(getattr(settings, "RAG_AGENTIC_MAX_RETRIEVE_ROUNDS", 3) or 3))
         yield {"type": "agentic_step", "data": {"step": "planning"}}
-        plan_steps = await self._plan(question=question, history=history, llm=llm, max_steps=max_rounds)
 
         collected_docs: list[Document] = []
         prior_findings: list[str] = []
@@ -548,4 +581,5 @@ __all__ = [
     "AgenticRAGRunner",
     "get_agentic_runner",
     "get_agentic_tool_registry",
+    "get_multi_agent_runner",
 ]

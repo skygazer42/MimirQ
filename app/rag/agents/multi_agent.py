@@ -195,7 +195,7 @@ class MultiAgentRAGRunner:
         complexity_score = self._engine._score_question_complexity(question, history)
         threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
-        max_sub_questions = max(1, int(getattr(settings, "RAG_AGENTIC_MAX_RETRIEVE_ROUNDS", 3) or 3))
+        max_sub_questions = max(1, int(getattr(settings, "RAG_MULTI_AGENT_MAX_SUB_AGENTS", 4) or 4))
 
         base_state_kwargs = {key: value for key, value in _kwargs.items() if key in _RAG_STATE_BUILD_KEYS}
         base_state_kwargs.update(
