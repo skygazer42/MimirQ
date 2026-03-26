@@ -58,7 +58,8 @@ from app.api.v1.documents import (
     _normalize_datetime_utc_iso,
     _resolve_writable_dataset,
 )
-from app.connectors.registry import ConnectorNotFoundError, registry as connector_class_registry
+from app.connectors.registry import ConnectorNotFoundError
+from app.connectors.registry import registry as connector_class_registry
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.http_client import get_http_client_pool

@@ -6,6 +6,7 @@ Provides:
 - Integration with LangGraph's official prebuilt components
 """
 
+from app.rag.agents.multi_agent import MultiAgentPlanStep, MultiAgentRAGRunner, get_multi_agent_runner
 from app.rag.agents.prebuilt import (
     RAGAgent,
     RAGAgentConfig,
@@ -16,7 +17,6 @@ from app.rag.agents.prebuilt import (
     create_search_tool,
     tools_condition,
 )
-from app.rag.agents.multi_agent import MultiAgentPlanStep, MultiAgentRAGRunner, get_multi_agent_runner
 from app.rag.agents.rag_agent import AgenticPlanStep, AgenticRAGRunner, get_agentic_runner
 
 __all__ = [

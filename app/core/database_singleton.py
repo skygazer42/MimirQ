@@ -25,6 +25,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.core.config import settings
 
+
 def _build_engine_kwargs(url: str) -> dict[str, Any]:
     parsed_url = make_url(url)
     engine_kwargs: dict[str, Any] = {"pool_pre_ping": bool(getattr(settings, "DB_POOL_PRE_PING", True))}

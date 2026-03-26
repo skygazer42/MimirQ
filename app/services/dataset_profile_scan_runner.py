@@ -241,7 +241,7 @@ def run_dataset_profile_deep_scan(
         run.finished_at = _now_utc()
         db.commit()
         summary = compute_dataset_profile_summary(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
-        run.summary = summary.model_dump()
+        run.summary = summary.model_dump(mode="json")
         db.commit()
         return {"ok": True, "documents": 0}
 
@@ -538,7 +538,7 @@ def run_dataset_profile_deep_scan(
     db.commit()
     # Persist summary snapshot in run (after status update so latest_scan_run reflects completion).
     summary = compute_dataset_profile_summary(db, tenant_id=tenant_id, account_id=account_id, dataset_id=dataset_id)
-    run.summary = summary.model_dump()
+    run.summary = summary.model_dump(mode="json")
     db.commit()
 
     return {
