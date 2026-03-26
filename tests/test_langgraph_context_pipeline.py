@@ -78,3 +78,19 @@ def test_langgraph_build_context_applies_compression_before_render(monkeypatch) 
 
     assert 'COMPRESSED' in out
     assert 'RAW' not in out
+
+
+def test_langgraph_build_context_applies_optional_llm_compression(monkeypatch) -> None:
+    import app.rag.pipelines.langgraph as lg_mod
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, 'RAG_CONTEXT_LLM_COMPRESSION_ENABLED', True, raising=False)
+    monkeypatch.setattr(
+        'app.rag.core.context_denoise.compress_context_docs_with_llm',
+        lambda docs, query=None: [Document(page_content='LLM-COMPRESSED', metadata={'source': 'x'})],
+    )
+
+    out = lg_mod._build_context([Document(page_content='RAW', metadata={'source': 'x'})], query='why')
+
+    assert 'LLM-COMPRESSED' in out
+    assert 'RAW' not in out

@@ -181,6 +181,74 @@ def _apply_token_budget_trim(docs: list[Document], *, max_total_tokens: int) -> 
     return out
 
 
+def _compress_text_with_llm(*, text: str, query: str, target_ratio: float) -> str:
+    if not text or not query:
+        return text
+
+    from langchain_core.output_parsers import StrOutputParser
+    from langchain_core.prompts import ChatPromptTemplate
+
+    from app.rag.engine import get_rag_engine
+
+    engine = get_rag_engine()
+    llm = engine.models.get("fast") or engine.models.get("default")
+    if llm is None:
+        return text
+
+    ratio = float(target_ratio or 0.0)
+    if ratio <= 0.0:
+        ratio = 0.5
+
+    prompt = ChatPromptTemplate.from_template(
+        """Extract only the information relevant to the query from the following text.
+Keep key facts, numbers, and relationships. Remove filler and irrelevant details.
+
+Query: {query}
+Text:
+{text}
+
+Relevant information:"""
+    )
+    chain = prompt | llm.bind(temperature=0.0) | StrOutputParser()
+    try:
+        out = chain.invoke({"query": query, "text": text})
+    except Exception:
+        return text
+    compressed = str(out or "").strip()
+    if not compressed:
+        return text
+    return compressed
+
+
+def compress_context_docs_with_llm(
+    docs: Iterable[Document] | None,
+    *,
+    query: str | None = None,
+) -> list[Document]:
+    if not docs:
+        return []
+    if not bool(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_ENABLED", False)):
+        return list(docs)
+
+    query_text = str(query or "").strip()
+    if not query_text:
+        return list(docs)
+
+    ratio = float(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO", 0.5) or 0.5)
+    ratio = min(max(ratio, 0.1), 1.0)
+
+    out: list[Document] = []
+    for doc in docs:
+        if doc is None:
+            continue
+        text = str(getattr(doc, "page_content", "") or "").strip()
+        if not text:
+            continue
+        compressed = _compress_text_with_llm(text=text, query=query_text, target_ratio=ratio)
+        out.append(Document(page_content=compressed, metadata=dict(doc.metadata or {}), id=getattr(doc, "id", None)))
+    return out
+
+
 def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     """
     Clean and deduplicate retrieved context docs before prompt assembly.
@@ -237,5 +305,6 @@ def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
 
 
 __all__ = [
+    "compress_context_docs_with_llm",
     "denoise_context_docs",
 ]
