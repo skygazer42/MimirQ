@@ -232,6 +232,13 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.7
     LLM_TIMEOUT: int = 60
     LLM_MAX_RETRIES: int = 3
+    # Optional provider fallback chain; default OFF.
+    # Accepts JSON list/dict or comma-separated model names.
+    LLM_FALLBACK_ENABLED: bool = False
+    LLM_FALLBACK_MODELS: str = ""
+    # Prompt cache hinting for Anthropic-compatible providers (default OFF).
+    PROMPT_CACHE_ENABLED: bool = False
+    PROMPT_CACHE_MIN_CHARS: int = 1000
 
     # Dev/test helper: bypass external LLM calls with a deterministic fake streaming model.
     # Useful for E2E tests and offline development.
