@@ -17,14 +17,13 @@ import { GraphPageHeader } from './_components/graph-page-header'
 import { GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphData } from '@/lib/graph-parser'
-import { GraphService } from '@/lib/graph-service'
 import { detachPromise } from '@/lib/utils'
 import { documentApi } from '@/lib/api/documents'
-import { kgApi } from '@/lib/api/graph'
 import { useGraphDataLoading } from './use-graph-data-loading'
 import { useGraphDisplayFilters } from './use-graph-display-filters'
 import { useGraphEntityResolution } from './use-graph-entity-resolution'
 import { useGraphInteractionModes } from './use-graph-interaction-modes'
+import { useGraphNodeOperations } from './use-graph-node-operations'
 import { useGraphPageActions } from './use-graph-page-actions'
 import {
   GraphConfBucket,
@@ -32,7 +31,6 @@ import {
   type GraphLinkLike,
   type GraphNodeLike,
   coerceBoundedInt,
-  getGraphLinkEndpointId,
   getScopedDocumentId,
   isPendingScopedDocument,
   parseCsvList,
@@ -373,121 +371,32 @@ export default function GraphPage() {
     setPathEndNode,
   })
 
-  useEffect(() => {
-    if (dataSource !== 'live') {
-      setKgNodeDetail(null)
-      setKgNodeDetailLoading(false)
-      return
-    }
-    if (!isDetailOpen || !selectedNode?.id) {
-      setKgNodeDetail(null)
-      return
-    }
-
-    const kind = selectedNode?.meta?.kind
-    if (kind !== 'entity' && kind !== 'event') {
-      setKgNodeDetail(null)
-      return
-    }
-
-    let cancelled = false
-	    setKgNodeDetail(null)
-	    setKgNodeDetailLoading(true)
-	    ;(async () => {
-	      try {
-	        const detail =
-	          kind === 'entity'
-	            ? await kgApi.getEntity(selectedNode.id, scopeParams || undefined)
-	            : await kgApi.getEvent(selectedNode.id, scopeParams || undefined)
-	        if (!cancelled) setKgNodeDetail(detail)
-	      } catch (error) {
-	        console.error('Fetch KG node detail failed:', error)
-	        if (!cancelled) setKgNodeDetail(null)
-      } finally {
-        if (!cancelled) setKgNodeDetailLoading(false)
-      }
-    })()
-
-	    return () => {
-	      cancelled = true
-	    }
-	  }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind, scopeParams])
-
-  const expandNodeById = useCallback(
-    async (nodeId: string) => {
-      const id = String(nodeId || '').trim()
-      if (!id) return
-
-      setIsLoading(true)
-      try {
-        const newData = await GraphService.expandNode(id, {
-          includeEntityLinks: includeEntityLinks && dataSource === 'live',
-          includeRelationLinks: includeRelationLinks && dataSource === 'live',
-          minSharedEvents,
-          maxEntityLinks,
-          documentIds:
-            dataSource === 'live' && scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined,
-          pipelineHash: dataSource === 'live' ? (scope.pipelineHash || undefined) : undefined,
-        })
-
-        setGraphData((prev) => {
-          const existingNodeIds = new Set(prev.nodes.map((n) => n.id))
-          const uniqueNewNodes = newData.nodes.filter((n) => !existingNodeIds.has(n.id))
-
-          const existingLinks = new Set(
-            prev.links.map((l) => `${getGraphLinkEndpointId(l.source)}-${getGraphLinkEndpointId(l.target)}`)
-          )
-          const uniqueNewLinks = newData.links.filter((l) => !existingLinks.has(`${l.source}-${l.target}`))
-
-          return {
-            nodes: [...prev.nodes, ...uniqueNewNodes],
-            links: [...prev.links, ...uniqueNewLinks],
-          }
-        })
-      } catch (error) {
-        console.error('Failed to expand node:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    },
-    [includeEntityLinks, includeRelationLinks, minSharedEvents, maxEntityLinks, dataSource, scopedDocumentIds, scope.pipelineHash]
-  )
-
-  const handleExpandNode = useCallback(() => {
-    if (!selectedNode) return
-    detachPromise(expandNodeById(String(selectedNode.id)))
-  }, [expandNodeById, selectedNode])
-
-  const handleDeleteNode = useCallback((node?: GraphNodeLike) => {
-    const target = node ?? selectedNode
-    if (!target) return
-    setDeleteNodeTarget({
-      id: String(target.id),
-      label: String(target.label || target.id || ''),
-    })
-    setDeleteNodeOpen(true)
-  }, [selectedNode])
-
-  const confirmDeleteNode = useCallback(() => {
-    const nodeId = (deleteNodeTarget?.id || '').trim()
-    if (!nodeId) return
-
-    setGraphData((prev) => ({
-      nodes: prev.nodes.filter((n) => String(n.id) !== nodeId),
-      links: prev.links.filter((l) => {
-        const s = getGraphLinkEndpointId(l.source)
-        const t = getGraphLinkEndpointId(l.target)
-        return String(s) !== nodeId && String(t) !== nodeId
-      }),
-    }))
-
-    if (String(selectedNode?.id) === nodeId) {
-      setSelectedNode(null)
-      setIsDetailOpen(false)
-    }
-    setDeleteNodeTarget(null)
-    setDeleteNodeOpen(false)
-  }, [deleteNodeTarget, selectedNode])
+  const {
+    handleExpandNode,
+    handleExpandNodeById,
+    handleDeleteNode,
+    confirmDeleteNode,
+  } = useGraphNodeOperations({
+    dataSource,
+    isDetailOpen,
+    selectedNode,
+    scopeParams,
+    includeEntityLinks,
+    includeRelationLinks,
+    minSharedEvents,
+    maxEntityLinks,
+    scopedDocumentIds,
+    pipelineHash: scope.pipelineHash,
+    deleteNodeTarget,
+    setGraphData,
+    setIsLoading,
+    setDeleteNodeOpen,
+    setDeleteNodeTarget,
+    setSelectedNode,
+    setIsDetailOpen,
+    setKgNodeDetail,
+    setKgNodeDetailLoading,
+  })
 
   const {
     isFullscreen,
@@ -714,9 +623,7 @@ export default function GraphPage() {
             viewMode,
             showEdgeLabels,
             onClose: closeContextMenu,
-            onExpandNode: (nodeId) => {
-              detachPromise(expandNodeById(nodeId))
-            },
+            onExpandNode: handleExpandNodeById,
             onStartPathFromNode: handleStartPathFromContextNode,
             onStartConnectFromNode: handleStartConnectFromContextNode,
             onChatWithNode: chatWithNode,
