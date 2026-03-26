@@ -15,9 +15,10 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { isJsonObject } from '@/components/chunk-preview/utils/metadata'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, formatFileSize } from '@/lib/utils'
-import type { IngestionPreviewResponse } from '@/types'
+import type { DocumentPipelineOptions, GovernanceIssue, IngestionPreviewResponse, JsonObject, PreprocessStepLog } from '@/types'
 
 function toShortNote(note: unknown, maxChars: number = 180): string {
   const s = toTrimmedPrimitiveString(note)
@@ -40,6 +41,11 @@ function downloadJsonObject(obj: unknown, filename: string) {
   globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+function countTotalHits(entries: Record<string, number> | null | undefined): number {
+  if (!entries) return 0
+  return Object.values(entries).reduce((acc, value) => acc + (Number(value) || 0), 0)
+}
+
 export function IngestionPreviewDetailsDialog({
   open,
   onOpenChange,
@@ -51,7 +57,7 @@ export function IngestionPreviewDetailsDialog({
   onOpenChange: (open: boolean) => void
   preview: IngestionPreviewResponse | null
   datasetId?: string
-  onApplyPipelinePatch?: (patch: Record<string, any>) => void
+  onApplyPipelinePatch?: (patch: DocumentPipelineOptions) => void
 }>) {
   const router = useRouter()
   const ruleTitle = useMemo(() => {
@@ -74,10 +80,10 @@ export function IngestionPreviewDetailsDialog({
   const cleanSummary = useMemo(() => {
     const c = preview?.clean
     if (!c) return null
-    const piiHits = c.pii_hits && typeof c.pii_hits === 'object' ? (c.pii_hits as any) : null
-    const secretsHits = c.secrets_hits && typeof c.secrets_hits === 'object' ? (c.secrets_hits as any) : null
-    const piiTotal = piiHits ? Object.values(piiHits).reduce((acc: number, v: any) => acc + (Number(v) || 0), 0) : 0
-    const secretsTotal = secretsHits ? Object.values(secretsHits).reduce((acc: number, v: any) => acc + (Number(v) || 0), 0) : 0
+    const piiHits = c.pii_hits ?? null
+    const secretsHits = c.secrets_hits ?? null
+    const piiTotal = countTotalHits(piiHits)
+    const secretsTotal = countTotalHits(secretsHits)
     return {
       changed: Boolean(c.changed),
       dropped: Boolean(c.dropped),
@@ -103,7 +109,7 @@ export function IngestionPreviewDetailsDialog({
 
   const hasPreview = Boolean(preview)
   const issues = useMemo(() => {
-    const list = (preview?.clean?.issues as any) || []
+    const list = preview?.clean?.issues ?? []
     return Array.isArray(list) ? list : []
   }, [preview?.clean?.issues])
 
@@ -211,10 +217,10 @@ export function IngestionPreviewDetailsDialog({
                     <ScrollArea className="h-[240px] mt-2 pr-2">
                       {preprocessSummary.steps.length ? (
                         <div className="space-y-1">
-                          {preprocessSummary.steps.map((s: any, idx: number) => {
-                            const id = String(s?.id || '').trim() || `step_${idx + 1}`
-                            const applied = Boolean(s?.applied)
-                            const changed = Boolean(s?.changed)
+                          {preprocessSummary.steps.map((step: PreprocessStepLog, idx: number) => {
+                            const id = String(step.id || '').trim() || `step_${idx + 1}`
+                            const applied = Boolean(step.applied)
+                            const changed = Boolean(step.changed)
                             return (
                             <div key={id} className="rounded-lg border border-border/60 bg-background p-2">
                                 <div className="flex items-center justify-between gap-2">
@@ -238,8 +244,8 @@ export function IngestionPreviewDetailsDialog({
                                     </span>
                                   </div>
                                 </div>
-                                {s?.note ? (
-                                  <div className="mt-1 text-[10px] text-muted-foreground">{toShortNote(s.note)}</div>
+                                {step.note ? (
+                                  <div className="mt-1 text-[10px] text-muted-foreground">{toShortNote(step.note)}</div>
                                 ) : null}
                               </div>
                             )
@@ -373,7 +379,7 @@ export function IngestionPreviewDetailsDialog({
                             toast.message('未提供 patch 应用函数')
                             return
                           }
-                          onApplyPipelinePatch(patch as any)
+                          onApplyPipelinePatch(patch)
                           toast.success('已应用 suggested pipeline patch')
                         }}
                         disabled={!onApplyPipelinePatch}
@@ -454,7 +460,7 @@ export function IngestionPreviewDetailsDialog({
                         toast.message('未提供 patch 应用函数')
                         return
                       }
-                      onApplyPipelinePatch(patch as any)
+                      onApplyPipelinePatch(patch)
                       toast.success('已应用 suggested pipeline patch')
                     }}
                     disabled={!onApplyPipelinePatch}
@@ -467,13 +473,13 @@ export function IngestionPreviewDetailsDialog({
               {issues.length ? (
                 <ScrollArea className="h-[520px] mt-3 pr-2">
                   <div className="space-y-2">
-                    {issues.map((it: any, idx: number) => {
-                      const code = String(it?.code || '').trim() || `issue_${idx + 1}`
-                      const severity = String(it?.severity || 'info')
-                      const count = Number(it?.count || 0)
-                      const message = String(it?.message || '').trim() || code
-                      const samples = Array.isArray(it?.samples) ? it.samples.filter(Boolean).map(String) : []
-                      const patch = it?.suggested_pipeline_patch && typeof it.suggested_pipeline_patch === 'object' ? it.suggested_pipeline_patch : null
+                    {issues.map((issue: GovernanceIssue, idx: number) => {
+                      const code = String(issue.code || '').trim() || `issue_${idx + 1}`
+                      const severity = String(issue.severity || 'info')
+                      const count = Number(issue.count || 0)
+                      const message = String(issue.message || '').trim() || code
+                      const samples = Array.isArray(issue.samples) ? issue.samples.filter(Boolean).map(String) : []
+                      const patch = issue.suggested_pipeline_patch ?? null
                       const patchKeys = patch ? Object.keys(patch || {}) : []
                       const badgeCls =
                         (() => {
@@ -575,12 +581,13 @@ export function IngestionPreviewDetailsDialog({
                       toast.error('后端未返回 explain 字段')
                       return
                     }
-                    const snap = (exp as any)?.snapshot ?? exp
-                    const rawName = String((snap)?.filename || 'ingestion-preview')
+                    const snapshotValue = isJsonObject(exp) && 'snapshot' in exp ? exp.snapshot ?? exp : exp
+                    const snapshotRecord = isJsonObject(snapshotValue) ? snapshotValue : null
+                    const rawName = String(snapshotRecord?.filename || 'ingestion-preview')
                       .trim()
                       .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
                       .slice(0, 64)
-                    downloadJsonObject(snap, `${rawName}.ingestion-preview.explain.json`)
+                    downloadJsonObject(snapshotValue, `${rawName}.ingestion-preview.explain.json`)
                     toast.success('已导出 explain 快照')
                   }}
                   disabled={!preview?.explain}

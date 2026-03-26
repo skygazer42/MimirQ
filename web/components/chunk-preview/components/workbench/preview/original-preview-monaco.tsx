@@ -6,6 +6,7 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTheme } from 'next-themes'
+import { getChunkMetadata, getChunkRole } from '@/components/chunk-preview/utils/metadata'
 import type { ChunkPreviewItem } from '@/types'
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false })
@@ -17,6 +18,47 @@ type MonacoRangeLike = {
   startColumn: number
   endLineNumber: number
   endColumn: number
+}
+
+type MonacoDecoration = {
+  range: MonacoRangeLike
+  options: {
+    overviewRuler?: { color: string; position: number }
+    inlineClassName?: string
+  }
+}
+
+type MonacoPosition = {
+  lineNumber: number
+  column: number
+}
+
+type MonacoMouseEvent = {
+  event: { leftButton: boolean }
+  target: { position: MonacoPosition | null }
+}
+
+type MonacoDisposable = {
+  dispose: () => void
+}
+
+type MonacoModel = {
+  getOffsetAt: (position: MonacoPosition) => number
+}
+
+type MonacoEditorInstance = {
+  deltaDecorations: (oldDecorations: string[], newDecorations: MonacoDecoration[]) => string[]
+  revealRangeInCenter: (range: MonacoRangeLike, scrollType?: number) => void
+  onMouseDown: (listener: (event: MonacoMouseEvent) => void) => MonacoDisposable
+  getModel: () => MonacoModel | null
+}
+
+type MonacoModule = {
+  Range: new (startLineNumber: number, startColumn: number, endLineNumber: number, endColumn: number) => MonacoRangeLike
+  editor: {
+    OverviewRulerLane: { Right: number }
+    ScrollType: { Smooth: number }
+  }
 }
 
 function buildLineStarts(text: string) {
@@ -69,8 +111,8 @@ function pickBestChunkAtOffset(chunks: ChunkPreviewItem[], offset: number) {
 }
 
 function resolveParentRange(chunk: ChunkPreviewItem, chunks: ChunkPreviewItem[]) {
-  const meta = (chunk.metadata || {})
-  const role = String(meta.chunk_role || '')
+  const meta = getChunkMetadata(chunk)
+  const role = getChunkRole(chunk) ?? ''
   if (role !== 'child') return null
 
   const parentStartRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
@@ -84,8 +126,8 @@ function resolveParentRange(chunk: ChunkPreviewItem, chunks: ChunkPreviewItem[])
   const parentId = meta.parent_id ?? meta.parent_node_id
   if (!parentId) return null
   const parent = chunks.find((it) => {
-    const m = (it.metadata || {})
-    return String(m.chunk_role || '') === 'parent' && (m.parent_id === parentId || m.node_id === parentId || m.id === parentId)
+    const parentMeta = getChunkMetadata(it)
+    return getChunkRole(it) === 'parent' && (parentMeta.parent_id === parentId || parentMeta.node_id === parentId || parentMeta.id === parentId)
   })
   if (!parent) return null
   const start = Number(parent.start_index) || 0
@@ -104,11 +146,11 @@ export function OriginalPreviewMonaco(props: Readonly<{
 }>) {
   const { text, chunks, activeChunkIndex, activeRange, chunkOverrides, onSelectChunkIndex } = props
 
-  const editorRef = useRef<any>(null)
-  const monacoRef = useRef<any>(null)
+  const editorRef = useRef<MonacoEditorInstance | null>(null)
+  const monacoRef = useRef<MonacoModule | null>(null)
   const overviewDecorationIdsRef = useRef<string[]>([])
   const activeDecorationIdsRef = useRef<string[]>([])
-  const clickDisposableRef = useRef<{ dispose: () => void } | null>(null)
+  const clickDisposableRef = useRef<MonacoDisposable | null>(null)
 
   const lineStarts = useMemo(() => buildLineStarts(text), [text])
   const { theme, systemTheme } = useTheme()
@@ -196,7 +238,7 @@ export function OriginalPreviewMonaco(props: Readonly<{
 
     const parent = chunk ? resolveParentRange(chunk, chunks) : null
 
-    const decos: any[] = []
+    const decos: MonacoDecoration[] = []
     if (parent) {
       const parentStart = clampOffset(parent.start, 0, textLen)
       const parentEnd = clampOffset(Math.max(parentStart, parent.end), 0, textLen)
@@ -288,7 +330,7 @@ export function OriginalPreviewMonaco(props: Readonly<{
           folding: false,
           overviewRulerBorder: false,
         }}
-        onMount={(editor, monaco) => {
+        onMount={(editor: MonacoEditorInstance, monaco: MonacoModule) => {
           editorRef.current = editor
           monacoRef.current = monaco
 
@@ -297,9 +339,9 @@ export function OriginalPreviewMonaco(props: Readonly<{
 
           if (onSelectChunkIndex) {
             clickDisposableRef.current?.dispose()
-            clickDisposableRef.current = editor.onMouseDown((e: any) => {
-              if (!e?.event?.leftButton) return
-              const position = e?.target?.position
+            clickDisposableRef.current = editor.onMouseDown((event: MonacoMouseEvent) => {
+              if (!event.event.leftButton) return
+              const position = event.target.position
               if (!position) return
               const model = editor.getModel()
               if (!model) return

@@ -1,4 +1,13 @@
-import type { ChunkPreviewItem } from '@/types'
+import type { ChunkPreviewItem, JsonObject } from '@/types'
+
+function getChunkMetadata(chunk: ChunkPreviewItem): JsonObject {
+  return chunk.metadata ?? {}
+}
+
+function getStringMeta(meta: JsonObject, key: string): string | undefined {
+  const value = meta[key]
+  return typeof value === 'string' ? value.trim() || undefined : undefined
+}
 
 export function roughEstimateTokens(text: string) {
   const raw = (text || '').trim()
@@ -50,8 +59,8 @@ export function computeRoleIndices(chunks: ChunkPreviewItem[]) {
   const parents = new Set<number>()
   const children = new Set<number>()
   for (const c of chunks || []) {
-    const meta = (c.metadata || {})
-    const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : undefined
+    const meta = getChunkMetadata(c)
+    const role = getStringMeta(meta, 'chunk_role')
     const idx = Number(c.index)
     if (!Number.isFinite(idx)) continue
     if (role === 'parent') parents.add(idx)
@@ -101,18 +110,18 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
   for (const c of sorted) {
     const idx = Number(c.index)
     if (!Number.isFinite(idx)) continue
-    const meta = (c.metadata || {}) as Record<string, any>
+    const meta = getChunkMetadata(c)
 
-    const basis = typeof meta.hierarchy_basis === 'string' ? meta.hierarchy_basis.trim() : ''
+    const basis = getStringMeta(meta, 'hierarchy_basis') ?? ''
     if (basis) basisValues.add(basis)
 
-    const nodeKey = typeof meta.hierarchy_node_key === 'string' ? meta.hierarchy_node_key.trim() : ''
+    const nodeKey = getStringMeta(meta, 'hierarchy_node_key') ?? ''
     if (nodeKey) {
       anyNodeKey = true
       nodeKeysByIndex.set(idx, nodeKey)
     }
 
-    const familyKey = typeof meta.hierarchy_family_key === 'string' ? meta.hierarchy_family_key.trim() : ''
+    const familyKey = getStringMeta(meta, 'hierarchy_family_key') ?? ''
     if (familyKey) {
       anyFamilyKey = true
       familyKeysByIndex.set(idx, familyKey)
@@ -194,7 +203,7 @@ export function computeCoverageSignals(
   let basis: 'all' | 'child' = 'all'
   let analysis = raw
   if (options?.strategy === 'parent_child') {
-    const filtered = raw.filter((c) => String((c.metadata as any)?.chunk_role || '') !== 'parent')
+    const filtered = raw.filter((c) => getStringMeta(getChunkMetadata(c), 'chunk_role') !== 'parent')
     if (filtered.length > 0) {
       analysis = filtered
       basis = 'child'

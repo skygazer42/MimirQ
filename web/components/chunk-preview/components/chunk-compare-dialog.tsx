@@ -8,6 +8,7 @@ import { Download, GitCompareArrows, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { getChunkMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
 import { cn } from '@/lib/utils'
 import type { ChunkPreviewResponse } from '@/types'
 import { chunkPreviewDiffToExport, computeChunkPreviewDiff } from '@/components/chunk-preview/utils/ab-diff'
@@ -46,9 +47,7 @@ function formatDeltaPct(deltaRatio: number | null) {
 function extractHierarchyBasis(preview: ChunkPreviewResponse): string[] {
   const bases = new Set<string>()
   for (const c of preview?.chunks || []) {
-    const meta = (c as any)?.metadata
-    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) continue
-    const basis = typeof (meta as any).hierarchy_basis === 'string' ? String((meta as any).hierarchy_basis).trim() : ''
+    const basis = getStringValue(getChunkMetadata(c), 'hierarchy_basis')
     if (!basis) continue
     bases.add(basis)
   }

@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkCard } from '../../chunk-card'
 import { ChunkInspectorDialog } from '../../chunk-inspector-dialog'
+import { chunkNeedsReview, isChunkOverrideDisabled, isChunkOverrideEdited } from '@/components/chunk-preview/utils/metadata'
 import { SemanticQualityHeatmapMini } from './semantic-quality-heatmap-mini'
 import type { ChunkPreviewItem } from '@/types'
 import { computeCoverageSignals, computeRoleIndices, fnv1a32, roughEstimateTokens } from '@/components/chunk-preview/utils/review-signals'
@@ -174,20 +175,20 @@ export function ChunkList() {
 
   const editedIndices = useMemo(() => {
     const out = new Set<number>()
-    for (const [k, v] of Object.entries(chunkOverrides || {})) {
+    for (const [k, override] of Object.entries(chunkOverrides)) {
       const n = Number(k)
       if (!Number.isFinite(n)) continue
-      if ((v as any)?.content !== undefined || (v as any)?.metadata !== undefined) out.add(n)
+      if (isChunkOverrideEdited(override)) out.add(n)
     }
     return out
   }, [chunkOverrides])
 
   const disabledIndices = useMemo(() => {
     const out = new Set<number>()
-    for (const [k, v] of Object.entries(chunkOverrides || {})) {
+    for (const [k, override] of Object.entries(chunkOverrides)) {
       const idx = Number(k)
       if (!Number.isFinite(idx)) continue
-      if ((v as any)?.disabled) out.add(idx)
+      if (isChunkOverrideDisabled(override)) out.add(idx)
     }
     return out
   }, [chunkOverrides])
@@ -287,9 +288,7 @@ export function ChunkList() {
     for (const c of effectiveChunks || []) {
       const idx = Number(c.index)
       if (!Number.isFinite(idx)) continue
-      const meta = (c.metadata || {}) as Record<string, any>
-      const q = (meta.semantic_quality || {}) as Record<string, any>
-      if (meta.needs_review || q.needs_review) out.add(idx)
+      if (chunkNeedsReview(c)) out.add(idx)
     }
     return out
   }, [effectiveChunks])

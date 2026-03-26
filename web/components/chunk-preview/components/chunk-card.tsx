@@ -8,6 +8,7 @@ import type { ReactNode } from 'react'
 import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { chunkNeedsReview, getChunkMetadata, getSemanticQualityMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
 import { cn, detachPromise } from '@/lib/utils'
 import type { ChunkPreviewItem } from '@/types'
 import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
@@ -98,15 +99,14 @@ export function ChunkCard({
 }: Readonly<ChunkCardProps>) {
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
   const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
-  const chunkRole = (chunk.metadata)?.chunk_role as string | undefined
+  const chunkMetadata = getChunkMetadata(chunk)
+  const chunkRole = getStringValue(chunkMetadata, 'chunk_role')
   const sectionLabel = useMemo(() => getChunkSectionLabel(chunk), [chunk])
-  const semanticQuality = ((chunk.metadata as any)?.semantic_quality || null) as
-    | { needs_review?: boolean; reasons?: string[] }
-    | null
-  const needsReview = Boolean((chunk.metadata as any)?.needs_review || semanticQuality?.needs_review)
+  const semanticQuality = getSemanticQualityMetadata(chunk)
+  const needsReview = chunkNeedsReview(chunk)
   const needsReviewTitle = useMemo(() => {
     if (!needsReview) return undefined
-    const reasons = Array.isArray(semanticQuality?.reasons) ? semanticQuality?.reasons?.filter(Boolean) : []
+    const reasons = semanticQuality?.reasons ?? []
     return reasons.length > 0 ? `needs_review: ${reasons.join(', ')}` : 'needs_review'
   }, [needsReview, semanticQuality?.reasons])
   const citationText = useMemo(() => {

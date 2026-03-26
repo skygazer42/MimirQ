@@ -7,16 +7,28 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { FileText, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useChunkPreview } from '@/components/chunk-preview/context'
+import { getChunkRole } from '@/components/chunk-preview/utils/metadata'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { createPositionTagIndexMapper, findPositionTagRanges, stripPositionTags } from '@/lib/parsing-positions'
 import { cn } from '@/lib/utils'
+import type { ChunkPreviewItem } from '@/types'
 import { OriginalPreviewMonaco } from './original-preview-monaco'
 import { PdfPreview } from './pdf-preview'
 import { CoverageHeatmapMini } from './coverage-heatmap-mini'
 
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
+
+type IdleCallbackHandle = number
+type IdleGlobal = typeof globalThis & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => IdleCallbackHandle
+  cancelIdleCallback?: (id: IdleCallbackHandle) => void
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
 
 function canReadFileAsText(file: File | null) {
   if (!file) return false
@@ -50,10 +62,9 @@ function DeferredMarkdownToc({ markdown }: Readonly<{ markdown: string }>) {
 
     // Rendering + heading extraction for large markdown docs can block the main thread.
     // Defer the (non-critical) ToC until the browser is idle so the main preview shows ASAP.
-    const ric = (globalThis as any).requestIdleCallback as
-      | ((cb: () => void, opts?: { timeout?: number }) => number)
-      | undefined
-    const cic = (globalThis as any).cancelIdleCallback as ((id: number) => void) | undefined
+    const idleGlobal: IdleGlobal = globalThis
+    const ric = idleGlobal.requestIdleCallback
+    const cic = idleGlobal.cancelIdleCallback
     if (typeof ric === 'function') {
       const id = ric(enable, { timeout: 800 })
       return () => {
@@ -103,7 +114,7 @@ export function OriginalPreview() {
       label: `#${activeChunkIndex + 1}`,
       range: `${chunk.start_index}-${chunk.end_index}`,
       page: chunk.page_number,
-      role: chunk.metadata?.chunk_role as string | undefined,
+      role: getChunkRole(chunk),
     }
   }, [activeChunkIndex, previewData?.chunks])
 
@@ -195,9 +206,9 @@ export function OriginalPreview() {
         if (!alive) return
         setLocalOriginalText(text)
       })
-      .catch((err: any) => {
+      .catch((error: unknown) => {
         if (!alive) return
-        setLocalError((err?.message as string) || '从本地文件读取失败')
+        setLocalError(getErrorMessage(error, '从本地文件读取失败'))
       })
       .finally(() => {
         if (!alive) return
@@ -278,7 +289,7 @@ export function OriginalPreview() {
     }
   }, [activeChunkIndex, effectiveOriginalText, forceFullHighlight, previewData?.chunks, serverTextInfo.indexMapper])
 
-  const displayChunks = useMemo(() => {
+  const displayChunks = useMemo<ChunkPreviewItem[]>(() => {
     const chunks = previewData?.chunks || []
     if (!chunks.length) return chunks
     if (!serverTextInfo.hasPositionTags) return chunks
@@ -290,21 +301,21 @@ export function OriginalPreview() {
       const start = Math.max(0, mapIndex(startRaw))
       const end = Math.max(start, mapIndex(endRaw))
 
-      const meta = (c.metadata ? { ...(c.metadata as any) } : null) as Record<string, any> | null
-      if (meta) {
-        const psRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
-        const peRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
+      const metadata = c.metadata ? { ...c.metadata } : undefined
+      if (metadata) {
+        const psRaw = metadata.parent_start_char ?? metadata.parent_start_index ?? metadata.parent_start
+        const peRaw = metadata.parent_end_char ?? metadata.parent_end_index ?? metadata.parent_end
         const ps = psRaw == null ? null : mapIndex(Number(psRaw) || 0)
         const pe = peRaw == null ? null : mapIndex(Number(peRaw) || 0)
         if (ps != null) {
-          meta.parent_start_char = ps
-          meta.parent_start_index = ps
-          meta.parent_start = ps
+          metadata.parent_start_char = ps
+          metadata.parent_start_index = ps
+          metadata.parent_start = ps
         }
         if (pe != null) {
-          meta.parent_end_char = pe
-          meta.parent_end_index = pe
-          meta.parent_end = pe
+          metadata.parent_end_char = pe
+          metadata.parent_end_index = pe
+          metadata.parent_end = pe
         }
       }
 
@@ -312,7 +323,7 @@ export function OriginalPreview() {
         ...c,
         start_index: start,
         end_index: end,
-        metadata: meta || c.metadata,
+        metadata,
       }
     })
   }, [previewData?.chunks, serverTextInfo.hasPositionTags, serverTextInfo.indexMapper])
@@ -356,7 +367,7 @@ export function OriginalPreview() {
               ) : null}
               <span>{(effectiveOriginalText?.length ?? previewData.total_characters).toLocaleString()} chars</span>
               <CoverageHeatmapMini
-                chunks={displayChunks as any}
+                chunks={displayChunks}
                 totalChars={effectiveOriginalText?.length ?? previewData.total_characters}
                 strategy={previewData.chunk_strategy}
                 className="hidden lg:flex"
@@ -545,8 +556,8 @@ export function OriginalPreview() {
                         const text = await currentFile.text();
                         setLocalOriginalText(text);
                     }
-                    catch (err: any) {
-                        setLocalError((err?.message as string) || '从本地文件读取失败');
+                    catch (error: unknown) {
+                        setLocalError(getErrorMessage(error, '从本地文件读取失败'));
                     }
                     finally {
                         setLocalLoading(false);

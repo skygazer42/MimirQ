@@ -20,15 +20,15 @@ export function computeCoverageHeatmapBins(
   // otherwise the parent range can dominate the entire document.
   let analysis = chunks
   if (String(options?.strategy || '').trim().toLowerCase() === 'parent_child') {
-    const filtered = (chunks || []).filter((c) => String((c.metadata as any)?.chunk_role || '') !== 'parent')
+    const filtered = (chunks || []).filter((c) => String(c.metadata?.chunk_role || '') !== 'parent')
     if (filtered.length > 0) analysis = filtered
   }
 
   const diff = Array.from({ length: bins + 1 }, () => 0)
 
   for (const c of analysis || []) {
-    const start = Math.max(0, Math.trunc(Number((c as any)?.start_index ?? 0) || 0))
-    const end = Math.max(start, Math.trunc(Number((c as any)?.end_index ?? start) || start))
+    const start = Math.max(0, Math.trunc(Number(c.start_index ?? 0) || 0))
+    const end = Math.max(start, Math.trunc(Number(c.end_index ?? start) || start))
     if (end <= start) continue
 
     let startBin = Math.floor((start / total) * bins)
@@ -53,4 +53,3 @@ export function computeCoverageHeatmapBins(
 
   return { bins, totalChars: total, counts, max }
 }
-

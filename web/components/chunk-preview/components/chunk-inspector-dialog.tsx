@@ -11,7 +11,8 @@ import { Copy, Pencil, RotateCcw, Save, Sparkles } from 'lucide-react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import type { ChunkPreviewItem } from '@/types'
+import { getChunkMetadata, getStringValue, isJsonObject } from '@/components/chunk-preview/utils/metadata'
+import type { ChunkPreviewItem, JsonObject } from '@/types'
 import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 
@@ -20,11 +21,18 @@ export type ChunkOverrideDraft = {
   metadataText: string
 }
 
-function buildEmbeddingText(content: string, meta: Record<string, any> | null, sectionFull: string | null): string {
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback
+}
+
+function buildEmbeddingText(content: string, meta: JsonObject | null, sectionFull: string | null): string {
   const raw = String(content ?? '')
   if (!raw) return raw
   const header =
-    (meta && (meta.header_path || meta.outline_path_str || meta.header_context)) ||
+    (meta &&
+      (getStringValue(meta, 'header_path') ||
+        getStringValue(meta, 'outline_path_str') ||
+        getStringValue(meta, 'header_context'))) ||
     sectionFull ||
     ''
   const headerStr = String(header || '').trim()
@@ -48,7 +56,7 @@ export function ChunkInspectorDialog({
   index: number | null
   sourceFilename?: string
   overrideUpdatedAt?: number
-  onSave: (payload: { content: string; metadata: Record<string, any> }) => void
+  onSave: (payload: { content: string; metadata: JsonObject }) => void
   onReset: () => void
 }>) {
   const pipelineCtx = usePipelineOptions()
@@ -76,13 +84,13 @@ export function ChunkInspectorDialog({
 
   const metadataParse = useMemo(() => {
     try {
-      const obj = JSON.parse(metadataText || '{}')
-      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
-        return { value: null as Record<string, any> | null, error: 'metadata 必须是 JSON 对象（{}）' }
+      const obj = JSON.parse(metadataText || '{}') as unknown
+      if (!isJsonObject(obj)) {
+        return { value: null as JsonObject | null, error: 'metadata 必须是 JSON 对象（{}）' }
       }
-      return { value: obj as Record<string, any>, error: null as string | null }
-    } catch (e: any) {
-      return { value: null as Record<string, any> | null, error: (e?.message as string) || 'metadata JSON 解析失败' }
+      return { value: obj, error: null as string | null }
+    } catch (error: unknown) {
+      return { value: null as JsonObject | null, error: getErrorMessage(error, 'metadata JSON 解析失败') }
     }
   }, [metadataText])
   const parsedMetadata = metadataParse.value
@@ -92,10 +100,10 @@ export function ChunkInspectorDialog({
   const embeddingPrefixEnabled = Boolean(pipelineCtx.enabled && pipelineCtx.options.embedding_context_prefix_enabled)
   const embeddingText = useMemo(() => {
     if (!embeddingPrefixEnabled) return String(content ?? '')
-    const meta = (parsedMetadata || chunk?.metadata || null)
+    const meta = parsedMetadata ?? (chunk ? getChunkMetadata(chunk) : null)
     const sectionFull = sectionLabel?.full || null
     return buildEmbeddingText(String(content ?? ''), meta, sectionFull)
-  }, [chunk?.metadata, content, embeddingPrefixEnabled, parsedMetadata, sectionLabel?.full])
+  }, [chunk, content, embeddingPrefixEnabled, parsedMetadata, sectionLabel?.full])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

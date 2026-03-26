@@ -1,9 +1,96 @@
-import type { ChunkPreviewResponse } from '@/types'
+import type {
+  ChunkPreviewItem,
+  ChunkPreviewQualityGate,
+  ChunkPreviewResponse,
+  ChunkPreviewReviewSignals,
+  ChunkPreviewStats,
+  JsonObject,
+} from '@/types'
 import { toPrimitiveString, toSingleLinePrimitiveString } from '@/lib/primitive-text'
 import { sanitizeFilename } from '@/lib/sanitize'
+import type { ChunkOverride, ChunkOverrides } from '../types'
 import { computeCoverageSignals, computeDuplicateIndices, computeShortIndices, fnv1a32, roughEstimateTokens } from './review-signals'
 
 export { sanitizeFilename } from '@/lib/sanitize'
+
+interface ChunkPreviewReviewReportChunk {
+  index: number
+  page_number: number | null
+  start_index: number
+  end_index: number
+  length: number
+  tokens_est: number | null
+  role: string | null
+  parent_id: string | null
+  disabled: boolean
+  edited: boolean
+  flags: {
+    short: boolean
+    duplicate: boolean
+    gap: boolean
+    overlap: boolean
+  }
+  gap_before: number
+  overlap_prev: number
+  content_hash: string | null
+  content_preview: string
+}
+
+interface ChunkPreviewReviewReport {
+  schema: 'mimirq.chunk_review.v1'
+  generated_at: string
+  file: {
+    filename: string
+    file_type: string
+    file_size: number
+    file_sha256: string | null
+    total_characters: number
+  }
+  config: {
+    parser_backend: string
+    chunk_strategy: string
+    chunk_size: number | undefined
+    chunk_overlap: number | undefined
+    unit: 'chars' | 'tokens'
+    strategy_params: JsonObject
+  }
+  stats: ChunkPreviewStats | null
+  review_signals: ChunkPreviewReviewSignals
+  quality_gate: ChunkPreviewQualityGate | null
+  recommendations: string[]
+  warnings: string[]
+  summary: {
+    total_chunks: number
+    total_chunks_in_report: number
+    include_disabled: boolean
+    disabled_count: number
+    edited_count: number
+    issue_counts: {
+      short: number
+      duplicate: number
+      gap: number
+      overlap: number
+    }
+    coverage_basis: 'all' | 'child'
+  }
+  chunks: ChunkPreviewReviewReportChunk[]
+}
+
+function getChunkMetadata(chunk: ChunkPreviewItem): JsonObject {
+  return chunk.metadata ?? {}
+}
+
+function getChunkRole(metadata: JsonObject): string | null {
+  const role = metadata.chunk_role
+  return typeof role === 'string' ? role : null
+}
+
+function getChunkParentId(metadata: JsonObject): string | null {
+  const parentId = metadata.parent_id
+  if (typeof parentId === 'string') return parentId
+  const parentNodeId = metadata.parent_node_id
+  return typeof parentNodeId === 'string' ? parentNodeId : null
+}
 
 export function downloadTextFile(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
   const blob = new Blob([content], { type: mime })
@@ -17,7 +104,7 @@ export function downloadTextFile(filename: string, content: string, mime = 'text
 
 export function toChunkPreviewExport(preview: ChunkPreviewResponse) {
   // Keep exports stable + lightweight: omit original_text (can be huge).
-  const { original_text: _omit, ...rest } = preview as any
+  const { original_text: _omit, ...rest } = preview
   return {
     ...rest,
     original_text_included: Boolean(preview.original_text),
@@ -26,15 +113,15 @@ export function toChunkPreviewExport(preview: ChunkPreviewResponse) {
 
 export function applyChunkOverridesToPreview(
   preview: ChunkPreviewResponse,
-  overrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }> | undefined,
+  overrides: ChunkOverrides | undefined,
   options?: { include_disabled?: boolean }
 ) {
   const keys = overrides ? Object.keys(overrides) : []
   const includeDisabled = Boolean(options?.include_disabled)
   if (!keys.length) return preview
 
-  const chunks = (preview.chunks || []).reduce((acc, chunk) => {
-    const idx = typeof chunk.index === 'number' ? chunk.index : (preview.chunks || []).indexOf(chunk)
+  const chunks = (preview.chunks || []).reduce<ChunkPreviewItem[]>((acc, chunk, fallbackIndex) => {
+    const idx = typeof chunk.index === 'number' ? chunk.index : fallbackIndex
     const override = overrides?.[idx]
 
     const isDisabled = Boolean(override?.disabled)
@@ -45,7 +132,7 @@ export function applyChunkOverridesToPreview(
     }
 
     const content = String(override.content ?? chunk.content ?? '')
-    const metadata = (override.metadata ?? chunk.metadata ?? {})
+    const metadata = override.metadata ?? chunk.metadata ?? {}
     const exportMetadata = isDisabled && includeDisabled ? { ...metadata, __mimirq_skip: true } : metadata
     acc.push({
       ...chunk,
@@ -55,7 +142,7 @@ export function applyChunkOverridesToPreview(
       tokens_est: roughEstimateTokens(content),
     })
     return acc
-  }, [] as any[])
+  }, [])
 
   return {
     ...preview,
@@ -135,9 +222,9 @@ export function chunkPreviewToJsonl(preview: ChunkPreviewResponse) {
 
 export function chunkPreviewToReviewReport(
   preview: ChunkPreviewResponse,
-  overrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }> | undefined,
+  overrides: ChunkOverrides | undefined,
   options?: { include_disabled?: boolean }
-) {
+): ChunkPreviewReviewReport {
   const includeDisabled = Boolean(options?.include_disabled)
 
   const mergedAll = applyChunkOverridesToPreview(preview, overrides, { include_disabled: true })
@@ -150,17 +237,17 @@ export function chunkPreviewToReviewReport(
   for (const [k, v] of Object.entries(overrides || {})) {
     const idx = Number(k)
     if (!Number.isFinite(idx)) continue
-    if ((v as any)?.disabled) disabledIndices.add(idx)
-    if ((v as any)?.content !== undefined || (v as any)?.metadata !== undefined) editedIndices.add(idx)
+    if (v?.disabled) disabledIndices.add(idx)
+    if (v?.content !== undefined || v?.metadata !== undefined) editedIndices.add(idx)
   }
 
   const duplicateIndices = computeDuplicateIndices(mergedAll.chunks || [])
   const shortIndices = computeShortIndices(mergedAll.chunks || [], unit)
   const coverage = computeCoverageSignals(mergedAll.chunks || [], { strategy: mergedAll.chunk_strategy })
 
-  const reviewSignals =
-    (mergedAll as any).review_signals ??
-    ({
+  const reviewSignals: ChunkPreviewReviewSignals =
+    mergedAll.review_signals ??
+    {
       basis: coverage.basis,
       short_indices: Array.from(shortIndices).sort((a, b) => a - b),
       duplicate_indices: Array.from(duplicateIndices).sort((a, b) => a - b),
@@ -168,18 +255,19 @@ export function chunkPreviewToReviewReport(
       overlap_indices: Array.from(coverage.overlapIndices).sort((a, b) => a - b),
       gap_before_by_index: Object.fromEntries(Array.from(coverage.gapBeforeByIndex.entries()).map(([k, v]) => [String(k), v])),
       overlap_prev_by_index: Object.fromEntries(Array.from(coverage.overlapPrevByIndex.entries()).map(([k, v]) => [String(k), v])),
-    } as any)
+    }
 
-  const chunks = (merged.chunks || []).map((c) => {
+  const chunks: ChunkPreviewReviewReportChunk[] = (merged.chunks || []).map((c) => {
     const idx = Number(c.index)
-    const meta = (c.metadata || {}) as Record<string, any>
+    const meta = getChunkMetadata(c)
     const raw = String(c.content || '')
     const trimmed = raw.trim()
 
     const gapBefore = coverage.gapBeforeByIndex.get(idx) || 0
     const overlapPrev = coverage.overlapPrevByIndex.get(idx) || 0
 
-    const isDisabled = Boolean((overrides as any)?.[idx]?.disabled) || Boolean(meta.__mimirq_skip)
+    const override = overrides?.[idx]
+    const isDisabled = Boolean(override?.disabled) || Boolean(meta.__mimirq_skip)
     const isEdited = editedIndices.has(idx)
 
     return {
@@ -189,18 +277,8 @@ export function chunkPreviewToReviewReport(
       end_index: Number(c.end_index) || 0,
       length: Number(c.length) || 0,
       tokens_est: typeof c.tokens_est === 'number' ? c.tokens_est : null,
-      role: typeof meta.chunk_role === 'string' ? meta.chunk_role : null,
-      parent_id: (() => {
-    if (typeof meta.parent_id === 'string') {
-        return meta.parent_id;
-    }
-    else if (typeof meta.parent_node_id === 'string') {
-            return meta.parent_node_id;
-        }
-        else {
-            return null;
-        }
-})(),
+      role: getChunkRole(meta),
+      parent_id: getChunkParentId(meta),
       disabled: isDisabled,
       edited: isEdited,
       flags: {
@@ -223,7 +301,7 @@ export function chunkPreviewToReviewReport(
       filename: mergedAll.filename,
       file_type: mergedAll.file_type,
       file_size: mergedAll.file_size,
-      file_sha256: (mergedAll as any).file_sha256 ?? null,
+      file_sha256: mergedAll.file_sha256 ?? null,
       total_characters: mergedAll.total_characters,
     },
     config: {
@@ -236,9 +314,9 @@ export function chunkPreviewToReviewReport(
     },
     stats: mergedAll.stats || null,
     review_signals: reviewSignals,
-    quality_gate: (mergedAll as any).quality_gate ?? null,
-    recommendations: (mergedAll as any).recommendations ?? [],
-    warnings: (mergedAll as any).warnings ?? [],
+    quality_gate: mergedAll.quality_gate ?? null,
+    recommendations: mergedAll.recommendations ?? [],
+    warnings: mergedAll.warnings ?? [],
     summary: {
       total_chunks: mergedAll.total_chunks,
       total_chunks_in_report: chunks.length,
@@ -278,39 +356,39 @@ function listChunkNumbers(indices: number[] | undefined, options?: { limit?: num
 
 export function chunkPreviewToReviewMarkdown(
   preview: ChunkPreviewResponse,
-  overrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }> | undefined,
+  overrides: ChunkOverrides | undefined,
   options?: { include_disabled?: boolean }
 ) {
-  const report = chunkPreviewToReviewReport(preview, overrides, options) as any
+  const report = chunkPreviewToReviewReport(preview, overrides, options)
 
   const lines: string[] = []
 
-  const filename = String(report?.file?.filename || preview.filename || 'document')
-    lines.push(`# ${filename} — Chunk Review`, '', `- schema: ${String(report?.schema || 'mimirq.chunk_review.v1')}`)
-  if (report?.generated_at) lines.push(`- generated_at: ${String(report.generated_at)}`)
+  const filename = String(report.file.filename || preview.filename || 'document')
+  lines.push(`# ${filename} — Chunk Review`, '', `- schema: ${String(report.schema || 'mimirq.chunk_review.v1')}`)
+  if (report.generated_at) lines.push(`- generated_at: ${String(report.generated_at)}`)
   lines.push('')
 
-  const cfg = (report?.config || {})
-    lines.push('## Config', `- parser_backend: ${String(cfg.parser_backend || '')}`, `- chunk_strategy: ${String(cfg.chunk_strategy || '')}`, `- chunk_size: ${String(cfg.chunk_size ?? '')} (${String(cfg.unit || 'chars')})`, `- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${String(cfg.unit || 'chars')})`, '')
+  const cfg = report.config
+  lines.push('## Config', `- parser_backend: ${String(cfg.parser_backend || '')}`, `- chunk_strategy: ${String(cfg.chunk_strategy || '')}`, `- chunk_size: ${String(cfg.chunk_size ?? '')} (${String(cfg.unit || 'chars')})`, `- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${String(cfg.unit || 'chars')})`, '')
 
-  const stats = (report?.stats || {})
-    lines.push('## Stats', `- count: ${String(stats.count ?? '')}`)
-  if (stats.coverage_ratio != null) lines.push(`- coverage_ratio: ${fmtPctRatio(stats.coverage_ratio) ?? String(stats.coverage_ratio)}`)
-  if (stats.overlap_waste_ratio != null) {
+  const stats = report.stats
+  lines.push('## Stats', `- count: ${String(stats?.count ?? '')}`)
+  if (stats?.coverage_ratio != null) lines.push(`- coverage_ratio: ${fmtPctRatio(stats.coverage_ratio) ?? String(stats.coverage_ratio)}`)
+  if (stats?.overlap_waste_ratio != null) {
     lines.push(`- overlap_waste_ratio: ${fmtPctRatio(stats.overlap_waste_ratio) ?? String(stats.overlap_waste_ratio)}`)
   }
-  if (stats.gap_count != null) lines.push(`- gap_count: ${String(stats.gap_count)}`)
-  if (stats.largest_gap != null) lines.push(`- largest_gap: ${String(stats.largest_gap)}`)
+  if (stats?.gap_count != null) lines.push(`- gap_count: ${String(stats.gap_count)}`)
+  if (stats?.largest_gap != null) lines.push(`- largest_gap: ${String(stats.largest_gap)}`)
   lines.push('')
 
-  const summary = (report?.summary || {})
-  const issueCounts = (summary.issue_counts || {})
-    lines.push('## Summary', `- total_chunks: ${String(summary.total_chunks ?? '')}`, `- total_chunks_in_report: ${String(summary.total_chunks_in_report ?? '')}`, `- include_disabled: ${String(summary.include_disabled ?? false)}`, `- disabled_count: ${String(summary.disabled_count ?? 0)} · edited_count: ${String(summary.edited_count ?? 0)}`, `- issue_counts: short=${String(issueCounts.short ?? 0)} duplicate=${String(issueCounts.duplicate ?? 0)} gap=${String(issueCounts.gap ?? 0)} overlap=${String(issueCounts.overlap ?? 0)}`, '')
+  const summary = report.summary
+  const issueCounts = summary.issue_counts
+  lines.push('## Summary', `- total_chunks: ${String(summary.total_chunks ?? '')}`, `- total_chunks_in_report: ${String(summary.total_chunks_in_report ?? '')}`, `- include_disabled: ${String(summary.include_disabled ?? false)}`, `- disabled_count: ${String(summary.disabled_count ?? 0)} · edited_count: ${String(summary.edited_count ?? 0)}`, `- issue_counts: short=${String(issueCounts.short ?? 0)} duplicate=${String(issueCounts.duplicate ?? 0)} gap=${String(issueCounts.gap ?? 0)} overlap=${String(issueCounts.overlap ?? 0)}`, '')
 
-  const signals = (report?.review_signals || {})
-    lines.push('## Issue Indices', `- short_indices: ${listChunkNumbers(signals.short_indices)}`, `- duplicate_indices: ${listChunkNumbers(signals.duplicate_indices)}`, `- gap_indices: ${listChunkNumbers(signals.gap_indices)}`, `- overlap_indices: ${listChunkNumbers(signals.overlap_indices)}`, '')
+  const signals = report.review_signals
+  lines.push('## Issue Indices', `- short_indices: ${listChunkNumbers(signals.short_indices)}`, `- duplicate_indices: ${listChunkNumbers(signals.duplicate_indices)}`, `- gap_indices: ${listChunkNumbers(signals.gap_indices)}`, `- overlap_indices: ${listChunkNumbers(signals.overlap_indices)}`, '')
 
-  const recs = Array.isArray(report?.recommendations) ? report.recommendations : []
+  const recs = report.recommendations
   if (recs.length) {
     lines.push('## Recommendations')
     for (const r of recs.slice(0, 20)) lines.push(`- ${oneLine(r)}`)
@@ -319,8 +397,8 @@ export function chunkPreviewToReviewMarkdown(
   }
 
   // Keep it compact: include only a small sample of problematic chunks.
-  const chunks = Array.isArray(report?.chunks) ? report.chunks : []
-  const flagged = chunks.filter((c: any) => c?.flags?.short || c?.flags?.duplicate || c?.flags?.gap || c?.flags?.overlap)
+  const chunks = report.chunks
+  const flagged = chunks.filter((c) => c.flags.short || c.flags.duplicate || c.flags.gap || c.flags.overlap)
   if (flagged.length) {
     lines.push('## Samples (first 30 flagged chunks)')
     for (const c of flagged.slice(0, 30)) {

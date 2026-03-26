@@ -2,7 +2,16 @@
  * ChunkPreview 组件类型定义
  */
 
-import type { ChunkPreviewResponse } from '@/types'
+import type { ChunkPreviewResponse, JsonObject } from '@/types'
+
+export interface ChunkOverride {
+  content?: string
+  metadata?: JsonObject
+  disabled?: boolean
+  updatedAt?: number
+}
+
+export type ChunkOverrides = Record<number, ChunkOverride>
 
 export interface ChunkPreviewProps {
   onConfirm?: (params: { chunk_size: number; chunk_overlap: number }) => void
@@ -42,7 +51,7 @@ export interface ChunkPreviewState {
   // 预览数据
   previewData: ChunkPreviewResponse | null
   // Optional per-chunk overrides (frontend-only): used for editing content/metadata before ingestion/export.
-  chunkOverrides: Record<number, { content?: string; metadata?: Record<string, any>; disabled?: boolean; updatedAt?: number }>
+  chunkOverrides: ChunkOverrides
   hoveredChunkIndex: number | null
   selectedChunkIndex: number | null
   lastPreviewAt: number | null
@@ -100,7 +109,7 @@ export interface ChunkPreviewActions {
   setIsDragging: (isDragging: boolean) => void
   setHoveredChunkIndex: (index: number | null) => void
   setSelectedChunkIndex: (index: number | null) => void
-  updateChunkOverride: (index: number, override: { content?: string; metadata?: Record<string, any> }) => void
+  updateChunkOverride: (index: number, override: ChunkOverride) => void
   toggleChunkDisabled: (index: number) => void
   setChunksDisabled: (indices: number[], disabled: boolean) => void
   clearChunkOverride: (index: number) => void
