@@ -160,4 +160,18 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('const handleTraceFileUpload = async')
     expect(page).not.toContain('const triggerTraceUpload = () =>')
   })
+
+  it('keeps graph entity resolution state and actions extracted into a dedicated hook', () => {
+    const page = read('./page.tsx')
+    const hook = read('./use-graph-entity-resolution.ts')
+
+    expect(page).toContain('useGraphEntityResolution')
+    expect(hook).toContain('export function useGraphEntityResolution')
+    expect(hook).toContain('const reloadEntityResolution = useCallback')
+    expect(page).not.toContain('const reloadEntityResolution = useCallback')
+    expect(page).not.toContain('const handleSaveAlias = useCallback')
+    expect(page).not.toContain('const submitMerge = useCallback')
+    expect(page).not.toContain('const submitSplit = useCallback')
+    expect(page).not.toContain('const undoLastResolution = useCallback')
+  })
 })
