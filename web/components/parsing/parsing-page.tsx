@@ -2,18 +2,18 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, FolderOpen, Sparkles, FileStack, Settings2 } from 'lucide-react'
+import { FileText, Sparkles, FileStack, Settings2 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PipelineRail, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { Button } from '@/components/ui/button'
 import { documentApi, parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import { cn, detachPromise } from '@/lib/utils'
+import { detachPromise } from '@/lib/utils'
 import { generateRequestId } from '@/lib/request-id'
 import { ROOT_FOLDER_ID, useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
-import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
+import { FileStatus } from '@/components/ui/file-queue-item'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
@@ -22,6 +22,7 @@ import { toast } from 'sonner'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, getDocContentFromCache, getDocSourceFromCache, saveDocSourceToCache } from '@/lib/doc-content-cache'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { ParsingActiveFilePane } from '@/components/parsing/parsing-active-file-pane'
+import { ParsingLibraryBrowser } from '@/components/parsing/parsing-library-browser'
 import { ParsingLibraryPreviewPane } from '@/components/parsing/parsing-library-preview-pane'
 import { ParsingLeftPanel } from '@/components/parsing/parsing-left-panel'
 import { ParsingMainPanel } from '@/components/parsing/parsing-main-panel'
@@ -929,203 +930,6 @@ export default function ParsingPage() {
     }
   }, [currentFolderId, isLibraryLoaded, mountLibraryFileToQueue, visibleLibraryOnlyFiles])
 
-  const childrenByParentId = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const folder of folders) {
-      const parentId = folder.parentId || ROOT_FOLDER_ID
-      const list = map.get(parentId) || []
-      list.push(folder.id)
-      map.set(parentId, list)
-    }
-    return map
-  }, [folders])
-
-  const directFolders = useMemo(() => {
-    return folders
-      .filter((f) => (f.parentId || ROOT_FOLDER_ID) === currentFolderId)
-      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-  }, [folders, currentFolderId])
-
-  const isLibraryEmpty =
-    isLibraryLoaded &&
-    directFolders.length === 0 &&
-    visibleQueueFiles.length === 0 &&
-    visibleLibraryOnlyFiles.length === 0
-
-  const libraryFileListContent = isLibraryEmpty ? (
-    <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-      <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
-        <FolderOpen className="w-6 h-6 text-muted-foreground" />
-      </div>
-      <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">暂无文件</p>
-      <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">
-        拖拽文件到此处或点击上方按钮添加
-      </p>
-      {isQueueRehydrating ? (
-        <p className="text-[11px] text-muted-foreground dark:text-muted-foreground mt-3">
-          正在恢复队列…
-        </p>
-      ) : null}
-    </div>
-  ) : (
-    <div className="space-y-1">
-      {directFolders.map((folder) => {
-        const stats = folderStatsById.get(folder.id)
-        const latestTs = stats?.latestTs || Date.parse(folder.createdAt)
-        return (
-          <button
-            key={folder.id}
-            type="button"
-            className={cn(
-              "flex w-full items-center gap-3 p-2.5 rounded-xl border border-transparent hover:bg-muted dark:hover:bg-muted/40 group transition-colors cursor-pointer relative text-left",
-              dragOverFolderId === folder.id &&
-                "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800",
-              activeFolderId === folder.id &&
-                "bg-muted dark:bg-muted/40 ring-1 ring-slate-200 dark:ring-slate-800"
-            )}
-            draggable
-            onDragStart={(e) => {
-              try {
-                e.dataTransfer.setData('application/x-mimirq-folder', folder.id)
-              } catch {
-                // ignore
-              }
-              e.dataTransfer.effectAllowed = 'move'
-            }}
-            onClick={() => setActiveFolderId(folder.id)}
-            onDragOver={(e) => handleFolderDragOver(e, folder.id)}
-            onDragLeave={() => setDragOverFolderId(null)}
-            onDrop={(e) => handleFolderDrop(e, folder.id)}
-          >
-            <div className="w-9 h-9 rounded-xl bg-muted dark:bg-muted text-muted-foreground dark:text-muted-foreground flex items-center justify-center flex-shrink-0">
-              <FolderOpen className="w-4 h-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <div
-                  className={cn(
-                    "text-sm font-semibold truncate pr-6",
-                    activeFolderId === folder.id
-                      ? "text-foreground dark:text-foreground"
-                      : "text-foreground/80 dark:text-muted-foreground"
-                  )}
-                >
-                  {folder.name}
-                </div>
-                <span className="text-[10px] text-muted-foreground dark:text-muted-foreground flex-shrink-0">
-                  {Number.isFinite(latestTs) && latestTs > 0
-                    ? new Date(latestTs).toLocaleString([], {
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : ''}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 mt-1 min-h-[16px]">
-                <span className="text-[10px] text-muted-foreground dark:text-muted-foreground">
-                  {stats?.count || 0} 项
-                </span>
-              </div>
-            </div>
-          </button>
-        )
-      })}
-
-      {visibleLibraryOnlyFiles.map((f) => (
-        <FileQueueItem
-          key={f.id}
-          file={{
-            id: f.id,
-            name: f.filename,
-            size: f.fileSize,
-            status: f.status || 'parsed',
-            parser: f.parser,
-            duration: f.durationSec,
-            folderPathLabel:
-              f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
-          }}
-          isActive={activeLibraryFileId === f.id}
-          onClick={() => {
-            setActiveFileId(null)
-            setActiveLibraryFileId(f.id)
-          }}
-          onRemove={() => removeFile(f.id)}
-        />
-      ))}
-
-      {visibleQueueFiles.map((f) => (
-        <FileQueueItem
-          key={f.id}
-          file={{
-            id: f.id,
-            name: f.name,
-            size: f.size,
-            status: f.status,
-            progress: f.progress,
-            parser: f.parserLabel,
-            folderPathLabel:
-              f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
-            sourcePath: f.sourcePath,
-            error: f.error,
-            duration: f.duration,
-            pageCount: f.stats?.pageCount,
-          }}
-          draggable
-          onDragStart={(e) => handleFileDragStart(e, f.id)}
-          isActive={activeFileId === f.id}
-          onClick={() => setActiveFileId(f.id)}
-          onRemove={() => removeFile(f.id)}
-          onRetry={f.status === 'error' ? () => parseFile(f.id) : undefined}
-        />
-      ))}
-    </div>
-  )
-
-  const folderStatsById = useMemo(() => {
-    const byFolder = new Map<string, { count: number; latestTs: number }>()
-    const bump = (folderId: string, ts: number) => {
-      const cur = byFolder.get(folderId) || { count: 0, latestTs: 0 }
-      byFolder.set(folderId, { count: cur.count + 1, latestTs: Math.max(cur.latestTs, ts) })
-    }
-
-    // Library entries (persisted across routes)
-    for (const f of libraryFiles) {
-      bump(f.folderId || ROOT_FOLDER_ID, Math.max(0, Date.parse(f.parsedAt)))
-    }
-    // Current session queue entries (may include File object + status/progress)
-    for (const f of files) {
-      bump(f.folderId || ROOT_FOLDER_ID, f.createdAt || 0)
-    }
-
-    const stats = new Map<string, { count: number; latestTs: number }>()
-    const collect = (folderId: string): { count: number; latestTs: number } => {
-      if (stats.has(folderId)) return stats.get(folderId) as { count: number; latestTs: number }
-      let count = 0
-      let latestTs = 0
-      const direct = byFolder.get(folderId)
-      if (direct) {
-        count += direct.count
-        latestTs = Math.max(latestTs, direct.latestTs)
-      }
-      const children = childrenByParentId.get(folderId) || []
-      for (const childId of children) {
-        const child = collect(childId)
-        count += child.count
-        latestTs = Math.max(latestTs, child.latestTs)
-      }
-      const result = { count, latestTs }
-      stats.set(folderId, result)
-      return result
-    }
-
-    for (const folder of folders) {
-      collect(folder.id)
-    }
-    return stats
-  }, [files, folders, childrenByParentId, libraryFiles])
-
   useEffect(() => {
     if (visibleQueueFiles.length === 0) {
       if (activeFileId) setActiveFileId(null)
@@ -1587,6 +1391,38 @@ export default function ParsingPage() {
   const parsedCount = visibleQueueFiles.filter((f) => f.status === 'parsed').length
   const parseableCount = visibleQueueFiles.filter((f) => f.status === 'pending' || f.status === 'error').length
   const queueCountLabel = visibleQueueFiles.length === 0 ? '0' : `${parsedCount}/${visibleQueueFiles.length}`
+  const libraryFileListContent = (
+    <ParsingLibraryBrowser
+      currentFolderId={currentFolderId}
+      activeFolderId={activeFolderId || ROOT_FOLDER_ID}
+      activeFileId={activeFileId}
+      activeLibraryFileId={activeLibraryFileId}
+      dragOverFolderId={dragOverFolderId}
+      isLibraryLoaded={isLibraryLoaded}
+      isQueueRehydrating={isQueueRehydrating}
+      folders={folders}
+      files={files}
+      libraryFiles={libraryFiles}
+      visibleQueueFiles={visibleQueueFiles}
+      visibleLibraryOnlyFiles={visibleLibraryOnlyFiles}
+      folderPathById={folderPathById}
+      onFolderSelect={setActiveFolderId}
+      onFolderDragOver={handleFolderDragOver}
+      onFolderDragLeave={() => setDragOverFolderId(null)}
+      onFolderDrop={handleFolderDrop}
+      onQueueFileDragStart={handleFileDragStart}
+      onSelectQueueFile={(fileId) => {
+        setActiveLibraryFileId(null)
+        setActiveFileId(fileId)
+      }}
+      onSelectLibraryFile={(fileId) => {
+        setActiveFileId(null)
+        setActiveLibraryFileId(fileId)
+      }}
+      onRemoveFile={removeFile}
+      onRetryParse={(fileId) => detachPromise(parseFile(fileId))}
+    />
+  )
 
   return (
     <AppFrame>
