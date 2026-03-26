@@ -164,7 +164,7 @@ def test_connectors_validate_db_connectivity_is_exposed_under_checks_db_connecti
             lambda connect_calls, sleep_seconds: types.SimpleNamespace(
                 connect=lambda **kwargs: _sleeping_mysql_connect(connect_calls, sleep_seconds, **kwargs)
             ),
-            False,
+            True,
         ),
         (
             "SQLServerCatalogConnector",

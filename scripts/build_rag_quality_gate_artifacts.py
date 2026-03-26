@@ -88,8 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     benchmark_path = Path(str(args.benchmark)).expanduser().resolve()
-    summary_path = Path(str(args.summary_out)).expanduser().resolve()
-    report_path = Path(str(args.report_out)).expanduser().resolve()
+    summary_path_arg = str(args.summary_out)
+    report_path_arg = str(args.report_out)
+    summary_path = Path(summary_path_arg).expanduser()
+    report_path = Path(report_path_arg).expanduser()
 
     if not benchmark_path.exists():
         raise SystemExit(f"benchmark_not_found: {benchmark_path}")
@@ -107,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     report_payload = build_rag_quality_gate_report(
         summary_payload,
-        summary_path=str(summary_path),
+        summary_path=summary_path_arg,
         thresholds=thresholds,
     )
 
