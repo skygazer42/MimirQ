@@ -230,3 +230,5 @@ export function useGraphNodeOperations({
     confirmDeleteNode,
   }
 }
+
+export type UseGraphNodeOperationsResult = ReturnType<typeof useGraphNodeOperations>

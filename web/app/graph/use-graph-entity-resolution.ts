@@ -445,3 +445,5 @@ export function useGraphEntityResolution({
     handleSplitOpenChange,
   }
 }
+
+export type UseGraphEntityResolutionResult = ReturnType<typeof useGraphEntityResolution>

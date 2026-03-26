@@ -66,13 +66,28 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('const resetPathMode = useCallback(() =>')
   })
 
+  it('keeps the top-level graph page composition extracted into GraphPageShell', () => {
+    const page = read('./page.tsx')
+    const shell = read('./_components/graph-page-shell.tsx')
+
+    expect(page).toContain('GraphPageShell')
+    expect(shell).toContain('export function GraphPageShell')
+    expect(shell).toContain('GraphPageHeader')
+    expect(shell).toContain('GraphPageBody')
+    expect(shell).toContain('GraphActionDialogs')
+    expect(page).not.toContain('PageScaffold')
+    expect(page).not.toContain('AppFrame')
+    expect(page).not.toContain('Share2')
+  })
+
   it('keeps heavy right-side detail panels extracted into dedicated graph components', () => {
     const page = read('./page.tsx')
+    const shell = read('./_components/graph-page-shell.tsx')
     const body = read('./_components/graph-page-body.tsx')
     const nodePanel = read('./_components/graph-node-detail-panel.tsx')
     const linkPanel = read('./_components/graph-link-detail-panel.tsx')
 
-    expect(page).toContain('GraphPageBody')
+    expect(shell).toContain('GraphPageBody')
     expect(body).toContain('GraphNodeDetailPanel')
     expect(body).toContain('GraphLinkDetailPanel')
     expect(nodePanel).toContain('export function GraphNodeDetailPanel')
@@ -84,9 +99,10 @@ describe('graph page type safety', () => {
 
   it('keeps graph action dialogs extracted into a dedicated overlay component', () => {
     const page = read('./page.tsx')
+    const shell = read('./_components/graph-page-shell.tsx')
     const dialogs = read('./_components/graph-action-dialogs.tsx')
 
-    expect(page).toContain('GraphActionDialogs')
+    expect(shell).toContain('GraphActionDialogs')
     expect(dialogs).toContain('export function GraphActionDialogs')
     expect(page).not.toContain('删除节点？')
     expect(page).not.toContain('确认合并？')
@@ -96,11 +112,12 @@ describe('graph page type safety', () => {
 
   it('keeps explainability and floating graph controls extracted into dedicated components', () => {
     const page = read('./page.tsx')
+    const shell = read('./_components/graph-page-shell.tsx')
     const body = read('./_components/graph-page-body.tsx')
     const explainabilityPanel = read('./_components/graph-explainability-panel.tsx')
     const floatingControls = read('./_components/graph-floating-controls.tsx')
 
-    expect(page).toContain('GraphPageBody')
+    expect(shell).toContain('GraphPageBody')
     expect(body).toContain('GraphExplainabilityPanel')
     expect(body).toContain('GraphFloatingControls')
     expect(explainabilityPanel).toContain('export function GraphExplainabilityPanel')
@@ -113,12 +130,13 @@ describe('graph page type safety', () => {
 
   it('keeps graph search, filter, and status overlays extracted into dedicated components', () => {
     const page = read('./page.tsx')
+    const shell = read('./_components/graph-page-shell.tsx')
     const header = read('./_components/graph-page-header.tsx')
     const searchOverlay = read('./_components/graph-search-overlay.tsx')
     const statusBanners = read('./_components/graph-status-banners.tsx')
     const filtersPopover = read('./_components/graph-filters-popover.tsx')
 
-    expect(page).toContain('GraphPageHeader')
+    expect(shell).toContain('GraphPageHeader')
     expect(header).toContain('GraphSearchOverlay')
     expect(header).toContain('GraphStatusBanners')
     expect(header).toContain('GraphFiltersPopover')
@@ -132,11 +150,12 @@ describe('graph page type safety', () => {
 
   it('keeps graph canvas and context menu extracted into dedicated components', () => {
     const page = read('./page.tsx')
+    const shell = read('./_components/graph-page-shell.tsx')
     const body = read('./_components/graph-page-body.tsx')
     const graphCanvas = read('./_components/graph-canvas.tsx')
     const graphContextMenu = read('./_components/graph-context-menu.tsx')
 
-    expect(page).toContain('GraphPageBody')
+    expect(shell).toContain('GraphPageBody')
     expect(body).toContain('GraphCanvas')
     expect(body).toContain('GraphContextMenu')
     expect(graphCanvas).toContain('export function GraphCanvas')
@@ -149,9 +168,10 @@ describe('graph page type safety', () => {
 
   it('keeps the graph page header extracted into a dedicated component', () => {
     const page = read('./page.tsx')
+    const shell = read('./_components/graph-page-shell.tsx')
     const header = read('./_components/graph-page-header.tsx')
 
-    expect(page).toContain('GraphPageHeader')
+    expect(shell).toContain('GraphPageHeader')
     expect(header).toContain('export function GraphPageHeader')
     expect(page).not.toContain('title="实体-实体共现连线"')
     expect(page).not.toContain('title="导入 RAG trace JSON（回放检索路径）"')
@@ -161,9 +181,10 @@ describe('graph page type safety', () => {
 
   it('keeps the graph page body extracted into a dedicated component', () => {
     const page = read('./page.tsx')
+    const shell = read('./_components/graph-page-shell.tsx')
     const body = read('./_components/graph-page-body.tsx')
 
-    expect(page).toContain('GraphPageBody')
+    expect(shell).toContain('GraphPageBody')
     expect(body).toContain('export function GraphPageBody')
     expect(body).toContain('GraphStatsBar')
     expect(body).toContain('GraphLegend')
