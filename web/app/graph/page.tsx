@@ -21,10 +21,10 @@ import { GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/lib/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn, detachPromise } from '@/lib/utils'
-import { formatApiError } from '@/lib/api-errors'
 import { documentApi } from '@/lib/api/documents'
 import { kgApi } from '@/lib/api/graph'
 import { useGraphDataLoading } from './use-graph-data-loading'
+import { useGraphEntityResolution } from './use-graph-entity-resolution'
 import {
   GraphConfBucket,
   GraphContextMenuTarget,
@@ -32,7 +32,6 @@ import {
   type GraphDatasetDocumentSummary,
   type GraphLinkLike,
   type GraphNodeLike,
-  asGraphRecord,
   buildGraphFromTrace,
   bucketConfidence,
   coerceBoundedInt,
@@ -49,16 +48,9 @@ import {
   stripFilenameExtension,
 } from './graph-page-utils'
 import type {
-  KGEntityAliasItem,
-  KGEntityAliasSuggestionItem,
   KGEntityDetailResponse,
-  KGEntityMergePreviewResponse,
-  KGEntityMergeResponse,
-  KGEntityResolutionUndoResponse,
-  KGEntitySplitResponse,
   KGEventDetailResponse,
   KGStatsResponse,
-  KGGraphNode,
   RagTrace,
 } from '@/types'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
@@ -190,37 +182,6 @@ export default function GraphPage() {
   const [confidenceBucketFilters, setConfidenceBucketFilters] = useState<GraphConfBucket[]>([])
   const [entityTypeQuery, setEntityTypeQuery] = useState('')
   const [predicateQuery, setPredicateQuery] = useState('')
-
-  // Entity Resolution (Wave15)
-  const [entityAliases, setEntityAliases] = useState<KGEntityAliasItem[]>([])
-  const [entityAliasesLoading, setEntityAliasesLoading] = useState(false)
-  const [aliasDraft, setAliasDraft] = useState('')
-  const [aliasSaving, setAliasSaving] = useState(false)
-  const [aliasDeleteOpen, setAliasDeleteOpen] = useState(false)
-  const [aliasDeleteTarget, setAliasDeleteTarget] = useState<KGEntityAliasItem | null>(null)
-
-  const [aliasSuggestions, setAliasSuggestions] = useState<KGEntityAliasSuggestionItem[]>([])
-  const [aliasSuggestionsLoading, setAliasSuggestionsLoading] = useState(false)
-
-  const [mergeOpen, setMergeOpen] = useState(false)
-  const [mergeSearch, setMergeSearch] = useState('')
-  const [mergeSearchLoading, setMergeSearchLoading] = useState(false)
-  const [mergeSearchResults, setMergeSearchResults] = useState<KGGraphNode[]>([])
-  const [mergeTarget, setMergeTarget] = useState<KGGraphNode | null>(null)
-  const [mergePreview, setMergePreview] = useState<KGEntityMergePreviewResponse | null>(null)
-  const [mergePreviewLoading, setMergePreviewLoading] = useState(false)
-  const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false)
-  const [mergeSubmitting, setMergeSubmitting] = useState(false)
-  const [mergeError, setMergeError] = useState<string | null>(null)
-
-  const [splitOpen, setSplitOpen] = useState(false)
-  const [splitNameDraft, setSplitNameDraft] = useState('')
-  const [splitSelectedEventIds, setSplitSelectedEventIds] = useState<Set<string>>(new Set())
-  const [splitSubmitting, setSplitSubmitting] = useState(false)
-  const [splitError, setSplitError] = useState<string | null>(null)
-
-  const [lastResolutionActionId, setLastResolutionActionId] = useState<string | null>(null)
-  const [undoSubmitting, setUndoSubmitting] = useState(false)
   
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('')
@@ -393,6 +354,58 @@ export default function GraphPage() {
     resetPathMode,
     resetConnectMode,
     resetExplainMode,
+  })
+
+  const {
+    entityAliases,
+    entityAliasesLoading,
+    aliasDraft,
+    setAliasDraft,
+    aliasSaving,
+    aliasDeleteOpen,
+    aliasDeleteTarget,
+    aliasSuggestions,
+    aliasSuggestionsLoading,
+    mergeOpen,
+    mergeSearch,
+    setMergeSearch,
+    mergeSearchLoading,
+    mergeSearchResults,
+    mergeTarget,
+    mergePreview,
+    mergePreviewLoading,
+    mergeConfirmOpen,
+    setMergeConfirmOpen,
+    mergeSubmitting,
+    mergeError,
+    splitOpen,
+    splitNameDraft,
+    setSplitNameDraft,
+    splitSelectedEventIds,
+    splitSubmitting,
+    splitError,
+    lastResolutionActionId,
+    undoSubmitting,
+    handleSaveAlias,
+    requestDeleteAlias,
+    confirmDeleteAlias,
+    openMergeDialog,
+    selectMergeTarget,
+    handleMergeAliasSuggestion,
+    submitMerge,
+    openSplitDialog,
+    toggleSplitEvent,
+    submitSplit,
+    undoLastResolution,
+    handleAliasDeleteOpenChange,
+    handleMergeOpenChange,
+    handleSplitOpenChange,
+  } = useGraphEntityResolution({
+    dataSource,
+    isDetailOpen,
+    selectedNode,
+    scopeParams,
+    loadInitialData,
   })
 
   const handleBackgroundClick = useCallback(() => {
@@ -639,61 +652,6 @@ export default function GraphPage() {
 	    }
 	  }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind, scopeParams])
 
-  // Fetch entity resolution data (aliases + suggestions) when an entity is selected.
-  useEffect(() => {
-    if (dataSource !== 'live') {
-      setEntityAliases([])
-      setAliasSuggestions([])
-      setAliasDraft('')
-      setLastResolutionActionId(null)
-      return
-    }
-    if (!isDetailOpen || !selectedNode?.id || selectedNode?.meta?.kind !== 'entity') {
-      setEntityAliases([])
-      setAliasSuggestions([])
-      setAliasDraft('')
-      return
-    }
-
-    let cancelled = false
-    const entityId = String(selectedNode.id)
-
-    setEntityAliasesLoading(true)
-    setAliasSuggestionsLoading(true)
-    setMergeError(null)
-    setSplitError(null)
-
-    ;(async () => {
-      try {
-        const resp = (await kgApi.listEntityAliases(entityId))
-        if (!cancelled) setEntityAliases(resp.aliases || [])
-      } catch {
-        if (!cancelled) setEntityAliases([])
-      } finally {
-        if (!cancelled) setEntityAliasesLoading(false)
-      }
-    })()
-
-    ;(async () => {
-      try {
-        const resp = (await kgApi.suggestEntityAliases(entityId, {
-    mode: 'offline',
-    k: 6,
-    min_similarity: 0.75,
-}))
-        if (!cancelled) setAliasSuggestions(resp.suggestions || [])
-      } catch {
-        if (!cancelled) setAliasSuggestions([])
-      } finally {
-        if (!cancelled) setAliasSuggestionsLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [dataSource, isDetailOpen, selectedNode?.id, selectedNode?.meta?.kind])
-
   const expandNodeById = useCallback(
     async (nodeId: string) => {
       const id = String(nodeId || '').trim()
@@ -769,251 +727,6 @@ export default function GraphPage() {
     setDeleteNodeTarget(null)
     setDeleteNodeOpen(false)
   }, [deleteNodeTarget, selectedNode])
-
-  const reloadEntityResolution = useCallback(
-    async (entityId: string) => {
-      try {
-        setEntityAliasesLoading(true)
-        const resp = await kgApi.listEntityAliases(entityId)
-        setEntityAliases(resp.aliases || [])
-      } catch {
-        setEntityAliases([])
-      } finally {
-        setEntityAliasesLoading(false)
-      }
-
-      try {
-        setAliasSuggestionsLoading(true)
-        const resp = await kgApi.suggestEntityAliases(entityId, { mode: 'offline', k: 6, min_similarity: 0.75 })
-        setAliasSuggestions(resp.suggestions || [])
-      } catch {
-        setAliasSuggestions([])
-      } finally {
-        setAliasSuggestionsLoading(false)
-      }
-    },
-    []
-  )
-
-  const handleSaveAlias = useCallback(async () => {
-    const entityId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
-    const alias = aliasDraft.trim()
-    if (!entityId) return
-    if (!alias) {
-      toast.error('请输入 alias')
-      return
-    }
-
-    setAliasSaving(true)
-    try {
-      await kgApi.createEntityAlias(entityId, { alias })
-      setAliasDraft('')
-      toast.success('已添加 alias')
-      await reloadEntityResolution(entityId)
-    } catch (error) {
-      toast.error(formatApiError(error, '添加 alias 失败'))
-    } finally {
-      setAliasSaving(false)
-    }
-  }, [aliasDraft, reloadEntityResolution, selectedNode])
-
-  const requestDeleteAlias = useCallback((row: KGEntityAliasItem) => {
-    setAliasDeleteTarget(row)
-    setAliasDeleteOpen(true)
-  }, [])
-
-  const confirmDeleteAlias = useCallback(async () => {
-    const entityId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
-    const aliasId = aliasDeleteTarget?.id ? String(aliasDeleteTarget.id) : ''
-    if (!entityId || !aliasId) {
-      setAliasDeleteOpen(false)
-      setAliasDeleteTarget(null)
-      return
-    }
-
-    setAliasSaving(true)
-    try {
-      const resp = await kgApi.deleteEntityAlias(entityId, aliasId)
-      setEntityAliases(resp.aliases || [])
-      toast.success('已删除 alias')
-      await reloadEntityResolution(entityId)
-    } catch (error) {
-      toast.error(formatApiError(error, '删除 alias 失败'))
-    } finally {
-      setAliasSaving(false)
-      setAliasDeleteOpen(false)
-      setAliasDeleteTarget(null)
-    }
-  }, [aliasDeleteTarget, reloadEntityResolution, selectedNode])
-
-  // Merge UI helpers
-  const openMergeDialog = useCallback(() => {
-    setMergeOpen(true)
-    setMergeSearch('')
-    setMergeSearchResults([])
-    setMergeTarget(null)
-    setMergePreview(null)
-    setMergeError(null)
-  }, [])
-
-  useEffect(() => {
-    if (!mergeOpen) return
-    const q = mergeSearch.trim()
-    if (q.length < 2) {
-      setMergeSearchResults([])
-      return
-    }
-
-    let cancelled = false
-    setMergeSearchLoading(true)
-	    const t = globalThis.window.setTimeout(() => {
-	      ;(async () => {
-	        try {
-	          const rows = await kgApi.searchGraphNodes({
-	            q,
-	            kind: 'entity',
-	            limit: 8,
-	            document_ids: scopeParams?.document_ids,
-	            pipeline_hash: scopeParams?.pipeline_hash,
-	          })
-	          const currentId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
-	          const filtered = (rows || []).filter((r) => String(r.id) !== currentId)
-	          if (!cancelled) setMergeSearchResults(filtered)
-	        } catch {
-	          if (!cancelled) setMergeSearchResults([])
-        } finally {
-          if (!cancelled) setMergeSearchLoading(false)
-        }
-      })()
-    }, 250)
-
-	    return () => {
-	      cancelled = true
-	      globalThis.window.clearTimeout(t)
-	    }
-	  }, [mergeOpen, mergeSearch, selectedNode, scopeParams])
-
-  const selectMergeTarget = useCallback(
-    async (node: KGGraphNode) => {
-      const sourceId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
-      const targetId = String(node?.id || '')
-      if (!sourceId || !targetId) return
-
-      setMergeTarget(node)
-      setMergePreview(null)
-      setMergeError(null)
-      setMergePreviewLoading(true)
-      try {
-        const preview = await kgApi.previewMergeEntities({ source_entity_id: sourceId, target_entity_id: targetId })
-        setMergePreview(preview)
-      } catch (error) {
-        setMergeError(formatApiError(error, '无法预览合并影响'))
-        setMergePreview(null)
-      } finally {
-        setMergePreviewLoading(false)
-      }
-    },
-    [selectedNode]
-  )
-
-  const handleMergeAliasSuggestion = useCallback(
-    (suggestion: KGEntityAliasSuggestionItem) => {
-      openMergeDialog()
-      detachPromise(
-        selectMergeTarget({
-          id: suggestion.entity_id,
-          label: suggestion.name || suggestion.entity_id,
-          meta: { kind: 'entity', type: suggestion.type },
-        })
-      )
-    },
-    [openMergeDialog, selectMergeTarget]
-  )
-
-  const submitMerge = useCallback(async () => {
-    const sourceId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
-    const targetId = String(mergeTarget?.id || '')
-    if (!sourceId || !targetId) return
-
-    setMergeSubmitting(true)
-    setMergeError(null)
-    try {
-      const out: KGEntityMergeResponse = await kgApi.mergeEntities({ source_entity_id: sourceId, target_entity_id: targetId })
-      setLastResolutionActionId(String(out.action_id))
-      toast.success('合并已完成（可撤销）')
-      setMergeConfirmOpen(false)
-      setMergeOpen(false)
-      await loadInitialData('live')
-      await reloadEntityResolution(sourceId)
-    } catch (error) {
-      setMergeError(formatApiError(error, '合并失败'))
-    } finally {
-      setMergeSubmitting(false)
-    }
-  }, [loadInitialData, mergeTarget, reloadEntityResolution, selectedNode])
-
-  // Split UI helpers
-  const openSplitDialog = useCallback(() => {
-    setSplitOpen(true)
-    setSplitNameDraft('')
-    setSplitSelectedEventIds(new Set())
-    setSplitError(null)
-  }, [])
-
-  const toggleSplitEvent = useCallback((eventId: string, checked: boolean) => {
-    setSplitSelectedEventIds((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(eventId)
-      else next.delete(eventId)
-      return next
-    })
-  }, [])
-
-  const submitSplit = useCallback(async () => {
-    const entityId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
-    const name = splitNameDraft.trim()
-    const eventIds = Array.from(splitSelectedEventIds)
-    if (!entityId) return
-    if (!name) {
-      setSplitError('请输入新实体名称')
-      return
-    }
-    if (!eventIds.length) {
-      setSplitError('请选择要移动的事件（events）')
-      return
-    }
-
-    setSplitSubmitting(true)
-    setSplitError(null)
-    try {
-      const out: KGEntitySplitResponse = await kgApi.splitEntity({ entity_id: entityId, new_entity_name: name, event_ids: eventIds })
-      setLastResolutionActionId(String(out.action_id))
-      toast.success('拆分已完成（可撤销）')
-      setSplitOpen(false)
-      await loadInitialData('live')
-      await reloadEntityResolution(entityId)
-    } catch (error) {
-      setSplitError(formatApiError(error, '拆分失败'))
-    } finally {
-      setSplitSubmitting(false)
-    }
-  }, [loadInitialData, reloadEntityResolution, selectedNode, splitNameDraft, splitSelectedEventIds])
-
-  const undoLastResolution = useCallback(async () => {
-    const actionId = (lastResolutionActionId || '').trim()
-    if (!actionId) return
-    setUndoSubmitting(true)
-    try {
-      const out: KGEntityResolutionUndoResponse = await kgApi.undoResolutionAction(actionId)
-      toast.success(`已撤销：${String(out.status || 'ok')}`)
-      setLastResolutionActionId(null)
-      await loadInitialData('live')
-    } catch (error) {
-      toast.error(formatApiError(error, '撤销失败'))
-    } finally {
-      setUndoSubmitting(false)
-    }
-  }, [lastResolutionActionId, loadInitialData])
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -1580,32 +1293,6 @@ export default function GraphPage() {
   const handleDeleteNodeOpenChange = useCallback((open: boolean) => {
     setDeleteNodeOpen(open)
     if (!open) setDeleteNodeTarget(null)
-  }, [])
-
-  const handleAliasDeleteOpenChange = useCallback((open: boolean) => {
-    setAliasDeleteOpen(open)
-    if (!open) setAliasDeleteTarget(null)
-  }, [])
-
-  const handleMergeOpenChange = useCallback((open: boolean) => {
-    setMergeOpen(open)
-    if (!open) {
-      setMergeSearch('')
-      setMergeSearchResults([])
-      setMergeTarget(null)
-      setMergePreview(null)
-      setMergeError(null)
-      setMergeConfirmOpen(false)
-    }
-  }, [])
-
-  const handleSplitOpenChange = useCallback((open: boolean) => {
-    setSplitOpen(open)
-    if (!open) {
-      setSplitNameDraft('')
-      setSplitSelectedEventIds(new Set())
-      setSplitError(null)
-    }
   }, [])
 
   const handleConnectLabelOpenChange = useCallback((open: boolean) => {
