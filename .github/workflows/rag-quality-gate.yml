@@ -1,0 +1,43 @@
+name: RAG Quality Gate
+
+on:
+  pull_request:
+    paths:
+      - "app/rag/**"
+      - "app/core/config.py"
+      - "tests/rag/evaluation/**"
+      - ".github/workflows/rag-quality-gate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/rag/**"
+      - "app/core/config.py"
+      - "tests/rag/evaluation/**"
+      - ".github/workflows/rag-quality-gate.yml"
+
+jobs:
+  rag-quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RAG_EVAL_GATE_ENABLED: "true"
+      RAG_EVAL_GATE_SUMMARY_PATH: "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+
+      - name: Run RAG quality gate test
+        run: pytest -q tests/rag/evaluation/test_rag_quality_gate.py

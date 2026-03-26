@@ -1234,6 +1234,13 @@ class Settings(BaseSettings):
     ONLINE_EVAL_ALERT_FAITHFULNESS_DET_MIN: float = 0.6
     ONLINE_EVAL_ALERT_CHUNK_UTILIZATION_MIN: float = 0.12
 
+    # Offline RAG evaluation quality gate (CI-oriented, default-off).
+    RAG_EVAL_GATE_ENABLED: bool = False
+    RAG_EVAL_GATE_SUMMARY_PATH: str = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
+    RAG_EVAL_GATE_FAITHFULNESS_MIN: float = 0.80
+    RAG_EVAL_GATE_ANSWER_RELEVANCY_MIN: float = 0.75
+    RAG_EVAL_GATE_CONTEXT_PRECISION_MIN: float = 0.70
+
     # Observability: simple anomaly detection (rolling baseline; PII-safe).
     # Used by query analytics to flag spikes in zero-hit/error rates.
     OBS_ANOMALY_ENABLED: bool = True
@@ -2634,6 +2641,33 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"RETRIEVAL_FUSION_STRATEGY ({self.RETRIEVAL_FUSION_STRATEGY}) must be one of {valid_fusion_strategies}"
             )
+
+        rag_eval_faithfulness_min = float(getattr(self, "RAG_EVAL_GATE_FAITHFULNESS_MIN", 0.80) or 0.80)
+        if rag_eval_faithfulness_min < 0.0 or rag_eval_faithfulness_min > 1.0:
+            raise ValueError("RAG_EVAL_GATE_FAITHFULNESS_MIN must be between 0 and 1")
+        if self.RAG_EVAL_GATE_FAITHFULNESS_MIN != rag_eval_faithfulness_min:
+            self.RAG_EVAL_GATE_FAITHFULNESS_MIN = rag_eval_faithfulness_min
+
+        rag_eval_answer_relevancy_min = float(getattr(self, "RAG_EVAL_GATE_ANSWER_RELEVANCY_MIN", 0.75) or 0.75)
+        if rag_eval_answer_relevancy_min < 0.0 or rag_eval_answer_relevancy_min > 1.0:
+            raise ValueError("RAG_EVAL_GATE_ANSWER_RELEVANCY_MIN must be between 0 and 1")
+        if self.RAG_EVAL_GATE_ANSWER_RELEVANCY_MIN != rag_eval_answer_relevancy_min:
+            self.RAG_EVAL_GATE_ANSWER_RELEVANCY_MIN = rag_eval_answer_relevancy_min
+
+        rag_eval_context_precision_min = float(getattr(self, "RAG_EVAL_GATE_CONTEXT_PRECISION_MIN", 0.70) or 0.70)
+        if rag_eval_context_precision_min < 0.0 or rag_eval_context_precision_min > 1.0:
+            raise ValueError("RAG_EVAL_GATE_CONTEXT_PRECISION_MIN must be between 0 and 1")
+        if self.RAG_EVAL_GATE_CONTEXT_PRECISION_MIN != rag_eval_context_precision_min:
+            self.RAG_EVAL_GATE_CONTEXT_PRECISION_MIN = rag_eval_context_precision_min
+
+        rag_eval_summary_path = str(
+            getattr(self, "RAG_EVAL_GATE_SUMMARY_PATH", "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json")
+            or "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
+        ).strip()
+        if not rag_eval_summary_path:
+            raise ValueError("RAG_EVAL_GATE_SUMMARY_PATH must be non-empty")
+        if self.RAG_EVAL_GATE_SUMMARY_PATH != rag_eval_summary_path:
+            self.RAG_EVAL_GATE_SUMMARY_PATH = rag_eval_summary_path
 
         return self
 
