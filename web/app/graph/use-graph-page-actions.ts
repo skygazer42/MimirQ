@@ -1,0 +1,398 @@
+'use client'
+
+import type { Dispatch, RefObject, SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+
+import { kgApi } from '@/lib/api/graph'
+import { sanitizeFilename } from '@/lib/sanitize'
+
+import {
+  type GraphContextMenuState,
+  type GraphContextMenuTarget,
+  type GraphLinkLike,
+  type GraphNodeLike,
+  stripFilenameExtension,
+} from './graph-page-utils'
+
+type GraphViewportApi = {
+  zoomToFit?: () => void
+  exportPngDataUrl?: () => string | null
+  exportSvgString?: () => string | null
+} | null
+
+type GraphScopeParams = Readonly<{
+  document_ids?: string[]
+  pipeline_hash?: string
+}> | null
+
+type DeleteNodeTarget = {
+  id: string
+  label: string
+} | null
+
+type UseGraphPageActionsParams = Readonly<{
+  graphViewportRef: RefObject<HTMLDivElement | null>
+  getActiveGraph: () => GraphViewportApi
+  selectedNode: GraphNodeLike | null
+  fileName: string | null
+  viewMode: '2d' | '3d'
+  datasetId: string | null
+  dataSource: 'live' | 'mock' | 'file'
+  scopeParams: GraphScopeParams
+  includeEntityLinks: boolean
+  includeRelationLinks: boolean
+  minSharedEvents: number
+  maxEntityLinks: number
+  setIsLoading: Dispatch<SetStateAction<boolean>>
+  setIsDetailOpen: Dispatch<SetStateAction<boolean>>
+  setIsLinkDetailOpen: Dispatch<SetStateAction<boolean>>
+  setSelectedNode: Dispatch<SetStateAction<GraphNodeLike | null>>
+  setSelectedLink: Dispatch<SetStateAction<GraphLinkLike | null>>
+  setDeleteNodeOpen: Dispatch<SetStateAction<boolean>>
+  setDeleteNodeTarget: Dispatch<SetStateAction<DeleteNodeTarget>>
+}>
+
+export function useGraphPageActions({
+  graphViewportRef,
+  getActiveGraph,
+  selectedNode,
+  fileName,
+  viewMode,
+  datasetId,
+  dataSource,
+  scopeParams,
+  includeEntityLinks,
+  includeRelationLinks,
+  minSharedEvents,
+  maxEntityLinks,
+  setIsLoading,
+  setIsDetailOpen,
+  setIsLinkDetailOpen,
+  setSelectedNode,
+  setSelectedLink,
+  setDeleteNodeOpen,
+  setDeleteNodeTarget,
+}: UseGraphPageActionsParams) {
+  const router = useRouter()
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [contextMenu, setContextMenu] = useState<GraphContextMenuState | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null)
+  }, [])
+
+  const openContextMenu = useCallback(
+    (event: MouseEvent, target: GraphContextMenuTarget) => {
+      try {
+        event.preventDefault?.()
+        event.stopPropagation?.()
+      } catch {}
+
+      const rect = graphViewportRef.current?.getBoundingClientRect()
+      if (!rect) return
+
+      const menuWidth = 272
+      const menuHeight = 320
+      const padding = 12
+      let x = event.clientX - rect.left
+      let y = event.clientY - rect.top
+      x = Math.max(padding, Math.min(x, rect.width - menuWidth - padding))
+      y = Math.max(padding, Math.min(y, rect.height - menuHeight - padding))
+      setContextMenu({ x, y, target })
+    },
+    [graphViewportRef]
+  )
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const dismiss = () => setContextMenu(null)
+    globalThis.window.addEventListener('mousedown', dismiss)
+    globalThis.window.addEventListener('scroll', dismiss, true)
+    return () => {
+      globalThis.window.removeEventListener('mousedown', dismiss)
+      globalThis.window.removeEventListener('scroll', dismiss, true)
+    }
+  }, [contextMenu])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const syncFullscreen = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement))
+    }
+    syncFullscreen()
+    document.addEventListener('fullscreenchange', syncFullscreen)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen)
+  }, [])
+
+  const toggleFullscreen = useCallback(async () => {
+    if (typeof document === 'undefined') return
+    try {
+      if (!document.fullscreenElement) {
+        await graphViewportRef.current?.requestFullscreen?.()
+      } else {
+        await document.exitFullscreen?.()
+      }
+    } catch {
+      toast.error('全屏切换失败')
+    }
+  }, [graphViewportRef])
+
+  const handleToggleFullscreen = useCallback(() => {
+    void toggleFullscreen()
+  }, [toggleFullscreen])
+
+  const handleBackgroundClick = useCallback(() => {
+    setIsDetailOpen(false)
+    setIsLinkDetailOpen(false)
+    setSelectedLink(null)
+    closeContextMenu()
+  }, [closeContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink])
+
+  const handleNodeRightClick = useCallback(
+    (node: GraphNodeLike, event: MouseEvent) => {
+      setSelectedNode(node)
+      setSelectedLink(null)
+      setIsDetailOpen(false)
+      setIsLinkDetailOpen(false)
+      openContextMenu(event, { type: 'node', node })
+    },
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode]
+  )
+
+  const handleLinkRightClick = useCallback(
+    (link: GraphLinkLike, event: MouseEvent) => {
+      setSelectedLink(link)
+      setSelectedNode(null)
+      setIsDetailOpen(false)
+      setIsLinkDetailOpen(false)
+      openContextMenu(event, { type: 'link', link })
+    },
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen, setSelectedLink, setSelectedNode]
+  )
+
+  const handleBackgroundRightClick = useCallback(
+    (event: MouseEvent) => {
+      setIsDetailOpen(false)
+      setIsLinkDetailOpen(false)
+      openContextMenu(event, { type: 'background' })
+    },
+    [openContextMenu, setIsDetailOpen, setIsLinkDetailOpen]
+  )
+
+  const copyToClipboard = useCallback(async (text: string, label: string) => {
+    const value = String(text || '').trim()
+    if (!value) {
+      toast.error('无可复制内容')
+      return
+    }
+
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+        throw new Error('Clipboard API unavailable')
+      }
+      await navigator.clipboard.writeText(value)
+      toast.success(`已复制 ${label}`)
+    } catch (error) {
+      console.error('clipboard.writeText failed:', error)
+      toast.error('复制失败（浏览器权限限制）')
+    }
+  }, [])
+
+  const handleCopyNodeId = useCallback(
+    (nodeId: string) => {
+      void copyToClipboard(nodeId, '节点 ID')
+    },
+    [copyToClipboard]
+  )
+
+  const handleCopyLinkPredicate = useCallback(
+    (predicate: string) => {
+      void copyToClipboard(predicate, 'Predicate')
+    },
+    [copyToClipboard]
+  )
+
+  const chatWithNode = useCallback(
+    (node?: GraphNodeLike) => {
+      const target = node ?? selectedNode
+      const label = String(target?.label || '').trim()
+      if (!label) return
+      router.push(`/?prompt=${encodeURIComponent(`请告诉我关于 ${label} 的信息`)}`)
+    },
+    [router, selectedNode]
+  )
+
+  const handleChatWithNode = useCallback(() => {
+    chatWithNode()
+  }, [chatWithNode])
+
+  const viewSourceForNode = useCallback(
+    (node?: GraphNodeLike) => {
+      const target = node ?? selectedNode
+      const documentId = target?.meta?.document_id || target?.source
+      if (documentId) {
+        toast(`源文档：${documentId}`)
+        return
+      }
+      toast('未找到源文档信息')
+    },
+    [selectedNode]
+  )
+
+  const handleViewSource = useCallback(() => {
+    viewSourceForNode()
+  }, [viewSourceForNode])
+
+  const exportBaseName = useMemo(() => {
+    const base =
+      stripFilenameExtension(fileName || '') ||
+      (datasetId ? `dataset-${datasetId}` : '') ||
+      'mimirq-kg'
+    return sanitizeFilename(`${base}-${viewMode}`)
+  }, [datasetId, fileName, viewMode])
+
+  const exportGraph = useCallback(
+    async (format: 'png' | 'svg', mode: 'download' | 'copy') => {
+      const api = getActiveGraph()
+      if (!api) {
+        toast.error('图谱尚未就绪')
+        return
+      }
+
+      if (format === 'png') {
+        const dataUrl = api.exportPngDataUrl?.()
+        if (!dataUrl) {
+          toast.error('导出 PNG 失败')
+          return
+        }
+        if (mode === 'copy') {
+          await copyToClipboard(dataUrl, 'PNG DataURL')
+          return
+        }
+        const anchor = document.createElement('a')
+        anchor.href = dataUrl
+        anchor.download = `${exportBaseName}.png`
+        anchor.click()
+        toast.success('已导出 PNG')
+        return
+      }
+
+      const svg = api.exportSvgString?.()
+      if (!svg) {
+        toast.error('导出 SVG 失败')
+        return
+      }
+      if (mode === 'copy') {
+        await copyToClipboard(svg, 'SVG')
+        return
+      }
+
+      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${exportBaseName}.svg`
+      anchor.click()
+      globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      toast.success('已导出 SVG')
+    },
+    [copyToClipboard, exportBaseName, getActiveGraph]
+  )
+
+  const handleExportPngDownload = useCallback(() => {
+    setExportOpen(false)
+    void exportGraph('png', 'download')
+  }, [exportGraph])
+
+  const handleExportSvgDownload = useCallback(() => {
+    setExportOpen(false)
+    void exportGraph('svg', 'download')
+  }, [exportGraph])
+
+  const handleExportPngCopy = useCallback(() => {
+    setExportOpen(false)
+    void exportGraph('png', 'copy')
+  }, [exportGraph])
+
+  const handleExportSvgCopy = useCallback(() => {
+    setExportOpen(false)
+    void exportGraph('svg', 'copy')
+  }, [exportGraph])
+
+  const handleExportGraphML = useCallback(async () => {
+    if (dataSource !== 'live') {
+      toast.info('仅支持导出后端 KG 实时图谱')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const xml = await kgApi.exportGraphML({
+        document_ids: scopeParams?.document_ids,
+        pipeline_hash: scopeParams?.pipeline_hash,
+        include_entity_links: includeEntityLinks,
+        include_relation_links: includeRelationLinks,
+        min_shared_events: minSharedEvents,
+        max_entity_links: maxEntityLinks,
+      })
+      const blob = new Blob([xml], { type: 'application/graphml+xml;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'mimirq-kg.graphml'
+      anchor.click()
+      URL.revokeObjectURL(url)
+      toast.success('已导出 GraphML')
+    } catch (error) {
+      console.error('Export GraphML failed:', error)
+      toast.error('导出 GraphML 失败')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [
+    dataSource,
+    includeEntityLinks,
+    includeRelationLinks,
+    maxEntityLinks,
+    minSharedEvents,
+    scopeParams,
+    setIsLoading,
+  ])
+
+  const handleDeleteNodeOpenChange = useCallback(
+    (open: boolean) => {
+      setDeleteNodeOpen(open)
+      if (!open) setDeleteNodeTarget(null)
+    },
+    [setDeleteNodeOpen, setDeleteNodeTarget]
+  )
+
+  return {
+    isFullscreen,
+    contextMenu,
+    exportOpen,
+    setExportOpen,
+    closeContextMenu,
+    handleBackgroundClick,
+    handleNodeRightClick,
+    handleLinkRightClick,
+    handleBackgroundRightClick,
+    handleToggleFullscreen,
+    handleCopyNodeId,
+    handleCopyLinkPredicate,
+    chatWithNode,
+    handleChatWithNode,
+    viewSourceForNode,
+    handleViewSource,
+    handleExportPngDownload,
+    handleExportSvgDownload,
+    handleExportPngCopy,
+    handleExportSvgCopy,
+    handleExportGraphML,
+    handleDeleteNodeOpenChange,
+  }
+}

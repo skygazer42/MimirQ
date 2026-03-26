@@ -11,7 +11,7 @@ describe('sanitize filename source dedupe', () => {
   it.each([
     '../app/datasets/[id]/health/page-client.tsx',
     '../app/reports/page-client.tsx',
-    '../app/graph/page.tsx',
+    '../app/graph/use-graph-page-actions.ts',
     '../components/evaluation/retrieval-ablations-page.tsx',
     '../components/graph/kg-diagnostics-page.tsx',
     '../components/graph/kg-snapshots-page.tsx',
