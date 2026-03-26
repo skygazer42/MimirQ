@@ -19,7 +19,6 @@ import { Kbd } from '@/components/ui/kbd'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { SearchInput } from '@/components/ui/search-input'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -38,13 +37,35 @@ import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/grap
 import { KnowledgeGraph3D, type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphLegend } from '@/components/graph/graph-legend'
 import { GraphStatsBar } from '@/components/graph/graph-stats-bar'
-import { parseGraphML, GraphData, type GraphNode } from '@/lib/graph-parser'
+import { parseGraphML, GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/lib/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { documentApi } from '@/lib/api/documents'
 import { kgApi } from '@/lib/api/graph'
+import {
+  GraphConfBucket,
+  GraphContextMenuTarget,
+  GraphContextMenuState,
+  type GraphDatasetDocumentSummary,
+  type GraphLinkLike,
+  type GraphNodeLike,
+  asGraphRecord,
+  bucketConfidence,
+  coerceBoundedInt,
+  coerceTrimmedString,
+  getGraphLinkConfidence,
+  getGraphLinkEndpointId,
+  getGraphLinkKind,
+  getGraphLinkPredicate,
+  getGraphNodeKind,
+  getGraphNodeType,
+  getScopedDocumentId,
+  isPendingScopedDocument,
+  parseCsvList,
+  stripFilenameExtension,
+} from './graph-page-utils'
 import type {
   KGEntityAliasItem,
   KGEntityAliasSuggestionItem,
@@ -57,86 +78,9 @@ import type {
   KGStatsResponse,
   KGGraphNode,
   RagTrace,
-  RagTraceListResponse,
 } from '@/types'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { sanitizeFilename } from '@/lib/sanitize'
-
-type GraphConfBucket = 'high' | 'medium' | 'low'
-
-type GraphContextMenuTarget =
-  | { type: 'node'; node: any }
-  | { type: 'link'; link: any }
-  | { type: 'background' }
-
-type GraphContextMenuState = {
-  x: number
-  y: number
-  target: GraphContextMenuTarget
-}
-
-function coerceTrimmedString(value: unknown): string {
-  return toTrimmedPrimitiveString(value)
-}
-
-function stripFilenameExtension(name: string): string {
-  const v = String(name || '').trim()
-  if (!v) return ''
-  const idx = v.lastIndexOf('.')
-  if (idx <= 0) return v
-  return v.slice(0, idx)
-}
-
-function getGraphNodeKind(node: any): string {
-  return coerceTrimmedString(node?.meta?.kind ?? node?.kind)
-}
-
-function getGraphNodeType(node: any): string {
-  return coerceTrimmedString(node?.meta?.type ?? node?.type)
-}
-
-function getGraphLinkKind(link: any): string {
-  return coerceTrimmedString(link?.meta?.kind ?? link?.kind)
-}
-
-function getGraphLinkPredicate(link: any): string {
-  return coerceTrimmedString(link?.meta?.predicate ?? link?.predicate ?? link?.label)
-}
-
-function getGraphLinkConfidence(link: any): number | null {
-  const raw = link?.meta?.confidence ?? link?.confidence ?? link?.weight
-  const num = Number(raw)
-  if (!Number.isFinite(num)) return null
-  return num
-}
-
-function getGraphLinkEndpointId(raw: any): string {
-  if (raw == null) return ''
-  if (typeof raw === 'string' || typeof raw === 'number') return String(raw)
-  if (typeof raw === 'object' && 'id' in raw) return String((raw).id || '')
-  return ''
-}
-
-function bucketConfidence(conf: number | null): GraphConfBucket | null {
-  if (conf == null) return null
-  if (conf >= 0.8) return 'high'
-  if (conf >= 0.5) return 'medium'
-  return 'low'
-}
-
-function parseCsvList(value: string | null): string[] {
-  if (!value) return []
-  return value
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-}
-
-function coerceBoundedInt(value: string | null, fallback: number, min: number, max: number): number {
-  const n = Math.floor(Number(value))
-  if (!Number.isFinite(n)) return fallback
-  return Math.min(max, Math.max(min, n))
-}
 
 export default function GraphPage() {
   const router = useRouter()
@@ -169,9 +113,9 @@ export default function GraphPage() {
 
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] })
   const [fileName, setFileName] = useState<string | null>(null)
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
+  const [selectedNode, setSelectedNode] = useState<GraphNodeLike | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
-  const [selectedLink, setSelectedLink] = useState<any | null>(null)
+  const [selectedLink, setSelectedLink] = useState<GraphLinkLike | null>(null)
   const [isLinkDetailOpen, setIsLinkDetailOpen] = useState(false)
   const [selfLoopGroupExpanded, setSelfLoopGroupExpanded] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -237,12 +181,9 @@ export default function GraphPage() {
           order_by: 'created_at',
           order_dir: 'desc',
         })
-        const items = Array.isArray(list.items) ? list.items : []
-        const ids = items.map((d: any) => String(d?.id || '').trim()).filter(Boolean)
-        const pending = items.filter((d: any) => {
-          const st = String(d?.status || '').trim().toLowerCase()
-          return st === 'pending' || st === 'processing'
-        }).length
+        const items: GraphDatasetDocumentSummary[] = Array.isArray(list.items) ? list.items : []
+        const ids = items.map((item) => getScopedDocumentId(item)).filter(Boolean)
+        const pending = items.filter((item) => isPendingScopedDocument(item)).length
         if (!cancelled) setScopedDatasetDocIds(ids)
         if (!cancelled) setScopedDatasetPendingDocs(pending)
       } catch {
@@ -308,17 +249,17 @@ export default function GraphPage() {
 
   // Path Finding State
   const [isPathMode, setIsPathMode] = useState(false)
-  const [pathStartNode, setPathStartNode] = useState<GraphNode | null>(null)
-  const [pathEndNode, setPathEndNode] = useState<GraphNode | null>(null)
+  const [pathStartNode, setPathStartNode] = useState<GraphNodeLike | null>(null)
+  const [pathEndNode, setPathEndNode] = useState<GraphNodeLike | null>(null)
 
   // Layout & View Mode
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('force')
 
   // Editing State
   const [isConnectMode, setIsConnectMode] = useState(false)
-  const [connectSourceNode, setConnectSourceNode] = useState<GraphNode | null>(null)
+  const [connectSourceNode, setConnectSourceNode] = useState<GraphNodeLike | null>(null)
   const [connectLabelOpen, setConnectLabelOpen] = useState(false)
-  const [connectTargetNode, setConnectTargetNode] = useState<GraphNode | null>(null)
+  const [connectTargetNode, setConnectTargetNode] = useState<GraphNodeLike | null>(null)
   const [connectLabelDraft, setConnectLabelDraft] = useState('related_to')
 
   const detailScrollRef = useRef<HTMLDivElement>(null)
@@ -449,7 +390,7 @@ export default function GraphPage() {
   }, [closeContextMenu])
 
   const handleNodeRightClick = useCallback(
-    (node: any, event: MouseEvent) => {
+    (node: GraphNodeLike, event: MouseEvent) => {
       setSelectedNode(node)
       setSelectedLink(null)
       setIsDetailOpen(false)
@@ -460,7 +401,7 @@ export default function GraphPage() {
   )
 
   const handleLinkRightClick = useCallback(
-    (link: any, event: MouseEvent) => {
+    (link: GraphLinkLike, event: MouseEvent) => {
       setSelectedLink(link)
       setSelectedNode(null)
       setIsDetailOpen(false)
@@ -550,7 +491,7 @@ export default function GraphPage() {
       allowedNodeIds.add(id)
     }
 
-    const nextLinks: any[] = []
+    const nextLinks: GraphData['links'] = []
     for (const link of graphData.links) {
       const sourceId = getGraphLinkEndpointId(link?.source)
       const targetId = getGraphLinkEndpointId(link?.target)
@@ -606,11 +547,11 @@ export default function GraphPage() {
     setPathEndNode(null)
   }, [entityTypeFilters, predicateFilters, confidenceBucketFilters])
 
-  const linksWithIds = useMemo(() => {
+  const linksWithIds = useMemo<GraphData['links']>(() => {
     return displayGraphData.links.map((link, index) => ({
       ...link,
       id: link.id || `link-${index}`,
-    }))
+    })) as GraphData['links']
   }, [displayGraphData.links])
 
   const graphRenderData = useMemo<GraphData>(() => {
@@ -863,23 +804,30 @@ export default function GraphPage() {
     fileInputRef.current?.click()
   }
 
-  const _extractTraceFromPayload = (payload: any): RagTrace | null => {
+  const isRagTraceValue = (value: unknown): value is RagTrace => {
+    const record = asGraphRecord(value)
+    return Boolean(record && typeof record.ts_ms === 'number' && Array.isArray(record.steps))
+  }
+
+  const _extractTraceFromPayload = (payload: unknown): RagTrace | null => {
     if (!payload) return null
     if (Array.isArray(payload)) {
       const first = payload[0]
-      return first && typeof first === 'object' ? (first as RagTrace) : null
+      return isRagTraceValue(first) ? first : null
     }
-    if (typeof payload !== 'object') return null
+    const payloadRecord = asGraphRecord(payload)
+    if (!payloadRecord) return null
 
     // API response: { enabled, items: [...] }
-    if (Array.isArray((payload as RagTraceListResponse).items)) {
-      const first = (payload as RagTraceListResponse).items?.[0]
-      return first && typeof first === 'object' ? (first) : null
+    const responseItems = payloadRecord.items
+    if (Array.isArray(responseItems)) {
+      const first = responseItems[0]
+      return isRagTraceValue(first) ? first : null
     }
 
     // Single item.
-    if (typeof (payload).ts_ms === 'number' && Array.isArray((payload).steps)) {
-      return payload as RagTrace
+    if (isRagTraceValue(payloadRecord)) {
+      return payloadRecord
     }
 
     return null
@@ -1030,7 +978,7 @@ export default function GraphPage() {
     detachPromise(expandNodeById(String(selectedNode.id)))
   }, [expandNodeById, selectedNode])
 
-  const handleDeleteNode = useCallback((node?: any) => {
+  const handleDeleteNode = useCallback((node?: GraphNodeLike) => {
     const target = node ?? selectedNode
     if (!target) return
     setDeleteNodeTarget({
@@ -1351,7 +1299,7 @@ export default function GraphPage() {
     toast(`连线模式：请选择终点节点（起点：${selectedNode.label}）`)
   }
 
-  const finishConnection = (targetNode: any) => {
+  const finishConnection = (targetNode: GraphNodeLike) => {
     if (!connectSourceNode) return
     if (connectSourceNode.id === targetNode.id) {
       toast.error('不能连接自己')
@@ -1436,7 +1384,7 @@ export default function GraphPage() {
     setHighlightedLinkIds(new Set())
     setCurrentStepIndex(-1)
 
-    const trace = []
+    const trace: GraphNodeLike[] = []
     const visited = new Set()
     let current = displayGraphData.nodes[0]
     
@@ -1525,7 +1473,7 @@ export default function GraphPage() {
     }
   }
 
-  const handleNodeClick = (node: any) => {
+  const handleNodeClick = (node: GraphNodeLike) => {
     if (isPathMode) {
       if (pathStartNode) { if (pathEndNode) {
         setPathStartNode(node)
@@ -1558,7 +1506,7 @@ export default function GraphPage() {
     }
   }
 
-  const handleLinkClick = (link: any) => {
+  const handleLinkClick = (link: GraphLinkLike) => {
     if (isPathMode || isConnectMode || isExplainMode) return
     setSelectedLink(link)
     setIsLinkDetailOpen(true)
@@ -1567,7 +1515,7 @@ export default function GraphPage() {
   }
 
   const calculatePath = useCallback(
-    (start: any, end: any) => {
+    (start: GraphNodeLike, end: GraphNodeLike) => {
       const result = findShortestPath(displayGraphData.nodes, linksWithIds, start.id, end.id)
 
       if (result) {
@@ -1678,7 +1626,7 @@ export default function GraphPage() {
   }, [])
 
   const chatWithNode = useCallback(
-    (node?: any) => {
+    (node?: GraphNodeLike) => {
       const target = node ?? selectedNode
       const label = String(target?.label || '').trim()
       if (!label) return
@@ -1689,7 +1637,7 @@ export default function GraphPage() {
   )
 
   const viewSourceForNode = useCallback(
-    (node?: any) => {
+    (node?: GraphNodeLike) => {
       const target = node ?? selectedNode
       const docId = target?.meta?.document_id || target?.source
       if (docId) {
@@ -2977,7 +2925,7 @@ export default function GraphPage() {
                             <span className="block text-sm text-foreground break-words">{String(value)}</span>
                           </div>
                         ))}
-                         {selectedNode.source && (
+                         {selectedNode.source ? (
                           <div className="rounded-xl border border-info/25 bg-info/10 p-3">
                             <span className="block text-xs font-medium text-info mb-1 capitalize">Source Document</span>
                             <button
@@ -2985,10 +2933,10 @@ export default function GraphPage() {
                               onClick={handleViewSource}
                               className="block w-full text-left text-sm text-info break-words underline underline-offset-4 hover:text-info/80 rounded-md focus-ring"
                             >
-                              {selectedNode.source}
+                              {String(selectedNode.source)}
                             </button>
                           </div>
-                        )}
+                        ) : null}
                     </div>
                   </div>
 
@@ -3019,7 +2967,7 @@ export default function GraphPage() {
                         </Button>
                         <Button 
                           variant="outline" 
-                          onClick={handleDeleteNode}
+                          onClick={() => handleDeleteNode()}
                           className="w-full justify-start text-xs h-9 hover:bg-red-500/10 dark:hover:bg-red-500/20 dark:bg-red-500/20 hover:text-red-600 dark:hover:text-red-300 hover:border-red-500/30 text-muted-foreground"
                         >
                           <Trash2 className="w-3 h-3 mr-2" />
@@ -3074,8 +3022,14 @@ export default function GraphPage() {
             {selectedLink && (() => {
               const srcObj = selectedLink.source
               const tgtObj = selectedLink.target
-              const srcLabel = typeof srcObj === 'object' ? (srcObj?.label || srcObj?.id || '') : String(srcObj)
-              const tgtLabel = typeof tgtObj === 'object' ? (tgtObj?.label || tgtObj?.id || '') : String(tgtObj)
+              const srcLabel =
+                typeof srcObj === 'object' && srcObj
+                  ? String(srcObj.label ?? srcObj.id ?? '')
+                  : String(srcObj ?? '')
+              const tgtLabel =
+                typeof tgtObj === 'object' && tgtObj
+                  ? String(tgtObj.label ?? tgtObj.id ?? '')
+                  : String(tgtObj ?? '')
               const srcId = getGraphLinkEndpointId(srcObj)
               const tgtId = getGraphLinkEndpointId(tgtObj)
               const isSelfLoop = Boolean(srcId) && srcId === tgtId
@@ -3091,7 +3045,7 @@ export default function GraphPage() {
               const sharedEvents = String(selectedLink?.meta?.shared_events ?? '').trim()
 
               const selfLoopLinks = isSelfLoop
-                ? (graphRenderData.links || []).filter((l: any) => {
+                ? (graphRenderData.links || []).filter((l) => {
                     const s = getGraphLinkEndpointId(l?.source)
                     const t = getGraphLinkEndpointId(l?.target)
                     return Boolean(s) && s === t && s === srcId
@@ -3147,7 +3101,7 @@ export default function GraphPage() {
                           </button>
                           {selfLoopGroupExpanded && (
                             <div className="mt-3 space-y-2">
-                              {selfLoopLinks.slice(0, 12).map((l: any, idx: number) => {
+                              {selfLoopLinks.slice(0, 12).map((l, idx: number) => {
                                 const edgeId = String(l?.id ?? l?.meta?.id ?? '').trim()
                                 const edgeKind = String(l?.meta?.kind ?? l?.kind ?? '').trim()
                                 const edgePredicate = String(l?.meta?.predicate ?? l?.predicate ?? l?.label ?? '').trim()

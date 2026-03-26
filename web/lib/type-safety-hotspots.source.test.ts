@@ -101,4 +101,22 @@ describe('type safety hotspots', () => {
     expect(src).not.toContain(': any')
     expect(src).not.toContain('Record<string, any>')
   })
+
+  it('keeps the current utility cleanup batch on unknown-safe helper types', () => {
+    const openApiHelpers = read('types/openapi-helpers.ts')
+    const documentChunks = read('lib/document-chunks.ts')
+    const evidenceSuggestions = read('lib/evidence-suggestions.ts')
+    const evidenceWhyMissed = read('lib/evidence-why-missed.ts')
+    const localSearch = read('hooks/use-local-search.ts')
+    const graphAlgorithms = read('lib/graph-algorithms.ts')
+
+    expect(openApiHelpers).not.toContain('Record<string, any>')
+    expect(openApiHelpers).not.toContain('Record<number, any>')
+    expect(documentChunks).not.toContain('Record<string, any>')
+    expect(evidenceSuggestions).not.toContain('as any')
+    expect(evidenceWhyMissed).not.toContain('as any')
+    expect(evidenceWhyMissed).not.toContain(': any')
+    expect(localSearch).not.toContain('[key: string]: any')
+    expect(graphAlgorithms).not.toContain('as any')
+  })
 })

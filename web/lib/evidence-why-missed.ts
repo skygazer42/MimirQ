@@ -1,6 +1,22 @@
 import type { Citation } from '@/types'
 
 export type WhyMissedReferenceStatus = 'retrieved' | 'missing' | 'drifted' | 'unknown'
+type WhyMissedUnknownRecord = Record<string, unknown>
+type WhyMissedReferenceSource = WhyMissedUnknownRecord & {
+  document_id?: unknown
+  chunk_id?: unknown
+  chunk_index?: unknown
+  label?: unknown
+  family_collapse_key?: unknown
+  hierarchy_family_key?: unknown
+  parent_id?: unknown
+}
+type WhyMissedDriftReference = WhyMissedUnknownRecord & {
+  chunk_id?: unknown
+  reason?: unknown
+  expected?: unknown
+  observed?: unknown
+}
 
 export interface WhyMissedReferenceHints {
   /** Rank (1-based) of the first citation that matches the reference's document_id. */
@@ -19,8 +35,8 @@ export interface WhyMissedRetrievalInfo {
 
 export interface WhyMissedDriftInfo {
   reason: string
-  expected?: any
-  observed?: any
+  expected?: unknown
+  observed?: unknown
 }
 
 export interface WhyMissedReferenceReportRow {
@@ -60,24 +76,59 @@ function asOptionalInt(value: unknown): number | undefined {
   return Math.trunc(n)
 }
 
+function asRecord(value: unknown): WhyMissedUnknownRecord | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as WhyMissedUnknownRecord
+}
+
+function getRecordString(record: WhyMissedUnknownRecord | null, key: string): string | null {
+  return asNonEmptyString(record?.[key])
+}
+
+function getRecordInt(record: WhyMissedUnknownRecord | null, key: string): number | undefined {
+  return asOptionalInt(record?.[key])
+}
+
+function getFamilyKey(record: WhyMissedUnknownRecord | null): string | null {
+  return (
+    getRecordString(record, 'family_collapse_key') ??
+    getRecordString(record, 'hierarchy_family_key') ??
+    getRecordString(record, 'parent_id')
+  )
+}
+
+function statusWeight(status: WhyMissedReferenceStatus): number {
+  switch (status) {
+    case 'drifted':
+      return 0
+    case 'missing':
+      return 1
+    case 'retrieved':
+      return 2
+    default:
+      return 3
+  }
+}
+
 function citationNumericScore(c: Citation): number | undefined {
-  const raw = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score) as any
+  const raw: unknown =
+    c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score
   const n = Number(raw)
   return Number.isFinite(n) ? n : undefined
 }
 
 export function buildWhyMissedReport(args: {
-  reference_sources: Array<any>
+  reference_sources: WhyMissedReferenceSource[]
   citations: Citation[]
-  drifted_references?: Array<any>
+  drifted_references?: WhyMissedDriftReference[]
 }): WhyMissedReport {
   const referenceSources = Array.isArray(args.reference_sources) ? args.reference_sources : []
   const citations = Array.isArray(args.citations) ? args.citations : []
   const drifted = Array.isArray(args.drifted_references) ? args.drifted_references : []
 
-  const driftByChunkId = new Map<string, any>()
+  const driftByChunkId = new Map<string, WhyMissedDriftReference>()
   for (const d of drifted) {
-    const chunkId = asNonEmptyString((d)?.chunk_id)
+    const chunkId = getRecordString(asRecord(d), 'chunk_id')
     if (!chunkId) continue
     driftByChunkId.set(chunkId, d)
   }
@@ -87,30 +138,27 @@ export function buildWhyMissedReport(args: {
   const indexHitRank = new Map<string, number>()
   const familyHitRank = new Map<string, number>()
   for (let i = 0; i < citations.length; i++) {
-    const c = citations[i] as any
+    const c = citations[i]
+    const citationRecord = asRecord(c)
     const rank = i + 1
 
-    const chunkId = asNonEmptyString(c?.chunk_id)
+    const chunkId = getRecordString(citationRecord, 'chunk_id')
     if (chunkId && !citationByChunkId.has(chunkId)) {
       citationByChunkId.set(chunkId, { citation: c, rank })
     }
 
-    const docId = asNonEmptyString(c?.document_id)
+    const docId = getRecordString(citationRecord, 'document_id')
     if (docId && !docHitRank.has(docId)) {
       docHitRank.set(docId, rank)
     }
 
-    const chunkIndex = asOptionalInt(c?.chunk_index)
+    const chunkIndex = getRecordInt(citationRecord, 'chunk_index')
     if (docId && chunkIndex !== undefined) {
       const key = `${docId}:${chunkIndex}`
       if (!indexHitRank.has(key)) indexHitRank.set(key, rank)
     }
 
-    const fam =
-      asNonEmptyString(c?.family_collapse_key) ??
-      asNonEmptyString(c?.hierarchy_family_key) ??
-      asNonEmptyString(c?.parent_id) ??
-      null
+    const fam = getFamilyKey(citationRecord)
     if (fam && !familyHitRank.has(fam)) familyHitRank.set(fam, rank)
   }
 
@@ -121,10 +169,12 @@ export function buildWhyMissedReport(args: {
   let unknown = 0
 
   for (const ref of referenceSources) {
-    const chunkId = asNonEmptyString((ref)?.chunk_id) || ''
-    const docId = asNonEmptyString((ref)?.document_id)
-    const chunkIndex = asOptionalInt((ref)?.chunk_index)
-    const label = (ref)?.label ?? null
+    const refRecord = asRecord(ref)
+    const chunkId = getRecordString(refRecord, 'chunk_id') || ''
+    const docId = getRecordString(refRecord, 'document_id')
+    const chunkIndex = getRecordInt(refRecord, 'chunk_index')
+    const rawLabel = refRecord?.label
+    const label = typeof rawLabel === 'string' ? rawLabel : rawLabel == null ? null : String(rawLabel)
 
     const driftDetail = chunkId ? driftByChunkId.get(chunkId) : undefined
     const cite = chunkId ? citationByChunkId.get(chunkId) : undefined
@@ -138,11 +188,7 @@ export function buildWhyMissedReport(args: {
         if (iRank) hints.chunk_index_hit_rank = iRank
       }
     }
-    const refFam =
-      asNonEmptyString((ref as any)?.family_collapse_key) ??
-      asNonEmptyString((ref as any)?.hierarchy_family_key) ??
-      asNonEmptyString((ref as any)?.parent_id) ??
-      null
+    const refFam = getFamilyKey(refRecord)
     if (refFam) {
       const fRank = familyHitRank.get(refFam)
       if (fRank) hints.family_hit_rank = fRank
@@ -172,15 +218,15 @@ export function buildWhyMissedReport(args: {
       retrieval: cite
         ? {
             rank: cite.rank,
-            hit_type: asNonEmptyString((cite.citation as any)?.hit_type) ?? undefined,
+            hit_type: getRecordString(asRecord(cite.citation), 'hit_type') ?? undefined,
             score: citationNumericScore(cite.citation),
           }
         : undefined,
       drift: driftDetail
         ? {
-            reason: String((driftDetail)?.reason || 'drift'),
-            expected: (driftDetail)?.expected,
-            observed: (driftDetail)?.observed,
+            reason: String(driftDetail.reason || 'drift'),
+            expected: driftDetail.expected,
+            observed: driftDetail.observed,
           }
         : undefined,
       hints: Object.keys(hints).length ? hints : undefined,
@@ -189,34 +235,8 @@ export function buildWhyMissedReport(args: {
 
   // Stable ordering for UI.
   rows.sort((a, b) => {
-    const aw = (() => {
-    if (a.status === 'drifted') {
-        return 0;
-    }
-    else if (a.status === 'missing') {
-            return 1;
-        }
-        else if (a.status === 'retrieved') {
-                return 2;
-            }
-            else {
-                return 3;
-            }
-})()
-    const bw = (() => {
-    if (b.status === 'drifted') {
-        return 0;
-    }
-    else if (b.status === 'missing') {
-            return 1;
-        }
-        else if (b.status === 'retrieved') {
-                return 2;
-            }
-            else {
-                return 3;
-            }
-})()
+    const aw = statusWeight(a.status)
+    const bw = statusWeight(b.status)
     if (aw !== bw) return aw - bw
     const ar = a.retrieval?.rank ?? 1_000_000
     const br = b.retrieval?.rank ?? 1_000_000

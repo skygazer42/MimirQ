@@ -58,7 +58,7 @@ export type OpenApiRequestBody<
   P extends OpenApiPath,
   M extends OpenApiMethodForPath<P>,
   ContentType extends string = 'application/json',
-> = _RequestBodyContent<P, M> extends Record<string, any>
+> = _RequestBodyContent<P, M> extends Record<string, unknown>
   ? ContentType extends keyof _RequestBodyContent<P, M>
     ? _RequestBodyContent<P, M>[ContentType]
     : never
@@ -85,7 +85,7 @@ export type OpenApiResponseBody<
   M extends OpenApiMethodForPath<P>,
   Status extends OpenApiResponseStatus<P, M>,
   ContentType extends string = 'application/json',
-> = OpenApiResponseContent<P, M, Status> extends Record<string, any>
+> = OpenApiResponseContent<P, M, Status> extends Record<string, unknown>
   ? ContentType extends keyof OpenApiResponseContent<P, M, Status>
     ? OpenApiResponseContent<P, M, Status>[ContentType]
     : never
@@ -95,7 +95,7 @@ type _OkStatus<
   P extends OpenApiPath,
   M extends OpenApiMethodForPath<P>,
 > = _Responses<P, M> extends infer R
-  ? R extends Record<number, any>
+  ? R extends Record<number, unknown>
     ? 200 extends keyof R
       ? 200
       : 201 extends keyof R

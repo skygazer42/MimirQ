@@ -5,7 +5,7 @@ import MiniSearch from 'minisearch'
 
 interface SearchItem {
   id: string
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export function useLocalSearch<T extends SearchItem>(
