@@ -14,6 +14,7 @@ describe('ParsingPage workbench scaffold', () => {
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-mobile-inspector-content.tsx'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-types.ts'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-library-actions.ts'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-run-actions.ts'))).toBe(true)
     expect(src).toContain('WorkbenchScaffold')
     expect(src).toContain('ParsingActiveFilePane')
     expect(src).toContain('ParsingLibraryBrowser')
@@ -45,5 +46,20 @@ describe('ParsingPage workbench scaffold', () => {
     expect(hookSrc).toContain('export function useParsingLibraryActions(')
     expect(hookSrc).toContain('const addFiles = useCallback(')
     expect(hookSrc).toContain('const mountLibraryFileToQueue = useCallback(')
+  })
+
+  it('moves parsing run callbacks into the dedicated hook', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
+    const hookSrc = fs.readFileSync(path.resolve(__dirname, 'use-parsing-run-actions.ts'), 'utf8')
+
+    expect(src).toContain('useParsingRunActions')
+    expect(src).not.toContain('const parseFile = useCallback(')
+    expect(src).not.toContain('const parseAllPending = async () =>')
+    expect(src).not.toContain('const handleSelectRun = (runId: string) =>')
+
+    expect(hookSrc).toContain('export function useParsingRunActions(')
+    expect(hookSrc).toContain('const parseFile = useCallback(')
+    expect(hookSrc).toContain('const parseAllPending = useCallback(')
+    expect(hookSrc).toContain('const handleSelectRun = useCallback(')
   })
 })
