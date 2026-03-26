@@ -1,0 +1,149 @@
+'use client'
+
+import { useCallback, type Dispatch, type DragEvent, type SetStateAction } from 'react'
+
+import { toast } from 'sonner'
+
+import { parsingApi } from '@/lib/api'
+import { formatApiError } from '@/lib/api-errors'
+import { ROOT_FOLDER_ID, type ParsedFileData } from '@/store/use-parsed-files-store'
+
+import type { ParsedFile } from './parsing-types'
+
+type UseParsingQueueActionsOptions = {
+  activeFileId: string | null
+  activeLibraryFileId: string | null
+  cancelParse: (fileId: string) => void
+  files: ParsedFile[]
+  libraryFiles: ParsedFileData[]
+  moveFolder: (id: string, parentId: string) => boolean
+  removeLibraryCaches: (fileId: string) => void
+  removeParsedFile: (id: string) => void
+  setActiveFileId: Dispatch<SetStateAction<string | null>>
+  setActiveLibraryFileId: Dispatch<SetStateAction<string | null>>
+  setDragOverFolderId: Dispatch<SetStateAction<string | null>>
+  setFiles: Dispatch<SetStateAction<ParsedFile[]>>
+  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
+}
+
+export function useParsingQueueActions({
+  activeFileId,
+  activeLibraryFileId,
+  cancelParse,
+  files,
+  libraryFiles,
+  moveFolder,
+  removeLibraryCaches,
+  removeParsedFile,
+  setActiveFileId,
+  setActiveLibraryFileId,
+  setDragOverFolderId,
+  setFiles,
+  updateParsedFile,
+}: Readonly<UseParsingQueueActionsOptions>) {
+  const removeFile = useCallback(
+    (fileId: string) => {
+      const queue = files.find((file) => file.id === fileId) || null
+      const libraryId = queue?.libraryId || (libraryFiles.some((file) => file.id === fileId) ? fileId : null)
+
+      if (queue) {
+        cancelParse(queue.id)
+        setFiles((prev) => prev.filter((file) => file.id !== queue.id))
+        if (activeFileId === queue.id) setActiveFileId(null)
+      }
+
+      if (libraryId) {
+        void (async () => {
+          try {
+            await parsingApi.delete(libraryId)
+          } catch (err: unknown) {
+            toast.error(formatApiError(err, '删除失败'))
+          }
+        })()
+
+        removeParsedFile(libraryId)
+        removeLibraryCaches(libraryId)
+        if (activeLibraryFileId === libraryId) setActiveLibraryFileId(null)
+      }
+    },
+    [
+      activeFileId,
+      activeLibraryFileId,
+      cancelParse,
+      files,
+      libraryFiles,
+      removeLibraryCaches,
+      removeParsedFile,
+      setActiveFileId,
+      setActiveLibraryFileId,
+      setFiles,
+    ]
+  )
+
+  const moveFileToFolder = useCallback(
+    (fileId: string, folderId: string) => {
+      const targetId = folderId || ROOT_FOLDER_ID
+      setFiles((prev) => prev.map((file) => (file.id === fileId ? { ...file, folderId: targetId } : file)))
+
+      const queueMatch = files.find((file) => file.id === fileId) || null
+      const libraryId = queueMatch?.libraryId || (libraryFiles.some((file) => file.id === fileId) ? fileId : null)
+      if (libraryId) updateParsedFile(libraryId, { folderId: targetId })
+    },
+    [files, libraryFiles, setFiles, updateParsedFile]
+  )
+
+  const handleFileDragStart = useCallback((event: DragEvent<HTMLElement>, fileId: string) => {
+    event.dataTransfer.setData('text/plain', fileId)
+    event.dataTransfer.effectAllowed = 'move'
+  }, [])
+
+  const handleFolderDragOver = useCallback(
+    (event: DragEvent<HTMLElement>, folderId: string) => {
+      event.preventDefault()
+      setDragOverFolderId(folderId)
+    },
+    [setDragOverFolderId]
+  )
+
+  const handleFolderDragLeave = useCallback(() => {
+    setDragOverFolderId(null)
+  }, [setDragOverFolderId])
+
+  const handleFolderDrop = useCallback(
+    (event: DragEvent<HTMLElement>, folderId: string) => {
+      event.preventDefault()
+      const targetId = folderId || ROOT_FOLDER_ID
+
+      const draggedFolderId = event.dataTransfer.getData('application/x-mimirq-folder')
+      if (draggedFolderId) {
+        const ok = moveFolder(draggedFolderId, targetId)
+        if (ok) toast.success('文件夹已移动')
+        else toast.error('移动失败：目标目录不合法（可能是自身/子目录/不存在）')
+        setDragOverFolderId(null)
+        return
+      }
+
+      const fileId = event.dataTransfer.getData('text/plain')
+      if (fileId) moveFileToFolder(fileId, targetId)
+      setDragOverFolderId(null)
+    },
+    [moveFileToFolder, moveFolder, setDragOverFolderId]
+  )
+
+  const handleDeleteFolder = useCallback(
+    (folderIds: string[]) => {
+      setFiles((prev) => prev.filter((file) => !file.folderId || !folderIds.includes(file.folderId)))
+    },
+    [setFiles]
+  )
+
+  return {
+    handleDeleteFolder,
+    handleFileDragStart,
+    handleFolderDragLeave,
+    handleFolderDragOver,
+    handleFolderDrop,
+    moveFileToFolder,
+    removeFile,
+  }
+}
