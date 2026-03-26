@@ -38,4 +38,30 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('.filter((l: any)')
     expect(page).not.toContain('.map((l: any, idx: number)')
   })
+
+  it('keeps heavy right-side detail panels extracted into dedicated graph components', () => {
+    const page = read('./page.tsx')
+    const nodePanel = read('./_components/graph-node-detail-panel.tsx')
+    const linkPanel = read('./_components/graph-link-detail-panel.tsx')
+
+    expect(page).toContain('GraphNodeDetailPanel')
+    expect(page).toContain('GraphLinkDetailPanel')
+    expect(nodePanel).toContain('export function GraphNodeDetailPanel')
+    expect(linkPanel).toContain('export function GraphLinkDetailPanel')
+    expect(page).not.toContain('属性详情')
+    expect(page).not.toContain('KG Detail')
+    expect(page).not.toContain('Self-loop Group')
+  })
+
+  it('keeps graph action dialogs extracted into a dedicated overlay component', () => {
+    const page = read('./page.tsx')
+    const dialogs = read('./_components/graph-action-dialogs.tsx')
+
+    expect(page).toContain('GraphActionDialogs')
+    expect(dialogs).toContain('export function GraphActionDialogs')
+    expect(page).not.toContain('删除节点？')
+    expect(page).not.toContain('确认合并？')
+    expect(page).not.toContain('拆分实体')
+    expect(page).not.toContain('关系名称')
+  })
 })

@@ -18,25 +18,16 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Kbd } from '@/components/ui/kbd'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { SearchInput } from '@/components/ui/search-input'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Upload, Share2, Info, RefreshCw, ZoomIn, ZoomOut, Maximize, Maximize2, Minimize2, ChevronDown, ChevronUp, X, BarChart3, Database, Filter, SlidersHorizontal, Layers, FileCode, MessageSquare, FileText, Type, Trash2, Network, Route, PlayCircle, Layout, Link as LinkIcon, Lightbulb, Box, BoxSelect, Download, Copy } from 'lucide-react'
+import { GraphActionDialogs } from './_components/graph-action-dialogs'
 import { GraphViewer, GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { KnowledgeGraph3D, type KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { GraphLegend } from '@/components/graph/graph-legend'
 import { GraphStatsBar } from '@/components/graph/graph-stats-bar'
+import { GraphLinkDetailPanel } from './_components/graph-link-detail-panel'
+import { GraphNodeDetailPanel } from './_components/graph-node-detail-panel'
 import { parseGraphML, GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/lib/graph-service'
 import { findShortestPath } from '@/lib/graph-algorithms'
@@ -547,15 +538,15 @@ export default function GraphPage() {
     setPathEndNode(null)
   }, [entityTypeFilters, predicateFilters, confidenceBucketFilters])
 
-  const linksWithIds = useMemo<GraphData['links']>(() => {
+  const linksWithIds = useMemo<GraphLinkLike[]>(() => {
     return displayGraphData.links.map((link, index) => ({
       ...link,
       id: link.id || `link-${index}`,
-    })) as GraphData['links']
+    }))
   }, [displayGraphData.links])
 
   const graphRenderData = useMemo<GraphData>(() => {
-    return { nodes: displayGraphData.nodes, links: linksWithIds }
+    return { nodes: displayGraphData.nodes, links: linksWithIds as GraphData['links'] }
   }, [displayGraphData.nodes, linksWithIds])
 
   const searchMatches = useMemo(() => {
@@ -1155,6 +1146,20 @@ export default function GraphPage() {
     [selectedNode]
   )
 
+  const handleMergeAliasSuggestion = useCallback(
+    (suggestion: KGEntityAliasSuggestionItem) => {
+      openMergeDialog()
+      detachPromise(
+        selectMergeTarget({
+          id: suggestion.entity_id,
+          label: suggestion.name || suggestion.entity_id,
+          meta: { kind: 'entity', type: suggestion.type },
+        })
+      )
+    },
+    [openMergeDialog, selectMergeTarget]
+  )
+
   const submitMerge = useCallback(async () => {
     const sourceId = selectedNode?.meta?.kind === 'entity' ? String(selectedNode?.id || '') : ''
     const targetId = String(mergeTarget?.id || '')
@@ -1744,6 +1749,45 @@ export default function GraphPage() {
   const handleViewSource = () => {
     viewSourceForNode()
   }
+
+  const handleDeleteNodeOpenChange = useCallback((open: boolean) => {
+    setDeleteNodeOpen(open)
+    if (!open) setDeleteNodeTarget(null)
+  }, [])
+
+  const handleAliasDeleteOpenChange = useCallback((open: boolean) => {
+    setAliasDeleteOpen(open)
+    if (!open) setAliasDeleteTarget(null)
+  }, [])
+
+  const handleMergeOpenChange = useCallback((open: boolean) => {
+    setMergeOpen(open)
+    if (!open) {
+      setMergeSearch('')
+      setMergeSearchResults([])
+      setMergeTarget(null)
+      setMergePreview(null)
+      setMergeError(null)
+      setMergeConfirmOpen(false)
+    }
+  }, [])
+
+  const handleSplitOpenChange = useCallback((open: boolean) => {
+    setSplitOpen(open)
+    if (!open) {
+      setSplitNameDraft('')
+      setSplitSelectedEventIds(new Set())
+      setSplitError(null)
+    }
+  }, [])
+
+  const handleConnectLabelOpenChange = useCallback((open: boolean) => {
+    setConnectLabelOpen(open)
+    if (!open) {
+      setConnectTargetNode(null)
+      resetConnectMode()
+    }
+  }, [resetConnectMode])
 
   return (
     <AppFrame>
@@ -2740,772 +2784,94 @@ export default function GraphPage() {
              </div>
           </div>
 
-	          {/* Info Panel / Sidebar (Right) */}
-	          <div
-	            className={cn(
-	              "absolute top-4 right-4 bottom-24 w-80 bg-card rounded-2xl shadow-strong border border-border transform transition-transform duration-200 ease-out z-20 flex flex-col overflow-hidden",
-	              isDetailOpen && selectedNode ? "translate-x-0" : "translate-x-[120%]"
-	            )}
-	          >
-            {selectedNode && (
-              <>
-	                <div className="p-5 border-b border-border flex items-start justify-between bg-card">
-                  <div>
-                    <h2 className="font-bold text-lg text-foreground line-clamp-2">{selectedNode.label}</h2>
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-500/10 dark:bg-sky-500/20 text-sky-600 dark:text-sky-300 mt-2 border border-sky-500/30">
-                      <Database className="w-3 h-3" />
-                      ID: {selectedNode.id}
-                    </span>
-                  </div>
-	                  <button 
-	                    type="button"
-	                    onClick={() => setIsDetailOpen(false)}
-	                    aria-label="关闭详情面板"
-	                    className="text-muted-foreground hover:text-muted-foreground hover:bg-muted rounded-lg p-1 transition-colors"
-	                  >
-	                    <X className="w-5 h-5" />
-	                  </button>
-                </div>
-                
-                <div ref={detailScrollRef} className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-5 space-y-6">
-                  {/* Deep Linking Actions */}
-	                  <div className="grid grid-cols-2 gap-3">
-	                    <Button 
-	                      variant="info"
-	                      onClick={handleChatWithNode}
-	                      className="w-full"
-	                    >
-	                      <MessageSquare className="w-4 h-4 mr-2" />
-	                      对话
-	                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={handleViewSource}
-                      className="w-full"
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      来源
-                    </Button>
-                  </div>
+          <GraphNodeDetailPanel
+            open={isDetailOpen}
+            selectedNode={selectedNode}
+            detailScrollRef={detailScrollRef}
+            dataSource={dataSource}
+            kgNodeDetailLoading={kgNodeDetailLoading}
+            kgNodeDetail={kgNodeDetail}
+            entityAliasesLoading={entityAliasesLoading}
+            entityAliases={entityAliases}
+            aliasDraft={aliasDraft}
+            aliasSaving={aliasSaving}
+            aliasSuggestionsLoading={aliasSuggestionsLoading}
+            aliasSuggestions={aliasSuggestions}
+            lastResolutionActionId={lastResolutionActionId}
+            undoSubmitting={undoSubmitting}
+            isLoading={isLoading}
+            onClose={() => setIsDetailOpen(false)}
+            onChat={handleChatWithNode}
+            onViewSource={handleViewSource}
+            onExpandNode={handleExpandNode}
+            onStartConnectMode={startConnectMode}
+            onDeleteNode={() => handleDeleteNode()}
+            onOpenMerge={openMergeDialog}
+            onOpenSplit={openSplitDialog}
+            onUndoLastResolution={undoLastResolution}
+            onAliasDraftChange={setAliasDraft}
+            onSaveAlias={handleSaveAlias}
+            onRequestDeleteAlias={requestDeleteAlias}
+            onMergeAliasSuggestion={handleMergeAliasSuggestion}
+          />
 
-                  {/* KG Detail (Live) */}
-                  {dataSource === 'live' && (selectedNode?.meta?.kind === 'entity' || selectedNode?.meta?.kind === 'event') && (
-                    <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase  mb-3 flex items-center gap-2">
-                        <Network className="w-3 h-3" />
-                        KG Detail
-                      </h3>
-
-                      {(() => {
-    if (kgNodeDetailLoading) {
-        return (<div className="text-xs text-muted-foreground bg-muted rounded-xl p-3 border border-border">
-                          Loading...
-                        </div>);
-    }
-    else if (kgNodeDetail) {
-            if (selectedNode?.meta?.kind === 'entity') {
-                return (<div className="space-y-3">
-                          <div className="bg-muted rounded-xl p-3 border border-border">
-                            <div className="text-[10px] font-medium text-muted-foreground mb-1">Recent Events</div>
-                            <div className="space-y-1">
-                              {(kgNodeDetail as KGEntityDetailResponse).events?.slice(0, 6)?.map((ev) => (<div key={ev.id} className="text-xs text-foreground truncate" title={ev.title}>
-                                  {ev.title}
-                                </div>))}
-                            </div>
-                          </div>
-                          <div className="bg-muted rounded-xl p-3 border border-border">
-                            <div className="text-[10px] font-medium text-muted-foreground mb-1">Top Neighbors</div>
-                            <div className="space-y-1">
-                              {(kgNodeDetail as KGEntityDetailResponse).neighbors?.slice(0, 8)?.map((n) => (<div key={n.entity_id} className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="text-foreground truncate" title={n.name}>
-                                    {n.name || n.entity_id}
-                                  </span>
-                                  <span className="text-muted-foreground font-mono">{n.count}</span>
-                                </div>))}
-                            </div>
-                          </div>
-                          <div className="bg-muted rounded-xl p-3 border border-border">
-                            <div className="text-[10px] font-medium text-muted-foreground mb-2">Aliases</div>
-                            {(() => {
-                        if (entityAliasesLoading) {
-                            return (<div className="text-xs text-muted-foreground">Loading...</div>);
-                        }
-                        else if (entityAliases.length === 0) {
-                                return (<div className="text-xs text-muted-foreground">No aliases</div>);
-                            }
-                            else {
-                                return (<div className="flex flex-wrap gap-2">
-                                {entityAliases.slice(0, 12).map((a) => (<div key={a.id} className="inline-flex items-center gap-1 rounded-full bg-background/60 px-2 py-1 text-[11px] border border-border">
-                                    <span className="max-w-[150px] truncate" title={a.alias}>
-                                      {a.alias}
-                                    </span>
-                                    <button type="button" onClick={() => requestDeleteAlias(a)} aria-label={`删除 alias ${a.alias}`} className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-md p-0.5 transition-colors">
-                                      <X className="size-3"/>
-                                    </button>
-                                  </div>))}
-                              </div>);
-                            }
-                    })()}
-
-                            <div className="mt-3 flex items-center gap-2">
-                              <Input value={aliasDraft} onChange={(e) => setAliasDraft(e.target.value)} placeholder="Add alias…" className="h-8 text-xs"/>
-                              <Button type="button" variant="outline" className="h-8 text-xs" onClick={handleSaveAlias} disabled={aliasSaving || !aliasDraft.trim()}>
-                                添加
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="bg-muted rounded-xl p-3 border border-border">
-                            <div className="text-[10px] font-medium text-muted-foreground mb-2">Suggestions</div>
-                            {(() => {
-                        if (aliasSuggestionsLoading) {
-                            return (<div className="text-xs text-muted-foreground">Loading...</div>);
-                        }
-                        else if (aliasSuggestions.length === 0) {
-                                return (<div className="text-xs text-muted-foreground">No suggestions</div>);
-                            }
-                            else {
-                                return (<div className="space-y-1">
-                                {aliasSuggestions.slice(0, 6).map((s) => (<div key={s.entity_id} className="flex items-center justify-between gap-2 text-xs">
-                                    <span className="text-foreground truncate" title={s.name}>
-                                      {s.name || s.entity_id}
-                                    </span>
-                                    <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => {
-                                            openMergeDialog();
-                                            selectMergeTarget({
-                                                id: s.entity_id,
-                                                label: s.name || s.entity_id,
-                                                meta: { kind: 'entity', type: s.type },
-                                            });
-                                        }}>
-                                      合并
-                                    </Button>
-                                  </div>))}
-                              </div>);
-                            }
-                    })()}
-                          </div>
-                        </div>);
-            }
-            else {
-                return (<div className="bg-muted rounded-xl p-3 border border-border">
-                          <div className="text-[10px] font-medium text-muted-foreground mb-2">Entities</div>
-                          <div className="space-y-1">
-                            {(kgNodeDetail as KGEventDetailResponse).entities?.slice(0, 12)?.map((row) => (<div key={row.entity.id} className="flex items-center justify-between gap-2 text-xs">
-                                <span className="text-foreground truncate" title={row.entity.name}>
-                                  {row.entity.name || row.entity.id}
-                                </span>
-                                <span className="text-muted-foreground">{row.role || row.entity.type}</span>
-                              </div>))}
-                          </div>
-                        </div>);
-            }
-        }
-        else {
-            return (<div className="text-xs text-muted-foreground bg-muted rounded-xl p-3 border border-border">
-                          No KG detail available
-                        </div>);
-        }
-})()}
-                    </div>
-                  )}
-
-                  {/* Properties List */}
-                  <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase  mb-3 flex items-center gap-2">
-                      <Info className="w-3 h-3" />
-                      属性详情
-                    </h3>
-                    <div className="space-y-3">
-                      {Object.entries(selectedNode)
-                        .filter(([key]) => !['id', 'label', 'x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'index', 'color', '__bckgDimensions', 'source', 'meta'].includes(key))
-                        .map(([key, value]) => (
-                          <div key={key} className="bg-muted rounded-xl p-3 border border-border">
-                            <span className="block text-xs font-medium text-muted-foreground mb-1 capitalize">{key}</span>
-                            <span className="block text-sm text-foreground break-words">{String(value)}</span>
-                          </div>
-                        ))}
-                         {selectedNode.source ? (
-                          <div className="rounded-xl border border-info/25 bg-info/10 p-3">
-                            <span className="block text-xs font-medium text-info mb-1 capitalize">Source Document</span>
-                            <button
-                              type="button"
-                              onClick={handleViewSource}
-                              className="block w-full text-left text-sm text-info break-words underline underline-offset-4 hover:text-info/80 rounded-md focus-ring"
-                            >
-                              {String(selectedNode.source)}
-                            </button>
-                          </div>
-                        ) : null}
-                    </div>
-                  </div>
-
-                  {/* Edit Actions */}
-                  <div>
-                     <h3 className="text-xs font-semibold text-muted-foreground uppercase  mb-3 flex items-center gap-2">
-                      <Layers className="w-3 h-3" />
-                      操作
-                    </h3>
-                    <div className="space-y-2">
-                       <Button 
-                        variant="outline" 
-                        onClick={handleExpandNode} 
-                        disabled={isLoading}
-                        className="w-full justify-start text-xs h-9 hover:bg-sky-500/10 dark:hover:bg-sky-500/20 hover:text-sky-600 dark:hover:text-sky-300 text-muted-foreground"
-                      >
-                        <Network className="w-3 h-3 mr-2" />
-                        {isLoading ? '展开中...' : '展开邻居节点'}
-                      </Button>
-                      <div className="grid grid-cols-2 gap-2">
-                         <Button 
-                          variant="outline" 
-                          onClick={startConnectMode}
-                          className="w-full justify-start text-xs h-9 hover:bg-emerald-500/10 dark:hover:bg-emerald-500/20 hover:text-emerald-600 dark:hover:text-emerald-300 hover:border-emerald-500/30 text-muted-foreground"
-                        >
-                          <LinkIcon className="w-3 h-3 mr-2" />
-                          连接
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          onClick={() => handleDeleteNode()}
-                          className="w-full justify-start text-xs h-9 hover:bg-red-500/10 dark:hover:bg-red-500/20 dark:bg-red-500/20 hover:text-red-600 dark:hover:text-red-300 hover:border-red-500/30 text-muted-foreground"
-                        >
-                          <Trash2 className="w-3 h-3 mr-2" />
-                          删除
-                        </Button>
-                      </div>
-                      {dataSource === 'live' && selectedNode?.meta?.kind === 'entity' && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={openMergeDialog}
-                            className="w-full justify-start text-xs h-9 hover:bg-amber-500/10 dark:hover:bg-amber-500/20 hover:text-amber-700 dark:hover:text-amber-200 hover:border-amber-500/30 text-muted-foreground"
-                          >
-                            <BoxSelect className="w-3 h-3 mr-2" />
-                            合并
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={openSplitDialog}
-                            className="w-full justify-start text-xs h-9 hover:bg-violet-500/10 dark:hover:bg-violet-500/20 hover:text-violet-700 dark:hover:text-violet-200 hover:border-violet-500/30 text-muted-foreground"
-                          >
-                            <Box className="w-3 h-3 mr-2" />
-                            拆分
-                          </Button>
-                        </div>
-                      )}
-                      {lastResolutionActionId && (
-                        <Button
-                          variant="outline"
-                          onClick={undoLastResolution}
-                          disabled={undoSubmitting}
-                          className="w-full justify-start text-xs h-9 hover:bg-primary/10 hover:text-primary text-muted-foreground"
-                        >
-                          <RefreshCw className="w-3 h-3 mr-2" />
-                          {undoSubmitting ? '撤销中…' : '撤销上次变更'}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Link Detail Panel (Right) */}
-          <div
-            className={cn(
-              "absolute top-4 right-4 bottom-24 w-80 bg-card rounded-2xl shadow-strong border border-border transform transition-transform duration-200 ease-out z-20 flex flex-col overflow-hidden",
-              isLinkDetailOpen && selectedLink ? "translate-x-0" : "translate-x-[120%]"
-            )}
-          >
-            {selectedLink && (() => {
-              const srcObj = selectedLink.source
-              const tgtObj = selectedLink.target
-              const srcLabel =
-                typeof srcObj === 'object' && srcObj
-                  ? String(srcObj.label ?? srcObj.id ?? '')
-                  : String(srcObj ?? '')
-              const tgtLabel =
-                typeof tgtObj === 'object' && tgtObj
-                  ? String(tgtObj.label ?? tgtObj.id ?? '')
-                  : String(tgtObj ?? '')
-              const srcId = getGraphLinkEndpointId(srcObj)
-              const tgtId = getGraphLinkEndpointId(tgtObj)
-              const isSelfLoop = Boolean(srcId) && srcId === tgtId
-              const kind = String(selectedLink?.meta?.kind ?? selectedLink?.kind ?? '').trim()
-              const predicate = String(selectedLink?.meta?.predicate ?? selectedLink?.predicate ?? selectedLink?.label ?? '').trim()
-              const confidence = selectedLink?.meta?.confidence ?? selectedLink?.confidence ?? selectedLink?.weight
-              const confNum = Number(confidence)
-              const confStr = Number.isFinite(confNum) ? confNum.toFixed(3) : null
-              const docId = String(selectedLink?.meta?.document_id ?? '').trim()
-              const chunkId = String(selectedLink?.meta?.chunk_id ?? '').trim()
-              const eventId = String(selectedLink?.meta?.event_id ?? '').trim()
-              const page = String(selectedLink?.meta?.page ?? selectedLink?.meta?.page_number ?? '').trim()
-              const sharedEvents = String(selectedLink?.meta?.shared_events ?? '').trim()
-
-              const selfLoopLinks = isSelfLoop
-                ? (graphRenderData.links || []).filter((l) => {
-                    const s = getGraphLinkEndpointId(l?.source)
-                    const t = getGraphLinkEndpointId(l?.target)
-                    return Boolean(s) && s === t && s === srcId
-                  })
-                : []
-              const showSelfLoopGroup = isSelfLoop && selfLoopLinks.length > 1
-
-              const kindLabel = kind === 'entity_relation' ? 'Relation (triple)'
-                : kind === 'event_entity' ? 'Evidence (event → entity)'
-                : kind === 'entity_entity' ? 'Co-occurrence (entity ↔ entity)'
-                : kind || 'Link'
-
-              return (
-                <>
-                  <div className="p-5 border-b border-border flex items-start justify-between bg-card">
-                    <div className="flex-1 min-w-0">
-                      <h2 className="font-bold text-sm text-foreground mb-2">Relationship</h2>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-lg p-2.5 border border-border">
-                        <span className="truncate font-medium text-foreground" title={srcLabel}>{srcLabel}</span>
-                        <span className="text-primary font-semibold flex-shrink-0">→</span>
-                        <span className="truncate text-primary font-medium" title={predicate}>{predicate || 'RELATED'}</span>
-                        <span className="text-primary font-semibold flex-shrink-0">→</span>
-                        <span className="truncate font-medium text-foreground" title={tgtLabel}>{tgtLabel}</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setIsLinkDetailOpen(false); setSelectedLink(null) }}
-                      aria-label="关闭边详情面板"
-                      className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg p-1 transition-colors ml-2 flex-shrink-0"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-5 space-y-4">
-                    <div className="space-y-3">
-                      {showSelfLoopGroup && (
-                        <div className="bg-muted rounded-xl p-3 border border-border">
-                          <button
-                            type="button"
-                            onClick={() => setSelfLoopGroupExpanded((prev) => !prev)}
-                            className="w-full flex items-center justify-between gap-2 text-left"
-                            aria-expanded={selfLoopGroupExpanded}
-                          >
-                            <div className="min-w-0">
-                              <div className="text-[10px] font-medium text-muted-foreground mb-1">Self-loop Group</div>
-                              <div className="text-sm font-medium text-foreground truncate">{srcLabel || srcId}</div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="text-[10px] font-mono text-muted-foreground">{selfLoopLinks.length}</span>
-                              {selfLoopGroupExpanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
-                            </div>
-                          </button>
-                          {selfLoopGroupExpanded && (
-                            <div className="mt-3 space-y-2">
-                              {selfLoopLinks.slice(0, 12).map((l, idx: number) => {
-                                const edgeId = String(l?.id ?? l?.meta?.id ?? '').trim()
-                                const edgeKind = String(l?.meta?.kind ?? l?.kind ?? '').trim()
-                                const edgePredicate = String(l?.meta?.predicate ?? l?.predicate ?? l?.label ?? '').trim()
-                                const createdAt = String(l?.meta?.created_at ?? l?.meta?.created ?? '').trim()
-                                const episodesRaw = l?.meta?.episodes ?? l?.meta?.episode_ids ?? l?.meta?.episode_count
-                                const episodes = Array.isArray(episodesRaw) ? String(episodesRaw.length) : (episodesRaw == null ? '' : String(episodesRaw))
-                                const fact = String(l?.meta?.fact ?? l?.meta?.quote ?? l?.meta?.text ?? '').trim()
-                                const secondary = [edgeKind, edgePredicate].filter(Boolean).join(' · ')
-                                return (
-                                  <div key={edgeId || `${edgePredicate}-${idx}`} className="rounded-lg border border-border bg-background/60 px-3 py-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="min-w-0">
-                                        <div className="text-xs font-medium text-foreground truncate">
-                                          {edgePredicate || edgeKind || 'self-loop'}
-                                        </div>
-                                        {secondary && <div className="text-[10px] text-muted-foreground truncate">{secondary}</div>}
-                                      </div>
-                                      {edgeId && <div className="text-[10px] font-mono text-muted-foreground">{edgeId.slice(0, 8)}</div>}
-                                    </div>
-                                    {(createdAt || episodes || fact) && (
-                                      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-                                        {createdAt && (
-                                          <div className="truncate" title={createdAt}>
-                                            <span className="opacity-70">Created</span>: {createdAt}
-                                          </div>
-                                        )}
-                                        {episodes && (
-                                          <div className="truncate" title={episodes}>
-                                            <span className="opacity-70">Episodes</span>: {episodes}
-                                          </div>
-                                        )}
-                                        {fact && (
-                                          <div className="col-span-2 truncate" title={fact}>
-                                            <span className="opacity-70">Fact</span>: {fact}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                              {selfLoopLinks.length > 12 && (
-                                <div className="text-[10px] text-muted-foreground">
-                                  仅显示前 12 条（共 {selfLoopLinks.length} 条）
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div className="bg-muted rounded-xl p-3 border border-border">
-                        <span className="block text-[10px] font-medium text-muted-foreground mb-1">Type</span>
-                        <span className="block text-sm text-foreground">{kindLabel}</span>
-                      </div>
-                      {predicate && (
-                        <div className="bg-muted rounded-xl p-3 border border-border">
-                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Predicate</span>
-                          <span className="block text-sm text-foreground">{predicate}</span>
-                        </div>
-                      )}
-                      {confStr && (
-                        <div className="bg-muted rounded-xl p-3 border border-border">
-                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Confidence</span>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${Math.round(confNum * 100)}%`,
-                                  backgroundColor: confNum >= 0.8 ? '#22c55e' : confNum >= 0.5 ? '#f59e0b' : '#ef4444'
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs font-mono text-foreground">{confStr}</span>
-                          </div>
-                        </div>
-                      )}
-                      {sharedEvents && sharedEvents !== '0' && (
-                        <div className="bg-muted rounded-xl p-3 border border-border">
-                          <span className="block text-[10px] font-medium text-muted-foreground mb-1">Shared Events</span>
-                          <span className="block text-sm text-foreground">{sharedEvents}</span>
-                        </div>
-                      )}
-                    </div>
-                    {(docId || chunkId || eventId || page) && (
-                      <div>
-                        <h3 className="text-xs font-semibold text-muted-foreground uppercase mb-3 flex items-center gap-2">
-                          <FileText className="w-3 h-3" />
-                          Provenance
-                        </h3>
-                        <div className="space-y-3">
-                          {docId && (
-                            <div className="bg-muted rounded-xl p-3 border border-border">
-                              <span className="block text-[10px] font-medium text-muted-foreground mb-1">Document</span>
-                              <span className="block text-xs font-mono text-foreground break-all">{docId}</span>
-                            </div>
-                          )}
-                          {eventId && (
-                            <div className="bg-muted rounded-xl p-3 border border-border">
-                              <span className="block text-[10px] font-medium text-muted-foreground mb-1">Event</span>
-                              <span className="block text-xs font-mono text-foreground break-all">{eventId}</span>
-                            </div>
-                          )}
-                          {chunkId && (
-                            <div className="bg-muted rounded-xl p-3 border border-border">
-                              <span className="block text-[10px] font-medium text-muted-foreground mb-1">Chunk</span>
-                              <span className="block text-xs font-mono text-foreground break-all">{chunkId}</span>
-                            </div>
-                          )}
-                          {page && (
-                            <div className="bg-muted rounded-xl p-3 border border-border">
-                              <span className="block text-[10px] font-medium text-muted-foreground mb-1">Page</span>
-                              <span className="block text-sm text-foreground">{page}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )
-            })()}
-          </div>
+          <GraphLinkDetailPanel
+            open={isLinkDetailOpen}
+            selectedLink={selectedLink}
+            graphLinks={linksWithIds}
+            selfLoopGroupExpanded={selfLoopGroupExpanded}
+            onToggleSelfLoopGroup={() => setSelfLoopGroupExpanded((prev) => !prev)}
+            onClose={() => {
+              setIsLinkDetailOpen(false)
+              setSelectedLink(null)
+            }}
+          />
         </div>
 
-        <AlertDialog
-          open={deleteNodeOpen}
-          onOpenChange={(open) => {
-            setDeleteNodeOpen(open)
-            if (!open) setDeleteNodeTarget(null)
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>删除节点？</AlertDialogTitle>
-              <AlertDialogDescription>
-                你将删除节点 <span className="font-mono">{deleteNodeTarget?.label || '-'}</span> 及其所有连线。此操作不可撤销。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteNode}>删除</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <AlertDialog
-          open={aliasDeleteOpen}
-          onOpenChange={(open) => {
-            setAliasDeleteOpen(open)
-            if (!open) setAliasDeleteTarget(null)
-          }}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>删除 alias？</AlertDialogTitle>
-              <AlertDialogDescription>
-                你将删除 alias <span className="font-mono">{aliasDeleteTarget?.alias || '-'}</span>。此操作可通过重新添加恢复。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>取消</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteAlias} disabled={aliasSaving}>
-                删除
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <Dialog
-          open={mergeOpen}
-          onOpenChange={(open) => {
-            setMergeOpen(open)
-            if (!open) {
-              setMergeSearch('')
-              setMergeSearchResults([])
-              setMergeTarget(null)
-              setMergePreview(null)
-              setMergeError(null)
-              setMergeConfirmOpen(false)
-            }
-          }}
-        >
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>合并实体</DialogTitle>
-              <DialogDescription>将当前实体合并到另一个实体（可撤销）。建议先查看 Preview。</DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="kg-merge-search">搜索目标实体</Label>
-                <Input
-                  id="kg-merge-search"
-                  value={mergeSearch}
-                  onChange={(e) => setMergeSearch(e.target.value)}
-                  placeholder="输入名称关键词…"
-                />
-                {(() => {
-    if (mergeSearchLoading) {
-        return (<div className="text-xs text-muted-foreground">Searching…</div>);
-    }
-    else if (mergeSearchResults.length === 0) {
-            return (<div className="text-xs text-muted-foreground">输入至少 2 个字符开始搜索</div>);
-        }
-        else {
-            return (<div className="space-y-1">
-                    {mergeSearchResults.slice(0, 8).map((n) => (<button key={n.id} type="button" onClick={() => selectMergeTarget(n)} className={cn("w-full text-left rounded-lg border border-border bg-background/60 px-3 py-2 text-xs hover:bg-background transition-colors", mergeTarget?.id === n.id && "ring-2 ring-primary/20 border-primary/30")}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate">{n.label || n.id}</span>
-                          <span className="text-muted-foreground font-mono">{String(n.id).slice(0, 8)}</span>
-                        </div>
-                      </button>))}
-                  </div>);
-        }
-})()}
-              </div>
-
-              {mergeTarget && (
-                <div className="rounded-xl border border-border bg-muted p-3 space-y-2">
-                  <div className="text-[10px] font-medium text-muted-foreground">Preview</div>
-                  <div className="text-xs text-foreground truncate" title={mergeTarget.label}>
-                    Target: {mergeTarget.label || mergeTarget.id}
-                  </div>
-                  {(() => {
-    if (mergePreviewLoading) {
-        return (<div className="text-xs text-muted-foreground">Loading preview…</div>);
-    }
-    else if (mergePreview) {
-            return (<div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                      <div>source edges: {String(mergePreview.stats?.source_event_entity_edges ?? '—')}</div>
-                      <div>overlap: {String(mergePreview.stats?.overlap_events ?? '—')}</div>
-                      <div>relations: {String(mergePreview.stats?.source_relations ?? '—')}</div>
-                      <div>self removed: {String(mergePreview.stats?.self_relations_removed ?? '—')}</div>
-                    </div>);
-        }
-        else {
-            return (<div className="text-xs text-muted-foreground">No preview available</div>);
-        }
-})()}
-                </div>
-              )}
-
-              {mergeError && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-                  {mergeError}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setMergeOpen(false)}>
-                取消
-              </Button>
-              <Button
-                type="button"
-                onClick={() => setMergeConfirmOpen(true)}
-                disabled={!mergeTarget || mergeSubmitting || mergePreviewLoading}
-              >
-                继续
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <AlertDialog open={mergeConfirmOpen} onOpenChange={setMergeConfirmOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>确认合并？</AlertDialogTitle>
-              <AlertDialogDescription>
-                你将把当前实体合并到 <span className="font-mono">{mergeTarget?.label || '-'}</span>。合并会重写事件边与关系边，但可通过“撤销上次变更”恢复。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={mergeSubmitting}>取消</AlertDialogCancel>
-              <AlertDialogAction onClick={submitMerge} disabled={mergeSubmitting || !mergeTarget}>
-                {mergeSubmitting ? '合并中…' : '确认合并'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        <Dialog
-          open={splitOpen}
-          onOpenChange={(open) => {
-            setSplitOpen(open)
-            if (!open) {
-              setSplitNameDraft('')
-              setSplitSelectedEventIds(new Set())
-              setSplitError(null)
-            }
-          }}
-        >
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>拆分实体</DialogTitle>
-              <DialogDescription>选择需要移动到新实体的事件（可撤销）。</DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="kg-split-name">新实体名称</Label>
-                <Input
-                  id="kg-split-name"
-                  value={splitNameDraft}
-                  onChange={(e) => setSplitNameDraft(e.target.value)}
-                  placeholder="例如：Python (language)"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-xs font-medium text-muted-foreground">选择事件（Recent Events）</div>
-                <div className="max-h-48 overflow-y-auto rounded-xl border border-border bg-background/60 p-2 space-y-2">
-                  {(kgNodeDetail as KGEntityDetailResponse | null)?.events?.slice(0, 30)?.map((ev) => {
-                    const checked = splitSelectedEventIds.has(String(ev.id))
-                    return (
-                      <label key={ev.id} className="flex items-start gap-2 text-xs text-foreground">
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(v) => toggleSplitEvent(String(ev.id), Boolean(v))}
-                          aria-label={`选择事件 ${ev.title}`}
-                        />
-                        <span className="flex-1 truncate" title={ev.title}>
-                          {ev.title || ev.id}
-                        </span>
-                      </label>
-                    )
-                  })}
-                  {(kgNodeDetail as KGEntityDetailResponse | null)?.events?.length ? null : (
-                    <div className="text-xs text-muted-foreground p-2">No events available</div>
-                  )}
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  已选择 {splitSelectedEventIds.size} 个事件（最多显示 30 条）
-                </div>
-              </div>
-
-              {splitError && (
-                <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-                  {splitError}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setSplitOpen(false)}>
-                取消
-              </Button>
-              <Button type="button" onClick={submitSplit} disabled={splitSubmitting}>
-                {splitSubmitting ? '拆分中…' : '确认拆分'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={connectLabelOpen}
-          onOpenChange={(open) => {
-            setConnectLabelOpen(open)
-            if (!open) {
-              setConnectTargetNode(null)
-              resetConnectMode()
-            }
-          }}
-        >
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>关系名称</DialogTitle>
-              <DialogDescription>
-                {connectSourceNode?.label && connectTargetNode?.label ? (
-                  <>
-                    将创建连线：<span className="font-mono">{String(connectSourceNode.label)}</span> →{' '}
-                    <span className="font-mono">{String(connectTargetNode.label)}</span>
-                  </>
-                ) : (
-                  '请输入关系名称（例如：related_to）'
-                )}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-2">
-              <Label htmlFor="graph-connect-label">关系名称</Label>
-              <Input
-                id="graph-connect-label"
-                value={connectLabelDraft}
-                onChange={(e) => setConnectLabelDraft(e.target.value)}
-                placeholder="related_to"
-                className="font-mono"
-              />
-              <div className="text-xs text-muted-foreground">
-                留空将使用默认值：<span className="font-mono">related_to</span>
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setConnectLabelOpen(false)}>
-                取消
-              </Button>
-              <Button type="button" onClick={confirmConnectionLabel}>
-                创建连线
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <GraphActionDialogs
+          deleteNodeOpen={deleteNodeOpen}
+          deleteNodeTarget={deleteNodeTarget}
+          onDeleteNodeOpenChange={handleDeleteNodeOpenChange}
+          onConfirmDeleteNode={confirmDeleteNode}
+          aliasDeleteOpen={aliasDeleteOpen}
+          aliasDeleteTarget={aliasDeleteTarget}
+          aliasSaving={aliasSaving}
+          onAliasDeleteOpenChange={handleAliasDeleteOpenChange}
+          onConfirmDeleteAlias={confirmDeleteAlias}
+          mergeOpen={mergeOpen}
+          onMergeOpenChange={handleMergeOpenChange}
+          mergeSearch={mergeSearch}
+          onMergeSearchChange={setMergeSearch}
+          mergeSearchLoading={mergeSearchLoading}
+          mergeSearchResults={mergeSearchResults}
+          mergeTarget={mergeTarget}
+          mergePreview={mergePreview}
+          mergePreviewLoading={mergePreviewLoading}
+          mergeError={mergeError}
+          mergeConfirmOpen={mergeConfirmOpen}
+          onMergeConfirmOpenChange={setMergeConfirmOpen}
+          mergeSubmitting={mergeSubmitting}
+          onSelectMergeTarget={selectMergeTarget}
+          onContinueMerge={() => setMergeConfirmOpen(true)}
+          onSubmitMerge={submitMerge}
+          splitOpen={splitOpen}
+          onSplitOpenChange={handleSplitOpenChange}
+          splitNameDraft={splitNameDraft}
+          onSplitNameDraftChange={setSplitNameDraft}
+          splitSelectedEventIds={splitSelectedEventIds}
+          splitSubmitting={splitSubmitting}
+          splitError={splitError}
+          splitEvents={(kgNodeDetail as KGEntityDetailResponse | null)?.events ?? []}
+          onToggleSplitEvent={toggleSplitEvent}
+          onSubmitSplit={submitSplit}
+          connectLabelOpen={connectLabelOpen}
+          onConnectLabelOpenChange={handleConnectLabelOpenChange}
+          connectSourceNode={connectSourceNode}
+          connectTargetNode={connectTargetNode}
+          connectLabelDraft={connectLabelDraft}
+          onConnectLabelDraftChange={setConnectLabelDraft}
+          onConfirmConnectionLabel={confirmConnectionLabel}
+        />
       </PageScaffold>
     </AppFrame>
   )
