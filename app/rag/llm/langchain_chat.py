@@ -12,8 +12,8 @@ from pydantic import ConfigDict, Field, PrivateAttr
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
-from app.rag.llm.fallback import AllProvidersFailedError, is_retryable_provider_error
 from app.rag.llm.factory import _resolve_fallback_specs
+from app.rag.llm.fallback import AllProvidersFailedError, is_retryable_provider_error
 from app.rag.llm.prompt_cache import (
     annotate_openai_messages_for_prompt_cache,
     detect_anthropic_compatible,

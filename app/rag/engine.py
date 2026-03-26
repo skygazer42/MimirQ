@@ -63,8 +63,8 @@ from app.rag.core.vision_reader import (
     build_vision_reader_context_docs,
     stream_vision_chat_completions_tokens,
 )
-from app.rag.llm.langchain_chat import build_chat_model_from_config
 from app.rag.kg.pipeline import kg_search
+from app.rag.llm.langchain_chat import build_chat_model_from_config
 from app.rag.policy.intent_router import route_retrieval_preset
 from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries

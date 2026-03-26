@@ -5653,6 +5653,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/observability/online-quality/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Online Quality Summary
+         * @description Online quality snapshot (sampled, deterministic, PII-minimal).
+         *
+         *     This reads the shared metrics JSONL log and aggregates `event=="online_eval"` records.
+         */
+        get: operations["get_online_quality_summary_api_v1_observability_online_quality_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/queryset-health/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Queryset Health Runs
+         * @description List query-set health snapshots from the local history JSONL file.
+         *
+         *     This is intended for UI diagnostics and CI review. Data is PII-minimal by construction
+         *     (questions are clipped and bounded in the snapshot schema).
+         */
+        get: operations["list_queryset_health_runs_api_v1_observability_queryset_health_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/observability/queryset-health/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Diff Queryset Health Runs */
+        get: operations["diff_queryset_health_runs_api_v1_observability_queryset_health_diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/observability/rag-metrics/query-analytics": {
         parameters: {
             query?: never;
@@ -16451,6 +16513,38 @@ export interface components {
              */
             metrics_log_include_text: boolean;
         };
+        /** OnlineQualitySummaryResponse */
+        OnlineQualitySummaryResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Path */
+            path: string;
+            /** Window Minutes */
+            window_minutes: number;
+            /** Bucket Minutes */
+            bucket_minutes: number;
+            /** Truncated */
+            truncated: boolean;
+            /** Record Count */
+            record_count: number;
+            /** Sample Count */
+            sample_count: number;
+            /** Faithfulness Det Avg */
+            faithfulness_det_avg?: number | null;
+            /** Chunk Utilization Avg */
+            chunk_utilization_avg?: number | null;
+            /**
+             * Timeseries
+             * @default {}
+             */
+            timeseries: {
+                [key: string]: unknown[];
+            };
+            /** Alerts */
+            alerts?: {
+                [key: string]: unknown;
+            }[];
+        };
         /** OpsConfigSnapshotResponse */
         OpsConfigSnapshotResponse: {
             /** Schema */
@@ -17262,6 +17356,35 @@ export interface components {
             question: string;
             /** Answer */
             answer: string;
+        };
+        /** QuerysetHealthDiffResponse */
+        QuerysetHealthDiffResponse: {
+            /** Diff */
+            diff?: {
+                [key: string]: unknown;
+            };
+        };
+        /** QuerysetHealthRunsResponse */
+        QuerysetHealthRunsResponse: {
+            /** Enabled */
+            enabled: boolean;
+            /** Path */
+            path: string;
+            /** Total */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /** Timeseries */
+            timeseries?: {
+                [key: string]: unknown[];
+            };
         };
         /**
          * RAGConfig
@@ -18257,6 +18380,12 @@ export interface components {
              * @description RAGAS metrics list
              */
             metrics?: string[];
+            /**
+             * Use Llm Judge
+             * @description Enable LLM-as-judge (per-case {score, reason, evidence_quotes}; adds evaluation cost)
+             * @default false
+             */
+            use_llm_judge: boolean;
             /**
              * Skip Empty Contexts
              * @description Skip cases without contexts (default: true)
@@ -19711,7 +19840,7 @@ export interface components {
             num_questions: number;
             /**
              * Question Types
-             * @description Question types: factual, reasoning, comparison
+             * @description Question types: factual, multi_hop (reasoning), comparison, conditional, unanswerable. Back-compat: 'reasoning' is treated as 'multi_hop'.
              */
             question_types?: string[];
             /**
@@ -43285,6 +43414,222 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RagMetricsSummaryResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_online_quality_summary_api_v1_observability_online_quality_summary_get: {
+        parameters: {
+            query?: {
+                window_minutes?: number;
+                bucket_minutes?: number;
+                max_bytes?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnlineQualitySummaryResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_queryset_health_runs_api_v1_observability_queryset_health_runs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Optional retrieval profile hash to filter history */
+                profile_hash?: string | null;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuerysetHealthRunsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    diff_queryset_health_runs_api_v1_observability_queryset_health_diff_get: {
+        parameters: {
+            query: {
+                baseline_generated_at: string;
+                current_generated_at: string;
+                max_hard_case_ids?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuerysetHealthDiffResponse"];
                 };
             };
             /** @description Bad Request */

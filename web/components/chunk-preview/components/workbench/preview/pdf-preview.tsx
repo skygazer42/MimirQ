@@ -112,7 +112,7 @@ export function PdfPreview() {
 
   const blockRanges = useMemo(() => computeBlockRanges(blocksWithPositions, mapIndex), [blocksWithPositions, mapIndex])
 
-  const previewChunks = previewData?.chunks ?? []
+  const previewChunks = useMemo(() => previewData?.chunks ?? [], [previewData?.chunks])
   const chunkRanges = useMemo(() => {
     return previewChunks.map((chunk, index) => ({
       index,

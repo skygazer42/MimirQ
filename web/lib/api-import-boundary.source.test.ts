@@ -3,9 +3,10 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-const ROOTS = ['../app', '../components', '../contexts', '../hooks', '../services'] as const
+const ROOTS = ['../app', '../components', '../contexts', '../hooks', '../services', '../store', '../workers'] as const
 
 function walk(dir: string, out: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return out
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const next = path.join(dir, entry.name)
     if (entry.isDirectory()) {

@@ -34,6 +34,15 @@ from app.parsing.errors import ParsingError
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.preprocess.image_preprocess import preprocess_image_document
 from app.parsing.processors.cross_page_merge import merge_cross_page_documents
+from app.parsing.processors.parse_cache import (
+    LocalParseCacheStore,
+)
+from app.parsing.processors.parse_cache import (
+    ParseCacheEntry as LocalParseCacheEntry,
+)
+from app.parsing.processors.parse_cache import (
+    build_parse_cache_key as build_local_parse_cache_key,
+)
 from app.parsing.processors.vlm_correction import apply_vlm_correction_async, should_apply_vlm_correction
 from app.parsing.quality.document_quality import score_document_parse_quality
 from app.parsing.quality.reading_order import score_reading_order
@@ -60,7 +69,15 @@ from app.rag.preprocessing.rules import build_governance_rules
 from app.rag.preprocessing.simhash import simhash64, simhash64_hex
 from app.services.indexer import Indexer
 from app.services.metrics_logger import log_metrics, metrics_span, set_metrics_context
-from app.services.parse_cache import ParseCacheEntry, build_parse_cache_key, parse_cache_service
+from app.services.parse_cache import (
+    ParseCacheEntry as RemoteParseCacheEntry,
+)
+from app.services.parse_cache import (
+    build_parse_cache_key as build_remote_parse_cache_key,
+)
+from app.services.parse_cache import (
+    parse_cache_service,
+)
 from app.services.pipeline_config import (
     build_indexing_options,
     resolve_pipeline_effective,
@@ -676,7 +693,7 @@ class ParsingStage:
                 config_hash = pipeline_hash or "unknown"
                 backend_key = str(effective_parser_backend or "").strip().lower()
                 if file_sha and backend_key:
-                    parse_cache_key = build_parse_cache_key(
+                    parse_cache_key = build_remote_parse_cache_key(
                         file_sha256=file_sha,
                         resolved_backend=backend_key,
                         config_hash=config_hash,
@@ -828,7 +845,7 @@ class ParsingStage:
                 pipeline_hash = str(meta0.get("pipeline_hash") or meta0.get("active_pipeline_hash") or "").strip()
                 config_hash = pipeline_hash or "unknown"
                 backend_key = str(effective_parser_backend or "").strip().lower()
-                entry = ParseCacheEntry(
+                entry = RemoteParseCacheEntry(
                     created_at=dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat(),
                     file_sha256=file_sha,
                     resolved_backend=backend_key,
@@ -2111,7 +2128,7 @@ class DocumentProcessorService:
                         parse_cache_store = LocalParseCacheStore(
                             root=Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_parse_cache"
                         )
-                        parse_cache_key = build_parse_cache_key(
+                        parse_cache_key = build_local_parse_cache_key(
                             file_sha256=file_sha0,
                             parser_backend=parser_backend_key,
                             config_hash=pipeline_hash0,
@@ -2308,7 +2325,7 @@ class DocumentProcessorService:
                 try:
                     parse_cache_store.set(
                         parse_cache_key,
-                        ParseCacheEntry(
+                        LocalParseCacheEntry(
                             created_at_epoch=time.time(),
                             file_sha256=str((db_document.doc_metadata or {}).get("file_sha256") or "").strip().lower(),
                             parser_backend=str(parser_backend or "").strip().lower() or "auto",

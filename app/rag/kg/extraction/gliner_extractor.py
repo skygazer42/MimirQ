@@ -35,7 +35,7 @@ class GLiNERExtractor:
         if self._model is not None:
             return self._model
         module = require_dependency("gliner", feature="kg_extraction_gliner", pip_name="gliner")
-        gliner_cls = getattr(module, "GLiNER")
+        gliner_cls = module.GLiNER
         model_name = str(getattr(settings, "KG_GLINER_MODEL_NAME", "") or "").strip() or "urchade/gliner_multi_pii-v1"
         model = gliner_cls.from_pretrained(model_name)
         device = str(getattr(settings, "KG_GLINER_DEVICE", "cpu") or "cpu").strip().lower()
