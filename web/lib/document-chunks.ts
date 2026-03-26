@@ -1,4 +1,4 @@
-import type { ChunkPreviewItem, DocumentChunk } from '@/types'
+import type { ChunkPreviewItem, DocumentChunk, JsonObject } from '@/types'
 
 function toInt(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value)
@@ -7,6 +7,11 @@ function toInt(value: unknown): number | null {
     return Number.isFinite(n) ? n : null
   }
   return null
+}
+
+function toJsonObject(value: unknown): JsonObject {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as JsonObject
 }
 
 /**
@@ -21,7 +26,7 @@ export function mapDocumentChunksToPreviewItems(chunks: DocumentChunk[]): ChunkP
   list.sort((a, b) => (a.chunk_index || 0) - (b.chunk_index || 0))
 
   return list.map((chunk) => {
-    const meta = (chunk.metadata || {}) as Record<string, any>
+    const meta = toJsonObject(chunk.metadata)
 
     const start =
       toInt(chunk.start_char) ??
@@ -51,4 +56,3 @@ export function mapDocumentChunksToPreviewItems(chunks: DocumentChunk[]): ChunkP
     }
   })
 }
-

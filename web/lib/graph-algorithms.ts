@@ -1,12 +1,38 @@
 import { GraphNode, GraphLink } from './graph-parser'
 
+type GraphEndpoint = string | number | { id?: string | number | null } | null | undefined
+type GraphLinkLike = Omit<GraphLink, 'source' | 'target'> & {
+  source: GraphEndpoint
+  target: GraphEndpoint
+  id?: string | number | null
+}
+
+function getGraphEndpointId(endpoint: GraphEndpoint): string {
+  if (endpoint == null) return ''
+  if (typeof endpoint === 'string' || typeof endpoint === 'number') return String(endpoint)
+  if (typeof endpoint === 'object') {
+    const rawId = 'id' in endpoint ? endpoint.id : undefined
+    if (typeof rawId === 'string' || typeof rawId === 'number') {
+      return String(rawId)
+    }
+  }
+  return ''
+}
+
+function getGraphLinkId(link: GraphLinkLike, index: number): string {
+  if (typeof link.id === 'string' || typeof link.id === 'number') {
+    return String(link.id)
+  }
+  return `link-${index}`
+}
+
 /**
  * Finds the shortest path between two nodes using Breadth-First Search (BFS).
  * Returns a set of Node IDs and Link IDs that make up the path.
  */
 export const findShortestPath = (
   nodes: GraphNode[],
-  links: GraphLink[],
+  links: GraphLinkLike[],
   startNodeId: string,
   endNodeId: string
 ): { nodeIds: string[]; linkIds: string[] } | null => {
@@ -21,8 +47,9 @@ export const findShortestPath = (
 
   links.forEach((link, index) => {
     // Handle both object ref (d3-force after init) and string ref (raw data)
-    const sourceId = typeof link.source === 'object' ? (link.source as any).id : link.source
-    const targetId = typeof link.target === 'object' ? (link.target as any).id : link.target
+    const sourceId = getGraphEndpointId(link.source)
+    const targetId = getGraphEndpointId(link.target)
+    if (!sourceId || !targetId) return
     
     // Assuming undirected graph for path finding convenience, or directed if preferred.
     // Let's treat it as Undirected for easier navigation in knowledge graphs.
@@ -30,7 +57,7 @@ export const findShortestPath = (
     if (!adj[targetId]) adj[targetId] = []
 
     // Store index or a unique ID if available. Using index as ID fallback.
-    const linkId = (link as any).id || `link-${index}` 
+    const linkId = getGraphLinkId(link, index)
     // Ensure we attach this ID to the link object in the main component if not present
     
     adj[sourceId].push({ neighbor: targetId, linkId })
@@ -43,7 +70,8 @@ export const findShortestPath = (
   const parent: { [key: string]: { id: string; linkId: string } } = {}
 
   while (queue.length > 0) {
-    const curr = queue.shift()!
+    const curr = queue.shift()
+    if (!curr) continue
 
     if (curr === endNodeId) {
       // Path found, reconstruct it

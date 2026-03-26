@@ -48,7 +48,8 @@ function needleWeight(needle: string): number {
 }
 
 function citationNumericScore(c: Citation): number {
-  const raw = (c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0) as any
+  const raw: unknown =
+    c.retrieval_score ?? c.rerank_score ?? c.relevance_score ?? c.vector_score ?? c.bm25_score ?? 0
   const n = Number(raw)
   return Number.isFinite(n) ? n : 0
 }
@@ -109,4 +110,3 @@ export function rankEvidenceCitations(citations: Citation[], needles: string[]):
 
   return ranked
 }
-
