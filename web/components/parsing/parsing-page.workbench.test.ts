@@ -8,10 +8,14 @@ describe('ParsingPage workbench scaffold', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-library-preview-pane.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'parsing-sidebar-pane.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'parsing-mobile-queue-content.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'parsing-mobile-inspector-content.tsx'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-types.ts'))).toBe(true)
     expect(src).toContain('WorkbenchScaffold')
     expect(src).toContain('ParsingActiveFilePane')
     expect(src).toContain('ParsingLibraryPreviewPane')
+    expect(src).toContain('ParsingSidebarPane')
   })
 
   it('avoids the nested library empty-state ternary and passes drag props through FileQueueItem', () => {

@@ -1,0 +1,146 @@
+'use client'
+
+import { Code, Copy, Download, Eye, FileStack, FileText } from 'lucide-react'
+
+import { MarkdownToc } from '@/components/markdown/markdown-toc'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import type { ParsingBlock } from '@/lib/parsing-positions'
+
+type ParsingMobileInspectorContentProps = {
+  activeMarkdown: string
+  rightPanelMode: 'blocks' | 'markdown'
+  previewMode: 'raw' | 'rendered'
+  activeBlocksWithPositions: ParsingBlock[]
+  activeBlockId: string | null
+  onRightPanelModeChange: (mode: 'blocks' | 'markdown') => void
+  onPreviewModeChange: (mode: 'raw' | 'rendered') => void
+  onSelectBlock: (blockId: string) => void
+  onCopyMarkdown: () => void
+  onDownloadMarkdown: () => void
+}
+
+export function ParsingMobileInspectorContent({
+  activeMarkdown,
+  rightPanelMode,
+  previewMode,
+  activeBlocksWithPositions,
+  activeBlockId,
+  onRightPanelModeChange,
+  onPreviewModeChange,
+  onSelectBlock,
+  onCopyMarkdown,
+  onDownloadMarkdown,
+}: Readonly<ParsingMobileInspectorContentProps>) {
+  return (
+    <div className="flex-1 min-h-0 space-y-5 overflow-y-auto overscroll-contain no-scrollbar bg-muted/10 p-4">
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-muted-foreground">视图</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={rightPanelMode === 'blocks' ? 'default' : 'outline'}
+            className="gap-2"
+            onClick={() => onRightPanelModeChange('blocks')}
+            disabled={activeBlocksWithPositions.length === 0}
+          >
+            <FileStack className="h-4 w-4" />
+            版面
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={rightPanelMode === 'markdown' ? 'default' : 'outline'}
+            className="gap-2"
+            onClick={() => onRightPanelModeChange('markdown')}
+          >
+            <FileText className="h-4 w-4" />
+            Markdown
+          </Button>
+
+          {rightPanelMode === 'markdown' ? (
+            <>
+              <div className="mx-1 h-5 w-px bg-border/60" aria-hidden="true" />
+              <Button
+                type="button"
+                size="sm"
+                variant={previewMode === 'rendered' ? 'default' : 'outline'}
+                className="gap-2"
+                onClick={() => onPreviewModeChange('rendered')}
+              >
+                <Eye className="h-4 w-4" />
+                预览
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={previewMode === 'raw' ? 'default' : 'outline'}
+                className="gap-2"
+                onClick={() => onPreviewModeChange('raw')}
+              >
+                <Code className="h-4 w-4" />
+                源码
+              </Button>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      {rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0 ? (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-muted-foreground">定位块</div>
+          <div className="rounded-2xl border border-border/60 bg-card p-2">
+            <div className="max-h-[46vh] space-y-1 overflow-y-auto overscroll-contain no-scrollbar">
+              {activeBlocksWithPositions.slice(0, 80).map((block, idx) => {
+                const pageIndex = block.positions?.[0]?.pages?.[0]
+                const isActive = block.id === activeBlockId
+                return (
+                  <button
+                    key={block.id}
+                    type="button"
+                    onClick={() => onSelectBlock(block.id)}
+                    className={cn(
+                      'w-full rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                      isActive
+                        ? 'border-sky-400 bg-sky-50 dark:bg-sky-950/30'
+                        : 'border-border/50 hover:bg-muted/40'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="truncate font-medium">块 {idx + 1}</div>
+                      <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                        {Number.isFinite(pageIndex) ? `页 ${Number(pageIndex) + 1}` : ''}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      ) : rightPanelMode === 'markdown' ? (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-muted-foreground">目录</div>
+          <div className="rounded-2xl border border-border/60 bg-card p-3">
+            <MarkdownToc markdown={activeMarkdown} />
+          </div>
+        </div>
+      ) : null}
+
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-muted-foreground">快捷操作</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={onCopyMarkdown}>
+            <Copy className="h-4 w-4" />
+            复制 Markdown
+          </Button>
+          <Button type="button" variant="outline" size="sm" className="gap-2" onClick={onDownloadMarkdown}>
+            <Download className="h-4 w-4" />
+            下载 Markdown
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}

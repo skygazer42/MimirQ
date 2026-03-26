@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, FolderOpen, Loader2, Eye, Code, Download, Copy, Check, Sparkles, FileStack, Clock, Play, Paperclip, FolderUp, Plus, Settings2 } from 'lucide-react'
+import { FileText, FolderOpen, Sparkles, FileStack, Settings2 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { PipelineRail, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { Button } from '@/components/ui/button'
@@ -10,33 +10,24 @@ import { documentApi, parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { generateRequestId } from '@/lib/request-id'
-import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
+import { ROOT_FOLDER_ID, useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { FileQueueItem, FileQueueItemData, FileStatus } from '@/components/ui/file-queue-item'
-import { ParserDropdown } from '@/components/ui/parser-dropdown'
-import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings } from '@/lib/markdown'
-import { DocumentFolderTree } from '@/components/document-library/folder-tree'
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { extractBlocksFromMarkdown, ParsingBlock } from '@/lib/parsing-positions'
 import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 import { toast } from 'sonner'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, getDocContentFromCache, getDocSourceFromCache, saveDocSourceToCache } from '@/lib/doc-content-cache'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ParsingActiveFilePane } from '@/components/parsing/parsing-active-file-pane'
 import { ParsingLibraryPreviewPane } from '@/components/parsing/parsing-library-preview-pane'
-import { Switch } from '@/components/ui/switch'
 import { ParsingLeftPanel } from '@/components/parsing/parsing-left-panel'
 import { ParsingMainPanel } from '@/components/parsing/parsing-main-panel'
+import { ParsingMobileInspectorContent } from '@/components/parsing/parsing-mobile-inspector-content'
+import { ParsingMobileQueueContent } from '@/components/parsing/parsing-mobile-queue-content'
+import { ParsingSidebarPane } from '@/components/parsing/parsing-sidebar-pane'
 import type { ParsedFile, ParseFailureDiagnostics, ParseRun } from '@/components/parsing/parsing-types'
 
 // 解析后的文件（扩展版）
@@ -1634,215 +1625,51 @@ export default function ParsingPage() {
         mainPanel={
           <>
         <ParsingMainPanel>
-          {/* 左侧：文件列表面板 */}
-          <ParsingLeftPanel
+          <ParsingSidebarPane
             collapsed={isSidebarCollapsed}
             onToggleCollapsed={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             className="hidden lg:flex"
-          >
-            {/* Folder Navigation */}
-                <div className="flex-none h-1/3 min-h-[200px] overflow-y-auto overscroll-contain no-scrollbar p-2 border-b border-border/60 bg-card dark:bg-background/40">
-                  <div className="h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
-                    <DocumentFolderTree
-                      onRequestUpload={requestUploadToFolder}
-                      onRequestUploadFolder={requestUploadFolder}
-                      showFiles="expanded"
-                      onSelectFile={(fileId) => {
-                        // `DocumentFolderTree` emits library ids by default.
-                        // If we still have the File object in the current session, map back to queue id for PDF preview.
-                        const queueMatch = files.find((f) => f.libraryId === fileId)
-                        if (queueMatch) {
-                          setActiveLibraryFileId(null)
-                          setActiveFileId(queueMatch.id)
-                          return
-                        }
-                        setActiveFileId(null)
-                        setActiveLibraryFileId(fileId)
-                      }}
-                      onDeleteFolder={handleDeleteFolder}
-                      onFileDrop={moveFileToFolder}
-                    />
-                  </div>
-                </div>
-
-                {/* File List Header & Toolbar */}
-                <div
-                  className={cn(
-                    "px-4 py-3 border-b border-border/60 flex items-center justify-between z-10 sticky top-0",
-                    "bg-card dark:bg-background/40"
-                  )}
-                >
-                  <button
-                    type="button"
-                    className="flex items-center gap-3 min-w-0 group rounded-xl px-2 py-1 -mx-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                    onClick={() => requestUploadToFolder(currentFolderId)}
-                    onDragOver={(e) => handleFolderDragOver(e, currentFolderId)}
-                    onDragLeave={() => setDragOverFolderId(null)}
-                    onDrop={(e) => handleFolderDrop(e, currentFolderId)}
-                    title="拖拽文件到当前目录，或点击上传"
-                  >
-                    <div className="w-8 h-8 rounded-xl bg-muted dark:bg-muted text-muted-foreground dark:text-muted-foreground flex items-center justify-center">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground dark:text-foreground">文档列表</div>
-                      <div className="mt-0.5">
-                        <span
-                          className="inline-flex max-w-[220px] items-center truncate rounded-full bg-muted dark:bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground dark:text-muted-foreground"
-                          title={activeFolderPathLabel}
-                        >
-                          {activeFolderPathLabel}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="bg-muted dark:bg-muted text-muted-foreground dark:text-muted-foreground px-2 py-0.5 rounded-full text-[11px] font-medium opacity-0 group-hover:opacity-100 transition-opacity">
-                      {visibleQueueFiles.length}
-                    </span>
-                  </button>
-
-                  <div className="flex items-center gap-1">
-                    {parseableCount > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={parseAllPending}
-                        className="h-7 text-xs gap-1.5 text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-foreground hover:bg-muted dark:hover:bg-muted mr-1 font-medium"
-                      >
-                        <Play className="w-3.5 h-3.5" />
-                        解析
-                      </Button>
-                    )}
-
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted rounded-lg"
-                          title="默认解析方式"
-                          aria-label="默认解析方式"
-                        >
-                          <Settings2 className="w-4 h-4" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent align="end" className="w-80 p-3">
-                        <div className="space-y-3">
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="text-sm font-semibold">默认解析方式</div>
-                              <div className="text-xs text-muted-foreground">新上传默认</div>
-                            </div>
-                            <ParserDropdown value={parserBackend} onChange={setParserBackend} />
-                            <p className="text-xs text-muted-foreground leading-snug">
-                              选中文件后，也可以在右侧顶部对单个文件单独修改。
-                            </p>
-                          </div>
-
-                          <div className="h-px bg-border/60" />
-
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm font-semibold">图片 caption（可选）</div>
-                              <div className="mt-1 text-xs text-muted-foreground leading-snug">
-                                为图片引用行插入可检索文本（不做 OCR；默认关闭）
-                              </div>
-                            </div>
-                            <Switch checked={imageCaptionEnabled} onCheckedChange={setImageCaptionEnabled} />
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground dark:text-muted-foreground hover:bg-muted dark:hover:bg-muted rounded-lg"
-                          aria-label="上传操作"
-                          title="上传操作"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-52">
-                        <DropdownMenuItem onClick={() => requestUploadToFolder(activeFolderId || ROOT_FOLDER_ID)}>
-                          <Paperclip className="w-4 h-4 mr-2 text-muted-foreground" />
-                          上传文件
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => requestUploadFolder(activeFolderId || ROOT_FOLDER_ID)}>
-                          <FolderUp className="w-4 h-4 mr-2 text-muted-foreground" />
-                          上传文件夹
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-
-                {/* File List */}
-                <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-2 bg-card dark:bg-background/40">
-                  <div className="min-h-full rounded-2xl border border-border/60 bg-card dark:bg-background/40 p-2">
-                    {isLibraryLoaded ? libraryFileListContent : (
-                      <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-                        <div className="size-14 rounded-2xl border border-border/60 bg-card flex items-center justify-center mb-3 shadow-sm">
-                          <Loader2 className="w-6 h-6 text-muted-foreground animate-spin motion-reduce:animate-none" />
-                        </div>
-                        <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">
-                          正在加载文档库…
-                        </p>
-                        <p className="text-xs text-muted-foreground dark:text-muted-foreground mt-1">
-                          首次进入或刷新时会稍等片刻
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 隐藏的文件上传 Input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept={UPLOAD_ACCEPT_WITH_ZIP}
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-                <input
-                  ref={folderInputRef}
-                  type="file"
-                  multiple
-                  {...({ webkitdirectory: "" } as any)}
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-                <input
-                  ref={rebindInputRef}
-                  type="file"
-                  accept={UPLOAD_ACCEPT}
-                  className="hidden"
-                  onChange={handleRebindFileSelect}
-                />
-
-                {/* 底部统计 */}
-                {visibleQueueFiles.length > 0 && (
-                  <div className="p-4 border-t border-border/60 bg-muted/20 dark:bg-muted/40">
-                    <div className="flex items-center justify-around text-xs text-muted-foreground dark:text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {pendingCount} 等待
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Loader2 className="w-3 h-3" />
-                        {parsingCount} 处理
-                      </span>
-                      <span className="flex items-center gap-1 text-green-700 dark:text-green-400">
-                        <Check className="w-3 h-3" />
-                        {parsedCount} 完成
-                      </span>
-                    </div>
-                  </div>
-                )}
-          </ParsingLeftPanel>
+            activeFolderId={activeFolderId || ROOT_FOLDER_ID}
+            activeFolderPathLabel={activeFolderPathLabel}
+            currentFolderId={currentFolderId}
+            visibleQueueFilesCount={visibleQueueFiles.length}
+            pendingCount={pendingCount}
+            parsingCount={parsingCount}
+            parsedCount={parsedCount}
+            parseableCount={parseableCount}
+            parserBackend={parserBackend}
+            imageCaptionEnabled={imageCaptionEnabled}
+            isLibraryLoaded={isLibraryLoaded}
+            libraryFileListContent={libraryFileListContent}
+            fileAccept={UPLOAD_ACCEPT_WITH_ZIP}
+            rebindAccept={UPLOAD_ACCEPT}
+            fileInputRef={fileInputRef}
+            folderInputRef={folderInputRef}
+            rebindInputRef={rebindInputRef}
+            onRequestUploadToCurrentFolder={() => requestUploadToFolder(currentFolderId)}
+            onRequestUploadToFolder={requestUploadToFolder}
+            onRequestUploadFolder={requestUploadFolder}
+            onParseAllPending={() => detachPromise(parseAllPending())}
+            onParserBackendChange={setParserBackend}
+            onImageCaptionEnabledChange={setImageCaptionEnabled}
+            onFolderDragOver={handleFolderDragOver}
+            onFolderDragLeave={() => setDragOverFolderId(null)}
+            onFolderDrop={handleFolderDrop}
+            onFolderTreeSelectFile={(fileId) => {
+              const queueMatch = files.find((file) => file.libraryId === fileId)
+              if (queueMatch) {
+                setActiveLibraryFileId(null)
+                setActiveFileId(queueMatch.id)
+                return
+              }
+              setActiveFileId(null)
+              setActiveLibraryFileId(fileId)
+            }}
+            onDeleteFolder={handleDeleteFolder}
+            onMoveFileToFolder={moveFileToFolder}
+            onFileSelect={handleFileSelect}
+            onRebindFileSelect={handleRebindFileSelect}
+          />
 
           {/* 右侧：预览区域 */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden min-h-0 bg-card ring-1 ring-border/40 shadow-sm dark:bg-background dark:shadow-none">
@@ -1925,242 +1752,61 @@ export default function ParsingPage() {
 
       {/* Mobile: expose the left queue panel via a dialog */}
       <WorkbenchPanelDialog open={queueOpen} onOpenChange={setQueueOpen} title="队列">
-        <div className="flex-none p-3 border-b border-border/60 bg-card/70">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-foreground">文件队列</div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground font-mono tabular-nums">
-                {queueCountLabel}
-              </div>
-            </div>
-
-            {parseableCount > 0 ? (
-              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={parseAllPending}>
-                <Play className="w-4 h-4" />
-                全部解析
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar p-3 space-y-3 bg-muted/20">
-          <div className="rounded-2xl border border-border/60 bg-card p-2">
-            <DocumentFolderTree
-              onRequestUpload={requestUploadToFolder}
-              onRequestUploadFolder={requestUploadFolder}
-              showFiles="expanded"
-              onSelectFile={(fileId) => {
-                const queueMatch = files.find((f) => f.libraryId === fileId)
-                if (queueMatch) {
-                  setActiveLibraryFileId(null)
-                  setActiveFileId(queueMatch.id)
-                  setQueueOpen(false)
-                  return
-                }
-                setActiveFileId(null)
-                setActiveLibraryFileId(fileId)
-                setQueueOpen(false)
-              }}
-              onDeleteFolder={handleDeleteFolder}
-              onFileDrop={moveFileToFolder}
-            />
-          </div>
-
-          {visibleQueueFiles.length > 0 ? (
-            <div className="rounded-2xl border border-border/60 bg-card p-2">
-              <div className="flex items-center justify-between px-2 pb-2">
-                <div className="text-sm font-semibold text-foreground">当前会话</div>
-                <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-                  {visibleQueueFiles.length}
-                </div>
-              </div>
-	              <div className="space-y-1">
-	                {visibleQueueFiles.map((f) => (
-	                  <FileQueueItem
-                      key={f.id}
-	                      file={{
-                        id: f.id,
-                        name: f.name,
-                        size: f.size,
-                        status: f.status,
-                        progress: f.progress,
-                        parser: f.parserLabel,
-                        folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
-                        sourcePath: f.sourcePath,
-                        error: f.error,
-                        duration: f.duration,
-                        pageCount: f.stats?.pageCount,
-                      }}
-                      draggable
-                      onDragStart={(e) => handleFileDragStart(e, f.id)}
-                      isActive={activeFileId === f.id}
-                      onClick={() => {
-                        setActiveLibraryFileId(null)
-                        setActiveFileId(f.id)
-                        setQueueOpen(false)
-                      }}
-                      onRemove={() => removeFile(f.id)}
-                      onRetry={f.status === 'error' ? () => parseFile(f.id) : undefined}
-                    />
-	                ))}
-	              </div>
-            </div>
-          ) : null}
-
-          {visibleLibraryOnlyFiles.length > 0 ? (
-            <div className="rounded-2xl border border-border/60 bg-card p-2">
-              <div className="flex items-center justify-between px-2 pb-2">
-                <div className="text-sm font-semibold text-foreground">文档库</div>
-                <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-                  {visibleLibraryOnlyFiles.length}
-                </div>
-              </div>
-              <div className="space-y-1">
-                {visibleLibraryOnlyFiles.map((f) => (
-                  <FileQueueItem
-                    key={f.id}
-                    file={{
-                      id: f.id,
-                      name: f.filename,
-                      size: f.fileSize,
-                      status: f.status || 'parsed',
-                      parser: f.parser,
-                      duration: f.durationSec,
-                      folderPathLabel: f.folderId && f.folderId !== ROOT_FOLDER_ID ? folderPathById[f.folderId] : undefined,
-                    }}
-                    isActive={activeLibraryFileId === f.id}
-                    onClick={() => {
-                      setActiveFileId(null)
-                      setActiveLibraryFileId(f.id)
-                      setQueueOpen(false)
-                    }}
-                    onRemove={() => removeFile(f.id)}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <ParsingMobileQueueContent
+          queueCountLabel={queueCountLabel}
+          parseableCount={parseableCount}
+          activeFileId={activeFileId}
+          activeLibraryFileId={activeLibraryFileId}
+          visibleQueueFiles={visibleQueueFiles}
+          visibleLibraryOnlyFiles={visibleLibraryOnlyFiles as ParsedFileData[]}
+          folderPathById={folderPathById}
+          files={files}
+          onParseAllPending={() => detachPromise(parseAllPending())}
+          onRequestUploadToFolder={requestUploadToFolder}
+          onRequestUploadFolder={requestUploadFolder}
+          onSelectQueueFile={(fileId) => {
+            setActiveLibraryFileId(null)
+            setActiveFileId(fileId)
+            setQueueOpen(false)
+          }}
+          onSelectLibraryFile={(fileId) => {
+            setActiveFileId(null)
+            setActiveLibraryFileId(fileId)
+            setQueueOpen(false)
+          }}
+          onDeleteFolder={handleDeleteFolder}
+          onMoveFileToFolder={moveFileToFolder}
+          onRemoveFile={removeFile}
+          onRetryParse={(fileId) => detachPromise(parseFile(fileId))}
+          onFileDragStart={handleFileDragStart}
+        />
       </WorkbenchPanelDialog>
 
       {/* Mobile: expose inspector/navigation helpers via a dialog */}
       <WorkbenchPanelDialog open={inspectorOpen} onOpenChange={setInspectorOpen} title="工具">
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar p-4 space-y-5 bg-muted/10">
-          {activeFile && activeMarkdown ? (
-            <>
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground">视图</div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={rightPanelMode === 'blocks' ? 'default' : 'outline'}
-                    className="gap-2"
-                    onClick={() => setRightPanelMode('blocks')}
-                    disabled={activeBlocksWithPositions.length === 0}
-                  >
-                    <FileStack className="w-4 h-4" />
-                    版面
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={rightPanelMode === 'markdown' ? 'default' : 'outline'}
-                    className="gap-2"
-                    onClick={() => setRightPanelMode('markdown')}
-                  >
-                    <FileText className="w-4 h-4" />
-                    Markdown
-                  </Button>
-
-                  {rightPanelMode === 'markdown' ? (
-                    <>
-                      <div className="w-px h-5 bg-border/60 mx-1" aria-hidden="true" />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={previewMode === 'rendered' ? 'default' : 'outline'}
-                        className="gap-2"
-                        onClick={() => setPreviewMode('rendered')}
-                      >
-                        <Eye className="w-4 h-4" />
-                        预览
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={previewMode === 'raw' ? 'default' : 'outline'}
-                        className="gap-2"
-                        onClick={() => setPreviewMode('raw')}
-                      >
-                        <Code className="w-4 h-4" />
-                        源码
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              {(() => {
-    if (rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0) {
-        return (<div className="space-y-2">
-                  <div className="text-xs font-semibold text-muted-foreground">定位块</div>
-                  <div className="rounded-2xl border border-border/60 bg-card p-2">
-                    <div className="max-h-[46vh] overflow-y-auto overscroll-contain no-scrollbar space-y-1">
-                      {activeBlocksWithPositions.slice(0, 80).map((block, idx) => {
-                const pageIndex = block.positions?.[0]?.pages?.[0];
-                const isActive = block.id === activeBlockId;
-                return (<button key={block.id} type="button" onClick={() => {
-                        setActiveBlockId(block.id);
-                        setInspectorOpen(false);
-                    }} className={cn('w-full text-left rounded-xl border px-3 py-2 text-sm transition-colors', isActive
-                        ? 'border-sky-400 bg-sky-50 dark:bg-sky-950/30'
-                        : 'border-border/50 hover:bg-muted/40')}>
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="font-medium truncate">块 {idx + 1}</div>
-                              <div className="text-[11px] text-muted-foreground font-mono tabular-nums">
-                                {Number.isFinite(pageIndex) ? `页 ${Number(pageIndex) + 1}` : ''}
-                              </div>
-                            </div>
-                          </button>);
-            })}
-                    </div>
-                  </div>
-                </div>);
-    }
-    else if (rightPanelMode === 'markdown') {
-            return (<div className="space-y-2">
-                  <div className="text-xs font-semibold text-muted-foreground">目录</div>
-                  <div className="rounded-2xl border border-border/60 bg-card p-3">
-                    <MarkdownToc markdown={activeMarkdown}/>
-                  </div>
-                </div>);
-        }
-        else {
-            return null;
-        }
-})()}
-
-              <div className="space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground">快捷操作</div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" className="gap-2" onClick={copyMarkdown}>
-                    <Copy className="w-4 h-4" />
-                    复制 Markdown
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" className="gap-2" onClick={downloadMarkdown}>
-                    <Download className="w-4 h-4" />
-                    下载 Markdown
-                  </Button>
-                </div>
-              </div>
-            </>
-          ) : (
+        {activeFile && activeMarkdown ? (
+          <ParsingMobileInspectorContent
+            activeMarkdown={activeMarkdown}
+            rightPanelMode={rightPanelMode}
+            previewMode={previewMode}
+            activeBlocksWithPositions={activeBlocksWithPositions}
+            activeBlockId={activeBlockId}
+            onRightPanelModeChange={setRightPanelMode}
+            onPreviewModeChange={setPreviewMode}
+            onSelectBlock={(blockId) => {
+              setActiveBlockId(blockId)
+              setInspectorOpen(false)
+            }}
+            onCopyMarkdown={() => detachPromise(copyMarkdown())}
+            onDownloadMarkdown={downloadMarkdown}
+          />
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain no-scrollbar bg-muted/10 p-4">
             <div className="text-sm text-muted-foreground">
               选择文件后可在此查看定位块、目录和快捷操作。
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </WorkbenchPanelDialog>
     </AppFrame>
   )
