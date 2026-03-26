@@ -15,6 +15,7 @@ describe('ParsingPage workbench scaffold', () => {
     expect(fs.existsSync(path.resolve(__dirname, 'parsing-types.ts'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-editor-actions.ts'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-library-actions.ts'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-queue-actions.ts'))).toBe(true)
     expect(fs.existsSync(path.resolve(__dirname, 'use-parsing-run-actions.ts'))).toBe(true)
     expect(src).toContain('WorkbenchScaffold')
     expect(src).toContain('ParsingActiveFilePane')
@@ -77,5 +78,20 @@ describe('ParsingPage workbench scaffold', () => {
     expect(hookSrc).toContain('const copyMarkdown = useCallback(')
     expect(hookSrc).toContain('const handleSaveEdit = useCallback(')
     expect(hookSrc).toContain('const handleSubmitToGovernance = useCallback(')
+  })
+
+  it('moves queue deletion and drag-drop callbacks into the dedicated hook', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
+    const hookSrc = fs.readFileSync(path.resolve(__dirname, 'use-parsing-queue-actions.ts'), 'utf8')
+
+    expect(src).toContain('useParsingQueueActions')
+    expect(src).not.toContain('const removeFile = (fileId: string) =>')
+    expect(src).not.toContain('const moveFileToFolder = useCallback(')
+    expect(src).not.toContain('const handleFolderDrop = useCallback(')
+
+    expect(hookSrc).toContain('export function useParsingQueueActions(')
+    expect(hookSrc).toContain('const removeFile = useCallback(')
+    expect(hookSrc).toContain('const moveFileToFolder = useCallback(')
+    expect(hookSrc).toContain('const handleFolderDrop = useCallback(')
   })
 })

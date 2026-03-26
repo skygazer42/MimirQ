@@ -6,7 +6,6 @@ import { AppFrame } from '@/components/app-frame'
 import { PipelineRail, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 import { Button } from '@/components/ui/button'
 import { parsingApi } from '@/lib/api'
-import { formatApiError } from '@/lib/api-errors'
 import { detachPromise } from '@/lib/utils'
 import { ROOT_FOLDER_ID, useParsedFiles, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
@@ -27,6 +26,7 @@ import { ParsingMobileQueueContent } from '@/components/parsing/parsing-mobile-q
 import { ParsingSidebarPane } from '@/components/parsing/parsing-sidebar-pane'
 import { useParsingEditorActions } from '@/components/parsing/use-parsing-editor-actions'
 import { useParsingLibraryActions } from '@/components/parsing/use-parsing-library-actions'
+import { useParsingQueueActions } from '@/components/parsing/use-parsing-queue-actions'
 import { useParsingRunActions } from '@/components/parsing/use-parsing-run-actions'
 import type { ParsedFile } from '@/components/parsing/parsing-types'
 
@@ -493,70 +493,29 @@ export default function ParsingPage() {
     e.target.value = ''
   }, [addFiles])
 
-  // 移除文件
-  const removeFile = (fileId: string) => {
-    // `fileId` could be a queue id or a persisted library id.
-    const queue = files.find((f) => f.id === fileId) || null
-    const libId = queue?.libraryId || (libraryFiles.some((f) => f.id === fileId) ? fileId : null)
-
-    if (queue) {
-      cancelParse(queue.id)
-      setFiles((prev) => prev.filter((f) => f.id !== queue.id))
-      if (activeFileId === queue.id) setActiveFileId(null)
-    }
-    if (libId) {
-      detachPromise((async () => {
-        try {
-          await parsingApi.delete(libId)
-        } catch (err: any) {
-          toast.error(formatApiError(err, '删除失败'))
-        }
-      })())
-      removeParsedFile(libId)
-      removeLibraryCaches(libId)
-      if (activeLibraryFileId === libId) setActiveLibraryFileId(null)
-    }
-  }
-
-  const moveFileToFolder = useCallback((fileId: string, folderId: string) => {
-    const targetId = folderId || ROOT_FOLDER_ID
-    setFiles((prev) =>
-      prev.map((f) => (f.id === fileId ? { ...f, folderId: targetId } : f))
-    )
-
-    // Keep the persisted library entry in sync.
-    const queueMatch = files.find((f) => f.id === fileId) || null
-    const libId = queueMatch?.libraryId || (libraryFiles.some((f) => f.id === fileId) ? fileId : null)
-    if (libId) updateParsedFile(libId, { folderId: targetId })
-  }, [files, libraryFiles, updateParsedFile])
-
-  const handleFileDragStart = useCallback((e: React.DragEvent, fileId: string) => {
-    e.dataTransfer.setData('text/plain', fileId)
-    e.dataTransfer.effectAllowed = 'move'
-  }, [])
-
-  const handleFolderDragOver = useCallback((e: React.DragEvent, folderId: string) => {
-    e.preventDefault()
-    setDragOverFolderId(folderId)
-  }, [])
-
-  const handleFolderDrop = useCallback((e: React.DragEvent, folderId: string) => {
-    e.preventDefault()
-    const targetId = folderId || ROOT_FOLDER_ID
-
-    const draggedFolderId = e.dataTransfer.getData('application/x-mimirq-folder')
-    if (draggedFolderId) {
-      const ok = moveFolder(draggedFolderId, targetId)
-      if (ok) toast.success('文件夹已移动')
-      else toast.error('移动失败：目标目录不合法（可能是自身/子目录/不存在）')
-      setDragOverFolderId(null)
-      return
-    }
-
-    const fileId = e.dataTransfer.getData('text/plain')
-    if (fileId) moveFileToFolder(fileId, targetId)
-    setDragOverFolderId(null)
-  }, [moveFileToFolder, moveFolder])
+  const {
+    handleDeleteFolder,
+    handleFileDragStart,
+    handleFolderDragLeave,
+    handleFolderDragOver,
+    handleFolderDrop,
+    moveFileToFolder,
+    removeFile,
+  } = useParsingQueueActions({
+    activeFileId,
+    activeLibraryFileId,
+    cancelParse,
+    files,
+    libraryFiles,
+    moveFolder,
+    removeLibraryCaches,
+    removeParsedFile,
+    setActiveFileId,
+    setActiveLibraryFileId,
+    setDragOverFolderId,
+    setFiles,
+    updateParsedFile,
+  })
 
   const { handleSelectRun, parseAllPending, parseFile } = useParsingRunActions({
     activeFile,
@@ -604,10 +563,6 @@ export default function ParsingPage() {
     updateParsedFile,
   })
 
-  const handleDeleteFolder = useCallback((folderIds: string[]) => {
-    setFiles((prev) => prev.filter((f) => !f.folderId || !folderIds.includes(f.folderId)))
-  }, [])
-
   // 计算统计数据
   const pendingCount = visibleQueueFiles.filter((f) => f.status === 'pending').length
   const parsingCount = visibleQueueFiles.filter((f) => f.status === 'parsing').length
@@ -631,7 +586,7 @@ export default function ParsingPage() {
       folderPathById={folderPathById}
       onFolderSelect={setActiveFolderId}
       onFolderDragOver={handleFolderDragOver}
-      onFolderDragLeave={() => setDragOverFolderId(null)}
+      onFolderDragLeave={handleFolderDragLeave}
       onFolderDrop={handleFolderDrop}
       onQueueFileDragStart={handleFileDragStart}
       onSelectQueueFile={(fileId) => {
@@ -712,7 +667,7 @@ export default function ParsingPage() {
             onParserBackendChange={setParserBackend}
             onImageCaptionEnabledChange={setImageCaptionEnabled}
             onFolderDragOver={handleFolderDragOver}
-            onFolderDragLeave={() => setDragOverFolderId(null)}
+            onFolderDragLeave={handleFolderDragLeave}
             onFolderDrop={handleFolderDrop}
             onFolderTreeSelectFile={(fileId) => {
               const queueMatch = files.find((file) => file.libraryId === fileId)
