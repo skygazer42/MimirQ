@@ -1583,6 +1583,19 @@ class Settings(BaseSettings):
     KG_ENTITY_CANONICALIZE_PARENTHESES_ALIAS: bool = True
     KG_SKILL_ENABLED: bool = False
     KG_SKILL_MAX_SKILLS_PER_CHUNK: int = 3
+    # KG extraction backend routing.
+    # - llm: existing extraction path (default)
+    # - gliner: lightweight entity-first extraction (optional dependency)
+    # - hybrid: GLiNER pre-extract + LLM fallback
+    KG_EXTRACTION_BACKEND: str = "llm"
+    # Safe default-off switch for GLiNER/hybrid routing.
+    KG_GLINER_ENABLED: bool = False
+    KG_GLINER_MODEL_NAME: str = "urchade/gliner_multi_pii-v1"
+    KG_GLINER_DEVICE: str = "cpu"
+    KG_GLINER_ENTITY_THRESHOLD: float = 0.5
+    KG_GLINER_DEFAULT_ENTITY_TYPES: str = "person,organization,location,event,date,concept"
+    KG_HYBRID_LLM_THRESHOLD: float = 0.7
+    KG_HYBRID_REFINE_RELATIONS: bool = False
     # Evidence-first skill extraction (optional; improves precision for Skill/SOP nodes + taxonomy edges).
     # When enabled, the extractor will only persist Skill nodes/edges that can be grounded to a chunk-local
     # evidence quote/span (verbatim substring).
