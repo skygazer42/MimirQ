@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
+from uuid import uuid4
+
+import pytest
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+
+from app.core.config import settings
+from app.rag.reranker.base import BaseReranker
+from app.rag.reranker.types import RerankCandidate, RerankResult
+from app.rag.retriever import HybridRetriever
+
+
+class _StubVectorStore:
+    def __init__(self, *, results):  # noqa: ANN001
+        self._results = list(results)
+
+    def search(self, **_kwargs):  # noqa: ANN003
+        return list(self._results)
+
+
+@dataclass
+class _CountingReranker(BaseReranker):
+    calls: list[int]
+
+    def rerank(self, query: str, candidates: Sequence[RerankCandidate], **kwargs: Any) -> RerankResult:  # noqa: ARG002
+        top_n = int(kwargs.get("top_n") or 0)
+        self.calls.append(top_n)
+        ordered = [str(c.id) for c in candidates]
+        score_map = {cid: float(len(ordered) - i) for i, cid in enumerate(ordered)}
+        return RerankResult(ordered_ids=ordered, score_map=score_map, provider="stub", model_used="stub")
+
+
+def _mk_candidate(*, dataset_id: str, score: float, index: int) -> dict[str, Any]:
+    return {
+        "chunk_id": str(uuid4()),
+        "content": f"vector hit {index}",
+        "metadata": {"document_id": str(uuid4()), "dataset_id": dataset_id, "chunk_index": index},
+        "score": float(score),
+    }
+
+
+def _build_vector_retriever() -> HybridRetriever:
+    retriever = HybridRetriever()
+    retriever.k = 3
+    retriever.tenant_id = uuid4()
+    retriever.dataset_id = uuid4()
+    retriever.account_id = "u"
+    retriever.retrieval_mode = "vector"
+    retriever.enable_weight_rerank = False
+    retriever.enable_reranker = True
+    retriever.reranker_provider = "stub"
+    retriever.reranker_top_n = 3
+    return retriever
+
+
+def test_retriever_skips_reranker_when_top_hit_is_high_confidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    retriever = _build_vector_retriever()
+    ds_id = str(retriever.dataset_id)
+
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RERANK_SKIP_THRESHOLD", 0.9, raising=False)
+    monkeypatch.setattr(settings, "RERANK_SKIP_GAP", 0.15, raising=False)
+
+    vector_candidates = [
+        _mk_candidate(dataset_id=ds_id, score=0.96, index=0),
+        _mk_candidate(dataset_id=ds_id, score=0.70, index=1),
+        _mk_candidate(dataset_id=ds_id, score=0.61, index=2),
+    ]
+    stub_store = _StubVectorStore(results=vector_candidates)
+    monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: stub_store, raising=True)
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: stub_store, raising=False)
+
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda _self, r, **_k: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda _self, r: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda _self, r: r, raising=True)
+
+    reranker_calls: list[int] = []
+    monkeypatch.setattr(
+        "app.rag.retriever.get_reranker",
+        lambda _provider: _CountingReranker(calls=reranker_calls),
+        raising=True,
+    )
+
+    retriever._get_relevant_documents(
+        "q",
+        run_manager=CallbackManagerForRetrieverRun.get_noop_manager(),
+    )
+
+    assert reranker_calls == []
+    channels = (retriever._last_debug_metrics or {}).get("channels") or {}
+    rerank = channels.get("rerank") or {}
+    assert rerank.get("used") is False
+    assert rerank.get("skip_reason") == "high_confidence"
+    assert rerank.get("skip_top_score") == pytest.approx(1.0)
+    assert float(rerank.get("skip_score_gap") or 0.0) > 0.15
+
+
+def test_retriever_keeps_reranker_when_confidence_gate_is_not_met(monkeypatch: pytest.MonkeyPatch) -> None:
+    retriever = _build_vector_retriever()
+    ds_id = str(retriever.dataset_id)
+
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RERANK_SKIP_THRESHOLD", 0.9, raising=False)
+    monkeypatch.setattr(settings, "RERANK_SKIP_GAP", 0.15, raising=False)
+
+    vector_candidates = [
+        _mk_candidate(dataset_id=ds_id, score=0.84, index=0),
+        _mk_candidate(dataset_id=ds_id, score=0.83, index=1),
+        _mk_candidate(dataset_id=ds_id, score=0.10, index=2),
+    ]
+    stub_store = _StubVectorStore(results=vector_candidates)
+    monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: stub_store, raising=True)
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: stub_store, raising=False)
+
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda _self, r, **_k: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda _self, r: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda _self, r: r, raising=True)
+
+    reranker_calls: list[int] = []
+    monkeypatch.setattr(
+        "app.rag.retriever.get_reranker",
+        lambda _provider: _CountingReranker(calls=reranker_calls),
+        raising=True,
+    )
+
+    retriever._get_relevant_documents(
+        "q",
+        run_manager=CallbackManagerForRetrieverRun.get_noop_manager(),
+    )
+
+    assert reranker_calls == [3]
+    channels = (retriever._last_debug_metrics or {}).get("channels") or {}
+    rerank = channels.get("rerank") or {}
+    assert rerank.get("used") is True
+    assert rerank.get("skip_reason") is None
