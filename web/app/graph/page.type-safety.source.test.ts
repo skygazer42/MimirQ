@@ -194,4 +194,22 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('const handleConnectLabelOpenChange = useCallback')
     expect(page).not.toContain('// Keyboard Shortcuts')
   })
+
+  it('keeps graph display filters and search highlighting extracted into a dedicated hook', () => {
+    const page = read('./page.tsx')
+    const hook = read('./use-graph-display-filters.ts')
+
+    expect(page).toContain('useGraphDisplayFilters')
+    expect(hook).toContain('export function useGraphDisplayFilters')
+    expect(hook).toContain('const displayGraphData = useMemo<GraphData>')
+    expect(hook).toContain('const searchMatches = useMemo')
+    expect(page).not.toContain('const availableEntityTypes = useMemo(() =>')
+    expect(page).not.toContain('const filteredPredicates = useMemo(() =>')
+    expect(page).not.toContain('const displayGraphData = useMemo<GraphData>(() =>')
+    expect(page).not.toContain('const searchMatches = useMemo(() =>')
+    expect(page).not.toContain('const resetGraphFilters = () =>')
+    expect(page).not.toContain('const handleEntityTypeCheckedChange = useCallback')
+    expect(page).not.toContain('const handlePredicateCheckedChange = useCallback')
+    expect(page).not.toContain('const toggleConfidenceBucket = (bucket: GraphConfBucket) =>')
+  })
 })
