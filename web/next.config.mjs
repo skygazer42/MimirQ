@@ -1,31 +1,8 @@
 import { withSentryConfig } from '@sentry/nextjs'
 
-const isProduction = process.env.NODE_ENV === 'production'
 const sentryEnabled = Boolean(
   process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN
 )
-
-function buildCspValue() {
-  const directives = [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "frame-ancestors 'none'",
-    "object-src 'none'",
-    "script-src 'self' 'wasm-unsafe-eval'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: http: https:",
-    "font-src 'self' data:",
-    "connect-src 'self' http: https: ws: wss:",
-    "worker-src 'self' blob:",
-    "frame-src 'self' http: https:",
-    "form-action 'self'",
-    "manifest-src 'self'",
-  ]
-
-  if (isProduction) directives.push('upgrade-insecure-requests')
-
-  return directives.join('; ')
-}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -59,21 +36,6 @@ const nextConfig = {
       },
     })
     return config
-  },
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            // Next.js App Router still emits inline runtime scripts.
-            // Keep the strict policy in report-only mode until nonce wiring lands.
-            key: 'Content-Security-Policy-Report-Only',
-            value: buildCspValue(),
-          },
-        ],
-      },
-    ]
   },
   images: {
     remotePatterns: [
