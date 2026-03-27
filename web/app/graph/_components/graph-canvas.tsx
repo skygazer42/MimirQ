@@ -1,6 +1,6 @@
 'use client'
 
-import type { RefObject } from 'react'
+import { useId, useMemo, useState, type RefObject } from 'react'
 
 import { Share2, Upload } from 'lucide-react'
 
@@ -37,6 +37,24 @@ type GraphCanvasProps = Readonly<{
   onTriggerFileUpload: () => void
 }>
 
+function normalizeNodeLabel(node: Record<string, unknown>, fallback: string) {
+  const candidate = [node.label, node.name, node.title, node.id].find(
+    (value) => typeof value === 'string' && value.trim().length > 0
+  )
+  return typeof candidate === 'string' ? candidate : fallback
+}
+
+function normalizeLinkEndpoint(endpoint: unknown) {
+  if (typeof endpoint === 'string' && endpoint.trim()) return endpoint
+  if (typeof endpoint === 'number') return String(endpoint)
+  if (endpoint && typeof endpoint === 'object' && 'id' in endpoint) {
+    const value = (endpoint as { id?: unknown }).id
+    if (typeof value === 'string' && value.trim()) return value
+    if (typeof value === 'number') return String(value)
+  }
+  return 'unknown'
+}
+
 export function GraphCanvas({
   viewportRef,
   graph2dRef,
@@ -61,6 +79,44 @@ export function GraphCanvas({
   onLoadMock,
   onTriggerFileUpload,
 }: GraphCanvasProps) {
+  const [isSemanticListVisible, setIsSemanticListVisible] = useState(viewMode === '3d')
+  const semanticPanelId = useId()
+  const semanticNodes = useMemo(
+    () =>
+      graphRenderData.nodes.map((node, index) => {
+        const nodeRecord = node as Record<string, unknown>
+        const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
+        const nodeId =
+          typeof nodeRecord.id === 'string' && nodeRecord.id.trim().length > 0 ? nodeRecord.id : `node-${index + 1}`
+        const type = String(meta.type ?? nodeRecord.type ?? 'unknown').trim() || 'unknown'
+        const kind = String(meta.kind ?? 'entity').trim() || 'entity'
+        return {
+          id: nodeId,
+          label: normalizeNodeLabel(nodeRecord, nodeId),
+          type,
+          kind,
+        }
+      }),
+    [graphRenderData.nodes]
+  )
+  const semanticLinks = useMemo(
+    () =>
+      graphRenderData.links.map((link, index) => {
+        const linkRecord = link as Record<string, unknown>
+        const meta = (linkRecord.meta ?? {}) as Record<string, unknown>
+        const source = normalizeLinkEndpoint(linkRecord.source)
+        const target = normalizeLinkEndpoint(linkRecord.target)
+        const relation = String(linkRecord.label ?? linkRecord.relation ?? meta.kind ?? '关联').trim() || '关联'
+        return {
+          id: `${source}-${target}-${index}`,
+          source,
+          target,
+          relation,
+        }
+      }),
+    [graphRenderData.links]
+  )
+
   return (
     <div ref={viewportRef} className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px]">
       <div
@@ -74,13 +130,34 @@ export function GraphCanvas({
       />
 
       {graphRenderData.nodes.length > 0 ? (
-        viewMode === '3d' ? (
-          graphViewportWidth > 0 && graphViewportHeight > 0 ? (
-            <KnowledgeGraph3D
-              ref={graph3dRef}
+        <>
+          {viewMode === '3d' ? (
+            graphViewportWidth > 0 && graphViewportHeight > 0 ? (
+              <KnowledgeGraph3D
+                ref={graph3dRef}
+                data={graphRenderData}
+                width={graphViewportWidth}
+                height={graphViewportHeight}
+                onNodeClick={onNodeClick}
+                onNodeRightClick={onNodeRightClick}
+                onLinkClick={onLinkClick}
+                onLinkRightClick={onLinkRightClick}
+                onBackgroundClick={onBackgroundClick}
+                onBackgroundRightClick={onBackgroundRightClick}
+                highlightedNodeIds={highlightedNodeIds}
+                highlightedLinkIds={highlightedLinkIds}
+                selectedNodeId={selectedNodeId}
+                layoutMode={layoutMode}
+              />
+            ) : (
+              <div className="absolute inset-0 z-10 flex items-center justify-center text-muted-foreground">
+                Loading graph...
+              </div>
+            )
+          ) : (
+            <GraphViewer
+              ref={graph2dRef}
               data={graphRenderData}
-              width={graphViewportWidth}
-              height={graphViewportHeight}
               onNodeClick={onNodeClick}
               onNodeRightClick={onNodeRightClick}
               onLinkClick={onLinkClick}
@@ -90,30 +167,73 @@ export function GraphCanvas({
               highlightedNodeIds={highlightedNodeIds}
               highlightedLinkIds={highlightedLinkIds}
               selectedNodeId={selectedNodeId}
+              showEdgeLabels={showEdgeLabels}
               layoutMode={layoutMode}
             />
-          ) : (
-            <div className="absolute inset-0 z-10 flex items-center justify-center text-muted-foreground">
-              Loading graph...
+          )}
+          <aside className="absolute top-4 left-4 z-20 w-[min(28rem,calc(100%-2rem))] pointer-events-none">
+            <div className="pointer-events-auto rounded-xl border border-border/80 bg-card/90 shadow-soft backdrop-blur-sm supports-[backdrop-filter]:bg-card/75">
+              <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border/60">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-medium text-foreground">语义图谱列表</h2>
+                  <p className="text-xs text-muted-foreground">
+                    当前数据：{semanticNodes.length} 个节点，{semanticLinks.length} 条连线
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0"
+                  aria-expanded={isSemanticListVisible}
+                  aria-controls={semanticPanelId}
+                  onClick={() => setIsSemanticListVisible((visible) => !visible)}
+                >
+                  {isSemanticListVisible ? '隐藏语义列表' : '显示语义列表'}
+                </Button>
+              </div>
+              {viewMode === '3d' ? (
+                <p className="px-3 pt-2 text-xs text-muted-foreground">
+                  3D 视图为视觉展示，语义列表提供可读结构，便于键盘与屏幕阅读器访问。
+                </p>
+              ) : null}
+              <div
+                id={semanticPanelId}
+                hidden={!isSemanticListVisible}
+                role="region"
+                aria-label="知识图谱语义化结构列表"
+                className="space-y-3 px-3 py-3 max-h-72 overflow-auto"
+              >
+                <section aria-labelledby={`${semanticPanelId}-nodes`}>
+                  <h3 id={`${semanticPanelId}-nodes`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    节点
+                  </h3>
+                  <ul className="mt-2 space-y-1.5 text-sm text-foreground">
+                    {semanticNodes.map((node) => (
+                      <li key={node.id}>
+                        <span className="font-medium">{node.label}</span>
+                        <span className="text-muted-foreground">（ID: {node.id}，类型: {node.type}，类别: {node.kind}）</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+                <section aria-labelledby={`${semanticPanelId}-links`}>
+                  <h3 id={`${semanticPanelId}-links`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    连线
+                  </h3>
+                  <ol className="mt-2 space-y-1.5 text-sm text-foreground">
+                    {semanticLinks.map((link) => (
+                      <li key={link.id}>
+                        <span className="font-medium">{link.source}</span>
+                        <span className="text-muted-foreground"> → {link.target}（关系: {link.relation}）</span>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              </div>
             </div>
-          )
-        ) : (
-          <GraphViewer
-            ref={graph2dRef}
-            data={graphRenderData}
-            onNodeClick={onNodeClick}
-            onNodeRightClick={onNodeRightClick}
-            onLinkClick={onLinkClick}
-            onLinkRightClick={onLinkRightClick}
-            onBackgroundClick={onBackgroundClick}
-            onBackgroundRightClick={onBackgroundRightClick}
-            highlightedNodeIds={highlightedNodeIds}
-            highlightedLinkIds={highlightedLinkIds}
-            selectedNodeId={selectedNodeId}
-            showEdgeLabels={showEdgeLabels}
-            layoutMode={layoutMode}
-          />
-        )
+          </aside>
+        </>
       ) : (
         <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
           <EmptyState
