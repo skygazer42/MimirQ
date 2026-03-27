@@ -1,8 +1,10 @@
 'use client'
 
 import { useRef } from 'react'
+import { usePathname } from 'next/navigation'
 import { useReportWebVitals } from 'next/web-vitals'
 
+import { getAuthHeaders } from '@/lib/auth-headers'
 import { observabilityApi } from '@/lib/api'
 
 export type FrontendWebVitalName = 'LCP' | 'FID' | 'INP'
@@ -40,20 +42,33 @@ export function normalizeWebVitalMetric(metric: WebVitalMetric): FrontendWebVita
   return payload
 }
 
+export function canReportWebVital(
+  pathname: string | null | undefined,
+  authHeaders: Readonly<Record<string, string>>
+): boolean {
+  if (typeof pathname === 'string' && pathname.startsWith('/auth')) {
+    return false
+  }
+  return Boolean(authHeaders.Authorization || authHeaders['X-User-ID'])
+}
+
 export function WebVitalsReporter() {
   const sentMetricIdsRef = useRef<Set<string>>(new Set())
+  const pathname = usePathname()
 
   useReportWebVitals((metric) => {
     if (!shouldReportWebVital(metric.name)) return
+    const authHeaders = getAuthHeaders()
+    if (!canReportWebVital(pathname, authHeaders)) return
     if (sentMetricIdsRef.current.has(metric.id)) return
 
     sentMetricIdsRef.current.add(metric.id)
 
     const payload = normalizeWebVitalMetric(metric)
-    const page = globalThis.window?.location?.pathname
+    const page = pathname || globalThis.window?.location?.pathname
     const request = page ? { ...payload, page } : payload
 
-    void observabilityApi.reportFrontendVital(request).catch((error) => {
+    void observabilityApi.reportFrontendVital(request, { keepalive: true }).catch((error) => {
       console.warn('Failed to report web vital', error)
     })
   })
