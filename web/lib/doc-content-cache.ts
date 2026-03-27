@@ -27,10 +27,23 @@ export type DocSourceCacheStats = {
   lastUpdatedAt: number | null
 }
 
+export type CachePressureLevel = 'low' | 'moderate' | 'high'
+
+export type CachePressureClassification = {
+  level: CachePressureLevel
+  storageUsageRatio: number | null
+  cacheShareOfUsage: number | null
+  totalCacheBytes: number
+  reasons: string[]
+  hasStorageEstimate: boolean
+}
+
 const DB_NAME = 'mimirq'
 const DB_VERSION = 2
 const CONTENT_STORE = 'doc_contents'
 const SOURCE_STORE = 'doc_sources'
+const MB = 1024 * 1024
+const DEFAULT_STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 function toError(reason: unknown, fallbackMessage: string): Error {
   if (reason instanceof Error) return reason
@@ -100,6 +113,70 @@ function measureStringBytes(value: string | undefined | null): number {
   if (!value) return 0
   if (textEncoder) return textEncoder.encode(value).length
   return value.length * 2
+}
+
+function normalizeFiniteNumber(input: unknown): number | null {
+  const value = Number(input)
+  if (!Number.isFinite(value) || value < 0) return null
+  return value
+}
+
+export function isRecordStaleByUpdatedAt(updatedAt: number | null | undefined, staleBefore: number): boolean {
+  return Number.isFinite(updatedAt) && Number(updatedAt) < staleBefore
+}
+
+export function classifyStoragePressure(input: {
+  storageEstimate: Pick<StorageEstimate, 'usage' | 'quota'> | null | undefined
+  cacheStats:
+    | {
+        content?: Pick<DocContentCacheStats, 'totalBytes'>
+        source?: Pick<DocSourceCacheStats, 'totalBytes'>
+      }
+    | null
+    | undefined
+}): CachePressureClassification {
+  const usage = normalizeFiniteNumber(input.storageEstimate?.usage)
+  const quota = normalizeFiniteNumber(input.storageEstimate?.quota)
+  const contentBytes = normalizeFiniteNumber(input.cacheStats?.content?.totalBytes) ?? 0
+  const sourceBytes = normalizeFiniteNumber(input.cacheStats?.source?.totalBytes) ?? 0
+  const totalCacheBytes = contentBytes + sourceBytes
+  const storageUsageRatio = usage != null && quota && quota > 0 ? usage / quota : null
+  const cacheShareOfUsage = usage != null && usage > 0 ? totalCacheBytes / usage : null
+  const reasons: string[] = []
+
+  if (storageUsageRatio != null && storageUsageRatio >= 0.85) {
+    reasons.push('storage usage is near quota')
+  }
+  if (cacheShareOfUsage != null && cacheShareOfUsage >= 0.7 && totalCacheBytes >= 20 * MB) {
+    reasons.push('cache footprint dominates storage usage')
+  }
+  if (storageUsageRatio != null && storageUsageRatio >= 0.7) {
+    reasons.push('storage usage is elevated')
+  }
+  if (cacheShareOfUsage != null && cacheShareOfUsage >= 0.45 && totalCacheBytes >= 10 * MB) {
+    reasons.push('cache footprint is a large share of storage usage')
+  }
+  if (storageUsageRatio == null && totalCacheBytes >= 250 * MB) {
+    reasons.push('cache footprint is large and storage estimate is unavailable')
+  } else if (storageUsageRatio == null && totalCacheBytes >= 100 * MB) {
+    reasons.push('cache footprint is moderate and storage estimate is unavailable')
+  }
+
+  let level: CachePressureLevel = 'low'
+  if (reasons.some((reason) => reason.includes('near quota') || reason.includes('dominates') || reason.includes('large'))) {
+    level = 'high'
+  } else if (reasons.length > 0) {
+    level = 'moderate'
+  }
+
+  return {
+    level,
+    storageUsageRatio,
+    cacheShareOfUsage,
+    totalCacheBytes,
+    reasons,
+    hasStorageEstimate: usage != null && quota != null,
+  }
 }
 
 async function collectStoreRecords<T>(
@@ -243,4 +320,76 @@ export async function clearDocContentCache() {
 export async function clearDocSourceCache() {
   if (globalThis.window === undefined) return
   await withStore(SOURCE_STORE, 'readwrite', (store) => store.clear())
+}
+
+async function pruneStoreByUpdatedAt(
+  storeName: string,
+  maxAgeMs: number,
+  nowMs: number
+): Promise<number> {
+  if (globalThis.window === undefined) return 0
+  const normalizedMaxAgeMs =
+    Number.isFinite(maxAgeMs) && maxAgeMs >= 0 ? Math.trunc(maxAgeMs) : DEFAULT_STALE_MAX_AGE_MS
+  const staleBefore = nowMs - normalizedMaxAgeMs
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite')
+    const store = tx.objectStore(storeName)
+    const request = store.openCursor()
+    let deletedCount = 0
+    let settled = false
+
+    const close = () => {
+      db.close()
+    }
+
+    const resolveOnce = (value: number) => {
+      if (settled) return
+      settled = true
+      close()
+      resolve(value)
+    }
+
+    const rejectOnce = (reason: unknown, message: string) => {
+      if (settled) return
+      settled = true
+      close()
+      reject(toError(reason, message))
+    }
+
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result
+      if (!cursor) return
+      const updatedAt = normalizeFiniteNumber((cursor.value as { updatedAt?: number })?.updatedAt)
+      if (isRecordStaleByUpdatedAt(updatedAt, staleBefore)) {
+        cursor.delete()
+        deletedCount += 1
+      }
+      cursor.continue()
+    }
+    request.onerror = () => rejectOnce(request.error, `IndexedDB cursor failed for "${storeName}"`)
+    tx.oncomplete = () => resolveOnce(deletedCount)
+    tx.onabort = () => rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
+    tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
+  })
+}
+
+export async function pruneStaleDocContentCache(maxAgeMs = DEFAULT_STALE_MAX_AGE_MS, nowMs = Date.now()) {
+  return pruneStoreByUpdatedAt(CONTENT_STORE, maxAgeMs, nowMs)
+}
+
+export async function pruneStaleDocSourceCache(maxAgeMs = DEFAULT_STALE_MAX_AGE_MS, nowMs = Date.now()) {
+  return pruneStoreByUpdatedAt(SOURCE_STORE, maxAgeMs, nowMs)
+}
+
+export async function pruneStaleDocCaches(maxAgeMs = DEFAULT_STALE_MAX_AGE_MS, nowMs = Date.now()) {
+  const [contentDeleted, sourceDeleted] = await Promise.all([
+    pruneStaleDocContentCache(maxAgeMs, nowMs),
+    pruneStaleDocSourceCache(maxAgeMs, nowMs),
+  ])
+  return {
+    contentDeleted,
+    sourceDeleted,
+    totalDeleted: contentDeleted + sourceDeleted,
+  }
 }
