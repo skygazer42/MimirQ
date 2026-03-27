@@ -19,6 +19,7 @@ import {
   getTokenContent,
   type ChatRagConfig,
 } from './use-chat-formatter'
+import { recoverStreamedAssistantMessage } from './use-chat-stream-recovery'
 
 type MutableRef<T> = {
   current: T
@@ -70,9 +71,11 @@ export function useChatStream({
   const [currentSteps, setCurrentSteps] = useState<string[]>([])
 
   const abortControllerRef = useRef<AbortController | null>(null)
+  const activeConversationIdRef = useRef<string | undefined>(conversationId)
   const fullResponseRef = useRef('')
   const currentStepsRef = useRef<string[]>([])
   const rafIdRef = useRef<number | null>(null)
+  const streamRequestIdRef = useRef<string | null>(null)
 
   const clearRaf = useCallback(() => {
     if (rafIdRef.current != null) {
@@ -86,9 +89,14 @@ export function useChatStream({
     setCurrentResponse('')
     setCurrentCitations([])
     setCurrentSteps([])
+    streamRequestIdRef.current = null
     fullResponseRef.current = ''
     currentStepsRef.current = []
   }, [clearRaf])
+
+  useEffect(() => {
+    activeConversationIdRef.current = conversationId
+  }, [conversationId])
 
   useEffect(() => {
     return () => {
@@ -120,6 +128,7 @@ export function useChatStream({
   const updateConversation = useCallback(
     (nextConversationId: string) => {
       if (!nextConversationId || nextConversationId === (conversationId || '')) return
+      activeConversationIdRef.current = nextConversationId
       setConversationId(nextConversationId)
       onConversationId?.(nextConversationId)
     },
@@ -174,6 +183,7 @@ export function useChatStream({
         let citations: Citation[] = []
         let sawFirstEvent = false
         let sawDone = false
+        let streamAccepted = false
         let streamError: Error | null = null
 
         try {
@@ -238,7 +248,17 @@ export function useChatStream({
                 streamError = new Error(String(payload.message || 'Unknown error'))
               }
             },
-            { signal: abortControllerRef.current.signal }
+            {
+              signal: abortControllerRef.current.signal,
+              onOpen: ({ requestId, conversationId: openedConversationId }) => {
+                streamAccepted = true
+                streamRequestIdRef.current = requestId
+                if (openedConversationId) {
+                  activeConversationIdRef.current = openedConversationId
+                  updateConversation(openedConversationId)
+                }
+              },
+            }
           )
 
           if (streamError) throw streamError
@@ -250,6 +270,22 @@ export function useChatStream({
 
           if (sawDone) {
             console.warn('SSE closed after done', streamErr)
+          } else if (streamAccepted && !streamError) {
+            const recoveredMessage = await recoverStreamedAssistantMessage({
+              conversationId: String(activeConversationIdRef.current || ''),
+              requestId: String(streamRequestIdRef.current || ''),
+              getMessages: (nextConversationId, params) => chatApi.getMessages(nextConversationId, params),
+            })
+
+            if (recoveredMessage) {
+              setMessages((prev) => {
+                if (prev.some((item) => item.id === recoveredMessage.id)) return prev
+                return [...prev, recoveredMessage]
+              })
+              resetTransientState()
+            } else {
+              throw new Error('Chat stream interrupted before completion and could not be recovered')
+            }
           } else {
             console.warn('SSE unavailable; falling back to non-streaming chat', streamErr)
             globalThis.window.clearTimeout(timeoutId)

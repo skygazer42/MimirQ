@@ -8,7 +8,8 @@ describe('use parsed files store source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'use-parsed-files-store.ts'), 'utf8')
 
     expect(src).toContain('function getUpdatedMarkdownFields(')
-    expect(src).toContain('const idsToDelete = new Set([id, ...collectDescendants(id, folders)])')
+    expect(src).toContain("import { collectFolderDescendantIds } from '@/lib/folder-tree-index'")
+    expect(src).toContain('const idsToDelete = new Set([id, ...collectFolderDescendantIds(folders, id)])')
     expect(src).toContain('idsToDelete.has(String(file.folderId))')
     expect(src).not.toContain('(updates as any)?.markdownContent')
     expect(src).not.toContain('(updates as any)?.originalMarkdownContent')
