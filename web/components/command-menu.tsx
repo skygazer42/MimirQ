@@ -23,6 +23,7 @@ import { useTheme } from "next-themes"
 import type { Conversation, Dataset, Document } from "@/types"
 import { chatApi, datasetApi, documentApi } from "@/lib/api"
 import { globalEventBus } from "@/lib/event-bus"
+import { useCommandMenuState } from "@/store/command-menu"
 import { useDocumentView } from "@/store/document-view"
 
 import {
@@ -115,7 +116,6 @@ function matchesSearchNeedle(values: Array<string | null | undefined>, needle: s
 }
 
 export function CommandMenu() {
-  const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const [docResults, setDocResults] = React.useState<Document[]>([])
   const [datasetResults, setDatasetResults] = React.useState<Dataset[]>([])
@@ -129,6 +129,9 @@ export function CommandMenu() {
   const router = useRouter()
   const pathname = usePathname()
   const { setTheme } = useTheme()
+  const open = useCommandMenuState((state) => state.open)
+  const setOpen = useCommandMenuState((state) => state.setOpen)
+  const toggleOpen = useCommandMenuState((state) => state.toggle)
   const { openDocument } = useDocumentView()
   const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || "/"), [pathname])
   const isSlashMode = query.trim().startsWith("/")
@@ -163,14 +166,14 @@ export function CommandMenu() {
       }
     })
     const offToggle = globalEventBus.on("command-menu:toggle", () => {
-      setOpen((current) => !current)
+      toggleOpen()
     })
 
     return () => {
       offSetOpen()
       offToggle()
     }
-  }, [])
+  }, [setOpen, toggleOpen])
 
   // Server-backed document search for large knowledge bases.
   React.useEffect(() => {
@@ -387,7 +390,7 @@ export function CommandMenu() {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        setOpen((current) => !current)
+        toggleOpen()
         clearPendingChord()
         return
       }
@@ -423,7 +426,7 @@ export function CommandMenu() {
 
     document.addEventListener("keydown", down)
     return () => document.removeEventListener("keydown", down)
-  }, [armPendingChord, chordPrefixes, clearPendingChord, keyChordCommandMap, open, pendingChordPrefix])
+  }, [armPendingChord, chordPrefixes, clearPendingChord, keyChordCommandMap, open, pendingChordPrefix, toggleOpen])
 
   React.useEffect(() => {
     if (open) clearPendingChord()
@@ -440,7 +443,10 @@ export function CommandMenu() {
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <div className="flex items-center justify-between border-b border-border/50 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
+      <div
+        id="mimirq-command-menu"
+        className="flex items-center justify-between border-b border-border/50 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground"
+      >
         <span className="font-medium text-foreground/80">Command Center</span>
         <span>输入 <span className="font-semibold text-foreground">/</span> 查看快捷动作 · 试试 g d / g c / g g / f s</span>
       </div>

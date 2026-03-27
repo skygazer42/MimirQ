@@ -130,13 +130,16 @@ describe('ParsingPage workbench scaffold', () => {
     const hookSrc = fs.readFileSync(path.resolve(__dirname, 'use-parsing-view-state.ts'), 'utf8')
 
     expect(src).toContain('useParsingViewState')
-    expect(src).not.toContain('const syncLibraryFromServer = useCallback(')
+    expect(src).not.toContain('const librarySyncQuery = useQuery(')
     expect(src).not.toContain('const activeRun = useMemo(')
     expect(src).not.toContain('const visibleQueueFiles = useMemo(')
     expect(src).not.toContain('const activeLibraryFile = useMemo(')
 
     expect(hookSrc).toContain('export function useParsingViewState(')
-    expect(hookSrc).toContain('const syncLibraryFromServer = useCallback(')
+    expect(hookSrc).toContain("from '@tanstack/react-query'")
+    expect(hookSrc).toContain('const librarySyncQuery = useQuery(')
+    expect(hookSrc).toContain('const activeLibraryContentQuery = useQuery(')
+    expect(hookSrc).not.toContain('const syncLibraryFromServer = useCallback(')
     expect(hookSrc).toContain('const activeRun = useMemo(')
     expect(hookSrc).toContain('const visibleQueueFiles = useMemo(')
     expect(hookSrc).toContain('const activeLibraryFile = useMemo(')

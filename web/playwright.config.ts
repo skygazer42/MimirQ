@@ -23,7 +23,7 @@ export default defineConfig({
   },
   webServer: {
     command: useProdServer
-      ? `pnpm exec next build && pnpm exec next start -H 127.0.0.1 -p ${PORT}`
+      ? `pnpm exec next build --webpack && pnpm exec next start -H 127.0.0.1 -p ${PORT}`
       : `pnpm exec next dev --webpack -H 127.0.0.1 -p ${PORT}`,
     url: baseURL,
     reuseExistingServer: !process.env.CI && !useProdServer,

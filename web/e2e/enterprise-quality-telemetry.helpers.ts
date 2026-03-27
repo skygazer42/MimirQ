@@ -19,6 +19,10 @@ type MockParsingDocument = {
 export type EnterpriseTelemetryMockState = {
   uploaded: boolean
   parsingDocuments?: MockParsingDocument[]
+  chatRequests?: Array<{
+    conversationId: string | null
+    message: string
+  }>
 }
 
 export const UPLOADED_DOCUMENT_ID = 'doc-e2e-1'
@@ -226,6 +230,19 @@ export async function installCommonApiMocks(page: Page, state: EnterpriseTelemet
     }
 
     if (pathname === '/api/v1/chat/stream' && method === 'POST') {
+      try {
+        const body = request.postDataJSON() as { conversation_id?: unknown; message?: unknown }
+        state.chatRequests = [
+          ...(state.chatRequests || []),
+          {
+            conversationId: typeof body?.conversation_id === 'string' ? body.conversation_id : null,
+            message: typeof body?.message === 'string' ? body.message : '',
+          },
+        ]
+      } catch {
+        state.chatRequests = state.chatRequests || []
+      }
+
       return route.fulfill({
         status: 200,
         contentType: 'text/event-stream',

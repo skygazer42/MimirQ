@@ -47,7 +47,7 @@ import { ModeToggle } from '@/components/mode-toggle'
 import { useAuth } from '@/hooks/use-auth'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { useBackendReady } from '@/hooks/use-backend-ready'
-import { globalEventBus } from '@/lib/event-bus'
+import { useCommandMenuState } from '@/store/command-menu'
 
 type MenuItem = {
   icon: React.ComponentType<{ className?: string }>
@@ -166,6 +166,8 @@ export function Navbar({
   const { user, isAuthenticated, isDevMode, logout } = useAuth()
   const { data: backendMeta } = useBackendMeta()
   const backendReady = useBackendReady()
+  const commandMenuOpen = useCommandMenuState((state) => state.open)
+  const setCommandMenuOpen = useCommandMenuState((state) => state.setOpen)
   const readyDetails = backendReady.data ?? null
   const backendOk =
     (() => {
@@ -188,9 +190,6 @@ export function Navbar({
       // ignore
     }
   }, [setSidebarOpen])
-  const setCommandMenuOpen = useCallback((nextOpen: boolean) => {
-    globalEventBus.emit('command-menu:set-open', { open: nextOpen })
-  }, [])
   const toggleSection = useCallback((sectionTitle: string) => {
     setOpenSections((current) => ({
       ...current,
@@ -421,6 +420,9 @@ export function Navbar({
               closeSidebarOnMobile()
             }}
             aria-label="打开命令搜索"
+            aria-haspopup="dialog"
+            aria-expanded={commandMenuOpen}
+            aria-controls="mimirq-command-menu"
             title="打开命令搜索"
           >
             <div className="flex min-w-0 items-center gap-3">
