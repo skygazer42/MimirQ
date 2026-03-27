@@ -281,6 +281,7 @@ export function Navbar({
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return
     if (globalThis.window === undefined) return
+    if (globalThis.navigator?.webdriver) return
     const key = '__mimirq_routes_prefetched__'
     if ((globalThis.window as any)[key]) return
     ;(globalThis.window as any)[key] = true

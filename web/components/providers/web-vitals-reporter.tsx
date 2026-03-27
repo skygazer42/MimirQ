@@ -7,7 +7,7 @@ import { useReportWebVitals } from 'next/web-vitals'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { observabilityApi } from '@/lib/api'
 
-export type FrontendWebVitalName = 'LCP' | 'FID' | 'INP'
+export type FrontendWebVitalName = 'LCP' | 'CLS' | 'FID' | 'INP'
 
 export type FrontendWebVitalPayload = Readonly<{
   id: string
@@ -18,7 +18,7 @@ export type FrontendWebVitalPayload = Readonly<{
   page?: string
 }>
 
-const TRACKED_WEB_VITALS = new Set<FrontendWebVitalName>(['LCP', 'FID', 'INP'])
+const TRACKED_WEB_VITALS = new Set<FrontendWebVitalName>(['LCP', 'CLS', 'FID', 'INP'])
 type WebVitalMetric = Parameters<typeof useReportWebVitals>[0] extends (metric: infer T) => void ? T : never
 
 export function shouldReportWebVital(name: string): name is FrontendWebVitalName {

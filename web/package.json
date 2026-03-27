@@ -7,12 +7,19 @@
     "dev": "next dev --webpack -H 0.0.0.0 -p 3000",
     "dev:turbo": "next dev --turbopack -H 0.0.0.0 -p 3000",
     "build": "next build --webpack && node scripts/check-bundle-budget.mjs",
+    "bundle-check": "node scripts/check-bundle-budget.mjs",
+    "bundle-check:ci": "pnpm run build",
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:enterprise-telemetry": "vitest run -c vitest.enterprise-telemetry.config.ts",
+    "test:coverage:enterprise-telemetry": "vitest run -c vitest.enterprise-telemetry.config.ts --coverage",
     "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:list": "playwright test --list",
+    "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
     "api-check": "node scripts/check-api-contract.mjs && node scripts/check-api-coverage.mjs",
@@ -34,6 +41,7 @@
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.1.5",
+    "@sentry/nextjs": "^10.46.0",
     "@tanstack/react-query": "^5.95.0",
     "@tanstack/react-virtual": "^3.13.23",
     "@xyflow/react": "^12.9.3",
@@ -81,6 +89,7 @@
     }
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.2.2",
     "@tailwindcss/typography": "^0.5.10",
     "@types/chroma-js": "^3.1.2",
@@ -89,14 +98,15 @@
     "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/three": "^0.183.1",
-    "@vitest/coverage-v8": "^4.1.0",
+    "@vitest/coverage-v8": "4.1.0",
     "autoprefixer": "^10.4.27",
     "eslint": "^9.39.3",
     "eslint-config-next": "^16.2.1",
     "openapi-typescript": "7.13.0",
     "postcss": "^8.5.8",
+    "svgo": "^4.0.1",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.3.3",
-    "vitest": "^4.1.0"
+    "vitest": "4.1.0"
   }
 }

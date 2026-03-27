@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 
 import { FullScreenFrame } from '@/components/full-screen-frame'
+import { captureApiError, extractRequestIdFromError } from '@/lib/api-errors'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -26,9 +27,11 @@ function RouteErrorCard({
   href = '/',
   hrefLabel = '返回首页',
 }: RouteErrorProps) {
+  const requestId = extractRequestIdFromError(error)
+
   useEffect(() => {
-    console.error(error)
-  }, [error])
+    captureApiError(error, message, { tags: { boundary: 'route-error' } })
+  }, [error, message])
 
   return (
     <Card className="w-full max-w-lg rounded-3xl shadow-strong">
@@ -44,9 +47,10 @@ function RouteErrorCard({
             <Link href={href}>{hrefLabel}</Link>
           </Button>
         </div>
-        {error?.digest ? (
-          <p className="mt-4 text-xs font-mono text-muted-foreground">错误 ID：{error.digest}</p>
-        ) : null}
+        <div className="mt-4 space-y-1 text-xs font-mono text-muted-foreground">
+          {requestId ? <p>请求 ID：request_id={requestId}</p> : null}
+          {error?.digest ? <p>错误 ID：{error.digest}</p> : null}
+        </div>
       </CardContent>
     </Card>
   )

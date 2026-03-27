@@ -1,4 +1,9 @@
+import { withSentryConfig } from '@sentry/nextjs'
+
 const isProduction = process.env.NODE_ENV === 'production'
+const sentryEnabled = Boolean(
+  process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN
+)
 
 function buildCspValue() {
   const directives = [
@@ -79,4 +84,9 @@ const nextConfig = {
   },
 }
 
-export default nextConfig
+const sentryWrappedConfig = withSentryConfig(nextConfig, {
+  silent: true,
+  disableLogger: true,
+})
+
+export default sentryEnabled ? sentryWrappedConfig : nextConfig

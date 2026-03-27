@@ -6,10 +6,20 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTheme } from 'next-themes'
+import { PageLoading } from '@/components/ui/page-loading'
 import { getChunkMetadata, getChunkRole } from '@/components/chunk-preview/utils/metadata'
 import type { ChunkPreviewItem } from '@/types'
 
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false })
+const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
+  ssr: false,
+  loading: () => (
+    <PageLoading
+      message="正在加载文本预览..."
+      srMessage="Loading text preview"
+      className="h-full min-h-[520px] rounded-xl border border-border/60 bg-background"
+    />
+  ),
+})
 
 const MAX_OVERVIEW_MARKERS = 4000
 
@@ -38,6 +48,10 @@ type MonacoMouseEvent = {
   target: { position: MonacoPosition | null }
 }
 
+type MonacoScrollEvent = {
+  scrollTop: number
+}
+
 type MonacoDisposable = {
   dispose: () => void
 }
@@ -50,7 +64,10 @@ type MonacoEditorInstance = {
   deltaDecorations: (oldDecorations: string[], newDecorations: MonacoDecoration[]) => string[]
   revealRangeInCenter: (range: MonacoRangeLike, scrollType?: number) => void
   onMouseDown: (listener: (event: MonacoMouseEvent) => void) => MonacoDisposable
+  onDidScrollChange: (listener: (event: MonacoScrollEvent) => void) => MonacoDisposable
   getModel: () => MonacoModel | null
+  getScrollTop: () => number
+  setScrollTop: (scrollTop: number) => void
 }
 
 type MonacoModule = {
@@ -141,16 +158,19 @@ export function OriginalPreviewMonaco(props: Readonly<{
   chunks: ChunkPreviewItem[]
   activeChunkIndex: number | null
   activeRange?: { start: number; end: number } | null
+  initialScrollTop?: number
   chunkOverrides?: Record<number, { disabled?: boolean }>
+  onScrollTopChange?: (scrollTop: number) => void
   onSelectChunkIndex?: (index: number) => void
 }>) {
-  const { text, chunks, activeChunkIndex, activeRange, chunkOverrides, onSelectChunkIndex } = props
+  const { text, chunks, activeChunkIndex, activeRange, initialScrollTop, chunkOverrides, onScrollTopChange, onSelectChunkIndex } = props
 
   const editorRef = useRef<MonacoEditorInstance | null>(null)
   const monacoRef = useRef<MonacoModule | null>(null)
   const overviewDecorationIdsRef = useRef<string[]>([])
   const activeDecorationIdsRef = useRef<string[]>([])
   const clickDisposableRef = useRef<MonacoDisposable | null>(null)
+  const scrollDisposableRef = useRef<MonacoDisposable | null>(null)
 
   const lineStarts = useMemo(() => buildLineStarts(text), [text])
   const { theme, systemTheme } = useTheme()
@@ -302,10 +322,27 @@ export function OriginalPreviewMonaco(props: Readonly<{
   }, [applyActiveDecorations])
 
   useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    if (activeChunkIndex != null || activeRange) return
+    if (typeof initialScrollTop !== 'number' || !Number.isFinite(initialScrollTop)) return
+
+    try {
+      editor.setScrollTop(Math.max(0, initialScrollTop))
+    } catch {
+      // no-op
+    }
+  }, [activeChunkIndex, activeRange, initialScrollTop, text])
+
+  useEffect(() => {
     return () => {
       if (clickDisposableRef.current) {
         clickDisposableRef.current.dispose()
         clickDisposableRef.current = null
+      }
+      if (scrollDisposableRef.current) {
+        scrollDisposableRef.current.dispose()
+        scrollDisposableRef.current = null
       }
     }
   }, [])
@@ -337,6 +374,14 @@ export function OriginalPreviewMonaco(props: Readonly<{
           applyOverviewDecorations()
           applyActiveDecorations()
 
+          if (typeof initialScrollTop === 'number' && Number.isFinite(initialScrollTop) && activeChunkIndex == null && !activeRange) {
+            try {
+              editor.setScrollTop(Math.max(0, initialScrollTop))
+            } catch {
+              // no-op
+            }
+          }
+
           if (onSelectChunkIndex) {
             clickDisposableRef.current?.dispose()
             clickDisposableRef.current = editor.onMouseDown((event: MonacoMouseEvent) => {
@@ -349,6 +394,13 @@ export function OriginalPreviewMonaco(props: Readonly<{
               const best = pickBestChunkAtOffset(chunks, offset)
               if (!best) return
               onSelectChunkIndex(best.index)
+            })
+          }
+
+          if (onScrollTopChange) {
+            scrollDisposableRef.current?.dispose()
+            scrollDisposableRef.current = editor.onDidScrollChange((event: MonacoScrollEvent) => {
+              onScrollTopChange(typeof event.scrollTop === 'number' ? event.scrollTop : editor.getScrollTop())
             })
           }
         }}

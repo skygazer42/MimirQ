@@ -44,6 +44,7 @@ export function DocumentViewerPanelShell({
   handleDeleteChunk,
   handleQaDialogOpenChange,
   handleSelectTextChunkIndex,
+  handleTextScrollTopChange,
   highlightChunk,
   highlightChunkId,
   highlightChunkLoading,
@@ -93,6 +94,7 @@ export function DocumentViewerPanelShell({
   submitChunkEditor,
   textActiveChunkIndex,
   textChunkItems,
+  textInitialScrollTop,
   textMode,
   textValue,
 }: Readonly<DocumentViewerPanelState>) {
@@ -200,8 +202,10 @@ export function DocumentViewerPanelShell({
                 textValue={textValue}
                 textChunkItems={textChunkItems}
                 textActiveChunkIndex={textActiveChunkIndex}
+                initialScrollTop={textInitialScrollTop}
                 highlightRange={highlightRange}
                 onTextModeChange={setTextMode}
+                onTextScrollTopChange={handleTextScrollTopChange}
                 onClearHighlight={() => setHighlightChunk(null)}
                 onLoadAllChunks={() => setLoadAllChunks(true)}
                 onRetrieveQueryChange={setRetrieveQuery}

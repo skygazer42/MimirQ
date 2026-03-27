@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { extractAxiosRequestId, extractBackendMessage, extractBackendRequestId, toApiErrorInfo, withRequestId } from './api-errors'
+import {
+  extractAxiosRequestId,
+  extractBackendMessage,
+  extractBackendRequestId,
+  extractRequestIdFromError,
+  toApiErrorInfo,
+  withRequestId,
+} from './api-errors'
 
 describe('api-errors', () => {
   it('extractBackendRequestId reads request_id', () => {
@@ -37,6 +44,12 @@ describe('api-errors', () => {
 
   it('extractAxiosRequestId falls back to config header X-Request-ID', () => {
     expect(extractAxiosRequestId({ config: { headers: { 'X-Request-ID': 'rid-config' } } })).toBe('rid-config')
+  })
+
+  it('extractRequestIdFromError reads explicit requestId values and request_id strings', () => {
+    expect(extractRequestIdFromError({ requestId: 'rid-direct' })).toBe('rid-direct')
+    expect(extractRequestIdFromError(new Error('boom (request_id=rid-string)'))).toBe('rid-string')
+    expect(extractRequestIdFromError('request_id=rid-text')).toBe('rid-text')
   })
 
   it('toApiErrorInfo returns message + requestId + status for axios-like errors', () => {

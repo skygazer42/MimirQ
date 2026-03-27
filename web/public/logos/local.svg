@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <rect width="24" height="24" rx="4" fill="#10B981"/>
-  <circle cx="8" cy="8" r="2" fill="white"/>
-  <circle cx="16" cy="8" r="2" fill="white"/>
-  <circle cx="8" cy="16" r="2" fill="white"/>
-  <circle cx="16" cy="16" r="2" fill="white"/>
-  <circle cx="12" cy="12" r="2.5" fill="white"/>
-  <line x1="8" y1="8" x2="12" y2="12" stroke="white" stroke-width="1.2"/>
-  <line x1="16" y1="8" x2="12" y2="12" stroke="white" stroke-width="1.2"/>
-  <line x1="8" y1="16" x2="12" y2="12" stroke="white" stroke-width="1.2"/>
-  <line x1="16" y1="16" x2="12" y2="12" stroke="white" stroke-width="1.2"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><rect width="24" height="24" fill="#10b981" rx="4"/><circle cx="8" cy="8" r="2" fill="#fff"/><circle cx="16" cy="8" r="2" fill="#fff"/><circle cx="8" cy="16" r="2" fill="#fff"/><circle cx="16" cy="16" r="2" fill="#fff"/><circle cx="12" cy="12" r="2.5" fill="#fff"/><path stroke="#fff" stroke-width="1.2" d="m8 8 4 4m4-4-4 4m-4 4 4-4m4 4-4-4"/></svg>

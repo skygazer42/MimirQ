@@ -20,8 +20,8 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
-import type { Document } from "@/types"
-import { documentApi } from "@/lib/api"
+import type { Conversation, Dataset, Document } from "@/types"
+import { chatApi, datasetApi, documentApi } from "@/lib/api"
 import { globalEventBus } from "@/lib/event-bus"
 import { useDocumentView } from "@/store/document-view"
 
@@ -44,6 +44,25 @@ type SlashCommand = {
   keywords: string[]
   icon: React.ComponentType<{ className?: string }>
   run: () => void
+}
+
+type KeyChordCommand = {
+  key: string
+  label: string
+  description: string
+  run: () => void
+}
+
+const KEY_CHORD_TIMEOUT_MS = 1600
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tagName = target.tagName
+  return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+}
+
+function normalizeChordKey(key: string): string {
+  return String(key || '').trim().toLowerCase()
 }
 
 function buildCurrentViewPrompt(pathname: string): { prompt: string; description: string } {
@@ -88,12 +107,25 @@ function buildCurrentViewPrompt(pathname: string): { prompt: string; description
   }
 }
 
+function matchesSearchNeedle(values: Array<string | null | undefined>, needle: string): boolean {
+  const normalizedNeedle = String(needle || '').trim().toLowerCase()
+  if (!normalizedNeedle) return true
+
+  return values.some((value) => String(value || '').toLowerCase().includes(normalizedNeedle))
+}
+
 export function CommandMenu() {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
   const [docResults, setDocResults] = React.useState<Document[]>([])
+  const [datasetResults, setDatasetResults] = React.useState<Dataset[]>([])
+  const [conversationResults, setConversationResults] = React.useState<Conversation[]>([])
   const [docLoading, setDocLoading] = React.useState(false)
+  const [datasetLoading, setDatasetLoading] = React.useState(false)
+  const [conversationLoading, setConversationLoading] = React.useState(false)
+  const [pendingChordPrefix, setPendingChordPrefix] = React.useState<string | null>(null)
   const requestSeqRef = React.useRef(0)
+  const chordTimerRef = React.useRef<number | null>(null)
   const router = useRouter()
   const pathname = usePathname()
   const { setTheme } = useTheme()
@@ -102,17 +134,27 @@ export function CommandMenu() {
   const isSlashMode = query.trim().startsWith("/")
   const slashNeedle = query.trim().slice(1).toLowerCase()
 
-  React.useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setOpen((open) => !open)
-      }
+  const clearPendingChord = React.useCallback(() => {
+    setPendingChordPrefix(null)
+    if (chordTimerRef.current != null) {
+      globalThis.window.clearTimeout(chordTimerRef.current)
+      chordTimerRef.current = null
     }
-
-    document.addEventListener("keydown", down)
-    return () => document.removeEventListener("keydown", down)
   }, [])
+
+  const armPendingChord = React.useCallback(
+    (prefix: string) => {
+      setPendingChordPrefix(prefix)
+      if (chordTimerRef.current != null) {
+        globalThis.window.clearTimeout(chordTimerRef.current)
+      }
+      chordTimerRef.current = globalThis.window.setTimeout(() => {
+        setPendingChordPrefix(null)
+        chordTimerRef.current = null
+      }, KEY_CHORD_TIMEOUT_MS)
+    },
+    []
+  )
 
   React.useEffect(() => {
     const offSetOpen = globalEventBus.on("command-menu:set-open", (payload) => {
@@ -135,7 +177,11 @@ export function CommandMenu() {
     if (!open) {
       setQuery("")
       setDocResults([])
+      setDatasetResults([])
+      setConversationResults([])
       setDocLoading(false)
+      setDatasetLoading(false)
+      setConversationLoading(false)
       requestSeqRef.current += 1
       return
     }
@@ -143,28 +189,56 @@ export function CommandMenu() {
     const q = query.trim()
     if (q.length < 2 || q.startsWith("/")) {
       setDocResults([])
+      setDatasetResults([])
+      setConversationResults([])
       setDocLoading(false)
+      setDatasetLoading(false)
+      setConversationLoading(false)
       requestSeqRef.current += 1
       return
     }
 
     const seq = ++requestSeqRef.current
     setDocLoading(true)
+    setDatasetLoading(true)
+    setConversationLoading(true)
     const t = globalThis.window.setTimeout(() => {
-      documentApi
-        .list({ q, limit: 8, order_by: "created_at", order_dir: "desc" })
-        .then((res) => {
-          if (seq !== requestSeqRef.current) return
-          setDocResults(res.items || [])
-        })
-        .catch(() => {
-          if (seq !== requestSeqRef.current) return
+      const needle = q.toLowerCase()
+
+      Promise.allSettled([
+        documentApi.list({ q, limit: 8, order_by: "created_at", order_dir: "desc" }),
+        datasetApi.list({ limit: 30 }),
+        chatApi.listConversations({ limit: 30 }),
+      ]).then(([documentsResult, datasetsResult, conversationsResult]) => {
+        if (seq !== requestSeqRef.current) return
+
+        if (documentsResult.status === "fulfilled") {
+          setDocResults(documentsResult.value.items || [])
+        } else {
           setDocResults([])
-        })
-        .finally(() => {
-          if (seq !== requestSeqRef.current) return
-          setDocLoading(false)
-        })
+        }
+        setDocLoading(false)
+
+        if (datasetsResult.status === "fulfilled") {
+          const items = (datasetsResult.value.items || [])
+            .filter((dataset) => matchesSearchNeedle([dataset.name, dataset.description], needle))
+            .slice(0, 6)
+          setDatasetResults(items)
+        } else {
+          setDatasetResults([])
+        }
+        setDatasetLoading(false)
+
+        if (conversationsResult.status === "fulfilled") {
+          const items = (conversationsResult.value.items || [])
+            .filter((conversation) => matchesSearchNeedle([conversation.title, conversation.last_message], needle))
+            .slice(0, 6)
+          setConversationResults(items)
+        } else {
+          setConversationResults([])
+        }
+        setConversationLoading(false)
+      })
     }, 220)
 
     return () => globalThis.window.clearTimeout(t)
@@ -174,6 +248,44 @@ export function CommandMenu() {
     setOpen(false)
     command()
   }, [])
+
+  const keyChordCommands = React.useMemo<KeyChordCommand[]>(
+    () => [
+      {
+        key: 'g d',
+        label: 'Go to Documents',
+        description: '跳到知识库文档工作台。',
+        run: () => router.push('/knowledge'),
+      },
+      {
+        key: 'g c',
+        label: 'Go to Chat',
+        description: '返回主对话视图。',
+        run: () => router.push('/'),
+      },
+      {
+        key: 'g g',
+        label: 'Go to Graph',
+        description: '打开图谱工作台。',
+        run: () => router.push('/graph'),
+      },
+      {
+        key: 'f s',
+        label: 'Find Slice',
+        description: '进入切片工作台，继续检索与诊断。',
+        run: () => router.push('/chunk-preview'),
+      },
+    ],
+    [router]
+  )
+  const chordPrefixes = React.useMemo(
+    () => new Set(keyChordCommands.map((command) => command.key.split(' ')[0] || '')),
+    [keyChordCommands]
+  )
+  const keyChordCommandMap = React.useMemo(
+    () => new Map(keyChordCommands.map((command) => [command.key, command.run])),
+    [keyChordCommands]
+  )
 
   const slashCommands = React.useMemo<SlashCommand[]>(
     () => [
@@ -271,11 +383,66 @@ export function CommandMenu() {
     [slashCommands, slashNeedle]
   )
 
+  React.useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault()
+        setOpen((current) => !current)
+        clearPendingChord()
+        return
+      }
+
+      if (open || e.metaKey || e.ctrlKey || e.altKey) return
+      if (isEditableTarget(e.target)) return
+
+      const key = normalizeChordKey(e.key)
+      if (!key || key.length !== 1) {
+        if (key === 'escape') clearPendingChord()
+        return
+      }
+
+      if (pendingChordPrefix) {
+        const sequence = `${pendingChordPrefix} ${key}`
+        const action = keyChordCommandMap.get(sequence)
+        if (action) {
+          e.preventDefault()
+          clearPendingChord()
+          action()
+          return
+        }
+      }
+
+      if (chordPrefixes.has(key)) {
+        e.preventDefault()
+        armPendingChord(key)
+        return
+      }
+
+      clearPendingChord()
+    }
+
+    document.addEventListener("keydown", down)
+    return () => document.removeEventListener("keydown", down)
+  }, [armPendingChord, chordPrefixes, clearPendingChord, keyChordCommandMap, open, pendingChordPrefix])
+
+  React.useEffect(() => {
+    if (open) clearPendingChord()
+  }, [clearPendingChord, open])
+
+  React.useEffect(
+    () => () => {
+      if (chordTimerRef.current != null) {
+        globalThis.window.clearTimeout(chordTimerRef.current)
+      }
+    },
+    []
+  )
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <div className="flex items-center justify-between border-b border-border/50 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
         <span className="font-medium text-foreground/80">Command Center</span>
-        <span>输入 <span className="font-semibold text-foreground">/</span> 查看快捷动作</span>
+        <span>输入 <span className="font-semibold text-foreground">/</span> 查看快捷动作 · 试试 g d / g c / g g / f s</span>
       </div>
       <CommandInput placeholder="输入命令或搜索..." value={query} onValueChange={setQuery} />
       <CommandList>
@@ -309,6 +476,21 @@ export function CommandMenu() {
           </>
         ) : null}
 
+        <CommandGroup heading="键盘工作流">
+          {keyChordCommands.map((command) => (
+            <CommandItem key={command.key} onSelect={() => runCommand(command.run)}>
+              <Workflow className="mr-2 h-4 w-4" />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span>{command.label}</span>
+                <span className="truncate text-xs text-muted-foreground">{command.description}</span>
+              </div>
+              <CommandShortcut>{command.key}</CommandShortcut>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+
+        <CommandSeparator />
+
         <CommandGroup heading="导航">
           <CommandItem onSelect={() => runCommand(() => router.push('/'))}>
             <Home className="mr-2 h-4 w-4" />
@@ -340,6 +522,35 @@ export function CommandMenu() {
 
         {query.trim().length >= 2 && !isSlashMode ? (
           <>
+            {query.trim().length >= 4 ? (
+              <>
+                <CommandGroup heading="AI 快捷动作">
+                  <CommandItem
+                    value={`ai ${query.trim()}`}
+                    onSelect={() =>
+                      runCommand(() => {
+                        const params = new URLSearchParams({
+                          prompt: query.trim(),
+                          autorun: "1",
+                        })
+                        router.push(`/?${params.toString()}`)
+                      })
+                    }
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span>执行自然语言指令</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        直接把当前输入发送给 AI，并立即开始执行。
+                      </span>
+                    </div>
+                  </CommandItem>
+                </CommandGroup>
+
+                <CommandSeparator />
+              </>
+            ) : null}
+
             <CommandGroup heading="文档">
               {(() => {
     if (docLoading) {
@@ -361,6 +572,66 @@ export function CommandMenu() {
             return (<CommandItem disabled value="doc:empty">
                   <FileText className="mr-2 h-4 w-4"/>
                   <span>未找到文档</span>
+                </CommandItem>);
+        }
+})()}
+            </CommandGroup>
+
+            <CommandSeparator />
+
+            <CommandGroup heading="数据集">
+              {(() => {
+    if (datasetLoading) {
+        return (<CommandItem disabled value="dataset:loading">
+                  <Database className="mr-2 h-4 w-4"/>
+                  <span>搜索中…</span>
+                </CommandItem>);
+    }
+    else if (datasetResults.length) {
+            return (datasetResults.map((dataset) => (<CommandItem key={dataset.id} value={`${dataset.name} ${dataset.description || ''}`} onSelect={() => runCommand(() => {
+                    router.push(`/datasets/${dataset.id}/profile`);
+                })}>
+                    <Database className="mr-2 h-4 w-4"/>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{dataset.name}</span>
+                      {dataset.description ? <span className="truncate text-xs text-muted-foreground">{dataset.description}</span> : null}
+                    </div>
+                  </CommandItem>)));
+        }
+        else {
+            return (<CommandItem disabled value="dataset:empty">
+                  <Database className="mr-2 h-4 w-4"/>
+                  <span>未找到数据集</span>
+                </CommandItem>);
+        }
+})()}
+            </CommandGroup>
+
+            <CommandSeparator />
+
+            <CommandGroup heading="对话">
+              {(() => {
+    if (conversationLoading) {
+        return (<CommandItem disabled value="conversation:loading">
+                  <MessageSquare className="mr-2 h-4 w-4"/>
+                  <span>搜索中…</span>
+                </CommandItem>);
+    }
+    else if (conversationResults.length) {
+            return (conversationResults.map((conversation) => (<CommandItem key={conversation.id} value={`${conversation.title || ''} ${conversation.last_message || ''}`} onSelect={() => runCommand(() => {
+                    router.push(`/history?id=${conversation.id}`);
+                })}>
+                    <MessageSquare className="mr-2 h-4 w-4"/>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{conversation.title || '未命名对话'}</span>
+                      {conversation.last_message ? <span className="truncate text-xs text-muted-foreground">{conversation.last_message}</span> : null}
+                    </div>
+                  </CommandItem>)));
+        }
+        else {
+            return (<CommandItem disabled value="conversation:empty">
+                  <MessageSquare className="mr-2 h-4 w-4"/>
+                  <span>未找到对话</span>
                 </CommandItem>);
         }
 })()}

@@ -6,9 +6,9 @@ import { useReducedMotion } from "framer-motion"
 import { cn } from "@/lib/utils"
 
 export const LOTTIE_URLS = {
-    EMPTY_DOCUMENTS: "https://assets9.lottiefiles.com/packages/lf20_w51pcehl.json", // Placeholder
-    THINKING: "https://assets10.lottiefiles.com/packages/lf20_p8bfn5to.json", // Placeholder
-    PROCESSING: "https://assets7.lottiefiles.com/packages/lf20_t9qk3z4w.json", // Placeholder
+    EMPTY_DOCUMENTS: "/lottie/empty-documents.json",
+    THINKING: "/lottie/thinking.json",
+    PROCESSING: "/lottie/processing.json",
 }
 
 interface LottieAnimationProps extends Omit<LottieComponentProps, "animationData"> {

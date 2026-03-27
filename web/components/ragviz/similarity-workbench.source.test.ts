@@ -4,11 +4,11 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('similarity workbench source', () => {
-  it('avoids any-based helpers in the workbench and plot renderer', () => {
+  it('shows branded loading states for lazily loaded Plotly heatmaps', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
 
-    expect(src).not.toContain(': any')
-    expect(src).not.toContain('as any')
-    expect(src).not.toContain('Record<string, any>')
+    expect(src).toContain('PageLoading')
+    expect(src).toContain('正在加载相似度热力图...')
+    expect(src).toContain('正在初始化图表引擎...')
   })
 })

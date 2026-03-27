@@ -19,4 +19,14 @@ describe('graph canvas accessibility source', () => {
     expect(src).toContain("viewMode === '3d'")
     expect(src).toContain('3D 视图为视觉展示，语义列表提供可读结构')
   })
+
+  it('makes semantic nodes keyboard-focusable so tab navigation can move graph focus', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'graph-canvas.tsx'), 'utf8')
+
+    expect(src).toContain('graph3dRef.current?.focusNode')
+    expect(src).toContain('graph2dRef.current?.focusNode')
+    expect(src).toContain('onFocus={() => focusSemanticNode(node.id)}')
+    expect(src).toContain('type="button"')
+    expect(src).toContain('aria-label={`聚焦节点：${node.label}`}')
+  })
 })

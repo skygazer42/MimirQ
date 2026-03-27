@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useMemo, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState, type RefObject } from 'react'
 
 import { Share2, Upload } from 'lucide-react'
 
@@ -109,6 +109,7 @@ export function GraphCanvas({
           label: normalizeNodeLabel(nodeRecord, nodeId),
           type,
           kind,
+          raw: node as GraphNodeLike,
         }
       })
         : [],
@@ -132,6 +133,13 @@ export function GraphCanvas({
       })
         : [],
     [graphRenderData.links, isSemanticListVisible]
+  )
+  const focusSemanticNode = useCallback(
+    (nodeId: string) => {
+      graph3dRef.current?.focusNode(nodeId)
+      graph2dRef.current?.focusNode(nodeId)
+    },
+    [graph2dRef, graph3dRef]
   )
 
   return (
@@ -211,7 +219,7 @@ export function GraphCanvas({
               </div>
               {viewMode === '3d' ? (
                 <p className="px-3 pt-2 text-xs text-muted-foreground">
-                  3D 视图为视觉展示，语义列表提供可读结构，便于键盘与屏幕阅读器访问。
+                  3D 视图为视觉展示，语义列表提供可读结构，便于键盘与屏幕阅读器访问；按 Tab 键可逐个聚焦节点。
                 </p>
               ) : null}
               <div
@@ -236,8 +244,20 @@ export function GraphCanvas({
                       <ul className="mt-2 space-y-1.5 text-sm text-foreground">
                         {semanticNodes.map((node) => (
                           <li key={node.id}>
-                            <span className="font-medium">{node.label}</span>
-                            <span className="text-muted-foreground">（ID: {node.id}，类型: {node.type}，类别: {node.kind}）</span>
+                            <button
+                              type="button"
+                              className="w-full rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border/70 hover:bg-muted/50 focus-visible:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
+                              aria-label={`聚焦节点：${node.label}`}
+                              aria-pressed={selectedNodeId === node.id}
+                              onFocus={() => focusSemanticNode(node.id)}
+                              onClick={() => {
+                                focusSemanticNode(node.id)
+                                onNodeClick(node.raw)
+                              }}
+                            >
+                              <span className="font-medium">{node.label}</span>
+                              <span className="text-muted-foreground">（ID: {node.id}，类型: {node.type}，类别: {node.kind}）</span>
+                            </button>
                           </li>
                         ))}
                       </ul>

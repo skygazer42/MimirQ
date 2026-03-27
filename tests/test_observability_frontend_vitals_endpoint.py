@@ -1,10 +1,13 @@
 from uuid import UUID
 
+import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
-def test_observability_frontend_vitals_endpoint_logs_metric(monkeypatch):  # noqa: ANN001
+@pytest.mark.parametrize("metric_name", ["LCP", "CLS"])
+def test_observability_frontend_vitals_endpoint_logs_metric(monkeypatch, metric_name):  # noqa: ANN001
     import app.api.v1.observability as obs_mod
     from app.api.v1.observability import report_frontend_web_vital
 
@@ -35,7 +38,7 @@ def test_observability_frontend_vitals_endpoint_logs_metric(monkeypatch):  # noq
     res = client.post(
         "/api/v1/observability/frontend-vitals",
         json={
-            "name": "LCP",
+            "name": metric_name,
             "value": 1820.4,
             "rating": "good",
             "id": "metric-1",
@@ -49,7 +52,7 @@ def test_observability_frontend_vitals_endpoint_logs_metric(monkeypatch):  # noq
     assert captured
     payload = captured[0]
     assert payload["event"] == "frontend_web_vital"
-    assert payload["metric_name"] == "LCP"
+    assert payload["metric_name"] == metric_name
     assert payload["metric_value"] == 1820.4
     assert payload["tenant_id"] == str(tenant_id)
     assert payload["account_id"] == "acct-1"

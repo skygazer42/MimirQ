@@ -89,6 +89,8 @@ export function ChunksToolbarPanel({
         </div>
       </div>
 
+      <div className="mt-2 text-[11px] text-muted-foreground">快捷键：<span className="font-mono">/</span> 聚焦搜索 · <span className="font-mono">j / k</span> 快速切换结果</div>
+
       <div className="mt-2 flex items-center justify-end gap-2">
         <Button
           type="button"

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getChunkMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
 import { cn } from '@/lib/utils'
 import type { ChunkPreviewResponse } from '@/types'
-import { chunkPreviewDiffToExport, computeChunkPreviewDiff } from '@/components/chunk-preview/utils/ab-diff'
+import { buildSemanticEvidenceHighlights, chunkPreviewDiffToExport, computeChunkPreviewDiff } from '@/components/chunk-preview/utils/ab-diff'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
 
 type RunHistoryItem = {
@@ -54,6 +54,74 @@ function extractHierarchyBasis(preview: ChunkPreviewResponse): string[] {
   return Array.from(bases).sort()
 }
 
+function EvidenceHighlightsPanel(props: Readonly<{
+  title: string
+  emptyLabel: string
+  tone: 'added' | 'removed'
+  items: ReturnType<typeof buildSemanticEvidenceHighlights>['added']
+}>) {
+  const { title, emptyLabel, tone, items } = props
+  const toneClass =
+    tone === 'added'
+      ? 'border-info/30 bg-info/5 text-info'
+      : 'border-warning/30 bg-warning/5 text-warning'
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-foreground">{title}</div>
+        <div className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase', toneClass)}>
+          {items.length}
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="mt-3 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-xs text-muted-foreground">
+          {emptyLabel}
+        </div>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {items.map((item) => (
+            <div key={`${tone}:${item.index}:${item.example.slice(0, 24)}`} className="rounded-xl border border-border/60 bg-background/80 p-3">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>Chunk #{item.index}</span>
+                <span className="font-mono">x{item.count}</span>
+              </div>
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/90">
+                {item.segments.map((segment, index) =>
+                  segment.emphasis ? (
+                    <mark
+                      key={`${tone}:${item.index}:${index}`}
+                      className={cn(
+                        'rounded px-0.5',
+                        tone === 'added'
+                          ? 'bg-info/15 text-info'
+                          : 'bg-warning/15 text-warning'
+                      )}
+                    >
+                      {segment.text}
+                    </mark>
+                  ) : (
+                    <span key={`${tone}:${item.index}:${index}`}>{segment.text}</span>
+                  )
+                )}
+              </div>
+              {item.referenceExample ? (
+                <div className="mt-3 border-t border-border/50 pt-3">
+                  <div className="text-[10px] font-medium uppercase text-muted-foreground">Closest opposite evidence</div>
+                  <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+                    {item.referenceExample}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ChunkCompareDialog(props: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -94,6 +162,7 @@ export function ChunkCompareDialog(props: Readonly<{
     if (!baseline) return null
     return computeChunkPreviewDiff(baseline, current)
   }, [baseline, current])
+  const evidenceHighlights = useMemo(() => (diff ? buildSemanticEvidenceHighlights(diff) : null), [diff])
 
   const baselineMeta = useMemo(() => {
     if (!baselineKey) return null
@@ -147,8 +216,9 @@ export function ChunkCompareDialog(props: Readonly<{
               </div>
 
               {baseline && diff ? (
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                  <div className="bg-card border border-border/60 rounded-xl p-4">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                    <div className="bg-card border border-border/60 rounded-xl p-4">
                     <div className="text-[10px] text-muted-foreground uppercase  font-medium">Chunks</div>
                     <div className="mt-2 flex items-end justify-between">
                       <div className="text-sm font-mono text-foreground/90">{diff.bCount}</div>
@@ -169,9 +239,9 @@ export function ChunkCompareDialog(props: Readonly<{
                     <div className="mt-2 text-[11px] text-muted-foreground">
                       A: {diff.aCount} · B: {diff.bCount}
                     </div>
-                  </div>
+                    </div>
 
-                  <div className="bg-card border border-border/60 rounded-xl p-4">
+                    <div className="bg-card border border-border/60 rounded-xl p-4">
                     <div className="text-[10px] text-muted-foreground uppercase  font-medium">长度分布（{diff.unit}）</div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
                       <div className="text-muted-foreground">
@@ -190,9 +260,9 @@ export function ChunkCompareDialog(props: Readonly<{
                         <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP95 ?? 0) - (diff.aP95 ?? 0))})</span>
                       </div>
                     </div>
-                  </div>
+                    </div>
 
-                  <div className="bg-card border border-border/60 rounded-xl p-4">
+                    <div className="bg-card border border-border/60 rounded-xl p-4">
                     <div className="text-[10px] text-muted-foreground uppercase  font-medium">内容重合度（估算）</div>
                     <div className="mt-2 flex items-end justify-between">
                       <div className="text-sm font-mono text-foreground/90">{Math.round((diff.overlap || 0) * 100)}%</div>
@@ -203,9 +273,9 @@ export function ChunkCompareDialog(props: Readonly<{
                     <div className="mt-2 text-[11px] text-muted-foreground">
                       以 trimmed chunk 内容哈希做 multiset 匹配；不考虑顺序和微小改动。
                     </div>
-                  </div>
+                    </div>
 
-                  <div className="bg-card border border-border/60 rounded-xl p-4">
+                    <div className="bg-card border border-border/60 rounded-xl p-4">
                     <div className="text-[10px] text-muted-foreground uppercase  font-medium">覆盖/重叠/质量</div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
                       <div className="text-muted-foreground">
@@ -227,7 +297,25 @@ export function ChunkCompareDialog(props: Readonly<{
                     <div className="mt-2 text-[11px] text-muted-foreground">
                       quality A: {baseline.quality_gate?.grade ?? '-'} · B: {current.quality_gate?.grade ?? '-'}
                     </div>
+                    </div>
                   </div>
+
+                  {evidenceHighlights ? (
+                    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                      <EvidenceHighlightsPanel
+                        title="新增证据"
+                        emptyLabel="当前版本没有新增的关键证据。"
+                        tone="added"
+                        items={evidenceHighlights.added}
+                      />
+                      <EvidenceHighlightsPanel
+                        title="丢失证据"
+                        emptyLabel="当前版本没有丢失的关键证据。"
+                        tone="removed"
+                        items={evidenceHighlights.removed}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

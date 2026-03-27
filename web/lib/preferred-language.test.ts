@@ -33,6 +33,10 @@ describe('preferred language resolution', () => {
       })
     ).toBeUndefined()
   })
+
+  it('returns undefined when no navigator information is available', () => {
+    expect(resolveBrowserPreferredLanguage({})).toBeUndefined()
+  })
 })
 
 describe('preferred language header injection', () => {
@@ -63,5 +67,10 @@ describe('preferred language header injection', () => {
     })
     applyPreferredLanguageAxiosHeader(headers, 'it-IT')
     expect(headers.get('Accept-Language')).toBe('es-ES')
+  })
+
+  it('does nothing when no preferred language can be resolved', () => {
+    const headers = withPreferredLanguageHeader({ Accept: 'application/json' }, '')
+    expect(headers).toEqual({ Accept: 'application/json' })
   })
 })

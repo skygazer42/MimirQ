@@ -14,6 +14,7 @@ import type { Citation, Message } from '@/types'
 import { cn } from '@/lib/utils'
 import { globalEventBus } from '@/lib/event-bus'
 import { toAbsoluteBackendUrl } from '@/lib/env'
+import { prefetchDocumentView } from '@/lib/document-view-prefetch'
 import { useDocumentView } from '@/store/document-view'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
 import { EvidenceViewerDialog } from '@/components/evidence/evidence-viewer-dialog'
@@ -936,6 +937,7 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
   const { openDocument } = useDocumentView()
   const [hideImage, setHideImage] = useState(false)
   const [viewerOpen, setViewerOpen] = useState(false)
+  const prefetchedRef = useRef(false)
   const imgUrl = (() => {
     if (!citation.img_url) return null
     return resolveSafeCitationImageUrl(citation.img_url)
@@ -963,12 +965,26 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
     }
   }, [citation, openDocument])
 
+  const handlePrefetch = useCallback(() => {
+    if (prefetchedRef.current) return
+    if (!citation.document_id) return
+
+    prefetchedRef.current = true
+    prefetchDocumentView({
+      documentId: citation.document_id,
+      chunkId: citation.chunk_id,
+      rawFileUrl: toAbsoluteBackendUrl(`/api/v1/documents/${citation.document_id}/download`),
+    })
+  }, [citation])
+
   return (
     <>
       <div className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 shadow-sm transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md">
         <button
           type="button"
           onClick={handleClick}
+          onMouseEnter={handlePrefetch}
+          onFocus={handlePrefetch}
           className="block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <div className="flex items-start gap-3">
