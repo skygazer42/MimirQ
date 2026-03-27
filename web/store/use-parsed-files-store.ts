@@ -37,6 +37,7 @@ export interface ParsedFileData {
 type ParsedFileUpdates = Partial<Omit<ParsedFileData, 'id'>>
 
 const RELIABLE_SYNC_MAX_ATTEMPTS = 3
+const parsedFileUpdateVersions = new Map<string, number>()
 
 interface ParsedFilesState {
   files: ParsedFileData[]
@@ -106,6 +107,16 @@ async function persistParsedMarkdownReliably(
     }
   }
   throw lastError
+}
+
+function registerParsedFileUpdate(id: string): number {
+  const nextVersion = (parsedFileUpdateVersions.get(id) || 0) + 1
+  parsedFileUpdateVersions.set(id, nextVersion)
+  return nextVersion
+}
+
+function isCurrentParsedFileUpdate(id: string, version: number): boolean {
+  return parsedFileUpdateVersions.get(id) === version
 }
 
 const noopStorage = {
@@ -185,6 +196,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
       },
 
       updateParsedFile: async (id, updates) => {
+        const updateVersion = registerParsedFileUpdate(id)
         const applyUpdates = () =>
           set((state) => ({
             files: state.files.map((f) =>
@@ -219,12 +231,14 @@ export const useParsedFiles = create<ParsedFilesState>()(
 
         try {
           await persistParsedMarkdownReliably(id, markdownContent, originalMarkdownContent)
+          if (!isCurrentParsedFileUpdate(id, updateVersion)) return
           applyUpdates()
         } catch (error) {
           const reason = isIndexedDbUnavailableError(error)
             ? 'IndexedDB unavailable, applying in-memory fallback for parsed markdown'
             : 'Failed to persist parsed markdown to IndexedDB, applying in-memory fallback'
           console.warn(reason, error)
+          if (!isCurrentParsedFileUpdate(id, updateVersion)) return
           applyUpdates()
         }
       },
