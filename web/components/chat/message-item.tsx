@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { AuthImage } from '@/components/auth-image'
+import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import type { Citation, Message } from '@/types'
 import { cn } from '@/lib/utils'
 import { globalEventBus } from '@/lib/event-bus'
@@ -71,30 +72,25 @@ const markdownBaseComponents = {
   ),
   li: ({ children }: { children?: ReactNode }) => <li className="pl-1">{children}</li>,
   a: ({ href, children }: { href?: string; children?: ReactNode }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
-    >
-      {children}
-    </a>
+    (() => {
+      const safeHref = sanitizeMarkdownHref(href)
+      if (!safeHref) return <span className="text-muted-foreground">{children}</span>
+
+      return (
+        <a
+          href={safeHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
+        >
+          {children}
+        </a>
+      )
+    })()
   ),
   img: ({ src, alt }: { src?: string | Blob; alt?: string }) => {
     const raw = typeof src === 'string' ? src : ''
-    const resolved = (() => {
-    if (raw) {
-        if (/^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)) {
-            return raw;
-        }
-        else {
-            return toAbsoluteBackendUrl(raw);
-        }
-    }
-    else {
-        return '';
-    }
-    })()
+    const resolved = resolveMarkdownImageSrc(raw)
     if (!resolved) return null
     return (
       <AuthImage
@@ -725,7 +721,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             return (<CinematicTypewriter content={message.content} isStreaming={true}/>);
         }
         else {
-            return (<ReactMarkdown remarkPlugins={markdownPlugins} components={markdownComponents}>
+            return (<ReactMarkdown remarkPlugins={markdownPlugins} skipHtml components={markdownComponents}>
               {message.content}
             </ReactMarkdown>);
         }
