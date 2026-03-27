@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useMemo, useState, type RefObject } from 'react'
+import { useEffect, useId, useMemo, useState, type RefObject } from 'react'
 
 import { Share2, Upload } from 'lucide-react'
 
@@ -11,6 +11,8 @@ import { EmptyState } from '@/components/ui/empty-state'
 import type { GraphData } from '@/lib/graph-parser'
 
 import type { GraphLinkLike, GraphNodeLike } from '../graph-page-utils'
+
+const SEMANTIC_LIST_ITEM_LIMIT = 200
 
 type GraphCanvasProps = Readonly<{
   viewportRef: RefObject<HTMLDivElement | null>
@@ -81,9 +83,21 @@ export function GraphCanvas({
 }: GraphCanvasProps) {
   const [isSemanticListVisible, setIsSemanticListVisible] = useState(viewMode === '3d')
   const semanticPanelId = useId()
+  const semanticNodeCount = graphRenderData.nodes.length
+  const semanticLinkCount = graphRenderData.links.length
+  const isSemanticListTruncated =
+    semanticNodeCount > SEMANTIC_LIST_ITEM_LIMIT || semanticLinkCount > SEMANTIC_LIST_ITEM_LIMIT
+
+  useEffect(() => {
+    if (viewMode === '3d') {
+      setIsSemanticListVisible(true)
+    }
+  }, [viewMode])
+
   const semanticNodes = useMemo(
     () =>
-      graphRenderData.nodes.map((node, index) => {
+      isSemanticListVisible
+        ? graphRenderData.nodes.slice(0, SEMANTIC_LIST_ITEM_LIMIT).map((node, index) => {
         const nodeRecord = node as Record<string, unknown>
         const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
         const nodeId =
@@ -96,12 +110,14 @@ export function GraphCanvas({
           type,
           kind,
         }
-      }),
-    [graphRenderData.nodes]
+      })
+        : [],
+    [graphRenderData.nodes, isSemanticListVisible]
   )
   const semanticLinks = useMemo(
     () =>
-      graphRenderData.links.map((link, index) => {
+      isSemanticListVisible
+        ? graphRenderData.links.slice(0, SEMANTIC_LIST_ITEM_LIMIT).map((link, index) => {
         const linkRecord = link as Record<string, unknown>
         const meta = (linkRecord.meta ?? {}) as Record<string, unknown>
         const source = normalizeLinkEndpoint(linkRecord.source)
@@ -113,8 +129,9 @@ export function GraphCanvas({
           target,
           relation,
         }
-      }),
-    [graphRenderData.links]
+      })
+        : [],
+    [graphRenderData.links, isSemanticListVisible]
   )
 
   return (
@@ -177,7 +194,7 @@ export function GraphCanvas({
                 <div className="min-w-0">
                   <h2 className="text-sm font-medium text-foreground">语义图谱列表</h2>
                   <p className="text-xs text-muted-foreground">
-                    当前数据：{semanticNodes.length} 个节点，{semanticLinks.length} 条连线
+                    当前数据：{semanticNodeCount} 个节点，{semanticLinkCount} 条连线
                   </p>
                 </div>
                 <Button
@@ -204,32 +221,42 @@ export function GraphCanvas({
                 aria-label="知识图谱语义化结构列表"
                 className="space-y-3 px-3 py-3 max-h-72 overflow-auto"
               >
-                <section aria-labelledby={`${semanticPanelId}-nodes`}>
-                  <h3 id={`${semanticPanelId}-nodes`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    节点
-                  </h3>
-                  <ul className="mt-2 space-y-1.5 text-sm text-foreground">
-                    {semanticNodes.map((node) => (
-                      <li key={node.id}>
-                        <span className="font-medium">{node.label}</span>
-                        <span className="text-muted-foreground">（ID: {node.id}，类型: {node.type}，类别: {node.kind}）</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-                <section aria-labelledby={`${semanticPanelId}-links`}>
-                  <h3 id={`${semanticPanelId}-links`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    连线
-                  </h3>
-                  <ol className="mt-2 space-y-1.5 text-sm text-foreground">
-                    {semanticLinks.map((link) => (
-                      <li key={link.id}>
-                        <span className="font-medium">{link.source}</span>
-                        <span className="text-muted-foreground"> → {link.target}（关系: {link.relation}）</span>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
+                {isSemanticListVisible ? (
+                  <>
+                    {isSemanticListTruncated ? (
+                      <p className="text-xs text-muted-foreground">
+                        为避免大图谱阻塞页面，语义列表仅展示前 {SEMANTIC_LIST_ITEM_LIMIT} 个节点和前{' '}
+                        {SEMANTIC_LIST_ITEM_LIMIT} 条连线。
+                      </p>
+                    ) : null}
+                    <section aria-labelledby={`${semanticPanelId}-nodes`}>
+                      <h3 id={`${semanticPanelId}-nodes`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        节点
+                      </h3>
+                      <ul className="mt-2 space-y-1.5 text-sm text-foreground">
+                        {semanticNodes.map((node) => (
+                          <li key={node.id}>
+                            <span className="font-medium">{node.label}</span>
+                            <span className="text-muted-foreground">（ID: {node.id}，类型: {node.type}，类别: {node.kind}）</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                    <section aria-labelledby={`${semanticPanelId}-links`}>
+                      <h3 id={`${semanticPanelId}-links`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        连线
+                      </h3>
+                      <ol className="mt-2 space-y-1.5 text-sm text-foreground">
+                        {semanticLinks.map((link) => (
+                          <li key={link.id}>
+                            <span className="font-medium">{link.source}</span>
+                            <span className="text-muted-foreground"> → {link.target}（关系: {link.relation}）</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  </>
+                ) : null}
               </div>
             </div>
           </aside>
