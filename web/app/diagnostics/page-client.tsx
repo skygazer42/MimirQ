@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Activity, Copy, FileJson, FileText, RefreshCcw, Timer, Hash, FileSearch, Gauge, Package, Stethoscope, BarChart3, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -16,6 +16,7 @@ import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { useBackendReady } from '@/hooks/use-backend-ready'
 import { formatApiError } from '@/lib/api-errors'
+import { getDocContentCacheStats, getDocSourceCacheStats, clearDocContentCache, clearDocSourceCache, type DocContentCacheStats, type DocSourceCacheStats } from '@/lib/doc-content-cache'
 import { observabilityApi, ragApi } from '@/lib/api'
 import { API_BASE_URL, API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { formatFileSize } from '@/lib/utils'
@@ -43,6 +44,16 @@ function formatTs(tsMs: number) {
 function fmtPercent(v?: number | null, digits = 1) {
   if (v == null || !Number.isFinite(Number(v))) return '—'
   return `${(Number(v) * 100).toFixed(digits)}%`
+}
+
+type CacheStats = {
+  content: DocContentCacheStats
+  source: DocSourceCacheStats
+}
+
+type CacheCleanupState = {
+  content: boolean
+  source: boolean
 }
 
 async function copyToClipboard(text = ''): Promise<void> {
@@ -177,9 +188,19 @@ export default function DiagnosticsPage() {
   const [perfSuiteRunning, setPerfSuiteRunning] = useState(false)
 
   const [perfSnapshot, setPerfSnapshot] = useState<PerfSnapshot | null>(null)
+  const [storageEstimate, setStorageEstimate] = useState<StorageEstimate | null>(null)
+  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
+  const [cacheLoading, setCacheLoading] = useState(false)
+  const [cleanupLoading, setCleanupLoading] = useState<CacheCleanupState>({
+    content: false,
+    source: false,
+  })
 
   const docsUrl = `${API_BASE_URL}/docs`
   const openapiUrl = `${API_BASE_URL}/openapi.json`
+  const storageCapable =
+    typeof navigator !== 'undefined' &&
+    typeof navigator.storage?.estimate === 'function'
 
   const healthJson = prettyJson(health.data?.payload ?? { error: health.error ? String(health.error) : 'loading' })
   const metaJson = prettyJson(meta.data ?? { error: meta.error ? String(meta.error) : 'loading' })
@@ -191,6 +212,74 @@ export default function DiagnosticsPage() {
     API_TIMEOUT_MS,
     API_LONG_TIMEOUT_MS,
   })
+
+  const loadStorageEstimate = useCallback(async () => {
+    if (!storageCapable) {
+      setStorageEstimate(null)
+      return
+    }
+    try {
+      const estimate = await navigator.storage.estimate()
+      setStorageEstimate(estimate)
+    } catch (error) {
+      console.warn('Storage estimate failed', error)
+      setStorageEstimate(null)
+    }
+  }, [storageCapable])
+
+  const refreshCacheStats = useCallback(async () => {
+    if (globalThis.window === undefined) {
+      setCacheStats(null)
+      return
+    }
+    setCacheLoading(true)
+    try {
+      const [content, source] = await Promise.all([getDocContentCacheStats(), getDocSourceCacheStats()])
+      setCacheStats({ content, source })
+    } catch (error) {
+      console.error('Cache stats failed', error)
+      toast.error('读取缓存统计失败')
+    } finally {
+      setCacheLoading(false)
+    }
+  }, [])
+
+  const refreshStorageAndCache = useCallback(() => {
+    void loadStorageEstimate()
+    void refreshCacheStats()
+  }, [loadStorageEstimate, refreshCacheStats])
+
+  useEffect(() => {
+    refreshStorageAndCache()
+  }, [refreshStorageAndCache])
+
+  const handleClearContentCache = useCallback(async () => {
+    setCleanupLoading((prev) => ({ ...prev, content: true }))
+    try {
+      await clearDocContentCache()
+      toast.success('文档内容缓存已清理')
+    } catch (error) {
+      console.error('Clear content cache failed', error)
+      toast.error('清理文档内容缓存失败')
+    } finally {
+      setCleanupLoading((prev) => ({ ...prev, content: false }))
+      void refreshCacheStats()
+    }
+  }, [refreshCacheStats])
+
+  const handleClearSourceCache = useCallback(async () => {
+    setCleanupLoading((prev) => ({ ...prev, source: true }))
+    try {
+      await clearDocSourceCache()
+      toast.success('文档源文件缓存已清理')
+    } catch (error) {
+      console.error('Clear source cache failed', error)
+      toast.error('清理文档源文件缓存失败')
+    } finally {
+      setCleanupLoading((prev) => ({ ...prev, source: false }))
+      void refreshCacheStats()
+    }
+  }, [refreshCacheStats])
 
   async function refreshOnlineQuality(): Promise<void> {
     setOnlineQualityLoading(true)
@@ -239,6 +328,14 @@ export default function DiagnosticsPage() {
   const perfJson = useMemo(() => prettyJson(perfSnapshot ?? { error: 'perf snapshot not captured' }), [perfSnapshot])
   const driftJson = useMemo(() => prettyJson(driftSnapshot ?? { error: 'no drift snapshot yet' }), [driftSnapshot])
   const perfSuiteJson = useMemo(() => prettyJson(perfSuiteResult ?? { error: 'no perf suite run yet' }), [perfSuiteResult])
+  const storageUsageRatio =
+    storageEstimate?.usage != null && storageEstimate.quota ? storageEstimate.usage / storageEstimate.quota : null
+  const docContentSize = cacheStats?.content.totalBytes ?? 0
+  const docSourceSize = cacheStats?.source.totalBytes ?? 0
+  const docContentEntries = cacheStats?.content.entries ?? 0
+  const docSourceEntries = cacheStats?.source.entries ?? 0
+  const docContentUpdatedAt = cacheStats?.content.lastUpdatedAt ?? null
+  const docSourceUpdatedAt = cacheStats?.source.lastUpdatedAt ?? null
 
   const onlineQualityChartData = useMemo(() => {
     const ts = onlineQuality?.timeseries?.ts_ms || []
@@ -1235,55 +1332,150 @@ export default function DiagnosticsPage() {
 	          </CardContent>
 	        </Card>
 
-	        <Card>
-	          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-	            <CardTitle className="text-sm">Bundle Hints</CardTitle>
-	            <Button
-	              variant="ghost"
-	              size="icon"
-	              className="h-8 w-8"
-	              onClick={async () => copyToClipboard(prettyJson(perfSnapshot?.scripts ?? { error: 'not captured' }))}
-	              title="复制"
-	              aria-label="复制"
-	            >
-	              <Copy className="h-4 w-4" />
-	            </Button>
-	          </CardHeader>
-	          <CardContent className="space-y-2">
-	            <p className="text-xs text-muted-foreground">
-	              基于浏览器 `PerformanceResourceTiming` 的粗略统计（受缓存/跨域限制影响，可能显示为 0）。
-	            </p>
-	            {perfSnapshot?.scripts?.top?.length ? (
-	              <div className="space-y-2">
-	                <div className="flex items-center justify-between text-xs text-muted-foreground">
-	                  <span>Top scripts</span>
-	                  <span className="font-mono tabular-nums">
-	                    {perfSnapshot.scripts.count} items ·{' '}
-	                    {formatFileSize(perfSnapshot.scripts.total_transfer_bytes || perfSnapshot.scripts.total_decoded_bytes || 0)}
-	                  </span>
-	                </div>
-	                <div className="space-y-1">
-	                  {perfSnapshot.scripts.top.map((row) => (
-	                    <div key={row.name} className="flex items-center justify-between gap-3 text-xs">
-	                      <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={row.name}>
-	                        {row.name}
-	                      </span>
-	                      <span className="shrink-0 font-mono tabular-nums text-foreground/80">
-	                        {formatFileSize(row.transfer_bytes || row.decoded_bytes || 0)}
-	                      </span>
-	                    </div>
-	                  ))}
-	                </div>
-	              </div>
-	            ) : (
-	              <div className="text-xs text-muted-foreground">暂无 bundle 数据（可点 “Perf Snapshot” 重新采样）。</div>
-	            )}
-	          </CardContent>
-	        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">Bundle Hints</CardTitle>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={async () => copyToClipboard(prettyJson(perfSnapshot?.scripts ?? { error: 'not captured' }))}
+              title="复制"
+              aria-label="复制"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              基于浏览器 `PerformanceResourceTiming` 的粗略统计（受缓存/跨域限制影响，可能显示为 0）。
+            </p>
+            {perfSnapshot?.scripts?.top?.length ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Top scripts</span>
+                  <span className="font-mono tabular-nums">
+                    {perfSnapshot.scripts.count} items ·{' '}
+                    {formatFileSize(perfSnapshot.scripts.total_transfer_bytes || perfSnapshot.scripts.total_decoded_bytes || 0)}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {perfSnapshot.scripts.top.map((row) => (
+                    <div key={row.name} className="flex items-center justify-between gap-3 text-xs">
+                      <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground" title={row.name}>
+                        {row.name}
+                      </span>
+                      <span className="shrink-0 font-mono tabular-nums text-foreground/80">
+                        {formatFileSize(row.transfer_bytes || row.decoded_bytes || 0)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">暂无 bundle 数据（可点 “Perf Snapshot” 重新采样）。</div>
+            )}
+          </CardContent>
+        </Card>
 
-	        <Card className="md:col-span-2">
-	          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-	            <CardTitle className="text-sm">Quick Tips</CardTitle>
+        <Card className="md:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">Browser Storage & Cache</CardTitle>
+            <div className="flex items-center gap-1">
+              <StatusBadge
+                status={storageCapable ? 'completed' : 'failed'}
+                label={storageCapable ? 'Storage estimate available' : 'Storage estimate unavailable'}
+                dense
+              />
+              <StatusBadge
+                status={cacheLoading ? 'processing' : 'completed'}
+                label={cacheLoading ? 'Gathering cache stats' : 'Cache stats ready'}
+                dense
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => {
+                  void refreshStorageAndCache()
+                }}
+                title="刷新"
+                aria-label="刷新 storage 和 cache 统计"
+              >
+                <RefreshCcw className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <StatsGrid className="xl:grid-cols-4">
+              <StatCard
+                icon={Activity}
+                label="Storage usage"
+                value={storageEstimate?.usage != null ? formatFileSize(storageEstimate.usage) : '—'}
+                subValue={storageUsageRatio != null ? fmtPercent(storageUsageRatio) : undefined}
+                color="gray"
+              />
+              <StatCard
+                icon={BarChart3}
+                label="Storage quota"
+                value={storageEstimate?.quota != null ? formatFileSize(storageEstimate.quota) : '—'}
+                color="gray"
+              />
+              <StatCard
+                icon={FileText}
+                label="Doc content entries"
+                value={docContentEntries.toLocaleString()}
+                color="gray"
+              />
+              <StatCard
+                icon={FileJson}
+                label="Doc source entries"
+                value={docSourceEntries.toLocaleString()}
+                color="gray"
+              />
+            </StatsGrid>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Doc content payload</p>
+                <p className="font-mono text-sm text-foreground">{formatFileSize(docContentSize)}</p>
+                <p className="text-xs text-muted-foreground">
+                  Last updated: {docContentUpdatedAt ? formatTs(docContentUpdatedAt) : '—'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Doc source payload</p>
+                <p className="font-mono text-sm text-foreground">{formatFileSize(docSourceSize)}</p>
+                <p className="text-xs text-muted-foreground">
+                  Last updated: {docSourceUpdatedAt ? formatTs(docSourceUpdatedAt) : '—'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearContentCache}
+                disabled={cleanupLoading.content || cacheLoading}
+              >
+                Clear doc content cache
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearSourceCache}
+                disabled={cleanupLoading.source || cacheLoading}
+              >
+                Clear doc source cache
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-sm">Quick Tips</CardTitle>
 	            <Button
 	              variant="ghost"
 	              size="icon"
