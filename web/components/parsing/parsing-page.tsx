@@ -30,6 +30,7 @@ export default function ParsingPage() {
   const createFolder = useParsedFiles((state) => state.createFolder)
   const setActiveFolderId = useParsedFiles((state) => state.setActiveFolderId)
   const isLibraryLoaded = useParsedFiles((state) => state.isLoaded)
+  const consumeUploadTargetFolderId = pageState.consumeUploadTargetFolderId
 
   const {
     addFiles,
@@ -88,8 +89,7 @@ export default function ParsingPage() {
 
   const handleFileSelect = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const targetFolderId = pageState.uploadTargetFolderIdRef.current
-      pageState.uploadTargetFolderIdRef.current = null
+      const targetFolderId = consumeUploadTargetFolderId()
 
       const selectedFiles = event.target.files ? Array.from(event.target.files) : []
       if (selectedFiles.length > 0) {
@@ -98,7 +98,7 @@ export default function ParsingPage() {
 
       event.target.value = ''
     },
-    [addFiles, pageState.uploadTargetFolderIdRef]
+    [addFiles, consumeUploadTargetFolderId]
   )
 
   const queueActions = useParsingQueueActions({

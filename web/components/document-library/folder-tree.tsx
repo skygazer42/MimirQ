@@ -505,8 +505,7 @@ export function DocumentFolderTree({
     dragScrollRafRef.current = requestAnimationFrame(step)
   }, [])
 
-  const renderFolder = useCallback(
-    (folder: FolderNode, depth: number) => {
+  function renderFolder(folder: FolderNode, depth: number) {
       const isActive = activeFolderId === folder.id
       const count = directCountByFolderId[folder.id] || 0
       const children = childrenByParentId.get(folder.id) || []
@@ -771,33 +770,7 @@ export function DocumentFolderTree({
           )}
         </div>
       )
-    },
-    [
-      activeFolderId,
-      autoScrollOnDrag,
-      childrenByParentId,
-      clearActivateTimer,
-      clearExpandTimer,
-      directCountByFolderId,
-      directFilesByFolderId,
-      expandedFileFolderIds,
-      dragOverId,
-      handleDelete,
-      moveFolderWithToast,
-      openCreate,
-      openMove,
-      openRename,
-      onFileDrop,
-      onRequestUpload,
-      onRequestUploadFolder,
-      onSelectFile,
-      requestActivate,
-      requestExpand,
-      showFiles,
-      setActiveFolderId,
-      toggleFileList,
-    ]
-  )
+  }
 
   const rootCount = displayFiles.length
   const rootChildren = childrenByParentId.get(ROOT_FOLDER_ID) || []
