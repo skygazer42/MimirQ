@@ -3260,7 +3260,6 @@ class HybridRetriever(BaseRetriever):
                         pass
                     if isinstance(self._last_channel_metrics, dict):
                         self._last_channel_metrics["merged_post_rerank"] = len(merged_results or [])
-                    merged_results = merged_results
                 else:
                     reranker = get_reranker(provider)
 

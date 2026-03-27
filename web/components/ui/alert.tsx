@@ -2,6 +2,7 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
+import type { RadixRef } from "@/lib/radix-utils"
 
 const alertVariants = cva(
   "relative w-full rounded-lg border p-4 [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground/80 [&>svg+div]:pl-7",
@@ -40,7 +41,7 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert
 })
 
 export const AlertTitle = React.forwardRef<
-  React.ElementRef<"h5">,
+  RadixRef<"h5">,
   React.ComponentPropsWithoutRef<"h5">
 >(function AlertTitle({ className, ...props }, ref) {
   return (
@@ -53,7 +54,7 @@ export const AlertTitle = React.forwardRef<
 })
 
 export const AlertDescription = React.forwardRef<
-  React.ElementRef<"div">,
+  RadixRef<"div">,
   React.ComponentPropsWithoutRef<"div">
 >(function AlertDescription({ className, ...props }, ref) {
   return (

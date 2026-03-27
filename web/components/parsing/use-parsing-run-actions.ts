@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, type Dispatch, type SetStateAction } from 'react'
 
 import { parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
@@ -12,18 +12,28 @@ import { type FileStatus } from '@/components/ui/file-queue-item'
 
 import type { ParseFailureDiagnostics, ParsedFile } from './parsing-types'
 
+type MutableRef<T> = {
+  current: T
+}
+
+function estimateTableCount(markdownContent: string): number {
+  const tableMatches = markdownContent.match(/\|.*\|/g) || []
+  if (!tableMatches.length) return 0
+  return (markdownContent.match(/^\|/gm) || []).length / 2
+}
+
 type UseParsingRunActionsOptions = {
   activeFile: ParsedFile | null
   autoParseFileId: string | null
   bumpParsingProgress: (prev: ParsedFile[], fileId: string) => ParsedFile[]
   cancelParse: (fileId: string) => void
   countMarkdownHeadings: (markdown: string) => number
-  fileIdSetRef: MutableRefObject<Set<string>>
-  filesRef: MutableRefObject<ParsedFile[]>
+  fileIdSetRef: MutableRef<Set<string>>
+  filesRef: MutableRef<ParsedFile[]>
   imageCaptionEnabled: boolean
   mapBackendStatusToLibraryStatus: (status?: string) => FileStatus
-  parseControllersRef: MutableRefObject<Map<string, AbortController>>
-  parseProgressIntervalsRef: MutableRefObject<Map<string, ReturnType<typeof setInterval>>>
+  parseControllersRef: MutableRef<Map<string, AbortController>>
+  parseProgressIntervalsRef: MutableRef<Map<string, ReturnType<typeof setInterval>>>
   parserBackend: string
   setActiveBlockId: Dispatch<SetStateAction<string | null>>
   setAutoParseFileId: Dispatch<SetStateAction<string | null>>
@@ -44,9 +54,7 @@ function getMarkdownStats(markdownContent: string, apiStats: Record<string, unkn
     tableCount:
       typeof apiStats?.table_count === 'number'
         ? apiStats.table_count
-        : (markdownContent.match(/\|.*\|/g) || []).length > 0
-          ? (markdownContent.match(/^\|/gm) || []).length / 2
-          : 0,
+        : estimateTableCount(markdownContent),
     imageCount:
       typeof apiStats?.image_count === 'number'
         ? apiStats.image_count

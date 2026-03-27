@@ -20,10 +20,14 @@ import {
   type ChatRagConfig,
 } from './use-chat-formatter'
 
+type MutableRef<T> = {
+  current: T
+}
+
 type UseChatStreamOptions = {
   conversationId?: string
   setConversationId: (conversationId: string | undefined) => void
-  messagesRef: React.MutableRefObject<Message[]>
+  messagesRef: MutableRef<Message[]>
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   documentIds?: string[]
   promptTemplateId?: string

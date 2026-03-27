@@ -5,6 +5,7 @@ import { Search, X } from "lucide-react"
 
 import { IconButton } from "@/components/ui/icon-button"
 import { Input } from "@/components/ui/input"
+import { assignRef } from "@/lib/radix-utils"
 import { cn } from "@/lib/utils"
 
 export type SearchInputProps = Readonly<Omit<
@@ -34,12 +35,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
 
   const setRefs = (node: HTMLInputElement | null) => {
     inputRef.current = node
-    if (!forwardedRef) return
-    if (typeof forwardedRef === "function") {
-      forwardedRef(node)
-      return
-    }
-    ;(forwardedRef as React.MutableRefObject<HTMLInputElement | null>).current = node
+    assignRef(forwardedRef, node)
   }
 
   return (

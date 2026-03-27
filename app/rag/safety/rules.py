@@ -55,7 +55,7 @@ DELIMITER_ATTACK_RULES: tuple[GuardRule, ...] = (
 )
 
 HTML_ENTITY_ATTACK_RE = re.compile(r"(?:&#x?[0-9a-f]{2,6};){4,}", re.IGNORECASE)
-BASE64_BLOCK_RE = re.compile(r"\b(?:[A-Za-z0-9+/]{24,}={0,2})\b")
+BASE64_BLOCK_RE = re.compile(r"\b[A-Za-z0-9+/]{24,}={0,2}\b")
 ZERO_WIDTH_CHARS = {"\u200b", "\u200c", "\u200d", "\ufeff", "\u2060"}
 
 

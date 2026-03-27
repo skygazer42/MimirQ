@@ -76,7 +76,8 @@ export function TagInput({
     }
     if (e.key === 'Backspace' && !draft.trim() && tags.length) {
       // Quick delete last tag when input is empty.
-      removeTag(tags[tags.length - 1])
+      const lastTag = tags.at(-1)
+      if (lastTag) removeTag(lastTag)
     }
   }
 

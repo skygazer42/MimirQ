@@ -157,6 +157,40 @@ class FallbackChatOpenAI(BaseChatModel):
             raise AllProvidersFailedError("all LLM providers failed") from last_exc
         raise AllProvidersFailedError("all LLM providers failed")
 
+    def _record_attempt(
+        self,
+        attempts: list[dict[str, Any]],
+        *,
+        model: BaseChatModel,
+        success: bool,
+        error: Exception | None = None,
+        yielded_tokens: bool | None = None,
+    ) -> None:
+        attempts.append(
+            self._attempt_entry(model=model, success=success, error=error, yielded_tokens=yielded_tokens)
+        )
+
+    def _set_success_metadata(
+        self,
+        attempts: list[dict[str, Any]],
+        *,
+        model: BaseChatModel,
+        yielded_tokens: bool | None = None,
+    ) -> None:
+        prompt_cache = _prompt_cache_meta(model)
+        selected_model = _model_name_of(model)
+        self._record_attempt(attempts, model=model, success=True, yielded_tokens=yielded_tokens)
+        self._invocation_meta_var.set(
+            self._final_meta(
+                attempts=attempts,
+                selected_model=selected_model,
+                prompt_cache=prompt_cache,
+            )
+        )
+
+    def _set_failure_metadata(self, attempts: list[dict[str, Any]]) -> None:
+        self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+
     def _generate(
         self,
         messages: list[BaseMessage],
@@ -172,21 +206,16 @@ class FallbackChatOpenAI(BaseChatModel):
                 result = model._generate(messages, stop=stop, run_manager=run_manager, **kwargs)  # noqa: SLF001
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                attempts.append(self._attempt_entry(model=model, success=False, error=exc))
+                self._record_attempt(attempts, model=model, success=False, error=exc)
                 if not is_retryable_provider_error(exc):
-                    self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+                    self._set_failure_metadata(attempts)
                     raise
                 continue
 
-            prompt_cache = _prompt_cache_meta(model)
-            selected_model = _model_name_of(model)
-            attempts.append(self._attempt_entry(model=model, success=True))
-            self._invocation_meta_var.set(
-                self._final_meta(attempts=attempts, selected_model=selected_model, prompt_cache=prompt_cache)
-            )
+            self._set_success_metadata(attempts, model=model)
             return result
 
-        self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+        self._set_failure_metadata(attempts)
         self._raise_all_failed(last_exc)
 
     async def _agenerate(
@@ -204,21 +233,16 @@ class FallbackChatOpenAI(BaseChatModel):
                 result = await model._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)  # noqa: SLF001
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                attempts.append(self._attempt_entry(model=model, success=False, error=exc))
+                self._record_attempt(attempts, model=model, success=False, error=exc)
                 if not is_retryable_provider_error(exc):
-                    self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+                    self._set_failure_metadata(attempts)
                     raise
                 continue
 
-            prompt_cache = _prompt_cache_meta(model)
-            selected_model = _model_name_of(model)
-            attempts.append(self._attempt_entry(model=model, success=True))
-            self._invocation_meta_var.set(
-                self._final_meta(attempts=attempts, selected_model=selected_model, prompt_cache=prompt_cache)
-            )
+            self._set_success_metadata(attempts, model=model)
             return result
 
-        self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+        self._set_failure_metadata(attempts)
         self._raise_all_failed(last_exc)
 
     def _stream(
@@ -239,21 +263,16 @@ class FallbackChatOpenAI(BaseChatModel):
                     yield chunk
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                attempts.append(self._attempt_entry(model=model, success=False, error=exc, yielded_tokens=yielded_tokens))
+                self._record_attempt(attempts, model=model, success=False, error=exc, yielded_tokens=yielded_tokens)
                 if yielded_tokens or not is_retryable_provider_error(exc):
-                    self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+                    self._set_failure_metadata(attempts)
                     raise
                 continue
 
-            prompt_cache = _prompt_cache_meta(model)
-            selected_model = _model_name_of(model)
-            attempts.append(self._attempt_entry(model=model, success=True, yielded_tokens=yielded_tokens))
-            self._invocation_meta_var.set(
-                self._final_meta(attempts=attempts, selected_model=selected_model, prompt_cache=prompt_cache)
-            )
+            self._set_success_metadata(attempts, model=model, yielded_tokens=yielded_tokens)
             return
 
-        self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+        self._set_failure_metadata(attempts)
         self._raise_all_failed(last_exc)
 
     async def _astream(
@@ -274,21 +293,16 @@ class FallbackChatOpenAI(BaseChatModel):
                     yield chunk
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                attempts.append(self._attempt_entry(model=model, success=False, error=exc, yielded_tokens=yielded_tokens))
+                self._record_attempt(attempts, model=model, success=False, error=exc, yielded_tokens=yielded_tokens)
                 if yielded_tokens or not is_retryable_provider_error(exc):
-                    self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+                    self._set_failure_metadata(attempts)
                     raise
                 continue
 
-            prompt_cache = _prompt_cache_meta(model)
-            selected_model = _model_name_of(model)
-            attempts.append(self._attempt_entry(model=model, success=True, yielded_tokens=yielded_tokens))
-            self._invocation_meta_var.set(
-                self._final_meta(attempts=attempts, selected_model=selected_model, prompt_cache=prompt_cache)
-            )
+            self._set_success_metadata(attempts, model=model, yielded_tokens=yielded_tokens)
             return
 
-        self._invocation_meta_var.set(self._final_meta(attempts=attempts, selected_model=None))
+        self._set_failure_metadata(attempts)
         self._raise_all_failed(last_exc)
 
 

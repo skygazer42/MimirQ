@@ -449,11 +449,16 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string) {
     if (createItemTab === 'retrieve') {
       citations = retrieveRes?.citations || []
       selected = selectedChunkIds || []
-      retrievalSnapshot = {
-        ...(retrieveRes ?? {}),
-        selected_chunk_ids: selected,
-        created_from: 'retrieve',
-      }
+      retrievalSnapshot = retrieveRes
+        ? {
+            ...retrieveRes,
+            selected_chunk_ids: selected,
+            created_from: 'retrieve',
+          }
+        : {
+            selected_chunk_ids: selected,
+            created_from: 'retrieve',
+          }
       ragSnapshot = { retrieval_profile: profile, created_from: 'retrieve' }
     } else {
       citations = importPack?.citations || []
@@ -464,7 +469,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string) {
         created_from: 'evidence_pack',
       }
       ragSnapshot = {
-        retrieval_profile: String(importPack?.retrieval_profile || profile || ''),
+        retrieval_profile: typeof importPack?.retrieval_profile === 'string' ? importPack.retrieval_profile : profile,
         created_from: 'evidence_pack',
       }
     }
@@ -673,7 +678,8 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string) {
     setWhyMissedDriftError(null)
     setWhyMissedDriftedRefs([])
 
-    const snapProfile = String(selectedItem?.rag_config_snapshot?.retrieval_profile || '').trim()
+    const snapshotProfile = selectedItem?.rag_config_snapshot?.retrieval_profile
+    const snapProfile = typeof snapshotProfile === 'string' ? snapshotProfile.trim() : ''
     setWhyMissedProfile(coerceOneOf(RETRIEVAL_PROFILE_VALUES, snapProfile, 'recall50'))
 
     setWhyMissedOpen(true)

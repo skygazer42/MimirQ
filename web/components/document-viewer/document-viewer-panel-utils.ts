@@ -28,16 +28,18 @@ export function toCitation(value: unknown): Citation | null {
   const start_char = toFiniteNumber(value.start_char)
   const end_char = toFiniteNumber(value.end_char)
 
-  return {
+  const citation: Citation = {
     document_id,
     document_name,
     chunk_content,
     relevance_score,
-    ...(chunk_id ? { chunk_id } : {}),
-    ...(matched_terms?.length ? { matched_terms } : {}),
-    ...(page_number !== undefined ? { page_number } : {}),
-    ...(chunk_index !== undefined ? { chunk_index } : {}),
-    ...(start_char !== undefined ? { start_char } : {}),
-    ...(end_char !== undefined ? { end_char } : {}),
   }
+
+  if (chunk_id) citation.chunk_id = chunk_id
+  if (matched_terms?.length) citation.matched_terms = matched_terms
+  if (typeof page_number === "number") citation.page_number = page_number
+  if (typeof chunk_index === "number") citation.chunk_index = chunk_index
+  if (typeof start_char === "number") citation.start_char = start_char
+  if (typeof end_char === "number") citation.end_char = end_char
+  return citation
 }
