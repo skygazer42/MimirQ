@@ -30,7 +30,6 @@ export interface PanelProps
   extends React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof panelVariants> {}
 
-export function Panel({ className, variant, padding, ...props }: PanelProps) {
+export function Panel({ className, variant, padding, ...props }: Readonly<PanelProps>) {
   return <div className={cn(panelVariants({ variant, padding }), className)} {...props} />
 }
-

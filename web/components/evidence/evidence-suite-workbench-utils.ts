@@ -30,6 +30,14 @@ function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+function safeJsonStringify(value: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return ''
+  }
+}
+
 function toOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
 }
@@ -107,7 +115,14 @@ export function normalizeImportPack(value: unknown): EvidenceImportPack | null {
 
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message
-  const text = String(error || '').trim()
+  let text = ''
+  if (typeof error === 'string') {
+    text = error.trim()
+  } else if (typeof error === 'number' || typeof error === 'boolean' || typeof error === 'bigint') {
+    text = String(error)
+  } else if (isRecord(error)) {
+    text = safeJsonStringify(error)
+  }
   return text || 'unknown'
 }
 

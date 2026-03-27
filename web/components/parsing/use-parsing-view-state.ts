@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
 
 import { toast } from 'sonner'
 
@@ -14,13 +14,20 @@ import { type FileStatus } from '@/components/ui/file-queue-item'
 
 import type { ParsedFile } from './parsing-types'
 
+type MutableRef<T> = {
+  current: T
+}
+
+const normalizeBackendCandidate = (value: unknown): string =>
+  typeof value === 'string' && value.trim() ? value.trim() : ''
+
 type SourceStatus = 'unknown' | 'available' | 'missing'
 
 type UseParsingViewStateOptions = {
   activeFileId: string | null
   activeFolderId: string
   activeLibraryFileId: string | null
-  didSyncLibraryFromServerRef: MutableRefObject<boolean>
+  didSyncLibraryFromServerRef: MutableRef<boolean>
   files: ParsedFile[]
   folders: FolderNode[]
   isLibraryLoaded: boolean
@@ -31,7 +38,7 @@ type UseParsingViewStateOptions = {
     sourceFile: File,
     options?: { autoParse?: boolean; select?: boolean }
   ) => Promise<string | null>
-  rehydratedFolderIdsRef: MutableRefObject<Set<string>>
+  rehydratedFolderIdsRef: MutableRef<Set<string>>
   setActiveFileId: Dispatch<SetStateAction<string | null>>
   setActiveLibrarySourceStatus: Dispatch<SetStateAction<SourceStatus>>
   setIsQueueRehydrating: Dispatch<SetStateAction<boolean>>
@@ -66,10 +73,13 @@ export function useParsingViewState({
       const next = items.map((doc) => {
         const id = String(doc.id || '').trim()
         const existing = byId.get(id)
-        const meta = (doc.metadata || {}) as Record<string, unknown>
-        const rawDuration = meta.parse_duration_sec
+        const meta = doc.metadata as Record<string, unknown> | undefined
+        const rawDuration = meta?.parse_duration_sec
         const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : existing?.durationSec
-        const backendFromServer = String(meta.parser_backend || meta.parser_backend_requested || 'auto')
+        const backendFromServer =
+          normalizeBackendCandidate(meta?.parser_backend) ||
+          normalizeBackendCandidate(meta?.parser_backend_requested) ||
+          'auto'
         const preferredBackend =
           backendFromServer === 'auto' ? (existing?.parserBackend || backendFromServer) : backendFromServer
         const resolved = resolveParserBackendForFilename(doc.filename || existing?.filename || 'document', preferredBackend)
@@ -180,7 +190,7 @@ export function useParsingViewState({
     const runs = activeFile.runs || []
     if (!runs.length) return null
     const selected = runs.find((run) => run.id === activeFile.activeRunId)
-    return selected || runs[runs.length - 1]
+    return selected || runs.at(-1) || null
   }, [activeFile])
 
   const activeMarkdown =

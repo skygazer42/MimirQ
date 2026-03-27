@@ -20,6 +20,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.env import is_production_env
 
+_DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
+
 try:
     from app.rag.retrieval.contract import (
         VALID_RETRIEVAL_CONTRACT_MODES,
@@ -1264,7 +1266,7 @@ class Settings(BaseSettings):
 
     # Offline RAG evaluation quality gate (CI-oriented, default-off).
     RAG_EVAL_GATE_ENABLED: bool = False
-    RAG_EVAL_GATE_SUMMARY_PATH: str = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
+    RAG_EVAL_GATE_SUMMARY_PATH: str = _DEFAULT_RAG_EVAL_SUMMARY_PATH
     RAG_EVAL_GATE_FAITHFULNESS_MIN: float = 0.80
     RAG_EVAL_GATE_ANSWER_RELEVANCY_MIN: float = 0.75
     RAG_EVAL_GATE_CONTEXT_PRECISION_MIN: float = 0.70
@@ -2722,8 +2724,8 @@ class Settings(BaseSettings):
             self.RAG_EVAL_GATE_CONTEXT_PRECISION_MIN = rag_eval_context_precision_min
 
         rag_eval_summary_path = str(
-            getattr(self, "RAG_EVAL_GATE_SUMMARY_PATH", "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json")
-            or "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
+            getattr(self, "RAG_EVAL_GATE_SUMMARY_PATH", _DEFAULT_RAG_EVAL_SUMMARY_PATH)
+            or _DEFAULT_RAG_EVAL_SUMMARY_PATH
         ).strip()
         if not rag_eval_summary_path:
             raise ValueError("RAG_EVAL_GATE_SUMMARY_PATH must be non-empty")

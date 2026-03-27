@@ -80,6 +80,7 @@ _RAG_STATE_BUILD_KEYS = {
     "prompt_ab_experiment_key",
     "ab_user_key",
     "db",
+    "request_id",
 }
 
 
@@ -217,6 +218,7 @@ class MultiAgentRAGRunner:
                 "prompt_ab_experiment_key": prompt_ab_experiment_key,
                 "ab_user_key": ab_user_key,
                 "db": db,
+                "request_id": request_id,
             }
         )
         base_state = build_rag_state(**base_state_kwargs)
@@ -281,14 +283,14 @@ class MultiAgentRAGRunner:
             result = item.result
             metrics = result.get("metrics") or {}
             final_retrieval_mode = str(metrics.get("retrieval_mode") or final_retrieval_mode)
-            for doc in list(result.get("docs") or []):
+            for doc in result.get("docs") or []:
                 key = self._engine._doc_key(doc)
                 existing = docs_by_key.get(key)
                 if existing is None:
                     docs_by_key[key] = doc
                 else:
                     docs_by_key[key] = self._engine._prefer_doc(existing, doc)
-            for citation in list(result.get("citations") or []):
+            for citation in result.get("citations") or []:
                 if not isinstance(citation, dict):
                     continue
                 key = self._citation_key(citation)

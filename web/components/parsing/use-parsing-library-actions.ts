@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, type ChangeEvent, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react'
+import { useCallback, type ChangeEvent, type Dispatch, type RefObject, type SetStateAction } from 'react'
 
 import { toast } from 'sonner'
 
@@ -24,19 +24,26 @@ type RebindTarget = {
   autoParse: boolean
 }
 
+type MutableRef<T> = {
+  current: T
+}
+
+const normalizeBackendCandidate = (value: unknown): string =>
+  typeof value === 'string' && value.trim() ? value.trim() : ''
+
 type UseParsingLibraryActionsOptions = {
   activeFolderId: string | null
   countMarkdownHeadings: (markdown: string) => number
   createFolder: (name: string, parentId?: string) => string
   fileInputRef: RefObject<HTMLInputElement | null>
-  filesRef: MutableRefObject<ParsedFile[]>
+  filesRef: MutableRef<ParsedFile[]>
   folderInputRef: RefObject<HTMLInputElement | null>
   folders: FolderNode[]
   libraryFiles: ParsedFileData[]
   mapBackendStatusToLibraryStatus: (status?: string) => FileStatus
   parserBackend: string
   rebindInputRef: RefObject<HTMLInputElement | null>
-  rebindTargetRef: MutableRefObject<RebindTarget | null>
+  rebindTargetRef: MutableRef<RebindTarget | null>
   setActiveBlockId: Dispatch<SetStateAction<string | null>>
   setActiveFileId: Dispatch<SetStateAction<string | null>>
   setActiveFolderId: (folderId: string) => void
@@ -47,7 +54,7 @@ type UseParsingLibraryActionsOptions = {
   setHoveredBlockId: Dispatch<SetStateAction<string | null>>
   setRightPanelMode: Dispatch<SetStateAction<'blocks' | 'markdown'>>
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
-  uploadTargetFolderIdRef: MutableRefObject<string | null>
+  uploadTargetFolderIdRef: MutableRef<string | null>
   upsertParsedFile: (file: ParsedFileData) => void
 }
 
@@ -315,7 +322,7 @@ export function useParsingLibraryActions({
 
         const blob = await documentApi.download(id, { inline: true })
         const file = new File([blob], nameFromLibrary, {
-          type: (blob as Blob)?.type || 'application/octet-stream',
+          type: blob.type || 'application/octet-stream',
           lastModified: Date.now(),
         })
         setActiveLibrarySourceStatus('available')
@@ -507,7 +514,11 @@ export function useParsingLibraryActions({
           const libId = String(doc.id || '').trim()
           if (!libId) throw new Error('Missing document id from backend')
 
-          const requestedBackend = String((doc.metadata as Record<string, unknown> | undefined)?.parser_backend_requested || queuedFile.parserBackend || 'auto')
+          const metadata = doc.metadata as Record<string, unknown> | undefined
+          const requestedBackend =
+            normalizeBackendCandidate(metadata?.parser_backend_requested) ||
+            queuedFile.parserBackend ||
+            'auto'
 
           upsertParsedFile({
             id: libId,

@@ -119,7 +119,6 @@ class AgenticRAGRunner:
         self,
         *,
         question: str,
-        history: list[dict[str, str]] | None,
         llm: Any,
         max_steps: int,
     ) -> list[AgenticPlanStep]:
@@ -313,7 +312,7 @@ class AgenticRAGRunner:
         threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
         max_rounds = max(1, int(getattr(settings, "RAG_AGENTIC_MAX_RETRIEVE_ROUNDS", 3) or 3))
-        plan_steps = await self._plan(question=question, history=history, llm=llm, max_steps=max_rounds)
+        plan_steps = await self._plan(question=question, llm=llm, max_steps=max_rounds)
 
         if bool(getattr(settings, "RAG_MULTI_AGENT_ENABLED", False)) and len(plan_steps) > 1:
             runner = get_multi_agent_runner(engine=self._engine)

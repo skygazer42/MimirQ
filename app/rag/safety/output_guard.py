@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 
@@ -14,6 +15,10 @@ class OutputGuard:
     """Phase 1 scaffold: output guard defaults to pass-through."""
 
     async def check(self, _text: str) -> OutputGuardResult:
+        return await asyncio.to_thread(self._allow_result)
+
+    @staticmethod
+    def _allow_result() -> OutputGuardResult:
         return OutputGuardResult(action="allow", score=0.0, matched_rules=[])
 
 

@@ -22,6 +22,10 @@ import type {
 
 import { toCitation } from "./document-viewer-panel-utils"
 
+function mapChunkMatchIds(items: ReadonlyArray<{ id: string }>): string[] {
+  return items.map((item) => item.id)
+}
+
 export function useDocumentViewerPanelState() {
   const {
     isOpen,
@@ -334,53 +338,55 @@ export function useDocumentViewerPanelState() {
     return ids
   }, [chunks, chunkQuery])
 
+  const resetServerMatches = React.useCallback(() => {
+    setServerMatchIds([])
+    setServerMatchTotal(0)
+    setServerMatchTruncated(false)
+    setServerMatchLoading(false)
+  }, [])
+
   React.useEffect(() => {
     const query = chunkQuery.trim()
     if (!documentId || !query) {
-      setServerMatchIds([])
-      setServerMatchTotal(0)
-      setServerMatchTruncated(false)
-      setServerMatchLoading(false)
+      resetServerMatches()
       matchRequestSeqRef.current += 1
       return
     }
 
     if (chunksLoaded) {
-      setServerMatchIds([])
-      setServerMatchTotal(0)
-      setServerMatchTruncated(false)
-      setServerMatchLoading(false)
+      resetServerMatches()
       matchRequestSeqRef.current += 1
       return
     }
 
     const seq = ++matchRequestSeqRef.current
     setServerMatchLoading(true)
+    const loadServerMatches = async () => {
+      try {
+        const res = await documentApi.getChunkMatches(documentId, { q: query, limit: 5000 })
+        if (seq !== matchRequestSeqRef.current) return
+        const items = res?.items || []
+        setServerMatchIds(mapChunkMatchIds(items))
+        setServerMatchTotal(Number(res?.total) || 0)
+        setServerMatchTruncated(Boolean(res?.truncated))
+      } catch (err) {
+        if (seq !== matchRequestSeqRef.current) return
+        console.error(err)
+        setServerMatchIds([])
+        setServerMatchTotal(0)
+        setServerMatchTruncated(false)
+      } finally {
+        if (seq !== matchRequestSeqRef.current) return
+        setServerMatchLoading(false)
+      }
+    }
+
     const timeoutId = globalThis.window.setTimeout(() => {
-      documentApi
-        .getChunkMatches(documentId, { q: query, limit: 5000 })
-        .then((res) => {
-          if (seq !== matchRequestSeqRef.current) return
-          const items = res?.items || []
-          setServerMatchIds(items.map((item) => item.id))
-          setServerMatchTotal(Number(res?.total) || 0)
-          setServerMatchTruncated(Boolean(res?.truncated))
-        })
-        .catch((err) => {
-          if (seq !== matchRequestSeqRef.current) return
-          console.error(err)
-          setServerMatchIds([])
-          setServerMatchTotal(0)
-          setServerMatchTruncated(false)
-        })
-        .finally(() => {
-          if (seq !== matchRequestSeqRef.current) return
-          setServerMatchLoading(false)
-        })
+      detachPromise(loadServerMatches())
     }, 250)
 
     return () => globalThis.window.clearTimeout(timeoutId)
-  }, [documentId, chunkQuery, chunksLoaded])
+  }, [documentId, chunkQuery, chunksLoaded, resetServerMatches])
 
   const matchChunkIds = React.useMemo(() => {
     if (!chunkQuery.trim()) return []

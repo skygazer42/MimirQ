@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-import binascii
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +39,14 @@ class InputGuard:
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> GuardResult:
         text = str(query or "")
+        return await asyncio.to_thread(self._check_sync, text, conversation_history)
+
+    def _check_sync(
+        self,
+        query: str,
+        conversation_history: list[dict[str, Any]] | None = None,
+    ) -> GuardResult:
+        text = str(query or "")
         matched: dict[str, float] = {}
 
         def _record(rule_name: str, score: float) -> None:
@@ -68,7 +76,7 @@ class InputGuard:
                 continue
             try:
                 decoded = base64.b64decode(candidate, validate=True).decode("utf-8", errors="ignore").lower()
-            except (binascii.Error, ValueError):
+            except ValueError:
                 continue
             if any(marker in decoded for marker in ("ignore previous", "system prompt", "developer message", "act as")):
                 base64_hits += 1
