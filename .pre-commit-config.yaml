@@ -16,3 +16,11 @@ repos:
       - id: ruff
         args: ["--fix"]
 
+  - repo: local
+    hooks:
+      - id: web-ui-check
+        name: web-ui-check
+        entry: pnpm -C web run ui-check
+        language: system
+        pass_filenames: false
+        files: ^web/

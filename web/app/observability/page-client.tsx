@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
@@ -13,7 +14,6 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import type { RagMetricsSummaryResponse, RagQueryAnalyticsResponse } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
@@ -93,64 +93,42 @@ async function copyText(text: string, okMsg: string) {
 
 export default function ObservabilityPage() {
   const [tab, setTab] = useState<'summary' | 'query_analytics'>('summary')
-  const [summary, setSummary] = useState<RagMetricsSummaryResponse | null>(null)
-  const [analytics, setAnalytics] = useState<RagQueryAnalyticsResponse | null>(null)
-  const [loadingSummary, setLoadingSummary] = useState(false)
-  const [loadingAnalytics, setLoadingAnalytics] = useState(false)
   const [windowMinutes, setWindowMinutes] = useState<number>(60)
   const [slowThresholdSec, setSlowThresholdSec] = useState<number>(2)
 
+  const summaryQuery = useQuery({
+    queryKey: ['observability', 'summary', windowMinutes],
+    queryFn: () => observabilityApi.getRagMetricsSummary({ window_minutes: windowMinutes }),
+    enabled: tab === 'summary',
+    placeholderData: keepPreviousData,
+  })
+
+  const analyticsQuery = useQuery({
+    queryKey: ['observability', 'query_analytics', windowMinutes, slowThresholdSec],
+    queryFn: () =>
+      observabilityApi.getRagQueryAnalytics({
+        window_minutes: windowMinutes,
+        slow_threshold_sec: slowThresholdSec,
+      }),
+    enabled: tab === 'query_analytics',
+    placeholderData: keepPreviousData,
+  })
+
+  const summary = summaryQuery.data ?? null
+  const analytics = analyticsQuery.data ?? null
+  const loadingSummary = summaryQuery.isFetching
+  const loadingAnalytics = analyticsQuery.isFetching
   const loading = tab === 'summary' ? loadingSummary : loadingAnalytics
 
-  const loadSummary = useCallback(async (windowMin: number) => {
-    setLoadingSummary(true)
-    try {
-      const data = await observabilityApi.getRagMetricsSummary({ window_minutes: windowMin })
-      setSummary(data)
-    } catch (err: any) {
-      setSummary(null)
-      toast.error(formatApiError(err, '加载监控数据失败'))
-    } finally {
-      setLoadingSummary(false)
-    }
-  }, [])
-
-  const loadAnalytics = useCallback(async (params: { windowMin: number; slowSec: number }) => {
-    setLoadingAnalytics(true)
-    try {
-      const data = await observabilityApi.getRagQueryAnalytics({
-        window_minutes: params.windowMin,
-        slow_threshold_sec: params.slowSec,
-      })
-      setAnalytics(data)
-    } catch (err: any) {
-      setAnalytics(null)
-      toast.error(formatApiError(err, '加载 Query Analytics 失败'))
-    } finally {
-      setLoadingAnalytics(false)
-    }
-  }, [])
-
-  const summaryLoadedWindowMinutes = summary?.window_minutes
-  const analyticsLoadedWindowMinutes = analytics?.window_minutes
-  const analyticsLoadedSlowThresholdSec = analytics?.slow_threshold_sec
+  useEffect(() => {
+    if (!summaryQuery.error) return
+    toast.error(formatApiError(summaryQuery.error, '加载监控数据失败'))
+  }, [summaryQuery.error, summaryQuery.errorUpdatedAt])
 
   useEffect(() => {
-    if (tab !== 'summary') return
-    if (summaryLoadedWindowMinutes != null && summaryLoadedWindowMinutes === windowMinutes) return
-    detachPromise(loadSummary(windowMinutes))
-  }, [loadSummary, summaryLoadedWindowMinutes, tab, windowMinutes])
-
-  useEffect(() => {
-    if (tab !== 'query_analytics') return
-    const hasSameWindow = analyticsLoadedWindowMinutes != null && analyticsLoadedWindowMinutes === windowMinutes
-    const hasSameThreshold =
-      analyticsLoadedSlowThresholdSec != null &&
-      Number.isFinite(Number(analyticsLoadedSlowThresholdSec)) &&
-      Number(analyticsLoadedSlowThresholdSec) === Number(slowThresholdSec)
-    if (hasSameWindow && hasSameThreshold) return
-    detachPromise(loadAnalytics({ windowMin: windowMinutes, slowSec: slowThresholdSec }))
-  }, [analyticsLoadedSlowThresholdSec, analyticsLoadedWindowMinutes, loadAnalytics, slowThresholdSec, tab, windowMinutes])
+    if (!analyticsQuery.error) return
+    toast.error(formatApiError(analyticsQuery.error, '加载 Query Analytics 失败'))
+  }, [analyticsQuery.error, analyticsQuery.errorUpdatedAt])
 
   const chartData = useMemo(() => {
     if (!summary?.timeseries) return []
@@ -293,8 +271,8 @@ export default function ObservabilityPage() {
                 variant="outline"
                 className="gap-2 rounded-xl"
                 onClick={() => {
-                  if (tab === 'summary') detachPromise(loadSummary(windowMinutes))
-                  else detachPromise(loadAnalytics({ windowMin: windowMinutes, slowSec: slowThresholdSec }))
+                  if (tab === 'summary') void summaryQuery.refetch()
+                  else void analyticsQuery.refetch()
                 }}
                 disabled={loading}
               >
@@ -490,7 +468,7 @@ export default function ObservabilityPage() {
             if (analytics.enabled) {
                 if (analytics.rag_trace_count <= 0) {
                     return (<EmptyState title="暂无 Query Analytics 数据" description="提示：只有走到检索链路（rag_trace）时才会计入统计；可尝试先发起一次检索请求再刷新。" icon={TriangleAlert} iconClassName="text-sky-600 dark:text-sky-400">
-                  <Button variant="outline" className="rounded-xl" onClick={() => detachPromise(loadAnalytics({ windowMin: windowMinutes, slowSec: slowThresholdSec }))} disabled={loadingAnalytics}>
+                  <Button variant="outline" className="rounded-xl" onClick={() => void analyticsQuery.refetch()} disabled={loadingAnalytics}>
                     <RefreshCw className={cn('h-4 w-4', loadingAnalytics && 'animate-spin motion-reduce:animate-none')}/>
                     刷新
                   </Button>

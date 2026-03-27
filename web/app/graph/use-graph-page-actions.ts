@@ -10,6 +10,8 @@ import { kgApi } from '@/lib/api/graph'
 import { sanitizeFilename } from '@/lib/sanitize'
 
 import {
+  coerceTrimmedString,
+  getGraphNodeKind,
   type GraphContextMenuState,
   type GraphContextMenuTarget,
   type GraphLinkLike,
@@ -32,6 +34,30 @@ type DeleteNodeTarget = {
   id: string
   label: string
 } | null
+
+function getGraphNodeDocumentId(node: GraphNodeLike | null | undefined): string {
+  return coerceTrimmedString(node?.meta?.document_id ?? node?.source)
+}
+
+export function buildGraphNodeChatPrompt(node: GraphNodeLike | null | undefined): string {
+  const label = coerceTrimmedString(node?.label ?? node?.id)
+  if (!label) return ''
+
+  const documentId = getGraphNodeDocumentId(node)
+  if (documentId) {
+    return `请总结一下该文档的核心观点，并结合图谱节点「${label}」提炼关键证据与后续问题。源文档 ID: ${documentId}。`
+  }
+
+  const nodeKind = getGraphNodeKind(node)
+  if (nodeKind === 'entity') {
+    return `请围绕图谱节点「${label}」总结核心观点、关联事件、关键关系与后续核查线索。`
+  }
+  if (nodeKind === 'event') {
+    return `请围绕图谱事件「${label}」总结背景、涉及实体、关键证据与后续影响。`
+  }
+
+  return `请围绕图谱节点「${label}」总结关键信息、上下文关系与下一步建议。`
+}
 
 type UseGraphPageActionsParams = Readonly<{
   graphViewportRef: RefObject<HTMLDivElement | null>
@@ -219,9 +245,13 @@ export function useGraphPageActions({
   const chatWithNode = useCallback(
     (node?: GraphNodeLike) => {
       const target = node ?? selectedNode
-      const label = String(target?.label || '').trim()
-      if (!label) return
-      router.push(`/?prompt=${encodeURIComponent(`请告诉我关于 ${label} 的信息`)}`)
+      const prompt = buildGraphNodeChatPrompt(target)
+      if (!prompt) return
+      const params = new URLSearchParams({
+        prompt,
+        autorun: '1',
+      })
+      router.push(`/?${params.toString()}`)
     },
     [router, selectedNode]
   )

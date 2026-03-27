@@ -1,7 +1,7 @@
 'use client'
 
 import type { Dispatch, SetStateAction } from 'react'
-import { useCallback, useDeferredValue, useEffect, useMemo } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef } from 'react'
 
 import type { GraphData } from '@/lib/graph-parser'
 
@@ -27,6 +27,15 @@ type GraphFilterOption = Readonly<{
   value: string
   count: number
 }>
+
+const FRONTEND_TRACE_MIN_DURATION_MS = 12
+
+function getNowMs(): number {
+  if (typeof globalThis.performance?.now === 'function') {
+    return globalThis.performance.now()
+  }
+  return Date.now()
+}
 
 type UseGraphDisplayFiltersParams = Readonly<{
   graphData: GraphData
@@ -82,6 +91,7 @@ export function useGraphDisplayFilters({
   setPathEndNode,
 }: UseGraphDisplayFiltersParams) {
   const deferredSearchTerm = useDeferredValue(searchTerm)
+  const lastProjectionTraceKeyRef = useRef<string | null>(null)
 
   const availableEntityTypes = useMemo<GraphFilterOption[]>(() => {
     const counts = new Map<string, number>()
@@ -124,13 +134,17 @@ export function useGraphDisplayFilters({
 
   const activeGraphFilterCount = entityTypeFilters.length + predicateFilters.length + confidenceBucketFilters.length
 
-  const displayGraphData = useMemo<GraphData>(() => {
+  const displayGraphProjection = useMemo(() => {
+    const startedAt = getNowMs()
     const hasTypeFilter = entityTypeFilters.length > 0
     const hasPredicateFilter = predicateFilters.length > 0
     const hasConfidenceFilter = confidenceBucketFilters.length > 0
 
     if (!hasTypeFilter && !hasPredicateFilter && !hasConfidenceFilter) {
-      return graphData
+      return {
+        graphData,
+        durationMs: Math.max(0, getNowMs() - startedAt),
+      }
     }
 
     const allowedTypes = new Set(entityTypeFilters.map((value) => coerceTrimmedString(value)))
@@ -187,8 +201,12 @@ export function useGraphDisplayFilters({
     }
 
     const nextNodes = graphData.nodes.filter((node) => linkedNodeIds.has(coerceTrimmedString(node?.id)))
-    return { nodes: nextNodes, links: nextLinks }
+    return {
+      graphData: { nodes: nextNodes, links: nextLinks },
+      durationMs: Math.max(0, getNowMs() - startedAt),
+    }
   }, [confidenceBucketFilters, entityTypeFilters, graphData, predicateFilters])
+  const displayGraphData = displayGraphProjection.graphData
 
   const linksWithIds = useMemo<GraphLinkLike[]>(() => {
     return displayGraphData.links.map((link, index) => ({
@@ -204,6 +222,54 @@ export function useGraphDisplayFilters({
   const displayNodeIds = useMemo(() => {
     return new Set(displayGraphData.nodes.map((node) => coerceTrimmedString(node?.id)))
   }, [displayGraphData.nodes])
+
+  useEffect(() => {
+    if (graphData.nodes.length === 0 && graphData.links.length === 0) return
+    if (displayGraphProjection.durationMs < FRONTEND_TRACE_MIN_DURATION_MS) return
+
+    const traceKey = [
+      graphData.nodes.length,
+      graphData.links.length,
+      displayGraphData.nodes.length,
+      displayGraphData.links.length,
+      activeGraphFilterCount,
+      Math.round(displayGraphProjection.durationMs),
+    ].join(':')
+
+    if (lastProjectionTraceKeyRef.current === traceKey) return
+    lastProjectionTraceKeyRef.current = traceKey
+
+    const page =
+      typeof globalThis.window !== 'undefined' ? globalThis.window.location?.pathname || '/graph' : '/graph'
+
+    void import('@/lib/frontend-trace')
+      .then(({ reportFrontendTrace }) =>
+        reportFrontendTrace(
+          {
+            event: 'graph_render_projection',
+            duration_ms: displayGraphProjection.durationMs,
+            component: 'graph-display-filters',
+            page,
+            input_node_count: graphData.nodes.length,
+            input_link_count: graphData.links.length,
+            output_node_count: displayGraphData.nodes.length,
+            output_link_count: displayGraphData.links.length,
+            active_filter_count: activeGraphFilterCount,
+          },
+          { keepalive: true }
+        )
+      )
+      .catch((error) => {
+        console.warn('Failed to report graph projection trace', error)
+      })
+  }, [
+    activeGraphFilterCount,
+    displayGraphData.links.length,
+    displayGraphData.nodes.length,
+    displayGraphProjection.durationMs,
+    graphData.links.length,
+    graphData.nodes.length,
+  ])
 
   useEffect(() => {
     if (!isDetailOpen || !selectedNodeId) return

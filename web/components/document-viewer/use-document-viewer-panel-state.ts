@@ -9,6 +9,7 @@ import { documentApi, ragApi } from "@/lib/api"
 import { formatApiError } from "@/lib/api-errors"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
+import { getPrefetchedChunk, getPrefetchedDocument } from "@/lib/document-view-prefetch"
 import { API_V1_BASE_URL } from "@/lib/env"
 import { detachPromise } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
@@ -20,10 +21,17 @@ import type {
   DocumentQAGenerateResponse,
 } from "@/types"
 
+import { resolveChunkKeyboardNavigation } from "./keyboard-shortcuts"
 import { toCitation } from "./document-viewer-panel-utils"
 
 function mapChunkMatchIds(items: ReadonlyArray<{ id: string }>): string[] {
   return items.map((item) => item.id)
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tagName = target.tagName
+  return target.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT"
 }
 
 export function useDocumentViewerPanelState() {
@@ -34,7 +42,9 @@ export function useDocumentViewerPanelState() {
     highlightRange,
     closeDocument,
     activeTab,
+    documentLayouts,
     setActiveTab,
+    setDocumentLayout,
     setHighlightChunk,
   } = useDocumentView()
 
@@ -57,6 +67,12 @@ export function useDocumentViewerPanelState() {
   const [isExpanded, setIsExpanded] = React.useState(false)
   const chunksListRef = React.useRef<HTMLDivElement>(null)
   const chunkSearchRef = React.useRef<HTMLInputElement>(null)
+  const previousDocumentIdRef = React.useRef<string | null>(null)
+  const pendingChunksScrollRestoreRef = React.useRef<number | null>(null)
+  const pendingTextScrollRestoreRef = React.useRef<number | null>(null)
+  const persistedLayoutTimeoutRef = React.useRef<number | null>(null)
+  const persistedLayoutDocIdRef = React.useRef<string | null>(null)
+  const pendingLayoutPatchRef = React.useRef<Record<string, unknown>>({})
   const [chunkQuery, setChunkQuery] = React.useState("")
   const [matchCursor, setMatchCursor] = React.useState(0)
   const [serverMatchIds, setServerMatchIds] = React.useState<string[]>([])
@@ -89,8 +105,65 @@ export function useDocumentViewerPanelState() {
     overscan: 8,
   })
 
+  const documentLayout = React.useMemo(
+    () => (documentId ? documentLayouts[documentId] || null : null),
+    [documentId, documentLayouts]
+  )
+
+  const flushPersistedLayoutPatch = React.useCallback(
+    (targetDocumentId?: string | null) => {
+      const documentIdToFlush = targetDocumentId || persistedLayoutDocIdRef.current
+      if (!documentIdToFlush) return
+      if (persistedLayoutTimeoutRef.current != null) {
+        globalThis.window.clearTimeout(persistedLayoutTimeoutRef.current)
+        persistedLayoutTimeoutRef.current = null
+      }
+
+      const patch = pendingLayoutPatchRef.current
+      pendingLayoutPatchRef.current = {}
+
+      if (!Object.keys(patch).length) return
+      setDocumentLayout(documentIdToFlush, patch)
+    },
+    [setDocumentLayout]
+  )
+
+  const persistDocumentLayout = React.useCallback(
+    (patch: Record<string, unknown>, immediate = false) => {
+      if (!documentId) return
+
+      if (persistedLayoutDocIdRef.current && persistedLayoutDocIdRef.current !== documentId) {
+        flushPersistedLayoutPatch(persistedLayoutDocIdRef.current)
+      }
+
+      persistedLayoutDocIdRef.current = documentId
+      pendingLayoutPatchRef.current = {
+        ...pendingLayoutPatchRef.current,
+        ...patch,
+      }
+
+      if (immediate) {
+        flushPersistedLayoutPatch(documentId)
+        return
+      }
+
+      if (persistedLayoutTimeoutRef.current != null) {
+        globalThis.window.clearTimeout(persistedLayoutTimeoutRef.current)
+      }
+      persistedLayoutTimeoutRef.current = globalThis.window.setTimeout(() => {
+        flushPersistedLayoutPatch(documentId)
+      }, 120)
+    },
+    [documentId, flushPersistedLayoutPatch]
+  )
+
   React.useEffect(() => {
-    if (!documentId) return
+    if (!documentId) {
+      previousDocumentIdRef.current = null
+      return
+    }
+    if (previousDocumentIdRef.current === documentId) return
+    previousDocumentIdRef.current = documentId
     parsedContentServerKeyRef.current = null
     setDoc(null)
     setChunks([])
@@ -101,24 +174,34 @@ export function useDocumentViewerPanelState() {
     setParsedContent(null)
     setParsedContentLoading(false)
     setParsedContentError(null)
-    setTextMode("cleaned")
+    setTextMode(documentLayout?.textMode === "original" ? "original" : "cleaned")
     setRetrieveQuery("")
     setRetrieveLoading(false)
     setRetrieveError(null)
     setRetrieveCitations([])
+    setIsExpanded(Boolean(documentLayout?.isExpanded))
     setChunkQuery("")
     setMatchCursor(0)
     setServerMatchIds([])
     setServerMatchTotal(0)
     setServerMatchTruncated(false)
     setServerMatchLoading(false)
+    pendingChunksScrollRestoreRef.current =
+      typeof documentLayout?.chunksScrollTop === "number" ? documentLayout.chunksScrollTop : 0
+    pendingTextScrollRestoreRef.current =
+      typeof documentLayout?.textScrollTop === "number" ? documentLayout.textScrollTop : 0
     matchRequestSeqRef.current += 1
 
     const raf = globalThis.window.requestAnimationFrame(() => {
-      chunksListRef.current?.scrollTo({ top: 0, left: 0, behavior: "auto" })
+      const top = pendingChunksScrollRestoreRef.current ?? 0
+      chunksListRef.current?.scrollTo({ top, left: 0, behavior: "auto" })
     })
+    const prefetchedDoc = getPrefetchedDocument(documentId)
+    if (prefetchedDoc) {
+      setDoc(prefetchedDoc)
+    }
 
-    setIsLoading(true)
+    setIsLoading(!prefetchedDoc)
     documentApi
       .get(documentId, { includeChunks: false })
       .then((data) => {
@@ -128,7 +211,21 @@ export function useDocumentViewerPanelState() {
       .finally(() => setIsLoading(false))
 
     return () => globalThis.window.cancelAnimationFrame(raf)
-  }, [documentId])
+  }, [documentId, documentLayout])
+
+  React.useEffect(() => {
+    const currentDocumentId = documentId
+    return () => {
+      if (!currentDocumentId) return
+      flushPersistedLayoutPatch(currentDocumentId)
+    }
+  }, [documentId, flushPersistedLayoutPatch])
+
+  React.useEffect(() => {
+    return () => {
+      flushPersistedLayoutPatch()
+    }
+  }, [flushPersistedLayoutPatch])
 
   React.useEffect(() => {
     if (!documentId) return
@@ -168,7 +265,13 @@ export function useDocumentViewerPanelState() {
     }
 
     let cancelled = false
-    setHighlightChunkLoading(true)
+    const prefetchedChunk = getPrefetchedChunk(documentId, highlightChunkId)
+    if (prefetchedChunk) {
+      setHighlightChunkState(prefetchedChunk)
+      setHighlightChunkLoading(false)
+    } else {
+      setHighlightChunkLoading(true)
+    }
     documentApi
       .getChunk(documentId, highlightChunkId)
       .then((data) => {
@@ -295,30 +398,41 @@ export function useDocumentViewerPanelState() {
   }, [highlightChunk, textChunkItems])
 
   React.useEffect(() => {
-    if (!isOpen) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (activeTab === "chunks" && chunkQuery.trim()) {
-          event.preventDefault()
-          setChunkQuery("")
-          return
-        }
-        event.preventDefault()
-        closeDocument()
-        return
-      }
+    if (!documentId) return
+    persistDocumentLayout({ isExpanded }, true)
+  }, [documentId, isExpanded, persistDocumentLayout])
 
-      const isFind = (event.key === "f" || event.key === "F") && (event.metaKey || event.ctrlKey)
-      if (isFind && activeTab === "chunks") {
-        event.preventDefault()
-        chunkSearchRef.current?.focus()
-        chunkSearchRef.current?.select()
-      }
+  React.useEffect(() => {
+    if (!documentId) return
+    persistDocumentLayout({ textMode }, true)
+  }, [documentId, textMode, persistDocumentLayout])
+
+  React.useEffect(() => {
+    if (!documentId) return
+    const node = chunksListRef.current
+    if (!node) return
+
+    const handleScroll = () => {
+      persistDocumentLayout({ chunksScrollTop: node.scrollTop })
     }
 
-    globalThis.window.addEventListener("keydown", onKeyDown)
-    return () => globalThis.window.removeEventListener("keydown", onKeyDown)
-  }, [isOpen, activeTab, chunkQuery, closeDocument])
+    node.addEventListener("scroll", handleScroll, { passive: true })
+    return () => node.removeEventListener("scroll", handleScroll)
+  }, [documentId, activeTab, isOpen, persistDocumentLayout])
+
+  React.useEffect(() => {
+    if (!documentId) return
+    if (highlightChunkId && activeTab === "chunks") return
+    const nextScrollTop = pendingChunksScrollRestoreRef.current
+    const node = chunksListRef.current
+    if (nextScrollTop == null || !node) return
+
+    node.scrollTo({ top: nextScrollTop, left: 0, behavior: "auto" })
+    const maxScrollableTop = Math.max(0, node.scrollHeight - node.clientHeight)
+    if (nextScrollTop <= maxScrollableTop + 1 || nextScrollTop === 0) {
+      pendingChunksScrollRestoreRef.current = null
+    }
+  }, [documentId, activeTab, chunks.length, chunksLoaded, highlightChunkId])
 
   React.useEffect(() => {
     if (!highlightChunkId || activeTab !== "chunks") return
@@ -702,6 +816,69 @@ export function useDocumentViewerPanelState() {
     [highlightChunkId, jumpToMatch, matchChunkIds, matchCursor]
   )
 
+  React.useEffect(() => {
+    if (!isOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      const noModifier = !event.metaKey && !event.ctrlKey && !event.altKey
+      const typingTarget = isTypingTarget(event.target)
+
+      if (event.key === "Escape") {
+        if (activeTab === "chunks" && chunkQuery.trim()) {
+          event.preventDefault()
+          setChunkQuery("")
+          return
+        }
+        event.preventDefault()
+        closeDocument()
+        return
+      }
+
+      const isFind = (event.key === "f" || event.key === "F") && (event.metaKey || event.ctrlKey)
+      if (isFind && activeTab === "chunks") {
+        event.preventDefault()
+        chunkSearchRef.current?.focus()
+        chunkSearchRef.current?.select()
+        return
+      }
+
+      if (activeTab !== "chunks" || !noModifier) return
+
+      if (event.key === "/" && !typingTarget) {
+        event.preventDefault()
+        chunkSearchRef.current?.focus()
+        chunkSearchRef.current?.select()
+        return
+      }
+
+      if (typingTarget) return
+
+      const navigation = resolveChunkKeyboardNavigation({
+        key: event.key,
+        matchCount: matchChunkIds.length,
+        matchCursor,
+        loadedChunkCount: chunks.length,
+        highlightIndex,
+      })
+
+      if (!navigation) return
+
+      event.preventDefault()
+      if (navigation.type === "match") {
+        jumpToMatch(navigation.nextIndex)
+        return
+      }
+
+      const nextChunk = chunks[navigation.nextIndex]
+      if (nextChunk) {
+        setActiveTab("chunks")
+        setHighlightChunk(nextChunk.id)
+      }
+    }
+
+    globalThis.window.addEventListener("keydown", onKeyDown)
+    return () => globalThis.window.removeEventListener("keydown", onKeyDown)
+  }, [isOpen, activeTab, chunkQuery, closeDocument, matchChunkIds.length, matchCursor, chunks, highlightIndex, jumpToMatch, setActiveTab, setHighlightChunk])
+
   const runRetrievePreview = React.useCallback(async () => {
     if (!documentId) return
     const query = retrieveQuery.trim()
@@ -722,6 +899,14 @@ export function useDocumentViewerPanelState() {
       setRetrieveLoading(false)
     }
   }, [documentId, retrieveQuery])
+
+  const handleTextScrollTopChange = React.useCallback(
+    (textScrollTop: number) => {
+      pendingTextScrollRestoreRef.current = textScrollTop
+      persistDocumentLayout({ textScrollTop })
+    },
+    [persistDocumentLayout]
+  )
 
   const handleChunkEditorOpenChange = React.useCallback((open: boolean) => {
     if (!open) {
@@ -776,6 +961,7 @@ export function useDocumentViewerPanelState() {
     handleDeleteChunk,
     handleQaDialogOpenChange,
     handleSelectTextChunkIndex,
+    handleTextScrollTopChange,
     highlightChunk,
     highlightChunkId,
     highlightChunkLoading,
@@ -825,6 +1011,7 @@ export function useDocumentViewerPanelState() {
     submitChunkEditor,
     textActiveChunkIndex,
     textChunkItems,
+    textInitialScrollTop: pendingTextScrollRestoreRef.current ?? 0,
     textMode,
     textValue,
   }

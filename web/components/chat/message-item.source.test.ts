@@ -24,4 +24,13 @@ describe('message item source', () => {
     expect(src).toContain('继续追问')
     expect(src).toContain('反馈评分')
   })
+
+  it('prefetches document evidence on citation hover before opening the viewer', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'message-item.tsx'), 'utf8')
+
+    expect(src).toContain('prefetchDocumentView')
+    expect(src).toContain('const handlePrefetch = useCallback')
+    expect(src).toContain('onMouseEnter={handlePrefetch}')
+    expect(src).toContain('onFocus={handlePrefetch}')
+  })
 })

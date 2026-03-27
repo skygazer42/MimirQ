@@ -44,6 +44,8 @@ describe('document viewer panel source', () => {
     expect(shellSrc).toContain('TextTabPanel')
     expect(shellSrc).toContain('DocumentViewerHeader')
     expect(shellSrc).toContain('ChunksTabPanel')
+    expect(hookSrc).toContain("getPrefetchedDocument")
+    expect(hookSrc).toContain("getPrefetchedChunk")
     expect(hookSrc).toContain('setHighlightChunkState((prev) => (prev?.id === updated.id ? updated : prev))')
     expect(hookSrc).toContain('export function useDocumentViewerPanelState()')
     expect(hookSrc).toContain('const runRetrievePreview = React.useCallback(async () =>')

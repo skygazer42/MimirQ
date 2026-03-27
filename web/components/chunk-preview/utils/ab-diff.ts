@@ -64,6 +64,124 @@ export type ChunkPreviewDiffSummary = {
   examplesRemoved: Array<{ example: string; count: number; index: number }>
 }
 
+export type SemanticEvidenceHighlightSegment = {
+  text: string
+  emphasis: boolean
+}
+
+export type SemanticEvidenceHighlightItem = {
+  example: string
+  count: number
+  index: number
+  referenceExample: string | null
+  similarity: number
+  segments: SemanticEvidenceHighlightSegment[]
+}
+
+export type SemanticEvidenceHighlights = {
+  added: SemanticEvidenceHighlightItem[]
+  removed: SemanticEvidenceHighlightItem[]
+}
+
+function normalizeEvidenceText(value: unknown): string {
+  return String(value ?? '').trim().replace(/\s+/g, ' ')
+}
+
+function buildBigramSet(value: string): Set<string> {
+  const normalized = normalizeEvidenceText(value).toLowerCase()
+  if (!normalized) return new Set()
+  if (normalized.length < 2) return new Set([normalized])
+
+  const grams = new Set<string>()
+  for (let i = 0; i < normalized.length - 1; i += 1) {
+    grams.add(normalized.slice(i, i + 2))
+  }
+  return grams
+}
+
+function scoreEvidenceSimilarity(a: string, b: string): number {
+  const aGrams = buildBigramSet(a)
+  const bGrams = buildBigramSet(b)
+  if (!aGrams.size || !bGrams.size) return 0
+
+  let overlap = 0
+  for (const gram of aGrams) {
+    if (bGrams.has(gram)) overlap += 1
+  }
+  return (2 * overlap) / (aGrams.size + bGrams.size)
+}
+
+function buildEvidenceSegments(sourceExample: string, referenceExample: string | null): SemanticEvidenceHighlightSegment[] {
+  const source = normalizeEvidenceText(sourceExample)
+  const reference = normalizeEvidenceText(referenceExample)
+
+  if (!source) return []
+  if (!reference) return [{ text: source, emphasis: true }]
+
+  let prefix = 0
+  while (
+    prefix < source.length &&
+    prefix < reference.length &&
+    source[prefix]?.toLowerCase() === reference[prefix]?.toLowerCase()
+  ) {
+    prefix += 1
+  }
+
+  let suffix = 0
+  while (
+    suffix < source.length - prefix &&
+    suffix < reference.length - prefix &&
+    source[source.length - 1 - suffix]?.toLowerCase() === reference[reference.length - 1 - suffix]?.toLowerCase()
+  ) {
+    suffix += 1
+  }
+
+  const emphasisStart = prefix
+  const emphasisEnd = Math.max(prefix, source.length - suffix)
+  if (emphasisEnd <= emphasisStart) {
+    return [{ text: source, emphasis: true }]
+  }
+
+  const segments: SemanticEvidenceHighlightSegment[] = []
+  if (emphasisStart > 0) {
+    segments.push({ text: source.slice(0, emphasisStart), emphasis: false })
+  }
+  segments.push({ text: source.slice(emphasisStart, emphasisEnd), emphasis: true })
+  if (emphasisEnd < source.length) {
+    segments.push({ text: source.slice(emphasisEnd), emphasis: false })
+  }
+  return segments.filter((segment) => segment.text.length > 0)
+}
+
+function buildSemanticEvidenceItems(
+  source: ChunkPreviewDiffSummary['examplesAdded'],
+  opposite: ChunkPreviewDiffSummary['examplesRemoved']
+): SemanticEvidenceHighlightItem[] {
+  return source.map((item) => {
+    let bestReference: string | null = null
+    let bestSimilarity = 0
+
+    for (const candidate of opposite) {
+      const similarity = scoreEvidenceSimilarity(item.example, candidate.example)
+      if (similarity > bestSimilarity) {
+        bestSimilarity = similarity
+        bestReference = candidate.example
+      }
+    }
+
+    const referenceExample = bestSimilarity >= 0.12 ? bestReference : null
+
+    return {
+      example: item.example,
+      count: item.count,
+      index: item.index,
+      referenceExample,
+      similarity: bestSimilarity,
+      segments: buildEvidenceSegments(item.example, referenceExample),
+    }
+  })
+}
+
 export function computeChunkPreviewDiff(a: ChunkPreviewResponse, b: ChunkPreviewResponse): ChunkPreviewDiffSummary {
   const aStats = a.stats
   const bStats = b.stats
@@ -161,6 +279,15 @@ export function computeChunkPreviewDiff(a: ChunkPreviewResponse, b: ChunkPreview
     overlap,
     examplesAdded: examplesAdded.slice(0, 3),
     examplesRemoved: examplesRemoved.slice(0, 3),
+  }
+}
+
+export function buildSemanticEvidenceHighlights(
+  summary: Pick<ChunkPreviewDiffSummary, 'examplesAdded' | 'examplesRemoved'>
+): SemanticEvidenceHighlights {
+  return {
+    added: buildSemanticEvidenceItems(summary.examplesAdded || [], summary.examplesRemoved || []),
+    removed: buildSemanticEvidenceItems(summary.examplesRemoved || [], summary.examplesAdded || []),
   }
 }
 

@@ -1,3 +1,1 @@
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="12" cy="12" r="11" fill="#FF6A00"/>
-  <path d="M12 5L14.5 10.5H18L15 13L16 18L12 15L8 18L9 13L6 10.5H9.5L12 5Z" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#ff6a00"/><path fill="#fff" d="m12 5 2.5 5.5H18L15 13l1 5-4-3-4 3 1-5-3-2.5h3.5z"/></svg>

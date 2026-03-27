@@ -11,6 +11,7 @@ import type {
   RagvizSimilarityRequest,
 } from '@/types'
 import { Button } from '@/components/ui/button'
+import { PageLoading } from '@/components/ui/page-loading'
 import { cn, detachPromise } from '@/lib/utils'
 import {
   BarChart3,
@@ -1494,6 +1495,7 @@ function PlotlyHeatmap({
 }>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [plotly, setPlotly] = useState<PlotlyLike | null>(null)
+  const [plotlyLoadState, setPlotlyLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
 
   useEffect(() => {
     let cancelled = false
@@ -1502,9 +1504,15 @@ function PlotlyHeatmap({
         const modUnknown: unknown = await import('plotly.js-dist-min')
         const mod = isRecord(modUnknown) ? modUnknown : null
         const plotlyModule = isPlotlyLike(mod?.default) ? mod.default : isPlotlyLike(modUnknown) ? modUnknown : null
-        if (!cancelled) setPlotly(plotlyModule)
+        if (!cancelled) {
+          setPlotly(plotlyModule)
+          setPlotlyLoadState(plotlyModule ? 'ready' : 'error')
+        }
       } catch {
-        if (!cancelled) setPlotly(null)
+        if (!cancelled) {
+          setPlotly(null)
+          setPlotlyLoadState('error')
+        }
       }
     })()
     return () => {
@@ -1557,6 +1565,27 @@ function PlotlyHeatmap({
       }
     }
   }, [plotly])
+
+  if (plotlyLoadState === 'loading') {
+    return (
+      <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-xl border border-border/60 bg-background/70 px-6">
+        <PageLoading
+          message="正在加载相似度热力图..."
+          srMessage="Loading similarity heatmap"
+          className="min-h-0 flex-none"
+        />
+        <p className="mt-2 text-xs text-muted-foreground">正在初始化图表引擎...</p>
+      </div>
+    )
+  }
+
+  if (!plotly) {
+    return (
+      <div className="flex h-full min-h-[320px] items-center justify-center rounded-xl border border-dashed border-border/60 bg-background/70 px-6 text-center text-sm text-muted-foreground">
+        图表引擎加载失败，请稍后重试
+      </div>
+    )
+  }
 
   return <div ref={containerRef} className="h-full w-full" />
 }

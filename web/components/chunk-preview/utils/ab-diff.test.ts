@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { chunkPreviewDiffToExport, computeChunkPreviewDiff } from './ab-diff'
+import { buildSemanticEvidenceHighlights, chunkPreviewDiffToExport, computeChunkPreviewDiff } from './ab-diff'
 
 describe('computeChunkPreviewDiff', () => {
   it('computes multiset overlap + deltas', () => {
@@ -62,3 +62,26 @@ describe('chunkPreviewDiffToExport', () => {
   })
 })
 
+describe('buildSemanticEvidenceHighlights', () => {
+  it('emphasizes distinctive evidence fragments against the closest opposite-side example', () => {
+    const diff = {
+      examplesAdded: [
+        { example: 'policy now requires passkey sign-in for remote access', count: 1, index: 8 },
+      ],
+      examplesRemoved: [
+        { example: 'policy now requires sms sign-in for remote access', count: 1, index: 4 },
+      ],
+    } as any
+
+    const highlights = buildSemanticEvidenceHighlights(diff)
+
+    expect(highlights.added[0]?.referenceExample).toContain('sms sign-in')
+    expect(highlights.removed[0]?.referenceExample).toContain('passkey sign-in')
+    expect(highlights.added[0]?.segments.some((segment) => segment.emphasis && segment.text.includes('passkey'))).toBe(
+      true
+    )
+    expect(highlights.removed[0]?.segments.some((segment) => segment.emphasis && segment.text.includes('sms'))).toBe(
+      true
+    )
+  })
+})

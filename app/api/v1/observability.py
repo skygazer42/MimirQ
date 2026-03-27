@@ -80,12 +80,24 @@ class RagMetricsSummaryResponse(BaseModel):
 
 
 class FrontendWebVitalReportRequest(BaseModel):
-    name: Literal["LCP", "FID", "INP"]
+    name: Literal["LCP", "CLS", "FID", "INP"]
     value: float
     rating: str | None = Field(default=None, max_length=32)
     id: str | None = Field(default=None, max_length=200)
     navigation_type: str | None = Field(default=None, max_length=64)
     page: str | None = Field(default=None, max_length=500)
+
+
+class FrontendTraceReportRequest(BaseModel):
+    event: str = Field(min_length=1, max_length=120)
+    duration_ms: float = Field(ge=0, le=600000)
+    component: str | None = Field(default=None, max_length=120)
+    page: str | None = Field(default=None, max_length=500)
+    input_node_count: int | None = Field(default=None, ge=0)
+    input_link_count: int | None = Field(default=None, ge=0)
+    output_node_count: int | None = Field(default=None, ge=0)
+    output_link_count: int | None = Field(default=None, ge=0)
+    active_filter_count: int | None = Field(default=None, ge=0)
 
 
 class OnlineQualitySummaryResponse(BaseModel):
@@ -124,6 +136,38 @@ async def report_frontend_web_vital(
             "metric_id": body.id,
             "navigation_type": body.navigation_type,
             "page": body.page,
+            "user_agent": http_request.headers.get("user-agent"),
+            "recorded_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    return Response(status_code=202)
+
+
+@router.post("/frontend-traces", status_code=202, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def report_frontend_trace(
+    body: FrontendTraceReportRequest,
+    http_request: Request,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    log_metrics(
+        {
+            "event": "frontend_trace",
+            "tenant_id": str(tenant_id),
+            "account_id": str(account_id),
+            "trace_event": body.event,
+            "duration_ms": float(body.duration_ms),
+            "component": body.component,
+            "page": body.page,
+            "input_node_count": body.input_node_count,
+            "input_link_count": body.input_link_count,
+            "output_node_count": body.output_node_count,
+            "output_link_count": body.output_link_count,
+            "active_filter_count": body.active_filter_count,
             "user_agent": http_request.headers.get("user-agent"),
             "recorded_at": datetime.now(UTC).isoformat(),
         }

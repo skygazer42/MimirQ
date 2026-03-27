@@ -14,6 +14,8 @@ describe('route error source', () => {
     expect(src).toContain('export function RouteError(')
     expect(src).toContain('title = ')
     expect(src).toContain('message = ')
+    expect(src).toContain('extractRequestIdFromError')
+    expect(src).toContain('request_id=')
   })
 
   it.each([

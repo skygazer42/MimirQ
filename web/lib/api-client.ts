@@ -83,7 +83,7 @@ export type ChunkPreviewRequestParams = {
 
 export type FrontendWebVitalReportRequest = {
   id: string
-  name: 'LCP' | 'FID' | 'INP'
+  name: 'LCP' | 'CLS' | 'FID' | 'INP'
   value: number
   rating?: string
   navigation_type?: string
@@ -93,6 +93,18 @@ export type FrontendWebVitalReportRequest = {
 export type FrontendWebVitalReportOptions = {
   keepalive?: boolean
   signal?: AbortSignal
+}
+
+export type FrontendTraceReportRequest = {
+  event: string
+  duration_ms: number
+  component?: string
+  page?: string
+  input_node_count?: number
+  input_link_count?: number
+  output_node_count?: number
+  output_link_count?: number
+  active_filter_count?: number
 }
 
 export const apiClient = axios.create({
@@ -3278,6 +3290,28 @@ export const observabilityApi = {
 
     if (!response.ok) {
       throw await buildFetchError(response, 'Frontend vital report failed')
+    }
+  },
+
+  async reportFrontendTrace(
+    payload: FrontendTraceReportRequest,
+    options: FrontendWebVitalReportOptions = {}
+  ): Promise<void> {
+    const requestId = generateRequestId()
+    const response = await fetch(`${API_V1_BASE_URL}/observability/frontend-traces`, {
+      method: 'POST',
+      headers: withPreferredLanguageHeader({
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+        'X-Request-ID': requestId,
+      }),
+      body: JSON.stringify(payload),
+      keepalive: options.keepalive === true,
+      signal: options.signal,
+    })
+
+    if (!response.ok) {
+      throw await buildFetchError(response, 'Frontend trace report failed')
     }
   },
 

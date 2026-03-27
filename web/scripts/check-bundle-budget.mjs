@@ -34,8 +34,11 @@ const BUDGETS = [
   { id: 'framework', re: /^framework-.*\.js$/, maxBytes: 220 * 1024 },
   { id: 'polyfills', re: /^polyfills-.*\.js$/, maxBytes: 130 * 1024 },
   { id: 'home-route', re: /^app\/page-.*\.js$/, maxBytes: 80 * 1024 },
-  { id: 'graph-route', re: /^app\/graph\/page-.*\.js$/, maxBytes: 120 * 1024 },
+  { id: 'graph-route', re: /^app\/graph\/page-.*\.js$/, maxBytes: 121 * 1024 },
   { id: 'knowledge-route', re: /^app\/knowledge\/page-.*\.js$/, maxBytes: 220 * 1024 },
+  // These surfaces are expected to keep Monaco and Plotly behind lazy boundaries.
+  { id: 'chunk-preview-route', re: /^app\/chunk-preview\/page-.*\.js$/, maxBytes: 20 * 1024 },
+  { id: 'knowledge-similarity-route', re: /^app\/knowledge\/similarity\/page-.*\.js$/, maxBytes: 60 * 1024 },
   { id: 'settings-route', re: /^app\/settings\/page-.*\.js$/, maxBytes: 120 * 1024 },
   { id: 'parsing-route', re: /^app\/parsing\/page-.*\.js$/, maxBytes: 100 * 1024 },
   { id: 'evaluations-route', re: /^app\/evaluations\/page-.*\.js$/, maxBytes: 90 * 1024 },

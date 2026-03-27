@@ -7,7 +7,7 @@ describe('web-vitals-reporter helpers', () => {
     expect(shouldReportWebVital('LCP')).toBe(true)
     expect(shouldReportWebVital('FID')).toBe(true)
     expect(shouldReportWebVital('INP')).toBe(true)
-    expect(shouldReportWebVital('CLS')).toBe(false)
+    expect(shouldReportWebVital('CLS')).toBe(true)
   })
 
   it('normalizes web vital payloads for transport', () => {
@@ -28,6 +28,20 @@ describe('web-vitals-reporter helpers', () => {
     })
   })
 
+  it('normalizes CLS payloads without dropping the metric identity', () => {
+    expect(
+      normalizeWebVitalMetric({
+        id: 'metric-cls',
+        name: 'CLS',
+        value: 0.04,
+      } as any)
+    ).toEqual({
+      id: 'metric-cls',
+      name: 'CLS',
+      value: 0.04,
+    })
+  })
+
   it('skips reporting on auth routes even when credentials exist', () => {
     expect(canReportWebVital('/auth/login', { Authorization: 'Bearer token' })).toBe(false)
   })
@@ -39,5 +53,10 @@ describe('web-vitals-reporter helpers', () => {
   it('allows reporting when an authenticated session is present', () => {
     expect(canReportWebVital('/chat', { Authorization: 'Bearer token' })).toBe(true)
     expect(canReportWebVital('/chat', { 'X-User-ID': 'demo' })).toBe(true)
+  })
+
+  it('allows reporting when pathname is not yet resolved but credentials exist', () => {
+    expect(canReportWebVital(undefined, { Authorization: 'Bearer token' })).toBe(true)
+    expect(canReportWebVital(null, { 'X-User-ID': 'demo' })).toBe(true)
   })
 })
