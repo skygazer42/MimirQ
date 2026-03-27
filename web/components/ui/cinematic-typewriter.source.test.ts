@@ -9,6 +9,9 @@ describe('cinematic typewriter source', () => {
 
     expect(src).toContain("from 'next/dynamic'")
     expect(src).toContain('dynamic(')
+    expect(src).toContain('sanitizeMarkdownHref')
+    expect(src).toContain('resolveMarkdownImageSrc')
+    expect(src).toContain('skipHtml')
     expect(src).not.toContain("import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'")
     expect(src).not.toContain("import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'")
   })

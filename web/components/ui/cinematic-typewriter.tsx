@@ -4,6 +4,8 @@ import dynamic from 'next/dynamic'
 import { useEffect, useState, useRef, useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { AuthImage } from '@/components/auth-image'
+import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import { cn } from "@/lib/utils"
 
 const CinematicCodeBlock = dynamic(
@@ -24,6 +26,8 @@ interface CinematicTypewriterProps {
 }
 
 type MarkdownChildrenProps = Readonly<{ children?: React.ReactNode }>
+type MarkdownLinkProps = Readonly<{ href?: string; children?: React.ReactNode }>
+type MarkdownImageProps = Readonly<{ src?: string | Blob; alt?: string }>
 
 export function CinematicTypewriter({
   content,
@@ -46,6 +50,38 @@ export function CinematicTypewriter({
     ol: ({ children }: MarkdownChildrenProps) => (
       <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">{children}</ol>
     ),
+    a: ({ href, children }: MarkdownLinkProps) => {
+      const safeHref = sanitizeMarkdownHref(href)
+      if (!safeHref) return <span className="text-muted-foreground">{children}</span>
+
+      return (
+        <a
+          href={safeHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
+        >
+          {children}
+        </a>
+      )
+    },
+    img: ({ src, alt }: MarkdownImageProps) => {
+      const resolved = resolveMarkdownImageSrc(typeof src === 'string' ? src : '')
+      if (!resolved) return null
+
+      return (
+        <AuthImage
+          src={resolved}
+          alt={alt || 'image'}
+          width={1200}
+          height={800}
+          unoptimized
+          sizes="(max-width: 768px) 100vw, 768px"
+          loading="lazy"
+          className="my-3 w-full h-auto max-h-96 rounded-xl border border-border/50 bg-background/50 object-contain shadow-sm motion-safe:animate-fade-in"
+        />
+      )
+    },
     code: ({ className, children, ...props }: any) => {
       const match = /language-(\w+)/.exec(className || '')
       return match ? (
@@ -165,6 +201,7 @@ export function CinematicTypewriter({
     <div className={cn("relative leading-relaxed", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        skipHtml
         components={markdownComponents}
       >
         {displayedContent}
