@@ -1,3 +1,27 @@
+const isProduction = process.env.NODE_ENV === 'production'
+
+function buildCspValue() {
+  const directives = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "object-src 'none'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: http: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' http: https: ws: wss:",
+    "worker-src 'self' blob:",
+    "frame-src 'self' http: https:",
+    "form-action 'self'",
+    "manifest-src 'self'",
+  ]
+
+  if (isProduction) directives.push('upgrade-insecure-requests')
+
+  return directives.join('; ')
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -30,6 +54,19 @@ const nextConfig = {
       },
     })
     return config
+  },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: buildCspValue(),
+          },
+        ],
+      },
+    ]
   },
   images: {
     remotePatterns: [

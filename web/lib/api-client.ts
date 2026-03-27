@@ -22,6 +22,7 @@ import { appendPipelineOptionsToFormData } from '@/lib/form-data'
 import { tryRefreshOidcAccessToken } from '@/lib/oidc-session'
 import { createOpenApiAxiosClient } from '@/lib/openapi-request'
 import { resolveParserBackendForFilename, resolveParserBackendForFiles } from '@/lib/parser-compat'
+import { applyPreferredLanguageAxiosHeader, withPreferredLanguageHeader } from '@/lib/preferred-language'
 import { generateRequestId } from '@/lib/request-id'
 import { readSseDataStrings } from '@/lib/sse-reader'
 
@@ -229,6 +230,7 @@ apiClient.interceptors.request.use((config) => {
       headers.set(key, value)
     }
   }
+  applyPreferredLanguageAxiosHeader(headers)
   getOrCreateRequestId(headers)
   config.headers = headers
   return config
@@ -2665,12 +2667,12 @@ export const chatApi = {
 
     const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
       method: 'POST',
-      headers: {
+      headers: withPreferredLanguageHeader({
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
         ...getAuthHeaders(),
         'X-Request-ID': requestId,
-      },
+      }),
       body: JSON.stringify(request),
       signal: options.signal,
     })
@@ -2746,11 +2748,11 @@ export const sseApi = {
 
     const response = await fetch(`${API_V1_BASE_URL}/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/events`, {
       method: 'GET',
-      headers: {
+      headers: withPreferredLanguageHeader({
         Accept: 'text/event-stream',
         ...getAuthHeaders(),
         'X-Request-ID': requestId,
-      },
+      }),
       signal: options.signal,
     })
 
