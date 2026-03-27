@@ -378,9 +378,15 @@ export default function SettingsGroupDetailPage() {
                           {m.created_at ? formatDate(m.created_at) : '-'}
                         </div>
                         <div className="col-span-1 flex justify-end">
-                          <AlertDialog>
+                            <AlertDialog>
                             <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-9 w-9" disabled={!uid || removing}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-9"
+                                disabled={!uid || removing}
+                                aria-label={removing ? `正在移除成员 ${uid}` : `移除成员 ${uid}`}
+                              >
                                 {removing ? (
                                   <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                                 ) : (
