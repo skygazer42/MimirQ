@@ -55,4 +55,11 @@ describe('long-term cleanup source guards', () => {
     expect(messageCatalog).toContain('common:')
     expect(messageCatalog).toContain('documents:')
   })
+
+  it('keeps business-specific parser controls out of the ui primitives directory', () => {
+    expect(fs.existsSync(path.resolve(__dirname, '..', 'components/ui/parser-dropdown.tsx'))).toBe(false)
+    expect(fs.existsSync(path.resolve(__dirname, '..', 'components/ui/chunk-strategy-dropdown.tsx'))).toBe(false)
+    expect(fs.existsSync(path.resolve(__dirname, '..', 'components/business/parser-dropdown.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(__dirname, '..', 'components/business/chunk-strategy-dropdown.tsx'))).toBe(true)
+  })
 })

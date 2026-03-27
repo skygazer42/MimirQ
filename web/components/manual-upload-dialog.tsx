@@ -25,7 +25,7 @@ import { getParserLabel } from '@/lib/parser-options'
 import { formatApiError } from '@/lib/api-errors'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
-import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
 interface ManualUploadDialogProps {
