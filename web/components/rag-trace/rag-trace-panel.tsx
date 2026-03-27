@@ -14,7 +14,7 @@ import { useDocumentView } from '@/store/document-view'
 	import { Input } from '@/components/ui/input'
 	import { Panel } from '@/components/ui/panel'
 	import { ScrollArea } from '@/components/ui/scroll-area'
-	import type { RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
+	import type { RagTrace, RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
 
 function formatTs(tsMs: number) {
   try {
@@ -86,6 +86,106 @@ function getPrimaryScore(c: RagTraceCitation) {
   return Number.isFinite(n) ? n : null
 }
 
+export type PipelineTimelineStep = {
+  key: string
+  label: string
+  elapsedSec: number
+  share: number
+  width: number
+  mode: string | null
+  queryCount: number | null
+  itemCount: number | null
+  topK: number | null
+  rerankTopN: number | null
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  if (value == null) return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+function getMetaNumber(meta: Record<string, unknown> | null, key: string): number | null {
+  if (!meta) return null
+  return asFiniteNumber(meta[key])
+}
+
+export function buildPipelineTimelineSteps(trace: RagTrace | null): PipelineTimelineStep[] {
+  const rawSteps = trace?.steps || []
+  if (!rawSteps.length) return []
+
+  const stepRows = rawSteps.map((step) => {
+    const elapsed = Math.max(0, asFiniteNumber(step.elapsed_sec) ?? 0)
+    const lowerKey = String(step.key || '').toLowerCase()
+    const meta = (step.meta ?? null) as Record<string, unknown> | null
+    const mode = typeof meta?.mode === 'string' ? meta.mode : null
+    const queryCount = getMetaNumber(meta, 'query_count') ?? (lowerKey.includes('retriev') ? asFiniteNumber(trace?.retrieval?.query_count) : null)
+    const itemCount = getMetaNumber(meta, 'count')
+    const topK = lowerKey.includes('retriev') ? asFiniteNumber(trace?.retrieval?.top_k) : null
+    const rerankTopN = lowerKey.includes('rerank') ? asFiniteNumber(trace?.rerank?.top_n) : null
+
+    return {
+      key: String(step.key || step.label || 'step'),
+      label: String(step.label || step.key || 'step'),
+      elapsedSec: elapsed,
+      mode,
+      queryCount,
+      itemCount,
+      topK,
+      rerankTopN,
+    }
+  })
+
+  const maxElapsed = stepRows.reduce((acc, s) => Math.max(acc, s.elapsedSec), 0)
+  const totalElapsed = stepRows.reduce((acc, s) => acc + s.elapsedSec, 0)
+
+  return stepRows.map((s) => ({
+    ...s,
+    share: totalElapsed > 0 ? (s.elapsedSec / totalElapsed) * 100 : 0,
+    width: maxElapsed > 0 ? (s.elapsedSec / maxElapsed) * 100 : 0,
+  }))
+}
+
+export function RagTracePipelineTimeline({ steps }: Readonly<{ steps: PipelineTimelineStep[] }>) {
+  return (
+    <div className="p-4 space-y-2">
+      {steps.length ? (
+        steps.map((step) => {
+          const barWidth = step.width > 0 ? Math.max(step.width, 6) : 0
+          const shareLabel = Number.isFinite(step.share) ? `${step.share.toFixed(1)}%` : '—'
+          return (
+            <div key={step.key} className="space-y-1 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-foreground">{step.label}</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    share={shareLabel}
+                    {step.mode ? ` · mode=${step.mode}` : null}
+                    {step.queryCount == null ? null : ` · queries=${step.queryCount}`}
+                    {step.itemCount == null ? null : ` · count=${step.itemCount}`}
+                    {step.topK == null ? null : ` · top_k=${step.topK}`}
+                    {step.rerankTopN == null ? null : ` · top_n=${step.rerankTopN}`}
+                  </div>
+                </div>
+                <div className="shrink-0 text-xs font-medium text-muted-foreground">{formatSec(step.elapsedSec)}</div>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-border/60">
+                <div
+                  className="h-full rounded-full bg-sky-500/70"
+                  style={{ width: `${barWidth}%` }}
+                  data-pipeline-share={shareLabel}
+                />
+              </div>
+            </div>
+          )
+        })
+      ) : (
+        <div className="text-xs text-muted-foreground">pipeline steps unavailable</div>
+      )}
+    </div>
+  )
+}
+
 type RagTracePanelProps = {
   conversationId: string
   className?: string
@@ -116,6 +216,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const rerankSkipReason = rerankMeta?.skip_reason ? String(rerankMeta.skip_reason) : null
   const rerankError = rerankMeta?.error ? String(rerankMeta.error) : null
   const requestId = String(selected?.request_id || '').trim()
+  const pipelineSteps = React.useMemo(() => buildPipelineTimelineSteps(selected), [selected])
 
   const downloadBundle = React.useCallback(async () => {
     const rid = requestId
@@ -500,23 +601,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
             <Panel variant="glass" className="overflow-hidden" padding="none">
               <div className="px-4 py-3 border-b border-border/60">
-                <div className="text-sm font-semibold">Steps</div>
+                <div className="text-sm font-semibold">Pipeline Timeline</div>
               </div>
-              <div className="p-4 space-y-2">
-                {(selected.steps || []).map((s) => (
-                  <div key={s.key} className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-                    <div className="min-w-0">
-                      <div className="text-xs font-semibold text-foreground">{s.label}</div>
-                      <div className="mt-0.5 text-[11px] text-muted-foreground">
-                        {s.meta?.mode ? `mode=${s.meta.mode}` : null}
-                        {s.meta?.query_count == null ? null : ` · queries=${s.meta.query_count}`}
-                        {s.meta?.count == null ? null : ` · count=${s.meta.count}`}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-xs font-medium text-muted-foreground">{formatSec(s.elapsed_sec)}</div>
-                  </div>
-                ))}
-              </div>
+              <RagTracePipelineTimeline steps={pipelineSteps} />
             </Panel>
 
             <Panel variant="glass" className="overflow-hidden" padding="none">
