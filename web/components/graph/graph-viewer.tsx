@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
+import { Component, useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
 import { useTheme } from 'next-themes'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
 import { getCssHslColor, getCssHslaColor } from '@/lib/css-vars'
@@ -107,6 +107,52 @@ interface GraphViewerProps {
   readonly showEdgeLabels?: boolean
   readonly layoutMode?: LayoutMode
   readonly showMinimap?: boolean
+}
+
+type GraphRenderBoundaryProps = Readonly<{
+  resetKey: string
+  children: React.ReactNode
+}>
+
+type GraphRenderBoundaryState = Readonly<{
+  hasError: boolean
+}>
+
+function GraphRenderFallback() {
+  return (
+    <div
+      role="status"
+      className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground"
+    >
+      图谱渲染失败，请尝试刷新当前视图。
+    </div>
+  )
+}
+
+class GraphRenderBoundary extends Component<GraphRenderBoundaryProps, GraphRenderBoundaryState> {
+  state: GraphRenderBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): GraphRenderBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error('Graph rendering failed:', error)
+  }
+
+  componentDidUpdate(previousProps: GraphRenderBoundaryProps) {
+    if (this.state.hasError && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false })
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <GraphRenderFallback />
+    }
+
+    return this.props.children
+  }
 }
 
 export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({ 
@@ -223,6 +269,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const arrowLength = isLargeGraph ? 0 : 3.5
   const cooldownTicks = isLargeGraph ? 50 : 100
   const cooldownTime = isLargeGraph ? 4000 : 8000
+  const graphRenderResetKey = `${sanitizedData.nodes.length}:${sanitizedData.links.length}:${layoutMode}`
 
   // Debug: Log dimensions
   useEffect(() => {
@@ -420,306 +467,308 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 	           )}
         </div>
       ) : (
-        <>
-        <ForceGraph2DNoSSR
-          graphRef={fgRef}
-          width={width}
-          height={height}
-          graphData={sanitizedData}
-          backgroundColor="rgba(0,0,0,0)"
-          nodeLabel="label"
-          nodeColor={getNodeColor}
-          nodeRelSize={nodeRelSize}
-          // Layout Config
-          dagMode={getDagMode()}
-          dagLevelDistance={50}
-          
-          // Link styling
-          linkCurvature={(link: any) => {
-            const v = link?.curvature
-            return typeof v === 'number' && Number.isFinite(v) ? v : 0
-          }}
-          linkCurveRotation={(link: any) => {
-            const v = link?.curveRotation
-            return typeof v === 'number' && Number.isFinite(v) ? v : 0
-          }}
-          linkColor={(link: any) => {
-             const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
-             const linkKind = getLinkKind(link)
-             const baseColor = EDGE_KIND_COLORS[linkKind] || canvasColors.nodeDim
-              if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
-                 return '#f59e0b'
-              }
-              if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
-                 return '#38bdf8'
-              }
-              if (highlightedNodeIds.size > 0) {
-                const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-                const targetId = typeof link.target === 'object' ? link.target.id : link.target
-                if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
-                  return canvasColors.linkMid
-                }
-                return canvasColors.linkDim
-              }
-              if (selectedNodeId && !isLargeGraph) {
-                const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-                const targetId = typeof link.target === 'object' ? link.target.id : link.target
-                if (sourceId === selectedNodeId || targetId === selectedNodeId) {
-                  return baseColor
-                }
-                return canvasColors.linkDim
-              }
-
-              return baseColor
-           }}
-          linkWidth={(link: any) => {
-             const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
-             const confidence = getLinkConfidence(link)
-             const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
-             if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
-                 return 4 
-              }
-              if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
-                 return 3
-              }
-              if (highlightedNodeIds.size > 0) return 1
-              if (selectedNodeId && !isLargeGraph) {
-                const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-                const targetId = typeof link.target === 'object' ? link.target.id : link.target
-                if (sourceId === selectedNodeId || targetId === selectedNodeId) return Math.max(2.5, baseWidth + 0.6)
-                return 0.5
-              }
-              return Math.min(4, Math.max(0.5, baseWidth))
-           }}
-          linkDirectionalArrowLength={(link: any) => (link?.isSelfLoop ? 0 : arrowLength)}
-          linkDirectionalArrowRelPos={1}
-          linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
-          cooldownTicks={cooldownTicks}
-          cooldownTime={cooldownTime}
-          onNodeClick={handleNodeClick}
-          onNodeRightClick={(node: any, event: MouseEvent) => {
-            onNodeRightClick?.(node, event)
-          }}
-          onLinkClick={(link: any) => { onLinkClick?.(link) }}
-          onLinkRightClick={(link: any, event: MouseEvent) => {
-            onLinkRightClick?.(link, event)
-          }}
-          onBackgroundClick={onBackgroundClick}
-          onBackgroundRightClick={(event: MouseEvent) => {
-            onBackgroundRightClick?.(event)
-          }}
-          onNodeHover={(node: any) => {
-            if (isLargeGraph) return
-            const id = node?.id ?? null
-            setHoveredNodeId((prev) => (prev === id ? prev : id))
-          }}
-          onLinkHover={(link: any) => {
-            const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
-            setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
-          }}
-          onNodeDragEnd={(node: any) => {
-            node.fx = node.x;
-            node.fy = node.y;
-          }}
-          
-          // Custom Node Painting
-          nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-            const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
-            const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
-            const isSelected = selectedNodeId === node.id
-            const isNeighbor = neighborSet ? neighborSet.has(node.id) : false
-            const isDimmed = (
-              ((highlightedNodeIds.size > 0 || highlightedLinkIds.size > 0) && !isHighlighted)
-              || (selectedNodeId && !isLargeGraph && !isSelected && !isNeighbor)
-            )
-            const isHovered = hoveredNodeId === node.id && !isLargeGraph
-
-            const rawLabel = node.label || node.id
-            const label = rawLabel.length > 16 ? rawLabel.substring(0, 15) + '\u2026' : rawLabel
-            const fontSize = (isHighlighted || isSelected) ? 14 / globalScale : 12 / globalScale
-
-            const color = getNodeColor(node)
-            const degree = nodeDegreeMap.get(String(node.id)) || 0
-            const baseRadius = isLargeGraph ? 4 : 5
-            const degreeBonus = isLargeGraph ? 0 : Math.min(degree * 0.4, 4)
-            let radius = baseRadius + degreeBonus
-            if (isHighlighted || isSelected) radius += 2
-            if (isHovered) radius += 1
-
-            const nx = node.x || 0
-            const ny = node.y || 0
-
-            ctx.globalAlpha = isDimmed ? 0.3 : 1
-
-            if ((isHovered || isSelected) && !isLargeGraph) {
-              ctx.save()
-              const glowRadius = radius + (isSelected ? 6 : 5)
-              const glow = ctx.createRadialGradient(nx, ny, radius * 0.5, nx, ny, glowRadius)
-              glow.addColorStop(0, color + '40')
-              glow.addColorStop(1, color + '00')
-              ctx.beginPath()
-              ctx.arc(nx, ny, glowRadius, 0, 2 * Math.PI)
-              ctx.fillStyle = glow
-              ctx.globalAlpha = isSelected ? 0.7 : 0.5
-              ctx.fill()
-              ctx.restore()
-              ctx.globalAlpha = isDimmed ? 0.3 : 1
-            }
-
-            const grad = ctx.createRadialGradient(
-              nx - radius * 0.3, ny - radius * 0.3, radius * 0.1,
-              nx, ny, radius
-            )
-            grad.addColorStop(0, isDark ? 'rgba(255,255,255,0.14)' : '#ffffff60')
-            grad.addColorStop(0.4, color)
-            grad.addColorStop(1, color + 'cc')
-
-            ctx.beginPath()
-            ctx.arc(nx, ny, radius, 0, 2 * Math.PI, false)
-            ctx.fillStyle = isLargeGraph ? color : grad
-            ctx.fill()
-
-            if (isSelected) {
-              ctx.strokeStyle = '#fff'
-              ctx.lineWidth = 3 / globalScale
-              ctx.stroke()
-              ctx.beginPath()
-              ctx.arc(nx, ny, radius + 2.5 / globalScale, 0, 2 * Math.PI, false)
-              ctx.strokeStyle = '#E91E63'
-              ctx.lineWidth = 2.5 / globalScale
-              ctx.stroke()
-            } else if (isHighlighted) {
-              ctx.strokeStyle = '#fff'
-              ctx.lineWidth = 3 / globalScale
-              ctx.stroke()
-              ctx.beginPath()
-              ctx.arc(nx, ny, radius + 2 / globalScale, 0, 2 * Math.PI, false)
-              ctx.strokeStyle = isPathNode ? '#f59e0b' : color
-              ctx.lineWidth = 2 / globalScale
-              ctx.stroke()
-            } else if (isHovered) {
-              ctx.strokeStyle = '#fff'
-              ctx.lineWidth = 2.5 / globalScale
-              ctx.stroke()
-            } else {
-              ctx.strokeStyle = '#ffffff'
-              ctx.lineWidth = 2 / globalScale
-              ctx.stroke()
-            }
-
-            const shouldShowLabel =
-              isHighlighted || isSelected || isHovered
-              || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.2)))
-
-            if (shouldShowLabel) {
-              const labelY = ny + radius + (isLargeGraph ? 3 : 5)
-              ctx.font = `${(isHighlighted || isSelected || isHovered) ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
-              ctx.textAlign = 'center'
-              ctx.textBaseline = 'middle'
-
-              ctx.strokeStyle = canvasColors.labelStroke
-              ctx.lineWidth = 4 / globalScale
-              ctx.strokeText(label, nx, labelY)
-
-              ctx.fillStyle = isDimmed ? canvasColors.labelDim : canvasColors.labelFill
-              ctx.fillText(label, nx, labelY)
-            }
-
-            ctx.globalAlpha = 1
-          }}
-
-          // Custom Link Label Painting
-          linkCanvasObjectMode={() => 'after'}
-          linkCanvasObject={(link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-            const start = link.source
-            const end = link.target
-
-            if (typeof start !== 'object' || typeof end !== 'object') return
-
-            const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
-            const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
-            const isHoveredLink = hoveredLinkId != null && linkId === hoveredLinkId
-            const isAccent = isPathLink || isHoveredLink
-
-            if (!allowEdgeLabels && !isAccent) return
-            if (globalScale < edgeLabelScale && !isAccent) return
-
-            const label = link.label
-            if (!label) return
-
-            const x1 = start.x || 0
-            const y1 = start.y || 0
-            const x2 = end.x || 0
-            const y2 = end.y || 0
-
-            const textPos = { x: x1 + (x2 - x1) / 2, y: y1 + (y2 - y1) / 2 }
-
-            const relLink = { x: x2 - x1, y: y2 - y1 }
-            const maxTextLength = Math.sqrt(relLink.x ** 2 + relLink.y ** 2) - 8
-
-            let textAngle = Math.atan2(relLink.y, relLink.x)
-            if (textAngle > Math.PI / 2) textAngle = -(Math.PI - textAngle)
-            if (textAngle < -Math.PI / 2) textAngle = -(-Math.PI - textAngle)
-
-            const fontSize = isAccent ? 12 / globalScale : 11 / globalScale
-            ctx.font = `${isAccent ? 'bold ' : ''}${fontSize}px Sans-Serif`
-
-            const textWidth = ctx.measureText(label).width
-            if (textWidth > maxTextLength) return
-
-            ctx.save()
-            ctx.translate(textPos.x, textPos.y)
-            ctx.rotate(textAngle)
-
-            const padX = 4
-            const padY = 2
-            const rx = 3 / globalScale
-            const bx = -textWidth / 2 - padX
-            const by = -fontSize / 2 - padY
-            const bw = textWidth + padX * 2
-            const bh = fontSize + padY * 2
-
-            ctx.beginPath()
-            ctx.moveTo(bx + rx, by)
-            ctx.lineTo(bx + bw - rx, by)
-            ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + rx)
-            ctx.lineTo(bx + bw, by + bh - rx)
-            ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - rx, by + bh)
-            ctx.lineTo(bx + rx, by + bh)
-            ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - rx)
-            ctx.lineTo(bx, by + rx)
-            ctx.quadraticCurveTo(bx, by, bx + rx, by)
-            ctx.closePath()
-
-            if (isPathLink) {
-              ctx.fillStyle = '#f59e0b'
-            } else if (isHoveredLink) {
-              ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
-            } else {
-              ctx.fillStyle = canvasColors.edgeLabelBg
-            }
-            ctx.fill()
-
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'middle'
-            ctx.fillStyle = isPathLink ? '#ffffff' : isHoveredLink ? canvasColors.edgeLabelHoverText : canvasColors.edgeLabelText
-            ctx.fillText(label, 0, 0)
-
-            ctx.restore()
-          }}
-        />
-        {showMinimap && !isLargeGraph && sanitizedData.nodes.length > 0 && (
-          <div className="absolute bottom-24 right-6 z-10">
-            <GraphMinimap
+        <GraphRenderBoundary resetKey={graphRenderResetKey}>
+          <>
+            <ForceGraph2DNoSSR
               graphRef={fgRef}
-              data={sanitizedData}
-              graphWidth={width}
-              graphHeight={height}
-              isDark={isDark}
+              width={width}
+              height={height}
+              graphData={sanitizedData}
+              backgroundColor="rgba(0,0,0,0)"
+              nodeLabel="label"
+              nodeColor={getNodeColor}
+              nodeRelSize={nodeRelSize}
+              // Layout Config
+              dagMode={getDagMode()}
+              dagLevelDistance={50}
+              
+              // Link styling
+              linkCurvature={(link: any) => {
+                const v = link?.curvature
+                return typeof v === 'number' && Number.isFinite(v) ? v : 0
+              }}
+              linkCurveRotation={(link: any) => {
+                const v = link?.curveRotation
+                return typeof v === 'number' && Number.isFinite(v) ? v : 0
+              }}
+              linkColor={(link: any) => {
+                 const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
+                 const linkKind = getLinkKind(link)
+                 const baseColor = EDGE_KIND_COLORS[linkKind] || canvasColors.nodeDim
+                  if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                     return '#f59e0b'
+                  }
+                  if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
+                     return '#38bdf8'
+                  }
+                  if (highlightedNodeIds.size > 0) {
+                    const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+                    const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                    if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
+                      return canvasColors.linkMid
+                    }
+                    return canvasColors.linkDim
+                  }
+                  if (selectedNodeId && !isLargeGraph) {
+                    const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+                    const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                    if (sourceId === selectedNodeId || targetId === selectedNodeId) {
+                      return baseColor
+                    }
+                    return canvasColors.linkDim
+                  }
+
+                  return baseColor
+               }}
+              linkWidth={(link: any) => {
+                 const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
+                 const confidence = getLinkConfidence(link)
+                 const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
+                 if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                     return 4 
+                  }
+                  if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
+                     return 3
+                  }
+                  if (highlightedNodeIds.size > 0) return 1
+                  if (selectedNodeId && !isLargeGraph) {
+                    const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+                    const targetId = typeof link.target === 'object' ? link.target.id : link.target
+                    if (sourceId === selectedNodeId || targetId === selectedNodeId) return Math.max(2.5, baseWidth + 0.6)
+                    return 0.5
+                  }
+                  return Math.min(4, Math.max(0.5, baseWidth))
+               }}
+              linkDirectionalArrowLength={(link: any) => (link?.isSelfLoop ? 0 : arrowLength)}
+              linkDirectionalArrowRelPos={1}
+              linkLabel={(link: any) => buildGraphLinkProvenanceTooltipHtml(link)}
+              cooldownTicks={cooldownTicks}
+              cooldownTime={cooldownTime}
+              onNodeClick={handleNodeClick}
+              onNodeRightClick={(node: any, event: MouseEvent) => {
+                onNodeRightClick?.(node, event)
+              }}
+              onLinkClick={(link: any) => { onLinkClick?.(link) }}
+              onLinkRightClick={(link: any, event: MouseEvent) => {
+                onLinkRightClick?.(link, event)
+              }}
+              onBackgroundClick={onBackgroundClick}
+              onBackgroundRightClick={(event: MouseEvent) => {
+                onBackgroundRightClick?.(event)
+              }}
+              onNodeHover={(node: any) => {
+                if (isLargeGraph) return
+                const id = node?.id ?? null
+                setHoveredNodeId((prev) => (prev === id ? prev : id))
+              }}
+              onLinkHover={(link: any) => {
+                const linkId = link?.id || (link?.index === undefined ? null : `link-${link.index}`)
+                setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
+              }}
+              onNodeDragEnd={(node: any) => {
+                node.fx = node.x;
+                node.fy = node.y;
+              }}
+              
+              // Custom Node Painting
+              nodeCanvasObject={(node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+                const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
+                const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
+                const isSelected = selectedNodeId === node.id
+                const isNeighbor = neighborSet ? neighborSet.has(node.id) : false
+                const isDimmed = (
+                  ((highlightedNodeIds.size > 0 || highlightedLinkIds.size > 0) && !isHighlighted)
+                  || (selectedNodeId && !isLargeGraph && !isSelected && !isNeighbor)
+                )
+                const isHovered = hoveredNodeId === node.id && !isLargeGraph
+
+                const rawLabel = node.label || node.id
+                const label = rawLabel.length > 16 ? rawLabel.substring(0, 15) + '\u2026' : rawLabel
+                const fontSize = (isHighlighted || isSelected) ? 14 / globalScale : 12 / globalScale
+
+                const color = getNodeColor(node)
+                const degree = nodeDegreeMap.get(String(node.id)) || 0
+                const baseRadius = isLargeGraph ? 4 : 5
+                const degreeBonus = isLargeGraph ? 0 : Math.min(degree * 0.4, 4)
+                let radius = baseRadius + degreeBonus
+                if (isHighlighted || isSelected) radius += 2
+                if (isHovered) radius += 1
+
+                const nx = node.x || 0
+                const ny = node.y || 0
+
+                ctx.globalAlpha = isDimmed ? 0.3 : 1
+
+                if ((isHovered || isSelected) && !isLargeGraph) {
+                  ctx.save()
+                  const glowRadius = radius + (isSelected ? 6 : 5)
+                  const glow = ctx.createRadialGradient(nx, ny, radius * 0.5, nx, ny, glowRadius)
+                  glow.addColorStop(0, color + '40')
+                  glow.addColorStop(1, color + '00')
+                  ctx.beginPath()
+                  ctx.arc(nx, ny, glowRadius, 0, 2 * Math.PI)
+                  ctx.fillStyle = glow
+                  ctx.globalAlpha = isSelected ? 0.7 : 0.5
+                  ctx.fill()
+                  ctx.restore()
+                  ctx.globalAlpha = isDimmed ? 0.3 : 1
+                }
+
+                const grad = ctx.createRadialGradient(
+                  nx - radius * 0.3, ny - radius * 0.3, radius * 0.1,
+                  nx, ny, radius
+                )
+                grad.addColorStop(0, isDark ? 'rgba(255,255,255,0.14)' : '#ffffff60')
+                grad.addColorStop(0.4, color)
+                grad.addColorStop(1, color + 'cc')
+
+                ctx.beginPath()
+                ctx.arc(nx, ny, radius, 0, 2 * Math.PI, false)
+                ctx.fillStyle = isLargeGraph ? color : grad
+                ctx.fill()
+
+                if (isSelected) {
+                  ctx.strokeStyle = '#fff'
+                  ctx.lineWidth = 3 / globalScale
+                  ctx.stroke()
+                  ctx.beginPath()
+                  ctx.arc(nx, ny, radius + 2.5 / globalScale, 0, 2 * Math.PI, false)
+                  ctx.strokeStyle = '#E91E63'
+                  ctx.lineWidth = 2.5 / globalScale
+                  ctx.stroke()
+                } else if (isHighlighted) {
+                  ctx.strokeStyle = '#fff'
+                  ctx.lineWidth = 3 / globalScale
+                  ctx.stroke()
+                  ctx.beginPath()
+                  ctx.arc(nx, ny, radius + 2 / globalScale, 0, 2 * Math.PI, false)
+                  ctx.strokeStyle = isPathNode ? '#f59e0b' : color
+                  ctx.lineWidth = 2 / globalScale
+                  ctx.stroke()
+                } else if (isHovered) {
+                  ctx.strokeStyle = '#fff'
+                  ctx.lineWidth = 2.5 / globalScale
+                  ctx.stroke()
+                } else {
+                  ctx.strokeStyle = '#ffffff'
+                  ctx.lineWidth = 2 / globalScale
+                  ctx.stroke()
+                }
+
+                const shouldShowLabel =
+                  isHighlighted || isSelected || isHovered
+                  || (!isLargeGraph && (globalScale > 1.5 || (!isDimmed && globalScale > 1.2)))
+
+                if (shouldShowLabel) {
+                  const labelY = ny + radius + (isLargeGraph ? 3 : 5)
+                  ctx.font = `${(isHighlighted || isSelected || isHovered) ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+                  ctx.textAlign = 'center'
+                  ctx.textBaseline = 'middle'
+
+                  ctx.strokeStyle = canvasColors.labelStroke
+                  ctx.lineWidth = 4 / globalScale
+                  ctx.strokeText(label, nx, labelY)
+
+                  ctx.fillStyle = isDimmed ? canvasColors.labelDim : canvasColors.labelFill
+                  ctx.fillText(label, nx, labelY)
+                }
+
+                ctx.globalAlpha = 1
+              }}
+
+              // Custom Link Label Painting
+              linkCanvasObjectMode={() => 'after'}
+              linkCanvasObject={(link: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+                const start = link.source
+                const end = link.target
+
+                if (typeof start !== 'object' || typeof end !== 'object') return
+
+                const linkId = link.id || (link.index === undefined ? null : `link-${link.index}`)
+                const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
+                const isHoveredLink = hoveredLinkId != null && linkId === hoveredLinkId
+                const isAccent = isPathLink || isHoveredLink
+
+                if (!allowEdgeLabels && !isAccent) return
+                if (globalScale < edgeLabelScale && !isAccent) return
+
+                const label = link.label
+                if (!label) return
+
+                const x1 = start.x || 0
+                const y1 = start.y || 0
+                const x2 = end.x || 0
+                const y2 = end.y || 0
+
+                const textPos = { x: x1 + (x2 - x1) / 2, y: y1 + (y2 - y1) / 2 }
+
+                const relLink = { x: x2 - x1, y: y2 - y1 }
+                const maxTextLength = Math.sqrt(relLink.x ** 2 + relLink.y ** 2) - 8
+
+                let textAngle = Math.atan2(relLink.y, relLink.x)
+                if (textAngle > Math.PI / 2) textAngle = -(Math.PI - textAngle)
+                if (textAngle < -Math.PI / 2) textAngle = -(-Math.PI - textAngle)
+
+                const fontSize = isAccent ? 12 / globalScale : 11 / globalScale
+                ctx.font = `${isAccent ? 'bold ' : ''}${fontSize}px Sans-Serif`
+
+                const textWidth = ctx.measureText(label).width
+                if (textWidth > maxTextLength) return
+
+                ctx.save()
+                ctx.translate(textPos.x, textPos.y)
+                ctx.rotate(textAngle)
+
+                const padX = 4
+                const padY = 2
+                const rx = 3 / globalScale
+                const bx = -textWidth / 2 - padX
+                const by = -fontSize / 2 - padY
+                const bw = textWidth + padX * 2
+                const bh = fontSize + padY * 2
+
+                ctx.beginPath()
+                ctx.moveTo(bx + rx, by)
+                ctx.lineTo(bx + bw - rx, by)
+                ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + rx)
+                ctx.lineTo(bx + bw, by + bh - rx)
+                ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - rx, by + bh)
+                ctx.lineTo(bx + rx, by + bh)
+                ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - rx)
+                ctx.lineTo(bx, by + rx)
+                ctx.quadraticCurveTo(bx, by, bx + rx, by)
+                ctx.closePath()
+
+                if (isPathLink) {
+                  ctx.fillStyle = '#f59e0b'
+                } else if (isHoveredLink) {
+                  ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
+                } else {
+                  ctx.fillStyle = canvasColors.edgeLabelBg
+                }
+                ctx.fill()
+
+                ctx.textAlign = 'center'
+                ctx.textBaseline = 'middle'
+                ctx.fillStyle = isPathLink ? '#ffffff' : isHoveredLink ? canvasColors.edgeLabelHoverText : canvasColors.edgeLabelText
+                ctx.fillText(label, 0, 0)
+
+                ctx.restore()
+              }}
             />
-          </div>
-        )}
-        </>
+            {showMinimap && !isLargeGraph && sanitizedData.nodes.length > 0 && (
+              <div className="absolute bottom-24 right-6 z-10">
+                <GraphMinimap
+                  graphRef={fgRef}
+                  data={sanitizedData}
+                  graphWidth={width}
+                  graphHeight={height}
+                  isDark={isDark}
+                />
+              </div>
+            )}
+          </>
+        </GraphRenderBoundary>
       )}
     </div>
   )
