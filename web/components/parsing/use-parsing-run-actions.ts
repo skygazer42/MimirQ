@@ -40,7 +40,7 @@ type UseParsingRunActionsOptions = {
   setFiles: Dispatch<SetStateAction<ParsedFile[]>>
   setHoveredBlockId: Dispatch<SetStateAction<string | null>>
   setRightPanelMode: Dispatch<SetStateAction<'blocks' | 'markdown'>>
-  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
+  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => Promise<void>
   upsertParsedFile: (file: ParsedFileData) => void
   visibleQueueFiles: ParsedFile[]
 }
@@ -243,7 +243,7 @@ export function useParsingRunActions({
         setHoveredBlockId(null)
         setRightPanelMode(blocks.length ? 'blocks' : 'markdown')
 
-        updateParsedFile(libraryId, {
+        await updateParsedFile(libraryId, {
           filename: file.file.name,
           fileType: file.file.name.split('.').pop()?.toLowerCase() || '',
           fileSize: file.file.size,

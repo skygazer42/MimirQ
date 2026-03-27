@@ -36,6 +36,8 @@ export interface ParsedFileData {
 
 type ParsedFileUpdates = Partial<Omit<ParsedFileData, 'id'>>
 
+const RELIABLE_SYNC_MAX_ATTEMPTS = 3
+
 interface ParsedFilesState {
   files: ParsedFileData[]
   folders: FolderNode[]
@@ -48,7 +50,7 @@ interface ParsedFilesState {
   setParsedFiles: (files: ParsedFileData[]) => void
   getFile: (id: string) => ParsedFileData | null
   removeFile: (id: string) => void
-  updateParsedFile: (id: string, updates: ParsedFileUpdates) => void
+  updateParsedFile: (id: string, updates: ParsedFileUpdates) => Promise<void>
   clearAll: () => void
 
   createFolder: (name: string, parentId?: string) => string
@@ -72,6 +74,38 @@ function getUpdatedMarkdownFields(updates: ParsedFileUpdates): {
     nextOriginal:
       typeof updates.originalMarkdownContent === 'string' ? updates.originalMarkdownContent : undefined,
   }
+}
+
+function isIndexedDbUnavailableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error || '')
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('indexeddb') ||
+    normalized.includes('private') ||
+    normalized.includes('securityerror') ||
+    normalized.includes('invalidstateerror')
+  )
+}
+
+async function persistParsedMarkdownReliably(
+  id: string,
+  markdownContent: string,
+  originalMarkdownContent: string
+) {
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < RELIABLE_SYNC_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      await saveDocContentToCache({
+        id,
+        markdownContent,
+        originalMarkdownContent,
+      })
+      return
+    } catch (error) {
+      lastError = error
+    }
+  }
+  throw lastError
 }
 
 const noopStorage = {
@@ -150,22 +184,48 @@ export const useParsedFiles = create<ParsedFilesState>()(
         }
       },
 
-      updateParsedFile: (id, updates) => {
-        set((state) => ({
-          files: state.files.map((f) =>
-            f.id === id ? { ...f, ...updates, id: f.id } : f
-          ),
-        }))
-        // Best-effort: persist large markdown to IndexedDB (not localStorage).
-        if (globalThis.window !== undefined) {
-          const { nextMarkdown, nextOriginal } = getUpdatedMarkdownFields(updates)
-          if (typeof nextMarkdown === 'string' || typeof nextOriginal === 'string') {
-            detachPromise(saveDocContentToCache({
-              id,
-              markdownContent: nextMarkdown ?? '',
-              originalMarkdownContent: nextOriginal ?? '',
-            }))
-          }
+      updateParsedFile: async (id, updates) => {
+        const applyUpdates = () =>
+          set((state) => ({
+            files: state.files.map((f) =>
+              f.id === id ? { ...f, ...updates, id: f.id } : f
+            ),
+          }))
+
+        const { nextMarkdown, nextOriginal } = getUpdatedMarkdownFields(updates)
+        const shouldPersistMarkdown =
+          globalThis.window !== undefined && (typeof nextMarkdown === 'string' || typeof nextOriginal === 'string')
+        const shouldAwaitPersistence = shouldPersistMarkdown && updates.status === 'parsed'
+        const markdownContent = nextMarkdown ?? ''
+        const originalMarkdownContent = nextOriginal ?? ''
+
+        if (!shouldPersistMarkdown) {
+          applyUpdates()
+          return
+        }
+
+        const persistMarkdown = () =>
+          saveDocContentToCache({
+            id,
+            markdownContent,
+            originalMarkdownContent,
+          })
+
+        if (!shouldAwaitPersistence) {
+          applyUpdates()
+          detachPromise(persistMarkdown())
+          return
+        }
+
+        try {
+          await persistParsedMarkdownReliably(id, markdownContent, originalMarkdownContent)
+          applyUpdates()
+        } catch (error) {
+          const reason = isIndexedDbUnavailableError(error)
+            ? 'IndexedDB unavailable, applying in-memory fallback for parsed markdown'
+            : 'Failed to persist parsed markdown to IndexedDB, applying in-memory fallback'
+          console.warn(reason, error)
+          applyUpdates()
         }
       },
 

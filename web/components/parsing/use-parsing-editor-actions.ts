@@ -67,7 +67,7 @@ type UseParsingEditorActionsOptions = {
   setHoveredBlockId: Dispatch<SetStateAction<string | null>>
   setIsEditing: Dispatch<SetStateAction<boolean>>
   setRightPanelMode: Dispatch<SetStateAction<'blocks' | 'markdown'>>
-  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
+  updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => Promise<void>
 }
 
 export function useParsingEditorActions({
@@ -132,7 +132,7 @@ export function useParsingEditorActions({
 
     try {
       const saved = await parsingApi.updateContent(libId, { markdown_content: editedContent })
-      updateParsedFile(libId, {
+      await updateParsedFile(libId, {
         markdownContent: saved.markdown_content || editedContent,
         originalMarkdownContent: saved.original_markdown_content || editedContent,
         status: 'parsed',
@@ -156,11 +156,11 @@ export function useParsingEditorActions({
     updateParsedFile,
   ])
 
-  const handleSubmitToGovernance = useCallback(() => {
+  const handleSubmitToGovernance = useCallback(async () => {
     if (!activeFile || !activeMarkdown) return
 
     if (activeFile.libraryId) {
-      updateParsedFile(activeFile.libraryId, {
+      await updateParsedFile(activeFile.libraryId, {
         markdownContent: activeMarkdown,
         originalMarkdownContent: activeMarkdown,
         parser: activeFile.parserLabel,
