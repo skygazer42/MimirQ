@@ -1,5 +1,6 @@
 'use client'
 
+import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
 
 import { toast } from 'sonner'
@@ -46,6 +47,93 @@ type UseParsingViewStateOptions = {
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
 }
 
+type ParsingLibraryContentHydration = {
+  markdownContent: string
+  originalMarkdownContent: string
+  status: FileStatus
+  parser?: string
+  parserBackend?: string
+  durationSec?: number
+} | null
+
+function mapParsingDocumentToLibraryFile(
+  doc: Awaited<ReturnType<typeof parsingApi.listDocuments>>['items'][number],
+  currentFiles: ParsedFileData[],
+  mapBackendStatusToLibraryStatus: (status?: string) => FileStatus
+): ParsedFileData {
+  const byId = new Map(currentFiles.map((file) => [file.id, file]))
+  const id = String(doc.id || '').trim()
+  const existing = byId.get(id)
+  const meta = doc.metadata as Record<string, unknown> | undefined
+  const rawDuration = meta?.parse_duration_sec
+  const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : existing?.durationSec
+  const backendFromServer =
+    normalizeBackendCandidate(meta?.parser_backend) ||
+    normalizeBackendCandidate(meta?.parser_backend_requested) ||
+    'auto'
+  const preferredBackend =
+    backendFromServer === 'auto' ? (existing?.parserBackend || backendFromServer) : backendFromServer
+  const resolved = resolveParserBackendForFilename(doc.filename || existing?.filename || 'document', preferredBackend)
+  const backend = resolved.backend
+  const status = mapBackendStatusToLibraryStatus(doc.status)
+
+  return {
+    id,
+    filename: doc.filename || existing?.filename || 'document',
+    fileType: doc.file_type || existing?.fileType || '',
+    fileSize: Number(doc.file_size || existing?.fileSize || 0),
+    markdownContent: existing?.markdownContent || '',
+    originalMarkdownContent: existing?.originalMarkdownContent || '',
+    parsedAt: String(doc.updated_at || doc.created_at || existing?.parsedAt || new Date().toISOString()),
+    parser: getParserLabel(backend),
+    parserBackend: backend,
+    durationSec,
+    folderId: existing?.folderId || ROOT_FOLDER_ID,
+    status,
+    error: status === 'error' ? String(doc.error_message || existing?.error || '解析失败') : undefined,
+  }
+}
+
+async function hydrateLibraryContent(
+  id: string,
+  status: FileStatus
+): Promise<ParsingLibraryContentHydration> {
+  try {
+    const cached = await getDocContentFromCache(id)
+    const markdown = (cached?.markdownContent || '').trim()
+    const original = (cached?.originalMarkdownContent || '').trim()
+    if (markdown || original) {
+      return {
+        markdownContent: markdown || original,
+        originalMarkdownContent: original || markdown,
+        status: status || 'parsed',
+      }
+    }
+  } catch {
+    // ignore cache miss and fall back to backend
+  }
+
+  try {
+    const remote = await parsingApi.getContent(id)
+    const markdown = (remote?.markdown_content || '').trim()
+    const original = (remote?.original_markdown_content || '').trim()
+    const rawDuration = remote?.parse_duration_sec
+    const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : undefined
+    if (!markdown && !original) return null
+    return {
+      markdownContent: markdown || original,
+      originalMarkdownContent: original || markdown,
+      status: status || 'parsed',
+      parser: getParserLabel(remote?.parser_backend || 'auto'),
+      parserBackend: String(remote?.parser_backend || 'auto'),
+      durationSec,
+    }
+  } catch {
+    // ignore backend content load failures for passive selection
+    return null
+  }
+}
+
 export function useParsingViewState({
   activeFileId,
   activeFolderId,
@@ -64,57 +152,26 @@ export function useParsingViewState({
   setParsedFiles,
   updateParsedFile,
 }: Readonly<UseParsingViewStateOptions>) {
-  const syncLibraryFromServer = useCallback(async () => {
-    try {
-      const { items } = await parsingApi.listDocuments({ skip: 0, limit: 500 })
-      const current = useParsedFiles.getState().files || []
-      const byId = new Map(current.map((file) => [file.id, file]))
-
-      const next = items.map((doc) => {
-        const id = String(doc.id || '').trim()
-        const existing = byId.get(id)
-        const meta = doc.metadata as Record<string, unknown> | undefined
-        const rawDuration = meta?.parse_duration_sec
-        const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : existing?.durationSec
-        const backendFromServer =
-          normalizeBackendCandidate(meta?.parser_backend) ||
-          normalizeBackendCandidate(meta?.parser_backend_requested) ||
-          'auto'
-        const preferredBackend =
-          backendFromServer === 'auto' ? (existing?.parserBackend || backendFromServer) : backendFromServer
-        const resolved = resolveParserBackendForFilename(doc.filename || existing?.filename || 'document', preferredBackend)
-        const backend = resolved.backend
-        const status = mapBackendStatusToLibraryStatus(doc.status)
-
-        return {
-          id,
-          filename: doc.filename || existing?.filename || 'document',
-          fileType: doc.file_type || existing?.fileType || '',
-          fileSize: Number(doc.file_size || existing?.fileSize || 0),
-          markdownContent: existing?.markdownContent || '',
-          originalMarkdownContent: existing?.originalMarkdownContent || '',
-          parsedAt: String(doc.updated_at || doc.created_at || existing?.parsedAt || new Date().toISOString()),
-          parser: getParserLabel(backend),
-          parserBackend: backend,
-          durationSec,
-          folderId: existing?.folderId || ROOT_FOLDER_ID,
-          status,
-          error: status === 'error' ? String(doc.error_message || existing?.error || '解析失败') : undefined,
-        }
-      })
-
-      setParsedFiles(next)
-    } catch (err) {
-      console.warn('Failed to sync parsing library from server:', err)
-    }
-  }, [mapBackendStatusToLibraryStatus, setParsedFiles])
+  const librarySyncQuery = useQuery({
+    queryKey: ['parsing', 'library-documents'],
+    enabled: isLibraryLoaded,
+    queryFn: async () => {
+      try {
+        const { items } = await parsingApi.listDocuments({ skip: 0, limit: 500 })
+        const current = useParsedFiles.getState().files || []
+        return items.map((doc) => mapParsingDocumentToLibraryFile(doc, current, mapBackendStatusToLibraryStatus))
+      } catch (err) {
+        console.warn('Failed to sync parsing library from server:', err)
+        return null
+      }
+    },
+  })
 
   useEffect(() => {
-    if (!isLibraryLoaded) return
-    if (didSyncLibraryFromServerRef.current) return
+    if (!librarySyncQuery.data) return
     didSyncLibraryFromServerRef.current = true
-    void syncLibraryFromServer()
-  }, [didSyncLibraryFromServerRef, isLibraryLoaded, syncLibraryFromServer])
+    setParsedFiles(librarySyncQuery.data)
+  }, [didSyncLibraryFromServerRef, librarySyncQuery.data, setParsedFiles])
 
   const activeFile = files.find((file) => file.id === activeFileId) || null
 
@@ -123,57 +180,22 @@ export function useParsingViewState({
     return libraryFiles.find((file) => file.id === activeLibraryFileId) || null
   }, [activeLibraryFileId, libraryFiles])
 
+  const activeLibraryContentQuery = useQuery({
+    queryKey: ['parsing', 'library-content', activeLibraryFileId],
+    enabled: Boolean(activeLibraryFileId && activeLibraryFile && !(activeLibraryFile.markdownContent || '').trim()),
+    retry: false,
+    staleTime: 0,
+    queryFn: async () => {
+      if (!activeLibraryFileId || !activeLibraryFile) return null
+      return hydrateLibraryContent(activeLibraryFileId, activeLibraryFile.status || 'parsed')
+    },
+  })
+
   useEffect(() => {
     const id = (activeLibraryFileId || '').trim()
-    if (!id) return
-    const file = activeLibraryFile
-    if (!file) return
-    if ((file.markdownContent || '').trim()) return
-
-    let cancelled = false
-    ;(async () => {
-      try {
-        const cached = await getDocContentFromCache(id)
-        if (cancelled) return
-        const markdown = (cached?.markdownContent || '').trim()
-        const original = (cached?.originalMarkdownContent || '').trim()
-        if (markdown || original) {
-          updateParsedFile(id, {
-            markdownContent: markdown || original,
-            originalMarkdownContent: original || markdown,
-            status: file.status || 'parsed',
-          })
-          return
-        }
-      } catch {
-        // ignore cache miss and fall back to backend
-      }
-
-      try {
-        const remote = await parsingApi.getContent(id)
-        if (cancelled) return
-        const markdown = (remote?.markdown_content || '').trim()
-        const original = (remote?.original_markdown_content || '').trim()
-        const rawDuration = remote?.parse_duration_sec
-        const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : undefined
-        if (!markdown && !original) return
-        updateParsedFile(id, {
-          markdownContent: markdown || original,
-          originalMarkdownContent: original || markdown,
-          status: file.status || 'parsed',
-          parser: getParserLabel(remote?.parser_backend || 'auto'),
-          parserBackend: String(remote?.parser_backend || 'auto'),
-          durationSec,
-        })
-      } catch {
-        // ignore backend content load failures for passive selection
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [activeLibraryFile, activeLibraryFileId, updateParsedFile])
+    if (!id || !activeLibraryContentQuery.data) return
+    updateParsedFile(id, activeLibraryContentQuery.data)
+  }, [activeLibraryContentQuery.data, activeLibraryFileId, updateParsedFile])
 
   useEffect(() => {
     const id = (activeLibraryFileId || '').trim()
