@@ -27,7 +27,7 @@ module.exports = [
   {
     rules: {
       'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/immutability': 'off',
+      'react-hooks/immutability': 'error',
       'react-hooks/preserve-manual-memoization': 'off',
     },
   },

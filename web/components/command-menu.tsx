@@ -250,7 +250,7 @@ export function CommandMenu() {
   const runCommand = React.useCallback((command: () => unknown) => {
     setOpen(false)
     command()
-  }, [])
+  }, [setOpen])
 
   const keyChordCommands = React.useMemo<KeyChordCommand[]>(
     () => [

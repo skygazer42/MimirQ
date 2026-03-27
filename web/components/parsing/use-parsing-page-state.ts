@@ -112,6 +112,12 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     [setFiles, setParserBackend]
   )
 
+  const consumeUploadTargetFolderId = useCallback(() => {
+    const targetFolderId = uploadTargetFolderIdRef.current
+    uploadTargetFolderIdRef.current = null
+    return targetFolderId
+  }, [])
+
   return {
     activeBlockId,
     activeFileId,
@@ -161,6 +167,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     setQueueFileParserBackend,
     setQueueOpen,
     setRightPanelMode,
+    consumeUploadTargetFolderId,
     uploadTargetFolderIdRef,
   }
 }

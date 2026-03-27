@@ -1,4 +1,4 @@
-import React, { act } from 'react'
+import React, { act, useImperativeHandle } from 'react'
 import { createRoot } from 'react-dom/client'
 
 type WrapperProps = {
@@ -15,16 +15,17 @@ export function renderHook<T>(useHook: () => T, options: RenderHookOptions = {})
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-  const result: { current: T | undefined } = { current: undefined }
+  const resultRef = React.createRef<T>()
   const Wrapper = options.wrapper ?? (({ children }: WrapperProps) => React.createElement(React.Fragment, null, children))
 
-  function Harness() {
-    result.current = useHook()
+  const Harness = React.forwardRef<T, object>(function HookHarness(_props, ref) {
+    const value = useHook()
+    useImperativeHandle(ref, () => value, [value])
     return null
-  }
+  })
 
   function render() {
-    root.render(React.createElement(Wrapper, null, React.createElement(Harness)))
+    root.render(React.createElement(Wrapper, null, React.createElement(Harness, { ref: resultRef })))
   }
 
   act(() => {
@@ -32,7 +33,7 @@ export function renderHook<T>(useHook: () => T, options: RenderHookOptions = {})
   })
 
   return {
-    result: result as { current: T },
+    result: resultRef as { current: T },
     rerender() {
       act(() => {
         render()

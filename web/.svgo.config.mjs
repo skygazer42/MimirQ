@@ -1,4 +1,4 @@
-export default {
+const config = {
   multipass: true,
   plugins: [
     'preset-default',
@@ -12,3 +12,5 @@ export default {
     },
   ],
 }
+
+export default config
