@@ -7,6 +7,7 @@ describe('root layout source', () => {
   it('keeps the global shell lean while mounting the web vitals reporter', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'layout.tsx'), 'utf8')
 
+    expect(src).toContain("import { connection } from 'next/server'")
     expect(src).not.toContain("@xyflow/react/dist/style.css")
     expect(src).not.toContain('PipelineCapabilitiesProvider')
     expect(src).not.toContain('ParserBackendProvider')
@@ -22,5 +23,7 @@ describe('root layout source', () => {
     expect(src).toContain('prefers-color-scheme: dark')
     expect(src).toContain('getDocumentDirection')
     expect(src).toContain('dir={documentDir}')
+    expect(src).toContain('export default async function RootLayout')
+    expect(src).toContain('await connection()')
   })
 })
