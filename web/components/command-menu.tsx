@@ -4,6 +4,8 @@ import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
 import {
   Upload,
+  Activity,
+  Coins,
   Moon,
   Sun,
   Laptop,
@@ -200,6 +202,33 @@ export function CommandMenu() {
         },
       },
       {
+        id: "stats",
+        label: "查看统计与诊断",
+        description: "打开用量/配额视图，快速查看 tokens、成本和系统诊断入口。",
+        shortcut: "/stats",
+        keywords: ["stats", "usage", "diagnostics", "quota", "token", "cost", "统计", "诊断", "用量"],
+        icon: Coins,
+        run: () => router.push("/usage"),
+      },
+      {
+        id: "datasets",
+        label: "打开数据集",
+        description: "跳到数据集列表，查看质量信号与治理入口。",
+        shortcut: "/datasets",
+        keywords: ["datasets", "数据集", "质量", "治理"],
+        icon: Database,
+        run: () => router.push("/datasets"),
+      },
+      {
+        id: "history",
+        label: "打开问答历史",
+        description: "查看最近问答记录，便于复盘与复用。",
+        shortcut: "/history",
+        keywords: ["history", "qa", "对话历史", "复盘"],
+        icon: History,
+        run: () => router.push("/history"),
+      },
+      {
         id: "graph",
         label: "打开图谱工作台",
         description: "跳到图谱视图，查看实体关系和路径分析。",
@@ -207,6 +236,15 @@ export function CommandMenu() {
         keywords: ["graph", "图谱", "关系", "实体"],
         icon: Workflow,
         run: () => router.push("/graph"),
+      },
+      {
+        id: "diagnostics",
+        label: "打开运行诊断",
+        description: "进入系统诊断页，查看健康状态、依赖和前端运行信息。",
+        shortcut: "/diagnostics",
+        keywords: ["diagnostics", "health", "observability", "诊断", "健康检查"],
+        icon: Activity,
+        run: () => router.push("/diagnostics"),
       },
       {
         id: "settings",
