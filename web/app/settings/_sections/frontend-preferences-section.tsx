@@ -1,9 +1,9 @@
 'use client'
 
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
-import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
+import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-dropdown'
 import { Panel } from '@/components/ui/panel'
-import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { Sliders } from 'lucide-react'
 
 type FrontendPreferencesSectionProps = {

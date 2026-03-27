@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { getFileIcon } from '@/components/document-library/folder-tree'
-import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { ParsingRightPanel } from '@/components/parsing/parsing-right-panel'
 import { Button } from '@/components/ui/button'
 import {

@@ -5,7 +5,7 @@ import { Check, Clock, FileText, FolderUp, Loader2, Paperclip, Play, Plus, Setti
 
 import { DocumentFolderTree } from '@/components/document-library/folder-tree'
 import { ParsingLeftPanel } from '@/components/parsing/parsing-left-panel'
-import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

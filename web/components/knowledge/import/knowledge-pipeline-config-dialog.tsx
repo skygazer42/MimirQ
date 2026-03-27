@@ -1,8 +1,8 @@
 'use client'
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ChunkStrategyDropdown } from '@/components/ui/chunk-strategy-dropdown'
-import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-dropdown'
+import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
@@ -40,4 +40,3 @@ export function KnowledgePipelineConfigDialog({ open, onOpenChange }: Readonly<K
     </Dialog>
   )
 }
-

@@ -4,7 +4,7 @@ import { Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getParserOption } from '@/lib/parser-options'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
-import { ParserDropdown } from '@/components/ui/parser-dropdown'
+import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { Panel } from '@/components/ui/panel'
 
 interface ParserBackendSelectProps {
