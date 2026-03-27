@@ -6,6 +6,7 @@ import { CommandMenu } from "@/components/command-menu"
 import { FluidCursor } from "@/components/ui/fluid-cursor"
 import { TaskCenter } from "@/components/task-center"
 import { QueryProvider } from "@/components/providers/query-provider"
+import { WebVitalsReporter } from "@/components/providers/web-vitals-reporter"
 import { RouteScrollReset } from "@/components/route-scroll-reset"
 import { AuthGuard } from "@/components/auth-guard"
 
@@ -35,6 +36,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>
+            <WebVitalsReporter />
             <SonnerToaster />
             <CommandMenu />
             <RouteScrollReset />

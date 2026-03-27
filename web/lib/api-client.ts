@@ -81,6 +81,15 @@ export type ChunkPreviewRequestParams = {
   separator_max_chunk_size?: number
 }
 
+export type FrontendWebVitalReportRequest = {
+  id: string
+  name: 'LCP' | 'FID' | 'INP'
+  value: number
+  rating?: string
+  navigation_type?: string
+  page?: string
+}
+
 export const apiClient = axios.create({
   baseURL: API_V1_BASE_URL,
   timeout: API_TIMEOUT_MS,
@@ -2661,8 +2670,12 @@ export const chatApi = {
   async streamChat(
     request: ChatRequest,
     onJson: (jsonStr: string) => void,
-    options: { signal?: AbortSignal; onError?: (error: unknown) => void } = {}
-  ): Promise<{ requestId: string }> {
+    options: {
+      signal?: AbortSignal
+      onError?: (error: unknown) => void
+      onOpen?: (meta: { requestId: string; conversationId?: string }) => void
+    } = {}
+  ): Promise<{ requestId: string; conversationId?: string }> {
     const requestId = generateRequestId()
 
     const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
@@ -2687,8 +2700,10 @@ export const chatApi = {
     }
 
     const backendRequestId = response.headers.get('X-Request-ID') || requestId
+    const conversationId = response.headers.get('X-Conversation-ID') || undefined
+    options.onOpen?.({ requestId: backendRequestId, conversationId })
     await readSseDataStrings(reader, onJson, options.onError)
-    return { requestId: backendRequestId }
+    return { requestId: backendRequestId, conversationId }
   },
 
   /**
@@ -3239,6 +3254,10 @@ export const metaApi = {
 }
 
 export const observabilityApi = {
+  async reportFrontendVital(payload: FrontendWebVitalReportRequest): Promise<void> {
+    await apiClient.post('/observability/frontend-vitals', payload)
+  },
+
   async getRagMetricsSummary(params: { window_minutes?: number; max_bytes?: number }): Promise<RagMetricsSummaryResponse> {
     const { data } = await apiClient.get('/observability/rag-metrics/summary', { params })
     return data

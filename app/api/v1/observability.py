@@ -8,10 +8,10 @@ JSONL metrics log (ENABLE_METRICS_LOG / METRICS_LOG_PATH).
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,8 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
+from app.services.dataset_service import DatasetService
+from app.services.metrics_logger import log_metrics
 from app.services.ops_config_snapshot_service import build_ops_config_snapshot
 from app.services.periodic_job_freshness_service import build_periodic_job_freshness_snapshot
 from app.services.rag_metrics_dashboard import (
@@ -77,6 +79,15 @@ class RagMetricsSummaryResponse(BaseModel):
     timeseries: dict[str, list[Any]] = {}
 
 
+class FrontendWebVitalReportRequest(BaseModel):
+    name: Literal["LCP", "FID", "INP"]
+    value: float
+    rating: str | None = Field(default=None, max_length=32)
+    id: str | None = Field(default=None, max_length=200)
+    navigation_type: str | None = Field(default=None, max_length=64)
+    page: str | None = Field(default=None, max_length=500)
+
+
 class OnlineQualitySummaryResponse(BaseModel):
     enabled: bool
     path: str
@@ -89,6 +100,35 @@ class OnlineQualitySummaryResponse(BaseModel):
     chunk_utilization_avg: float | None = None
     timeseries: dict[str, list[Any]] = {}
     alerts: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/frontend-vitals", status_code=202, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+async def report_frontend_web_vital(
+    body: FrontendWebVitalReportRequest,
+    http_request: Request,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    log_metrics(
+        {
+            "event": "frontend_web_vital",
+            "tenant_id": str(tenant_id),
+            "account_id": str(account_id),
+            "metric_name": body.name,
+            "metric_value": float(body.value),
+            "metric_rating": body.rating,
+            "metric_id": body.id,
+            "navigation_type": body.navigation_type,
+            "page": body.page,
+            "user_agent": http_request.headers.get("user-agent"),
+            "recorded_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    return Response(status_code=202)
 
 
 class QuerysetHealthRunsResponse(BaseModel):

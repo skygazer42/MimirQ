@@ -2658,7 +2658,10 @@ async def stream_chat(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
+            "X-Accel-Buffering": "no",
+            "X-Conversation-ID": str(conversation_id) if conversation_id else "",
+            "X-Assistant-Message-ID": str(assistant_message_id),
+            "Access-Control-Expose-Headers": "X-Request-ID, X-Conversation-ID, X-Assistant-Message-ID",
         }
     )
 

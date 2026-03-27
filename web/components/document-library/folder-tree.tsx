@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, Library, Package, AlertCircle, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature } from 'lucide-react'
 import { toast } from 'sonner'
+import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -216,11 +217,7 @@ export function DocumentFolderTree({
 
   const handleDelete = useCallback(
     (folderId: string) => {
-      const collectDescendants = (fid: string): string[] => {
-        const children = folders.filter((f) => f.parentId === fid)
-        return children.flatMap((c) => [c.id, ...collectDescendants(c.id)])
-      }
-      const idsToDelete = [folderId, ...collectDescendants(folderId)]
+      const idsToDelete = [folderId, ...collectFolderDescendantIds(folders, folderId)]
 
       deleteFolder(folderId)
       onDeleteFolder?.(idsToDelete)

@@ -230,7 +230,7 @@ export function GraphCanvas({
                       </p>
                     ) : null}
                     <section aria-labelledby={`${semanticPanelId}-nodes`}>
-                      <h3 id={`${semanticPanelId}-nodes`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <h3 id={`${semanticPanelId}-nodes`} className="text-xs font-semibold uppercase text-muted-foreground">
                         节点
                       </h3>
                       <ul className="mt-2 space-y-1.5 text-sm text-foreground">
@@ -243,7 +243,7 @@ export function GraphCanvas({
                       </ul>
                     </section>
                     <section aria-labelledby={`${semanticPanelId}-links`}>
-                      <h3 id={`${semanticPanelId}-links`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <h3 id={`${semanticPanelId}-links`} className="text-xs font-semibold uppercase text-muted-foreground">
                         连线
                       </h3>
                       <ol className="mt-2 space-y-1.5 text-sm text-foreground">

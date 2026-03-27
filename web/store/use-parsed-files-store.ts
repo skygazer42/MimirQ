@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
 import { generateRequestId } from '@/lib/request-id'
 import { detachPromise } from '@/lib/utils'
 
@@ -275,13 +276,8 @@ export const useParsedFiles = create<ParsedFilesState>()(
       deleteFolder: (id) => {
         if (id === ROOT_FOLDER_ID) return
 
-        const collectDescendants = (folderId: string, all: FolderNode[]): string[] => {
-          const children = all.filter((f) => f.parentId === folderId).map((f) => f.id)
-          return children.flatMap((childId) => [childId, ...collectDescendants(childId, all)])
-        }
-
         const folders = get().folders
-        const idsToDelete = new Set([id, ...collectDescendants(id, folders)])
+        const idsToDelete = new Set([id, ...collectFolderDescendantIds(folders, id)])
         const fileIdsToDelete = get()
           .files
           .filter((file) => Boolean(file.folderId) && idsToDelete.has(String(file.folderId)))
