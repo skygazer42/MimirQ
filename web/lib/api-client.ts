@@ -90,6 +90,11 @@ export type FrontendWebVitalReportRequest = {
   page?: string
 }
 
+export type FrontendWebVitalReportOptions = {
+  keepalive?: boolean
+  signal?: AbortSignal
+}
+
 export const apiClient = axios.create({
   baseURL: API_V1_BASE_URL,
   timeout: API_TIMEOUT_MS,
@@ -3254,8 +3259,26 @@ export const metaApi = {
 }
 
 export const observabilityApi = {
-  async reportFrontendVital(payload: FrontendWebVitalReportRequest): Promise<void> {
-    await apiClient.post('/observability/frontend-vitals', payload)
+  async reportFrontendVital(
+    payload: FrontendWebVitalReportRequest,
+    options: FrontendWebVitalReportOptions = {}
+  ): Promise<void> {
+    const requestId = generateRequestId()
+    const response = await fetch(`${API_V1_BASE_URL}/observability/frontend-vitals`, {
+      method: 'POST',
+      headers: withPreferredLanguageHeader({
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+        'X-Request-ID': requestId,
+      }),
+      body: JSON.stringify(payload),
+      keepalive: options.keepalive === true,
+      signal: options.signal,
+    })
+
+    if (!response.ok) {
+      throw await buildFetchError(response, 'Frontend vital report failed')
+    }
   },
 
   async getRagMetricsSummary(params: { window_minutes?: number; max_bytes?: number }): Promise<RagMetricsSummaryResponse> {
