@@ -61,7 +61,9 @@ const nextConfig = {
         source: '/:path*',
         headers: [
           {
-            key: 'Content-Security-Policy',
+            // Next.js App Router still emits inline runtime scripts.
+            // Keep the strict policy in report-only mode until nonce wiring lands.
+            key: 'Content-Security-Policy-Report-Only',
             value: buildCspValue(),
           },
         ],
