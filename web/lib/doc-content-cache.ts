@@ -15,6 +15,18 @@ export type DocSourceCacheRecord = {
   updatedAt: number
 }
 
+export type DocContentCacheStats = {
+  entries: number
+  totalBytes: number
+  lastUpdatedAt: number | null
+}
+
+export type DocSourceCacheStats = {
+  entries: number
+  totalBytes: number
+  lastUpdatedAt: number | null
+}
+
 const DB_NAME = 'mimirq'
 const DB_VERSION = 2
 const CONTENT_STORE = 'doc_contents'
@@ -81,6 +93,58 @@ function withStore<T>(
   })
 }
 
+const textEncoder =
+  typeof TextEncoder !== 'undefined' ? new TextEncoder() : null
+
+function measureStringBytes(value: string | undefined | null): number {
+  if (!value) return 0
+  if (textEncoder) return textEncoder.encode(value).length
+  return value.length * 2
+}
+
+async function collectStoreRecords<T>(
+  storeName: string,
+  handler: (entry: T) => void
+): Promise<void> {
+  if (globalThis.window === undefined) return
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly')
+    const store = tx.objectStore(storeName)
+    const request = store.openCursor()
+    let settled = false
+
+    const close = () => {
+      db.close()
+    }
+
+    const resolveOnce = () => {
+      if (settled) return
+      settled = true
+      close()
+      resolve()
+    }
+
+    const rejectOnce = (reason: unknown, message: string) => {
+      if (settled) return
+      settled = true
+      close()
+      reject(toError(reason, message))
+    }
+
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest).result
+      if (!cursor) return
+      handler(cursor.value as T)
+      cursor.continue()
+    }
+    request.onerror = () => rejectOnce(request.error, `IndexedDB cursor failed for "${storeName}"`)
+    tx.oncomplete = resolveOnce
+    tx.onabort = () => rejectOnce(tx.error, `IndexedDB transaction aborted for "${storeName}"`)
+    tx.onerror = () => rejectOnce(tx.error, `IndexedDB transaction failed for "${storeName}"`)
+  })
+}
+
 export async function saveDocContentToCache(record: Omit<DocContentCacheRecord, 'updatedAt'> & { updatedAt?: number }) {
   if (globalThis.window === undefined) return
   if (!record?.id) return
@@ -136,4 +200,47 @@ export async function deleteDocSourceFromCache(id: string) {
   if (globalThis.window === undefined) return
   if (!id) return
   await withStore(SOURCE_STORE, 'readwrite', (store) => store.delete(id))
+}
+
+export async function getDocContentCacheStats(): Promise<DocContentCacheStats> {
+  if (globalThis.window === undefined) {
+    return { entries: 0, totalBytes: 0, lastUpdatedAt: null }
+  }
+  const stats: DocContentCacheStats = { entries: 0, totalBytes: 0, lastUpdatedAt: null }
+  await collectStoreRecords<DocContentCacheRecord>(CONTENT_STORE, (entry) => {
+    stats.entries += 1
+    stats.totalBytes += measureStringBytes(entry.markdownContent)
+    if (entry.originalMarkdownContent) {
+      stats.totalBytes += measureStringBytes(entry.originalMarkdownContent)
+    }
+    if (entry.updatedAt && (stats.lastUpdatedAt === null || entry.updatedAt > stats.lastUpdatedAt)) {
+      stats.lastUpdatedAt = entry.updatedAt
+    }
+  })
+  return stats
+}
+
+export async function getDocSourceCacheStats(): Promise<DocSourceCacheStats> {
+  if (globalThis.window === undefined) {
+    return { entries: 0, totalBytes: 0, lastUpdatedAt: null }
+  }
+  const stats: DocSourceCacheStats = { entries: 0, totalBytes: 0, lastUpdatedAt: null }
+  await collectStoreRecords<DocSourceCacheRecord>(SOURCE_STORE, (entry) => {
+    stats.entries += 1
+    stats.totalBytes += Number(entry.size || 0)
+    if (entry.updatedAt && (stats.lastUpdatedAt === null || entry.updatedAt > stats.lastUpdatedAt)) {
+      stats.lastUpdatedAt = entry.updatedAt
+    }
+  })
+  return stats
+}
+
+export async function clearDocContentCache() {
+  if (globalThis.window === undefined) return
+  await withStore(CONTENT_STORE, 'readwrite', (store) => store.clear())
+}
+
+export async function clearDocSourceCache() {
+  if (globalThis.window === undefined) return
+  await withStore(SOURCE_STORE, 'readwrite', (store) => store.clear())
 }
