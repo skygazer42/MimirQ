@@ -92,6 +92,40 @@ describe('useParsedFiles updateParsedFile persistence reliability', () => {
     expect(useParsedFiles.getState().getFile(fileId)?.status).toBe('parsed')
   })
 
+  it('does not let an older parsed write clobber a newer library update', async () => {
+    const fileId = useParsedFiles.getState().addParsedFile({
+      filename: 'sample.md',
+      fileType: 'md',
+      fileSize: 10,
+      markdownContent: 'old',
+      parser: 'Auto',
+      status: 'parsing',
+    })
+    const deferred = createDeferred<void>()
+    cacheMocks.saveDocContentToCache.mockImplementationOnce(() => deferred.promise)
+
+    const staleParsedWrite = useParsedFiles.getState().updateParsedFile(fileId, {
+      markdownContent: '# stale result',
+      originalMarkdownContent: '# stale result',
+      parser: 'Old parser',
+      status: 'parsed',
+    })
+
+    await useParsedFiles.getState().updateParsedFile(fileId, {
+      status: 'parsing',
+      parser: 'New parser',
+      error: undefined,
+    })
+
+    deferred.resolve()
+    await staleParsedWrite
+
+    const updated = useParsedFiles.getState().getFile(fileId)
+    expect(updated?.status).toBe('parsing')
+    expect(updated?.parser).toBe('New parser')
+    expect(updated?.markdownContent).toBe('old')
+  })
+
   it('falls back to parsed status when cache persistence fails', async () => {
     const fileId = useParsedFiles.getState().addParsedFile({
       filename: 'sample.md',
