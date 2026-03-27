@@ -43,5 +43,25 @@ describe('readSseDataStrings', () => {
     expect(out).toEqual(['2'])
     expect(onError).toHaveBeenCalled()
   })
-})
 
+  it('preserves multibyte unicode when UTF-8 code points split across chunks', async () => {
+    const chunks = [
+      Uint8Array.from([100, 97, 116, 97, 58, 32, 34, 229]),
+      Uint8Array.from([174, 140, 230, 149, 180, 34, 10, 10]),
+    ]
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(chunk)
+        }
+        controller.close()
+      },
+    })
+
+    const out: string[] = []
+    await readSseDataStrings(stream.getReader(), (data) => out.push(data))
+
+    expect(out).toEqual(['"完整"'])
+  })
+})

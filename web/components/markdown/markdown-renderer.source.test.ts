@@ -8,6 +8,10 @@ describe('markdown renderer source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'markdown-renderer.tsx'), 'utf8')
 
     expect(src).toContain('AuthImage')
+    expect(src).toContain('sanitizeMarkdownHref')
+    expect(src).toContain('resolveMarkdownImageSrc')
+    expect(src).toContain('MarkdownRenderBoundary')
+    expect(src).toContain('Markdown 内容渲染失败')
     expect(src).not.toContain('maybeAttachImageAuthToken')
     expect(src).not.toContain("searchParams.set('token'")
     expect(src).not.toContain("searchParams.set('access_token'")

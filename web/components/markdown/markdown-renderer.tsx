@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useEffect, useMemo, useRef } from 'react'
+import { Component, memo, useEffect, useMemo, useRef } from 'react'
 import type * as React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -10,8 +10,8 @@ import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize'
 
 import { AuthImage } from '@/components/auth-image'
 import { cn } from '@/lib/utils'
-import { toAbsoluteBackendUrl } from '@/lib/env'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
+import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from './markdown-safety'
 
 const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
 
@@ -43,19 +43,76 @@ const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
     colgroup: [...((defaultSchema.attributes?.colgroup as string[] | undefined) || [])],
     col: [...((defaultSchema.attributes?.col as string[] | undefined) || []), 'span'],
   },
+  protocols: {
+    ...(defaultSchema.protocols || {}),
+    href: ['http', 'https', 'mailto', 'tel'],
+    src: ['http', 'https', 'blob', 'data'],
+  },
 }
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({
-  markdown,
-  className,
-  enableTocAnchors = true,
-  autoScrollToHash = false,
-}: Readonly<{
+type MarkdownRendererProps = Readonly<{
   markdown: string
   className?: string
   enableTocAnchors?: boolean
   autoScrollToHash?: boolean
-}>) {
+}>
+
+type MarkdownRenderBoundaryProps = Readonly<{
+  className?: string
+  resetKey: string
+  children: React.ReactNode
+}>
+
+type MarkdownRenderBoundaryState = Readonly<{
+  hasError: boolean
+}>
+
+function MarkdownRenderFallback({ className }: Readonly<{ className?: string }>) {
+  return (
+    <div
+      role="status"
+      className={cn(
+        'rounded-lg border border-amber-500/30 bg-amber-500/8 px-4 py-3 text-sm text-amber-900 dark:text-amber-100',
+        className
+      )}
+    >
+      Markdown 内容渲染失败，请尝试刷新或查看原始文本。
+    </div>
+  )
+}
+
+class MarkdownRenderBoundary extends Component<MarkdownRenderBoundaryProps, MarkdownRenderBoundaryState> {
+  state: MarkdownRenderBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): MarkdownRenderBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error('Markdown rendering failed:', error)
+  }
+
+  componentDidUpdate(previousProps: MarkdownRenderBoundaryProps) {
+    if (this.state.hasError && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false })
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <MarkdownRenderFallback className={this.props.className} />
+    }
+
+    return this.props.children
+  }
+}
+
+function MarkdownRendererContent({
+  markdown,
+  className,
+  enableTocAnchors = true,
+  autoScrollToHash = false,
+}: MarkdownRendererProps) {
   const text = markdown || ''
 
   const headings = useMemo(
@@ -141,11 +198,16 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           h6: headingComponent(6),
           a: ({ href, children }) => {
             const rawHref = typeof href === 'string' ? href : ''
-            if (rawHref.startsWith('#')) {
-              const id = rawHref.slice(1)
+            const safeHref = sanitizeMarkdownHref(rawHref)
+            if (!safeHref) {
+              return <span className="text-muted-foreground">{children}</span>
+            }
+
+            if (safeHref.startsWith('#')) {
+              const id = safeHref.slice(1)
               return (
                 <a
-                  href={rawHref}
+                  href={safeHref}
                   onClick={(e) => {
                     e.preventDefault()
                     const decoded = id ? decodeURIComponent(id) : ''
@@ -165,7 +227,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
 
             return (
               <a
-                href={rawHref}
+                href={safeHref}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="underline decoration-border/70 underline-offset-2 hover:decoration-border"
@@ -176,19 +238,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           },
           img: ({ src, alt }) => {
             const raw = typeof src === 'string' ? src : ''
-            const resolved = (() => {
-    if (raw) {
-        if (/^https?:\/\//i.test(raw) || /^data:/i.test(raw) || /^blob:/i.test(raw)) {
-            return raw;
-        }
-        else {
-            return toAbsoluteBackendUrl(raw);
-        }
-    }
-    else {
-        return '';
-    }
-            })()
+            const resolved = resolveMarkdownImageSrc(raw)
             if (!resolved) return null
             return (
               <AuthImage
@@ -213,5 +263,15 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         {text}
       </ReactMarkdown>
     </div>
+  )
+}
+
+export const MarkdownRenderer = memo(function MarkdownRenderer(props: MarkdownRendererProps) {
+  const text = props.markdown || ''
+
+  return (
+    <MarkdownRenderBoundary className={props.className} resetKey={text}>
+      <MarkdownRendererContent {...props} markdown={text} />
+    </MarkdownRenderBoundary>
   )
 })
