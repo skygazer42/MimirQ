@@ -16,7 +16,16 @@ import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { useBackendReady } from '@/hooks/use-backend-ready'
 import { formatApiError } from '@/lib/api-errors'
-import { getDocContentCacheStats, getDocSourceCacheStats, clearDocContentCache, clearDocSourceCache, type DocContentCacheStats, type DocSourceCacheStats } from '@/lib/doc-content-cache'
+import {
+  classifyStoragePressure,
+  getDocContentCacheStats,
+  getDocSourceCacheStats,
+  clearDocContentCache,
+  clearDocSourceCache,
+  pruneStaleDocCaches,
+  type DocContentCacheStats,
+  type DocSourceCacheStats,
+} from '@/lib/doc-content-cache'
 import { observabilityApi, ragApi } from '@/lib/api'
 import { API_BASE_URL, API_LONG_TIMEOUT_MS, API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { formatFileSize } from '@/lib/utils'
@@ -52,6 +61,7 @@ type CacheStats = {
 }
 
 type CacheCleanupState = {
+  stale: boolean
   content: boolean
   source: boolean
 }
@@ -192,6 +202,7 @@ export default function DiagnosticsPage() {
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [cacheLoading, setCacheLoading] = useState(false)
   const [cleanupLoading, setCleanupLoading] = useState<CacheCleanupState>({
+    stale: false,
     content: false,
     source: false,
   })
@@ -336,6 +347,16 @@ export default function DiagnosticsPage() {
   const docSourceEntries = cacheStats?.source.entries ?? 0
   const docContentUpdatedAt = cacheStats?.content.lastUpdatedAt ?? null
   const docSourceUpdatedAt = cacheStats?.source.lastUpdatedAt ?? null
+  const pressure = useMemo(
+    () =>
+      classifyStoragePressure({
+        storageEstimate,
+        cacheStats,
+      }),
+    [cacheStats, storageEstimate]
+  )
+  const shouldShowPressureWarning = pressure.level === 'high'
+  const shouldShowCleanupCta = shouldShowPressureWarning || ((pressure.cacheShareOfUsage ?? 0) >= 0.65 && pressure.totalCacheBytes > 10 * 1024 * 1024)
 
   const onlineQualityChartData = useMemo(() => {
     const ts = onlineQuality?.timeseries?.ts_ms || []
@@ -452,6 +473,24 @@ export default function DiagnosticsPage() {
       setPerfSuiteRunning(false)
     }
   }
+
+  const handlePruneStaleCaches = useCallback(async () => {
+    setCleanupLoading((prev) => ({ ...prev, stale: true }))
+    try {
+      const result = await pruneStaleDocCaches(14 * 24 * 60 * 60 * 1000)
+      if (result.totalDeleted > 0) {
+        toast.success(`已清理过期缓存 ${result.totalDeleted} 条（内容 ${result.contentDeleted}，源文件 ${result.sourceDeleted}）`)
+      } else {
+        toast.message('未发现可清理的过期缓存')
+      }
+    } catch (error) {
+      console.error('Prune stale caches failed', error)
+      toast.error('清理过期缓存失败')
+    } finally {
+      setCleanupLoading((prev) => ({ ...prev, stale: false }))
+      void refreshStorageAndCache()
+    }
+  }, [refreshStorageAndCache])
 
   return (
     <PageScaffold
@@ -1407,6 +1446,17 @@ export default function DiagnosticsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {shouldShowPressureWarning ? (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                <div className="space-y-1 text-xs">
+                  <p className="font-medium text-amber-700">Storage pressure is high.</p>
+                  <p className="text-amber-700/90">
+                    {pressure.reasons[0] || 'Storage is close to quota or cache footprint dominates usage.'}
+                  </p>
+                </div>
+              </div>
+            ) : null}
             <StatsGrid className="xl:grid-cols-4">
               <StatCard
                 icon={Activity}
@@ -1435,6 +1485,21 @@ export default function DiagnosticsPage() {
               />
             </StatsGrid>
 
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Pressure level</p>
+                <p className="font-mono text-sm text-foreground">{pressure.level.toUpperCase()}</p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Cache share of storage usage</p>
+                <p className="font-mono text-sm text-foreground">{pressure.cacheShareOfUsage != null ? fmtPercent(pressure.cacheShareOfUsage) : '—'}</p>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Combined cache footprint</p>
+                <p className="font-mono text-sm text-foreground">{formatFileSize(pressure.totalCacheBytes)}</p>
+              </div>
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
                 <p className="text-xs text-muted-foreground">Doc content payload</p>
@@ -1453,11 +1518,16 @@ export default function DiagnosticsPage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {shouldShowCleanupCta ? (
+                <Button size="sm" onClick={handlePruneStaleCaches} disabled={cleanupLoading.stale || cacheLoading}>
+                  {cleanupLoading.stale ? 'Pruning stale caches...' : 'Prune stale caches (14d)'}
+                </Button>
+              ) : null}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleClearContentCache}
-                disabled={cleanupLoading.content || cacheLoading}
+                disabled={cleanupLoading.content || cleanupLoading.stale || cacheLoading}
               >
                 Clear doc content cache
               </Button>
@@ -1465,7 +1535,7 @@ export default function DiagnosticsPage() {
                 variant="outline"
                 size="sm"
                 onClick={handleClearSourceCache}
-                disabled={cleanupLoading.source || cacheLoading}
+                disabled={cleanupLoading.source || cleanupLoading.stale || cacheLoading}
               >
                 Clear doc source cache
               </Button>
