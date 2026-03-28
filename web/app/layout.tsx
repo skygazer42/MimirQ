@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { connection } from 'next/server'
 import './globals.css'
 import { ThemeProvider } from "@/components/theme-provider"
@@ -11,7 +12,7 @@ import { ServiceWorkerRegistrar } from "@/components/providers/service-worker-re
 import { WebVitalsReporter } from "@/components/providers/web-vitals-reporter"
 import { RouteScrollReset } from "@/components/route-scroll-reset"
 import { AuthGuard } from "@/components/auth-guard"
-import { getDocumentDirection } from '@/lib/document-direction'
+import { resolveRequestDocumentSettings } from '@/lib/document-language'
 
 export const metadata: Metadata = {
   title: "MimirQ - AI 知识库助手",
@@ -33,8 +34,12 @@ export default async function RootLayout({
   await connection()
 
   const enableFluidCursor = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === "1"
-  const documentLang = process.env.NEXT_PUBLIC_APP_LANG?.trim() || 'zh-CN'
-  const documentDir = getDocumentDirection(documentLang)
+  const requestHeaders = await headers()
+  // Full locale-segment routing is still deferred; the root shell honors request language and direction today.
+  const { lang: documentLang, dir: documentDir } = resolveRequestDocumentSettings(
+    requestHeaders,
+    process.env.NEXT_PUBLIC_APP_LANG?.trim() || undefined
+  )
 
   return (
     <html lang={documentLang} dir={documentDir} suppressHydrationWarning className="h-full overflow-hidden">
