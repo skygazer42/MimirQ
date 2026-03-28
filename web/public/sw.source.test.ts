@@ -3,14 +3,16 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('service worker source', () => {
-  it('pre-caches core app-shell routes and falls back to cached shell for offline navigation', () => {
+  it('uses a conservative, versioned caching strategy for offline shell reliability', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'sw.js'), 'utf8')
 
+    expect(src).toContain("const CACHE_VERSION = 'v3'")
     expect(src).toContain("'/knowledge'")
     expect(src).toContain("'/knowledge/similarity'")
     expect(src).toContain("'/graph'")
     expect(src).toContain("url.pathname.startsWith('/lottie/')")
-    expect(src).toContain("url.pathname.endsWith('.json')")
+    expect(src).toContain("url.pathname.endsWith('.svg')")
+    expect(src).not.toContain("url.pathname.endsWith('.json')")
     expect(src).toContain("cache.match(request)")
     expect(src).toContain("cache.match('/')")
   })
