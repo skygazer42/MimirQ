@@ -1,5 +1,6 @@
-const STATIC_CACHE = 'mimirq-static-v2'
-const APP_SHELL_CACHE = 'mimirq-app-shell-v2'
+const CACHE_VERSION = 'v3'
+const STATIC_CACHE = `mimirq-static-${CACHE_VERSION}`
+const APP_SHELL_CACHE = `mimirq-app-shell-${CACHE_VERSION}`
 const APP_SHELL_URLS = [
   '/',
   '/knowledge',
@@ -33,11 +34,11 @@ self.addEventListener('activate', (event) => {
 
 function isStaticAssetRequest(request) {
   const url = new URL(request.url)
+  // Keep static caching deliberately conservative to avoid stale dynamic JSON payloads.
   return url.origin === self.location.origin && (
     url.pathname.startsWith('/_next/static/') ||
     url.pathname.startsWith('/lottie/') ||
     url.pathname.startsWith('/fonts/') ||
-    url.pathname.endsWith('.json') ||
     url.pathname.endsWith('.svg') ||
     url.pathname.endsWith('.woff2')
   )
