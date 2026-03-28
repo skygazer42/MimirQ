@@ -4,8 +4,8 @@
 @layer base {
   :root {
     /* Typography - System font stack (avoids build-time Google Fonts fetch) */
-    --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-      "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    --font-sans: "Geist Sans", Geist, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
     /* Base - Modern Clean Light (Ice/Slate based) */

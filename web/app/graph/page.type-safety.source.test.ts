@@ -166,6 +166,19 @@ describe('graph page type safety', () => {
     expect(page).not.toContain('复制 Predicate')
   })
 
+  it('keeps graph clustering worker wiring, seeded cluster colors, and loading skeletons inside the canvas shell', () => {
+    const shell = read('./_components/graph-page-shell.tsx')
+    const graphCanvas = read('./_components/graph-canvas.tsx')
+
+    expect(shell).toContain('paletteSeed: state.scope.datasetId || state.scope.pipelineHash || state.fileName || null')
+    expect(graphCanvas).toContain("new URL('../../../workers/graph-clustering.worker.ts', import.meta.url)")
+    expect(graphCanvas).toContain('computeConnectedComponents')
+    expect(graphCanvas).toContain('paletteSeed = null')
+    expect(graphCanvas).toContain('const [clusterResult, setClusterResult] = useState<GraphClusterResult | null>(null)')
+    expect(graphCanvas).toContain('<Skeleton className=\"h-11 w-11 rounded-xl\" />')
+    expect(graphCanvas).toContain("clusteringDisabledRef.current = true")
+  })
+
   it('keeps the graph page header extracted into a dedicated component', () => {
     const page = read('./page.tsx')
     const shell = read('./_components/graph-page-shell.tsx')

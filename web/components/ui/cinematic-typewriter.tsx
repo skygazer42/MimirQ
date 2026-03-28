@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from 'next/dynamic'
-import { useEffect, useState, useRef, useMemo } from "react"
+import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { AuthImage } from '@/components/auth-image'
@@ -13,10 +13,13 @@ const CinematicCodeBlock = dynamic(
   { ssr: false }
 )
 
-// 调整打字速度配置 (ms)
-const MIN_TYPE_SPEED = 5
-const MAX_TYPE_SPEED = 15
-const PUNCTUATION_DELAY = 150 // 遇到标点符号时的额外停顿
+// Typing configuration (ms).
+// Keep it deterministic and relatively low-frequency to reduce layout jitter while streaming.
+const MIN_UNIT_DELAY_MS = 12
+const MAX_UNIT_DELAY_MS = 22
+const STREAM_WAIT_MS = 50
+const NEWLINE_DELAY_MS = 60
+const PUNCTUATION_DELAY_MS = 140
 
 interface CinematicTypewriterProps {
   readonly content: string
@@ -29,6 +32,60 @@ type MarkdownChildrenProps = Readonly<{ children?: React.ReactNode }>
 type MarkdownLinkProps = Readonly<{ href?: string; children?: React.ReactNode }>
 type MarkdownImageProps = Readonly<{ src?: string | Blob; alt?: string }>
 
+function randomDelay(minMs: number, maxMs: number) {
+  const min = Math.max(0, Math.floor(minMs))
+  const max = Math.max(min, Math.floor(maxMs))
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+function isAsciiWordChar(char: string) {
+  return /[A-Za-z0-9_]/.test(char)
+}
+
+function isWhitespace(char: string) {
+  return char === ' ' || char === '\t'
+}
+
+function readCodePointAt(text: string, index: number): { char: string; nextIndex: number } {
+  const cp = text.codePointAt(index)
+  if (cp == null) return { char: '', nextIndex: index }
+  const char = String.fromCodePoint(cp)
+  const nextIndex = index + (cp > 0xffff ? 2 : 1)
+  return { char, nextIndex }
+}
+
+function computeNextTypingStep(text: string, startIndex: number): { nextIndex: number; delayMs: number } {
+  if (startIndex >= text.length) return { nextIndex: startIndex, delayMs: STREAM_WAIT_MS }
+
+  // Group ASCII words to reduce re-render frequency while keeping a "token-ish" feel.
+  const head = text[startIndex]
+  if (isAsciiWordChar(head)) {
+    let idx = startIndex + 1
+    while (idx < text.length && isAsciiWordChar(text[idx])) idx += 1
+    return { nextIndex: idx, delayMs: randomDelay(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS) }
+  }
+
+  // Group consecutive spaces/tabs.
+  if (isWhitespace(head)) {
+    let idx = startIndex + 1
+    while (idx < text.length && isWhitespace(text[idx])) idx += 1
+    return { nextIndex: idx, delayMs: randomDelay(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS) }
+  }
+
+  // Newline: a tiny pause so paragraph boundaries feel intentional.
+  if (head === '\n') {
+    return { nextIndex: startIndex + 1, delayMs: NEWLINE_DELAY_MS }
+  }
+
+  // Default: one code point (good for CJK + punctuation).
+  const { char, nextIndex } = readCodePointAt(text, startIndex)
+  let delayMs = randomDelay(MIN_UNIT_DELAY_MS, MAX_UNIT_DELAY_MS)
+  if (['.', '!', '?', '。', '！', '？', ',', '，', '、', ':', '：', ';', '；'].includes(char)) {
+    delayMs += PUNCTUATION_DELAY_MS
+  }
+  return { nextIndex, delayMs }
+}
+
 export function CinematicTypewriter({
   content,
   onComplete,
@@ -38,8 +95,31 @@ export function CinematicTypewriter({
   const [reduceMotion, setReduceMotion] = useState(false)
   const [displayedContent, setDisplayedContent] = useState("")
   const [isTyping, setIsTyping] = useState(false)
+
+  const contentRef = useRef(content)
+  const streamingRef = useRef(isStreaming)
+  const onCompleteRef = useRef(onComplete)
+  const displayedRef = useRef(displayedContent)
   const indexRef = useRef(0)
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const timeoutRef = useRef<number | null>(null)
+  const completedRef = useRef(false)
+
+  useEffect(() => {
+    contentRef.current = content
+  }, [content])
+
+  useEffect(() => {
+    streamingRef.current = isStreaming
+    if (isStreaming) completedRef.current = false
+  }, [isStreaming])
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
+  useEffect(() => {
+    displayedRef.current = displayedContent
+  }, [displayedContent])
 
   // Markdown 组件配置
   const markdownComponents = useMemo(() => ({
@@ -113,89 +193,89 @@ export function CinematicTypewriter({
 
   useEffect(() => {
     if (reduceMotion) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
+      if (timeoutRef.current != null) {
+        globalThis.window.clearTimeout(timeoutRef.current)
         timeoutRef.current = null
       }
-      indexRef.current = content.length
-      if (displayedContent !== content) {
-        setDisplayedContent(content)
-      }
+
+      const full = contentRef.current
+      indexRef.current = full.length
+      completedRef.current = !streamingRef.current
+      displayedRef.current = full
+
+      setDisplayedContent(full)
       setIsTyping(false)
-      if (!isStreaming) onComplete?.()
+      if (!streamingRef.current) onCompleteRef.current?.()
       return
     }
 
-    // If the parent swapped in a new message (not an append), reset typing state.
-    if (displayedContent && !content.startsWith(displayedContent)) {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-        timeoutRef.current = null
+    // Streaming-safe typing loop: always reads latest content via refs, so appends keep flowing.
+    function resetIfReplaced() {
+      const full = contentRef.current
+      const currentDisplayed = displayedRef.current
+      if (currentDisplayed && !full.startsWith(currentDisplayed)) {
+        indexRef.current = 0
+        completedRef.current = false
+        displayedRef.current = ''
+        startTransition(() => setDisplayedContent(''))
       }
-      indexRef.current = 0
-      setDisplayedContent("")
-      setIsTyping(false)
-      return
     }
 
-    // 如果已经不再 streaming 且显示内容已追上，直接完成
-    if (!isStreaming && indexRef.current >= content.length) {
-      if (displayedContent !== content) {
-        setDisplayedContent(content)
+    function schedule(delayMs: number) {
+      if (timeoutRef.current != null) {
+        globalThis.window.clearTimeout(timeoutRef.current)
       }
-      setIsTyping(false)
-      timeoutRef.current = null
-      onComplete?.()
-      return
+      timeoutRef.current = globalThis.window.setTimeout(tick, Math.max(0, delayMs))
     }
 
-    setIsTyping(true)
+    function tick() {
+      if (reduceMotion) return
+      resetIfReplaced()
 
-    const typeNextChar = () => {
-      if (indexRef.current >= content.length) {
-        if (isStreaming) {
-          // Wait for more content from stream
-          timeoutRef.current = setTimeout(typeNextChar, 50)
-        } else {
-          setIsTyping(false)
+      const full = contentRef.current
+      const idx = indexRef.current
+
+      if (idx >= full.length) {
+        if (streamingRef.current) {
+          setIsTyping(true)
+          schedule(STREAM_WAIT_MS)
+          return
+        }
+
+        setIsTyping(false)
+        if (timeoutRef.current != null) {
+          globalThis.window.clearTimeout(timeoutRef.current)
           timeoutRef.current = null
-          onComplete?.()
+        }
+
+        if (!completedRef.current) {
+          completedRef.current = true
+          onCompleteRef.current?.()
         }
         return
       }
 
-      const char = content[indexRef.current]
-      indexRef.current++
-      setDisplayedContent((prev) => prev + char)
+      setIsTyping(true)
+      const step = computeNextTypingStep(full, idx)
+      const nextIndex = Math.min(full.length, Math.max(idx, step.nextIndex))
+      indexRef.current = nextIndex
+      displayedRef.current = full.slice(0, nextIndex)
 
-      let delay = Math.random() * (MAX_TYPE_SPEED - MIN_TYPE_SPEED) + MIN_TYPE_SPEED
+      startTransition(() => setDisplayedContent(full.slice(0, nextIndex)))
+      schedule(step.delayMs)
+    }
 
-      // 模拟思考停顿
-      if (['.', '!', '?', '。', '！', '？'].includes(char)) {
-        delay += PUNCTUATION_DELAY
-      } else if (char === '\n') {
-        delay += 20
+    if (timeoutRef.current == null) {
+      tick()
+    }
+
+    return () => {
+      if (timeoutRef.current != null) {
+        globalThis.window.clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
       }
-
-      timeoutRef.current = setTimeout(typeNextChar, delay)
     }
-
-    // 只有当有新内容未显示时才启动打字循环，避免重复重置
-    if (timeoutRef.current === null && indexRef.current < content.length) {
-      typeNextChar()
-    }
-
-    return () => {
-      // Cleanup is tricky with self-scheduling loop, usually handled by ref check
-    }
-  }, [content, isStreaming, onComplete, displayedContent, reduceMotion])
-
-  // 组件卸载时清理
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    }
-  }, [])
+  }, [reduceMotion])
 
   return (
     <div className={cn("relative leading-relaxed", className)}>

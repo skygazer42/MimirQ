@@ -1,20 +1,21 @@
 'use client'
 
-	import * as React from 'react'
-	import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download, GitCompare } from 'lucide-react'
-	import { toast } from 'sonner'
+import * as React from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download, GitCompare } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
-	import { Badge } from '@/components/ui/badge'
-	import { Button } from '@/components/ui/button'
-	import { EmptyState } from '@/components/ui/empty-state'
-	import { Input } from '@/components/ui/input'
-	import { Panel } from '@/components/ui/panel'
-	import { ScrollArea } from '@/components/ui/scroll-area'
-	import type { RagTrace, RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Input } from '@/components/ui/input'
+import { Panel } from '@/components/ui/panel'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import type { RagTrace, RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
 
 function formatTs(tsMs: number) {
   try {
@@ -99,6 +100,20 @@ export type PipelineTimelineStep = {
   rerankTopN: number | null
 }
 
+export type PipelineInspectorMetric = {
+  label: string
+  value: string
+}
+
+export type PipelineInspectorSection = {
+  id: string
+  label: string
+  summary: string
+  callout?: string | null
+  metrics: PipelineInspectorMetric[]
+  citations: RagTraceCitation[]
+}
+
 function asFiniteNumber(value: unknown): number | null {
   if (value == null) return null
   const n = Number(value)
@@ -108,6 +123,158 @@ function asFiniteNumber(value: unknown): number | null {
 function getMetaNumber(meta: Record<string, unknown> | null, key: string): number | null {
   if (!meta) return null
   return asFiniteNumber(meta[key])
+}
+
+function stringifyInspectorValue(value: unknown, fallback = '—') {
+  if (value == null) return fallback
+  if (typeof value === 'string') return value.trim() || fallback
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : fallback
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  return fallback
+}
+
+function buildInspectorMetric(label: string, value: unknown, opts?: { formatter?: (value: unknown) => string | null }): PipelineInspectorMetric | null {
+  const formatted = opts?.formatter ? opts.formatter(value) : stringifyInspectorValue(value)
+  if (!formatted || formatted === '—') return null
+  return { label, value: formatted }
+}
+
+function getTraceCitationRange(citation: RagTraceCitation): { start: number; end: number } | undefined {
+  const start = typeof citation.start_char === 'number' ? citation.start_char : null
+  const end = typeof citation.end_char === 'number' ? citation.end_char : null
+  return start != null && end != null && end > start ? { start, end } : undefined
+}
+
+function normalizePipelineSectionId(value: string) {
+  const key = String(value || '').trim().toLowerCase()
+  if (!key) return 'stage'
+  if (key.includes('retriev')) return 'retrieve'
+  if (key.includes('rerank')) return 'rerank'
+  if (key.includes('citation')) return 'citations'
+  if (key.includes('answer')) return 'answer'
+  return key
+}
+
+function buildCitationsSummary(citations: RagTraceCitation[]) {
+  const sorted = citations
+    .slice()
+    .sort((a, b) => (getPrimaryScore(b) ?? 0) - (getPrimaryScore(a) ?? 0))
+  return {
+    top: sorted.slice(0, 4),
+    distinctDocuments: new Set(sorted.map((citation) => String(citation.document_id || '').trim()).filter(Boolean)).size,
+    imageHits: sorted.filter((citation) => Boolean(citation.has_image)).length,
+  }
+}
+
+export function movePipelineSelectionIndex(currentIndex: number, total: number, direction: -1 | 1): number {
+  if (!Number.isFinite(total) || total <= 0) return -1
+  const base = Number.isFinite(currentIndex) && currentIndex >= 0 ? Math.trunc(currentIndex) % total : 0
+  return (base + direction + total) % total
+}
+
+export function buildPipelineInspectorSections(trace: RagTrace | null): PipelineInspectorSection[] {
+  if (!trace) return []
+
+  const mainQuery = (trace.retrieval?.per_query || []).find((query) => query?.kind === 'main') ?? (trace.retrieval?.per_query || [])[0] ?? null
+  const channels = (mainQuery?.retriever_debug as Record<string, unknown> | null | undefined)?.channels as Record<string, any> | null | undefined
+  const hierarchyRecall = (mainQuery?.retriever_debug as Record<string, unknown> | null | undefined)?.hierarchy_recall as Record<string, any> | null | undefined
+  const rerankMeta = (channels as Record<string, any> | null | undefined)?.rerank as Record<string, any> | null | undefined
+  const citationSummary = buildCitationsSummary(trace.citations || [])
+
+  const sections = buildPipelineTimelineSteps(trace).map<PipelineInspectorSection>((step) => {
+    const id = normalizePipelineSectionId(step.key)
+    if (id === 'retrieve') {
+      const metrics = [
+        buildInspectorMetric('Latency', step.elapsedSec, { formatter: (value) => formatSec(asFiniteNumber(value)) }),
+        buildInspectorMetric('Mode', step.mode ?? trace.retrieval?.mode),
+        buildInspectorMetric('Queries', step.queryCount),
+        buildInspectorMetric('Top K', step.topK),
+        buildInspectorMetric('Candidates', step.itemCount),
+        buildInspectorMetric('Fusion', channels?.fusion_strategy),
+        buildInspectorMetric('Vector backend', channels?.vector_backend),
+      ].filter((value): value is PipelineInspectorMetric => Boolean(value))
+
+      return {
+        id,
+        label: step.label,
+        summary: '检索层决定候选面宽度，可以直接看 query 扩散、top_k 和融合策略是否异常。',
+        callout:
+          hierarchyRecall?.enabled == null
+            ? null
+            : `hierarchy recall ${hierarchyRecall.enabled ? '已启用' : '未启用'}${hierarchyRecall.overfetch_factor == null ? '' : ` · overfetch=${hierarchyRecall.overfetch_factor}`}`,
+        metrics,
+        citations: citationSummary.top,
+      }
+    }
+
+    if (id === 'rerank') {
+      const metrics = [
+        buildInspectorMetric('Latency', step.elapsedSec, { formatter: (value) => formatSec(asFiniteNumber(value)) }),
+        buildInspectorMetric('Provider', trace.rerank?.enabled ? trace.rerank?.provider || 'enabled' : 'disabled'),
+        buildInspectorMetric('Top N', step.rerankTopN ?? trace.rerank?.top_n),
+        buildInspectorMetric('Candidates kept', step.itemCount),
+        buildInspectorMetric('Skip reason', rerankMeta?.skip_reason),
+        buildInspectorMetric('Error', rerankMeta?.error),
+      ].filter((value): value is PipelineInspectorMetric => Boolean(value))
+
+      return {
+        id,
+        label: step.label,
+        summary: '重排层用于判断“为什么这个 chunk 最终浮到前面”，适合排查 provider、top_n 和跳过原因。',
+        callout: rerankMeta?.skip_reason ? `当前 trace 跳过 rerank：${String(rerankMeta.skip_reason)}` : null,
+        metrics,
+        citations: citationSummary.top,
+      }
+    }
+
+    if (id === 'citations') {
+      const metrics = [
+        buildInspectorMetric('Latency', step.elapsedSec, { formatter: (value) => formatSec(asFiniteNumber(value)) }),
+        buildInspectorMetric('Citations', trace.citations_count),
+        buildInspectorMetric('Distinct docs', citationSummary.distinctDocuments),
+        buildInspectorMetric('Image hits', citationSummary.imageHits),
+      ].filter((value): value is PipelineInspectorMetric => Boolean(value))
+
+      return {
+        id,
+        label: step.label,
+        summary: '证据层把最终引用聚合成可验证的来源，你可以直接跳到高分 chunk 做人工复核。',
+        metrics,
+        citations: citationSummary.top,
+      }
+    }
+
+    const metrics = [
+      buildInspectorMetric('Latency', step.elapsedSec, { formatter: (value) => formatSec(asFiniteNumber(value)) }),
+      buildInspectorMetric('Mode', step.mode),
+      buildInspectorMetric('Queries', step.queryCount),
+      buildInspectorMetric('Items', step.itemCount),
+    ].filter((value): value is PipelineInspectorMetric => Boolean(value))
+
+    return {
+      id,
+      label: step.label,
+      summary: '该阶段没有专门的诊断面板，保留关键计数与耗时，方便对照整条流水线。',
+      metrics,
+      citations: [],
+    }
+  })
+
+  if (!sections.some((section) => section.id === 'citations') && trace.citations_count > 0) {
+    sections.push({
+      id: 'citations',
+      label: 'Citations',
+      summary: '证据层把最终引用聚合成可验证的来源，你可以直接跳到高分 chunk 做人工复核。',
+      metrics: [
+        buildInspectorMetric('Citations', trace.citations_count),
+        buildInspectorMetric('Distinct docs', citationSummary.distinctDocuments),
+        buildInspectorMetric('Image hits', citationSummary.imageHits),
+      ].filter((value): value is PipelineInspectorMetric => Boolean(value)),
+      citations: citationSummary.top,
+    })
+  }
+
+  return sections
 }
 
 export function buildPipelineTimelineSteps(trace: RagTrace | null): PipelineTimelineStep[] {
@@ -146,15 +313,24 @@ export function buildPipelineTimelineSteps(trace: RagTrace | null): PipelineTime
   }))
 }
 
-export function RagTracePipelineTimeline({ steps }: Readonly<{ steps: PipelineTimelineStep[] }>) {
+export function RagTracePipelineTimeline({
+  steps,
+  selectedKey = null,
+  onSelectStep,
+}: Readonly<{
+  steps: PipelineTimelineStep[]
+  selectedKey?: string | null
+  onSelectStep?: ((key: string) => void) | undefined
+}>) {
   return (
     <div className="p-4 space-y-2">
       {steps.length ? (
         steps.map((step) => {
           const barWidth = step.width > 0 ? Math.max(step.width, 6) : 0
           const shareLabel = Number.isFinite(step.share) ? `${step.share.toFixed(1)}%` : '—'
-          return (
-            <div key={step.key} className="space-y-1 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+          const selected = selectedKey === step.key || selectedKey === normalizePipelineSectionId(step.key)
+          const content = (
+            <>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-foreground">{step.label}</div>
@@ -176,7 +352,33 @@ export function RagTracePipelineTimeline({ steps }: Readonly<{ steps: PipelineTi
                   data-pipeline-share={shareLabel}
                 />
               </div>
-            </div>
+            </>
+          )
+
+          if (!onSelectStep) {
+            return (
+              <div key={step.key} className="space-y-1 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+                {content}
+              </div>
+            )
+          }
+
+          return (
+            <button
+              key={step.key}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onSelectStep(step.key)}
+              className={cn(
+                'block w-full space-y-1 rounded-xl border px-3 py-2 text-left transition-colors',
+                'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
+                selected
+                  ? 'border-sky-500/60 bg-sky-500/10 shadow-sm'
+                  : 'border-border/60 bg-muted/20 hover:border-sky-500/30 hover:bg-muted/40'
+              )}
+            >
+              {content}
+            </button>
           )
         })
       ) : (
@@ -196,15 +398,16 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
   const [data, setData] = React.useState<RagTraceListResponse | null>(null)
   const [loading, setLoading] = React.useState(false)
-	const [selectedIndex, setSelectedIndex] = React.useState(0)
-	const [bundleDownloading, setBundleDownloading] = React.useState(false)
-	const [bundleError, setBundleError] = React.useState<string | null>(null)
-	const bundleDownloadingRef = React.useRef(false)
-	const [diffOpen, setDiffOpen] = React.useState(false)
-	const [diffOtherRequestId, setDiffOtherRequestId] = React.useState('')
-	const [diffLoading, setDiffLoading] = React.useState(false)
-	const [diffError, setDiffError] = React.useState<string | null>(null)
-	const [diffResult, setDiffResult] = React.useState<RagTraceBundleDiffResponse | null>(null)
+  const [selectedIndex, setSelectedIndex] = React.useState(0)
+  const [bundleDownloading, setBundleDownloading] = React.useState(false)
+  const [bundleError, setBundleError] = React.useState<string | null>(null)
+  const bundleDownloadingRef = React.useRef(false)
+  const [diffOpen, setDiffOpen] = React.useState(false)
+  const [diffOtherRequestId, setDiffOtherRequestId] = React.useState('')
+  const [diffLoading, setDiffLoading] = React.useState(false)
+  const [diffError, setDiffError] = React.useState<string | null>(null)
+  const [diffResult, setDiffResult] = React.useState<RagTraceBundleDiffResponse | null>(null)
+  const [selectedPipelineSectionId, setSelectedPipelineSectionId] = React.useState<string | null>(null)
 
   const items = data?.items ?? []
   const selected = items[selectedIndex] ?? items[0] ?? null
@@ -217,6 +420,39 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const rerankError = rerankMeta?.error ? String(rerankMeta.error) : null
   const requestId = String(selected?.request_id || '').trim()
   const pipelineSteps = React.useMemo(() => buildPipelineTimelineSteps(selected), [selected])
+  const pipelineInspectorSections = React.useMemo(() => buildPipelineInspectorSections(selected), [selected])
+  const selectedPipelineSection = React.useMemo(
+    () => pipelineInspectorSections.find((section) => section.id === selectedPipelineSectionId) ?? pipelineInspectorSections[0] ?? null,
+    [pipelineInspectorSections, selectedPipelineSectionId]
+  )
+  const selectedPipelineSectionIndex = React.useMemo(() => {
+    if (!selectedPipelineSection) return -1
+    return pipelineInspectorSections.findIndex((section) => section.id === selectedPipelineSection.id)
+  }, [pipelineInspectorSections, selectedPipelineSection])
+
+  React.useEffect(() => {
+    setSelectedPipelineSectionId((current) => {
+      if (current && pipelineInspectorSections.some((section) => section.id === current)) {
+        return current
+      }
+      return pipelineInspectorSections[0]?.id ?? null
+    })
+  }, [pipelineInspectorSections])
+
+  const handlePipelineTimelineKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!pipelineInspectorSections.length) return
+
+    const key = event.key.toLowerCase()
+    let direction: -1 | 1 | null = null
+    if (key === 'arrowright' || key === 'l') direction = 1
+    if (key === 'arrowleft' || key === 'h') direction = -1
+    if (direction == null) return
+
+    event.preventDefault()
+    const nextIndex = movePipelineSelectionIndex(selectedPipelineSectionIndex, pipelineInspectorSections.length, direction)
+    const nextId = pipelineInspectorSections[nextIndex]?.id ?? null
+    if (nextId) setSelectedPipelineSectionId(nextId)
+  }, [pipelineInspectorSections, selectedPipelineSectionIndex])
 
   const downloadBundle = React.useCallback(async () => {
     const rid = requestId
@@ -451,126 +687,136 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     <Timer className="h-4 w-4" />
                     Retrieve {formatSec(selected?.retrieval?.elapsed_sec)} · Rerank {formatSec(selected?.rerank?.elapsed_sec)}
                   </div>
-	                  <Button
-	                    variant="outline"
-	                    size="sm"
-	                    className="gap-2 rounded-xl"
-	                    disabled={!requestId || bundleDownloading}
-	                    onClick={() => detachPromise(downloadBundle())}
-	                    title="下载 request_id bundle（admin-only）"
-	                  >
-	                    {bundleDownloading ? (
-	                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-	                    ) : (
-	                      <Download className="h-4 w-4" />
-	                    )}
-	                    下载 bundle
-	                  </Button>
-	                  <Button
-	                    variant="outline"
-	                    size="sm"
-	                    className="gap-2 rounded-xl"
-	                    disabled={!requestId}
-	                    onClick={() => setDiffOpen((v) => !v)}
-	                    title="对比两个 request_id 的 trace bundle（admin-only）"
-	                  >
-	                    <GitCompare className="h-4 w-4" />
-	                    对比
-	                  </Button>
-	                </div>
-	              </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 rounded-xl"
+                    disabled={!requestId || bundleDownloading}
+                    onClick={() => detachPromise(downloadBundle())}
+                    title="下载 request_id bundle（admin-only）"
+                  >
+                    {bundleDownloading ? (
+                      <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    下载 bundle
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 rounded-xl"
+                    disabled={!requestId}
+                    onClick={() => setDiffOpen((v) => !v)}
+                    title="对比两个 request_id 的 trace bundle（admin-only）"
+                  >
+                    <GitCompare className="h-4 w-4" />
+                    对比
+                  </Button>
+                </div>
+              </div>
 
-	              {bundleError ? (
-	                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-	                  {bundleError}
-	                </div>
-	              ) : null}
+              {bundleError ? (
+                <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                  {bundleError}
+                </div>
+              ) : null}
 
-	              {diffOpen ? (
-	                <Panel variant="muted" className="space-y-3">
-	                  <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-	                    <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
-	                      <div className="space-y-1">
-	                        <div className="text-[11px] text-muted-foreground">request_id A</div>
-	                        <Input value={requestId} readOnly className="font-mono text-xs" />
-	                      </div>
-	                      <div className="space-y-1">
-	                        <div className="text-[11px] text-muted-foreground">request_id B</div>
-	                        <Input
-	                          value={diffOtherRequestId}
-	                          onChange={(e) => setDiffOtherRequestId(e.target.value)}
-	                          placeholder="输入另一个 request_id"
-	                          className="font-mono text-xs"
-	                        />
-	                      </div>
-	                    </div>
-	                    <Button
-	                      variant="outline"
-	                      size="sm"
-	                      className="gap-2 rounded-xl"
-	                      disabled={!requestId || !diffOtherRequestId.trim() || diffLoading}
-	                      onClick={() => detachPromise(runDiff())}
-	                    >
-	                      {diffLoading ? (
-	                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-	                      ) : (
-	                        <GitCompare className="h-4 w-4" />
-	                      )}
-	                      比较
-	                    </Button>
-	                  </div>
+              <AnimatePresence initial={false}>
+                {diffOpen ? (
+                  <motion.div
+                    key="trace-diff"
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                  >
+                    <Panel variant="muted" className="space-y-3">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                        <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
+                          <div className="space-y-1">
+                            <div className="text-[11px] text-muted-foreground">request_id A</div>
+                            <Input value={requestId} readOnly className="font-mono text-xs" />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="text-[11px] text-muted-foreground">request_id B</div>
+                            <Input
+                              value={diffOtherRequestId}
+                              onChange={(e) => setDiffOtherRequestId(e.target.value)}
+                              placeholder="输入另一个 request_id"
+                              className="font-mono text-xs"
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 rounded-xl"
+                          disabled={!requestId || !diffOtherRequestId.trim() || diffLoading}
+                          onClick={() => detachPromise(runDiff())}
+                        >
+                          {diffLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                          ) : (
+                            <GitCompare className="h-4 w-4" />
+                          )}
+                          比较
+                        </Button>
+                      </div>
 
-	                  {diffError ? (
-	                    <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-	                      {diffError}
-	                    </div>
-	                  ) : null}
+                      {diffError ? (
+                        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                          {diffError}
+                        </div>
+                      ) : null}
 
-	                  {diffResult ? (
-	                    <div className="space-y-3">
-	                      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-	                        <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-	                          <div className="text-[11px] text-muted-foreground">A</div>
-	                          <div className="mt-1 text-xs text-muted-foreground">
-	                            mode={diffResult.summary_a?.retrieval_mode || '—'} · cfg=
-	                            {diffResult.summary_a?.retrieval_config_hash ? shortHash(diffResult.summary_a.retrieval_config_hash) : '—'} · citations=
-	                            {diffResult.summary_a?.citations_count ?? '—'}
-	                          </div>
-	                        </div>
-	                        <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-	                          <div className="text-[11px] text-muted-foreground">B</div>
-	                          <div className="mt-1 text-xs text-muted-foreground">
-	                            mode={diffResult.summary_b?.retrieval_mode || '—'} · cfg=
-	                            {diffResult.summary_b?.retrieval_config_hash ? shortHash(diffResult.summary_b.retrieval_config_hash) : '—'} · citations=
-	                            {diffResult.summary_b?.citations_count ?? '—'}
-	                          </div>
-	                        </div>
-	                      </div>
+                      {diffResult ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+                              <div className="text-[11px] text-muted-foreground">A</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                mode={diffResult.summary_a?.retrieval_mode || '—'} · cfg=
+                                {diffResult.summary_a?.retrieval_config_hash ? shortHash(diffResult.summary_a.retrieval_config_hash) : '—'} · citations=
+                                {diffResult.summary_a?.citations_count ?? '—'}
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+                              <div className="text-[11px] text-muted-foreground">B</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                mode={diffResult.summary_b?.retrieval_mode || '—'} · cfg=
+                                {diffResult.summary_b?.retrieval_config_hash ? shortHash(diffResult.summary_b.retrieval_config_hash) : '—'} · citations=
+                                {diffResult.summary_b?.citations_count ?? '—'}
+                              </div>
+                            </div>
+                          </div>
 
-	                      <div className="text-[11px] text-muted-foreground">
-	                        changes: {diffResult.diff?.length ?? 0} · truncated: {diffResult.truncated ? 'yes' : 'no'}
-	                      </div>
-	                      <div className="space-y-2">
-	                        {(diffResult.diff || []).map((it) => (
-	                          <div
-	                            key={String(it.key)}
-	                            className="grid grid-cols-1 gap-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 md:grid-cols-3"
-	                          >
-	                            <div className="text-xs font-mono text-foreground">{it.key}</div>
-	                            <div className="text-xs text-muted-foreground break-words">{formatDiffValue(it.a)}</div>
-	                            <div className="text-xs text-muted-foreground break-words">
-	                              {formatDiffValue(it.b)}
-	                              {it.delta != null && Number.isFinite(Number(it.delta)) ? (
-	                                <span className="ml-2 font-mono text-[11px] text-foreground/80">Δ {String(it.delta)}</span>
-	                              ) : null}
-	                            </div>
-	                          </div>
-	                        ))}
-	                      </div>
-	                    </div>
-	                  ) : null}
-	                </Panel>
-	              ) : null}
+                          <div className="text-[11px] text-muted-foreground">
+                            changes: {diffResult.diff?.length ?? 0} · truncated: {diffResult.truncated ? 'yes' : 'no'}
+                          </div>
+                          <div className="space-y-2">
+                            {(diffResult.diff || []).map((it) => (
+                              <div
+                                key={String(it.key)}
+                                className="grid grid-cols-1 gap-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 md:grid-cols-3"
+                              >
+                                <div className="text-xs font-mono text-foreground">{it.key}</div>
+                                <div className="text-xs text-muted-foreground break-words">{formatDiffValue(it.a)}</div>
+                                <div className="text-xs text-muted-foreground break-words">
+                                  {formatDiffValue(it.b)}
+                                  {it.delta != null && Number.isFinite(Number(it.delta)) ? (
+                                    <span className="ml-2 font-mono text-[11px] text-foreground/80">Δ {String(it.delta)}</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </Panel>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
 
 	              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <Panel variant="muted" className="flex items-center gap-3">
@@ -600,10 +846,110 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
             </Panel>
 
             <Panel variant="glass" className="overflow-hidden" padding="none">
-              <div className="px-4 py-3 border-b border-border/60">
-                <div className="text-sm font-semibold">Pipeline Timeline</div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold">Pipeline Timeline</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    点击 stage 进入检查器；聚焦时间线后可用 <span className="font-mono">←/→</span> 或{' '}
+                    <span className="font-mono">h/l</span> 切换阶段。
+                  </div>
+                </div>
+                {selectedPipelineSection && selectedPipelineSectionIndex >= 0 ? (
+                  <Badge variant="soft" className="text-[10px]">
+                    stage {selectedPipelineSectionIndex + 1}/{pipelineInspectorSections.length}
+                  </Badge>
+                ) : null}
               </div>
-              <RagTracePipelineTimeline steps={pipelineSteps} />
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+                <div
+                  tabIndex={0}
+                  onKeyDown={handlePipelineTimelineKeyDown}
+                  className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  <RagTracePipelineTimeline
+                    steps={pipelineSteps}
+                    selectedKey={selectedPipelineSection?.id ?? selectedPipelineSectionId}
+                    onSelectStep={(key) => setSelectedPipelineSectionId(normalizePipelineSectionId(key))}
+                  />
+                </div>
+                <div className="border-t border-border/60 bg-muted/10 lg:border-l lg:border-t-0">
+                  <AnimatePresence mode="wait" initial={false}>
+                    {selectedPipelineSection ? (
+                      <motion.div
+                        key={selectedPipelineSection.id}
+                        initial={{ opacity: 0, x: 12 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -12 }}
+                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                        className="space-y-3 p-4"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">{selectedPipelineSection.label}</div>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedPipelineSection.summary}</p>
+                        </div>
+
+                        {selectedPipelineSection.callout ? (
+                          <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-xs text-sky-900 dark:text-sky-100">
+                            {selectedPipelineSection.callout}
+                          </div>
+                        ) : null}
+
+                        {selectedPipelineSection.metrics.length ? (
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {selectedPipelineSection.metrics.map((metric) => (
+                              <div key={`${selectedPipelineSection.id}:${metric.label}`} className="rounded-xl border border-border/60 bg-card/60 px-3 py-2">
+                                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{metric.label}</div>
+                                <div className="mt-1 text-sm font-semibold text-foreground">{metric.value}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-border/60 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+                            当前阶段没有额外指标，更多细节可继续看下方 channel / citation 面板。
+                          </div>
+                        )}
+
+                        {selectedPipelineSection.citations.length ? (
+                          <div className="space-y-2">
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Quick Evidence</div>
+                            {selectedPipelineSection.citations.slice(0, 3).map((citation, index) => {
+                              const documentId = String(citation.document_id || '').trim()
+                              const chunkId = String(citation.chunk_id || '').trim() || undefined
+                              const pageLabel = citation.page_number == null ? null : `P.${citation.page_number}`
+                              const citationRecord = citation as Record<string, unknown>
+                              const rawDocumentName = typeof citationRecord.document_name === 'string' ? citationRecord.document_name : ''
+                              const label = String(rawDocumentName || documentId || `citation-${index + 1}`).trim()
+                              return (
+                                <button
+                                  key={`${documentId}:${chunkId || index}`}
+                                  type="button"
+                                  disabled={!documentId}
+                                  onClick={() => {
+                                    if (!documentId) return
+                                    openDocument(documentId, chunkId, getTraceCitationRange(citation))
+                                  }}
+                                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-left transition-colors hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-medium text-foreground">{label}</div>
+                                    <div className="mt-1 text-[11px] text-muted-foreground">
+                                      {pageLabel ? `${pageLabel} · ` : ''}
+                                      {chunkId ? `chunk=${chunkId}` : 'document-level evidence'}
+                                    </div>
+                                  </div>
+                                  <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                </button>
+                              )
+                            })}
+                          </div>
+                        ) : null}
+                      </motion.div>
+                    ) : (
+                      <div className="p-4 text-xs text-muted-foreground">pipeline steps unavailable</div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
             </Panel>
 
             <Panel variant="glass" className="overflow-hidden" padding="none">

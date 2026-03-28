@@ -395,6 +395,13 @@ export function CommandMenu() {
         return
       }
 
+      if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
+        e.preventDefault()
+        setOpen(true)
+        clearPendingChord()
+        return
+      }
+
       if (open || e.metaKey || e.ctrlKey || e.altKey) return
       if (isEditableTarget(e.target)) return
 
@@ -426,7 +433,7 @@ export function CommandMenu() {
 
     document.addEventListener("keydown", down)
     return () => document.removeEventListener("keydown", down)
-  }, [armPendingChord, chordPrefixes, clearPendingChord, keyChordCommandMap, open, pendingChordPrefix, toggleOpen])
+  }, [armPendingChord, chordPrefixes, clearPendingChord, keyChordCommandMap, open, pendingChordPrefix, setOpen, toggleOpen])
 
   React.useEffect(() => {
     if (open) clearPendingChord()
@@ -448,7 +455,7 @@ export function CommandMenu() {
         className="flex items-center justify-between border-b border-border/50 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground"
       >
         <span className="font-medium text-foreground/80">Command Center</span>
-        <span>输入 <span className="font-semibold text-foreground">/</span> 查看快捷动作 · 试试 g d / g c / g g / f s</span>
+        <span>输入 <span className="font-semibold text-foreground">/</span> 查看快捷动作 · 试试 ? / g d / g c / g g / f s</span>
       </div>
       <CommandInput placeholder="输入命令或搜索..." value={query} onValueChange={setQuery} />
       <CommandList>

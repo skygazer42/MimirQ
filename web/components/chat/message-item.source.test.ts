@@ -33,7 +33,10 @@ describe('message item source', () => {
 
     expect(src).toContain('prefetchDocumentView')
     expect(src).toContain('const handlePrefetch = useCallback')
+    expect(src).toContain('const handleInlineCitationPrefetch = useCallback')
     expect(src).toContain('onMouseEnter={handlePrefetch}')
     expect(src).toContain('onFocus={handlePrefetch}')
+    expect(src).toContain('onMouseEnter={() => handleInlineCitationPrefetch(href)}')
+    expect(src).toContain('onFocus={() => handleInlineCitationPrefetch(href)}')
   })
 })
