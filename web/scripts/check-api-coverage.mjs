@@ -1,6 +1,8 @@
-import { parseBackendRoutes, parseFrontendRoutes } from './api-contract-lib.mjs'
+import { listFrontendSourceFiles, parseBackendRoutes, parseFrontendRoutes } from './api-contract-lib.mjs'
 
-const FRONTEND_CONTRACT_FILES = ['web/lib/api-client.ts']
+const FRONTEND_CONTRACT_FILES = listFrontendSourceFiles().filter(
+  (rel) => rel === 'web/lib/api-client.ts' || rel.startsWith('web/lib/api/')
+)
 
 function main() {
   const backend = parseBackendRoutes()
@@ -16,11 +18,11 @@ function main() {
   }
 
   if (missing.length === 0) {
-    console.log('[api-coverage] OK: all backend routes are represented in web API client')
+    console.log('[api-coverage] OK: all backend routes are represented in the web API layer')
     return
   }
 
-  console.error('[api-coverage] FAIL: backend routes missing in web API client:')
+  console.error('[api-coverage] FAIL: backend routes missing in the web API layer:')
   for (const m of missing) {
     console.error(`- ${m.key}  (backend: ${m.src})`)
   }

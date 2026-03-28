@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { chatApi } from './api-client'
+import { chatApi } from './api/chat'
 
 const originalFetch = globalThis.fetch
 

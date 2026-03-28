@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Activity, ArrowLeft, BarChart3, Download, FileSearch, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
@@ -17,6 +18,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { datasetApi } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetHealthToMarkdown } from '@/lib/dataset-health-export'
+import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 
@@ -24,10 +26,10 @@ import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } fro
 
 const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
 
-function asDatasetId(raw: unknown): string | null {
+function asDatasetId(raw: unknown): string {
   if (typeof raw === 'string' && raw.trim()) return raw
   if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0]
-  return null
+  return ''
 }
 
 function downloadTextFile(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
@@ -55,28 +57,29 @@ export default function DatasetHealthPage() {
   const params = useParams()
   const datasetId = asDatasetId((params as any)?.id)
 
-  const [dataset, setDataset] = useState<Dataset | null>(null)
-  const [health, setHealth] = useState<DatasetHealthResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const datasetQuery = useQuery({
+    queryKey: queryKeys.datasets.detail(datasetId),
+    queryFn: () => datasetApi.get(datasetId),
+    enabled: Boolean(datasetId),
+  })
 
-  const load = useCallback(async () => {
-    if (!datasetId) return
-    setIsLoading(true)
-    try {
-      const [ds, h] = await Promise.all([datasetApi.get(datasetId), datasetApi.getHealth(datasetId)])
-      setDataset(ds)
-      setHealth(h)
-    } catch (e: any) {
-      console.error('Failed to load dataset health', e)
-      toast.error(formatApiError(e, '加载健康概览失败'))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [datasetId])
+  const healthQuery = useQuery({
+    queryKey: queryKeys.datasets.health(datasetId),
+    queryFn: () => datasetApi.getHealth(datasetId),
+    enabled: Boolean(datasetId),
+  })
+
+  const dataset = (datasetQuery.data ?? null) as Dataset | null
+  const health = (healthQuery.data ?? null) as DatasetHealthResponse | null
+  const isLoading = datasetQuery.isFetching || healthQuery.isFetching
+
+  const loadError = datasetQuery.error ?? healthQuery.error
 
   useEffect(() => {
-    detachPromise(load())
-  }, [load])
+    if (!loadError) return
+    console.error('Failed to load dataset health', loadError)
+    toast.error(formatApiError(loadError, '加载健康概览失败'))
+  }, [loadError])
 
   const profile = health?.profile
   const ingestion = health?.ingestion
@@ -222,7 +225,16 @@ export default function DatasetHealthPage() {
                 入库策略
               </Button>
             ) : null}
-            <Button variant="outline" className="gap-2" onClick={() => detachPromise(load())} disabled={isLoading}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() =>
+                detachPromise(
+                  Promise.all([datasetQuery.refetch(), healthQuery.refetch()]).then(() => undefined)
+                )
+              }
+              disabled={isLoading || !datasetId}
+            >
               <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
               刷新
             </Button>

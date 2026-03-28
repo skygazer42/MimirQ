@@ -11,6 +11,7 @@ export const queryKeys = {
     all: ['datasets'] as const,
     list: (params?: QueryParams) => ['datasets', 'list', params] as const,
     detail: (id: string) => ['datasets', 'detail', id] as const,
+    health: (id: string) => ['datasets', 'health', id] as const,
   },
   chat: {
     all: ['chat'] as const,
