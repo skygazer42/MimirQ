@@ -163,7 +163,7 @@ export function DataGovernancePanel() {
           variant="ghost"
           size="sm"
           className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-foreground"
-          aria-label="鍏抽棴鎻愮ず"
+          aria-label="关闭提示"
           onClick={() => setInboundBannerDismissed(true)}
         >
           <X className="w-4 h-4" />
@@ -1333,6 +1333,8 @@ export function DataGovernancePanel() {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6 text-muted-foreground hover:text-muted-foreground hover:bg-muted"
+                      aria-label="收起右侧面板"
+                      title="收起右侧面板"
                       onClick={() => setIsPanelCollapsed(true)}
                     >
                       <PanelRightClose className="w-4 h-4 rotate-180" />
