@@ -1,5 +1,5 @@
 /**
- * 问答历史页面
+ * 对话历史页面
  */
 'use client'
 
@@ -29,6 +29,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { chatApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { messages as uiMessages } from '@/lib/messages'
 import { toast } from 'sonner'
 import type { Conversation, Message } from '@/types'
 
@@ -46,7 +47,7 @@ const LOAD_MORE_STEP = 40
 function HistoryPageLoading() {
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
-      <PageLoading message="正在加载历史记录..." srMessage="Loading history" />
+      <PageLoading message={uiMessages.history.loadingPage} srMessage={uiMessages.history.loadingPageSr} />
     </AppFrame>
   )
 }
@@ -80,7 +81,7 @@ function HistoryPageContent() {
       setConversations(result.items || [])
     } catch (error) {
       console.error('Failed to load conversations:', error)
-      toast.error(formatApiError(error, '加载对话列表失败'))
+      toast.error(formatApiError(error, uiMessages.history.loadConversationListFailed))
     } finally {
       setIsLoadingList(false)
     }
@@ -106,7 +107,7 @@ function HistoryPageContent() {
       })
     } catch (error) {
       console.error('Failed to load messages:', error)
-      toast.error(formatApiError(error, '加载对话消息失败'))
+      toast.error(formatApiError(error, uiMessages.history.loadConversationMessagesFailed))
       setMessages([])
       setHasMoreMessages(false)
     } finally {
@@ -213,7 +214,7 @@ function HistoryPageContent() {
       setHasMoreMessages(Boolean(result.has_more))
     } catch (error) {
       console.error('Failed to load older messages:', error)
-      toast.error(formatApiError(error, '加载更早消息失败'))
+      toast.error(formatApiError(error, uiMessages.history.loadOlderMessagesFailed))
     } finally {
       setIsLoadingOlder(false)
     }
@@ -222,8 +223,8 @@ function HistoryPageContent() {
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding mainClassName="overflow-hidden">
       <PageScaffold
-        title="问答历史"
-        description="查看与管理历史对话，并快速回到对话继续交流"
+        title={uiMessages.history.pageTitle}
+        description={uiMessages.history.pageDescription}
         icon={History}
         iconColor="text-sky-600 dark:text-sky-400"
         size="full"
@@ -237,7 +238,7 @@ function HistoryPageContent() {
             onClick={() => router.push('/', { scroll: false })}
           >
             <Plus className="h-4 w-4" />
-            新建对话
+            {uiMessages.history.newConversation}
           </Button>
         }
       >
@@ -249,7 +250,7 @@ function HistoryPageContent() {
               <SearchInput
                 value={searchQuery}
                 onValueChange={setSearchQuery}
-                placeholder="搜索对话..."
+                placeholder={uiMessages.history.searchPlaceholder}
                 inputClassName="rounded-xl bg-background/80 shadow-sm"
               />
             </div>
@@ -265,8 +266,8 @@ function HistoryPageContent() {
     else if (filteredConversations.length === 0) {
             return (<div className="text-center py-12 px-4 text-muted-foreground text-sm">
                   <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-20"/>
-                  <p>{searchQuery ? '没有找到匹配的对话' : '暂无对话记录'}</p>
-                  {searchQuery ? null : (<p className="mt-2 text-[11px] text-muted-foreground/80">去首页发起新对话开始探索</p>)}
+                  <p>{searchQuery ? uiMessages.history.noMatchedConversation : uiMessages.history.noConversationRecords}</p>
+                  {searchQuery ? null : (<p className="mt-2 text-[11px] text-muted-foreground/80">{uiMessages.history.startConversationHint}</p>)}
                 </div>);
         }
         else {
@@ -298,7 +299,7 @@ function HistoryPageContent() {
 		                    </div>
 		                    <div>
 		                      <h2 className="font-semibold text-foreground">
-		                        {selectedConversation.title || '未命名对话'}
+		                        {selectedConversation.title || uiMessages.history.untitledConversation}
 	                      </h2>
 	                      <p className="text-[11px] font-medium text-muted-foreground mt-0.5 tabular-nums">
 	                        {selectedConversation.message_count} 条消息 · {formatDate(selectedConversation.created_at)}
@@ -330,7 +331,7 @@ function HistoryPageContent() {
                       className="gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      继续对话
+                      {uiMessages.history.continueConversation}
                     </Button>
                   </div>
                 </div>
@@ -346,14 +347,14 @@ function HistoryPageContent() {
     else if (messages.length === 0) {
             return (<div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                       <MessageSquare className="h-12 w-12 mb-4 opacity-10"/>
-                      <p>暂无消息记录</p>
+                      <p>{uiMessages.history.noMessageRecords}</p>
                     </div>);
         }
         else {
             return (<div className="max-w-3xl mx-auto space-y-10">
                       {hasMoreMessages ? (<div className="flex justify-center">
                           <Button variant="outline" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full text-xs">
-                            {isLoadingOlder ? '加载中…' : '加载更早消息'}
+                            {isLoadingOlder ? uiMessages.history.loading : uiMessages.history.loadOlderMessages}
                           </Button>
                         </div>) : null}
                       {messages.map((message) => (<ChatMessageItem key={message.id} message={message}/>))}
@@ -368,11 +369,11 @@ function HistoryPageContent() {
                 <EmptyState
                   icon={History}
                   iconClassName="text-primary"
-                  title="还没有选择对话"
+                  title={uiMessages.history.noConversationSelected}
                   description={
                     <>
-                      在这里您可以查看过去的对话记录。<br />
-                      点击左侧列表开始回顾，或新建一个对话继续交流。
+                      {uiMessages.history.noConversationSelectedDescription.split('\n')[0]}<br />
+                      {uiMessages.history.noConversationSelectedDescription.split('\n')[1]}
                     </>
                   }
                   className="min-h-full border-0 bg-transparent shadow-none"
@@ -382,7 +383,7 @@ function HistoryPageContent() {
                     onClick={() => router.push('/', { scroll: false })}
                     className="rounded-full"
                   >
-                    发起新对话
+                    {uiMessages.history.startNewConversation}
                   </Button>
                 </EmptyState>
               </div>
@@ -431,17 +432,17 @@ function ConversationItem({
         <button
           type="button"
           onClick={onSelect}
-          aria-label={`选择对话：${conversation.title || '未命名对话'}`}
+          aria-label={`${uiMessages.history.selectConversation}：${conversation.title || uiMessages.history.untitledConversation}`}
           className="flex-1 min-w-0 px-4 py-4 text-left cursor-pointer focus-ring"
         >
 	          <h3 className={cn(
 	            'font-semibold truncate text-[14px]',
 	            isSelected ? 'text-primary' : 'text-foreground'
 	          )}>
-	            {conversation.title || '未命名对话'}
+	            {conversation.title || uiMessages.history.untitledConversation}
 	          </h3>
           <p className="text-xs text-muted-foreground truncate mt-1 leading-relaxed opacity-70">
-            {conversation.last_message || '暂无消息'}
+            {conversation.last_message || uiMessages.history.noMessage}
           </p>
 	          <div className="flex items-center gap-2 mt-2">
 	            <span className="text-[10px] font-medium text-muted-foreground tabular-nums bg-muted/60 px-1.5 py-0.5 rounded">
@@ -455,14 +456,14 @@ function ConversationItem({
           {showDeleteConfirm ? (
             <div className="flex items-center gap-1">
               <IconButton
-                label="确认删除对话"
+                label={uiMessages.history.confirmDeleteConversation}
                 className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={onConfirmDelete}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </IconButton>
               <IconButton
-                label="取消删除"
+                label={uiMessages.history.cancelDelete}
                 className="text-muted-foreground hover:bg-muted"
                 onClick={onCancelDelete}
               >
@@ -472,7 +473,7 @@ function ConversationItem({
           ) : (
             <IconButton
               onClick={onDelete}
-              label="删除对话"
+              label={uiMessages.history.deleteConversation}
               className="hover:bg-muted hover:text-destructive"
             >
               <Trash2 className="h-3.5 w-3.5" />

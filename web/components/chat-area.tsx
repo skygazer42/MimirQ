@@ -32,6 +32,7 @@ import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
 import { Magnetic } from '@/components/ui/magnetic'
 import { coerceOneOf } from '@/lib/one-of'
+import { messages as uiMessages } from '@/lib/messages'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
@@ -259,13 +260,13 @@ export function ChatArea({
 
     if (cmd === 'config') {
       setShowRagSettings(true)
-      toast.info('已打开 RAG 配置')
+      toast.info(uiMessages.chat.openRagConfig)
       return
     }
 
     if (cmd === 'clear') {
       setInputValue('')
-      toast.info('已清空当前输入')
+      toast.info(uiMessages.chat.clearInput)
     }
   }, [handlePrefillInput])
 
@@ -310,7 +311,7 @@ export function ChatArea({
     onConversationId,
     onError: (error) => {
       console.error('Chat error:', error)
-      toast.error(error || '聊天请求失败')
+      toast.error(error || uiMessages.chat.requestFailed)
     },
   })
 
@@ -503,7 +504,7 @@ export function ChatArea({
                 onClick={handleLoadMore}
                 className="rounded-full text-xs text-muted-foreground hover:bg-secondary"
               >
-                显示更早消息（{hiddenCount}）
+                {uiMessages.chat.showEarlierMessages}（{hiddenCount}）
               </Button>
             </div>
           )}
@@ -545,11 +546,11 @@ export function ChatArea({
             variant="secondary"
             onClick={jumpToBottom}
             className="rounded-full shadow-md border border-border/60"
-            aria-label="回到最新消息"
-            title="回到最新消息"
+            aria-label={uiMessages.chat.jumpToLatestMessage}
+            title={uiMessages.chat.jumpToLatestMessage}
           >
             <ArrowDown className="h-4 w-4 mr-1" />
-            回到最新
+            {uiMessages.chat.jumpToLatest}
           </Button>
         </div>
       )}
@@ -561,10 +562,10 @@ export function ChatArea({
             <div className="flex min-w-0 items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span>对话工具</span>
+                <span>{uiMessages.chat.conversationTools}</span>
               </div>
               <div className="hidden text-[11px] text-muted-foreground md:block">
-                模板、检索配置放在这里；输入框只保留提问本身。
+                {uiMessages.chat.toolsHint}
               </div>
             </div>
 
@@ -574,18 +575,18 @@ export function ChatArea({
                   <PopoverTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-9 gap-2 rounded-full border border-border/60 bg-card px-3 text-foreground shadow-sm hover:bg-secondary/80">
                       <Wand2 className="w-3.5 h-3.5 text-primary" />
-                      <span className="text-xs">{selectedPromptTemplate?.name || '默认模板'}</span>
+                      <span className="text-xs">{selectedPromptTemplate?.name || uiMessages.chat.defaultTemplate}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-2" align="start">
-                    <div className="text-xs font-medium text-muted-foreground mb-2 px-2">选择 Prompt 模板</div>
+                    <div className="text-xs font-medium text-muted-foreground mb-2 px-2">{uiMessages.chat.selectPromptTemplate}</div>
                     <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
                       <button
                         type="button"
                         className={cn('px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors', !promptTemplateId && 'bg-secondary/50 font-medium text-primary')}
                         onClick={() => setPromptTemplateId('')}
                       >
-                        默认模板
+                        {uiMessages.chat.defaultTemplate}
                       </button>
                       {promptTemplates.map((t) => (
                         <button
@@ -799,8 +800,8 @@ export function ChatArea({
 	            "shadow-soft hover:shadow-strong",
 	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
 	          )}>
-              <Label htmlFor="chat-composer" className="sr-only">
-                消息输入框
+            <Label htmlFor="chat-composer" className="sr-only">
+                {uiMessages.chat.messageInput}
               </Label>
 	            <textarea
 	              id="chat-composer"
@@ -809,7 +810,7 @@ export function ChatArea({
 	              onChange={(e) => setInputValue(e.target.value)}
 	              onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
-	              placeholder="问点什么... (Shift + Enter 换行)"
+	              placeholder={uiMessages.chat.composerPlaceholder}
 	              autoFocus
 	              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium"
 	              rows={1}
@@ -822,8 +823,8 @@ export function ChatArea({
 	                  variant="ghost"
 	                  onClick={() => setVoiceModeOpen(true)}
 	                  className="rounded-full h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted"
-	                  title="语音模式"
-	                  aria-label="语音模式"
+	                  title={uiMessages.chat.voiceMode}
+	                  aria-label={uiMessages.chat.voiceMode}
 	                >
 	                  <Mic className="h-5 w-5" />
 	                </Button>
@@ -835,8 +836,8 @@ export function ChatArea({
 	                    size="icon"
 	                    onClick={stopGeneration}
 	                    className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
-	                    title="停止生成"
-	                    aria-label="停止生成"
+	                    title={uiMessages.chat.stopGeneration}
+	                    aria-label={uiMessages.chat.stopGeneration}
 	                  >
 	                    <StopCircle className="h-4 w-4" />
 	                  </Button>
@@ -853,8 +854,8 @@ export function ChatArea({
                         ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
                         : "bg-secondary text-muted-foreground cursor-not-allowed"
 	                    )}
-	                    title="发送"
-	                    aria-label="发送"
+	                    title={uiMessages.chat.send}
+	                    aria-label={uiMessages.chat.send}
 	                  >
 	                    <Send className="h-4 w-4" />
 	                  </Button>
@@ -1014,7 +1015,7 @@ function WelcomeScreen({
         />
         <WelcomeStatusCard
           icon={Wand2}
-          title={promptTemplateCount > 0 ? `${promptTemplateCount} 个 Prompt 模板可用` : '先从默认模板开始'}
+          title={promptTemplateCount > 0 ? `${promptTemplateCount} 个 Prompt 模板可用` : uiMessages.chat.startFromDefaultTemplate}
           desc={
             promptTemplateCount > 0
               ? '你可以在输入框上方切换模板，快速进入摘要、行动项或结构化输出模式。'
