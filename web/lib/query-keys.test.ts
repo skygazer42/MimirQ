@@ -13,8 +13,9 @@ describe('queryKeys', () => {
     expect(queryKeys.datasets.detail('dataset-1')).toEqual(['datasets', 'detail', 'dataset-1'])
   })
 
-  it('covers auth, pipeline, connector, index audit, and health namespaces', () => {
+  it('covers auth, dataset, pipeline, connector, index audit, and health namespaces', () => {
     expect(queryKeys.auth.profile).toEqual(['auth', 'profile'])
+    expect(queryKeys.datasets.health('dataset-1')).toEqual(['datasets', 'health', 'dataset-1'])
     expect(queryKeys.pipeline.capabilities).toEqual(['pipeline', 'capabilities'])
     expect(queryKeys.connectors.runs({ datasetId: 'dataset-1', limit: 20 })).toEqual([
       'connectors',

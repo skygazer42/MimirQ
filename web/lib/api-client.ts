@@ -1,7 +1,7 @@
 /**
  * API 客户端
  */
-import type { Document, DocumentList, DocumentChunk, DocumentChunkList, DocumentChunkCreateRequest, DocumentChunkMatchList, DocumentChunkReembedRequest, DocumentChunkReembedResponse, DocumentChunkUpdateRequest, DocumentQAGenerateRequest, DocumentQAGenerateResponse, DocumentStatus, DocumentTimelineResponse, DocumentFolderTreeResponse, DocumentStats, DocumentAccessInfo, DocumentAccessUpdateRequest, DocumentBatchLifecycleResponse, DocumentHealthCard, DocumentBatchReingestRequest, DocumentBatchRetryRequest, DocumentBatchRetryResponse, DocumentBatchMoveRequest, DocumentBatchMoveResponse, DocumentBatchAccessUpdateRequest, DocumentBatchAccessUpdateResponse, DocumentDuplicateList, DocumentVersionList, DocumentVersionDiff, ConnectorInfo, ConnectorConfigCreateRequest, ConnectorConfigListResponse, ConnectorConfigOut, ConnectorConfigUpdateRequest, ConnectorScheduledTickResponse, ConnectorRunCreateRequest, ConnectorRunListResponse, ConnectorRunOut, IngestionRunCompareResponse, IngestionRunListResponse, IngestionRunOut, ConnectorValidateRequest, ConnectorValidateResponse, DocumentUserMetadataPatchRequest, DocumentBatchUserMetadataPatchRequest, DocumentBatchUserMetadataPatchResponse, DocumentPipelinePatchRequest, DocumentLifecycleMetadata, DocumentLifecycleMetadataUpdateRequest, Conversation, Message, ChatRequest, ChatResponse, ConversationSummaryResponse, ConversationSummaryUpdateResponse, ChatTokenUsageSummary, ChatCostUsageSummary, ChatTokenQuotaStatus, TenantQuotaSummary, AuditLogListResponse, DocumentPreview, DocumentParsedContentResponse, ManualChunk, DocumentPipelineOptions, ChunkPreviewResponse, ChunkPreset, ChunkPresetCreateRequest, ChunkPresetUpdateRequest, ChunkPresetListResponse, DocumentBatchUploadResponse, Dataset, DatasetCreate, DatasetUpdate, DatasetListResponse, DatasetCategoryTreeResponse, DatasetCategoryCreate, DatasetCategoryUpdate, DatasetCategoryMoveRequest, DatasetCategoryOut, DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse, DatasetIngestionStats, DatasetHealthResponse, DatasetReport, DatasetConfigExport, DatasetConfigImportRequest, DatasetCloneRequest, DatasetProfileSummary, DatasetProfileDocumentListResponse, DatasetProfileFindingListResponse, DatasetProfileScanRunCreateRequest, DatasetProfileScanRunListResponse, DatasetProfileScanRunOut, DatasetPrecheckSummary, DatasetPrecheckFindingListResponse, DatasetPrecheckScanRunCreateRequest, DatasetPrecheckScanRunListResponse, DatasetPrecheckScanRunOut, DatasetPrecheckSamplesResponse, DatasetPrecheckNearDupResponse, DatasetPrecheckDiffResponse, DatasetPrecheckIngestionSuggestionResponse, DatasetTablesListResponse, DatasetTableAsset, TableQueryRequest, TableQueryResponse, TableAskRequest, TableAskResponse, LotusSemFilterRequest, DbCatalogTablesListResponse, DbCatalogTableDetail, DbProfileSnapshotListResponse, MessageFeedback, MessageFeedbackCreate, MessageFeedbackListResponse, MessageFeedbackEnrichedListResponse, KGDeleteResponse, KGEntityDetailResponse, KGEntityMergeRequest, KGEntityMergePreviewResponse, KGEntityMergeResponse, KGEntityResolutionUndoResponse, KGEntitySplitRequest, KGEntitySplitResponse, KGEntityAliasCreateRequest, KGEntityAliasItem, KGEntityAliasesResponse, KGEntityAliasSuggestionsResponse, KGPredicateOntologyCreateRequest, KGPredicateOntologyItem, KGPredicateOntologyListResponse, KGPredicateOntologyUpdateRequest, KGEventDetailResponse, KGExtractResponse, KGGraphNode, KGGraphResponse, KGSearchRequest, KGSearchResponse, KGStatsResponse, BatchUploadResponse, BatchTaskStatus, BatchFileInfo, CleanPreviewRequest, CleanPreviewResponse, CleanRulesResponse, CheckpointDetailResponse, CheckpointListResponse, HealthResponse, KeywordExtractRequest, KeywordExtractResponse, LLMCleanPreviewRequest, LLMCleanPreviewResponse, PipelineCapabilitiesResponse, GovernanceAnalyzeRequest, GovernanceAnalyzeResponse, GovernanceRulePackListResponse, StaleDocumentsByDatasetResponse, GovernanceCommonLinesLearnRequest, GovernanceCommonLinesLearnResponse, GovernanceProfileListResponse, GovernanceProfileOut, GovernanceProfileCreate, GovernanceProfileUpdate, GovernanceProfileImportResponse, GovernanceProfileResolvedResponse, PipelineChunkPreviewRequest, PipelineChunkPreviewResponse, PipelineParsePreviewResponse, ReadyResponse, RetrievePreviewRequest, RetrievePreviewResponse, EvidenceRetrieveRequest, EvidenceRetrieveResponse, EvidenceItem, EvidenceItemCreate, EvidenceItemImportResponse, EvidenceItemList, EvidenceItemPatch, EvidenceReferenceDriftAudit, EvidenceReferenceRepairRequest, EvidenceReferenceRepairResponse, EvidenceHardcaseDiscovery, EvidenceSuite, EvidenceSuiteCreate, EvidenceSuiteExportV1, EvidenceSuiteDashboard, EvidenceSuiteList, EvidenceSuitePatch, EvidenceSuiteSyncRegressionResponse, PromptPreviewRequest, PromptPreviewResponse, RegressionCase, RegressionCaseCreate, RegressionCaseBundleV1, RegressionCaseImportResponse, RegressionCaseList, RegressionCasePatch, TestGenFromDocsRequest, TestGenFromConversationsRequest, TestGenResponse, RegressionRun, RegressionRunCreate, RegressionRunList, RegressionRunDetail, AuthResponse, LoginRequest, RegisterRequest, UserProfile, ZipWithImagesResponse, IngestionPolicy, IngestionPolicyImportResponse, IngestionPolicyRollbackRequest, IngestionPolicyVersionListResponse, IngestionPreviewResponse, RagvizSimilarityCollectionsResponse, RagvizSimilarityRequest, RagvizSimilarityCalculateResponse, RagMetricsSummaryResponse, OnlineQualitySummaryResponse, QuerysetHealthRunsResponse, QuerysetHealthDiffResponse, RagQueryAnalyticsResponse, RagCostAttributionResponse, RagTraceBundleResponse, RagTraceBundleDiffResponse, OpsConfigSnapshotResponse, PeriodicJobFreshnessResponse, DepsDiagnosticsResponse, TaskQueueObservabilitySnapshotResponse, SloSnapshotResponse, IndexAuditResponse, IngestionDashboardSummaryResponse, RagTraceListResponse, RagasRegressionRunDiffResponse } from '@/types'
+import type { Document, DocumentList, DocumentChunk, DocumentChunkList, DocumentChunkCreateRequest, DocumentChunkMatchList, DocumentChunkReembedRequest, DocumentChunkReembedResponse, DocumentChunkUpdateRequest, DocumentQAGenerateRequest, DocumentQAGenerateResponse, DocumentStatus, DocumentTimelineResponse, DocumentFolderTreeResponse, DocumentStats, DocumentAccessInfo, DocumentAccessUpdateRequest, DocumentBatchLifecycleResponse, DocumentHealthCard, DocumentBatchReingestRequest, DocumentBatchRetryRequest, DocumentBatchRetryResponse, DocumentBatchMoveRequest, DocumentBatchMoveResponse, DocumentBatchAccessUpdateRequest, DocumentBatchAccessUpdateResponse, DocumentDuplicateList, DocumentVersionList, DocumentVersionDiff, ConnectorInfo, ConnectorConfigCreateRequest, ConnectorConfigListResponse, ConnectorConfigOut, ConnectorConfigUpdateRequest, ConnectorScheduledTickResponse, ConnectorRunCreateRequest, ConnectorRunListResponse, ConnectorRunOut, IngestionRunCompareResponse, IngestionRunListResponse, IngestionRunOut, ConnectorValidateRequest, ConnectorValidateResponse, DocumentUserMetadataPatchRequest, DocumentBatchUserMetadataPatchRequest, DocumentBatchUserMetadataPatchResponse, DocumentPipelinePatchRequest, DocumentLifecycleMetadata, DocumentLifecycleMetadataUpdateRequest, ChatTokenUsageSummary, ChatCostUsageSummary, ChatTokenQuotaStatus, TenantQuotaSummary, AuditLogListResponse, DocumentPreview, DocumentParsedContentResponse, ManualChunk, DocumentPipelineOptions, ChunkPreviewResponse, ChunkPreset, ChunkPresetCreateRequest, ChunkPresetUpdateRequest, ChunkPresetListResponse, DocumentBatchUploadResponse, Dataset, DatasetCreate, DatasetUpdate, DatasetListResponse, DatasetCategoryTreeResponse, DatasetCategoryCreate, DatasetCategoryUpdate, DatasetCategoryMoveRequest, DatasetCategoryOut, DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse, DatasetIngestionStats, DatasetHealthResponse, DatasetReport, DatasetConfigExport, DatasetConfigImportRequest, DatasetCloneRequest, DatasetProfileSummary, DatasetProfileDocumentListResponse, DatasetProfileFindingListResponse, DatasetProfileScanRunCreateRequest, DatasetProfileScanRunListResponse, DatasetProfileScanRunOut, DatasetPrecheckSummary, DatasetPrecheckFindingListResponse, DatasetPrecheckScanRunCreateRequest, DatasetPrecheckScanRunListResponse, DatasetPrecheckScanRunOut, DatasetPrecheckSamplesResponse, DatasetPrecheckNearDupResponse, DatasetPrecheckDiffResponse, DatasetPrecheckIngestionSuggestionResponse, DatasetTablesListResponse, DatasetTableAsset, TableQueryRequest, TableQueryResponse, TableAskRequest, TableAskResponse, LotusSemFilterRequest, DbCatalogTablesListResponse, DbCatalogTableDetail, DbProfileSnapshotListResponse, MessageFeedback, MessageFeedbackCreate, MessageFeedbackListResponse, MessageFeedbackEnrichedListResponse, KGDeleteResponse, KGEntityDetailResponse, KGEntityMergeRequest, KGEntityMergePreviewResponse, KGEntityMergeResponse, KGEntityResolutionUndoResponse, KGEntitySplitRequest, KGEntitySplitResponse, KGEntityAliasCreateRequest, KGEntityAliasItem, KGEntityAliasesResponse, KGEntityAliasSuggestionsResponse, KGPredicateOntologyCreateRequest, KGPredicateOntologyItem, KGPredicateOntologyListResponse, KGPredicateOntologyUpdateRequest, KGEventDetailResponse, KGExtractResponse, KGGraphNode, KGGraphResponse, KGSearchRequest, KGSearchResponse, KGStatsResponse, BatchUploadResponse, BatchTaskStatus, BatchFileInfo, CleanPreviewRequest, CleanPreviewResponse, CleanRulesResponse, HealthResponse, KeywordExtractRequest, KeywordExtractResponse, LLMCleanPreviewRequest, LLMCleanPreviewResponse, PipelineCapabilitiesResponse, GovernanceAnalyzeRequest, GovernanceAnalyzeResponse, GovernanceRulePackListResponse, StaleDocumentsByDatasetResponse, GovernanceCommonLinesLearnRequest, GovernanceCommonLinesLearnResponse, GovernanceProfileListResponse, GovernanceProfileOut, GovernanceProfileCreate, GovernanceProfileUpdate, GovernanceProfileImportResponse, GovernanceProfileResolvedResponse, PipelineChunkPreviewRequest, PipelineChunkPreviewResponse, PipelineParsePreviewResponse, ReadyResponse, EvidenceItem, EvidenceItemCreate, EvidenceItemImportResponse, EvidenceItemList, EvidenceItemPatch, EvidenceReferenceDriftAudit, EvidenceReferenceRepairRequest, EvidenceReferenceRepairResponse, EvidenceHardcaseDiscovery, EvidenceSuite, EvidenceSuiteCreate, EvidenceSuiteExportV1, EvidenceSuiteDashboard, EvidenceSuiteList, EvidenceSuitePatch, EvidenceSuiteSyncRegressionResponse, RegressionCase, RegressionCaseCreate, RegressionCaseBundleV1, RegressionCaseImportResponse, RegressionCaseList, RegressionCasePatch, TestGenFromDocsRequest, TestGenFromConversationsRequest, TestGenResponse, RegressionRun, RegressionRunCreate, RegressionRunList, RegressionRunDetail, AuthResponse, LoginRequest, RegisterRequest, UserProfile, ZipWithImagesResponse, IngestionPolicy, IngestionPolicyImportResponse, IngestionPolicyRollbackRequest, IngestionPolicyVersionListResponse, IngestionPreviewResponse, RagvizSimilarityCollectionsResponse, RagvizSimilarityRequest, RagvizSimilarityCalculateResponse, RagMetricsSummaryResponse, OnlineQualitySummaryResponse, QuerysetHealthRunsResponse, QuerysetHealthDiffResponse, RagQueryAnalyticsResponse, RagCostAttributionResponse, RagTraceBundleResponse, RagTraceBundleDiffResponse, OpsConfigSnapshotResponse, PeriodicJobFreshnessResponse, DepsDiagnosticsResponse, TaskQueueObservabilitySnapshotResponse, SloSnapshotResponse, IndexAuditResponse, IngestionDashboardSummaryResponse, RagasRegressionRunDiffResponse } from '@/types'
 import type {
   MetaResponse,
   TenantGroupCreateRequest,
@@ -28,8 +28,16 @@ import {
 } from '@/lib/api/core'
 
 export { apiClient, coerceRetryAfterSeconds, formatRateLimitLogMessage } from '@/lib/api/core'
+export { chatApi } from '@/lib/api/chat'
 export { appendChunkPreviewFormFields, buildChunkPreviewQueryParams } from '@/lib/api/document-helpers'
+export { ragApi } from '@/lib/api/rag'
 export type { ChunkPreviewRequestParams, DocumentLifecycleFilter } from '@/lib/api/document-helpers'
+export type {
+  ClipImageIndexRequest,
+  ClipImageIndexResponse,
+  ClipImageSearchRequest,
+  ClipImageSearchResponse,
+} from '@/lib/api/rag'
 
 export type FrontendWebVitalReportRequest = {
   id: string
@@ -709,61 +717,6 @@ export const ingestionRunApi = {
 
   async exportRunHtml(runId: string): Promise<Blob> {
     const { data } = await apiClient.get(`/ingestion/runs/${runId}/export-html`, { responseType: 'blob' })
-    return data
-  },
-}
-
-// ==================== RAG 调试 API ====================
-
-export interface ClipImageIndexRequest {
-  dataset_id: string
-  max_chunks?: number
-  upsert?: boolean
-}
-
-export interface ClipImageIndexResponse {
-  indexed: number
-  skipped: number
-  failed: number
-  dim: number
-  errors: string[]
-}
-
-export interface ClipImageSearchRequest {
-  dataset_id: string
-  query: string
-  top_k?: number
-  auto_index?: boolean
-}
-
-export interface ClipImageSearchResponse {
-  citations: any[]
-  metrics: Record<string, any>
-}
-
-export const ragApi = {
-  async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
-    const { data } = await apiClient.post('/rag/retrieve-preview', params)
-    return data
-  },
-
-  async indexClipImages(params: ClipImageIndexRequest): Promise<ClipImageIndexResponse> {
-    const { data } = await apiClient.post('/rag/image-index', params)
-    return data
-  },
-
-  async searchClipImages(params: ClipImageSearchRequest): Promise<ClipImageSearchResponse> {
-    const { data } = await apiClient.post('/rag/image-search-preview', params)
-    return data
-  },
-
-  async retrieveEvidence(params: EvidenceRetrieveRequest): Promise<EvidenceRetrieveResponse> {
-    const { data } = await apiClient.post('/rag/retrieve', params)
-    return data
-  },
-
-  async promptPreview(params: PromptPreviewRequest): Promise<PromptPreviewResponse> {
-    const { data } = await apiClient.post('/rag/prompt-preview', params)
     return data
   },
 }
@@ -1531,162 +1484,6 @@ export const reportApi = {
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/reports/datasets/${datasetId}/export-bundle`, { params, responseType: 'blob' })
     return data as Blob
-  },
-}
-
-// ==================== 对话 API ====================
-
-export const chatApi = {
-  /**
-   * 创建对话
-   */
-  async createConversation(params?: {
-    title?: string
-    document_ids?: string[]
-  }): Promise<Conversation> {
-    const { data } = await apiClient.post('/chat/conversations', params)
-    return data
-  },
-
-  /**
-   * 更新对话元数据（当前：title）
-   */
-  async updateConversation(conversationId: string, payload: { title?: string | null }): Promise<Conversation> {
-    const { data } = await apiClient.patch(`/chat/conversations/${conversationId}`, payload)
-    return data
-  },
-
-  /**
-   * 导出对话（markdown/json）
-   */
-  async exportConversation(conversationId: string, params?: { fmt?: 'markdown' | 'json'; include_citations?: boolean }): Promise<Blob> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/export`, { params, responseType: 'blob' })
-    return data as Blob
-  },
-
-  /**
-   * 获取对话列表
-   */
-  async listConversations(params?: {
-    skip?: number
-    limit?: number
-  }): Promise<{ total: number; returned?: number; has_more?: boolean; items: Conversation[] }> {
-    const { data } = await apiClient.get('/chat/conversations', { params })
-    return data
-  },
-
-  /**
-   * 获取对话消息
-   */
-  async getMessages(
-    conversationId: string,
-    params?: { limit?: number; before?: string }
-  ): Promise<{ conversation_id: string; messages: Message[]; returned?: number; has_more?: boolean }> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/messages`, { params })
-    return data
-  },
-
-  /**
-   * 删除对话
-   */
-  async deleteConversation(conversationId: string): Promise<void> {
-    await apiClient.delete(`/chat/conversations/${conversationId}`)
-  },
-
-  /**
-   * Get conversation RAG traces (for visualization: retrieve -> rerank -> citations).
-   */
-  async getRagTraces(
-    conversationId: string,
-    params?: { limit?: number; window_minutes?: number; max_bytes?: number }
-  ): Promise<RagTraceListResponse> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/rag-traces`, { params })
-    return data
-  },
-
-  /**
-   * 发送流式聊天请求
-   */
-  async streamChat(
-    request: ChatRequest,
-    onJson: (jsonStr: string) => void,
-    options: {
-      signal?: AbortSignal
-      onError?: (error: unknown) => void
-      onOpen?: (meta: { requestId: string; conversationId?: string }) => void
-    } = {}
-  ): Promise<{ requestId: string; conversationId?: string }> {
-    const requestId = generateRequestId()
-
-    const response = await fetch(`${API_V1_BASE_URL}/chat/stream`, {
-      method: 'POST',
-      headers: withPreferredLanguageHeader({
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        ...getAuthHeaders(),
-        'X-Request-ID': requestId,
-      }),
-      body: JSON.stringify(request),
-      signal: options.signal,
-    })
-
-    if (!response.ok) {
-      throw await buildFetchError(response, 'Chat stream failed')
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) {
-      throw new Error('No response body')
-    }
-
-    const backendRequestId = response.headers.get('X-Request-ID') || requestId
-    const conversationId = response.headers.get('X-Conversation-ID') || undefined
-    options.onOpen?.({ requestId: backendRequestId, conversationId })
-    await readSseDataStrings(reader, onJson, options.onError)
-    return { requestId: backendRequestId, conversationId }
-  },
-
-  /**
-   * 非流式聊天（一次性返回 JSON）
-   */
-  async chat(request: ChatRequest, options: { signal?: AbortSignal } = {}): Promise<ChatResponse> {
-    const { data } = await apiClient.post('/chat', request, { timeout: API_LONG_TIMEOUT_MS, signal: options.signal })
-    return data
-  },
-
-  async listCheckpoints(
-    conversationId: string,
-    params?: { limit?: number; before?: string; include_values?: boolean }
-  ): Promise<CheckpointListResponse> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/checkpoints`, { params })
-    return data
-  },
-
-  async getCheckpoint(
-    conversationId: string,
-    checkpointId: string,
-    params?: { include_values?: boolean }
-  ): Promise<CheckpointDetailResponse> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/checkpoints/${checkpointId}`, { params })
-    return data
-  },
-
-  async deleteCheckpoints(conversationId: string): Promise<void> {
-    await apiClient.delete(`/chat/conversations/${conversationId}/checkpoints`)
-  },
-
-  async getConversationSummary(conversationId: string): Promise<ConversationSummaryResponse> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/summary`)
-    return data
-  },
-
-  async updateConversationSummary(conversationId: string): Promise<ConversationSummaryUpdateResponse> {
-    const { data } = await apiClient.post(`/chat/conversations/${conversationId}/summary/update`)
-    return data
-  },
-
-  async deleteConversationSummary(conversationId: string): Promise<void> {
-    await apiClient.delete(`/chat/conversations/${conversationId}/summary`)
   },
 }
 

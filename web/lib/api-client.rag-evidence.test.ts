@@ -4,11 +4,10 @@ import { describe, expect, it } from 'vitest'
 
 describe('ragApi.retrieveEvidence', () => {
   it('calls the production retrieval-only endpoint (/rag/retrieve)', () => {
-    const url = new URL('./api-client.ts', import.meta.url)
+    const url = new URL('./api/rag.ts', import.meta.url)
     const src = fs.readFileSync(url, 'utf8')
 
     expect(src).toContain('retrieveEvidence')
     expect(src).toContain("post('/rag/retrieve'")
   })
 })
-

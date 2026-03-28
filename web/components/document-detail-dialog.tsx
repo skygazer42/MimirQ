@@ -11,6 +11,8 @@ import { toast } from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { DocumentAccessDialog } from '@/components/document-detail-dialog/document-access-dialog'
+import { DocumentVersionsDialog } from '@/components/document-detail-dialog/document-versions-dialog'
 import { DocumentTags } from '@/components/documents/document-tags'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -21,7 +23,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { TagInput } from '@/components/ui/tag-input'
 import { Textarea } from '@/components/ui/textarea'
-import { GroupChipsInput } from '@/components/groups/group-chips-input'
 import { documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
@@ -946,6 +947,42 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     }
   }, [accessMode, accessMembersText, accessGroupIds, displayDoc?.id, parseAccessMembers])
 
+  const handleVersionsDialogOpenChange = useCallback((next: boolean) => {
+    setVersionsDialogOpen(next)
+    if (next) {
+      detachPromise(loadVersions())
+    }
+  }, [loadVersions])
+
+  const handleAccessDialogOpenChange = useCallback((next: boolean) => {
+    if (next) {
+      setAccessMode(effectiveAccessMode)
+      setAccessMembersText((accessInfo?.partial_member_list || []).join('\n'))
+      setAccessGroupIds((accessInfo?.partial_group_list || []).map(String))
+    }
+    setAccessDialogOpen(next)
+  }, [accessInfo?.partial_group_list, accessInfo?.partial_member_list, effectiveAccessMode])
+
+  const handleVersionsRefresh = useCallback(() => {
+    detachPromise(loadVersions())
+  }, [loadVersions])
+
+  const handleCopyText = useCallback((text: string) => {
+    detachPromise(copyToClipboard(text))
+  }, [copyToClipboard])
+
+  const handleActivateVersionAction = useCallback((pipelineHash: string) => {
+    detachPromise(handleActivateVersion(pipelineHash))
+  }, [handleActivateVersion])
+
+  const handleDeleteVersionAction = useCallback((pipelineHash: string) => {
+    detachPromise(handleDeleteVersion(pipelineHash))
+  }, [handleDeleteVersion])
+
+  const handleSaveAccessAction = useCallback(() => {
+    detachPromise(handleSaveAccess())
+  }, [handleSaveAccess])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -1680,254 +1717,33 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         <footer className="border-t border-border bg-muted/20 px-6 py-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Dialog
+              <DocumentVersionsDialog
                 open={versionsDialogOpen}
-                onOpenChange={(next) => {
-                  setVersionsDialogOpen(next)
-                  if (next) {
-                    detachPromise(loadVersions())
-                  }
-                }}
-              >
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full gap-2 sm:w-auto">
-                    <Hash className="h-4 w-4" />
-                    版本
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl">
-                  <DialogTitle>文档版本（pipeline）</DialogTitle>
-                  <DialogDescription className="text-xs">
-                    用于运维/回滚：不同 pipeline 配置会生成不同的 <span className="font-mono">pipeline_hash</span> 版本；激活版本会影响检索与引用。
-                  </DialogDescription>
+                onOpenChange={handleVersionsDialogOpenChange}
+                activePipelineHash={versions?.active_pipeline_hash}
+                versions={versions}
+                isLoading={isLoadingVersions}
+                error={versionsError}
+                isWorking={isVersionWorking}
+                onRefresh={handleVersionsRefresh}
+                onCopy={handleCopyText}
+                onActivate={handleActivateVersionAction}
+                onDelete={handleDeleteVersionAction}
+              />
 
-                  <div className="mt-4 space-y-3">
-                    {(() => {
-    if (isLoadingVersions) {
-        return (<div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
-                        正在加载版本信息...
-                      </div>);
-    }
-    else if (versionsError) {
-            return (<Alert variant="destructive">
-                        <AlertTitle>加载版本失败</AlertTitle>
-                        <AlertDescription className="flex items-center justify-between gap-3">
-                          <span className="min-w-0 flex-1">{versionsError}</span>
-                          <Button variant="outline" size="sm" onClick={() => detachPromise(loadVersions())}>
-                            重试
-                          </Button>
-                        </AlertDescription>
-                      </Alert>);
-        }
-        else {
-            return null;
-        }
-})()}
-
-                    <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-                      <div className="text-xs text-muted-foreground">当前激活 pipeline_hash</div>
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        <div className="min-w-0 font-mono text-xs text-foreground">
-                          {versions?.active_pipeline_hash || '-'}
-                        </div>
-                        <IconButton
-                          label="复制 pipeline_hash"
-                          variant="ghost"
-                          className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                          disabled={!versions?.active_pipeline_hash}
-                          onClick={() => detachPromise(copyToClipboard(String(versions?.active_pipeline_hash || '')))}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </IconButton>
-                      </div>
-                    </div>
-
-                    {null}
-                    {!isLoadingVersions && !versionsError ? (
-                      versions?.items?.length ? (
-                        <div className="space-y-2">
-                          {versions.items.map((v) => (
-                            <div
-                              key={v.pipeline_hash}
-                              className={cn(
-                                "flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card p-3",
-                                v.active ? "border-primary/30 bg-primary/5" : "bg-card"
-                              )}
-                            >
-                              <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-mono text-xs text-foreground">{v.pipeline_hash}</span>
-                                  {v.active ? (
-                                    <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                      ACTIVE
-                                    </span>
-                                  ) : null}
-                                </div>
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                  {v.chunk_count} chunks
-                                  {v.last_chunk_at ? ` · 更新 ${formatDate(v.last_chunk_at)}` : ''}
-                                </div>
-                              </div>
-
-                              <div className="flex flex-shrink-0 items-center gap-2">
-                                <IconButton
-                                  label="复制版本 hash"
-                                  variant="ghost"
-                                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                  onClick={() => detachPromise(copyToClipboard(v.pipeline_hash))}
-                                >
-                                  <Copy className="h-4 w-4" />
-                                </IconButton>
-
-                                {v.active ? (
-                                  <Button size="sm" variant="secondary" disabled>
-                                    已激活
-                                  </Button>
-                                ) : (
-                                  <>
-                                    <ConfirmDialog
-                                      title="切换激活版本？"
-                                      description={
-                                        <>
-                                          将把激活版本切换为 <span className="font-mono">{v.pipeline_hash.slice(0, 12)}…</span>。这不会重新解析/重新向量化，只会影响检索与引用。
-                                        </>
-                                      }
-                                      confirmLabel="切换"
-                                      cancelLabel="返回"
-                                      confirmVariant="default"
-                                      confirmDisabled={isVersionWorking}
-                                      onConfirm={() => detachPromise(handleActivateVersion(v.pipeline_hash))}
-                                    >
-                                      <Button size="sm" variant="outline" disabled={isVersionWorking}>
-                                        激活
-                                      </Button>
-                                    </ConfirmDialog>
-                                    <ConfirmDialog
-                                      title="删除该版本？"
-                                      description={
-                                        <>
-                                          将删除版本 <span className="font-mono">{v.pipeline_hash.slice(0, 12)}…</span>。注意：当前激活版本无法删除。
-                                        </>
-                                      }
-                                      confirmLabel="删除"
-                                      cancelLabel="返回"
-                                      confirmVariant="destructive"
-                                      confirmDisabled={isVersionWorking}
-                                      onConfirm={() => detachPromise(handleDeleteVersion(v.pipeline_hash))}
-                                    >
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        disabled={isVersionWorking}
-                                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                      >
-                                        删除
-                                      </Button>
-                                    </ConfirmDialog>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <EmptyState
-                          icon={Hash}
-                          title="暂无版本信息"
-                          description="当前文档还没有可用的 pipeline 版本记录（或尚未生成切片）。"
-                          className="min-h-[240px]"
-                        />
-                      )
-                    ) : null}
-
-                    <div className="text-xs text-muted-foreground">
-                      提示：激活/删除版本需要对文档所属数据集有写权限；删除操作不可恢复。
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-
-              <Dialog
+              <DocumentAccessDialog
                 open={accessDialogOpen}
-                onOpenChange={(next) => {
-                  if (next) {
-                    setAccessMode(effectiveAccessMode)
-                    setAccessMembersText((accessInfo?.partial_member_list || []).join('\n'))
-                    setAccessGroupIds((accessInfo?.partial_group_list || []).map(String))
-                  }
-                  setAccessDialogOpen(next)
-                }}
-              >
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full gap-2 sm:w-auto">
-                    <Shield className="h-4 w-4" />
-                    访问控制
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-xl">
-                  <DialogTitle>文档访问控制</DialogTitle>
-                  <DialogDescription className="text-xs">
-                    用于“安全裁剪（security trimming）”：在数据集权限基础上进一步限制该文档的可见范围。
-                  </DialogDescription>
-
-                  <div className="mt-4 space-y-4">
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">模式</div>
-                      <Select value={accessMode} onValueChange={(v) => setAccessMode(v as DocumentAccessMode)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="选择访问模式" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="inherit">继承数据集</SelectItem>
-                          <SelectItem value="only_me">仅我可见</SelectItem>
-                          <SelectItem value="partial_members">指定成员/组</SelectItem>
-                          <SelectItem value="all_team_members">团队成员</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <div className="text-xs text-muted-foreground">
-                        Owner：<span className="font-mono">{displayDoc.owner_id || '-'}</span>
-                      </div>
-                    </div>
-
-                    {accessMode === 'partial_members' ? (
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium">允许组（可选）</div>
-                          <GroupChipsInput
-                            value={accessGroupIds}
-                            onChange={setAccessGroupIds}
-                            placeholder="选择组（组内成员将自动获得访问权限）"
-                          />
-                          <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的组。</div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="text-sm font-medium">允许成员（每行一个 user_id）</div>
-                          <Textarea
-                            value={accessMembersText}
-                            onChange={(e) => setAccessMembersText(e.target.value)}
-                            placeholder="例如：\nalice\nbob\ncharlie"
-                          />
-                          <div className="text-xs text-muted-foreground">最多 200 个；仅支持当前租户已存在的成员。</div>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-6 flex items-center justify-end gap-2">
-                    <Button variant="outline" onClick={() => setAccessDialogOpen(false)} disabled={isSavingAccess}>
-                      取消
-                    </Button>
-                    <Button onClick={() => detachPromise(handleSaveAccess())} disabled={isSavingAccess}>
-                      {isSavingAccess ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                      ) : null}
-                      保存
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                onOpenChange={handleAccessDialogOpenChange}
+                ownerId={displayDoc.owner_id}
+                accessMode={accessMode}
+                onAccessModeChange={setAccessMode}
+                accessGroupIds={accessGroupIds}
+                onAccessGroupIdsChange={setAccessGroupIds}
+                accessMembersText={accessMembersText}
+                onAccessMembersTextChange={setAccessMembersText}
+                isSaving={isSavingAccess}
+                onSave={handleSaveAccessAction}
+              />
 
               <Button variant="outline" onClick={handleExtractKG} disabled={!canRunKg} className="w-full gap-2 sm:w-auto">
                 {isKgWorking && canRunKg ? (
