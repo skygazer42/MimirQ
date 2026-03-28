@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
+import React, { act } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act } from 'react'
 
 import { renderHook, waitForAssertion } from '@/test/hook-harness'
 
@@ -16,6 +17,22 @@ vi.mock('@/lib/api', () => ({
 }))
 
 import { useChat } from './use-chat'
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { retry: false },
+    },
+  })
+
+  return {
+    queryClient,
+    wrapper({ children }: { children: React.ReactNode }) {
+      return React.createElement(QueryClientProvider, { client: queryClient }, children)
+    },
+  }
+}
 
 describe('useChat behavior', () => {
   beforeEach(() => {
@@ -48,7 +65,8 @@ describe('useChat behavior', () => {
     })
 
     const onConversationId = vi.fn()
-    const hook = renderHook(() => useChat({ onConversationId }))
+    const { queryClient, wrapper } = createWrapper()
+    const hook = renderHook(() => useChat({ onConversationId }), { wrapper })
 
     await act(async () => {
       await hook.result.current.sendMessage('Hello fallback')
@@ -70,6 +88,7 @@ describe('useChat behavior', () => {
     expect(onConversationId).toHaveBeenCalledWith('conv-fallback')
 
     hook.unmount()
+    queryClient.clear()
   })
 
   it('surfaces fallback failures through onError without fabricating an assistant reply', async () => {
@@ -77,7 +96,8 @@ describe('useChat behavior', () => {
     chatApiMocks.chat.mockRejectedValue(new Error('Fallback unavailable'))
 
     const onError = vi.fn()
-    const hook = renderHook(() => useChat({ onError }))
+    const { queryClient, wrapper } = createWrapper()
+    const hook = renderHook(() => useChat({ onError }), { wrapper })
 
     await act(async () => {
       try {
@@ -100,5 +120,6 @@ describe('useChat behavior', () => {
     expect(chatApiMocks.chat).toHaveBeenCalledTimes(1)
 
     hook.unmount()
+    queryClient.clear()
   })
 })

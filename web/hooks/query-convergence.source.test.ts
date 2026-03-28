@@ -41,4 +41,13 @@ describe('query convergence source', () => {
     expect(src).toMatch(/useQuery(?:<[\s\S]+?>)?\(\{/)
     expect(src).toContain('queryKey: queryKeys.indexAudit.result')
   })
+
+  it('uses QueryClient-backed loading for chat session messages', () => {
+    const src = read('./use-chat-session.ts')
+
+    expect(src).toContain("from '@tanstack/react-query'")
+    expect(src).toContain('useQueryClient(')
+    expect(src).toContain('queryKeys.chat.messages')
+    expect(src).toContain('queryClient.fetchQuery')
+  })
 })

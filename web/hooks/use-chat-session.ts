@@ -1,10 +1,12 @@
 'use client'
 
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { Message } from '@/types'
 import { extractBackendMessage, withRequestId } from '@/lib/api-errors'
 import { chatApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 
 type UseChatSessionOptions = {
   initialConversationId?: string
@@ -17,6 +19,7 @@ export function useChatSession({
   onConversationId,
   onError,
 }: UseChatSessionOptions) {
+  const queryClient = useQueryClient()
   const [conversationId, setConversationId] = useState<string | undefined>(initialConversationId)
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -33,7 +36,10 @@ export function useChatSession({
 
       setIsLoading(true)
       try {
-        const result = await chatApi.getMessages(nextConversationId)
+        const result = await queryClient.fetchQuery({
+          queryKey: queryKeys.chat.messages(nextConversationId),
+          queryFn: () => chatApi.getMessages(nextConversationId),
+        })
         setConversationId(nextConversationId)
         setMessages(result.messages || [])
         onConversationId?.(nextConversationId)
@@ -51,7 +57,7 @@ export function useChatSession({
         setIsLoading(false)
       }
     },
-    [onConversationId, onError]
+    [onConversationId, onError, queryClient]
   )
 
   const resetConversationState = useCallback(() => {
