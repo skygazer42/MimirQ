@@ -17,4 +17,29 @@ describe('api domain extraction source', () => {
     expect(apiIndexSrc).toContain("export { chatApi } from './chat'")
     expect(apiIndexSrc).toContain("export { ragApi } from './rag'")
   })
+
+  it('keeps the main remaining domains on real api modules without api-client re-export cycles', () => {
+    const apiIndexSrc = fs.readFileSync(path.resolve(__dirname, 'api/index.ts'), 'utf8')
+    const domains = [
+      ['auth.ts', 'authApi'],
+      ['connectors.ts', 'connectorApi'],
+      ['datasets.ts', 'datasetApi'],
+      ['evaluation.ts', 'evaluationApi'],
+      ['graph.ts', 'kgApi'],
+      ['observability.ts', 'observabilityApi'],
+      ['pipeline.ts', 'pipelineApi'],
+      ['reports.ts', 'reportApi'],
+      ['settings.ts', 'settingsApi'],
+    ] as const
+
+    expect(apiIndexSrc).not.toContain("export * from '@/lib/api-client'")
+
+    for (const [fileName, exportName] of domains) {
+      const src = fs.readFileSync(path.resolve(__dirname, 'api', fileName), 'utf8')
+
+      expect(src, fileName).not.toContain("from '@/lib/api-client'")
+      expect(src, fileName).toContain(`export const ${exportName} =`)
+      expect(apiIndexSrc, exportName).toContain(`export { ${exportName} } from './${fileName.replace(/\.ts$/, '')}'`)
+    }
+  })
 })

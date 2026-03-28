@@ -62,3 +62,20 @@ export const ragApi = {
     return data
   },
 }
+
+export const retrievalApi = {
+  async listProfiles(): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.get('/retrieval/profiles')
+    return data
+  },
+
+  async explain(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.post('/retrieval/explain', body)
+    return data
+  },
+
+  async configHash(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { data } = await apiClient.post('/retrieval/config-hash', body)
+    return data
+  },
+}
