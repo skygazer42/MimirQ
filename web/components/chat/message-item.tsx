@@ -29,6 +29,13 @@ import { toast } from 'sonner'
 
 const INLINE_CITATION_HREF_PREFIX = 'mimirq-citation://'
 
+type ConfidenceMeta = Readonly<{
+  label: string
+  summary: string
+  badgeClass: string
+  lineClass: string
+}>
+
 function getCitationRange(citation: Citation): { start: number; end: number } | undefined {
   let start: number | null = null
   if (typeof citation.evidence_start_char === 'number') {
@@ -59,6 +66,46 @@ function parseInlineCitationHref(href?: string): { documentId?: string; chunkId?
   } catch {
     return null
   }
+}
+
+function getConfidenceMeta(confidenceScore: number | null): ConfidenceMeta | null {
+  if (confidenceScore == null) return null
+  if (confidenceScore >= 0.75) {
+    return {
+      label: '✓ 高置信度',
+      summary: '证据与回答整体一致',
+      badgeClass: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      lineClass: 'border-l-emerald-500/80',
+    }
+  }
+  if (confidenceScore >= 0.5) {
+    return {
+      label: '⚠ 部分支撑',
+      summary: '存在有效证据，但仍建议交叉确认',
+      badgeClass: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      lineClass: 'border-l-amber-500/80',
+    }
+  }
+  return {
+    label: '✗ 证据不足',
+    summary: '当前回答缺少足够支撑，建议继续追问',
+    badgeClass: 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300',
+    lineClass: 'border-l-rose-500/80',
+  }
+}
+
+function formatMetricValue(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized || null
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : null
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false'
+  }
+  return null
 }
 
 const markdownPlugins = [remarkGfm]
@@ -192,29 +239,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     const value = typeof confidenceScoreRaw === 'number' ? confidenceScoreRaw : Number(confidenceScoreRaw)
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null
   })()
-  const confidenceMeta =
-    confidenceScore == null
-      ? null
-      : confidenceScore >= 0.75
-        ? {
-            label: '✓ 高置信度',
-            summary: '证据与回答整体一致',
-            badgeClass: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-            lineClass: 'border-l-emerald-500/80',
-          }
-        : confidenceScore >= 0.5
-          ? {
-              label: '⚠ 部分支撑',
-              summary: '存在有效证据，但仍建议交叉确认',
-              badgeClass: 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-              lineClass: 'border-l-amber-500/80',
-            }
-          : {
-              label: '✗ 证据不足',
-              summary: '当前回答缺少足够支撑，建议继续追问',
-              badgeClass: 'border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300',
-              lineClass: 'border-l-rose-500/80',
-            }
+  const confidenceMeta = getConfidenceMeta(confidenceScore)
   const claimEvidence = Array.isArray(metrics.claim_evidence) ? metrics.claim_evidence : null
   const claimEvidenceCount = claimEvidence?.length ?? 0
   const followupQuestions = Array.isArray(metrics.followup_questions)
@@ -223,7 +248,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         .filter((item: string) => item.length > 0)
         .slice(0, 3)
     : []
-  const metricEntries: Array<{ k: string; v: any }> = [
+  const metricEntries = [
     { k: 'request_id', v: metrics.request_id },
     { k: 'retrieval_mode', v: metrics.retrieval_mode ?? metrics.retrieval_mode_requested },
     { k: 'vector_backend', v: metrics.vector_backend },
@@ -234,7 +259,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     { k: 'docs_returned', v: metrics.docs_returned },
     { k: 'distinct_documents', v: metrics.distinct_documents },
     { k: 'top_k', v: metrics.top_k },
-  ].filter((e) => e.v !== undefined && e.v !== null && String(e.v).trim() !== '')
+  ].flatMap((entry) => {
+    const value = formatMetricValue(entry.v)
+    return value == null ? [] : [{ k: entry.k, value }]
+  })
 
   const citationRows = (message.citations || [])
     .slice()
@@ -352,6 +380,19 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         </a>
       )
     },
+  }
+
+  let renderedContent: ReactNode
+  if (isUser) {
+    renderedContent = <div className="whitespace-pre-wrap font-normal">{message.content}</div>
+  } else if (isStreaming) {
+    renderedContent = <CinematicTypewriter content={message.content} isStreaming={true} />
+  } else {
+    renderedContent = (
+      <ReactMarkdown remarkPlugins={markdownPlugins} skipHtml components={markdownComponents}>
+        {message.content}
+      </ReactMarkdown>
+    )
   }
 
   const canRate = (() => {
@@ -478,10 +519,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
                             {metricEntries.length ? (
                               <dl className="space-y-2 text-xs">
-                                {metricEntries.map((e) => (
-                                  <div key={e.k} className="flex items-start justify-between gap-3">
-                                    <dt className="text-muted-foreground">{e.k}</dt>
-                                    <dd className="font-mono tabular-nums text-foreground text-right break-all">{String(e.v)}</dd>
+                                {metricEntries.map((entry) => (
+                                  <div key={entry.k} className="flex items-start justify-between gap-3">
+                                    <dt className="text-muted-foreground">{entry.k}</dt>
+                                    <dd className="font-mono tabular-nums text-foreground text-right break-all">{entry.value}</dd>
                                   </div>
                                 ))}
                               </dl>
@@ -743,19 +784,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	            isUser && 'prose-code:bg-primary-foreground/10 prose-code:text-primary-foreground'
 	          )}
 	        >
-          {(() => {
-    if (isUser) {
-        return (<div className="whitespace-pre-wrap font-normal ">{message.content}</div>);
-    }
-    else if (isStreaming) {
-            return (<CinematicTypewriter content={message.content} isStreaming={true}/>);
-        }
-        else {
-            return (<ReactMarkdown remarkPlugins={markdownPlugins} skipHtml components={markdownComponents}>
-              {message.content}
-            </ReactMarkdown>);
-        }
-})()}
+          {renderedContent}
         </div>
 
         {!isUser && followupQuestions.length > 0 && (
