@@ -40,15 +40,15 @@
 
     /* Destructive - Refined Red */
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 222.2 47.4% 11.2%;
+    --destructive-foreground: 210 40% 98%;
 
     /* Semantic - Status colors (success/warning/info) */
     --success: 142 76% 36%;
-    --success-foreground: 222.2 47.4% 11.2%;
+    --success-foreground: 210 40% 98%;
     --warning: 38 92% 50%;
     --warning-foreground: 222.2 84% 4.9%;
     --info: 210 90% 50%;
-    --info-foreground: 222.2 47.4% 11.2%;
+    --info-foreground: 210 40% 98%;
 
     /* Borders & Inputs - Subtle Cool Gray */
     --border: 214.3 31.8% 91.4%;
@@ -215,4 +215,27 @@
 
 html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-muted-foreground/30 hover:bg-primary/60;
+}
+
+/* Typing Cursor Animation */
+@keyframes blink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: currentColor;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
 }
