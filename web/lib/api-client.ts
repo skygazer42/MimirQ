@@ -28,9 +28,19 @@ import {
 } from '@/lib/api/core'
 
 export { apiClient, coerceRetryAfterSeconds, formatRateLimitLogMessage } from '@/lib/api/core'
+export { authApi } from '@/lib/api/auth'
 export { chatApi } from '@/lib/api/chat'
+export { connectorApi } from '@/lib/api/connectors'
+export { datasetApi } from '@/lib/api/datasets'
+export { datasetCategoryApi } from '@/lib/api/datasets'
 export { appendChunkPreviewFormFields, buildChunkPreviewQueryParams } from '@/lib/api/document-helpers'
+export { evaluationApi } from '@/lib/api/evaluation'
+export { kgApi } from '@/lib/api/graph'
+export { observabilityApi } from '@/lib/api/observability'
+export { pipelineApi } from '@/lib/api/pipeline'
 export { ragApi } from '@/lib/api/rag'
+export { reportApi } from '@/lib/api/reports'
+export { settingsApi } from '@/lib/api/settings'
 export type { ChunkPreviewRequestParams, DocumentLifecycleFilter } from '@/lib/api/document-helpers'
 export type {
   ClipImageIndexRequest,
@@ -164,7 +174,7 @@ export const parsingApi = {
 
 // ==================== Auth API ====================
 
-export const authApi = {
+export const authApiLegacy = {
   async register(payload: RegisterRequest): Promise<AuthResponse> {
     return openapiRequest({ path: '/api/v1/auth/register', method: 'post', body: payload })
   },
@@ -224,7 +234,7 @@ function normalizeGovernanceProfileOut(profile: any): GovernanceProfileOut {
   return { ...pr, payload: normalizeGovernanceProfilePayload(pr.payload) }
 }
 
-export const pipelineApi = {
+export const pipelineApiLegacy = {
   async getCapabilities(): Promise<PipelineCapabilitiesResponse> {
     const data = await openapiRequest({ path: '/api/v1/pipeline/capabilities', method: 'get' })
     return {
@@ -576,7 +586,7 @@ export const chunkPresetApi = {
 
 // ==================== Connectors API ====================
 
-export const connectorApi = {
+export const connectorApiLegacy = {
   async listConnectors(): Promise<ConnectorInfo[]> {
     return openapiRequest({ path: '/api/v1/connectors', method: 'get' })
   },
@@ -990,7 +1000,7 @@ export const evidenceApi = {
 
 // ==================== 数据集 API ====================
 
-export const datasetApi = {
+export const datasetApiLegacy = {
   /**
    * 创建数据集
    */
@@ -1407,7 +1417,7 @@ export const datasetApi = {
 
 // ==================== 数据集分类（目录树） API ====================
 
-export const datasetCategoryApi = {
+export const datasetCategoryApiLegacy = {
   async listTree(): Promise<DatasetCategoryTreeResponse> {
     return openapiRequest({ path: '/api/v1/dataset-categories/', method: 'get' })
   },
@@ -1445,7 +1455,7 @@ export const datasetCategoryApi = {
 
 // ==================== Reports API ====================
 
-export const reportApi = {
+export const reportApiLegacy = {
   async getDatasetReport(
     datasetId: string,
     params?: { pipeline_hash?: string; connector_runs_limit?: number }
@@ -1586,7 +1596,7 @@ export const feedbackApi = {
 
 // ==================== KG API ====================
 
-export const kgApi = {
+export const kgApiLegacy = {
   /**
    * 触发 KG 实体/事件抽取
    */
@@ -1990,7 +2000,7 @@ export const metaApi = {
   },
 }
 
-export const observabilityApi = {
+export const observabilityApiLegacy = {
   async reportFrontendVital(
     payload: FrontendWebVitalReportRequest,
     options: FrontendWebVitalReportOptions = {}
@@ -2482,7 +2492,7 @@ export const scimApi = {
   },
 }
 
-export const settingsApi = {
+export const settingsApiLegacy = {
   /**
    * 获取系统配置
    */
@@ -2648,7 +2658,7 @@ export interface KGSearchDiagnosticsRunDetail {
   items: any[]
 }
 
-export const evaluationApi = {
+export const evaluationApiLegacy = {
   async createRagasRun(params: {
     conversation_id: string
     metrics?: string[]
