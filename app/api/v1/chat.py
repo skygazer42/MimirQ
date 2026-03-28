@@ -1568,12 +1568,15 @@ async def stream_chat(
     conversation.message_count = (conversation.message_count or 0) + 1
     db.commit()
 
+    # Provide a stable assistant message id for the whole stream so clients can
+    # correlate SSE events with persisted rows (and so headers can expose it).
+    assistant_message_id = uuid.uuid4()
+
     # 3. Streaming response generator.
     async def event_stream():
         nonlocal citations_data, full_response
         doc_ids_to_use = allowed_doc_ids or []
         request_id = getattr(http_request.state, "request_id", None) or uuid.uuid4().hex
-        assistant_message_id = uuid.uuid4()
         # Avoid O(n^2) string concatenation while streaming tokens.
         response_parts: list[str] = []
         metrics_data = {}
