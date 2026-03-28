@@ -122,6 +122,7 @@ export function GraphPageShell({
             graph3dRef: state.graph3dRef,
             isDark,
             graphRenderData: displayFilters.graphRenderData,
+            paletteSeed: state.scope.datasetId || state.scope.pipelineHash || state.fileName || null,
             viewMode: state.viewMode,
             graphViewportWidth: state.graphViewportWidth,
             graphViewportHeight: state.graphViewportHeight,

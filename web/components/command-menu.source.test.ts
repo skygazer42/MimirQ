@@ -24,6 +24,7 @@ describe('command menu source', () => {
   it('defines a chord-based power-user navigation layer', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
 
+    expect(src).toContain('e.key === "?"')
     expect(src).toContain("key: 'g d'")
     expect(src).toContain("key: 'g c'")
     expect(src).toContain("key: 'g g'")
@@ -31,7 +32,7 @@ describe('command menu source', () => {
     expect(src).toContain("router.push('/knowledge')")
     expect(src).toContain("router.push('/graph')")
     expect(src).toContain("router.push('/chunk-preview')")
-    expect(src).toContain('试试 g d / g c / g g / f s')
+    expect(src).toContain('试试 ? / g d / g c / g g / f s')
   })
 
   it('expands typed search beyond documents into datasets and conversations', () => {

@@ -143,6 +143,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const [rating, setRating] = useState<number | null>(null)
   const [ratingSending, setRatingSending] = useState(false)
   const copyTimerRef = useRef<number | null>(null)
+  const prefetchedCitationTargetsRef = useRef<Set<string>>(new Set())
   const { openDocument } = useDocumentView()
 
   useEffect(() => {
@@ -290,6 +291,33 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     openDocument(documentId, citation?.chunk_id || target.chunkId, citation ? getCitationRange(citation) : undefined)
   }, [citationByChunkId, citationByDocumentId, openDocument])
 
+  const prefetchCitationTarget = useCallback((citation?: Citation | null, target?: { documentId?: string; chunkId?: string } | null) => {
+    const documentId = citation?.document_id || target?.documentId
+    if (!documentId) return
+
+    const chunkId = citation?.chunk_id || target?.chunkId
+    const cacheKey = `${documentId}:${chunkId || ''}`
+    if (prefetchedCitationTargetsRef.current.has(cacheKey)) return
+    prefetchedCitationTargetsRef.current.add(cacheKey)
+
+    prefetchDocumentView({
+      documentId,
+      chunkId,
+      rawFileUrl: toAbsoluteBackendUrl(`/api/v1/documents/${documentId}/download`),
+    })
+  }, [])
+
+  const handleInlineCitationPrefetch = useCallback((href?: string) => {
+    const target = parseInlineCitationHref(href)
+    if (!target) return
+
+    const citation =
+      (target.chunkId ? citationByChunkId.get(target.chunkId) : undefined) ||
+      (target.documentId ? citationByDocumentId.get(target.documentId) : undefined)
+
+    prefetchCitationTarget(citation, target)
+  }, [citationByChunkId, citationByDocumentId, prefetchCitationTarget])
+
   const handleOpenCitation = useCallback((citation: Citation) => {
     if (!citation.document_id) return
     openDocument(citation.document_id, citation.chunk_id, getCitationRange(citation))
@@ -304,6 +332,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           <button
             type="button"
             onClick={() => handleInlineCitationClick(href)}
+            onMouseEnter={() => handleInlineCitationPrefetch(href)}
+            onFocus={() => handleInlineCitationPrefetch(href)}
             className="inline-flex items-center rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[0.75em] font-semibold text-primary no-underline transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
             {children}
