@@ -60,6 +60,27 @@ function getQualityGateReasons(value: unknown): string[] {
   return value.reasons.filter((item): item is string => typeof item === 'string')
 }
 
+function readBackendName(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized || null
+  }
+  if (typeof value === 'number') {
+    return String(value)
+  }
+  return null
+}
+
+function getQualityBadgeClass(qualityGrade: string): string {
+  if (qualityGrade === 'fail') {
+    return 'border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300'
+  }
+  if (qualityGrade === 'warn') {
+    return 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+  }
+  return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+}
+
 function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown): string {
   const pieces: string[] = []
   const gateEvidence = isRecord(qualityGate) && isRecord(qualityGate.evidence) ? qualityGate.evidence : {}
@@ -77,9 +98,13 @@ function buildQualityEvidenceSummary(qualityGate: unknown, pdfQuality: unknown):
     pieces.push(`replacement_ratio=${Number(textQuality.replacement_ratio).toFixed(3)}`)
   }
   if (fallbackAttempts.length > 0) {
-    pieces.push(
-      `fallback=${String(gateEvidence.fallback_initial_backend || '')}→${String(gateEvidence.fallback_final_backend || '')}`
-    )
+    const fallbackBackends = [
+      readBackendName(gateEvidence.fallback_initial_backend),
+      readBackendName(gateEvidence.fallback_final_backend),
+    ].filter((value): value is string => value != null)
+    if (fallbackBackends.length > 0) {
+      pieces.push(`fallback=${fallbackBackends.join('→')}`)
+    }
   }
 
   return pieces.join(' · ')
@@ -152,6 +177,16 @@ export function ParsingActiveFilePane({
   const qualityGrade = getQualityGateGrade(activeQualityGate)
   const qualityReasons = getQualityGateReasons(activeQualityGate)
   const qualityEvidenceSummary = buildQualityEvidenceSummary(activeQualityGate, activePdfQuality)
+  const submitToGovernanceButton = isEditing ? null : (
+    <Button
+      onClick={onSubmitToGovernance}
+      className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+    >
+      <ShieldCheck className="h-4 w-4" />
+      提交到数据治理
+      <ChevronRight className="h-4 w-4" />
+    </Button>
+  )
 
   return (
     <>
@@ -234,11 +269,7 @@ export function ParsingActiveFilePane({
                   <span
                     className={cn(
                       'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold',
-                      qualityGrade === 'fail'
-                        ? 'border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300'
-                        : qualityGrade === 'warn'
-                          ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300'
-                          : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                      getQualityBadgeClass(qualityGrade)
                     )}
                     title="解析质量门禁（best-effort）"
                   >
@@ -621,16 +652,7 @@ export function ParsingActiveFilePane({
                 {isEditing ? '编辑完成后点击"保存修改"，然后提交到数据治理' : '确认解析内容无误后，提交到数据治理工作台'}
               </div>
               <div className="flex items-center gap-3">
-                {!isEditing ? (
-                  <Button
-                    onClick={onSubmitToGovernance}
-                    className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-                  >
-                    <ShieldCheck className="h-4 w-4" />
-                    提交到数据治理
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
-                ) : null}
+                {submitToGovernanceButton}
               </div>
             </div>
           </div>

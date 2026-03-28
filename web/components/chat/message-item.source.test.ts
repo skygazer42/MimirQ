@@ -23,6 +23,8 @@ describe('message item source', () => {
     expect(src).toContain('sanitizeMarkdownHref')
     expect(src).toContain('resolveMarkdownImageSrc')
     expect(src).toContain('skipHtml')
+    expect(src).toContain('function getConfidenceMeta(')
+    expect(src).toContain('function formatMetricValue(')
     expect(src).toContain('followup_questions')
     expect(src).toContain('继续追问')
     expect(src).toContain('反馈评分')

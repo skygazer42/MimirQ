@@ -56,6 +56,21 @@ export function ParsingLibraryPreviewPane({
     file.filename,
     file.parserBackend || defaultParserBackend
   ).backend
+  const pendingParseAction = (() => {
+    if (!file.status || file.status === 'parsed') return null
+    if (sourceStatus === 'available') {
+      return {
+        label: '继续解析',
+        title: '恢复并开始解析',
+        onClick: () => onRestoreSource(true),
+      }
+    }
+    return {
+      label: '上传并解析',
+      title: '重新上传并开始解析',
+      onClick: () => onRequestRebind(true),
+    }
+  })()
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -124,28 +139,16 @@ export function ParsingLibraryPreviewPane({
               </Button>
             )}
 
-            {file.status && file.status !== 'parsed' ? (
-              sourceStatus === 'available' ? (
-                <Button
-                  size="sm"
-                  className="h-8 gap-1.5 rounded-full bg-sky-600 px-3 text-[11px] hover:bg-sky-700"
-                  onClick={() => onRestoreSource(true)}
-                  title="恢复并开始解析"
-                >
-                  <Play className="h-3.5 w-3.5" />
-                  继续解析
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  className="h-8 gap-1.5 rounded-full bg-sky-600 px-3 text-[11px] hover:bg-sky-700"
-                  onClick={() => onRequestRebind(true)}
-                  title="重新上传并开始解析"
-                >
-                  <Play className="h-3.5 w-3.5" />
-                  上传并解析
-                </Button>
-              )
+            {pendingParseAction ? (
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 rounded-full bg-sky-600 px-3 text-[11px] hover:bg-sky-700"
+                onClick={pendingParseAction.onClick}
+                title={pendingParseAction.title}
+              >
+                <Play className="h-3.5 w-3.5" />
+                {pendingParseAction.label}
+              </Button>
             ) : null}
 
             <DropdownMenu>
