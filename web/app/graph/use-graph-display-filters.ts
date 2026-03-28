@@ -206,7 +206,7 @@ export function useGraphDisplayFilters({
       durationMs: Math.max(0, getNowMs() - startedAt),
     }
   }, [confidenceBucketFilters, entityTypeFilters, graphData, predicateFilters])
-  const displayGraphData = displayGraphProjection.graphData
+  const displayGraphData = useMemo<GraphData>(() => displayGraphProjection.graphData, [displayGraphProjection.graphData])
 
   const linksWithIds = useMemo<GraphLinkLike[]>(() => {
     return displayGraphData.links.map((link, index) => ({
