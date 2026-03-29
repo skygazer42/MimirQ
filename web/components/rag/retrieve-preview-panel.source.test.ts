@@ -23,4 +23,18 @@ describe('retrieve preview panel source', () => {
     expect(src).not.toContain(': any')
     expect(src).not.toContain('Record<string, any>')
   })
+
+  it('adds a document-viewer open action with hover/focus prefetch for retrieval hits', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
+
+    expect(src).toContain('useDocumentView')
+    expect(src).toContain('prefetchDocumentView')
+    expect(src).toContain('const prefetchedHitTargetsRef = useRef<Set<string>>(new Set())')
+    expect(src).toContain('const handlePrefetchHitDocument = useCallback')
+    expect(src).toContain('const handleOpenHitInDocumentViewer = useCallback')
+    expect(src).toContain('onMouseEnter={() => handlePrefetchHitDocument(hit)}')
+    expect(src).toContain('onFocus={() => handlePrefetchHitDocument(hit)}')
+    expect(src).toContain("label=\"在文档查看器中打开\"")
+    expect(src).toContain('openDocument(documentId, chunkId, range)')
+  })
 })
