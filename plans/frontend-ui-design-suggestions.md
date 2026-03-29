@@ -8,7 +8,6 @@
 - [ ] **排版升级**: 采用 `Geist` 或类似现代无衬线字体，增大 `h1` 字号，增加 1.75 倍行高以提升长文本阅读体验。
 
 ### 1.2 高级微动效 (Micro-interactions)
-- [ ] **平滑布局转换**: 使用 Framer Motion 的 `layout` 属性，在“列表视图”与“图谱视图”切换时提供连续的视觉反馈。
 
 ## 2. 知识交互深度 (Deep Knowledge Interaction)
 
