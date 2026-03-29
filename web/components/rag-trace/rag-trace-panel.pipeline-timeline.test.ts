@@ -7,6 +7,8 @@ import type { RagTrace } from '@/types'
 import {
   RagTracePipelineTimeline,
   buildTraceCitationChannelSummaries,
+  buildTraceCitationDiff,
+  buildTraceDiffCandidateOptions,
   buildCitationSimulationRows,
   buildPipelineInspectorSections,
   buildPipelineTimelineSteps,
@@ -292,5 +294,130 @@ describe('rag trace panel pipeline timeline', () => {
       'chunk-b',
       'chunk-c',
     ])
+  })
+
+  it('prioritizes compare candidates with different retrieval configs and summarizes evidence drift', () => {
+    const current: RagTrace = {
+      schema_version: 1,
+      ts_ms: 1710000005000,
+      request_id: 'req-current',
+      conversation_id: 'conv-1',
+      retrieval: {
+        mode: 'hybrid',
+        retrieval_config_hash: 'cfg-current',
+      },
+      rerank: {
+        enabled: true,
+      },
+      citations: [
+        {
+          document_id: 'doc-1',
+          chunk_id: 'chunk-shared',
+          rerank_score: 0.84,
+        },
+        {
+          document_id: 'doc-2',
+          chunk_id: 'chunk-removed',
+          rerank_score: 0.61,
+        },
+      ],
+      citations_count: 2,
+      steps: [],
+    }
+
+    const traces: RagTrace[] = [
+      current,
+      {
+        schema_version: 1,
+        ts_ms: 1710000004000,
+        request_id: 'req-same-cfg',
+        conversation_id: 'conv-1',
+        retrieval: {
+          mode: 'hybrid',
+          retrieval_config_hash: 'cfg-current',
+        },
+        rerank: { enabled: true },
+        citations: [],
+        citations_count: 0,
+        steps: [],
+      },
+      {
+        schema_version: 1,
+        ts_ms: 1710000003000,
+        request_id: 'req-changed-cfg',
+        conversation_id: 'conv-1',
+        retrieval: {
+          mode: 'vector',
+          retrieval_config_hash: 'cfg-alt',
+        },
+        rerank: { enabled: false },
+        citations: [
+          {
+            document_id: 'doc-1',
+            chunk_id: 'chunk-shared',
+            rerank_score: 0.33,
+          },
+          {
+            document_id: 'doc-3',
+            chunk_id: 'chunk-added',
+            rerank_score: 0.92,
+          },
+        ],
+        citations_count: 2,
+        steps: [],
+      },
+      {
+        schema_version: 1,
+        ts_ms: 1710000002000,
+        request_id: '',
+        conversation_id: 'conv-1',
+        retrieval: {
+          mode: 'hybrid',
+        },
+        rerank: { enabled: true },
+        citations: [],
+        citations_count: 0,
+        steps: [],
+      },
+    ]
+
+    const candidates = buildTraceDiffCandidateOptions(traces, current.request_id || '', current.retrieval?.retrieval_config_hash)
+    expect(candidates.map((candidate) => candidate.requestId)).toEqual(['req-changed-cfg', 'req-same-cfg'])
+    expect(candidates[0]).toMatchObject({
+      requestId: 'req-changed-cfg',
+      sameRetrievalConfig: false,
+      mode: 'vector',
+    })
+
+    const drift = buildTraceCitationDiff(current, traces[2]!)
+    expect(drift).toMatchObject({
+      sharedCount: 1,
+      addedCount: 1,
+      removedCount: 1,
+      scoreShiftCount: 1,
+    })
+    expect(drift.added[0]).toMatchObject({
+      citation: expect.objectContaining({
+        document_id: 'doc-3',
+        chunk_id: 'chunk-added',
+      }),
+    })
+    expect(drift.removed[0]).toMatchObject({
+      citation: expect.objectContaining({
+        document_id: 'doc-2',
+        chunk_id: 'chunk-removed',
+      }),
+    })
+    expect(drift.scoreShifts[0]).toMatchObject({
+      scoreDelta: expect.closeTo(-0.51, 2),
+      a: expect.objectContaining({
+        document_id: 'doc-1',
+        chunk_id: 'chunk-shared',
+      }),
+      b: expect.objectContaining({
+        document_id: 'doc-1',
+        chunk_id: 'chunk-shared',
+      }),
+    })
   })
 })

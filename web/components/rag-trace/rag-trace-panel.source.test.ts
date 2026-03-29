@@ -18,4 +18,17 @@ describe('rag trace panel source', () => {
     expect(src).toContain('onMouseEnter={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}')
     expect(src).toContain('onFocus={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}')
   })
+
+  it('renders compare suggestions and evidence drift summaries for diff-centric debugging', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'rag-trace-panel.tsx'), 'utf8')
+
+    expect(src).toContain('buildTraceDiffCandidateOptions')
+    expect(src).toContain('buildTraceCitationDiff')
+    expect(src).toContain('Trace 对比候选')
+    expect(src).toContain('Evidence Drift')
+    expect(src).toContain('新增证据（B）')
+    expect(src).toContain('丢失证据（A）')
+    expect(src).toContain('分数漂移')
+    expect(src).toContain('setDiffOtherRequestId(candidate.requestId)')
+  })
 })
