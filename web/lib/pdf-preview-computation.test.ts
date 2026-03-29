@@ -28,5 +28,39 @@ describe('pdf-preview-computation', () => {
       ['block-0', 0],
       ['block-1', 1],
     ])
+    expect(result.boxesByPageEntries).toEqual([
+      [
+        0,
+        [
+          {
+            id: 'block-0',
+            position: {
+              pages: [0],
+              left: 0.1,
+              right: 0.2,
+              top: 0.3,
+              bottom: 0.4,
+              raw: '@@1\t0.1\t0.2\t0.3\t0.4##',
+            },
+          },
+        ],
+      ],
+      [
+        1,
+        [
+          {
+            id: 'block-1',
+            position: {
+              pages: [1],
+              left: 0.2,
+              right: 0.3,
+              top: 0.4,
+              bottom: 0.5,
+              raw: '@@2\t0.2\t0.3\t0.4\t0.5##',
+            },
+          },
+        ],
+      ],
+    ])
   })
 })
