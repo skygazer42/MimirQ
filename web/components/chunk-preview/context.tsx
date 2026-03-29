@@ -21,6 +21,7 @@ import type { ChunkPreviewResponse, ManualChunk } from '@/types'
 import type { ChunkOverride, ChunkOverrides, ChunkPreviewState, ChunkPreviewFileItem, ChunkPreviewContextType } from './types'
 import { EXAMPLE_TEXT } from './constants'
 import { scanFiles } from './utils/file-scanner'
+import { getStoredOriginalPreviewMode, shouldRevealPdfPreviewOnChunkSelect } from './components/workbench/preview/pdf-dock'
 
 const ChunkPreviewContext = createContext<ChunkPreviewContextType | null>(null)
 const STORAGE_DATASET_ID_KEY = 'mimirq_chunk_preview_dataset_id'
@@ -43,6 +44,13 @@ function getApiErrorStatus(error: unknown): number | undefined {
   if (typeof error !== 'object' || error === null) return undefined
   const response = (error as { response?: { status?: unknown } }).response
   return typeof response?.status === 'number' ? response.status : undefined
+}
+
+function isChunkPreviewPdfFile(previewData: ChunkPreviewResponse | null, currentFile: File | null) {
+  const fileType = String(previewData?.file_type || '').toLowerCase()
+  if (fileType === 'pdf') return true
+  const name = String(currentFile?.name || '').toLowerCase()
+  return name.endsWith('.pdf')
 }
 
 export function useChunkPreview() {
@@ -169,6 +177,20 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
     setSelectedChunkIndex(idx)
   }, [previewData?.chunks?.length, previewData?.filename, searchParams, selectedChunkIndex])
+
+  useEffect(() => {
+    if (
+      !shouldRevealPdfPreviewOnChunkSelect({
+        nextIndex: selectedChunkIndex,
+        showOriginalPanel,
+        isPdf: isChunkPreviewPdfFile(previewData, file),
+        preferredPreviewMode: getStoredOriginalPreviewMode(),
+      })
+    ) {
+      return
+    }
+    setShowOriginalPanel(true)
+  }, [file, previewData, selectedChunkIndex, showOriginalPanel])
 
   // Sync selectedChunkIndex -> URL param (best-effort).
   // Important: avoid clobbering inbound deep links before we have applied them.
