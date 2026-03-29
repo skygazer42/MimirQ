@@ -44,4 +44,15 @@ describe('pdf viewer source', () => {
     expect(src).toContain('await renderTask.promise')
     expect(src).toContain('page.cleanup()')
   })
+
+  it('tracks rendered pages in a ref so viewport observers do not churn on every render', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('const renderedPagesRef = useRef<Set<number>>(new Set())')
+    expect(src).toContain('if (renderedPagesRef.current.has(pageIndex)) return')
+    expect(src).toContain('renderedPagesRef.current = new Set()')
+    expect(src).toContain('renderedPagesRef.current = next')
+    expect(src).toContain('[pdfDoc, pageCount, scale]')
+    expect(src).not.toContain('[pdfDoc, pageCount, renderedPages, scale]')
+  })
 })

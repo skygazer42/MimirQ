@@ -49,6 +49,7 @@ export function PdfViewer({
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadTick, setReloadTick] = useState(0)
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
+  const renderedPagesRef = useRef<Set<number>>(new Set())
   const renderingPagesRef = useRef<Set<number>>(new Set())
   const renderTasksRef = useRef<Map<number, RenderTask>>(new Map())
   const renderGenRef = useRef(0)
@@ -71,6 +72,7 @@ export function PdfViewer({
       if (!file) {
         setPdfDoc(null)
         setPageCount(0)
+        renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
         setLoadError(null)
         return
@@ -90,6 +92,7 @@ export function PdfViewer({
         if (cancelled) return
         setPdfDoc(doc)
         setPageCount(doc.numPages)
+        renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
       } catch (err) {
         if (!cancelled) {
@@ -97,6 +100,7 @@ export function PdfViewer({
           setLoadError(message || 'PDF 加载失败')
           setPdfDoc(null)
           setPageCount(0)
+          renderedPagesRef.current = new Set()
           setRenderedPages(new Set())
         }
       } finally {
@@ -153,6 +157,7 @@ export function PdfViewer({
   useEffect(() => {
     renderGenRef.current += 1
     cancelRenderTasks()
+    renderedPagesRef.current = new Set()
     renderingPagesRef.current.clear()
     setRenderedPages(new Set())
   }, [cancelRenderTasks, pdfDoc, scale])
@@ -174,7 +179,7 @@ export function PdfViewer({
       if (pageIndex < 0 || pageIndex >= totalPages) return
 
       // Prevent duplicate renders for the same page.
-      if (renderedPages.has(pageIndex)) return
+      if (renderedPagesRef.current.has(pageIndex)) return
       if (renderingPagesRef.current.has(pageIndex)) return
 
       const gen = renderGenRef.current
@@ -200,6 +205,7 @@ export function PdfViewer({
           if (prev.has(pageIndex)) return prev
           const next = new Set(prev)
           next.add(pageIndex)
+          renderedPagesRef.current = next
           return next
         })
       } catch {
@@ -211,7 +217,7 @@ export function PdfViewer({
         renderingPagesRef.current.delete(pageIndex)
       }
     },
-    [pdfDoc, pageCount, renderedPages, scale]
+    [pdfDoc, pageCount, scale]
   )
 
   // Render pages on-demand as they enter the viewport.
