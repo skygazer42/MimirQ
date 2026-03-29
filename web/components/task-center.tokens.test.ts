@@ -10,6 +10,6 @@ describe('task-center typography and token hooks', () => {
     expect(src).toContain('ring-1 ring-primary/20')
     expect(src).toContain('ring-1 ring-destructive/20')
     expect(src).toContain('uppercase tracking-[0.12em] text-muted-foreground')
-    expect(src).toContain('text-sm font-medium leading-snug tracking-tight truncate')
+    expect(src).toContain('text-sm font-medium leading-snug truncate')
   })
 })
