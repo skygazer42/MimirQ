@@ -533,8 +533,8 @@ export default function DiagnosticsPage() {
               size="icon"
               className="h-8 w-8"
               onClick={async () => copyToClipboard(envJson)}
-              title="复制"
-              aria-label="复制"
+              title="复制 Frontend Env JSON"
+              aria-label="复制 Frontend Env JSON"
             >
               <Copy className="h-4 w-4" />
             </Button>
@@ -553,8 +553,8 @@ export default function DiagnosticsPage() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => meta.refetch()}
-                title="刷新"
-                aria-label="刷新"
+                title="刷新 Backend Meta"
+                aria-label="刷新 Backend Meta"
               >
                 <RefreshCcw className="h-4 w-4" />
               </Button>
@@ -563,8 +563,8 @@ export default function DiagnosticsPage() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={async () => copyToClipboard(metaJson)}
-                title="复制"
-                aria-label="复制"
+                title="复制 Backend Meta JSON"
+                aria-label="复制 Backend Meta JSON"
               >
                 <Copy className="h-4 w-4" />
               </Button>
@@ -584,8 +584,8 @@ export default function DiagnosticsPage() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => health.refetch()}
-                title="刷新"
-                aria-label="刷新"
+                title="刷新 Backend Health"
+                aria-label="刷新 Backend Health"
               >
                 <RefreshCcw className="h-4 w-4" />
               </Button>
@@ -594,8 +594,8 @@ export default function DiagnosticsPage() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={async () => copyToClipboard(healthJson)}
-                title="复制"
-                aria-label="复制"
+                title="复制 Backend Health JSON"
+                aria-label="复制 Backend Health JSON"
               >
                 <Copy className="h-4 w-4" />
               </Button>
@@ -650,8 +650,8 @@ export default function DiagnosticsPage() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={() => ready.refetch()}
-                title="刷新"
-                aria-label="刷新"
+                title="刷新 Deps Ready"
+                aria-label="刷新 Deps Ready"
               >
                 <RefreshCcw className="h-4 w-4" />
               </Button>
@@ -660,8 +660,8 @@ export default function DiagnosticsPage() {
                 size="icon"
                 className="h-8 w-8"
                 onClick={async () => copyToClipboard(readyJson)}
-                title="复制"
-                aria-label="复制"
+                title="复制 Deps Ready JSON"
+                aria-label="复制 Deps Ready JSON"
               >
                 <Copy className="h-4 w-4" />
               </Button>
@@ -682,8 +682,8 @@ export default function DiagnosticsPage() {
                 className="h-8 w-8"
                 onClick={() => refreshOnlineQuality()}
                 disabled={onlineQualityLoading}
-                title="刷新"
-                aria-label="刷新"
+                title="刷新 Online Quality 采样结果"
+                aria-label="刷新 Online Quality 采样结果"
               >
                 <RefreshCcw className="h-4 w-4" />
               </Button>
@@ -693,8 +693,8 @@ export default function DiagnosticsPage() {
                 className="h-8 w-8"
                 onClick={async () => copyToClipboard(prettyJson(onlineQuality))}
                 disabled={!onlineQuality}
-                title="复制"
-                aria-label="复制"
+                title="复制 Online Quality JSON"
+                aria-label="复制 Online Quality JSON"
               >
                 <Copy className="h-4 w-4" />
               </Button>
@@ -955,9 +955,10 @@ export default function DiagnosticsPage() {
                     className="h-7 px-2"
                     onClick={async () => copyToClipboard(probeMetricsJson)}
                     disabled={!probeMetrics}
+                    aria-label="复制 Prompt Preview Metrics JSON"
                   >
                     <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span className="sr-only">复制</span>
+                    <span className="sr-only">复制 Prompt Preview Metrics JSON</span>
                   </Button>
                 </div>
                 <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
@@ -973,9 +974,10 @@ export default function DiagnosticsPage() {
                     className="h-7 px-2"
                     onClick={async () => copyToClipboard(String(probeResult?.query_for_retrieval || ''))}
                     disabled={!probeResult?.query_for_retrieval}
+                    aria-label="复制 Query For Retrieval"
                   >
                     <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                    <span className="sr-only">复制</span>
+                    <span className="sr-only">复制 Query For Retrieval</span>
                   </Button>
                 </div>
                 <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
@@ -997,7 +999,7 @@ export default function DiagnosticsPage() {
 	                onClick={() => runEmbeddingDriftSnapshotProbe()}
 	                disabled={driftRunning}
 	                title="运行 embedding drift snapshot"
-	                aria-label="运行 embedding drift snapshot"
+	                aria-label="运行 Embedding Drift Snapshot"
 	              >
 	                <Activity className="h-4 w-4" aria-hidden="true" />
 	              </Button>
@@ -1007,8 +1009,8 @@ export default function DiagnosticsPage() {
 	                className="h-8 w-8"
 	                onClick={async () => copyToClipboard(driftJson)}
 	                disabled={!driftSnapshot}
-	                title="复制 JSON"
-	                aria-label="复制 JSON"
+	                title="复制 Embedding Drift Snapshot JSON"
+	                aria-label="复制 Embedding Drift Snapshot JSON"
 	              >
 	                <Copy className="h-4 w-4" aria-hidden="true" />
 	              </Button>
@@ -1132,9 +1134,10 @@ export default function DiagnosticsPage() {
 	                  className="h-7 px-2"
 	                  onClick={async () => copyToClipboard(driftJson)}
 	                  disabled={!driftSnapshot}
+	                  aria-label="复制 Embedding Drift Snapshot JSON"
 	                >
 	                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-	                  <span className="sr-only">复制</span>
+	                  <span className="sr-only">复制 Embedding Drift Snapshot JSON</span>
 	                </Button>
 	              </div>
 	              <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
@@ -1155,7 +1158,7 @@ export default function DiagnosticsPage() {
 		                onClick={() => runPerfSuiteProbe()}
 		                disabled={perfSuiteRunning}
 		                title="运行 perf suite"
-		                aria-label="运行 perf suite"
+		                aria-label="运行 Perf Suite"
 		              >
 		                <Gauge className="h-4 w-4" aria-hidden="true" />
 		              </Button>
@@ -1165,8 +1168,8 @@ export default function DiagnosticsPage() {
 		                className="h-8 w-8"
 		                onClick={async () => copyToClipboard(perfSuiteJson)}
 		                disabled={!perfSuiteResult}
-		                title="复制 JSON"
-		                aria-label="复制 JSON"
+		                title="复制 Perf Suite JSON"
+		                aria-label="复制 Perf Suite JSON"
 		              >
 		                <Copy className="h-4 w-4" aria-hidden="true" />
 		              </Button>
@@ -1283,9 +1286,10 @@ export default function DiagnosticsPage() {
 		                  className="h-7 px-2"
 		                  onClick={async () => copyToClipboard(perfSuiteJson)}
 		                  disabled={!perfSuiteResult}
+		                  aria-label="复制 Perf Suite JSON"
 		                >
 		                  <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-		                  <span className="sr-only">复制</span>
+		                  <span className="sr-only">复制 Perf Suite JSON</span>
 		                </Button>
 		              </div>
 		              <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
@@ -1299,13 +1303,13 @@ export default function DiagnosticsPage() {
 		          <CardHeader className="flex flex-row items-center justify-between space-y-0">
 		            <CardTitle className="text-sm">Perf Snapshot</CardTitle>
 		            <div className="flex items-center gap-1">
-		              <Button
+	              <Button
 	                variant="ghost"
 	                size="icon"
 	                className="h-8 w-8"
 	                onClick={() => setPerfSnapshot(takePerfSnapshot())}
 	                title="重新采样"
-	                aria-label="重新采样"
+	                aria-label="重新采样 Perf Snapshot"
 	              >
 	                <RefreshCcw className="h-4 w-4" />
 	              </Button>
@@ -1314,8 +1318,8 @@ export default function DiagnosticsPage() {
 	                size="icon"
 	                className="h-8 w-8"
 	                onClick={async () => copyToClipboard(perfJson)}
-	                title="复制"
-	                aria-label="复制"
+	                title="复制 Perf Snapshot JSON"
+	                aria-label="复制 Perf Snapshot JSON"
 	              >
 	                <Copy className="h-4 w-4" />
 	              </Button>
@@ -1379,8 +1383,8 @@ export default function DiagnosticsPage() {
               size="icon"
               className="h-8 w-8"
               onClick={async () => copyToClipboard(prettyJson(perfSnapshot?.scripts ?? { error: 'not captured' }))}
-              title="复制"
-              aria-label="复制"
+              title="复制 Bundle Hints JSON"
+              aria-label="复制 Bundle Hints JSON"
             >
               <Copy className="h-4 w-4" />
             </Button>
@@ -1561,8 +1565,8 @@ export default function DiagnosticsPage() {
 	                  ].join(String.raw`\n`)
 	                )
 	              }
-	              title="复制"
-	              aria-label="复制"
+	              title="复制 Diagnostics Quick Tips"
+	              aria-label="复制 Diagnostics Quick Tips"
 	            >
 	              <Copy className="h-4 w-4" />
 	            </Button>
