@@ -245,10 +245,12 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
                 <Tag className="w-3 h-3" />
                 {tag}
                 <button
+                  type="button"
                   onClick={() => handleRemoveTag(tag)}
+                  aria-label={`移除标签 ${tag}`}
                   className="ml-1 text-muted-foreground hover:text-destructive"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3 h-3" aria-hidden="true" />
                 </button>
               </span>
             ))}
@@ -274,8 +276,9 @@ export function DataClassifier({ content, initialCategory = null, initialTags = 
             onClick={() => handleAddTag(newTag)}
             disabled={!newTag || tags.includes(newTag)}
             size="sm"
+            aria-label={newTag ? `添加标签 ${newTag}` : '添加标签'}
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4" aria-hidden="true" />
           </Button>
         </div>
 

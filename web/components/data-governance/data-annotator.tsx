@@ -331,8 +331,9 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        aria-label={`删除 ${type.label} 标注 ${anno.start}-${anno.end}`}
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X className="w-3.5 h-3.5" aria-hidden="true" />
                       </Button>
                     </div>
                   ))}
@@ -353,4 +354,3 @@ export function DataAnnotator({ content, annotations = [], onAnnotate }: Readonl
     </div>
   )
 }
-
