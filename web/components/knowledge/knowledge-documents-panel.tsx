@@ -122,6 +122,13 @@ function statusBarClassName(status: StatusBadgeStatus) {
   return 'bg-muted-foreground/40'
 }
 
+const contextualRevealClassName = [
+  'opacity-100',
+  '[@media(hover:hover)_and_(pointer:fine)]:opacity-0',
+  '[@media(hover:hover)_and_(pointer:fine)]:group-hover:opacity-100',
+  '[@media(hover:hover)_and_(pointer:fine)]:group-focus-within:opacity-100',
+].join(' ')
+
 export function KnowledgeDocumentsPanel({
   isLoading,
   documents,
@@ -506,7 +513,7 @@ export function KnowledgeDocumentsPanel({
 	                                            const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score;
 	                                            const parseScore = typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw) ? parseScoreRaw : null;
 	                                            const parseLow = parseScore !== null && parseScore < 0.35;
-	                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="hover:bg-muted/20 transition-colors group">
+	                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="group hover:bg-muted/20 transition-colors">
 		                        <td className="px-3 py-3 align-middle">
 		                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={buildToggleDocSelectionHandler(doc.id)} aria-label={`选择文档 ${doc.filename}`}/>
 		                        </td>
@@ -532,7 +539,7 @@ export function KnowledgeDocumentsPanel({
 	                                  </span>
 	                                ) : null}
 	                              </div>
-	                              {sourcePath ? (<button type="button" className="mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4" onClick={buildCopyHandler(sourcePath, '已复制 Source Path')} title="点击复制 Source Path">
+	                              {sourcePath ? (<button type="button" className={cn('mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4 transition-opacity', contextualRevealClassName)} onClick={buildCopyHandler(sourcePath, '已复制 Source Path')} title="点击复制 Source Path">
 	                                  {sourcePath}
 	                                </button>) : null}
 	                            </div>
@@ -559,15 +566,13 @@ export function KnowledgeDocumentsPanel({
 	                          {formatDate(doc.created_at)}
 	                        </td>
 	                        <td className="px-4 py-3 align-middle text-right flex items-center justify-end gap-1">
-	                          <DocumentDetailDialog document={doc} trigger={<IconButton label="预览内容" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity', 
-                                                    // Hover-only affordances fail on touch; reveal on small screens and on keyboard focus.
-                                                    'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100')}>
+	                          <DocumentDetailDialog document={doc} trigger={<IconButton label="预览内容" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity', contextualRevealClassName)}>
 	                                <Eye className="h-4 w-4"/>
 	                              </IconButton>}/>
 
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-	                              <IconButton label="更多操作" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity', 'opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100')}>
+	                              <IconButton label="更多操作" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity', contextualRevealClassName)}>
 	                                <MoreVertical className="h-4 w-4"/>
 	                              </IconButton>
 	                            </DropdownMenuTrigger>
@@ -648,7 +653,7 @@ function DocumentCard({
       <div
         className={cn(
           'absolute top-3 left-3 z-10 rounded-lg border border-border/60 bg-background/70 backdrop-blur-sm p-1 transition-opacity',
-          selected ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'
+          selected ? 'opacity-100' : contextualRevealClassName
         )}
       >
         <input
@@ -713,7 +718,7 @@ function DocumentCard({
         </div>
       </div>
 
-      <div className="px-5 py-3 border-t border-border/60 bg-muted/20 flex items-center justify-between opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+      <div className={cn('px-5 py-3 border-t border-border/60 bg-muted/20 flex items-center justify-between transition-opacity', contextualRevealClassName)}>
         <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[80px]">{parserLabel || 'Auto'}</span>
         <div className="flex items-center gap-1">
           <DocumentDetailDialog
