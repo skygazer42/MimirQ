@@ -1,4 +1,5 @@
 import type { AxiosInstance, AxiosRequestConfig } from 'axios'
+import type { ZodType } from 'zod'
 
 import type {
   OpenApiHeaderParams,
@@ -100,6 +101,8 @@ export type OpenApiAxiosRequestArgs<
   headers?: OpenApiHeaderParams<P, M>
   signal?: AbortSignal
   timeoutMs?: number
+  responseSchema?: ZodType<OpenApiOkResponse<P, M>>
+  responseSchemaName?: string
   axios?: Omit<AxiosRequestConfig, 'url' | 'method' | 'params' | 'data' | 'headers' | 'signal' | 'timeout'>
 } & (
   | {
@@ -115,6 +118,45 @@ export type OpenApiAxiosRequestArgs<
           body: FormData | OpenApiRequestBody<P, M, MultipartContentType>
         })
 )
+
+function headerValueToString(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed || undefined
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    const joined = value
+      .filter((item): item is string | number | boolean => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean')
+      .map(String)
+      .join(', ')
+      .trim()
+    return joined || undefined
+  }
+  return undefined
+}
+
+function extractResponseRequestId(headers: unknown): string | undefined {
+  if (!headers) return undefined
+
+  try {
+    if (typeof (headers as { get?: unknown }).get === 'function') {
+      const get = (headers as { get(name: string): unknown }).get
+      return headerValueToString(get('x-request-id') ?? get('X-Request-ID'))
+    }
+  } catch {
+    // Ignore header accessor failures and fall back to object access below.
+  }
+
+  const record = headers as Record<string, unknown>
+  return headerValueToString(record['x-request-id'] ?? record['X-Request-ID'])
+}
+
+function withRequestId(message: string, requestId?: string): string {
+  const rid = String(requestId || '').trim()
+  if (!rid || /\brequest_id=/.test(message)) return message
+  return `${message} (request_id=${rid})`
+}
 
 export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
   return async function openapiRequest<
@@ -146,6 +188,28 @@ export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
       ...args.axios,
     })
 
-    return res.data
+    if (!args.responseSchema) {
+      return res.data
+    }
+
+    const parsed = args.responseSchema.safeParse(res.data)
+    if (parsed.success) {
+      return parsed.data
+    }
+
+    const requestId = extractResponseRequestId(res.headers)
+    const schemaLabel = String(args.responseSchemaName || `${String(args.method).toUpperCase()} ${String(args.path)}`)
+    const firstIssue = parsed.error.issues[0]?.message
+    const message = withRequestId(
+      firstIssue
+        ? `[openapi-request] invalid ${schemaLabel} response: ${firstIssue}`
+        : `[openapi-request] invalid ${schemaLabel} response`,
+      requestId
+    )
+    const error = new Error(message)
+    ;(error as Error & { requestId?: string; issues?: unknown[]; status?: number }).requestId = requestId
+    ;(error as Error & { requestId?: string; issues?: unknown[]; status?: number }).issues = parsed.error.issues
+    ;(error as Error & { requestId?: string; issues?: unknown[]; status?: number }).status = res.status
+    throw error
   }
 }

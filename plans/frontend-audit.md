@@ -26,7 +26,6 @@
 ## 2. 具体重构路线图 (Refactoring Roadmap)
 
 ### 阶段 1: 基础设施模块化 (Immediate Priority)
-- [ ] **API 响应拦截器加固**: 集成 Zod 解析与 RequestID 日志关联。
 
 ### 阶段 2: 逻辑解耦与缓存 (Medium Priority)
 - [ ] **迁移至 React Query**: 优先从 `observability` 和 `parsing` 页面开始，移除手动管理的 `useEffect` 取数逻辑。
