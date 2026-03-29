@@ -25,4 +25,3 @@
 
 ### 4.1 RSC 数据预取
 - [ ] **Server Actions 深度应用**: 将目前的 `api-client` 部分读操作迁移至 Server Components。
-- [ ] **动态导入 (Suspense Boundary)**: 为 `MonacoEditor` 和 `Plotly` 增加更精细的 `Suspense` 边界，并在数据加载时显示品牌一致的加载态动画。
