@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Layers,
@@ -44,6 +44,11 @@ import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
 import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
 import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
 import { detachPromise } from '@/lib/utils'
+import {
+  ORIGINAL_PREVIEW_MODE_STORAGE_KEY,
+  getStoredOriginalPreviewMode,
+  shouldRevealPdfPreviewOnChunkSelect,
+} from './pdf-dock'
 
 
 const QUERY_DEBOUNCE_MS = 150
@@ -86,6 +91,7 @@ export function ChunkList() {
   const {
     previewData,
     chunkOverrides,
+    currentFile,
     hoveredChunkIndex,
     selectedChunkIndex,
     setHoveredChunkIndex,
@@ -95,6 +101,7 @@ export function ChunkList() {
     setChunksDisabled,
     clearChunkOverride,
     showOriginalPanel,
+    setOriginalPanelVisible,
     isLoading,
     error,
     runPreview,
@@ -129,6 +136,38 @@ export function ChunkList() {
   const isParentChildStrategy = previewData?.chunk_strategy === 'parent_child'
   const isHierarchyView = isParentChildStrategy && viewMode === 'hierarchy'
   const isSectionView = groupMode === 'section' && !isHierarchyView
+  const supportsPdfDocking = useMemo(() => {
+    const fileType = String(previewData?.file_type || '').toLowerCase()
+    if (fileType === 'pdf') return true
+    const name = String(currentFile?.name || '').toLowerCase()
+    return name.endsWith('.pdf')
+  }, [currentFile?.name, previewData?.file_type])
+
+  const selectChunkIndex = useCallback(
+    (nextIndex: number | null) => {
+      if (
+        shouldRevealPdfPreviewOnChunkSelect({
+          nextIndex,
+          showOriginalPanel,
+          isPdf: supportsPdfDocking,
+          preferredPreviewMode: getStoredOriginalPreviewMode(),
+        })
+      ) {
+        setOriginalPanelVisible(true)
+      }
+      setSelectedChunkIndex(nextIndex)
+      scrollRef.current?.focus()
+    },
+    [setOriginalPanelVisible, setSelectedChunkIndex, showOriginalPanel, supportsPdfDocking]
+  )
+
+  const openDockedPdfPreview = useCallback(() => {
+    if (globalThis.window !== undefined) {
+      globalThis.window.localStorage.setItem(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, 'pdf')
+    }
+    setOriginalPanelVisible(true)
+    scrollRef.current?.focus()
+  }, [setOriginalPanelVisible])
 
   useEffect(() => {
     const t = globalThis.window.setTimeout(() => setQuery(queryInput), QUERY_DEBOUNCE_MS)
@@ -1024,11 +1063,23 @@ export function ChunkList() {
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-[11px]"
-              onClick={() => setSelectedChunkIndex(null)}
+              onClick={() => selectChunkIndex(null)}
             >
               清除锁定
             </Button>
           )}
+          {!showOriginalPanel && supportsPdfDocking ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              onClick={openDockedPdfPreview}
+              title="显示右侧 PDF 原文，并保持后续切片选择联动定位"
+            >
+              恢复 PDF 联动
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant={retrieveOpen ? 'secondary' : 'ghost'}
@@ -1045,7 +1096,9 @@ export function ChunkList() {
             <MousePointer2 className="w-3 h-3" />
             {showOriginalPanel
               ? '悬停定位 · 点击锁定 · ↑↓/J K 导航 · / 搜索'
-              : '点击锁定 · ↑↓/J K 导航（原文已隐藏） · / 搜索'}
+              : supportsPdfDocking
+                ? '点击锁定 · ↑↓/J K 导航（原文已隐藏，可恢复 PDF 联动） · / 搜索'
+                : '点击锁定 · ↑↓/J K 导航（原文已隐藏） · / 搜索'}
             <CornerDownLeft className="w-3 h-3 opacity-70" />
             Esc 取消 · G 首尾
           </div>
@@ -1113,7 +1166,7 @@ export function ChunkList() {
                     key={r.index}
                     type="button"
                     className="w-full text-left rounded-xl border border-border/60 bg-background hover:bg-muted px-3 py-2 transition-colors focus-ring"
-                    onClick={() => setSelectedChunkIndex(r.index)}
+                    onClick={() => selectChunkIndex(r.index)}
                     title={r.section}
                   >
                     <div className="flex items-center gap-2">
@@ -1263,7 +1316,7 @@ export function ChunkList() {
                 variant="outline"
                 size="sm"
                 className="h-8 px-3 text-[11px]"
-                onClick={() => setSelectedChunkIndex(null)}
+                onClick={() => selectChunkIndex(null)}
               >
                 取消锁定
               </Button>
@@ -1297,30 +1350,30 @@ export function ChunkList() {
           }
           if (e.key === 'Home' || (e.key.toLowerCase() === 'g' && !e.shiftKey)) {
             e.preventDefault()
-            setSelectedChunkIndex(navigableIndices[0] ?? null)
+            selectChunkIndex(navigableIndices[0] ?? null)
             return
           }
           if (e.key === 'End' || (e.key.toLowerCase() === 'g' && e.shiftKey)) {
             e.preventDefault()
-            setSelectedChunkIndex(navigableIndices[navigableIndices.length - 1] ?? null)
+            selectChunkIndex(navigableIndices[navigableIndices.length - 1] ?? null)
             return
           }
 
           if (e.key === 'ArrowDown' || e.key.toLowerCase() === 'j') {
             e.preventDefault()
             const nextPos = clamp(currentPos < 0 ? 0 : currentPos + 1)
-            setSelectedChunkIndex(navigableIndices[nextPos] ?? null)
+            selectChunkIndex(navigableIndices[nextPos] ?? null)
             return
           }
           if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'k') {
             e.preventDefault()
             const nextPos = clamp(currentPos < 0 ? 0 : currentPos - 1)
-            setSelectedChunkIndex(navigableIndices[nextPos] ?? null)
+            selectChunkIndex(navigableIndices[nextPos] ?? null)
             return
           }
           if (e.key === 'Escape') {
             e.preventDefault()
-            setSelectedChunkIndex(null)
+            selectChunkIndex(null)
             return
           }
         }}
@@ -1397,7 +1450,7 @@ export function ChunkList() {
                                         const selParentRaw = selMeta.parent_id ?? selMeta.parent_node_id;
                                         const selParent = typeof selParentRaw === 'string' && selParentRaw.trim() ? selParentRaw.trim() : null;
                                         if (selParent && selParent === groupKey && selectedChunkIndex !== index) {
-                                            setSelectedChunkIndex(index);
+                                            selectChunkIndex(index);
                                         }
                                     }
                                 }} aria-label={isCollapsed ? 'Expand group' : 'Collapse group'} title={isCollapsed
@@ -1425,8 +1478,7 @@ export function ChunkList() {
                     setInspectorIndex(index);
                     setInspectorOpen(true);
                 }} onToggleSelect={() => {
-                    setSelectedChunkIndex(selectedChunkIndex === index ? null : index);
-                    scrollRef.current?.focus();
+                    selectChunkIndex(selectedChunkIndex === index ? null : index);
                 }}/>
                     </div>
                   </div>);

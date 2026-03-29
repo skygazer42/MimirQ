@@ -115,6 +115,7 @@ export interface ChunkPreviewActions {
   clearChunkOverride: (index: number) => void
   clearAllChunkOverrides: () => void
   toggleOriginalPanel: () => void
+  setOriginalPanelVisible: (visible: boolean) => void
   toggleSettingsPanel: () => void
 
   // 拖放处理

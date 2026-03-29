@@ -1118,6 +1118,10 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setShowOriginalPanel((prev) => !prev)
   }, [])
 
+  const setOriginalPanelVisible = useCallback((visible: boolean) => {
+    setShowOriginalPanel(visible)
+  }, [])
+
   const toggleSettingsPanel = useCallback(() => {
     setShowSettingsPanel((prev) => !prev)
   }, [])
@@ -1191,6 +1195,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     clearChunkOverride,
     clearAllChunkOverrides,
     toggleOriginalPanel,
+    setOriginalPanelVisible,
     toggleSettingsPanel,
     runPreview,
     cancelPreview,

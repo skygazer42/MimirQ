@@ -17,9 +17,9 @@ import type { ChunkPreviewItem } from '@/types'
 import { OriginalPreviewMonaco } from './original-preview-monaco'
 import { PdfPreview } from './pdf-preview'
 import { CoverageHeatmapMini } from './coverage-heatmap-mini'
+import { ORIGINAL_PREVIEW_MODE_STORAGE_KEY } from './pdf-dock'
 
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
-const STORAGE_PREVIEW_MODE_KEY = 'mimirq_chunk_preview_original_preview_mode_v1'
 type PreviewMode = 'raw' | 'rendered' | 'editor' | 'pdf'
 const VALID_PREVIEW_MODES: ReadonlySet<PreviewMode> = new Set<PreviewMode>(['raw', 'rendered', 'editor', 'pdf'])
 
@@ -111,7 +111,7 @@ export function OriginalPreview() {
   // Keep the preferred preview mode sticky across chunk inspections (especially useful for PDF docking).
   useEffect(() => {
     if (globalThis.window === undefined) return
-    const saved = (globalThis.window.localStorage.getItem(STORAGE_PREVIEW_MODE_KEY) || '').trim()
+    const saved = (globalThis.window.localStorage.getItem(ORIGINAL_PREVIEW_MODE_STORAGE_KEY) || '').trim()
     if (!saved) return
     if (!VALID_PREVIEW_MODES.has(saved as PreviewMode)) return
     setPreviewMode(saved as PreviewMode)
@@ -119,7 +119,7 @@ export function OriginalPreview() {
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    globalThis.window.localStorage.setItem(STORAGE_PREVIEW_MODE_KEY, previewMode)
+    globalThis.window.localStorage.setItem(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, previewMode)
   }, [previewMode])
 
   const activeChunkIndex = hoveredChunkIndex ?? selectedChunkIndex
