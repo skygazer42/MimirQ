@@ -964,7 +964,7 @@ function WelcomeScreen({
         </div>
 
         <div className="space-y-3">
-          <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight text-foreground md:text-4xl">
+          <h2 className="text-balance text-3xl font-semibold leading-tight text-foreground md:text-4xl">
             {greeting}，<span className="text-primary">探索者</span>
           </h2>
           <p className="mx-auto max-w-2xl text-pretty text-sm leading-7 text-muted-foreground/90 md:text-base">
@@ -1092,7 +1092,7 @@ function WelcomeStatusCard({
       <div className="mb-3 flex size-11 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </div>
-      <h3 className="text-sm font-semibold leading-snug tracking-tight text-foreground/95">{title}</h3>
+      <h3 className="text-sm font-semibold leading-snug text-foreground/95">{title}</h3>
       <p className="mt-2 text-xs leading-6 text-muted-foreground/90">{desc}</p>
       {actionLabel && onAction ? (
         <Button type="button" variant="outline" size="sm" className="mt-4 rounded-full" onClick={onAction}>

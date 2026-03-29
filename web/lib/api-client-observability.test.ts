@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { observabilityApi } from './api/observability'
 
 const originalFetch = globalThis.fetch
 const originalUserId = process.env.NEXT_PUBLIC_USER_ID
@@ -24,8 +25,6 @@ describe('observabilityApi.reportFrontendVital', () => {
     process.env.NEXT_PUBLIC_TENANT_ID = '00000000-0000-0000-0000-000000000001'
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
     globalThis.fetch = fetchMock as typeof fetch
-
-    const { observabilityApi } = await import('./api-client')
 
     await observabilityApi.reportFrontendVital(
       {
@@ -62,8 +61,6 @@ describe('observabilityApi.reportFrontendVital', () => {
         })
     )
     globalThis.fetch = fetchMock as typeof fetch
-
-    const { observabilityApi } = await import('./api-client')
 
     await expect(
       observabilityApi.reportFrontendVital({
@@ -105,8 +102,6 @@ describe('observabilityApi.reportFrontendTrace', () => {
     process.env.NEXT_PUBLIC_TENANT_ID = '00000000-0000-0000-0000-000000000001'
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 202 }))
     globalThis.fetch = fetchMock as typeof fetch
-
-    const { observabilityApi } = await import('./api-client')
 
     await observabilityApi.reportFrontendTrace(
       {

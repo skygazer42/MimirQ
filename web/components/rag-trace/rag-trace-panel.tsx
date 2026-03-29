@@ -1565,7 +1565,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       {diffCandidateOptions.length ? (
                         <div className="space-y-2">
                           <div>
-                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Trace 对比候选</div>
+                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">Trace 对比候选</div>
                             <div className="mt-1 text-xs text-muted-foreground">
                               优先展示 retrieval config 有变化、且时间上最接近当前 trace 的候选。
                             </div>
@@ -1652,7 +1652,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         <Panel variant="glass" className="space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
-                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Evidence Drift</div>
+                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">Evidence Drift</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 直接比较当前 trace（A）和候选 trace（B）的 citation 漂移，优先看新增、丢失和分数变化最大的证据。
                               </div>
@@ -1664,19 +1664,19 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
                           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                             <div className="rounded-xl border border-border/60 bg-card/60 px-3 py-3">
-                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Shared</div>
+                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">Shared</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.sharedCount}</div>
                             </div>
                             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-3">
-                              <div className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Added In B</div>
+                              <div className="text-[11px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">Added In B</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.addedCount}</div>
                             </div>
                             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-3">
-                              <div className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-300">Removed From A</div>
+                              <div className="text-[11px] font-semibold uppercase text-amber-700 dark:text-amber-300">Removed From A</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.removedCount}</div>
                             </div>
                             <div className="rounded-xl border border-border/60 bg-card/60 px-3 py-3">
-                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Score Shift</div>
+                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">Score Shift</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.scoreShiftCount}</div>
                             </div>
                           </div>
@@ -1840,7 +1840,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             {selectedPipelineSection.metrics.map((metric) => (
                               <div key={`${selectedPipelineSection.id}:${metric.label}`} className="rounded-xl border border-border/60 bg-card/60 px-3 py-2">
-                                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{metric.label}</div>
+                                <div className="text-[11px] font-semibold uppercase text-muted-foreground">{metric.label}</div>
                                 <div className="mt-1 text-sm font-semibold text-foreground">{metric.value}</div>
                               </div>
                             ))}
@@ -1853,7 +1853,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
                         {selectedPipelineSection.citations.length ? (
                           <div className="space-y-2">
-                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Quick Evidence</div>
+                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">Quick Evidence</div>
                             {selectedPipelineSection.citations.slice(0, 3).map((citation, index) => {
                               const documentId = String(citation.document_id || '').trim()
                               const chunkId = String(citation.chunk_id || '').trim() || undefined
@@ -1904,7 +1904,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     <div className="rounded-2xl border border-border/60 bg-card/50 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Focus citations</div>
+                          <div className="text-[11px] font-semibold uppercase text-muted-foreground">Focus citations</div>
                           <div className="mt-1 text-xs text-muted-foreground">
                             点击 channel，直接筛出真正带来最终证据的命中。
                           </div>
@@ -2054,7 +2054,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       <Panel variant="muted" className="space-y-4">
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="space-y-1">
-                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Fusion Simulator</div>
+                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">Fusion Simulator</div>
                             <div className="text-xs text-muted-foreground">
                               拖动权重，实时模拟当前 trace 在不同 channel 配比下的 TopK 重排。
                             </div>
@@ -2103,7 +2103,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
                         <div className="space-y-2">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Simulated TopK</div>
+                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">Simulated TopK</div>
                             <div className="text-[11px] text-muted-foreground">Δ 表示相对当前排序的升降。</div>
                           </div>
                           <div className="space-y-2">
