@@ -18,6 +18,7 @@ type Box = BboxOverlayItem
 interface PdfViewerProps {
   file?: File | null
   blocks?: ParsingBlock[]
+  boxesByPage?: Map<number, Box[]> | null
   activeBlockIds?: string[] | null
   hoveredBlockIds?: string[] | null
   showAllBoxes?: boolean
@@ -28,6 +29,7 @@ interface PdfViewerProps {
 export function PdfViewer({
   file,
   blocks = [],
+  boxesByPage,
   activeBlockIds,
   hoveredBlockIds,
   showAllBoxes = true,
@@ -227,20 +229,22 @@ export function PdfViewer({
     }
   }, [pdfDoc, pageCount, renderPage])
 
-  const boxesByPage = useMemo(() => {
+  const resolvedBoxesByPage = useMemo(() => {
+    if (boxesByPage) return boxesByPage
+
     const map = new Map<number, Box[]>()
     for (const block of blocks) {
       for (const position of block.positions || []) {
-          const pages = position.pages?.length ? position.pages : [0]
-          for (const pageIndex of pages) {
-            const list = map.get(pageIndex) || []
-            list.push({ id: block.id, position })
-            map.set(pageIndex, list)
-          }
+        const pages = position.pages?.length ? position.pages : [0]
+        for (const pageIndex of pages) {
+          const list = map.get(pageIndex) || []
+          list.push({ id: block.id, position })
+          map.set(pageIndex, list)
         }
       }
+    }
     return map
-  }, [blocks])
+  }, [blocks, boxesByPage])
 
   const activeSet = useMemo(() => new Set(activeBlockIds || []), [activeBlockIds])
   const hoveredSet = useMemo(() => new Set(hoveredBlockIds || []), [hoveredBlockIds])
@@ -317,7 +321,7 @@ export function PdfViewer({
       <div ref={contentRef} className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         {pageNumbers.map((pageNumber) => {
           const index = pageNumber - 1
-          const pageBoxes = boxesByPage.get(index) || []
+          const pageBoxes = resolvedBoxesByPage.get(index) || []
           const isRendered = renderedPages.has(index)
 	          return (
 	            <div
