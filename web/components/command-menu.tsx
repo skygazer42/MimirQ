@@ -67,6 +67,15 @@ type ShortcutDocItem = {
   description: string
 }
 
+type ModuleWorkbenchItem = {
+  id: string
+  label: string
+  description: string
+  keywords: string[]
+  icon: React.ComponentType<{ className?: string }>
+  run: () => void
+}
+
 const KEY_CHORD_TIMEOUT_MS = 1600
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -533,6 +542,84 @@ export function CommandMenu() {
       }),
     [slashCommands, slashNeedle]
   )
+  const moduleWorkbenchItems = React.useMemo<ModuleWorkbenchItem[]>(
+    () => [
+      {
+        id: "workbench-knowledge",
+        label: "知识库工作台",
+        description: "管理文档导入、索引状态与知识库检索质量。",
+        keywords: ["workbench modules", "knowledge", "document", "kb", "上传", "知识库", "文档", "导入", "索引"],
+        icon: Database,
+        run: () => router.push('/knowledge'),
+      },
+      {
+        id: "workbench-graph",
+        label: "图谱工作台",
+        description: "查看实体关系、路径洞察和图谱诊断。",
+        keywords: ["graph", "entity", "relationship", "图谱", "实体", "关系", "路径"],
+        icon: Workflow,
+        run: () => router.push('/graph'),
+      },
+      {
+        id: "workbench-slices",
+        label: "切片工作台",
+        description: "定位切片召回结果，检查检索命中与上下文。",
+        keywords: ["slice", "chunk", "retrieval", "find", "切片", "召回", "检索", "chunk-preview"],
+        icon: FileText,
+        run: () => router.push('/chunk-preview'),
+      },
+      {
+        id: "workbench-parsing",
+        label: "解析工作台",
+        description: "检查文档解析策略、切分结果和提取质量。",
+        keywords: ["parsing", "parser", "extract", "文档解析", "解析", "切分", "抽取"],
+        icon: FileText,
+        run: () => router.push('/parsing'),
+      },
+      {
+        id: "workbench-reports",
+        label: "报表中心",
+        description: "追踪趋势指标、系统报表和异常波动。",
+        keywords: ["reports", "report", "analytics", "dashboard", "报表", "报告", "指标", "趋势"],
+        icon: FileText,
+        run: () => router.push('/reports'),
+      },
+      {
+        id: "workbench-observability",
+        label: "可观测中心",
+        description: "查看监控指标、日志与链路诊断线索。",
+        keywords: ["observability", "monitoring", "metrics", "logs", "trace", "可观测", "监控", "日志"],
+        icon: Activity,
+        run: () => router.push('/observability'),
+      },
+      {
+        id: "workbench-governance",
+        label: "数据治理",
+        description: "处理治理规则、画像与合规策略。",
+        keywords: ["governance", "policy", "compliance", "数据治理", "治理", "规则", "合规", "画像"],
+        icon: Database,
+        run: () => router.push('/data-governance'),
+      },
+      {
+        id: "workbench-access-review",
+        label: "访问审查",
+        description: "复核权限分配与高风险访问行为。",
+        keywords: ["access review", "rbac", "permission", "admin", "访问审查", "权限", "角色"],
+        icon: Settings,
+        run: () => router.push('/access-review'),
+      },
+    ],
+    [router]
+  )
+  const moduleWorkbenchResults = React.useMemo(() => {
+    if (isSlashMode) return []
+    const needle = query.trim().toLowerCase()
+    if (needle.length < 2) return []
+
+    return moduleWorkbenchItems.filter((item) =>
+      matchesSearchNeedle([item.label, item.description, item.keywords.join(" ")], needle)
+    )
+  }, [isSlashMode, moduleWorkbenchItems, query])
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -741,6 +828,34 @@ export function CommandMenu() {
                 <CommandSeparator />
               </>
             ) : null}
+
+            <CommandGroup heading="模块与工作台">
+              {moduleWorkbenchResults.length ? (
+                moduleWorkbenchResults.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <CommandItem
+                      key={item.id}
+                      value={`${item.label} ${item.description} ${item.keywords.join(" ")}`}
+                      onSelect={() => runCommand(item.run)}
+                    >
+                      <Icon className="mr-2 h-4 w-4" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span>{item.label}</span>
+                        <span className="truncate text-xs text-muted-foreground">{item.description}</span>
+                      </div>
+                    </CommandItem>
+                  )
+                })
+              ) : (
+                <CommandItem disabled value="workbench:empty">
+                  <Workflow className="mr-2 h-4 w-4" />
+                  <span>未找到匹配的模块</span>
+                </CommandItem>
+              )}
+            </CommandGroup>
+
+            <CommandSeparator />
 
             <CommandGroup heading="文档">
               {(() => {
