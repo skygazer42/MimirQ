@@ -31,4 +31,17 @@ describe('pdf viewer source', () => {
     expect(src).toContain('if (blockIdToPageIndex) return blockIdToPageIndex')
     expect(src).toContain('const pageIndex = resolvedBlockIdToPageIndex.get(firstActive)')
   })
+
+  it('cancels stale render tasks and cleans up page resources after rendering', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('type { PDFDocumentProxy, RenderTask }')
+    expect(src).toContain('const renderTasksRef = useRef<Map<number, RenderTask>>(new Map())')
+    expect(src).toContain('renderTasksRef.current.forEach((task) => task.cancel())')
+    expect(src).toContain('renderTasksRef.current.clear()')
+    expect(src).toContain('const renderTask = page.render({ canvas, viewport })')
+    expect(src).toContain('renderTasksRef.current.set(pageIndex, renderTask)')
+    expect(src).toContain('await renderTask.promise')
+    expect(src).toContain('page.cleanup()')
+  })
 })
