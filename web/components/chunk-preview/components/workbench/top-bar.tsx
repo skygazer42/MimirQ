@@ -105,6 +105,7 @@ export function TopBar() {
     isSubmitting,
     showOriginalPanel,
     createdDocumentId,
+    selectedChunkIndex,
     submitChunks,
     toggleOriginalPanel,
     toggleSettingsPanel,
@@ -130,6 +131,22 @@ export function TopBar() {
 
   const shouldIncludeSeparatorSettings = effectiveChunkStrategy === 'separator'
   const shouldIncludeParentChildSettings = effectiveChunkStrategy === 'parent_child'
+  const selectedPreviewChunk = selectedChunkIndex == null ? null : previewData?.chunks?.[selectedChunkIndex] || null
+  const selectedChunkStart =
+    typeof selectedPreviewChunk?.start_index === 'number' && Number.isFinite(selectedPreviewChunk.start_index)
+      ? Math.trunc(selectedPreviewChunk.start_index)
+      : null
+  const selectedChunkEnd =
+    typeof selectedPreviewChunk?.end_index === 'number' && Number.isFinite(selectedPreviewChunk.end_index)
+      ? Math.trunc(selectedPreviewChunk.end_index)
+      : null
+  const canOpenSelectedChunkInChatPage =
+    selectedChunkStart != null && selectedChunkEnd != null && selectedChunkEnd > selectedChunkStart
+  const selectedDocumentChunkId = (() => {
+    if (!selectedPreviewChunk || !isRecord(selectedPreviewChunk.metadata)) return undefined
+    const chunkId = (getStringValue(selectedPreviewChunk.metadata, 'chunk_id') || '').trim()
+    return chunkId || undefined
+  })()
   const canCompare = Boolean(
     previewData &&
       (runHistory || []).filter(
@@ -733,6 +750,22 @@ export function TopBar() {
                 >
                   <TestTube2 className="mr-2 h-4 w-4" />
                   生成评测问题（RAGAS）
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!canOpenSelectedChunkInChatPage}
+                  onSelect={() => {
+                    if (!canOpenSelectedChunkInChatPage) return
+                    const params = new URLSearchParams()
+                    params.set('doc', createdDocumentId)
+                    if (selectedDocumentChunkId) params.set('chunk', selectedDocumentChunkId)
+                    params.set('start', String(selectedChunkStart))
+                    params.set('end', String(selectedChunkEnd))
+                    router.push(`/?${params.toString()}`)
+                    toast.success('已跳转到对话页并定位当前切片')
+                  }}
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  打开当前切片（对话页）
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => {
