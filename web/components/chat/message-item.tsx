@@ -3,6 +3,7 @@
  */
 'use client'
 
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { BarChart3, Check, Copy, Database, Bot, Star, User } from 'lucide-react'
@@ -186,6 +187,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   isStreaming?: boolean
 }>) {
   const isUser = message.role === 'user'
+  const reduceMotion = useReducedMotion()
   const [copied, setCopied] = useState(false)
   const [diagOpen, setDiagOpen] = useState(false)
   const [rating, setRating] = useState<number | null>(null)
@@ -193,6 +195,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const copyTimerRef = useRef<number | null>(null)
   const prefetchedCitationTargetsRef = useRef<Set<string>>(new Set())
   const { openDocument } = useDocumentView()
+  const streamingLayoutTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const }
 
   useEffect(() => {
     return () => {
@@ -429,7 +434,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   }, [canRate, message.id, ratingSending])
 
 	  return (
-	    <div
+      <>
+	    <motion.div
+        layout={!reduceMotion && isStreaming}
+        transition={streamingLayoutTransition}
 	      className={cn(
 	        'flex gap-4 px-2 group animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none',
 	        isUser ? 'justify-end' : 'justify-start'
@@ -441,7 +449,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         </div>
       )}
 
-	      <div
+	      <motion.div
+          layout={!reduceMotion && isStreaming}
+          transition={streamingLayoutTransition}
 	        className={cn(
 	          'max-w-3xl px-6 py-4 shadow-sm relative text-[15px] transition-shadow duration-200 motion-reduce:transition-none',
 	          isUser
@@ -453,13 +463,21 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	        )}
 	      >
         {/* 思维链 / 步骤展示 */}
-	        {!isUser && message.steps && message.steps.length > 0 && (
-	          <div className="mb-4 space-y-2 motion-safe:animate-fade-in">
+	        <AnimatePresence initial={false}>
+            {!isUser && message.steps && message.steps.length > 0 ? (
+	          <motion.div
+                layout={!reduceMotion && isStreaming}
+                transition={streamingLayoutTransition}
+                initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                className="mb-4 space-y-2 motion-safe:animate-fade-in"
+              >
 	            <div className="flex items-center gap-2 text-[10px] font-bold text-primary/70 uppercase ">
 	              <div className="relative flex h-2 w-2">
 	                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
 	                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-	              </div>
+                </div>
 	              思考路径
 	            </div>
 	            <div className="pl-4 border-l border-primary/20 space-y-1">
@@ -475,8 +493,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 	                </div>
               ))}
             </div>
-          </div>
-        )}
+          </motion.div>
+        ) : null}
+        </AnimatePresence>
 
         {!isUser && message.message_metadata && (
           <>
@@ -988,14 +1007,15 @@ export const ChatMessageItem = memo(function ChatMessageItem({
             </div>
           </details>
         )}
-      </div>
+      </motion.div>
 
       {isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-md shadow-primary/20 mt-0.5">
           <User className="h-4 w-4" />
         </div>
       )}
-    </div>
+    </motion.div>
+    </>
   )
 })
 
@@ -1123,11 +1143,11 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
           </div>
         )}
       </div>
-        <EvidenceViewerDialog
-          open={viewerOpen}
-          onOpenChange={setViewerOpen}
-          citation={viewerOpen ? citation : null}
-        />
+      <EvidenceViewerDialog
+        open={viewerOpen}
+        onOpenChange={setViewerOpen}
+        citation={viewerOpen ? citation : null}
+      />
     </>
   )
 })

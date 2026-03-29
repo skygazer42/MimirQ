@@ -41,4 +41,14 @@ describe('message item source', () => {
     expect(src).toContain('onMouseEnter={() => handleInlineCitationPrefetch(href)}')
     expect(src).toContain('onFocus={() => handleInlineCitationPrefetch(href)}')
   })
+
+  it('uses reduced-motion-safe layout transitions for streaming assistant cards and step updates', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'message-item.tsx'), 'utf8')
+
+    expect(src).toContain("from 'framer-motion'")
+    expect(src).toContain('useReducedMotion')
+    expect(src).toContain('AnimatePresence')
+    expect(src).toContain('layout={!reduceMotion && isStreaming}')
+    expect(src).toContain('transition={streamingLayoutTransition}')
+  })
 })

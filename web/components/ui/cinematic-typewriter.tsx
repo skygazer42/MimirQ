@@ -1,5 +1,6 @@
 "use client"
 
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import dynamic from 'next/dynamic'
 import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
@@ -92,9 +93,10 @@ export function CinematicTypewriter({
   isStreaming = false,
   className,
 }: Readonly<CinematicTypewriterProps>) {
-  const [reduceMotion, setReduceMotion] = useState(false)
+  const reduceMotion = useReducedMotion()
   const [displayedContent, setDisplayedContent] = useState("")
   const [pendingToken, setPendingToken] = useState("")
+  const [pendingTokenKey, setPendingTokenKey] = useState(0)
   const [isTyping, setIsTyping] = useState(false)
 
   const contentRef = useRef(content)
@@ -184,20 +186,6 @@ export function CinematicTypewriter({
   }), [])
 
   useEffect(() => {
-    if (globalThis.window === undefined) return
-    const media = globalThis.window.matchMedia('(prefers-reduced-motion: reduce)')
-    const update = () => setReduceMotion(Boolean(media.matches))
-    update()
-    if (typeof media.addEventListener === 'function') {
-      media.addEventListener('change', update)
-      return () => media.removeEventListener('change', update)
-    }
-    // Safari < 14
-    media.addListener(update)
-    return () => media.removeListener(update)
-  }, [])
-
-  useEffect(() => {
     if (reduceMotion) {
       if (timeoutRef.current != null) {
         globalThis.window.clearTimeout(timeoutRef.current)
@@ -212,6 +200,7 @@ export function CinematicTypewriter({
 
       setDisplayedContent(full)
       setPendingToken('')
+      setPendingTokenKey(0)
       setIsTyping(false)
       if (!streamingRef.current) onCompleteRef.current?.()
       return
@@ -282,6 +271,7 @@ export function CinematicTypewriter({
       pendingRef.current = token
 
       startTransition(() => setPendingToken(token))
+      startTransition(() => setPendingTokenKey((prev) => prev + 1))
       schedule(step.delayMs)
     }
 
@@ -297,6 +287,14 @@ export function CinematicTypewriter({
     }
   }, [reduceMotion])
 
+  const tokenRevealTransition = useMemo(
+    () => ({
+      duration: reduceMotion ? 0 : 0.18,
+      ease: [0.16, 1, 0.3, 1] as const,
+    }),
+    [reduceMotion]
+  )
+
   return (
     <div className={cn("relative leading-relaxed", className)}>
       <ReactMarkdown
@@ -306,11 +304,20 @@ export function CinematicTypewriter({
       >
         {displayedContent}
       </ReactMarkdown>
-      {!reduceMotion && pendingToken && (
-        <span className="inline whitespace-pre-wrap align-baseline text-foreground/90 motion-safe:animate-fade-in">
-          {pendingToken}
-        </span>
-      )}
+      <AnimatePresence initial={false} mode="popLayout">
+        {!reduceMotion && pendingToken ? (
+          <motion.span
+            key={`pending:${pendingTokenKey}`}
+            initial={{ opacity: 0, y: '0.35em', filter: 'blur(6px)' }}
+            animate={{ opacity: 1, y: '0em', filter: 'blur(0px)' }}
+            exit={{ opacity: 0, y: '-0.2em', filter: 'blur(4px)' }}
+            transition={tokenRevealTransition}
+            className="inline whitespace-pre-wrap align-baseline text-foreground/90 motion-safe:animate-fade-in"
+          >
+            {pendingToken}
+          </motion.span>
+        ) : null}
+      </AnimatePresence>
 
       {/* 电影感光标 */}
       {isTyping && !reduceMotion && (
