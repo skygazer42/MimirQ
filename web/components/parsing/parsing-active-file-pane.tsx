@@ -28,7 +28,6 @@ import {
 
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
-import { ParseCompareDialog } from '@/components/parsing/parse-compare-dialog'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { ParsingRightPanel } from '@/components/parsing/parsing-right-panel'
 import { Button } from '@/components/ui/button'
@@ -40,6 +39,13 @@ import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import type { ParsingBlock } from '@/lib/parsing-positions'
 
 import type { ParsedFile, ParseRun } from './parsing-types'
+
+const ParseCompareDialog = dynamic(
+  () => import('@/components/parsing/parse-compare-dialog').then((mod) => mod.ParseCompareDialog),
+  {
+    loading: () => null,
+  }
+)
 
 const PdfViewer = dynamic(() => import('@/components/parsing/pdf-viewer').then((mod) => mod.PdfViewer), {
   ssr: false,
