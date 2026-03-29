@@ -977,7 +977,7 @@ export function RagvizSimilarityWorkbench() {
 	                                variant={btn?.applyData ? 'default' : 'outline'}
 	                                size="icon"
 	                                title="应用数据"
-	                                aria-label="应用数据"
+	                                aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 设为显示数据矩阵`}
 	                                onClick={() => toggleApplyData(idx)}
 	                              >
 	                                <Eye className="h-4 w-4" />
@@ -986,7 +986,7 @@ export function RagvizSimilarityWorkbench() {
 	                                variant={btn?.applyFilter ? 'default' : 'outline'}
 	                                size="icon"
 	                                title="应用筛选器"
-	                                aria-label="应用筛选器"
+	                                aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 的筛选条件加入当前视图`}
 	                                onClick={() => toggleApplyFilter(idx)}
 	                              >
 	                                <Filter className="h-4 w-4" />
@@ -995,7 +995,11 @@ export function RagvizSimilarityWorkbench() {
 	                                variant={btn?.exclusive ? 'default' : 'outline'}
 	                                size="icon"
 	                                title="独占模式"
-	                                aria-label="独占模式"
+	                                aria-label={
+                                    btn?.exclusive
+                                      ? `退出 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 的独占编辑模式`
+                                      : `将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 设为独占编辑矩阵`
+                                  }
 	                                onClick={() => (btn?.exclusive ? exitExclusiveMode() : enterExclusiveMode(idx))}
 	                              >
 	                                <Lock className="h-4 w-4" />
@@ -1614,7 +1618,7 @@ function CollectionSelectorBlock({
 	                variant="outline"
 	                size="icon"
 	                title="添加"
-	                aria-label="添加"
+	                aria-label={`为${label}添加一个 Collection 选择器`}
 	                onClick={() => onChange([...selections, ''])}
 	              >
 	                +
@@ -1625,7 +1629,7 @@ function CollectionSelectorBlock({
 	                variant="outline"
 	                size="icon"
 	                title="删除"
-	                aria-label="删除"
+	                aria-label={`删除第 ${idx + 1} 个${label}选择器`}
 	                onClick={() => onChange(selections.filter((_, i) => i !== idx))}
 	              >
 	                -
