@@ -70,7 +70,12 @@ export function PdfViewer({
       try {
         const data = new Uint8Array(await file.arrayBuffer())
         const pdfjsLib = await import('pdfjs-dist/webpack.mjs')
-        const doc = await pdfjsLib.getDocument({ data }).promise
+        const offscreenCanvasSupported = Boolean(pdfjsLib.FeatureTest.isOffscreenCanvasSupported)
+        const doc = await pdfjsLib.getDocument({
+          data,
+          isOffscreenCanvasSupported: offscreenCanvasSupported,
+          enableHWA: offscreenCanvasSupported,
+        }).promise
         if (cancelled) return
         setPdfDoc(doc)
         setPageCount(doc.numPages)
