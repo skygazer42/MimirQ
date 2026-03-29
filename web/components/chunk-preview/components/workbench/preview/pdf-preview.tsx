@@ -5,72 +5,45 @@
  */
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Remote } from 'comlink'
 import { AlertCircle } from 'lucide-react'
+import dynamic from 'next/dynamic'
 
 import { useChunkPreview } from '@/components/chunk-preview/context'
-import { buildBlockIdToBestChunkIndex } from '@/components/chunk-preview/utils/pdf-box-mapping'
-import dynamic from 'next/dynamic'
 import { Button } from '@/components/ui/button'
+import { PageLoading } from '@/components/ui/page-loading'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { ChunkPreviewItem } from '@/types'
+import {
+  computePdfPreviewData,
+  findBlockIdsForChunkIndex,
+  type PdfPreviewComputationResult,
+} from '@/lib/pdf-preview-computation'
+import { detachPromise } from '@/lib/utils'
+import type { PdfPreviewWorkerApi } from '@/workers/pdf-preview.worker'
 
 const PdfViewer = dynamic(() => import('@/components/parsing/pdf-viewer').then((mod) => mod.PdfViewer), {
   ssr: false,
   loading: () => <Skeleton className="h-[400px] w-full" />,
 })
-import {
-  createPositionTagIndexMapper,
-  extractBlocksFromMarkdownWithRanges,
-  ParsingBlockWithRange,
-} from '@/lib/parsing-positions'
 
-function asInt(value: unknown): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? Math.trunc(n) : 0
-}
-
-function overlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
-  const a0 = Math.min(aStart, aEnd)
-  const a1 = Math.max(aStart, aEnd)
-  const b0 = Math.min(bStart, bEnd)
-  const b1 = Math.max(bStart, bEnd)
-  return a1 > b0 && b1 > a0
-}
-
-function computeBlockRanges(
-  blocks: ParsingBlockWithRange[],
-  mapIndex: (rawIndex: number) => number
-): Array<{ id: string; start: number; end: number }> {
-  return (blocks || []).map((b) => ({
-    id: b.id,
-    start: mapIndex(asInt(b.rawStart)),
-    end: mapIndex(asInt(b.rawEnd)),
-  }))
-}
-
-function blockIdsForChunk(params: {
-  chunkIndex: number | null
-  previewChunks: Array<Pick<ChunkPreviewItem, 'start_index' | 'end_index'>>
-  blockRanges: Array<{ id: string; start: number; end: number }>
-  mapIndex: (rawIndex: number) => number
-}): string[] {
-  const { chunkIndex, previewChunks, blockRanges, mapIndex } = params
-  if (chunkIndex == null) return []
-  const chunk = previewChunks?.[chunkIndex]
-  if (!chunk) return []
-
-  const start = mapIndex(asInt(chunk.start_index))
-  const end = mapIndex(asInt(chunk.end_index))
-  if (start === end) return []
-
-  const ids: string[] = []
-  for (const b of blockRanges) {
-    if (!overlap(start, end, b.start, b.end)) continue
-    ids.push(b.id)
-    if (ids.length >= 600) break
-  }
-  return ids
+function PdfPreviewLoadingSkeleton() {
+  return (
+    <div className="flex h-full items-center justify-center px-6">
+      <div className="w-full max-w-2xl rounded-2xl border border-border/60 bg-card/90 p-6 shadow-soft">
+        <PageLoading
+          className="min-h-0 flex-none justify-start"
+          message="正在预计算 PDF 高亮..."
+          srMessage="Preparing PDF highlight overlays"
+        />
+        <div className="mt-5 space-y-3">
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function PdfPreview() {
@@ -85,6 +58,13 @@ export function PdfPreview() {
   } = useChunkPreview()
 
   const [showAllBoxes, setShowAllBoxes] = useState(false)
+  const [pdfComputation, setPdfComputation] = useState<PdfPreviewComputationResult | null>(null)
+  const [isPreparingPdfPreview, setIsPreparingPdfPreview] = useState(false)
+  const [pdfPreparationError, setPdfPreparationError] = useState<string | null>(null)
+  const pdfPreviewSeqRef = useRef(0)
+  const pdfPreviewWorkerRef = useRef<Worker | null>(null)
+  const pdfPreviewApiRef = useRef<Remote<PdfPreviewWorkerApi> | null>(null)
+  const pdfPreviewWorkerDisabledRef = useRef(false)
 
   const isPdf = useMemo(() => {
     const ft = String(previewData?.file_type || '').toLowerCase()
@@ -94,57 +74,122 @@ export function PdfPreview() {
   }, [currentFile?.name, previewData?.file_type])
 
   const rawOriginal = previewData?.original_text || ''
-
-  const parsed = useMemo(() => {
-    if (!rawOriginal) return null
-    return extractBlocksFromMarkdownWithRanges(rawOriginal)
-  }, [rawOriginal])
-
-  const blocksWithPositions = useMemo(() => {
-    const all = parsed?.blocks || []
-    return all.filter((b) => (b.positions || []).length > 0)
-  }, [parsed?.blocks])
-
-  const mapIndex = useMemo(() => {
-    if (!rawOriginal) return (idx: number) => Math.max(0, asInt(idx))
-    return createPositionTagIndexMapper(rawOriginal, parsed?.tagRanges)
-  }, [parsed?.tagRanges, rawOriginal])
-
-  const blockRanges = useMemo(() => computeBlockRanges(blocksWithPositions, mapIndex), [blocksWithPositions, mapIndex])
-
   const previewChunks = useMemo(() => previewData?.chunks ?? [], [previewData?.chunks])
-  const chunkRanges = useMemo(() => {
-    return previewChunks.map((chunk, index) => ({
-      index,
-      start_index: mapIndex(asInt(chunk.start_index)),
-      end_index: mapIndex(asInt(chunk.end_index)),
-    }))
-  }, [mapIndex, previewChunks])
 
+  useEffect(() => {
+    const seq = ++pdfPreviewSeqRef.current
+    let cancelled = false
+
+    if (!rawOriginal) {
+      setPdfComputation(null)
+      setPdfPreparationError(null)
+      setIsPreparingPdfPreview(false)
+      return
+    }
+
+    setPdfComputation(null)
+    setPdfPreparationError(null)
+    setIsPreparingPdfPreview(true)
+
+    const applyResult = (result: PdfPreviewComputationResult) => {
+      if (cancelled || pdfPreviewSeqRef.current !== seq) return
+      setPdfComputation(result)
+      setIsPreparingPdfPreview(false)
+    }
+
+    const handleMainThreadFailure = (error: unknown) => {
+      console.warn('PDF preview preprocessing failed', error)
+      if (cancelled || pdfPreviewSeqRef.current !== seq) return
+      setPdfPreparationError('PDF 高亮预处理失败，请刷新后重试。')
+      setPdfComputation(null)
+      setIsPreparingPdfPreview(false)
+    }
+
+    const computeOnMainThread = () => {
+      try {
+        applyResult(computePdfPreviewData({ rawOriginal, previewChunks }))
+      } catch (error) {
+        handleMainThreadFailure(error)
+      }
+    }
+
+    if (pdfPreviewWorkerDisabledRef.current || typeof Worker === 'undefined') {
+      computeOnMainThread()
+      return () => {
+        cancelled = true
+      }
+    }
+
+    detachPromise((async () => {
+      try {
+        let api = pdfPreviewApiRef.current
+        if (!pdfPreviewWorkerRef.current || !api) {
+          const { wrap } = await import('comlink')
+          if (cancelled) return
+          pdfPreviewWorkerRef.current = new Worker(
+            new URL('../../../../../workers/pdf-preview.worker.ts', import.meta.url),
+            { type: 'module' }
+          )
+          api = wrap<PdfPreviewWorkerApi>(pdfPreviewWorkerRef.current)
+          pdfPreviewApiRef.current = api
+        }
+
+        const result = await api.computePdfPreviewData({ rawOriginal, previewChunks })
+        applyResult(result)
+      } catch (error) {
+        console.warn('PDF preview worker failed; falling back to main thread', error)
+        pdfPreviewWorkerDisabledRef.current = true
+        computeOnMainThread()
+      }
+    })())
+
+    return () => {
+      cancelled = true
+    }
+  }, [previewChunks, rawOriginal])
+
+  useEffect(() => {
+    return () => {
+      pdfPreviewApiRef.current = null
+      pdfPreviewWorkerRef.current?.terminate()
+      pdfPreviewWorkerRef.current = null
+    }
+  }, [])
+
+  const blocksWithPositions = useMemo(
+    () => pdfComputation?.blocksWithPositions || [],
+    [pdfComputation?.blocksWithPositions]
+  )
+  const blockRanges = useMemo(
+    () => pdfComputation?.blockRanges || [],
+    [pdfComputation?.blockRanges]
+  )
+  const chunkRanges = useMemo(
+    () => pdfComputation?.chunkRanges || [],
+    [pdfComputation?.chunkRanges]
+  )
   const blockIdToChunkIndex = useMemo(
-    () => buildBlockIdToBestChunkIndex(blockRanges, chunkRanges),
-    [blockRanges, chunkRanges]
+    () => new Map(pdfComputation?.blockIdToChunkIndexEntries || []),
+    [pdfComputation?.blockIdToChunkIndexEntries]
   )
 
   const selectedBlockIds = useMemo(
     () =>
-      blockIdsForChunk({
+      findBlockIdsForChunkIndex({
         chunkIndex: selectedChunkIndex,
-        previewChunks,
         blockRanges,
-        mapIndex,
+        chunkRanges,
       }),
-    [blockRanges, mapIndex, previewChunks, selectedChunkIndex]
+    [blockRanges, chunkRanges, selectedChunkIndex]
   )
   const hoveredBlockIds = useMemo(
     () =>
-      blockIdsForChunk({
+      findBlockIdsForChunkIndex({
         chunkIndex: hoveredChunkIndex,
-        previewChunks,
         blockRanges,
-        mapIndex,
+        chunkRanges,
       }),
-    [blockRanges, hoveredChunkIndex, mapIndex, previewChunks]
+    [blockRanges, chunkRanges, hoveredChunkIndex]
   )
 
   const activeBlockIds = selectedBlockIds.length ? selectedBlockIds : hoveredBlockIds
@@ -201,6 +246,24 @@ export function PdfPreview() {
               ? '后端未返回 original_text（可能被 original_text_max_chars 限制）。'
               : '当前关闭了 include_original_text（预览性能设置）。'}
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (isPreparingPdfPreview && !pdfComputation) {
+    return <PdfPreviewLoadingSkeleton />
+  }
+
+  if (pdfPreparationError) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md rounded-2xl border border-border/60 bg-card p-5 text-center shadow-sm">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+          </div>
+          <div className="text-sm font-semibold text-foreground">PDF 高亮预处理失败</div>
+          <div className="mt-1 text-xs text-muted-foreground">{pdfPreparationError}</div>
         </div>
       </div>
     )
