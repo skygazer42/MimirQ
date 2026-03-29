@@ -38,4 +38,3 @@
 
 ## 3. UI/UX 体验建议 (UX Polish)
 - [ ] **Skeleton 渐进加载**: 避免全屏 Loading 闪烁，保持现有内容可见直至新数据就绪。
-- [ ] **全局 Command Menu (CMDK)**: 扩展现有 `command-menu.tsx`，支持跨数据集、跨模块的 RAG 资源检索。
