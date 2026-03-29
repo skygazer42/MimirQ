@@ -96,18 +96,18 @@ export function TaskCenter() {
   return (
 	      <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]">
 	        {isOpen && (
-	            <div className="mb-2 w-[26rem] bg-background/85 backdrop-blur-md border border-border/60 rounded-2xl shadow-strong ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
-                <div className="px-4 py-3 border-b border-border/60 bg-muted/30 flex justify-between items-center">
+	            <div className="mb-2 w-[26rem] bg-popover/90 text-popover-foreground backdrop-blur-md border border-border/60 rounded-2xl shadow-strong ring-1 ring-border/40 overflow-hidden animate-in slide-in-from-bottom-5 fade-in motion-reduce:animate-none motion-reduce:transition-none">
+                <div className="px-4 py-3 border-b border-border/60 bg-muted/35 flex justify-between items-center">
                     <div className="min-w-0">
-                      <h4 className="text-sm font-semibold leading-none text-balance">任务中心</h4>
+                      <h4 className="text-sm font-semibold leading-none tracking-tight text-balance">任务中心</h4>
                       <div className="mt-2 flex items-center gap-2">
                         {totalActive > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium ring-1 ring-primary/20">
                             进行中 <span className="tabular-nums">{totalActive}</span>
                           </span>
                         )}
                         {totalFailed > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 text-destructive px-2 py-0.5 text-xs font-medium">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 text-destructive px-2 py-0.5 text-xs font-medium ring-1 ring-destructive/20">
                             失败 <span className="tabular-nums">{totalFailed}</span>
                           </span>
                         )}
@@ -143,7 +143,7 @@ export function TaskCenter() {
                         {totalActive > 0 && (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-xs font-semibold text-muted-foreground">进行中</span>
+                              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">进行中</span>
                               <span className="text-xs tabular-nums text-muted-foreground">{totalActive}</span>
                             </div>
                             <div className="space-y-2">
@@ -160,7 +160,7 @@ export function TaskCenter() {
 	                                    </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-start justify-between gap-2">
-                                        <p className="text-sm font-medium truncate leading-snug" title={doc.filename}>
+                                        <p className="text-sm font-medium leading-snug tracking-tight truncate" title={doc.filename}>
                                           {doc.filename}
                                         </p>
                                         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -198,7 +198,7 @@ export function TaskCenter() {
                         {totalFailed > 0 && (
                           <div className="space-y-2">
                             <div className="flex items-center justify-between px-1">
-                              <span className="text-xs font-semibold text-muted-foreground">失败/隔离</span>
+                              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">失败/隔离</span>
                               <span className="text-xs tabular-nums text-muted-foreground">{totalFailed}</span>
                             </div>
                             <div className="space-y-2">
