@@ -21,4 +21,12 @@ describe('observability and diagnostics source', () => {
     expect(src).not.toContain('removeChild(')
     expect(src).toContain(".join(String.raw`\\n`)")
   })
+
+  it('renders a diagnostics-specific loading shell', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'diagnostics/page.tsx'), 'utf8')
+
+    expect(src).toContain('PageLoading')
+    expect(src).toContain('正在加载诊断中心...')
+    expect(src).not.toContain('<div className="min-h-dvh bg-background" />')
+  })
 })
