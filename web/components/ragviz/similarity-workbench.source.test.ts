@@ -21,4 +21,22 @@ describe('similarity workbench source', () => {
     expect(src).toContain('禁用候选')
     expect(src).toContain('标记待审')
   })
+
+  it('keeps icon-only controls accessible with contextual aria-labels', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'similarity-workbench.tsx'), 'utf8')
+
+    expect(src).toContain('aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 设为显示数据矩阵`}')
+    expect(src).toContain('aria-label={`将 ${entry.xCollectionLabel} vs ${entry.yCollectionLabel} 的筛选条件加入当前视图`}')
+    expect(src).toMatch(
+      /aria-label=\{\s*btn\?\.exclusive\s*\?\s*`退出 \$\{entry\.xCollectionLabel\} vs \$\{entry\.yCollectionLabel\} 的独占编辑模式`\s*:\s*`将 \$\{entry\.xCollectionLabel\} vs \$\{entry\.yCollectionLabel\} 设为独占编辑矩阵`\s*\}/
+    )
+    expect(src).toContain('aria-label={`为${label}添加一个 Collection 选择器`}')
+    expect(src).toContain('aria-label={`删除第 ${idx + 1} 个${label}选择器`}')
+
+    expect(src).not.toContain('aria-label="应用数据"')
+    expect(src).not.toContain('aria-label="应用筛选器"')
+    expect(src).not.toContain('aria-label="独占模式"')
+    expect(src).not.toContain('aria-label="添加"')
+    expect(src).not.toContain('aria-label="删除"')
+  })
 })
