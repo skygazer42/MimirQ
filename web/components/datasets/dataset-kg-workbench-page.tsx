@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { Remote } from 'comlink'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
@@ -21,14 +22,19 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { StepIndicator } from '@/components/ui/step-indicator'
 
 import { datasetApi, documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import type { GraphClusterResult } from '@/lib/graph-clustering'
+import type { GraphData } from '@/lib/graph-parser'
 import { cn, detachPromise } from '@/lib/utils'
 import { GraphService } from '@/lib/graph-service'
+import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
 import type { Dataset, Document, KGExtractResponse, KGGraphNode, KGStatsResponse } from '@/types'
 
@@ -66,12 +72,91 @@ async function runWithConcurrency<T>(
   await Promise.all(Array.from({ length: Math.min(resolvedConcurrency, items.length) }, () => runOne()))
 }
 
+const DOCS_LOADING_SKELETON_KEYS = ['docs-loading-1', 'docs-loading-2', 'docs-loading-3', 'docs-loading-4']
+const SEARCH_RESULTS_SKELETON_KEYS = ['search-loading-1', 'search-loading-2', 'search-loading-3']
+const GRAPH_STATS_SKELETON_KEYS = ['graph-stat-loading-1', 'graph-stat-loading-2', 'graph-stat-loading-3', 'graph-stat-loading-4']
+
+function DocsLoadingSkeleton() {
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+      <div className="rounded-lg border border-dashed border-border/60 bg-background/80 p-3">
+        <PageLoading
+          className="min-h-0 flex-none justify-start"
+          message="正在加载文档范围..."
+          srMessage="Loading dataset documents"
+        />
+      </div>
+      <div className="mt-3 space-y-2">
+        {DOCS_LOADING_SKELETON_KEYS.map((key) => (
+          <div
+            key={key}
+            className="flex items-start gap-3 rounded-lg border border-border/60 bg-background/70 px-3 py-3"
+          >
+            <Skeleton className="mt-0.5 h-4 w-4 rounded-sm" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-3 w-3/5" />
+            </div>
+            <Skeleton className="h-7 w-16 rounded-lg" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SearchResultsSkeleton() {
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
+      <div className="space-y-2">
+        {SEARCH_RESULTS_SKELETON_KEYS.map((key) => (
+          <div key={key} className="rounded-lg border border-border/60 bg-background/70 px-3 py-3">
+            <Skeleton className="h-4 w-3/5" />
+            <Skeleton className="mt-2 h-3 w-2/5" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function GraphPreviewSkeleton() {
+  return (
+    <div className="flex h-full min-h-[520px] items-center justify-center p-6">
+      <div className="w-full max-w-3xl rounded-2xl border border-border/70 bg-card/90 p-6 shadow-soft backdrop-blur-sm">
+        <PageLoading
+          className="min-h-0 flex-none justify-start"
+          message="正在构建图谱预览..."
+          srMessage="Loading dataset graph preview"
+        />
+        <div className="mt-5 flex flex-wrap gap-2">
+          {GRAPH_STATS_SKELETON_KEYS.map((key) => (
+            <Skeleton key={key} className="h-6 w-24 rounded-full" />
+          ))}
+        </div>
+        <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.85fr)]">
+          <Skeleton className="h-[320px] w-full rounded-xl" />
+          <div className="space-y-3">
+            <Skeleton className="h-24 w-full rounded-xl" />
+            <Skeleton className="h-24 w-full rounded-xl" />
+            <Skeleton className="h-10 w-40 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function DatasetKGWorkbenchPage() {
   const router = useRouter()
   const params = useParams()
   const datasetId = asDatasetId((params as any)?.id)
 
   const graphRef = useRef<GraphViewerRef>(null)
+  const graphClusteringSeqRef = useRef(0)
+  const graphClusteringWorkerRef = useRef<Worker | null>(null)
+  const graphClusteringApiRef = useRef<Remote<GraphClusteringWorkerApi> | null>(null)
+  const graphClusteringDisabledRef = useRef(false)
 
   const [dataset, setDataset] = useState<Dataset | null>(null)
   const [docs, setDocs] = useState<Document[]>([])
@@ -94,7 +179,8 @@ export default function DatasetKGWorkbenchPage() {
 
   // Step 3: Graph preview
   const [graphLoading, setGraphLoading] = useState(false)
-  const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] } | null>(null)
+  const [graphData, setGraphData] = useState<GraphData | null>(null)
+  const [graphClusterResult, setGraphClusterResult] = useState<GraphClusterResult | null>(null)
   const [graphStats, setGraphStats] = useState<KGStatsResponse | null>(null)
   const [includeEntityLinks, setIncludeEntityLinks] = useState(true)
   const [includeRelationLinks, setIncludeRelationLinks] = useState(false)
@@ -159,6 +245,79 @@ export default function DatasetKGWorkbenchPage() {
   useEffect(() => {
     detachPromise(loadDocs(''))
   }, [loadDocs])
+
+  useEffect(() => {
+    const seq = ++graphClusteringSeqRef.current
+    let cancelled = false
+
+    if (!graphData?.nodes.length) {
+      setGraphClusterResult(null)
+      return
+    }
+
+    const nodes = graphData.nodes.map((node) => ({ id: node.id, label: node.label }))
+    const links = graphData.links.map((link) => ({ source: link.source, target: link.target, label: link.label }))
+
+    const computeOnMainThread = async () => {
+      try {
+        const { computeConnectedComponents } = await import('@/lib/graph-clustering')
+        if (cancelled) return
+        const result = computeConnectedComponents({ nodes, links })
+        if (graphClusteringSeqRef.current === seq) {
+          setGraphClusterResult(result)
+        }
+      } catch (e) {
+        console.warn('Failed to compute dataset graph clusters', e)
+        if (graphClusteringSeqRef.current === seq) {
+          setGraphClusterResult(null)
+        }
+      }
+    }
+
+    if (graphClusteringDisabledRef.current || typeof Worker === 'undefined') {
+      detachPromise(computeOnMainThread())
+      return () => {
+        cancelled = true
+      }
+    }
+
+    detachPromise((async () => {
+      try {
+        let api = graphClusteringApiRef.current
+        if (!graphClusteringWorkerRef.current || !api) {
+          const { wrap } = await import('comlink')
+          if (cancelled) return
+          graphClusteringWorkerRef.current = new Worker(
+            new URL('../../workers/graph-clustering.worker.ts', import.meta.url),
+            { type: 'module' }
+          )
+          api = wrap<GraphClusteringWorkerApi>(graphClusteringWorkerRef.current)
+          graphClusteringApiRef.current = api
+        }
+
+        const result = await api.computeConnectedComponents({ nodes, links })
+        if (cancelled) return
+        if (graphClusteringSeqRef.current !== seq) return
+        setGraphClusterResult(result)
+      } catch (e) {
+        console.warn('Dataset graph clustering worker failed; falling back to main thread', e)
+        graphClusteringDisabledRef.current = true
+        detachPromise(computeOnMainThread())
+      }
+    })())
+
+    return () => {
+      cancelled = true
+    }
+  }, [graphData])
+
+  useEffect(() => {
+    return () => {
+      graphClusteringApiRef.current = null
+      graphClusteringWorkerRef.current?.terminate()
+      graphClusteringWorkerRef.current = null
+    }
+  }, [])
 
   const toggleDoc = useCallback((docId: string, checked: boolean) => {
     setSelectedDocIds((prev) => {
@@ -277,6 +436,7 @@ export default function DatasetKGWorkbenchPage() {
     }
 
     setGraphLoading(true)
+    setGraphClusterResult(null)
     try {
       const [graph, stats] = await Promise.all([
         GraphService.fetchInitialGraph({
@@ -290,12 +450,13 @@ export default function DatasetKGWorkbenchPage() {
         kgApi.getStats({ document_ids: docIds, pipeline_hash: effectivePipelineHash }).catch(() => null),
       ])
 
-      setGraphData(graph as any)
+      setGraphData(graph as GraphData)
       setGraphStats(stats)
     } catch (e: any) {
       console.error('Failed to load graph preview', e)
       toast.error(formatApiError(e, '加载图预览失败'))
       setGraphData(null)
+      setGraphClusterResult(null)
       setGraphStats(null)
     } finally {
       setGraphLoading(false)
@@ -463,23 +624,18 @@ export default function DatasetKGWorkbenchPage() {
                   </div>
                 </div>
 
-	                <div className="max-h-[420px] overflow-y-auto overscroll-contain pr-1 space-y-1">
-	                  {docsLoading && (
-	                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-8 justify-center">
-	                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
-	                      加载中…
-	                    </div>
-	                  )}
-	                  {!docsLoading && docs.length === 0 && (
-	                    <div className="text-xs text-muted-foreground py-8 text-center">没有文档</div>
-	                  )}
-	                  {!docsLoading && docs.length > 0 && (
-	                    docs.map((doc) => {
-	                      const id = String(doc.id || '')
-	                      const filename = String(doc.filename || id || '')
-	                      const status = String(doc.status || '')
-	                      const checked = selectedDocIds.has(id)
-	                      const isExtracting = singleExtractingDocId === id
+                <div className="max-h-[420px] overflow-y-auto overscroll-contain pr-1 space-y-1">
+                  {docsLoading ? (
+                    <DocsLoadingSkeleton />
+                  ) : docs.length === 0 ? (
+                    <div className="text-xs text-muted-foreground py-8 text-center">没有文档</div>
+                  ) : (
+                    docs.map((doc) => {
+                      const id = String(doc.id || '')
+                      const filename = String(doc.filename || id || '')
+                      const status = String(doc.status || '')
+                      const checked = selectedDocIds.has(id)
+                      const isExtracting = singleExtractingDocId === id
 
                       return (
                         <label
@@ -527,9 +683,9 @@ export default function DatasetKGWorkbenchPage() {
                           </div>
 	                        </label>
 	                      )
-	                    })
-	                  )}
-	                </div>
+                    })
+                  )}
+                </div>
               </Panel>
 
               <Panel className="space-y-3">
@@ -644,7 +800,9 @@ export default function DatasetKGWorkbenchPage() {
                   </Button>
                 </div>
 
-                {searchResults.length > 0 ? (
+                {searchLoading ? (
+                  <SearchResultsSkeleton />
+                ) : searchResults.length > 0 ? (
                   <div className="max-h-[220px] overflow-y-auto overscroll-contain pr-1 space-y-1">
                     {searchResults.map((n) => (
                       <button
@@ -717,29 +875,54 @@ export default function DatasetKGWorkbenchPage() {
                   </div>
                 </div>
 
-                {graphStats ? (
+                {graphLoading ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {GRAPH_STATS_SKELETON_KEYS.map((key) => (
+                      <Skeleton key={key} className="h-6 w-24 rounded-full" />
+                    ))}
+                  </div>
+                ) : graphStats || graphClusterResult ? (
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                      entities={Number((graphStats as any).entities || 0)}
-                    </Badge>
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                      events={Number((graphStats as any).events || 0)}
-                    </Badge>
-                    <Badge variant="outline" className="font-mono text-[10px]">
-                      links={Number((graphStats as any).links || 0)}
-                    </Badge>
+                    {graphStats ? (
+                      <>
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          entities={Number(graphStats.entities || 0)}
+                        </Badge>
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          events={Number(graphStats.events || 0)}
+                        </Badge>
+                        <Badge variant="outline" className="font-mono text-[10px]">
+                          links={Number(graphStats.links || 0)}
+                        </Badge>
+                      </>
+                    ) : null}
+                    {graphClusterResult ? (
+                      <>
+                        <Badge variant="secondary" className="font-mono text-[10px]">
+                          clusters={graphClusterResult.clusterCount}
+                        </Badge>
+                        <Badge variant="secondary" className="font-mono text-[10px]">
+                          maxCluster={Number(graphClusterResult.clusterSizes[0] || 0)}
+                        </Badge>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </Panel>
 
-              <Panel padding="none" className="overflow-hidden h-[min(720px,calc(100vh-260px))] min-h-[520px]">
+              <Panel padding="none" className="relative overflow-hidden h-[min(720px,calc(100vh-260px))] min-h-[520px]">
                 {graphData ? (
                   <GraphViewer ref={graphRef} data={graphData} />
-                ) : (
+                ) : !graphLoading ? (
                   <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
                     先点击“加载预览”拉取 KG 图数据
                   </div>
-                )}
+                ) : null}
+                {graphLoading ? (
+                  <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-sm">
+                    <GraphPreviewSkeleton />
+                  </div>
+                ) : null}
               </Panel>
             </div>
           </div>
