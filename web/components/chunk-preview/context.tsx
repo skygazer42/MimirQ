@@ -150,6 +150,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const focusFileLoadedRef = useRef(false)
   const deepLinkAppliedKeyRef = useRef<string>('')
   const lastSyncedChunkParamRef = useRef<string>('')
+  const currentFileItem = fileList[currentFileIndex] || null
+  const file = currentFileItem?.file || null
 
   useEffect(() => {
     return () => {
@@ -330,10 +332,6 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     })
     globalThis.window.localStorage.setItem(STORAGE_PERF_SETTINGS_KEY, payload)
   }, [includeOriginalText, originalTextMaxChars, maxChunks, useParseCache])
-
-  // 当前文件
-  const currentFileItem = fileList[currentFileIndex] || null
-  const file = currentFileItem?.file || null
 
   // Keep currentFileIndex valid when fileList changes.
   useEffect(() => {
