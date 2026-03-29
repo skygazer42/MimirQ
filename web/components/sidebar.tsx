@@ -95,12 +95,12 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
   return (
     <aside
       className={cn(
-        'bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col',
-        isWorkbench ? 'w-full h-full min-h-0 overflow-hidden' : 'w-80 h-dvh shadow-strong relative z-20'
+        'bg-sidebar/95 text-sidebar-foreground border-r border-sidebar-border/40 flex flex-col',
+        isWorkbench ? 'w-full h-full min-h-0 overflow-hidden' : 'w-80 h-dvh shadow-sm relative z-20'
       )}
     >
       {/* 头部 - 增加空间感 */}
-      <div className="p-6 border-b border-border/60">
+      <div className="p-6 border-b border-border/40">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -121,7 +121,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
               value={term}
               onChange={(e) => setTerm(e.target.value)}
               placeholder="快速搜索文档..."
-              className="w-full h-9 pl-9 pr-3 bg-background/50 border border-border/60 focus:bg-background/70 focus:border-primary/40 rounded-lg text-xs outline-none transition-colors placeholder:text-muted-foreground/60 focus-ring"
+              className="w-full h-9 pl-9 pr-3 bg-background/35 border border-border/45 focus:bg-background/55 focus:border-primary/35 rounded-lg text-xs outline-none transition-colors placeholder:text-muted-foreground/60 focus-ring"
             />
             {term && (
               <button
@@ -158,7 +158,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
         </div>
 
         {selectedDocIds.length > 0 && (
-          <div className="mt-4 flex items-center justify-between px-1 py-1 bg-accent/50 rounded-md border border-accent">
+            <div className="mt-4 flex items-center justify-between px-1 py-1 bg-accent/35 rounded-md border border-accent/60">
             <p className="text-xs text-muted-foreground pl-2">
               已选 {selectedDocIds.length} 项
             </p>
@@ -253,8 +253,8 @@ function DocumentCard({
 		      className={cn(
 		        'group relative p-3 rounded-xl border cursor-pointer h-full transition-colors duration-200',
 		        isSelected
-		          ? 'bg-primary/10 border-primary/40 shadow-soft'
-		          : 'bg-background/40 hover:bg-background/60 border-border/60 hover:border-primary/20 hover:shadow-soft'
+		          ? 'bg-primary/8 border-primary/35 shadow-xs'
+		          : 'bg-background/25 hover:bg-background/45 border-border/45 hover:border-primary/15'
 		      )}
 	      onClick={onSelect}
 	      onMouseEnter={() => setIsHovered(true)}
@@ -269,7 +269,7 @@ function DocumentCard({
         {/* 文件图标容器 */}
         <div className={cn(
           "p-2 rounded-lg transition-colors flex items-center justify-center",
-          isSelected ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground group-hover:text-foreground"
+          isSelected ? "bg-primary/10 text-primary" : "bg-secondary/70 text-muted-foreground group-hover:text-foreground"
         )}>
           <FileTypeIcon type={document.file_type} className="h-5 w-5" />
         </div>
@@ -356,7 +356,7 @@ function DocumentCard({
                 // Avoid triggering the card's click handler.
                 e.stopPropagation()
               }}
-	            className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-primary hover:text-primary-foreground"
+	            className="size-8 rounded-md bg-background/80 shadow-xs hover:bg-primary hover:text-primary-foreground"
 	            aria-label="查看详情"
 	            title="查看详情"
 	          >
@@ -375,7 +375,7 @@ function DocumentCard({
             }}
             aria-label="取消处理"
             title="取消处理"
-            className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-warning/10 hover:text-warning"
+            className="size-8 rounded-md bg-background/80 shadow-xs hover:bg-warning/10 hover:text-warning"
           >
             <X className="size-3.5" aria-hidden="true" />
           </Button>
@@ -392,7 +392,7 @@ function DocumentCard({
                 }}
                 aria-label="删除文档"
                 title="删除文档"
-                className="size-8 rounded-md bg-background/90 shadow-sm hover:bg-destructive hover:text-destructive-foreground"
+                className="size-8 rounded-md bg-background/80 shadow-xs hover:bg-destructive hover:text-destructive-foreground"
               >
                 <Trash2 className="size-3.5" aria-hidden="true" />
               </Button>
