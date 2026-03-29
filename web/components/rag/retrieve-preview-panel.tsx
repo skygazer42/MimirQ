@@ -686,6 +686,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                 </thead>
                 <tbody>
                   {searchResults.map((hit, idx) => {
+                    const staggerDelayMs = Math.min(idx, 10) * 40
                     const documentId = String(hit.document_id || '').trim()
                     const chunkId = String(hit.chunk_id || '')
                     const checked = !!chunkId && selectedEvidenceSet.has(chunkId)
@@ -700,7 +701,11 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                     const pathStr = String(hit.policy_path_str || '')
                     const docName = String(hit.document_name || '')
                     return (
-                      <tr key={`${String(hit.document_id || '')}:${chunkId}:${role}:${clause}:${pathStr}`} className="border-b border-border/40 hover:bg-muted/20">
+                      <tr
+                        key={`${String(hit.document_id || '')}:${chunkId}:${role}:${clause}:${pathStr}`}
+                        className="border-b border-border/40 hover:bg-muted/20 animate-in fade-in-0 slide-in-from-bottom-1 duration-300 motion-reduce:animate-none"
+                        style={{ animationDelay: `${staggerDelayMs}ms` }}
+                      >
                         <td className="p-3 align-top">
                           <input
                             type="checkbox"
