@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { motion, useReducedMotion } from 'framer-motion'
 import { Database, FileText, Settings, Loader2, CheckCircle, XCircle, AlertTriangle, RefreshCw, Layers, HardDrive, FileStack, Eye, LayoutGrid, List as ListIcon, MoreVertical, Zap, Filter } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
@@ -55,8 +56,12 @@ function docGridColumnsForViewportWidth(width: number): number {
 export default function KnowledgePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const reduceMotion = useReducedMotion()
   const lastUrlRef = useRef<string | null>(null)
   const didInitFromUrlRef = useRef(false)
+  const layoutTransition = reduceMotion
+    ? { duration: 0 }
+    : { type: 'spring', stiffness: 380, damping: 34, mass: 0.42 }
 
   const { documents, total, isLoading, uploadDocuments, uploadDocumentFromUrl, deleteDocument, loadDocuments } = useDocuments()
   const [activeTab, setActiveTab] = useState<TabType>('documents')
@@ -698,32 +703,52 @@ export default function KnowledgePage() {
                     >
                       <Eye className="w-4 h-4" />
                     </IconButton>
-                    <div className="bg-muted/40 border border-border/60 p-1 rounded-lg flex gap-1">
+                    <motion.div
+                      layout={!reduceMotion}
+                      transition={layoutTransition}
+                      className="bg-muted/40 border border-border/60 p-1 rounded-lg flex gap-1"
+                    >
                       <button
                         aria-label="网格视图"
                         onClick={() => setViewMode('grid')}
                         className={cn(
-                          "p-1.5 rounded-md transition-colors focus-ring",
+                          "relative p-1.5 rounded-md transition-colors focus-ring",
                           viewMode === 'grid'
                             ? "bg-background shadow-soft text-primary"
                             : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                         )}
                       >
-                        <LayoutGrid className="w-4 h-4" />
+                        {viewMode === 'grid' ? (
+                          <motion.span
+                            layoutId="knowledge-view-mode-active-pill"
+                            transition={layoutTransition}
+                            aria-hidden="true"
+                            className="absolute inset-0 rounded-md bg-background shadow-soft"
+                          />
+                        ) : null}
+                        <LayoutGrid className="relative z-10 w-4 h-4" />
                       </button>
                       <button
                         aria-label="列表视图"
                         onClick={() => setViewMode('list')}
                         className={cn(
-                          "p-1.5 rounded-md transition-colors focus-ring",
+                          "relative p-1.5 rounded-md transition-colors focus-ring",
                           viewMode === 'list'
                             ? "bg-background shadow-soft text-primary"
                             : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                         )}
                       >
-                        <ListIcon className="w-4 h-4" />
+                        {viewMode === 'list' ? (
+                          <motion.span
+                            layoutId="knowledge-view-mode-active-pill"
+                            transition={layoutTransition}
+                            aria-hidden="true"
+                            className="absolute inset-0 rounded-md bg-background shadow-soft"
+                          />
+                        ) : null}
+                        <ListIcon className="relative z-10 w-4 h-4" />
                       </button>
-                    </div>
+                    </motion.div>
                   </>
                 ) : null}
               </div>
@@ -738,6 +763,11 @@ export default function KnowledgePage() {
             className="h-0 w-0"
           />
 	          {activeTab === 'documents' ? (
+              <motion.div
+                layout={!reduceMotion}
+                layoutId="knowledge-documents-surface"
+                transition={layoutTransition}
+              >
 	            <KnowledgeDocumentsPanel
 	              isLoading={isLoading}
 	              documents={documents}
@@ -868,9 +898,10 @@ export default function KnowledgePage() {
               anySelectedArchived={anySelectedArchived}
               anySelectedNotArchived={anySelectedNotArchived}
 
-              deleteDocument={deleteDocument}
-              handleFileUpload={handleFileUpload}
-            />
+	              deleteDocument={deleteDocument}
+	              handleFileUpload={handleFileUpload}
+	            />
+              </motion.div>
           ) : null}
 
           {/* 检索测试 */}
