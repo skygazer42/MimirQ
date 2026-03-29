@@ -94,12 +94,14 @@ export function CinematicTypewriter({
 }: Readonly<CinematicTypewriterProps>) {
   const [reduceMotion, setReduceMotion] = useState(false)
   const [displayedContent, setDisplayedContent] = useState("")
+  const [pendingToken, setPendingToken] = useState("")
   const [isTyping, setIsTyping] = useState(false)
 
   const contentRef = useRef(content)
   const streamingRef = useRef(isStreaming)
   const onCompleteRef = useRef(onComplete)
   const displayedRef = useRef(displayedContent)
+  const pendingRef = useRef(pendingToken)
   const indexRef = useRef(0)
   const timeoutRef = useRef<number | null>(null)
   const completedRef = useRef(false)
@@ -120,6 +122,10 @@ export function CinematicTypewriter({
   useEffect(() => {
     displayedRef.current = displayedContent
   }, [displayedContent])
+
+  useEffect(() => {
+    pendingRef.current = pendingToken
+  }, [pendingToken])
 
   // Markdown 组件配置
   const markdownComponents = useMemo(() => ({
@@ -202,8 +208,10 @@ export function CinematicTypewriter({
       indexRef.current = full.length
       completedRef.current = !streamingRef.current
       displayedRef.current = full
+      pendingRef.current = ''
 
       setDisplayedContent(full)
+      setPendingToken('')
       setIsTyping(false)
       if (!streamingRef.current) onCompleteRef.current?.()
       return
@@ -212,12 +220,14 @@ export function CinematicTypewriter({
     // Streaming-safe typing loop: always reads latest content via refs, so appends keep flowing.
     function resetIfReplaced() {
       const full = contentRef.current
-      const currentDisplayed = displayedRef.current
+      const currentDisplayed = displayedRef.current + pendingRef.current
       if (currentDisplayed && !full.startsWith(currentDisplayed)) {
         indexRef.current = 0
         completedRef.current = false
         displayedRef.current = ''
+        pendingRef.current = ''
         startTransition(() => setDisplayedContent(''))
+        startTransition(() => setPendingToken(''))
       }
     }
 
@@ -233,6 +243,15 @@ export function CinematicTypewriter({
       resetIfReplaced()
 
       const full = contentRef.current
+      const buffered = pendingRef.current
+      if (buffered) {
+        const nextDisplayed = displayedRef.current + buffered
+        displayedRef.current = nextDisplayed
+        pendingRef.current = ''
+        startTransition(() => setDisplayedContent(nextDisplayed))
+        startTransition(() => setPendingToken(''))
+      }
+
       const idx = indexRef.current
 
       if (idx >= full.length) {
@@ -258,10 +277,11 @@ export function CinematicTypewriter({
       setIsTyping(true)
       const step = computeNextTypingStep(full, idx)
       const nextIndex = Math.min(full.length, Math.max(idx, step.nextIndex))
+      const token = full.slice(idx, nextIndex)
       indexRef.current = nextIndex
-      displayedRef.current = full.slice(0, nextIndex)
+      pendingRef.current = token
 
-      startTransition(() => setDisplayedContent(full.slice(0, nextIndex)))
+      startTransition(() => setPendingToken(token))
       schedule(step.delayMs)
     }
 
@@ -286,6 +306,11 @@ export function CinematicTypewriter({
       >
         {displayedContent}
       </ReactMarkdown>
+      {!reduceMotion && pendingToken && (
+        <span className="inline whitespace-pre-wrap align-baseline text-foreground/90 motion-safe:animate-fade-in">
+          {pendingToken}
+        </span>
+      )}
 
       {/* 电影感光标 */}
       {isTyping && !reduceMotion && (
