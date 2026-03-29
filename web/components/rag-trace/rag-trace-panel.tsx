@@ -88,6 +88,64 @@ function getPrimaryScore(c: RagTraceCitation) {
   return Number.isFinite(n) ? n : null
 }
 
+export type TraceDiffCandidateOption = {
+  requestId: string
+  tsMs: number
+  mode: string | null
+  citationsCount: number
+  retrievalConfigHash: string | null
+  sameRetrievalConfig: boolean | null
+}
+
+function normalizeTraceRequestId(trace: RagTrace | null | undefined) {
+  return String(trace?.request_id || '').trim()
+}
+
+export function buildTraceDiffCandidateOptions(
+  traces: ReadonlyArray<RagTrace>,
+  currentRequestId: string,
+  currentRetrievalConfigHash?: string | null
+): TraceDiffCandidateOption[] {
+  const normalizedCurrentRequestId = String(currentRequestId || '').trim()
+  const normalizedCurrentConfigHash = String(currentRetrievalConfigHash || '').trim() || null
+  const currentTrace = traces.find((trace) => normalizeTraceRequestId(trace) === normalizedCurrentRequestId) ?? null
+  const currentTsMs = typeof currentTrace?.ts_ms === 'number' && Number.isFinite(currentTrace.ts_ms) ? currentTrace.ts_ms : null
+
+  return traces
+    .map((trace) => {
+      const requestId = normalizeTraceRequestId(trace)
+      if (!requestId || requestId === normalizedCurrentRequestId) return null
+
+      const retrievalConfigHash = String(trace.retrieval?.retrieval_config_hash || '').trim() || null
+      return {
+        requestId,
+        tsMs: typeof trace.ts_ms === 'number' && Number.isFinite(trace.ts_ms) ? trace.ts_ms : 0,
+        mode: typeof trace.retrieval?.mode === 'string' ? trace.retrieval.mode : null,
+        citationsCount:
+          typeof trace.citations_count === 'number' && Number.isFinite(trace.citations_count)
+            ? trace.citations_count
+            : (trace.citations || []).length,
+        retrievalConfigHash,
+        sameRetrievalConfig:
+          normalizedCurrentConfigHash && retrievalConfigHash ? retrievalConfigHash === normalizedCurrentConfigHash : null,
+      } satisfies TraceDiffCandidateOption
+    })
+    .filter((candidate): candidate is TraceDiffCandidateOption => Boolean(candidate))
+    .sort((a, b) => {
+      const aConfigChanged = a.sameRetrievalConfig === false ? 1 : 0
+      const bConfigChanged = b.sameRetrievalConfig === false ? 1 : 0
+      if (aConfigChanged !== bConfigChanged) return bConfigChanged - aConfigChanged
+
+      if (currentTsMs != null) {
+        const aDistance = Math.abs(a.tsMs - currentTsMs)
+        const bDistance = Math.abs(b.tsMs - currentTsMs)
+        if (aDistance !== bDistance) return aDistance - bDistance
+      }
+
+      return b.tsMs - a.tsMs
+    })
+}
+
 const CITATION_SIMULATION_CHANNELS = [
   { key: 'rerank_score', label: 'Rerank' },
   { key: 'vector_score', label: 'Vector' },
@@ -398,6 +456,116 @@ function getTraceCitationLabel(citation: RagTraceCitation, fallback: string) {
   const citationRecord = citation as Record<string, unknown>
   const rawDocumentName = typeof citationRecord.document_name === 'string' ? citationRecord.document_name : ''
   return String(rawDocumentName || citation.document_id || fallback).trim() || fallback
+}
+
+type TraceCitationDiffItem = {
+  key: string
+  label: string
+  citation: RagTraceCitation
+  score: number | null
+}
+
+type TraceCitationScoreShiftItem = {
+  key: string
+  label: string
+  a: RagTraceCitation
+  b: RagTraceCitation
+  scoreA: number | null
+  scoreB: number | null
+  scoreDelta: number
+}
+
+export type TraceCitationDiffSummary = {
+  sharedCount: number
+  addedCount: number
+  removedCount: number
+  scoreShiftCount: number
+  added: TraceCitationDiffItem[]
+  removed: TraceCitationDiffItem[]
+  scoreShifts: TraceCitationScoreShiftItem[]
+}
+
+function buildTraceCitationKey(citation: RagTraceCitation) {
+  return [
+    String(citation.document_id || '').trim(),
+    String(citation.chunk_id || '').trim(),
+    citation.chunk_index == null ? '' : String(citation.chunk_index),
+    citation.page_number == null ? '' : String(citation.page_number),
+    citation.start_char == null ? '' : String(citation.start_char),
+    citation.end_char == null ? '' : String(citation.end_char),
+    String(citation.retrieval_role || '').trim(),
+    String(citation.neighbor_of || '').trim(),
+  ].join('::')
+}
+
+export function buildTraceCitationDiff(traceA: RagTrace | null, traceB: RagTrace | null): TraceCitationDiffSummary {
+  const citationsA = traceA?.citations || []
+  const citationsB = traceB?.citations || []
+  const mapA = new Map(citationsA.map((citation) => [buildTraceCitationKey(citation), citation] as const))
+  const mapB = new Map(citationsB.map((citation) => [buildTraceCitationKey(citation), citation] as const))
+
+  const added: TraceCitationDiffItem[] = []
+  const removed: TraceCitationDiffItem[] = []
+  const scoreShifts: TraceCitationScoreShiftItem[] = []
+  let sharedCount = 0
+
+  const keys = new Set<string>([...mapA.keys(), ...mapB.keys()])
+  for (const key of keys) {
+    const citationA = mapA.get(key) ?? null
+    const citationB = mapB.get(key) ?? null
+
+    if (citationA && citationB) {
+      sharedCount += 1
+      const scoreA = getPrimaryScore(citationA)
+      const scoreB = getPrimaryScore(citationB)
+      const scoreDelta = (scoreB ?? 0) - (scoreA ?? 0)
+      if (Math.abs(scoreDelta) > 1e-6) {
+        scoreShifts.push({
+          key,
+          label: getTraceCitationLabel(citationB, String(citationB.document_id || key).trim() || key),
+          a: citationA,
+          b: citationB,
+          scoreA,
+          scoreB,
+          scoreDelta,
+        })
+      }
+      continue
+    }
+
+    if (citationB) {
+      added.push({
+        key,
+        label: getTraceCitationLabel(citationB, String(citationB.document_id || key).trim() || key),
+        citation: citationB,
+        score: getPrimaryScore(citationB),
+      })
+      continue
+    }
+
+    if (citationA) {
+      removed.push({
+        key,
+        label: getTraceCitationLabel(citationA, String(citationA.document_id || key).trim() || key),
+        citation: citationA,
+        score: getPrimaryScore(citationA),
+      })
+    }
+  }
+
+  added.sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.label.localeCompare(b.label))
+  removed.sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.label.localeCompare(b.label))
+  scoreShifts.sort((a, b) => Math.abs(b.scoreDelta) - Math.abs(a.scoreDelta) || a.label.localeCompare(b.label))
+
+  return {
+    sharedCount,
+    addedCount: added.length,
+    removedCount: removed.length,
+    scoreShiftCount: scoreShifts.length,
+    added,
+    removed,
+    scoreShifts,
+  }
 }
 
 function readStoredTraceCitationTargets(): Record<string, StoredTraceCitationTarget> {
@@ -750,6 +918,145 @@ export function RagTracePipelineTimeline({
   )
 }
 
+function TraceCitationDiffList({
+  title,
+  emptyLabel,
+  items,
+  tone,
+  onPrefetchCitation,
+  onOpenCitation,
+}: Readonly<{
+  title: string
+  emptyLabel: string
+  items: TraceCitationDiffItem[]
+  tone: 'added' | 'removed'
+  onPrefetchCitation: (documentId?: string | null, chunkId?: string | null) => void
+  onOpenCitation: (citation: RagTraceCitation, opts?: { label?: string; notify?: boolean }) => void
+}>) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/40 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-foreground">{title}</div>
+        <Badge
+          variant="soft"
+          className={cn(
+            'text-[10px]',
+            tone === 'added' ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : undefined,
+            tone === 'removed' ? 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300' : undefined
+          )}
+        >
+          {items.length}
+        </Badge>
+      </div>
+
+      {items.length ? (
+        <div className="mt-3 space-y-2">
+          {items.slice(0, 5).map((item) => {
+            const documentId = String(item.citation.document_id || '').trim()
+            const chunkId = String(item.citation.chunk_id || '').trim() || undefined
+            const scoreLabel = item.score == null ? '—' : item.score.toFixed(3)
+            const pageLabel = item.citation.page_number == null ? null : `P.${item.citation.page_number}`
+            return (
+              <div
+                key={`${tone}:${item.key}`}
+                className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-background/80 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-foreground">{item.label}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <span>{chunkId ? `chunk=${chunkId}` : 'document-level evidence'}</span>
+                    {pageLabel ? <span>{pageLabel}</span> : null}
+                    <span className="font-mono">score={scoreLabel}</span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl"
+                  disabled={!documentId}
+                  onMouseEnter={() => onPrefetchCitation(documentId, chunkId)}
+                  onFocus={() => onPrefetchCitation(documentId, chunkId)}
+                  onClick={() => onOpenCitation(item.citation, { label: item.label })}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-xs text-muted-foreground">
+          {emptyLabel}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TraceCitationScoreShiftList({
+  items,
+  onPrefetchCitation,
+  onOpenCitation,
+}: Readonly<{
+  items: TraceCitationScoreShiftItem[]
+  onPrefetchCitation: (documentId?: string | null, chunkId?: string | null) => void
+  onOpenCitation: (citation: RagTraceCitation, opts?: { label?: string; notify?: boolean }) => void
+}>) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/40 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-foreground">分数漂移</div>
+        <Badge variant="soft" className="text-[10px]">
+          {items.length}
+        </Badge>
+      </div>
+
+      {items.length ? (
+        <div className="mt-3 space-y-2">
+          {items.slice(0, 5).map((item) => {
+            const documentId = String(item.b.document_id || item.a.document_id || '').trim()
+            const chunkId = String(item.b.chunk_id || item.a.chunk_id || '').trim() || undefined
+            return (
+              <div
+                key={`shift:${item.key}`}
+                className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-background/80 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-foreground">{item.label}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <span>{chunkId ? `chunk=${chunkId}` : 'document-level evidence'}</span>
+                    <span className="font-mono">
+                      A={item.scoreA == null ? '—' : item.scoreA.toFixed(3)} → B={item.scoreB == null ? '—' : item.scoreB.toFixed(3)}
+                    </span>
+                    <span className={cn('font-mono', item.scoreDelta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+                      Δ {item.scoreDelta.toFixed(3)}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl"
+                  disabled={!documentId}
+                  onMouseEnter={() => onPrefetchCitation(documentId, chunkId)}
+                  onFocus={() => onPrefetchCitation(documentId, chunkId)}
+                  onClick={() => onOpenCitation(item.b, { label: item.label })}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-xs text-muted-foreground">
+          共享 evidence 的排序分数没有明显变化。
+        </div>
+      )}
+    </div>
+  )
+}
+
 type RagTracePanelProps = {
   conversationId: string
   className?: string
@@ -775,7 +1082,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const [storedTraceCitationTargets, setStoredTraceCitationTargets] = React.useState<Record<string, StoredTraceCitationTarget>>({})
   const prefetchedTraceCitationTargetsRef = React.useRef<Set<string>>(new Set())
 
-  const items = data?.items ?? []
+  const items = React.useMemo(() => data?.items ?? [], [data])
   const selected = items[selectedIndex] ?? items[0] ?? null
   const retrievalConfigHash = selected?.retrieval?.retrieval_config_hash || null
   const mainQuery = (selected?.retrieval?.per_query || []).find((q) => q?.kind === 'main') ?? (selected?.retrieval?.per_query || [])[0] ?? null
@@ -785,6 +1092,19 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const rerankSkipReason = rerankMeta?.skip_reason ? String(rerankMeta.skip_reason) : null
   const rerankError = rerankMeta?.error ? String(rerankMeta.error) : null
   const requestId = String(selected?.request_id || '').trim()
+  const diffCandidateOptions = React.useMemo(
+    () => buildTraceDiffCandidateOptions(items, requestId, retrievalConfigHash),
+    [items, requestId, retrievalConfigHash]
+  )
+  const selectedDiffComparisonTrace = React.useMemo(() => {
+    const targetRequestId = diffOtherRequestId.trim()
+    if (!targetRequestId) return null
+    return items.find((item) => String(item.request_id || '').trim() === targetRequestId) ?? null
+  }, [diffOtherRequestId, items])
+  const localCitationDiff = React.useMemo(
+    () => buildTraceCitationDiff(selected, selectedDiffComparisonTrace),
+    [selected, selectedDiffComparisonTrace]
+  )
   const pipelineSteps = React.useMemo(() => buildPipelineTimelineSteps(selected), [selected])
   const pipelineInspectorSections = React.useMemo(() => buildPipelineInspectorSections(selected), [selected])
   const availableCitationSimulationChannels = React.useMemo(
@@ -1006,9 +1326,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     }
 	  }, [requestId])
 
-	  const runDiff = React.useCallback(async () => {
+	  const runDiffForRequestId = React.useCallback(async (otherRequestId: string) => {
 	    const a = requestId
-	    const b = diffOtherRequestId.trim()
+	    const b = String(otherRequestId || '').trim()
 	    if (!a || !b) return
 	    if (a === b) {
 	      toast.error('请提供两个不同的 request_id')
@@ -1028,7 +1348,18 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 	    } finally {
 	      setDiffLoading(false)
 	    }
-	  }, [diffOtherRequestId, requestId])
+	  }, [requestId])
+
+	  const runDiff = React.useCallback(async () => {
+      const b = diffOtherRequestId.trim()
+      if (!b) return
+      await runDiffForRequestId(b)
+    }, [diffOtherRequestId, runDiffForRequestId])
+
+	  const selectDiffCandidate = React.useCallback((candidate: TraceDiffCandidateOption) => {
+      setDiffOtherRequestId(candidate.requestId)
+      detachPromise(runDiffForRequestId(candidate.requestId))
+    }, [runDiffForRequestId])
 
 	  React.useEffect(() => {
 	    // Clear diff results when switching the selected trace.
@@ -1231,6 +1562,50 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     transition={{ duration: 0.18, ease: 'easeOut' }}
                   >
                     <Panel variant="muted" className="space-y-3">
+                      {diffCandidateOptions.length ? (
+                        <div className="space-y-2">
+                          <div>
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Trace 对比候选</div>
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              优先展示 retrieval config 有变化、且时间上最接近当前 trace 的候选。
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {diffCandidateOptions.slice(0, 6).map((candidate) => {
+                              const active = diffOtherRequestId.trim() === candidate.requestId
+                              return (
+                                <button
+                                  key={`diff-candidate:${candidate.requestId}`}
+                                  type="button"
+                                  onClick={() => selectDiffCandidate(candidate)}
+                                  className={cn(
+                                    'rounded-xl border px-3 py-2 text-left transition-colors',
+                                    'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
+                                    active
+                                      ? 'border-sky-500/50 bg-sky-500/10'
+                                      : 'border-border/60 bg-background/80 hover:border-sky-500/30 hover:bg-muted/30'
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                                    <span className="font-mono">{shortHash(candidate.requestId, { head: 10, tail: 6 })}</span>
+                                    <Badge variant="soft" className="text-[10px]">
+                                      {candidate.sameRetrievalConfig === false
+                                        ? 'cfg changed'
+                                        : candidate.sameRetrievalConfig === true
+                                          ? 'same cfg'
+                                          : 'cfg ?'}
+                                    </Badge>
+                                  </div>
+                                  <div className="mt-1 text-[11px] text-muted-foreground">
+                                    {candidate.mode || '—'} · citations={candidate.citationsCount} · {formatTs(candidate.tsMs)}
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
                       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
                           <div className="space-y-1">
@@ -1241,7 +1616,11 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             <div className="text-[11px] text-muted-foreground">request_id B</div>
                             <Input
                               value={diffOtherRequestId}
-                              onChange={(e) => setDiffOtherRequestId(e.target.value)}
+                              onChange={(e) => {
+                                setDiffOtherRequestId(e.target.value)
+                                setDiffResult(null)
+                                setDiffError(null)
+                              }}
                               placeholder="输入另一个 request_id"
                               className="font-mono text-xs"
                             />
@@ -1266,6 +1645,70 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       {diffError ? (
                         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                           {diffError}
+                        </div>
+                      ) : null}
+
+                      {selectedDiffComparisonTrace ? (
+                        <Panel variant="glass" className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Evidence Drift</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                直接比较当前 trace（A）和候选 trace（B）的 citation 漂移，优先看新增、丢失和分数变化最大的证据。
+                              </div>
+                            </div>
+                            <Badge variant="soft" className="text-[10px]">
+                              A {requestId || '—'} vs B {selectedDiffComparisonTrace.request_id || '—'}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                            <div className="rounded-xl border border-border/60 bg-card/60 px-3 py-3">
+                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Shared</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.sharedCount}</div>
+                            </div>
+                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-3">
+                              <div className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Added In B</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.addedCount}</div>
+                            </div>
+                            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-3">
+                              <div className="text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-300">Removed From A</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.removedCount}</div>
+                            </div>
+                            <div className="rounded-xl border border-border/60 bg-card/60 px-3 py-3">
+                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Score Shift</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.scoreShiftCount}</div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                            <TraceCitationDiffList
+                              title="新增证据（B）"
+                              emptyLabel="当前候选 trace 没有带来新的最终 citations。"
+                              items={localCitationDiff.added}
+                              tone="added"
+                              onPrefetchCitation={prefetchTraceCitationTarget}
+                              onOpenCitation={openTraceCitation}
+                            />
+                            <TraceCitationDiffList
+                              title="丢失证据（A）"
+                              emptyLabel="当前 trace 没有丢失任何最终 citations。"
+                              items={localCitationDiff.removed}
+                              tone="removed"
+                              onPrefetchCitation={prefetchTraceCitationTarget}
+                              onOpenCitation={openTraceCitation}
+                            />
+                          </div>
+
+                          <TraceCitationScoreShiftList
+                            items={localCitationDiff.scoreShifts}
+                            onPrefetchCitation={prefetchTraceCitationTarget}
+                            onOpenCitation={openTraceCitation}
+                          />
+                        </Panel>
+                      ) : diffOtherRequestId.trim() ? (
+                        <div className="rounded-xl border border-dashed border-border/60 bg-card/30 px-3 py-3 text-xs text-muted-foreground">
+                          当前 request_id B 不在已加载的 trace 列表里，所以只能显示 bundle diff，无法给出本地 evidence drift 摘要。
                         </div>
                       ) : null}
 

@@ -1,11 +1,5 @@
 # Advanced RAG Features & Expert Workbench Plan
 
-## 1. 深度溯源与透明化 (Traceability & Observability)
-
-### 1.2 A/B 测试对比视图 (Diff-centric Debugging)
-- [ ] **侧边栏对比**: 支持双面板开启，对比“线上版本”与“测试配置”在同一问题下的检索召回差异。
-- [ ] **语义差异高亮**: 对比两份切片结果的相似度偏差，高亮显示新增或丢失的关键证据。
-
 ## 2. 交互式数据调优 (Data-Driven Refinement)
 
 ### 2.1 向量空间诊断 (Embedding Space Diagnostics)
