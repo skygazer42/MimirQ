@@ -25,6 +25,7 @@ export interface PdfPreviewComputationResult {
   blockRanges: BlockRangeLike[]
   chunkRanges: PdfPreviewChunkRange[]
   blockIdToChunkIndexEntries: Array<[string, number]>
+  chunkBlockIdsByIndexEntries: Array<[number, string[]]>
   boxesByPageEntries: Array<[number, PdfPreviewBox[]]>
 }
 
@@ -101,6 +102,22 @@ export function findBlockIdsForChunkIndex(params: {
   return ids
 }
 
+function computeChunkBlockIdsByIndexEntries(params: {
+  chunkRanges: PdfPreviewChunkRange[]
+  blockRanges: BlockRangeLike[]
+}): Array<[number, string[]]> {
+  const { chunkRanges, blockRanges } = params
+
+  return chunkRanges.map((chunk) => [
+    chunk.index,
+    findBlockIdsForChunkIndex({
+      chunkIndex: chunk.index,
+      chunkRanges,
+      blockRanges,
+    }),
+  ])
+}
+
 export function computePdfPreviewData(params: {
   rawOriginal: string
   previewChunks: PdfPreviewChunkLike[]
@@ -121,6 +138,10 @@ export function computePdfPreviewData(params: {
       }))
     ).entries()
   )
+  const chunkBlockIdsByIndexEntries = computeChunkBlockIdsByIndexEntries({
+    chunkRanges,
+    blockRanges,
+  })
   const boxesByPageEntries = computeBoxesByPageEntries(blocksWithPositions)
 
   return {
@@ -128,6 +149,7 @@ export function computePdfPreviewData(params: {
     blockRanges,
     chunkRanges,
     blockIdToChunkIndexEntries,
+    chunkBlockIdsByIndexEntries,
     boxesByPageEntries,
   }
 }

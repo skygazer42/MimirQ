@@ -16,7 +16,6 @@ import { PageLoading } from '@/components/ui/page-loading'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   computePdfPreviewData,
-  findBlockIdsForChunkIndex,
   type PdfPreviewComputationResult,
 } from '@/lib/pdf-preview-computation'
 import { detachPromise } from '@/lib/utils'
@@ -160,17 +159,13 @@ export function PdfPreview() {
     () => pdfComputation?.blocksWithPositions || [],
     [pdfComputation?.blocksWithPositions]
   )
-  const blockRanges = useMemo(
-    () => pdfComputation?.blockRanges || [],
-    [pdfComputation?.blockRanges]
-  )
-  const chunkRanges = useMemo(
-    () => pdfComputation?.chunkRanges || [],
-    [pdfComputation?.chunkRanges]
-  )
   const blockIdToChunkIndex = useMemo(
     () => new Map(pdfComputation?.blockIdToChunkIndexEntries || []),
     [pdfComputation?.blockIdToChunkIndexEntries]
+  )
+  const blockIdsByChunkIndex = useMemo(
+    () => new Map(pdfComputation?.chunkBlockIdsByIndexEntries || []),
+    [pdfComputation?.chunkBlockIdsByIndexEntries]
   )
   const boxesByPage = useMemo(
     () => new Map(pdfComputation?.boxesByPageEntries || []),
@@ -178,22 +173,12 @@ export function PdfPreview() {
   )
 
   const selectedBlockIds = useMemo(
-    () =>
-      findBlockIdsForChunkIndex({
-        chunkIndex: selectedChunkIndex,
-        blockRanges,
-        chunkRanges,
-      }),
-    [blockRanges, chunkRanges, selectedChunkIndex]
+    () => (selectedChunkIndex == null ? [] : blockIdsByChunkIndex.get(selectedChunkIndex) || []),
+    [blockIdsByChunkIndex, selectedChunkIndex]
   )
   const hoveredBlockIds = useMemo(
-    () =>
-      findBlockIdsForChunkIndex({
-        chunkIndex: hoveredChunkIndex,
-        blockRanges,
-        chunkRanges,
-      }),
-    [blockRanges, chunkRanges, hoveredChunkIndex]
+    () => (hoveredChunkIndex == null ? [] : blockIdsByChunkIndex.get(hoveredChunkIndex) || []),
+    [blockIdsByChunkIndex, hoveredChunkIndex]
   )
 
   const activeBlockIds = selectedBlockIds.length ? selectedBlockIds : hoveredBlockIds
