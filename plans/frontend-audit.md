@@ -33,8 +33,6 @@
 - [ ] **迁移至 React Query**: 优先从 `observability` 和 `parsing` 页面开始，移除手动管理的 `useEffect` 取数逻辑。
 
 ### 阶段 3: 性能增强 (Long Term)
-- [ ] **计算流转 (Main-thread Free)**: 为 3D Graph 和 PDF 解析建立专用的 Web Workers 链路。
 - [ ] **Canvas 资源池化**: 优化 `chunk-preview` 中的 Canvas 回收机制，防止 PDF 频繁渲染导致的内存泄漏。
 
 ## 3. UI/UX 体验建议 (UX Polish)
-- [ ] **Skeleton 渐进加载**: 避免全屏 Loading 闪烁，保持现有内容可见直至新数据就绪。
