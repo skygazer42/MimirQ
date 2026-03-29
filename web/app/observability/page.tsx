@@ -2,9 +2,17 @@
 
 import dynamic from 'next/dynamic'
 
+import { PageLoading } from '@/components/ui/page-loading'
+
 const ObservabilityPageClient = dynamic(() => import('./page-client'), {
   ssr: false,
-  loading: () => <div className="min-h-dvh bg-background" />,
+  loading: () => (
+    <PageLoading
+      className="min-h-dvh bg-background"
+      message="正在加载可观测面板..."
+      srMessage="Loading observability dashboard"
+    />
+  ),
 })
 
 export default function ObservabilityPage() {
