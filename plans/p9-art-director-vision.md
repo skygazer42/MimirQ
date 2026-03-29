@@ -8,8 +8,6 @@
 - [ ] **Geist Typography**: 统一使用更具 modern 态的 `Geist` 字体栈，利用 1.7-1.8 倍行高，将“阅读知识库”变成一种享受。
 
 ### 1.2 呼吸感动效 (Breathing Interactions)
-- [ ] **Layout Transitions**: 在切换“图谱”与“列表”视图时，利用 Framer Motion 的 `layoutId` 实现元素平滑飞行，而非硬切。
-- [ ] **Staggered Entry**: 搜索结果列表应采用交错式入场动画（Staggered Fade-in），给用户一种“正在检索并逐步呈现”的韵律感。
 
 ## 2. P9 架构标准：零技术债演进
 

@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { motion, useReducedMotion } from 'framer-motion'
+import { motion, useReducedMotion, type Transition } from 'framer-motion'
 import { Database, FileText, Settings, Loader2, CheckCircle, XCircle, AlertTriangle, RefreshCw, Layers, HardDrive, FileStack, Eye, LayoutGrid, List as ListIcon, MoreVertical, Zap, Filter } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
@@ -59,7 +59,7 @@ export default function KnowledgePage() {
   const reduceMotion = useReducedMotion()
   const lastUrlRef = useRef<string | null>(null)
   const didInitFromUrlRef = useRef(false)
-  const layoutTransition = reduceMotion
+  const layoutTransition: Transition = reduceMotion
     ? { duration: 0 }
     : { type: 'spring', stiffness: 380, damping: 34, mass: 0.42 }
 
