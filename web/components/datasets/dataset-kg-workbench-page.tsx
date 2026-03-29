@@ -30,6 +30,7 @@ import { StepIndicator } from '@/components/ui/step-indicator'
 
 import { datasetApi, documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { applyClusterPalette } from '@/lib/graph-cluster-palette'
 import type { GraphClusterResult } from '@/lib/graph-clustering'
 import type { GraphData } from '@/lib/graph-parser'
 import { cn, detachPromise } from '@/lib/utils'
@@ -181,6 +182,7 @@ export default function DatasetKGWorkbenchPage() {
   const [graphLoading, setGraphLoading] = useState(false)
   const [graphData, setGraphData] = useState<GraphData | null>(null)
   const [graphClusterResult, setGraphClusterResult] = useState<GraphClusterResult | null>(null)
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string | null>(null)
   const [graphStats, setGraphStats] = useState<KGStatsResponse | null>(null)
   const [includeEntityLinks, setIncludeEntityLinks] = useState(true)
   const [includeRelationLinks, setIncludeRelationLinks] = useState(false)
@@ -195,6 +197,52 @@ export default function DatasetKGWorkbenchPage() {
 
   const scopedDocIds = useMemo(() => Array.from(selectedDocIds), [selectedDocIds])
   const effectivePipelineHash = useMemo(() => pipelineHash.trim() || undefined, [pipelineHash])
+  const graphPaletteSeed = useMemo(() => datasetId || effectivePipelineHash || null, [datasetId, effectivePipelineHash])
+
+  const graphPreviewData = useMemo(() => {
+    if (!graphData) return null
+    return applyClusterPalette({
+      graphRenderData: graphData,
+      paletteSeed: graphPaletteSeed,
+      clusterResult: graphClusterResult,
+    })
+  }, [graphClusterResult, graphData, graphPaletteSeed])
+
+  const selectedNodeDetail = useMemo(() => {
+    if (!graphData || !selectedGraphNodeId) return null
+
+    const selectedNode = graphData.nodes.find((node) => String(node.id || '') === selectedGraphNodeId)
+    if (!selectedNode) return null
+
+    const nodeRecord = selectedNode as Record<string, unknown>
+    const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
+    const label = String(nodeRecord.label ?? nodeRecord.name ?? selectedGraphNodeId).trim() || selectedGraphNodeId
+    const type = String(meta.type ?? nodeRecord.type ?? 'unknown').trim() || 'unknown'
+    const kind = String(meta.kind ?? nodeRecord.kind ?? 'entity').trim() || 'entity'
+
+    let degree = 0
+    for (const link of graphData.links) {
+      const source = typeof link.source === 'object' && link.source
+        ? String((link.source as { id?: string }).id ?? '')
+        : String(link.source ?? '')
+      const target = typeof link.target === 'object' && link.target
+        ? String((link.target as { id?: string }).id ?? '')
+        : String(link.target ?? '')
+      if (source === selectedGraphNodeId || target === selectedGraphNodeId) {
+        degree += 1
+      }
+    }
+
+    const cluster = Math.max(1, Math.floor(Number(graphClusterResult?.nodeToCluster?.[selectedGraphNodeId] ?? 1)))
+    return {
+      id: selectedGraphNodeId,
+      label,
+      type,
+      kind,
+      degree,
+      cluster,
+    }
+  }, [graphClusterResult, graphData, selectedGraphNodeId])
 
   const steps = useMemo(
     () => [
@@ -319,6 +367,19 @@ export default function DatasetKGWorkbenchPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!graphData?.nodes.length) {
+      setSelectedGraphNodeId(null)
+      return
+    }
+
+    setSelectedGraphNodeId((prev) => {
+      if (!prev) return null
+      const stillExists = graphData.nodes.some((node) => String(node.id || '') === prev)
+      return stillExists ? prev : null
+    })
+  }, [graphData])
+
   const toggleDoc = useCallback((docId: string, checked: boolean) => {
     setSelectedDocIds((prev) => {
       const next = new Set(prev)
@@ -437,6 +498,7 @@ export default function DatasetKGWorkbenchPage() {
 
     setGraphLoading(true)
     setGraphClusterResult(null)
+    setSelectedGraphNodeId(null)
     try {
       const [graph, stats] = await Promise.all([
         GraphService.fetchInitialGraph({
@@ -457,6 +519,7 @@ export default function DatasetKGWorkbenchPage() {
       toast.error(formatApiError(e, '加载图预览失败'))
       setGraphData(null)
       setGraphClusterResult(null)
+      setSelectedGraphNodeId(null)
       setGraphStats(null)
     } finally {
       setGraphLoading(false)
@@ -810,7 +873,9 @@ export default function DatasetKGWorkbenchPage() {
                         type="button"
                         className="w-full text-left rounded-lg border border-border/60 px-2 py-2 hover:bg-muted/40 transition-colors"
                         onClick={() => {
-                          graphRef.current?.focusNode(String(n.id))
+                          const nodeId = String(n.id || '')
+                          setSelectedGraphNodeId(nodeId)
+                          graphRef.current?.focusNode(nodeId)
                           toast.message(`聚焦节点：${String(n.label || n.id)}`)
                         }}
                       >
@@ -910,9 +975,39 @@ export default function DatasetKGWorkbenchPage() {
                 ) : null}
               </Panel>
 
+              {selectedNodeDetail ? (
+                <Panel className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-semibold">Node drill-down</div>
+                    <Badge variant="secondary" className="font-mono text-[10px]">
+                      cluster={selectedNodeDetail.cluster}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-1 text-[11px] text-muted-foreground md:grid-cols-2">
+                    <div className="truncate">
+                      label=<span className="font-medium text-foreground">{selectedNodeDetail.label}</span>
+                    </div>
+                    <div className="font-mono truncate">id={selectedNodeDetail.id}</div>
+                    <div className="font-mono truncate">type={selectedNodeDetail.type}</div>
+                    <div className="font-mono truncate">kind={selectedNodeDetail.kind}</div>
+                    <div className="font-mono truncate">degree={selectedNodeDetail.degree}</div>
+                  </div>
+                </Panel>
+              ) : null}
+
               <Panel padding="none" className="relative overflow-hidden h-[min(720px,calc(100vh-260px))] min-h-[520px]">
-                {graphData ? (
-                  <GraphViewer ref={graphRef} data={graphData} />
+                {graphData && graphPreviewData ? (
+                  <GraphViewer
+                    ref={graphRef}
+                    data={graphPreviewData}
+                    onNodeClick={(node) => {
+                      const nodeId = String(node?.id || '').trim()
+                      if (!nodeId) return
+                      setSelectedGraphNodeId(nodeId)
+                    }}
+                    selectedNodeId={selectedGraphNodeId}
+                    onBackgroundClick={() => setSelectedGraphNodeId(null)}
+                  />
                 ) : !graphLoading ? (
                   <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
                     先点击“加载预览”拉取 KG 图数据
