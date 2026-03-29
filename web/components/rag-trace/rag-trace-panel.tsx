@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 
 import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { prefetchDocumentView } from '@/lib/document-view-prefetch'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
 import { Badge } from '@/components/ui/badge'
@@ -408,6 +409,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const [diffError, setDiffError] = React.useState<string | null>(null)
   const [diffResult, setDiffResult] = React.useState<RagTraceBundleDiffResponse | null>(null)
   const [selectedPipelineSectionId, setSelectedPipelineSectionId] = React.useState<string | null>(null)
+  const prefetchedTraceCitationTargetsRef = React.useRef<Set<string>>(new Set())
 
   const items = data?.items ?? []
   const selected = items[selectedIndex] ?? items[0] ?? null
@@ -453,6 +455,16 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     const nextId = pipelineInspectorSections[nextIndex]?.id ?? null
     if (nextId) setSelectedPipelineSectionId(nextId)
   }, [pipelineInspectorSections, selectedPipelineSectionIndex])
+
+  const prefetchTraceCitationTarget = React.useCallback((documentId?: string | null, chunkId?: string | null) => {
+    const docId = String(documentId || '').trim()
+    if (!docId) return
+    const cid = String(chunkId || '').trim()
+    const targetKey = `${docId}:${cid}`
+    if (prefetchedTraceCitationTargetsRef.current.has(targetKey)) return
+    prefetchedTraceCitationTargetsRef.current.add(targetKey)
+    prefetchDocumentView({ documentId: docId, chunkId: cid || undefined })
+  }, [])
 
   const downloadBundle = React.useCallback(async () => {
     const rid = requestId
@@ -924,6 +936,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                   key={`${documentId}:${chunkId || index}`}
                                   type="button"
                                   disabled={!documentId}
+                                  onMouseEnter={() => prefetchTraceCitationTarget(documentId, chunkId)}
+                                  onFocus={() => prefetchTraceCitationTarget(documentId, chunkId)}
                                   onClick={() => {
                                     if (!documentId) return
                                     openDocument(documentId, chunkId, getTraceCitationRange(citation))
@@ -1202,6 +1216,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           size="sm"
                           className="rounded-xl"
                           disabled={!docId}
+                          onMouseEnter={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}
+                          onFocus={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}
                           onClick={() => {
                             const start = c.start_char
                             const end = c.end_char
