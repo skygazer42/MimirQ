@@ -163,6 +163,10 @@ export function PdfPreview() {
     () => new Map(pdfComputation?.blockIdToChunkIndexEntries || []),
     [pdfComputation?.blockIdToChunkIndexEntries]
   )
+  const blockIdToPageIndex = useMemo(
+    () => new Map(pdfComputation?.blockIdToPageIndexEntries || []),
+    [pdfComputation?.blockIdToPageIndexEntries]
+  )
   const blockIdsByChunkIndex = useMemo(
     () => new Map(pdfComputation?.chunkBlockIdsByIndexEntries || []),
     [pdfComputation?.chunkBlockIdsByIndexEntries]
@@ -289,8 +293,8 @@ export function PdfPreview() {
       </div>
       <PdfViewer
         file={currentFile}
-        blocks={blocksWithPositions}
         boxesByPage={boxesByPage}
+        blockIdToPageIndex={blockIdToPageIndex}
         activeBlockIds={activeBlockIds}
         hoveredBlockIds={hoveredBlockIds}
         showAllBoxes={showAllBoxes}

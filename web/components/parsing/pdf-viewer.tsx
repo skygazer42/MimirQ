@@ -19,6 +19,7 @@ interface PdfViewerProps {
   file?: File | null
   blocks?: ParsingBlock[]
   boxesByPage?: Map<number, Box[]> | null
+  blockIdToPageIndex?: Map<string, number> | null
   activeBlockIds?: string[] | null
   hoveredBlockIds?: string[] | null
   showAllBoxes?: boolean
@@ -30,6 +31,7 @@ export function PdfViewer({
   file,
   blocks = [],
   boxesByPage,
+  blockIdToPageIndex,
   activeBlockIds,
   hoveredBlockIds,
   showAllBoxes = true,
@@ -245,6 +247,17 @@ export function PdfViewer({
     }
     return map
   }, [blocks, boxesByPage])
+  const resolvedBlockIdToPageIndex = useMemo(() => {
+    if (blockIdToPageIndex) return blockIdToPageIndex
+
+    const map = new Map<string, number>()
+    for (const block of blocks) {
+      const pageIndex = block.positions.find((position) => position.pages?.length)?.pages?.[0]
+      if (typeof pageIndex !== 'number' || !Number.isFinite(pageIndex)) continue
+      map.set(block.id, pageIndex)
+    }
+    return map
+  }, [blockIdToPageIndex, blocks])
 
   const activeSet = useMemo(() => new Set(activeBlockIds || []), [activeBlockIds])
   const hoveredSet = useMemo(() => new Set(hoveredBlockIds || []), [hoveredBlockIds])
@@ -268,8 +281,7 @@ export function PdfViewer({
   useEffect(() => {
     const firstActive = (activeBlockIds || [])[0]
     if (!firstActive) return
-    const block = blocks.find((item) => item.id === firstActive)
-    const pageIndex = block?.positions?.[0]?.pages?.[0]
+    const pageIndex = resolvedBlockIdToPageIndex.get(firstActive)
     if (pageIndex == null) return
     const el = pageRefs.current.get(pageIndex)
     const reduceMotion =
@@ -277,7 +289,7 @@ export function PdfViewer({
       typeof globalThis.window.matchMedia === 'function' &&
       globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
     el?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
-  }, [activeBlockIds, blocks])
+  }, [activeBlockIds, resolvedBlockIdToPageIndex])
 
   if (!file) {
     return (
