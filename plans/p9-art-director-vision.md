@@ -27,9 +27,5 @@
 - [ ] **Integrated Doc Viewer**: 消息区引用的切片 [1] 悬浮时，侧边栏直接展示 PDF 缩略图并定位到高亮行。
 - [ ] **Graph-to-Context**: 在 3D 图谱中选中节点，对话框自动预填“总结一下该文档的核心观点”，将可视化与交互完全打通。
 
-### 3.2 Command-First Workflow
-- [ ] **Vim-Inspired Shortcuts**: 为专业用户提供 `g d` (Go to Documents), `g c` (Go to Chat), `f s` (Find Slice) 等极速操作路径。
-- [ ] **Smart Command Bar**: 升级 `cmdk` 面板，支持“自然语言指令”（例如：输入“把上周上传的 PDF 全部归档”直接触发批量操作）。
-
 ## 4. 基础设施可观测性
 - [ ] **Frontend Trace Integration**: 在前端日志中记录每一个复杂计算（如图谱拓扑）的耗时，上报至后端监控平台，将可观测性做到用户端。

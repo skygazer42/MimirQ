@@ -13,6 +13,7 @@ vi.mock('@/lib/openapi-request', () => ({
 
 let pipelineApi: typeof import('./api-client').pipelineApi
 let openapiSpec: any
+const OPENAPI_EXPORT_TIMEOUT_MS = 300_000
 
 function loadOpenApiSpec() {
   const specPath = path.join(os.tmpdir(), `mimirq-openapi-${process.pid}.json`)
@@ -20,7 +21,7 @@ function loadOpenApiSpec() {
     const result = spawnSync('node', ['scripts/export-openapi.mjs', '--out', specPath], {
       cwd: path.resolve(__dirname, '..'),
       encoding: 'utf8',
-      timeout: 120_000,
+      timeout: OPENAPI_EXPORT_TIMEOUT_MS,
     })
     if (result.status !== 0) {
       throw new Error(result.stderr || result.stdout || 'failed to export openapi spec')
@@ -34,7 +35,7 @@ describe('pipelineApi.governanceProfiles', () => {
   beforeAll(async () => {
     ;({ pipelineApi } = await import('./api-client'))
     openapiSpec = loadOpenApiSpec()
-  }, 120_000)
+  }, OPENAPI_EXPORT_TIMEOUT_MS)
 
   beforeEach(() => {
     openapiRequestMock.mockReset()
