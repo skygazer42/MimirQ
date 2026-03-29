@@ -26,13 +26,10 @@
 ## 2. 具体重构路线图 (Refactoring Roadmap)
 
 ### 阶段 1: 基础设施模块化 (Immediate Priority)
-- [ ] **拆分 `api-client.ts`**: 按领域拆分为 5-8 个独立 Service。
 - [ ] **API 响应拦截器加固**: 集成 Zod 解析与 RequestID 日志关联。
-- [ ] **移除 UI 目录下的业务组件**: 将 `parser-dropdown`, `chunk-strategy-dropdown` 移至 `components/business`。
 - [ ] **拆分 `types/index.ts`**: 按业务领域分散定义，优化 TSServer 响应速度。
 
 ### 阶段 2: 逻辑解耦与缓存 (Medium Priority)
-- [ ] **Hooks 原子化**: 将 `use-documents.ts` 拆分为取数、过滤、操作三个子 Hook。
 - [ ] **迁移至 React Query**: 优先从 `observability` 和 `parsing` 页面开始，移除手动管理的 `useEffect` 取数逻辑。
 
 ### 阶段 3: 性能增强 (Long Term)

@@ -14,7 +14,6 @@
 ## 2. P9 架构标准：零技术债演进
 
 ### 2.1 彻底重构巨型文件 (The "Big Split")
-- [ ] **Service Domain Separation**: 废除 4000 行的 `api-client.ts`。按照 **Domain-Driven Design (DDD)** 拆分为 `services/doc/*`, `services/rag/*`, `services/auth/*`。
 - [ ] **Registry Pattern**: 为 Parser 和 Chunking 策略建立注册表模式，避免在 UI 代码中出现大量的 `switch-case` 逻辑。
 
 ### 2.2 React 19 & Next.js 16 极致利用
