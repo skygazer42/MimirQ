@@ -32,16 +32,26 @@ self.addEventListener('activate', (event) => {
   )
 })
 
-function isStaticAssetRequest(request) {
-  const url = new URL(request.url)
-  // Keep static caching deliberately conservative to avoid stale dynamic JSON payloads.
-  return url.origin === self.location.origin && (
+const PDF_WORKER_PATTERN = /pdf\.worker(?:\.min)?\.[^.]+\.mjs$/i
+
+function isPdfWorkerRequest(url) {
+  return PDF_WORKER_PATTERN.test(url.pathname)
+}
+
+function isSupportedStaticPath(url) {
+  return (
     url.pathname.startsWith('/_next/static/') ||
     url.pathname.startsWith('/lottie/') ||
     url.pathname.startsWith('/fonts/') ||
+    url.pathname.startsWith('/pdfjs-dist/') ||
     url.pathname.endsWith('.svg') ||
     url.pathname.endsWith('.woff2')
   )
+}
+
+function isStaticAssetRequest(request) {
+  const url = new URL(request.url)
+  return url.origin === self.location.origin && (isPdfWorkerRequest(url) || isSupportedStaticPath(url))
 }
 
 self.addEventListener('fetch', (event) => {
