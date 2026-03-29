@@ -3,10 +3,14 @@ import type {
   EvidenceRetrieveResponse,
   PromptPreviewRequest,
   PromptPreviewResponse,
+  RagvizSimilarityCalculateResponse,
+  RagvizSimilarityCollectionsResponse,
+  RagvizSimilarityRequest,
   RetrievePreviewRequest,
   RetrievePreviewResponse,
 } from '@/types'
 
+import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient } from '@/lib/api/core'
 
 export interface ClipImageIndexRequest {
@@ -34,6 +38,60 @@ export interface ClipImageSearchRequest {
 export interface ClipImageSearchResponse {
   citations: any[]
   metrics: Record<string, any>
+}
+
+export interface RagConfigTemplate {
+  id: string
+  tenant_id: string
+  template_key?: string | null
+  name: string
+  description?: string | null
+  config_patch: Record<string, any>
+  is_active: boolean
+  usage_count: number
+  version: number
+  parent_id?: string | null
+  ab_experiment_key?: string | null
+  ab_variant?: string | null
+  ab_weight: number
+  created_at: string
+  updated_at: string
+}
+
+export interface RagConfigTemplateCreate {
+  template_key?: string
+  name: string
+  description?: string
+  config_patch?: Record<string, any>
+  is_active?: boolean
+  parent_id?: string | null
+  ab_experiment_key?: string | null
+  ab_variant?: string | null
+  ab_weight?: number
+}
+
+export interface RagConfigTemplateUpdate {
+  template_key?: string | null
+  name?: string
+  description?: string | null
+  config_patch?: Record<string, any>
+  is_active?: boolean
+  version?: number
+  parent_id?: string | null
+  ab_experiment_key?: string | null
+  ab_variant?: string | null
+  ab_weight?: number
+}
+
+export interface RagConfigTemplateNewVersion {
+  name?: string
+  description?: string | null
+  config_patch?: Record<string, any>
+  is_active?: boolean
+  deactivate_previous?: boolean
+  ab_experiment_key?: string | null
+  ab_variant?: string | null
+  ab_weight?: number
 }
 
 export const ragApi = {
@@ -70,12 +128,57 @@ export const retrievalApi = {
   },
 
   async explain(body: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const { data } = await apiClient.post('/retrieval/explain', body)
+    const { data } = await apiClient.post('/retrieval/explain', body, { timeout: API_LONG_TIMEOUT_MS })
     return data
   },
 
   async configHash(body: Record<string, unknown>): Promise<Record<string, unknown>> {
     const { data } = await apiClient.post('/retrieval/config-hash', body)
+    return data
+  },
+}
+
+export const ragConfigTemplateApi = {
+  async create(params: RagConfigTemplateCreate): Promise<RagConfigTemplate> {
+    const { data } = await apiClient.post('/rag-config-templates', params)
+    return data
+  },
+
+  async list(params?: {
+    skip?: number
+    limit?: number
+    template_key?: string
+    ab_experiment_key?: string
+    is_active?: boolean
+  }): Promise<{ total: number; items: RagConfigTemplate[] }> {
+    const { data } = await apiClient.get('/rag-config-templates', { params })
+    return data
+  },
+
+  async get(templateId: string): Promise<RagConfigTemplate> {
+    const { data } = await apiClient.get(`/rag-config-templates/${templateId}`)
+    return data
+  },
+
+  async update(templateId: string, params: RagConfigTemplateUpdate): Promise<RagConfigTemplate> {
+    const { data } = await apiClient.patch(`/rag-config-templates/${templateId}`, params)
+    return data
+  },
+
+  async createVersion(templateId: string, params: RagConfigTemplateNewVersion): Promise<RagConfigTemplate> {
+    const { data } = await apiClient.post(`/rag-config-templates/${templateId}/versions`, params)
+    return data
+  },
+}
+
+export const ragvizApi = {
+  async listSimilarityCollections(): Promise<RagvizSimilarityCollectionsResponse> {
+    const { data } = await apiClient.get('/ragviz/similarity/collections')
+    return data
+  },
+
+  async calculateSimilarityMatrix(params: RagvizSimilarityRequest): Promise<RagvizSimilarityCalculateResponse> {
+    const { data } = await apiClient.post('/ragviz/similarity/calculate', params)
     return data
   },
 }

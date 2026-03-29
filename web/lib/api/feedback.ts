@@ -1,0 +1,54 @@
+import type {
+  EvidenceItem,
+  MessageFeedback,
+  MessageFeedbackCreate,
+  MessageFeedbackEnrichedListResponse,
+  MessageFeedbackListResponse,
+  RegressionCase,
+} from '@/types'
+
+import { apiClient, type ApiRequestOptions } from '@/lib/api/core'
+
+export const feedbackApi = {
+  async create(params: MessageFeedbackCreate): Promise<MessageFeedback> {
+    const { data } = await apiClient.post('/feedback/messages', params)
+    return data
+  },
+
+  async list(params?: {
+    skip?: number
+    limit?: number
+    message_id?: string
+  }): Promise<MessageFeedbackListResponse> {
+    const { data } = await apiClient.get('/feedback/messages', { params })
+    return data
+  },
+
+  async listEnriched(params?: {
+    skip?: number
+    limit?: number
+    conversation_id?: string
+    message_id?: string
+    min_rating?: number
+    max_rating?: number
+  }, options?: ApiRequestOptions): Promise<MessageFeedbackEnrichedListResponse> {
+    const { data } = await apiClient.get('/feedback/messages/enriched', { params, signal: options?.signal })
+    return data
+  },
+
+  async toRegressionCase(
+    feedbackId: string,
+    body: { include_document_scope?: boolean; tags?: string[]; extra?: Record<string, any> } = {}
+  ): Promise<RegressionCase> {
+    const { data } = await apiClient.post(`/feedback/messages/${feedbackId}/to-regression-case`, body)
+    return data
+  },
+
+  async toEvidenceItem(
+    feedbackId: string,
+    body: { suite_id: string; tags?: string[]; extra?: Record<string, any> }
+  ): Promise<EvidenceItem> {
+    const { data } = await apiClient.post(`/feedback/messages/${feedbackId}/to-evidence-item`, body)
+    return data
+  },
+}

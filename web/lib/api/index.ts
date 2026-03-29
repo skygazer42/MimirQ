@@ -1,68 +1,65 @@
-export {
-  auditApi,
-  chunkPresetApi,
-  evidenceApi,
-  feedbackApi,
-  governanceApi,
-  groupApi,
-  healthApi,
-  ingestionRunApi,
-  ltrApi,
-  metaApi,
-  parsingApi,
-  promptTemplateApi,
-  ragConfigTemplateApi,
-  ragvizApi,
-  rbacApi,
-  retrievalApi,
-  scimApi,
-  sseApi,
-  usageApi,
-} from '@/lib/api-client'
+export { groupApi } from './access'
+export { rbacApi } from './access'
+export { auditApi } from './audit'
+export { authApi } from './auth'
+export { chatApi } from './chat'
+export { connectorApi } from './connectors'
+export { ingestionRunApi } from './connectors'
+export { datasetApi } from './datasets'
+export { datasetCategoryApi } from './datasets'
+export { documentApi } from './documents'
+export { evaluationApi } from './evaluation'
+export { evidenceApi } from './evidence'
+export { feedbackApi } from './feedback'
+export { governanceApi } from './governance'
+export { chunkPresetApi } from './governance'
+export { kgApi } from './graph'
+export { healthApi } from './health'
+export { ltrApi } from './ltr'
+export { metaApi } from './meta'
+export { observabilityApi } from './observability'
+export { parsingApi } from './parsing'
+export { pipelineApi } from './pipeline'
+export { promptTemplateApi } from './prompts'
+export { ragApi } from './rag'
+export { ragConfigTemplateApi } from './rag'
+export { ragvizApi } from './rag'
+export { retrievalApi } from './rag'
+export { reportApi } from './reports'
+export { scimApi } from './scim'
+export { settingsApi } from './settings'
+export { sseApi } from './streaming'
+export { usageApi } from './usage'
+
 export type {
-  BackendMeta,
-  CacheConfig,
-  ChatConfig,
-  Etl4LlmConfig,
-  FeatureFlags,
-  KGConfig,
   KGHardcaseMode,
   KGSearchDiagnosticsRequest,
   KGSearchDiagnosticsResponse,
   KGSearchDiagnosticsRunDetail,
   KGSearchDiagnosticsRunList,
   KGSearchDiagnosticsRunOut,
-  LTRModelInfo,
+  RagasItem,
+  RagasRun,
+  RagasRunDetail,
+} from './evaluation'
+export type { PromptTemplate, PromptTemplateCreate, PromptTemplateNewVersion, PromptTemplateUpdate } from './prompts'
+export type { BackendMeta } from './meta'
+export type { TenantMember } from './access'
+export type { LTRModelInfo } from './ltr'
+export type {
+  CacheConfig,
+  ChatConfig,
+  Etl4LlmConfig,
+  FeatureFlags,
+  KGConfig,
   LangGraphConfig,
   MagicPDFConfig,
   MarkerConfig,
   ObservabilityConfig,
   PaddleVLConfig,
-  PromptTemplate,
-  PromptTemplateCreate,
-  PromptTemplateNewVersion,
-  PromptTemplateUpdate,
-  RagasItem,
-  RagasRun,
-  RagasRunDetail,
   SafetyConfig,
   SystemSettings,
   SystemStatus,
-  TenantMember,
   TestLLMRequest,
   TestLLMResponse,
-} from '@/lib/api-client'
-
-export { authApi } from './auth'
-export { chatApi } from './chat'
-export { connectorApi } from './connectors'
-export { datasetApi } from './datasets'
-export { datasetCategoryApi } from './datasets'
-export { documentApi } from './documents'
-export { evaluationApi } from './evaluation'
-export { kgApi } from './graph'
-export { observabilityApi } from './observability'
-export { pipelineApi } from './pipeline'
-export { ragApi } from './rag'
-export { reportApi } from './reports'
-export { settingsApi } from './settings'
+} from './settings'
