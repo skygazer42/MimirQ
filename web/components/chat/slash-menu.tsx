@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Sparkles, FileText, Eraser, Settings2 } from 'lucide-react'
+import { Sparkles, FileText, Eraser, Settings2, Database, History } from 'lucide-react'
 
 import {
   Command,
@@ -27,6 +27,20 @@ interface SlashMenuProps {
 
 const COMMANDS = [
   {
+    id: 'knowledge',
+    label: '打开知识库',
+    description: '跳转到知识库页面，查看文档与索引状态',
+    keywords: ['knowledge', 'kb', 'docs', '文档', '知识库'],
+    icon: Database,
+  },
+  {
+    id: 'history',
+    label: '打开历史会话',
+    description: '前往历史会话页，回看旧问答与上下文',
+    keywords: ['history', '会话', '记录', 'trace'],
+    icon: History,
+  },
+  {
     id: 'prompt',
     label: '插入提示模板',
     description: '快速填入一条适合知识库摘要的提示',
@@ -34,10 +48,10 @@ const COMMANDS = [
     icon: Sparkles,
   },
   {
-    id: 'doc',
-    label: '强调引用文档',
-    description: '让回答优先结合知识库来源与依据',
-    keywords: ['document', 'citation', '文档', '引用'],
+    id: 'cite_analysis',
+    label: '引用核查 + 差异分析',
+    description: '预填一条强约束提示，要求结论、证据与差异并列输出',
+    keywords: ['citation', 'analysis', 'evidence', '引用', '分析'],
     icon: FileText,
   },
   {
