@@ -26,4 +26,3 @@
 - [ ] **OffscreenCanvas 离线渲染**: 将重型 3D 计算和 PDF 预渲染移出主线程，确保用户在数据处理时滚动依然丝滑。
 
 ## 4. 自动化审计 (Automated Audit)
-- [ ] **a11y & Contrast Check**: 运行自动化对比度检查，确保所有 AI 生成的淡紫色文本符合 WCAG AA 标准。
