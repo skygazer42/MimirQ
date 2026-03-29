@@ -12,16 +12,35 @@ describe('api-client modular split source', () => {
     const apiClientSrc = read('api-client.ts')
 
     const compatExports = [
+      ['auditApi', 'audit'],
       ['authApi', 'auth'],
       ['connectorApi', 'connectors'],
+      ['chunkPresetApi', 'governance'],
       ['datasetApi', 'datasets'],
       ['datasetCategoryApi', 'datasets'],
+      ['evidenceApi', 'evidence'],
       ['evaluationApi', 'evaluation'],
+      ['feedbackApi', 'feedback'],
+      ['groupApi', 'access'],
+      ['healthApi', 'health'],
+      ['ingestionRunApi', 'connectors'],
       ['kgApi', 'graph'],
+      ['ltrApi', 'ltr'],
+      ['metaApi', 'meta'],
       ['observabilityApi', 'observability'],
+      ['parsingApi', 'parsing'],
       ['pipelineApi', 'pipeline'],
+      ['promptTemplateApi', 'prompts'],
+      ['ragConfigTemplateApi', 'rag'],
       ['reportApi', 'reports'],
+      ['ragvizApi', 'rag'],
+      ['rbacApi', 'access'],
+      ['retrievalApi', 'rag'],
+      ['scimApi', 'scim'],
       ['settingsApi', 'settings'],
+      ['sseApi', 'streaming'],
+      ['usageApi', 'usage'],
+      ['governanceApi', 'governance'],
     ] as const
 
     for (const [exportName, moduleName] of compatExports) {

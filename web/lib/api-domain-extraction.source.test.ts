@@ -21,15 +21,35 @@ describe('api domain extraction source', () => {
   it('keeps the main remaining domains on real api modules without api-client re-export cycles', () => {
     const apiIndexSrc = fs.readFileSync(path.resolve(__dirname, 'api/index.ts'), 'utf8')
     const domains = [
+      ['access.ts', 'groupApi'],
+      ['access.ts', 'rbacApi'],
+      ['audit.ts', 'auditApi'],
       ['auth.ts', 'authApi'],
       ['connectors.ts', 'connectorApi'],
+      ['connectors.ts', 'ingestionRunApi'],
       ['datasets.ts', 'datasetApi'],
       ['evaluation.ts', 'evaluationApi'],
+      ['evidence.ts', 'evidenceApi'],
+      ['feedback.ts', 'feedbackApi'],
       ['graph.ts', 'kgApi'],
+      ['governance.ts', 'chunkPresetApi'],
+      ['governance.ts', 'governanceApi'],
+      ['health.ts', 'healthApi'],
+      ['ltr.ts', 'ltrApi'],
+      ['meta.ts', 'metaApi'],
       ['observability.ts', 'observabilityApi'],
+      ['parsing.ts', 'parsingApi'],
       ['pipeline.ts', 'pipelineApi'],
+      ['prompts.ts', 'promptTemplateApi'],
+      ['rag.ts', 'ragApi'],
+      ['rag.ts', 'ragConfigTemplateApi'],
+      ['rag.ts', 'ragvizApi'],
+      ['rag.ts', 'retrievalApi'],
       ['reports.ts', 'reportApi'],
+      ['scim.ts', 'scimApi'],
       ['settings.ts', 'settingsApi'],
+      ['streaming.ts', 'sseApi'],
+      ['usage.ts', 'usageApi'],
     ] as const
 
     expect(apiIndexSrc).not.toContain("export * from '@/lib/api-client'")

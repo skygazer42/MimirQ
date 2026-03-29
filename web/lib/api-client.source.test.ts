@@ -12,10 +12,12 @@ describe('api-client source dedupe', () => {
   })
 
   it('applies preferred language headers to axios and streaming fetch requests', () => {
-    const apiClientSrc = fs.readFileSync(path.resolve(__dirname, 'api-client.ts'), 'utf8')
     const coreSrc = fs.readFileSync(path.resolve(__dirname, 'api/core.ts'), 'utf8')
+    const observabilitySrc = fs.readFileSync(path.resolve(__dirname, 'api/observability.ts'), 'utf8')
+    const streamingSrc = fs.readFileSync(path.resolve(__dirname, 'api/streaming.ts'), 'utf8')
 
     expect(coreSrc).toContain('applyPreferredLanguageAxiosHeader(headers)')
-    expect(apiClientSrc.match(/withPreferredLanguageHeader\(/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(observabilitySrc.match(/withPreferredLanguageHeader\(/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(streamingSrc).toContain('withPreferredLanguageHeader({')
   })
 })
