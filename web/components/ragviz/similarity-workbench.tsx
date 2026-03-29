@@ -3,6 +3,7 @@
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ragvizApi } from '@/lib/api'
+import { SimilarityDiagnosticsGraph } from '@/components/ragviz/similarity-diagnostics-graph'
 import type {
   RagvizSimilarityCollection,
   RagvizSimilarityCalculateResponse,
@@ -13,6 +14,11 @@ import type {
 import { Button } from '@/components/ui/button'
 import { PageLoading } from '@/components/ui/page-loading'
 import { cn, detachPromise } from '@/lib/utils'
+import { buildSimilarityDiagnostics } from '@/components/ragviz/similarity-diagnostics'
+import type {
+  DiagnosticDecision,
+  SimilarityDiagnosticsResult,
+} from '@/components/ragviz/similarity-diagnostics'
 import {
   BarChart3,
   Database,
@@ -26,6 +32,7 @@ import {
 import { toast } from 'sonner'
 
 type LeftTopPanel = 'dataSource' | 'operations'
+type MainViewMode = 'heatmap' | 'diagnostics'
 type RightTopPanel = 'statistics' | null
 type RightBottomPanel = 'filters' | null
 type JsonRecord = Record<string, unknown>
@@ -119,6 +126,8 @@ export function RagvizSimilarityWorkbench() {
   const [colorScheme, setColorScheme] = useState<ColorSchemeKey>('viridis')
   const [tempSimilarityRange, setTempSimilarityRange] = useState<{ min: number; max: number }>({ min: 0, max: 1 })
   const [tempTopK, setTempTopK] = useState<{ value: number; axis: 'x' | 'y' }>({ value: 0, axis: 'x' })
+  const [mainView, setMainView] = useState<MainViewMode>('heatmap')
+  const [diagnosticDecisions, setDiagnosticDecisions] = useState<Record<string, DiagnosticDecision>>({})
 
   const [leftTopPanel, setLeftTopPanel] = useState<LeftTopPanel>('dataSource')
   const [rightTopPanel, setRightTopPanel] = useState<RightTopPanel>('statistics')
@@ -190,6 +199,8 @@ export function RagvizSimilarityWorkbench() {
     setActiveFilterIndices([])
     setExclusiveIndex(null)
     setExportIndex(0)
+    setMainView('heatmap')
+    setDiagnosticDecisions({})
 
     const nextResults: SimilarityMatrixEntry[] = []
     let done = 0
@@ -331,6 +342,8 @@ export function RagvizSimilarityWorkbench() {
       return
     }
 
+    setMainView('heatmap')
+    setDiagnosticDecisions({})
     setResults((prev) => {
       if (prev.length === 0) return imported
       return [...prev, ...imported]
@@ -361,6 +374,12 @@ export function RagvizSimilarityWorkbench() {
       setTempTopK({ value: 0, axis: 'x' })
     }
   }, [isDifferenceMode])
+
+  useEffect(() => {
+    if (isDifferenceMode && mainView === 'diagnostics') {
+      setMainView('heatmap')
+    }
+  }, [isDifferenceMode, mainView])
 
   const displayMatrix = useMemo(() => {
     if (!primaryEntry) return null
@@ -433,6 +452,32 @@ export function RagvizSimilarityWorkbench() {
     if (!effectiveMask) return displayMatrix as Array<Array<number | null>>
     return applyMask(displayMatrix, effectiveMask)
   }, [displayMatrix, effectiveMask])
+
+  const diagnostics = useMemo<SimilarityDiagnosticsResult | null>(() => {
+    if (!primaryEntry || !displayLabels || isDifferenceMode) return null
+    const matrixForDiagnostics = maskedMatrix ?? displayMatrix
+    if (!matrixForDiagnostics) return null
+
+    return buildSimilarityDiagnostics({
+      matrix: matrixForDiagnostics.map((row) => row.map((value) => (typeof value === 'number' ? value : 0))),
+      xItems: primaryEntry.result.x_data,
+      yItems: primaryEntry.result.y_data,
+      xLabels: displayLabels.xLabels,
+      yLabels: displayLabels.yLabels,
+      decisions: diagnosticDecisions,
+    })
+  }, [diagnosticDecisions, displayLabels, displayMatrix, isDifferenceMode, maskedMatrix, primaryEntry])
+
+  const setDiagnosticDecision = (candidateId: string, decision: DiagnosticDecision | null) => {
+    setDiagnosticDecisions((prev) => {
+      if (decision === null || prev[candidateId] === decision) {
+        const next = { ...prev }
+        delete next[candidateId]
+        return next
+      }
+      return { ...prev, [candidateId]: decision }
+    })
+  }
 
   const topKAxisForStats: 'x' | 'y' | 'none' = useMemo(() => {
     const topK = uiTopK
@@ -971,40 +1016,101 @@ export function RagvizSimilarityWorkbench() {
       {/* Main content */}
       <div className="flex-1 h-full overflow-hidden bg-background">
         <div className="h-full w-full flex flex-col">
-          <div className="h-12 border-b border-border flex items-center justify-between px-4">
-            <div className="text-sm font-semibold">Collection × Collection 相似度热力图</div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">配色方案：</span>
-              <div className="flex items-center gap-1">
-                {COLOR_SCHEMES.map((scheme) => (
-                  <button
-                    key={scheme.key}
-                    type="button"
-                    className={cn(
-                      'h-3 w-7 rounded border transition',
-                      scheme.key === colorScheme ? 'border-primary' : 'border-border hover:border-primary/50'
-                    )}
-                    title={scheme.label}
-                    onClick={() => setColorScheme(scheme.key)}
-                    style={{ backgroundImage: scheme.preview }}
-                  />
-                ))}
+          <div className="border-b border-border px-4 py-3">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <div className="text-sm font-semibold">
+                  {mainView === 'diagnostics' ? '向量诊断' : 'Collection × Collection 相似度热力图'}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {mainView === 'diagnostics'
+                    ? '基于当前相似度矩阵重建局部向量邻域，帮助识别高分但支撑不足的干扰项。'
+                    : '使用当前主图矩阵和筛选器观察 collection × collection 的相似度分布。'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex items-center rounded-lg border border-border bg-card p-1">
+                  <Button
+                    variant={mainView === 'heatmap' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setMainView('heatmap')}
+                  >
+                    热力图
+                  </Button>
+                  <Button
+                    variant={mainView === 'diagnostics' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setMainView('diagnostics')}
+                    disabled={!primaryEntry || !displayLabels || isDifferenceMode}
+                    title={isDifferenceMode ? '差值模式暂不支持向量诊断' : '查看向量诊断'}
+                  >
+                    向量诊断
+                  </Button>
+                </div>
+
+                {mainView === 'heatmap' ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">配色方案：</span>
+                    <div className="flex items-center gap-1">
+                      {COLOR_SCHEMES.map((scheme) => (
+                        <button
+                          key={scheme.key}
+                          type="button"
+                          className={cn(
+                            'h-3 w-7 rounded border transition',
+                            scheme.key === colorScheme ? 'border-primary' : 'border-border hover:border-primary/50'
+                          )}
+                          title={scheme.label}
+                          onClick={() => setColorScheme(scheme.key)}
+                          style={{ backgroundImage: scheme.preview }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>3D 投影预览</span>
+                    <span className="rounded-full border border-border px-2 py-0.5">
+                      {diagnostics?.summary.activeOutlierCount ?? 0} 个活跃异常点
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-          <div className="flex-1 overflow-hidden flex items-center justify-center">
+          <div className="flex-1 overflow-hidden">
             {primaryEntry && displayMatrix && displayLabels ? (
-              <div className="h-full w-full">
-                <PlotlyHeatmap
-                  matrix={maskedMatrix || displayMatrix}
-                  xLabels={displayLabels.xLabels}
-                  yLabels={displayLabels.yLabels}
-                  colorScheme={colorScheme}
-                  isDifference={isDifferenceMode}
-                />
-              </div>
+              mainView === 'diagnostics' ? (
+                diagnostics ? (
+                  <SimilarityDiagnosticsView diagnostics={diagnostics} onDecisionChange={setDiagnosticDecision} />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-6">
+                    <div className="rounded-2xl border border-dashed border-border/60 bg-background/70 px-6 py-8 text-center">
+                      <div className="text-sm font-semibold text-foreground">向量诊断暂不可用</div>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        当前处于差值模式，3D 投影预览和异常点标注只在单个主图矩阵上启用。
+                      </p>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="h-full w-full">
+                  <PlotlyHeatmap
+                    matrix={maskedMatrix || displayMatrix}
+                    xLabels={displayLabels.xLabels}
+                    yLabels={displayLabels.yLabels}
+                    colorScheme={colorScheme}
+                    isDifference={isDifferenceMode}
+                  />
+                </div>
+              )
             ) : (
-              <div className="text-sm text-muted-foreground">请先计算相似度矩阵并选择“应用数据”。</div>
+              <div className="flex h-full items-center justify-center px-6">
+                <div className="rounded-2xl border border-dashed border-border/60 bg-background/70 px-6 py-8 text-center text-sm text-muted-foreground">
+                  请先计算相似度矩阵并选择“应用数据”。
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -1292,6 +1398,168 @@ function Panel({
       <div className="flex-1">{children}</div>
     </div>
   )
+}
+
+function SimilarityDiagnosticsView({
+  diagnostics,
+  onDecisionChange,
+}: Readonly<{
+  diagnostics: SimilarityDiagnosticsResult
+  onDecisionChange: (candidateId: string, decision: DiagnosticDecision | null) => void
+}>) {
+  return (
+    <div className="h-full overflow-auto p-4">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,380px)]">
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <DiagnosticMetricCard
+              label="诊断节点"
+              value={String(diagnostics.summary.totalNodes)}
+              hint="当前 X/Y 两侧共同参与投影的节点数"
+            />
+            <DiagnosticMetricCard
+              label="邻域连线"
+              value={String(diagnostics.summary.totalLinks)}
+              hint="按当前筛选保留下来的高相似度近邻边"
+            />
+            <DiagnosticMetricCard
+              label="活跃异常点"
+              value={String(diagnostics.summary.activeOutlierCount)}
+              hint="仍然需要人工处理的高分异常候选"
+            />
+          </div>
+
+          <section className="rounded-2xl border border-border/60 bg-card/60 p-3">
+            <div className="flex flex-col gap-3 border-b border-border/60 pb-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div className="text-sm font-semibold">3D 投影预览</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  基于当前相似度矩阵重建局部向量邻域，帮助观察高分簇、孤立点和异常连线。
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                <LegendPill className="border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/40 dark:bg-sky-900/20 dark:text-sky-200">
+                  X 侧项目
+                </LegendPill>
+                <LegendPill className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-900/20 dark:text-emerald-200">
+                  Y 侧项目
+                </LegendPill>
+                <LegendPill className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200">
+                  异常点候选
+                </LegendPill>
+                <LegendPill className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200">
+                  标记待审
+                </LegendPill>
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <SimilarityDiagnosticsGraph nodes={diagnostics.nodes} links={diagnostics.links} />
+            </div>
+          </section>
+        </div>
+
+        <section className="overflow-hidden rounded-2xl border border-border/60 bg-card/60">
+          <div className="border-b border-border/60 p-4">
+            <div className="text-sm font-semibold">异常点标注</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              高分但词面支撑偏弱的候选会列在这里，可直接禁用候选或标记待审。
+            </p>
+          </div>
+
+          <div className="space-y-3 overflow-auto p-4">
+            {diagnostics.outliers.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 bg-background/60 px-4 py-6 text-sm text-muted-foreground">
+                当前筛选结果里没有需要人工干预的高分异常候选。
+              </div>
+            ) : (
+              diagnostics.outliers.map((candidate) => {
+                const isDisabled = candidate.decision === 'disabled'
+                const isMarked = candidate.decision === 'marked'
+
+                return (
+                  <article key={candidate.id} className="rounded-xl border border-border/60 bg-background/70 p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground">
+                          {candidate.xLabel} <span className="text-muted-foreground">→</span> {candidate.yLabel}
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{candidate.reason}</p>
+                      </div>
+                      <span
+                        className={cn(
+                          'rounded-full border px-2 py-0.5 text-[11px]',
+                          isDisabled
+                            ? 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-300'
+                            : isMarked
+                              ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
+                              : 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200'
+                        )}
+                      >
+                        {isDisabled ? '已禁用' : isMarked ? '待审' : '待处理'}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <DiagnosticMetricCard label="相似度" value={formatPercent(candidate.similarity)} compact />
+                      <DiagnosticMetricCard label="词面重叠" value={formatPercent(candidate.lexicalOverlap)} compact />
+                    </div>
+
+                    <div className="mt-3 flex gap-2">
+                      <Button
+                        variant={isDisabled ? 'default' : 'outline'}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => onDecisionChange(candidate.id, isDisabled ? null : 'disabled')}
+                      >
+                        {isDisabled ? '恢复候选' : '禁用候选'}
+                      </Button>
+                      <Button
+                        variant={isMarked ? 'default' : 'outline'}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => onDecisionChange(candidate.id, isMarked ? null : 'marked')}
+                      >
+                        {isMarked ? '取消标记' : '标记待审'}
+                      </Button>
+                    </div>
+                  </article>
+                )
+              })
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function LegendPill({ className, children }: Readonly<{ className?: string; children: ReactNode }>) {
+  return <span className={cn('rounded-full border px-2 py-0.5', className)}>{children}</span>
+}
+
+function DiagnosticMetricCard({
+  label,
+  value,
+  hint,
+  compact = false,
+}: Readonly<{
+  label: string
+  value: string
+  hint?: string
+  compact?: boolean
+}>) {
+  return (
+    <div className={cn('rounded-xl border border-border/60 bg-background/70', compact ? 'p-3' : 'p-4')}>
+      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+      <div className={cn('mt-1 font-semibold text-foreground', compact ? 'text-base' : 'text-2xl')}>{value}</div>
+      {hint ? <p className="mt-1 text-[11px] text-muted-foreground">{hint}</p> : null}
+    </div>
+  )
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(1)}%`
 }
 
 type SelectOption = { value: string; label: string; kind?: string; count?: number }
