@@ -1,8 +1,9 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   Copy,
+  ExternalLink,
   File as FileIcon,
   FileStack,
   Loader2,
@@ -24,8 +25,10 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Panel } from '@/components/ui/panel'
 import { formatApiError } from '@/lib/api-errors'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
+import { prefetchDocumentView } from '@/lib/document-view-prefetch'
 import { cn, detachPromise } from '@/lib/utils'
 import { evaluationApi, ragApi } from '@/lib/api'
+import { useDocumentView } from '@/store/document-view'
 import { toast } from 'sonner'
 
 type RetrievePreviewPanelProps = {
@@ -279,6 +282,7 @@ async function copyToClipboard(text: string, label: string): Promise<void> {
 }
 
 export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<RetrievePreviewPanelProps>) {
+  const { openDocument } = useDocumentView()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<RetrievePreviewCitation[]>([])
   const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState<string>('')
@@ -294,6 +298,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [activeHit, setActiveHit] = useState<RetrievePreviewCitation | null>(null)
+  const prefetchedHitTargetsRef = useRef<Set<string>>(new Set())
   const activeHitImageUrl = useMemo(() => {
     if (!activeHit?.has_image) return null
     return resolveSafeCitationImageUrl(activeHit.img_url)
@@ -496,6 +501,33 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     setDetailOpen(true)
   }, [])
 
+  const handlePrefetchHitDocument = useCallback((hit: RetrievePreviewCitation) => {
+    const documentId = String(hit.document_id || '').trim()
+    if (!documentId) return
+
+    const chunkId = String(hit.chunk_id || '').trim() || undefined
+    const cacheKey = `${documentId}:${chunkId || ''}`
+    if (prefetchedHitTargetsRef.current.has(cacheKey)) return
+    prefetchedHitTargetsRef.current.add(cacheKey)
+
+    prefetchDocumentView({ documentId, chunkId })
+  }, [])
+
+  const handleOpenHitInDocumentViewer = useCallback((hit: RetrievePreviewCitation) => {
+    const documentId = String(hit.document_id || '').trim()
+    if (!documentId) return
+
+    const chunkId = String(hit.chunk_id || '').trim() || undefined
+    const start = typeof hit.evidence_start_char === 'number' ? hit.evidence_start_char : hit.start_char
+    const end = typeof hit.evidence_end_char === 'number' ? hit.evidence_end_char : hit.end_char
+    const range =
+      typeof start === 'number' && Number.isFinite(start) && typeof end === 'number' && Number.isFinite(end) && end > start
+        ? { start, end }
+        : undefined
+
+    openDocument(documentId, chunkId, range)
+  }, [openDocument])
+
   const closeDetails = useCallback((open: boolean) => {
     setDetailOpen(open)
     if (!open) setActiveHit(null)
@@ -654,6 +686,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                 </thead>
                 <tbody>
                   {searchResults.map((hit, idx) => {
+                    const documentId = String(hit.document_id || '').trim()
                     const chunkId = String(hit.chunk_id || '')
                     const checked = !!chunkId && selectedEvidenceSet.has(chunkId)
                     const role = String(hit.retrieval_role || 'main')
@@ -780,6 +813,17 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                         </td>
                         <td className="p-3 align-top text-right">
                           <div className="inline-flex items-center justify-end gap-1">
+                            <IconButton
+                              label="在文档查看器中打开"
+                              variant="ghost"
+                              className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
+                              onClick={() => handleOpenHitInDocumentViewer(hit)}
+                              onMouseEnter={() => handlePrefetchHitDocument(hit)}
+                              onFocus={() => handlePrefetchHitDocument(hit)}
+                              disabled={!documentId}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </IconButton>
                             <IconButton
                               label="复制 chunk_id"
                               variant="ghost"
