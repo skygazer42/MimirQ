@@ -37,4 +37,13 @@ describe('retrieve preview panel source', () => {
     expect(src).toContain("label=\"在文档查看器中打开\"")
     expect(src).toContain('openDocument(documentId, chunkId, range)')
   })
+
+  it('applies a staggered row-entry animation with reduced-motion safety', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
+
+    expect(src).toContain('const staggerDelayMs = Math.min(idx, 10) * 40')
+    expect(src).toContain('style={{ animationDelay: `${staggerDelayMs}ms` }}')
+    expect(src).toContain('animate-in fade-in-0 slide-in-from-bottom-1 duration-300')
+    expect(src).toContain('motion-reduce:animate-none')
+  })
 })
