@@ -5,7 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
-import type { PDFDocumentProxy } from 'pdfjs-dist'
+import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
 import { ParsingBlock } from '@/lib/parsing-positions'
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { Button } from '@/components/ui/button'
@@ -50,17 +50,24 @@ export function PdfViewer({
   const [reloadTick, setReloadTick] = useState(0)
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
   const renderingPagesRef = useRef<Set<number>>(new Set())
+  const renderTasksRef = useRef<Map<number, RenderTask>>(new Map())
   const renderGenRef = useRef(0)
   const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, pageNumber) => pageNumber + 1), [pageCount])
 
   const retryLoad = useCallback(() => {
     setReloadTick((prev) => prev + 1)
   }, [])
+  const cancelRenderTasks = useCallback(() => {
+    renderTasksRef.current.forEach((task) => task.cancel())
+    renderTasksRef.current.clear()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
 
     async function loadPdf() {
+      cancelRenderTasks()
+
       if (!file) {
         setPdfDoc(null)
         setPageCount(0)
@@ -101,7 +108,7 @@ export function PdfViewer({
     return () => {
       cancelled = true
     }
-  }, [file, reloadTick])
+  }, [cancelRenderTasks, file, reloadTick])
 
   useEffect(() => {
     // Important: measure the actual content width (max-w-4xl) instead of the scroll container width,
@@ -145,9 +152,19 @@ export function PdfViewer({
   // Invalidate any in-flight renders when doc/scale changes.
   useEffect(() => {
     renderGenRef.current += 1
+    cancelRenderTasks()
     renderingPagesRef.current.clear()
     setRenderedPages(new Set())
-  }, [pdfDoc, scale])
+  }, [cancelRenderTasks, pdfDoc, scale])
+
+  useEffect(() => {
+    const doc = pdfDoc
+    return () => {
+      cancelRenderTasks()
+      if (!doc) return
+      detachPromise(doc.cleanup())
+    }
+  }, [cancelRenderTasks, pdfDoc])
 
   const renderPage = useCallback(
     async (pageIndex: number) => {
@@ -162,6 +179,7 @@ export function PdfViewer({
 
       const gen = renderGenRef.current
       renderingPagesRef.current.add(pageIndex)
+      let activeRenderTask: RenderTask | null = null
       try {
         const page = await doc.getPage(pageIndex + 1)
         if (renderGenRef.current !== gen) return
@@ -171,8 +189,12 @@ export function PdfViewer({
 
         canvas.width = Math.ceil(viewport.width)
         canvas.height = Math.ceil(viewport.height)
-        await page.render({ canvas, viewport }).promise
+        const renderTask = page.render({ canvas, viewport })
+        activeRenderTask = renderTask
+        renderTasksRef.current.set(pageIndex, renderTask)
+        await renderTask.promise
         if (renderGenRef.current !== gen) return
+        page.cleanup()
 
         setRenderedPages((prev) => {
           if (prev.has(pageIndex)) return prev
@@ -183,6 +205,9 @@ export function PdfViewer({
       } catch {
         // Best-effort: leave it as not rendered; user can scroll away/back to retry.
       } finally {
+        if (activeRenderTask && renderTasksRef.current.get(pageIndex) === activeRenderTask) {
+          renderTasksRef.current.delete(pageIndex)
+        }
         renderingPagesRef.current.delete(pageIndex)
       }
     },
