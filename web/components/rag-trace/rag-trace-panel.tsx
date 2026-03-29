@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 
 import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { prefetchDocumentView } from '@/lib/document-view-prefetch'
 import { cn, detachPromise } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
@@ -1233,7 +1234,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
         })
       }
 
-      openDocument(documentId, chunkId, range)
+      openDocument(documentId, chunkId, range, {
+        previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+      })
       if (opts?.notify) {
         toast.message('已打开引用文档', {
           description: `${label}${chunkId ? ` · ${chunkId}` : ''}`,
@@ -1256,7 +1259,13 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     openDocument(
       lastOpenedTraceCitationTarget.documentId,
       lastOpenedTraceCitationTarget.chunkId || undefined,
-      range
+      range,
+      {
+        previewAnchor:
+          lastOpenedTraceCitationTarget.pageNumber != null
+            ? { pageNumber: lastOpenedTraceCitationTarget.pageNumber }
+            : undefined,
+      }
     )
 
     const pageLabel =

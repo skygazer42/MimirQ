@@ -61,6 +61,7 @@ export function DocumentViewerPanelShell({
   parsedContent,
   parsedContentError,
   parsedContentLoading,
+  previewAnchor,
   qaDialogOpen,
   qaLastResult,
   qaMaxSourceChars,
@@ -181,6 +182,10 @@ export function DocumentViewerPanelShell({
                 fileUrl={fileUrl}
                 rawFileUrl={rawFileUrl}
                 downloadUrl={downloadUrl}
+                previewAnchor={previewAnchor}
+                highlightChunkId={highlightChunkId}
+                highlightRange={highlightRange}
+                onViewText={() => handleActiveTabChange("text")}
                 onViewChunks={() => handleActiveTabChange("chunks")}
               />
             </TabsContent>

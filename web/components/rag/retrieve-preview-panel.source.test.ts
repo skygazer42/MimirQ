@@ -35,7 +35,9 @@ describe('retrieve preview panel source', () => {
     expect(src).toContain('onMouseEnter={() => handlePrefetchHitDocument(hit)}')
     expect(src).toContain('onFocus={() => handlePrefetchHitDocument(hit)}')
     expect(src).toContain("label=\"在文档查看器中打开\"")
-    expect(src).toContain('openDocument(documentId, chunkId, range)')
+    expect(src).toContain('getDocumentPreviewAnchorFromCitation')
+    expect(src).toContain('openDocument(documentId, chunkId, range, {')
+    expect(src).toContain('previewAnchor: getDocumentPreviewAnchorFromCitation(hit)')
   })
 
   it('applies a staggered row-entry animation with reduced-motion safety', () => {

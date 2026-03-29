@@ -83,7 +83,12 @@ describe('document view store persistence', () => {
   it('keeps the last opened target after closing and can reopen the same context', async () => {
     const { useDocumentView } = await loadStore()
 
-    useDocumentView.getState().openDocument('doc-7', 'chunk-9', { start: 15, end: 45 })
+    useDocumentView.getState().openDocument(
+      'doc-7',
+      'chunk-9',
+      { start: 15, end: 45 },
+      { previewAnchor: { pageNumber: 6, searchText: 'policy clause' } }
+    )
     useDocumentView.getState().setActiveTab('chunks')
     useDocumentView.getState().closeDocument()
 
@@ -92,6 +97,7 @@ describe('document view store persistence', () => {
       documentId: 'doc-7',
       chunkId: 'chunk-9',
       highlightRange: { start: 15, end: 45 },
+      previewAnchor: { pageNumber: 6, searchText: 'policy clause' },
       activeTab: 'chunks',
     })
 
@@ -101,6 +107,7 @@ describe('document view store persistence', () => {
     expect(useDocumentView.getState().documentId).toBe('doc-7')
     expect(useDocumentView.getState().highlightChunkId).toBe('chunk-9')
     expect(useDocumentView.getState().highlightRange).toEqual({ start: 15, end: 45 })
+    expect(useDocumentView.getState().previewAnchor).toEqual({ pageNumber: 6, searchText: 'policy clause' })
     expect(useDocumentView.getState().activeTab).toBe('chunks')
   })
 })

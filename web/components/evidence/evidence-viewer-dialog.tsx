@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { AuthImage, useResolvedAuthAssetUrl } from '@/components/auth-image'
 import type { Citation } from '@/types'
+import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
@@ -118,7 +119,9 @@ export function EvidenceViewerDialog({
         }
 })()
     const range = start != null && end != null && end > start ? { start, end } : undefined
-    openDocument(citation.document_id, citation.chunk_id, range)
+    openDocument(citation.document_id, citation.chunk_id, range, {
+      previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+    })
   }, [citation, openDocument])
 
   const onCopyJson = React.useCallback(async () => {
