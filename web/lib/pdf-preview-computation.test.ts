@@ -28,6 +28,10 @@ describe('pdf-preview-computation', () => {
       ['block-0', 0],
       ['block-1', 1],
     ])
+    expect(result.blockIdToPageIndexEntries).toEqual([
+      ['block-0', 0],
+      ['block-1', 1],
+    ])
     expect(result.chunkBlockIdsByIndexEntries).toEqual([
       [0, ['block-0']],
       [1, ['block-1']],

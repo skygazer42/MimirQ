@@ -22,4 +22,13 @@ describe('pdf viewer source', () => {
     expect(src).toContain('if (boxesByPage) return boxesByPage')
     expect(src).toContain('const pageBoxes = resolvedBoxesByPage.get(index) || []')
   })
+
+  it('accepts optional precomputed block-to-page lookups for active scroll positioning', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('blockIdToPageIndex?: Map<string, number> | null')
+    expect(src).toContain('const resolvedBlockIdToPageIndex = useMemo(() =>')
+    expect(src).toContain('if (blockIdToPageIndex) return blockIdToPageIndex')
+    expect(src).toContain('const pageIndex = resolvedBlockIdToPageIndex.get(firstActive)')
+  })
 })
