@@ -248,13 +248,23 @@ export function ChatArea({
   const handleSlashSelect = useCallback((cmd: string) => {
     setSlashOpen(false)
 
+    if (cmd === 'knowledge') {
+      router.push('/knowledge')
+      return
+    }
+
+    if (cmd === 'history') {
+      router.push('/history')
+      return
+    }
+
     if (cmd === 'prompt') {
       handlePrefillInput('请基于知识库内容整理一份重点摘要，并标出需要我进一步确认的部分。')
       return
     }
 
-    if (cmd === 'doc') {
-      handlePrefillInput('请优先引用知识库中的相关文档回答，并注明结论对应的依据。')
+    if (cmd === 'cite_analysis') {
+      handlePrefillInput('请先给出结论，再逐条列出对应的知识库引用依据；随后补充不同来源间的一致点与冲突点，并明确哪些判断仍需更多证据。')
       return
     }
 
@@ -268,7 +278,7 @@ export function ChatArea({
       setInputValue('')
       toast.info(uiMessages.chat.clearInput)
     }
-  }, [handlePrefillInput])
+  }, [handlePrefillInput, router])
 
   // Load prompt templates
   useEffect(() => {
