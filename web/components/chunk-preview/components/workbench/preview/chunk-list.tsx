@@ -3,6 +3,7 @@
  */
 'use client'
 
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -106,6 +107,7 @@ export function ChunkList() {
     error,
     runPreview,
   } = useChunkPreview()
+  const reduceMotion = useReducedMotion()
   const unit: 'chars' | 'tokens' = previewData?.params?.unit === 'tokens' ? 'tokens' : 'chars'
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
@@ -661,6 +663,14 @@ export function ChunkList() {
   ])
 
   const showVirtualized = Boolean(previewData?.chunks && displayRows.length > 0)
+  const listSurfaceKey = `chunk-list-surface:${viewMode}:${groupMode}`
+  const surfaceTransition = useMemo(
+    () => ({
+      duration: reduceMotion ? 0 : 0.22,
+      ease: [0.16, 1, 0.3, 1] as const,
+    }),
+    [reduceMotion]
+  )
 
   const expandableGroupKeys = useMemo(() => {
     const out: string[] = []
@@ -1379,13 +1389,20 @@ export function ChunkList() {
         }}
         className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 focus-ring"
       >
-        <div
-          className="min-h-full rounded-2xl border border-border/60 bg-card p-3 shadow-sm ring-1 ring-border/40"
-          style={{
-            height: showVirtualized ? `${rowVirtualizer.getTotalSize()}px` : undefined,
-            position: showVirtualized ? 'relative' : undefined,
-          }}
-        >
+        <AnimatePresence initial={false} mode="wait">
+          <motion.div
+            key={listSurfaceKey}
+            layout={!reduceMotion}
+            initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+            transition={surfaceTransition}
+            className="min-h-full rounded-2xl border border-border/60 bg-card p-3 shadow-sm ring-1 ring-border/40"
+            style={{
+              height: showVirtualized ? `${rowVirtualizer.getTotalSize()}px` : undefined,
+              position: showVirtualized ? 'relative' : undefined,
+            }}
+          >
           {(() => {
     if (previewData?.chunks) {
         return (displayRows.length > 0 ? (rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -1510,7 +1527,8 @@ export function ChunkList() {
             </div>);
             }
 })()}
-        </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       <ChunkInspectorDialog
