@@ -25,6 +25,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Panel } from '@/components/ui/panel'
 import { formatApiError } from '@/lib/api-errors'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
+import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { prefetchDocumentView } from '@/lib/document-view-prefetch'
 import { cn, detachPromise } from '@/lib/utils'
 import { evaluationApi, ragApi } from '@/lib/api'
@@ -525,7 +526,9 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
         ? { start, end }
         : undefined
 
-    openDocument(documentId, chunkId, range)
+    openDocument(documentId, chunkId, range, {
+      previewAnchor: getDocumentPreviewAnchorFromCitation(hit),
+    })
   }, [openDocument])
 
   const closeDetails = useCallback((open: boolean) => {

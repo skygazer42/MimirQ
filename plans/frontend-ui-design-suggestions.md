@@ -9,12 +9,6 @@
 
 ### 1.2 高级微动效 (Micro-interactions)
 
-## 2. 知识交互深度 (Deep Knowledge Interaction)
-
-### 2.1 文档级联预览 (Cascading Preview)
-- [ ] **双栏关联视图**: 在 `chunk-preview` 中，点击切片应在右侧保持原文档的 PDF 视窗，并实现 **“Scroll-to-View”** 自动定位。
-- [ ] **语义锚点高亮**: AI 引用内容在 PDF 预览中应使用黄色高亮标记，并支持点击引用反向定位文档位置。
-
 ## 3. 性能与极速感 (Perceived Performance)
 
 ### 3.1 渲染策略优化

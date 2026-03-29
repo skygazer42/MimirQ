@@ -9,6 +9,7 @@ import { documentApi, ragApi } from "@/lib/api"
 import { formatApiError } from "@/lib/api-errors"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
+import { sanitizeDocumentPreviewAnchor } from "@/lib/document-preview-anchor"
 import { getPrefetchedChunk, getPrefetchedDocument } from "@/lib/document-view-prefetch"
 import { API_V1_BASE_URL } from "@/lib/env"
 import { detachPromise } from "@/lib/utils"
@@ -40,6 +41,7 @@ export function useDocumentViewerPanelState() {
     documentId,
     highlightChunkId,
     highlightRange,
+    previewAnchor,
     closeDocument,
     activeTab,
     documentLayouts,
@@ -396,6 +398,15 @@ export function useDocumentViewerPanelState() {
     const idx = textChunkItems.findIndex((item) => item.index === highlightChunk.chunk_index)
     return idx >= 0 ? idx : null
   }, [highlightChunk, textChunkItems])
+
+  const resolvedPreviewAnchor = React.useMemo(
+    () =>
+      sanitizeDocumentPreviewAnchor({
+        pageNumber: previewAnchor?.pageNumber ?? highlightChunk?.page_number ?? undefined,
+        searchText: previewAnchor?.searchText,
+      }),
+    [highlightChunk, previewAnchor]
+  )
 
   React.useEffect(() => {
     if (!documentId) return
@@ -978,6 +989,7 @@ export function useDocumentViewerPanelState() {
     parsedContent,
     parsedContentError,
     parsedContentLoading,
+    previewAnchor: resolvedPreviewAnchor,
     qaDialogOpen,
     qaLastResult,
     qaMaxSourceChars,

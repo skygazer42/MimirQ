@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
+import type { DocumentPreviewAnchor } from '@/lib/document-preview-anchor'
+import { sanitizeDocumentPreviewAnchor } from '@/lib/document-preview-anchor'
+
 export type HighlightRange = { start: number; end: number }
 export type DocumentViewTab = 'preview' | 'text' | 'chunks'
 export type DocumentTextMode = 'cleaned' | 'original'
@@ -8,6 +11,7 @@ export type DocumentViewResumeTarget = {
   documentId: string
   chunkId?: string | null
   highlightRange?: HighlightRange | null
+  previewAnchor?: DocumentPreviewAnchor | null
   activeTab?: DocumentViewTab
 }
 
@@ -24,11 +28,17 @@ interface DocumentViewState {
   documentId: string | null
   highlightChunkId: string | null
   highlightRange: HighlightRange | null
+  previewAnchor: DocumentPreviewAnchor | null
   activeTab: DocumentViewTab
   documentLayouts: Record<string, DocumentViewLayout>
   lastOpenedTarget: DocumentViewResumeTarget | null
 
-  openDocument: (documentId: string, chunkId?: string, range?: Partial<HighlightRange>) => void
+  openDocument: (
+    documentId: string,
+    chunkId?: string,
+    range?: Partial<HighlightRange>,
+    options?: { previewAnchor?: Partial<DocumentPreviewAnchor> | null }
+  ) => void
   closeDocument: () => void
   reopenLastDocument: () => void
   setHighlightChunk: (chunkId: string | null) => void
@@ -80,17 +90,20 @@ function buildResumeTarget(
   rawDocumentId: string | null | undefined,
   activeTab: DocumentViewTab,
   rawChunkId?: string | null,
-  range?: Partial<HighlightRange> | HighlightRange | null
+  range?: Partial<HighlightRange> | HighlightRange | null,
+  previewAnchor?: Partial<DocumentPreviewAnchor> | DocumentPreviewAnchor | null
 ): DocumentViewResumeTarget | null {
   const documentId = normalizeDocumentId(rawDocumentId)
   if (!documentId) return null
 
   const chunkId = normalizeChunkId(rawChunkId)
   const highlightRange = sanitizeHighlightRange(range)
+  const sanitizedPreviewAnchor = sanitizeDocumentPreviewAnchor(previewAnchor)
   return {
     documentId,
     chunkId,
     highlightRange,
+    previewAnchor: sanitizedPreviewAnchor,
     activeTab,
   }
 }
@@ -105,6 +118,7 @@ function sanitizeResumeTarget(target: DocumentViewResumeTarget | null | undefine
     documentId,
     chunkId: normalizeChunkId(target.chunkId),
     highlightRange: sanitizeHighlightRange(target.highlightRange),
+    previewAnchor: sanitizeDocumentPreviewAnchor(target.previewAnchor),
     activeTab: sanitizeDocumentViewTab(target.activeTab),
   }
 }
@@ -158,25 +172,34 @@ export const useDocumentView = create<DocumentViewState>()(
       documentId: null,
       highlightChunkId: null,
       highlightRange: null,
+      previewAnchor: null,
       activeTab: DEFAULT_ACTIVE_TAB,
       documentLayouts: {},
       lastOpenedTarget: null,
 
-      openDocument: (rawDocumentId, chunkId, range) =>
+      openDocument: (rawDocumentId, chunkId, range, options) =>
         set((state) => {
           const documentId = normalizeDocumentId(rawDocumentId)
           if (!documentId) return state
 
           const highlightRange = sanitizeHighlightRange(range)
+          const previewAnchor = sanitizeDocumentPreviewAnchor(options?.previewAnchor)
           const savedLayout = state.documentLayouts[documentId]
           const activeTab = chunkId || highlightRange ? 'text' : savedLayout?.activeTab || DEFAULT_ACTIVE_TAB
-          const lastOpenedTarget = buildResumeTarget(documentId, activeTab, chunkId || null, highlightRange)
+          const lastOpenedTarget = buildResumeTarget(
+            documentId,
+            activeTab,
+            chunkId || null,
+            highlightRange,
+            previewAnchor
+          )
 
           return {
             isOpen: true,
             documentId,
             highlightChunkId: chunkId || null,
             highlightRange,
+            previewAnchor,
             activeTab,
             documentLayouts: persistActiveTabForDocument(documentId, state.documentLayouts, activeTab),
             lastOpenedTarget,
@@ -189,6 +212,7 @@ export const useDocumentView = create<DocumentViewState>()(
           documentId: null,
           highlightChunkId: null,
           highlightRange: null,
+          previewAnchor: null,
         }),
 
       reopenLastDocument: () =>
@@ -205,6 +229,7 @@ export const useDocumentView = create<DocumentViewState>()(
             documentId: lastOpenedTarget.documentId,
             highlightChunkId: lastOpenedTarget.chunkId || null,
             highlightRange: lastOpenedTarget.highlightRange || null,
+            previewAnchor: lastOpenedTarget.previewAnchor || null,
             activeTab,
             documentLayouts: persistActiveTabForDocument(
               lastOpenedTarget.documentId,
@@ -223,14 +248,15 @@ export const useDocumentView = create<DocumentViewState>()(
           highlightChunkId: chunkId,
           highlightRange: null,
           lastOpenedTarget:
-            buildResumeTarget(state.documentId, state.activeTab, chunkId, null) || state.lastOpenedTarget,
+            buildResumeTarget(state.documentId, state.activeTab, chunkId, null, state.previewAnchor) ||
+            state.lastOpenedTarget,
         })),
 
       setHighlightRange: (range) =>
         set((state) => ({
           highlightRange: sanitizeHighlightRange(range),
           lastOpenedTarget:
-            buildResumeTarget(state.documentId, state.activeTab, state.highlightChunkId, range) ||
+            buildResumeTarget(state.documentId, state.activeTab, state.highlightChunkId, range, state.previewAnchor) ||
             state.lastOpenedTarget,
         })),
 
@@ -239,7 +265,7 @@ export const useDocumentView = create<DocumentViewState>()(
           activeTab: tab,
           documentLayouts: persistActiveTabForDocument(state.documentId, state.documentLayouts, tab),
           lastOpenedTarget:
-            buildResumeTarget(state.documentId, tab, state.highlightChunkId, state.highlightRange) ||
+            buildResumeTarget(state.documentId, tab, state.highlightChunkId, state.highlightRange, state.previewAnchor) ||
             state.lastOpenedTarget,
         })),
 
@@ -270,6 +296,7 @@ export const useDocumentView = create<DocumentViewState>()(
         documentId: state.documentId,
         highlightChunkId: state.highlightChunkId,
         highlightRange: state.highlightRange,
+        previewAnchor: state.previewAnchor,
         activeTab: state.activeTab,
         documentLayouts: state.documentLayouts,
         lastOpenedTarget: state.lastOpenedTarget,

@@ -2,6 +2,8 @@
 
 import { FileText, Loader2 } from "lucide-react"
 
+import type { DocumentPreviewAnchor } from "@/lib/document-preview-anchor"
+import { buildPdfPreviewSrc } from "@/lib/document-preview-anchor"
 import type { Document } from "@/types"
 import { Button } from "@/components/ui/button"
 
@@ -12,6 +14,10 @@ type PreviewTabPanelProps = {
   fileUrl: string | null
   rawFileUrl: string | null
   downloadUrl: string | null
+  previewAnchor: DocumentPreviewAnchor | null
+  highlightChunkId: string | null
+  highlightRange: { start: number; end: number } | null
+  onViewText: () => void
   onViewChunks: () => void
 }
 
@@ -22,6 +28,10 @@ export function PreviewTabPanel({
   fileUrl,
   rawFileUrl,
   downloadUrl,
+  previewAnchor,
+  highlightChunkId,
+  highlightRange,
+  onViewText,
   onViewChunks,
 }: Readonly<PreviewTabPanelProps>) {
   if (isLoading && !doc) {
@@ -33,7 +43,41 @@ export function PreviewTabPanel({
   }
 
   if (canInlinePreview && fileUrl) {
-    return <iframe src={`${fileUrl}#toolbar=0`} className="h-full w-full border-none" title="Document Preview" />
+    const hasAnchorContext = Boolean(previewAnchor || highlightChunkId || highlightRange)
+    const title = previewAnchor?.pageNumber ? "PDF 已跳转到引用页" : "已保留引用定位"
+    const description = previewAnchor?.pageNumber
+      ? `当前定位到 P.${previewAnchor.pageNumber}${previewAnchor.searchText ? `，并尝试搜索“${previewAnchor.searchText}”` : ""}。`
+      : "当前引用定位已保留，可切回文本定位查看高亮，或切到智能切片查看命中块。"
+
+    return (
+      <div className="relative h-full w-full">
+        {hasAnchorContext ? (
+          <div className="absolute inset-x-4 top-4 z-10 flex justify-end">
+            <div className="max-w-md rounded-xl border border-border/70 bg-background/95 p-3 shadow-lg backdrop-blur">
+              <div className="text-xs font-semibold text-foreground">{title}</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{description}</p>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                {highlightRange ? (
+                  <Button type="button" size="sm" variant="outline" onClick={onViewText}>
+                    查看文本高亮
+                  </Button>
+                ) : null}
+                {highlightChunkId ? (
+                  <Button type="button" size="sm" onClick={onViewChunks}>
+                    查看切片
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <iframe
+          src={buildPdfPreviewSrc(fileUrl, previewAnchor)}
+          className="h-full w-full border-none"
+          title="Document Preview"
+        />
+      </div>
+    )
   }
 
   if (canInlinePreview && rawFileUrl) {

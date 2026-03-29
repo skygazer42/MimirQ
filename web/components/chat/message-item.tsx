@@ -12,6 +12,7 @@ import remarkGfm from 'remark-gfm'
 import { AuthImage } from '@/components/auth-image'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import type { Citation, Message } from '@/types'
+import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { cn } from '@/lib/utils'
 import { globalEventBus } from '@/lib/event-bus'
 import { toAbsoluteBackendUrl } from '@/lib/env'
@@ -316,7 +317,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     const documentId = citation?.document_id || target.documentId
     if (!documentId) return
 
-    openDocument(documentId, citation?.chunk_id || target.chunkId, citation ? getCitationRange(citation) : undefined)
+    openDocument(
+      documentId,
+      citation?.chunk_id || target.chunkId,
+      citation ? getCitationRange(citation) : undefined,
+      { previewAnchor: getDocumentPreviewAnchorFromCitation(citation) }
+    )
   }, [citationByChunkId, citationByDocumentId, openDocument])
 
   const prefetchCitationTarget = useCallback((citation?: Citation | null, target?: { documentId?: string; chunkId?: string } | null) => {
@@ -348,7 +354,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
   const handleOpenCitation = useCallback((citation: Citation) => {
     if (!citation.document_id) return
-    openDocument(citation.document_id, citation.chunk_id, getCitationRange(citation))
+    openDocument(
+      citation.document_id,
+      citation.chunk_id,
+      getCitationRange(citation),
+      { previewAnchor: getDocumentPreviewAnchorFromCitation(citation) }
+    )
   }, [openDocument])
 
   const markdownComponents = {
@@ -1016,7 +1027,12 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
   const handleClick = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation()
     if (citation.document_id) {
-      openDocument(citation.document_id, citation.chunk_id, getCitationRange(citation))
+      openDocument(
+        citation.document_id,
+        citation.chunk_id,
+        getCitationRange(citation),
+        { previewAnchor: getDocumentPreviewAnchorFromCitation(citation) }
+      )
     }
   }, [citation, openDocument])
 
