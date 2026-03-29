@@ -6,9 +6,13 @@ import type { RagTrace } from '@/types'
 
 import {
   RagTracePipelineTimeline,
+  buildTraceCitationChannelSummaries,
+  buildCitationSimulationRows,
   buildPipelineInspectorSections,
   buildPipelineTimelineSteps,
+  filterTraceCitationsByChannel,
   movePipelineSelectionIndex,
+  moveTraceSelectionIndex,
 } from './rag-trace-panel'
 
 describe('rag trace panel pipeline timeline', () => {
@@ -158,5 +162,135 @@ describe('rag trace panel pipeline timeline', () => {
       })
     )
     expect(interactiveHtml).toContain('aria-pressed="true"')
+  })
+
+  it('simulates citation reordering from local channel weights and cycles trace selection', () => {
+    const rows = buildCitationSimulationRows(
+      [
+        {
+          document_id: 'doc-vector',
+          chunk_id: 'chunk-vector',
+          relevance_score: 0.74,
+          rerank_score: 0.31,
+          vector_score: 0.93,
+          bm25_score: 0.12,
+        },
+        {
+          document_id: 'doc-bm25',
+          chunk_id: 'chunk-bm25',
+          relevance_score: 0.69,
+          rerank_score: 0.42,
+          vector_score: 0.14,
+          bm25_score: 0.95,
+        },
+        {
+          document_id: 'doc-rerank',
+          chunk_id: 'chunk-rerank',
+          relevance_score: 0.88,
+          rerank_score: 0.97,
+          vector_score: 0.22,
+          bm25_score: 0.28,
+        },
+      ],
+      {
+        rerank_score: 0,
+        vector_score: 0,
+        bm25_score: 1,
+      }
+    )
+
+    expect(rows[0]).toMatchObject({
+      rank: 1,
+      baseRank: 2,
+      rankDelta: 1,
+      dominantChannelKey: 'bm25_score',
+      citation: expect.objectContaining({ document_id: 'doc-bm25' }),
+    })
+    expect(rows[2]).toMatchObject({
+      citation: expect.objectContaining({ document_id: 'doc-vector' }),
+    })
+
+    expect(moveTraceSelectionIndex(0, rows.length, -1)).toBe(2)
+    expect(moveTraceSelectionIndex(2, rows.length, 1)).toBe(0)
+  })
+
+  it('summarizes channel focus counts and filters citations by active retrieval channel', () => {
+    const trace: RagTrace = {
+      schema_version: 1,
+      ts_ms: 1710000000000,
+      request_id: 'req-4',
+      conversation_id: 'conv-1',
+      retrieval: {
+        mode: 'hybrid',
+        query_count: 1,
+        top_k: 8,
+        per_query: [
+          {
+            kind: 'main',
+            retriever_debug: {
+              channels: {
+                vector: { candidates: 8 },
+                bm25: { candidates: 5 },
+                sparse: { candidates: 2 },
+              },
+            },
+          },
+        ],
+      },
+      rerank: {
+        enabled: true,
+        provider: 'cohere',
+        top_n: 4,
+      },
+      citations: [
+        {
+          document_id: 'doc-1',
+          chunk_id: 'chunk-a',
+          rerank_score: 0.92,
+          vector_score: 0.81,
+          bm25_score: 0.22,
+        },
+        {
+          document_id: 'doc-2',
+          chunk_id: 'chunk-b',
+          rerank_score: 0.71,
+          bm25_score: 0.66,
+        },
+        {
+          document_id: 'doc-3',
+          chunk_id: 'chunk-c',
+          rerank_score: 0.63,
+          sparse_score: 0.44,
+        },
+      ],
+      citations_count: 3,
+      steps: [],
+    }
+
+    const summaries = buildTraceCitationChannelSummaries(trace, 'bm25')
+    expect(summaries.find((summary) => summary.key === 'all')).toMatchObject({
+      matchCount: 3,
+      candidateCount: 3,
+    })
+    expect(summaries.find((summary) => summary.key === 'bm25')).toMatchObject({
+      active: true,
+      matchCount: 2,
+      candidateCount: 5,
+    })
+    expect(summaries.find((summary) => summary.key === 'vector')).toMatchObject({
+      active: false,
+      matchCount: 1,
+      candidateCount: 8,
+    })
+
+    expect(filterTraceCitationsByChannel(trace.citations, 'bm25').map((citation) => citation.chunk_id)).toEqual([
+      'chunk-b',
+      'chunk-a',
+    ])
+    expect(filterTraceCitationsByChannel(trace.citations, 'all').map((citation) => citation.chunk_id)).toEqual([
+      'chunk-a',
+      'chunk-b',
+      'chunk-c',
+    ])
   })
 })

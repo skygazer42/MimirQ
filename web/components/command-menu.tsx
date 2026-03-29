@@ -17,6 +17,7 @@ import {
   Settings,
   Sparkles,
   Workflow,
+  Keyboard,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
@@ -52,6 +53,18 @@ type KeyChordCommand = {
   label: string
   description: string
   run: () => void
+}
+
+type ShortcutGuideItem = {
+  shortcut: string
+  label: string
+  description: string
+}
+
+type ShortcutDocItem = {
+  key: string
+  label: string
+  description: string
 }
 
 const KEY_CHORD_TIMEOUT_MS = 1600
@@ -132,10 +145,17 @@ export function CommandMenu() {
   const open = useCommandMenuState((state) => state.open)
   const setOpen = useCommandMenuState((state) => state.setOpen)
   const toggleOpen = useCommandMenuState((state) => state.toggle)
-  const { openDocument } = useDocumentView()
+  const { lastOpenedTarget, openDocument, reopenLastDocument } = useDocumentView()
   const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || "/"), [pathname])
   const isSlashMode = query.trim().startsWith("/")
   const slashNeedle = query.trim().slice(1).toLowerCase()
+  const hasResumeTarget = Boolean(lastOpenedTarget?.documentId)
+
+  const resumeLastDocumentContext = React.useCallback(() => {
+    if (!hasResumeTarget) return
+    reopenLastDocument()
+    router.push("/")
+  }, [hasResumeTarget, reopenLastDocument, router])
 
   const clearPendingChord = React.useCallback(() => {
     setPendingChordPrefix(null)
@@ -278,8 +298,14 @@ export function CommandMenu() {
         description: '进入切片工作台，继续检索与诊断。',
         run: () => router.push('/chunk-preview'),
       },
+      {
+        key: 'g v',
+        label: 'Resume Viewer Context',
+        description: hasResumeTarget ? '恢复最近一次文档/引用定位。' : '最近没有可恢复的文档定位。',
+        run: resumeLastDocumentContext,
+      },
     ],
-    [router]
+    [hasResumeTarget, resumeLastDocumentContext, router]
   )
   const chordPrefixes = React.useMemo(
     () => new Set(keyChordCommands.map((command) => command.key.split(' ')[0] || '')),
@@ -289,9 +315,55 @@ export function CommandMenu() {
     () => new Map(keyChordCommands.map((command) => [command.key, command.run])),
     [keyChordCommands]
   )
+  const shortcutGuideItems = React.useMemo<ShortcutGuideItem[]>(
+    () => [
+      {
+        shortcut: "⌘K / Ctrl+K",
+        label: "打开 Command Center",
+        description: "全局呼出命令中心，并继续搜索页面、数据集、对话与快捷动作。",
+      },
+      {
+        shortcut: "?",
+        label: "查看快捷键地图",
+        description: "当光标不在输入框时，直接打开当前这份快捷键说明。",
+      },
+      ...keyChordCommands.map((command) => ({
+        shortcut: command.key,
+        label: command.label,
+        description: `导航 Chord · ${command.description}`,
+      })),
+      {
+        shortcut: "h / l",
+        label: "切换 Trace Stage",
+        description: "RAG Trace 时间线聚焦后，在 pipeline stages 之间左右切换。",
+      },
+      {
+        shortcut: "← / →",
+        label: "切换 Trace Stage",
+        description: "和 h/l 等价，用方向键快速浏览 pipeline inspector。",
+      },
+      {
+        shortcut: "j / k",
+        label: "切片焦点跳转",
+        description: "Document Viewer 内在检索命中或已加载切片之间循环切换。",
+      },
+    ],
+    [keyChordCommands]
+  )
 
   const slashCommands = React.useMemo<SlashCommand[]>(
     () => [
+      {
+        id: "resume-document-view",
+        label: "恢复最近文档上下文",
+        description: hasResumeTarget
+          ? "重新打开最近一次查看的文档、切片与高亮位置。"
+          : "最近没有可恢复的文档定位。",
+        shortcut: "/resume",
+        keywords: ["resume", "viewer", "document", "citation", "恢复", "文档", "引用", "继续查看"],
+        icon: FileText,
+        run: resumeLastDocumentContext,
+      },
       {
         id: "upload",
         label: "上传文档",
@@ -416,7 +488,38 @@ export function CommandMenu() {
         run: () => router.push("/access-review"),
       },
     ],
-    [currentViewPrompt.description, currentViewPrompt.prompt, router]
+    [currentViewPrompt.description, currentViewPrompt.prompt, hasResumeTarget, resumeLastDocumentContext, router]
+  )
+
+  const viewerShortcutDocs = React.useMemo<ShortcutDocItem[]>(
+    () => [
+      {
+        key: 'g v',
+        label: '恢复最近文档上下文',
+        description: '重新打开最近一次文档/引用定位，减少误关后的重找成本。',
+      },
+      {
+        key: '/',
+        label: '聚焦切片搜索',
+        description: '在文档查看器切片页中直接把焦点拉到搜索框。',
+      },
+      {
+        key: 'j / k',
+        label: '切换命中切片',
+        description: '在当前命中列表里快速前后切换。',
+      },
+      {
+        key: 'Ctrl/Cmd+F',
+        label: '打开切片查找',
+        description: '在切片页里快速开始关键字定位。',
+      },
+      {
+        key: 'Esc',
+        label: '清空搜索或关闭查看器',
+        description: '优先清空切片搜索；没有搜索词时直接关闭查看器。',
+      },
+    ],
+    []
   )
 
   const filteredSlashCommands = React.useMemo(
@@ -500,7 +603,7 @@ export function CommandMenu() {
         className="flex items-center justify-between border-b border-border/50 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground"
       >
         <span className="font-medium text-foreground/80">Command Center</span>
-        <span>输入 <span className="font-semibold text-foreground">/</span> 查看快捷动作 · 试试 ? / g d / g c / g g / f s</span>
+        <span>输入 <span className="font-semibold text-foreground">/</span> 查看快捷动作 · 试试 ? / g d / g c / g g / f s / g v</span>
       </div>
       <CommandInput placeholder="输入命令或搜索..." value={query} onValueChange={setQuery} />
       <CommandList>
@@ -543,6 +646,36 @@ export function CommandMenu() {
                 <span className="truncate text-xs text-muted-foreground">{command.description}</span>
               </div>
               <CommandShortcut>{command.key}</CommandShortcut>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+
+        <CommandSeparator />
+
+        <CommandGroup heading="文档查看器快捷键">
+          {viewerShortcutDocs.map((shortcut) => (
+            <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
+              <FileText className="mr-2 h-4 w-4" />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span>{shortcut.label}</span>
+                <span className="truncate text-xs text-muted-foreground">{shortcut.description}</span>
+              </div>
+              <CommandShortcut>{shortcut.key}</CommandShortcut>
+            </CommandItem>
+          ))}
+        </CommandGroup>
+
+        <CommandSeparator />
+
+        <CommandGroup heading="工作流快捷键地图">
+          {shortcutGuideItems.map((item) => (
+            <CommandItem key={`${item.shortcut}:${item.label}`} disabled value={`${item.shortcut} ${item.label}`}>
+              <Keyboard className="mr-2 h-4 w-4" />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span>{item.label}</span>
+                <span className="truncate text-xs text-muted-foreground">{item.description}</span>
+              </div>
+              <CommandShortcut>{item.shortcut}</CommandShortcut>
             </CommandItem>
           ))}
         </CommandGroup>

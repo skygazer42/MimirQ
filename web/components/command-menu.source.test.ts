@@ -9,6 +9,7 @@ describe('command menu source', () => {
 
     expect(src).toContain('query.trim().startsWith("/")')
     expect(src).toContain('heading="快捷指令"')
+    expect(src).toContain('shortcut: "/resume"')
     expect(src).toContain('shortcut: "/upload"')
     expect(src).toContain('shortcut: "/analyze"')
     expect(src).toContain('shortcut: "/stats"')
@@ -38,11 +39,19 @@ describe('command menu source', () => {
     expect(src).toContain("key: 'g d'")
     expect(src).toContain("key: 'g c'")
     expect(src).toContain("key: 'g g'")
+    expect(src).toContain("key: 'g v'")
     expect(src).toContain("key: 'f s'")
     expect(src).toContain("router.push('/knowledge')")
     expect(src).toContain("router.push('/graph')")
     expect(src).toContain("router.push('/chunk-preview')")
-    expect(src).toContain('试试 ? / g d / g c / g g / f s')
+    expect(src).toContain('resumeLastDocumentContext')
+    expect(src).toContain('试试 ? / g d / g c / g g / f s / g v')
+    expect(src).toContain('heading="工作流快捷键地图"')
+    expect(src).toContain('shortcut: "⌘K / Ctrl+K"')
+    expect(src).toContain('shortcut: "h / l"')
+    expect(src).toContain('shortcut: "← / →"')
+    expect(src).toContain('shortcut: "j / k"')
+    expect(src).toContain('Document Viewer 内在检索命中或已加载切片之间循环切换')
   })
 
   it('expands typed search beyond documents into datasets and conversations', () => {
@@ -68,10 +77,21 @@ describe('command menu source', () => {
   it('includes bilingual keyword aliases for power-user slash navigation', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
 
+    expect(src).toContain('"resume", "viewer", "document", "citation", "恢复", "文档", "引用", "继续查看"')
     expect(src).toContain('"parsing", "parser", "chunking", "extract", "解析", "文档解析", "切分", "抽取", "解析工作台"')
     expect(src).toContain('"reports", "report", "analytics", "dashboard", "报表", "报告", "分析看板", "指标"')
     expect(src).toContain('"observability", "monitoring", "metrics", "logs", "trace", "可观测", "监控", "指标", "日志", "链路"')
     expect(src).toContain('"governance", "data governance", "policy", "compliance", "数据治理", "治理", "规则", "合规", "画像"')
     expect(src).toContain('"access review", "rbac", "permission", "admin", "access", "访问审查", "权限", "角色", "管理员"')
+  })
+
+  it('documents the viewer shortcut map alongside the command center chords', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
+
+    expect(src).toContain('heading="文档查看器快捷键"')
+    expect(src).toContain("key: 'Ctrl/Cmd+F'")
+    expect(src).toContain("key: 'j / k'")
+    expect(src).toContain("key: 'Esc'")
+    expect(src).toContain('恢复最近文档上下文')
   })
 })

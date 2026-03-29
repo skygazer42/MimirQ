@@ -10,7 +10,6 @@
 ### 1.2 高级微动效 (Micro-interactions)
 - [ ] **流式文本渲染**: 优化 `cinematic-typewriter`，增加 Token 级的 `opacity` 淡入效果，减少字符跳动。
 - [ ] **平滑布局转换**: 使用 Framer Motion 的 `layout` 属性，在“列表视图”与“图谱视图”切换时提供连续的视觉反馈。
-- [ ] **全局 Command-K 增强**: 实现类似 Raycast 的命令面板，支持 `/` 指令快速触发“上传文档”、“分析当前视图”等操作。
 
 ## 2. 知识交互深度 (Deep Knowledge Interaction)
 

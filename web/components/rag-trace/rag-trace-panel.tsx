@@ -88,6 +88,367 @@ function getPrimaryScore(c: RagTraceCitation) {
   return Number.isFinite(n) ? n : null
 }
 
+const CITATION_SIMULATION_CHANNELS = [
+  { key: 'rerank_score', label: 'Rerank' },
+  { key: 'vector_score', label: 'Vector' },
+  { key: 'bm25_score', label: 'BM25' },
+  { key: 'lexical_score', label: 'Lexical' },
+  { key: 'sparse_score', label: 'Sparse' },
+  { key: 'colbert_score', label: 'ColBERT' },
+] as const
+
+type CitationSimulationChannelKey = (typeof CITATION_SIMULATION_CHANNELS)[number]['key']
+type CitationSimulationWeights = Partial<Record<CitationSimulationChannelKey, number>>
+type CitationSimulationPreset = 'balanced' | 'vector' | 'lexical'
+
+type CitationSimulationContribution = {
+  key: CitationSimulationChannelKey
+  label: string
+  rawScore: number | null
+  normalizedScore: number
+  weightedScore: number
+}
+
+export type CitationSimulationRow = {
+  citation: RagTraceCitation
+  rank: number
+  baseRank: number
+  rankDelta: number
+  compositeScore: number
+  dominantChannelKey: CitationSimulationChannelKey | null
+  dominantChannelLabel: string | null
+  contributions: CitationSimulationContribution[]
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tagName = target.tagName
+  return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+}
+
+function getCitationSimulationScore(citation: RagTraceCitation, key: CitationSimulationChannelKey): number | null {
+  const raw = citation[key]
+  if (raw == null) return null
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : null
+}
+
+function getAvailableCitationSimulationChannels(citations: RagTraceCitation[]) {
+  return CITATION_SIMULATION_CHANNELS.filter((channel) =>
+    citations.some((citation) => getCitationSimulationScore(citation, channel.key) != null)
+  )
+}
+
+function clampCitationSimulationWeight(value: unknown) {
+  const next = Number(value)
+  if (!Number.isFinite(next)) return 0
+  return Math.min(1, Math.max(0, next))
+}
+
+function buildCitationSimulationWeightsForPreset(
+  preset: CitationSimulationPreset,
+  channels: ReadonlyArray<{ key: CitationSimulationChannelKey }>
+): CitationSimulationWeights {
+  const keys = channels.map((channel) => channel.key)
+  const weights = Object.fromEntries(keys.map((key) => [key, 0])) as CitationSimulationWeights
+
+  if (!keys.length) return weights
+  if (preset === 'vector') {
+    if (keys.includes('vector_score')) weights.vector_score = 0.7
+    if (keys.includes('rerank_score')) weights.rerank_score = 0.2
+    if (keys.includes('colbert_score')) weights.colbert_score = 0.1
+    return weights
+  }
+  if (preset === 'lexical') {
+    if (keys.includes('bm25_score')) weights.bm25_score = 0.55
+    if (keys.includes('lexical_score')) weights.lexical_score = 0.2
+    if (keys.includes('sparse_score')) weights.sparse_score = 0.15
+    if (keys.includes('rerank_score')) weights.rerank_score = 0.1
+    return weights
+  }
+
+  const weight = 1 / keys.length
+  for (const key of keys) {
+    weights[key] = weight
+  }
+  return weights
+}
+
+function normalizeCitationSimulationSeries(values: Array<number | null>) {
+  const finiteValues = values.filter((value): value is number => value != null)
+  if (!finiteValues.length) return values.map(() => 0)
+
+  const min = Math.min(...finiteValues)
+  const max = Math.max(...finiteValues)
+  if (Math.abs(max - min) < 1e-12) {
+    return values.map((value) => (value == null ? 0 : 1))
+  }
+
+  return values.map((value) => {
+    if (value == null) return 0
+    return (value - min) / (max - min)
+  })
+}
+
+export function moveTraceSelectionIndex(currentIndex: number, total: number, direction: -1 | 1): number {
+  if (!Number.isFinite(total) || total <= 0) return -1
+  const base = Number.isFinite(currentIndex) && currentIndex >= 0 ? Math.trunc(currentIndex) % total : 0
+  return (base + direction + total) % total
+}
+
+export function buildCitationSimulationRows(
+  citations: RagTraceCitation[],
+  weights: CitationSimulationWeights = {}
+): CitationSimulationRow[] {
+  const channels = getAvailableCitationSimulationChannels(citations)
+  if (!citations.length || !channels.length) return []
+
+  const normalizedScoreByKey = new Map<CitationSimulationChannelKey, number[]>()
+  for (const channel of channels) {
+    normalizedScoreByKey.set(
+      channel.key,
+      normalizeCitationSimulationSeries(citations.map((citation) => getCitationSimulationScore(citation, channel.key)))
+    )
+  }
+
+  const normalizedWeights = Object.fromEntries(
+    channels.map((channel) => [channel.key, clampCitationSimulationWeight(weights[channel.key])])
+  ) as CitationSimulationWeights
+  const totalWeight = channels.reduce((sum, channel) => sum + (normalizedWeights[channel.key] ?? 0), 0)
+
+  return citations
+    .map((citation, index) => {
+      const contributions = channels.map<CitationSimulationContribution>((channel) => {
+        const normalizedScore = normalizedScoreByKey.get(channel.key)?.[index] ?? 0
+        const weightedScore = normalizedScore * (normalizedWeights[channel.key] ?? 0)
+        return {
+          key: channel.key,
+          label: channel.label,
+          rawScore: getCitationSimulationScore(citation, channel.key),
+          normalizedScore,
+          weightedScore,
+        }
+      })
+      const compositeScore =
+        totalWeight > 0
+          ? contributions.reduce((sum, contribution) => sum + contribution.weightedScore, 0) / totalWeight
+          : 0
+      const dominantContribution =
+        contributions
+          .slice()
+          .sort((a, b) => b.weightedScore - a.weightedScore || b.normalizedScore - a.normalizedScore)[0] ?? null
+
+      return {
+        citation,
+        rank: 0,
+        baseRank: index + 1,
+        rankDelta: 0,
+        compositeScore,
+        dominantChannelKey: dominantContribution?.weightedScore ? dominantContribution.key : null,
+        dominantChannelLabel: dominantContribution?.weightedScore ? dominantContribution.label : null,
+        contributions,
+      }
+    })
+    .sort((a, b) => b.compositeScore - a.compositeScore || a.baseRank - b.baseRank)
+    .map((row, index) => ({
+      ...row,
+      rank: index + 1,
+      rankDelta: row.baseRank - (index + 1),
+    }))
+}
+
+export type RagTraceCitationChannelFilter = 'all' | 'vector' | 'bm25' | 'lexical_db' | 'sparse' | 'colbert_ann'
+
+export type RagTraceCitationChannelSummary = {
+  key: RagTraceCitationChannelFilter
+  label: string
+  summary: string
+  matchCount: number
+  candidateCount: number | null
+  maxScore: number | null
+  active: boolean
+}
+
+type StoredTraceCitationTarget = {
+  requestId: string
+  documentId: string
+  chunkId: string | null
+  start: number | null
+  end: number | null
+  pageNumber: number | null
+  label: string | null
+  openedAt: number
+}
+
+const RAG_TRACE_LAST_TARGETS_STORAGE_KEY = 'mimirq_rag_trace_last_targets_v1'
+
+const RAG_TRACE_CITATION_CHANNEL_OPTIONS: ReadonlyArray<{
+  key: RagTraceCitationChannelFilter
+  label: string
+  summary: string
+}> = [
+  { key: 'all', label: 'All', summary: '查看整条链路的最终证据面。' },
+  { key: 'vector', label: 'Vector', summary: '聚焦 dense/vector 通道真正贡献到最终引用的证据。' },
+  { key: 'bm25', label: 'BM25', summary: '排查 lexical keyword 命中是否主导了召回结果。' },
+  { key: 'lexical_db', label: 'Lexical DB', summary: '查看数据库级词法通道在最终证据里的存在感。' },
+  { key: 'sparse', label: 'Sparse', summary: '检查 learned sparse / SPLADE 风格通道是否带来额外证据。' },
+  { key: 'colbert_ann', label: 'ColBERT', summary: '聚焦 late-interaction / ColBERT 通道影响到的证据。' },
+]
+
+function getRagTraceCitationChannelLabel(channel: RagTraceCitationChannelFilter) {
+  return RAG_TRACE_CITATION_CHANNEL_OPTIONS.find((option) => option.key === channel)?.label || 'All'
+}
+
+function getRagTraceCitationChannelSummary(channel: RagTraceCitationChannelFilter) {
+  return (
+    RAG_TRACE_CITATION_CHANNEL_OPTIONS.find((option) => option.key === channel)?.summary ||
+    '查看整条链路的最终证据面。'
+  )
+}
+
+function getRagTraceCitationChannelScore(
+  citation: RagTraceCitation,
+  channel: Exclude<RagTraceCitationChannelFilter, 'all'>
+): number | null {
+  const raw =
+    channel === 'vector'
+      ? citation.vector_score
+      : channel === 'bm25'
+        ? citation.bm25_score
+        : channel === 'lexical_db'
+          ? citation.lexical_score
+          : channel === 'sparse'
+            ? citation.sparse_score
+            : citation.colbert_score
+
+  if (raw == null) return null
+  const score = Number(raw)
+  return Number.isFinite(score) ? score : null
+}
+
+function getRagTraceChannelBox(
+  channels: Record<string, any> | null | undefined,
+  channel: Exclude<RagTraceCitationChannelFilter, 'all'>
+): Record<string, any> | null {
+  return (channels as Record<string, any> | null | undefined)?.[channel] ?? null
+}
+
+export function filterTraceCitationsByChannel(
+  citations: ReadonlyArray<RagTraceCitation>,
+  channel: RagTraceCitationChannelFilter
+): RagTraceCitation[] {
+  const list = Array.from(citations || [])
+  if (channel === 'all') {
+    return list.sort((a, b) => (getPrimaryScore(b) ?? 0) - (getPrimaryScore(a) ?? 0))
+  }
+
+  return list
+    .filter((citation) => isNonZero(getRagTraceCitationChannelScore(citation, channel)))
+    .sort((a, b) => {
+      const channelDelta = (getRagTraceCitationChannelScore(b, channel) ?? 0) - (getRagTraceCitationChannelScore(a, channel) ?? 0)
+      if (channelDelta !== 0) return channelDelta
+      return (getPrimaryScore(b) ?? 0) - (getPrimaryScore(a) ?? 0)
+    })
+}
+
+export function buildTraceCitationChannelSummaries(
+  trace: RagTrace | null,
+  activeChannel: RagTraceCitationChannelFilter
+): RagTraceCitationChannelSummary[] {
+  const citations = trace?.citations || []
+  const mainQuery =
+    (trace?.retrieval?.per_query || []).find((query) => query?.kind === 'main') ??
+    (trace?.retrieval?.per_query || [])[0] ??
+    null
+  const channels = (mainQuery?.retriever_debug as Record<string, unknown> | null | undefined)?.channels as
+    | Record<string, any>
+    | null
+    | undefined
+
+  return RAG_TRACE_CITATION_CHANNEL_OPTIONS.map((option) => {
+    if (option.key === 'all') {
+      const sorted = filterTraceCitationsByChannel(citations, option.key)
+      return {
+        key: option.key,
+        label: option.label,
+        summary: option.summary,
+        matchCount: sorted.length,
+        candidateCount: trace?.citations_count ?? sorted.length,
+        maxScore: sorted[0] ? getPrimaryScore(sorted[0]) : null,
+        active: activeChannel === option.key,
+      }
+    }
+
+    const filtered = filterTraceCitationsByChannel(citations, option.key)
+    const box = getRagTraceChannelBox(channels, option.key)
+    return {
+      key: option.key,
+      label: option.label,
+      summary: option.summary,
+      matchCount: filtered.length,
+      candidateCount:
+        typeof box?.candidates === 'number' && Number.isFinite(box.candidates) ? Number(box.candidates) : null,
+      maxScore: filtered[0] ? getRagTraceCitationChannelScore(filtered[0], option.key) : null,
+      active: activeChannel === option.key,
+    }
+  })
+}
+
+function getTraceCitationLabel(citation: RagTraceCitation, fallback: string) {
+  const citationRecord = citation as Record<string, unknown>
+  const rawDocumentName = typeof citationRecord.document_name === 'string' ? citationRecord.document_name : ''
+  return String(rawDocumentName || citation.document_id || fallback).trim() || fallback
+}
+
+function readStoredTraceCitationTargets(): Record<string, StoredTraceCitationTarget> {
+  if (globalThis.window === undefined) return {}
+
+  try {
+    const raw = globalThis.window.localStorage.getItem(RAG_TRACE_LAST_TARGETS_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as Record<string, Partial<StoredTraceCitationTarget>> | null
+    if (!parsed || typeof parsed !== 'object') return {}
+
+    const entries = Object.entries(parsed)
+      .map(([requestId, value]) => {
+        const normalizedRequestId = String(requestId || '').trim()
+        const documentId = String(value?.documentId || '').trim()
+        if (!normalizedRequestId || !documentId) return null
+
+        return [
+          normalizedRequestId,
+          {
+            requestId: normalizedRequestId,
+            documentId,
+            chunkId: String(value?.chunkId || '').trim() || null,
+            start: typeof value?.start === 'number' && Number.isFinite(value.start) ? Math.trunc(value.start) : null,
+            end: typeof value?.end === 'number' && Number.isFinite(value.end) ? Math.trunc(value.end) : null,
+            pageNumber:
+              typeof value?.pageNumber === 'number' && Number.isFinite(value.pageNumber) ? Math.trunc(value.pageNumber) : null,
+            label: String(value?.label || '').trim() || null,
+            openedAt:
+              typeof value?.openedAt === 'number' && Number.isFinite(value.openedAt) ? Math.trunc(value.openedAt) : Date.now(),
+          } satisfies StoredTraceCitationTarget,
+        ] as const
+      })
+      .filter((entry): entry is readonly [string, StoredTraceCitationTarget] => Boolean(entry))
+
+    return Object.fromEntries(entries)
+  } catch {
+    return {}
+  }
+}
+
+function writeStoredTraceCitationTargets(targets: Record<string, StoredTraceCitationTarget>) {
+  if (globalThis.window === undefined) return
+
+  try {
+    globalThis.window.localStorage.setItem(RAG_TRACE_LAST_TARGETS_STORAGE_KEY, JSON.stringify(targets))
+  } catch {
+    // best-effort persistence only
+  }
+}
+
 export type PipelineTimelineStep = {
   key: string
   label: string
@@ -409,6 +770,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const [diffError, setDiffError] = React.useState<string | null>(null)
   const [diffResult, setDiffResult] = React.useState<RagTraceBundleDiffResponse | null>(null)
   const [selectedPipelineSectionId, setSelectedPipelineSectionId] = React.useState<string | null>(null)
+  const [selectedCitationChannel, setSelectedCitationChannel] = React.useState<RagTraceCitationChannelFilter>('all')
+  const [citationSimulationWeights, setCitationSimulationWeights] = React.useState<CitationSimulationWeights>({})
+  const [storedTraceCitationTargets, setStoredTraceCitationTargets] = React.useState<Record<string, StoredTraceCitationTarget>>({})
   const prefetchedTraceCitationTargetsRef = React.useRef<Set<string>>(new Set())
 
   const items = data?.items ?? []
@@ -423,6 +787,30 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const requestId = String(selected?.request_id || '').trim()
   const pipelineSteps = React.useMemo(() => buildPipelineTimelineSteps(selected), [selected])
   const pipelineInspectorSections = React.useMemo(() => buildPipelineInspectorSections(selected), [selected])
+  const availableCitationSimulationChannels = React.useMemo(
+    () => getAvailableCitationSimulationChannels(selected?.citations || []),
+    [selected]
+  )
+  const simulatedCitationRows = React.useMemo(
+    () => buildCitationSimulationRows(selected?.citations || [], citationSimulationWeights),
+    [citationSimulationWeights, selected]
+  )
+  const channelSummaries = React.useMemo(
+    () => buildTraceCitationChannelSummaries(selected, selectedCitationChannel),
+    [selected, selectedCitationChannel]
+  )
+  const filteredCitations = React.useMemo(
+    () => filterTraceCitationsByChannel(selected?.citations || [], selectedCitationChannel),
+    [selected, selectedCitationChannel]
+  )
+  const activeChannelSummary = React.useMemo(
+    () => channelSummaries.find((summary) => summary.active) ?? channelSummaries[0] ?? null,
+    [channelSummaries]
+  )
+  const lastOpenedTraceCitationTarget = React.useMemo(
+    () => (requestId ? storedTraceCitationTargets[requestId] ?? null : null),
+    [requestId, storedTraceCitationTargets]
+  )
   const selectedPipelineSection = React.useMemo(
     () => pipelineInspectorSections.find((section) => section.id === selectedPipelineSectionId) ?? pipelineInspectorSections[0] ?? null,
     [pipelineInspectorSections, selectedPipelineSectionId]
@@ -441,6 +829,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     })
   }, [pipelineInspectorSections])
 
+  React.useEffect(() => {
+    setStoredTraceCitationTargets(readStoredTraceCitationTargets())
+  }, [])
+
+  React.useEffect(() => {
+    setCitationSimulationWeights(buildCitationSimulationWeightsForPreset('balanced', availableCitationSimulationChannels))
+  }, [availableCitationSimulationChannels, requestId])
+
   const handlePipelineTimelineKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!pipelineInspectorSections.length) return
 
@@ -456,6 +852,24 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     if (nextId) setSelectedPipelineSectionId(nextId)
   }, [pipelineInspectorSections, selectedPipelineSectionIndex])
 
+  const handleTracePanelKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!items.length) return
+    if (isEditableTarget(event.target)) return
+
+    const key = event.key.toLowerCase()
+    let direction: -1 | 1 | null = null
+    if (key === 'arrowdown' || key === 'j') direction = 1
+    if (key === 'arrowup' || key === 'k') direction = -1
+    if (direction == null) return
+
+    event.preventDefault()
+    setSelectedIndex((current) => moveTraceSelectionIndex(current, items.length, direction))
+  }, [items.length])
+
+  const applyCitationSimulationPreset = React.useCallback((preset: CitationSimulationPreset) => {
+    setCitationSimulationWeights(buildCitationSimulationWeightsForPreset(preset, availableCitationSimulationChannels))
+  }, [availableCitationSimulationChannels])
+
   const prefetchTraceCitationTarget = React.useCallback((documentId?: string | null, chunkId?: string | null) => {
     const docId = String(documentId || '').trim()
     if (!docId) return
@@ -465,6 +879,72 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     prefetchedTraceCitationTargetsRef.current.add(targetKey)
     prefetchDocumentView({ documentId: docId, chunkId: cid || undefined })
   }, [])
+
+  const rememberOpenedTraceCitationTarget = React.useCallback((target: StoredTraceCitationTarget) => {
+    setStoredTraceCitationTargets((current) => {
+      const next = {
+        ...current,
+        [target.requestId]: target,
+      }
+      writeStoredTraceCitationTargets(next)
+      return next
+    })
+  }, [])
+
+  const openTraceCitation = React.useCallback(
+    (citation: RagTraceCitation, opts?: { label?: string; notify?: boolean }) => {
+      const documentId = String(citation.document_id || '').trim()
+      if (!documentId) return
+
+      const chunkId = String(citation.chunk_id || '').trim() || undefined
+      const range = getTraceCitationRange(citation)
+      const label = opts?.label?.trim() || getTraceCitationLabel(citation, documentId)
+
+      if (requestId) {
+        rememberOpenedTraceCitationTarget({
+          requestId,
+          documentId,
+          chunkId: chunkId || null,
+          start: range?.start ?? null,
+          end: range?.end ?? null,
+          pageNumber: typeof citation.page_number === 'number' && Number.isFinite(citation.page_number) ? citation.page_number : null,
+          label,
+          openedAt: Date.now(),
+        })
+      }
+
+      openDocument(documentId, chunkId, range)
+      if (opts?.notify) {
+        toast.message('已打开引用文档', {
+          description: `${label}${chunkId ? ` · ${chunkId}` : ''}`,
+        })
+      }
+    },
+    [openDocument, rememberOpenedTraceCitationTarget, requestId]
+  )
+
+  const reopenLastTraceCitation = React.useCallback(() => {
+    if (!lastOpenedTraceCitationTarget) return
+
+    const range =
+      lastOpenedTraceCitationTarget.start != null &&
+      lastOpenedTraceCitationTarget.end != null &&
+      lastOpenedTraceCitationTarget.end > lastOpenedTraceCitationTarget.start
+        ? { start: lastOpenedTraceCitationTarget.start, end: lastOpenedTraceCitationTarget.end }
+        : undefined
+
+    openDocument(
+      lastOpenedTraceCitationTarget.documentId,
+      lastOpenedTraceCitationTarget.chunkId || undefined,
+      range
+    )
+
+    const pageLabel =
+      lastOpenedTraceCitationTarget.pageNumber != null ? ` · P.${lastOpenedTraceCitationTarget.pageNumber}` : ''
+    toast.message('已重新打开最近证据', {
+      description: `${lastOpenedTraceCitationTarget.label || lastOpenedTraceCitationTarget.documentId}${pageLabel}`,
+    })
+  }, [lastOpenedTraceCitationTarget, openDocument])
 
   const downloadBundle = React.useCallback(async () => {
     const rid = requestId
@@ -620,7 +1100,11 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   }
 
   return (
-    <div className={cn('grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]', className)}>
+    <div
+      className={cn('grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]', className)}
+      tabIndex={0}
+      onKeyDownCapture={handleTracePanelKeyDown}
+    >
       <Panel variant="glass" padding="none" className="overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
           <div className="flex items-center gap-2">
@@ -630,6 +1114,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           <Button variant="outline" size="sm" onClick={load} className="rounded-xl">
             刷新
           </Button>
+        </div>
+        <div className="border-b border-border/60 bg-muted/20 px-4 py-2 text-[11px] text-muted-foreground">
+          聚焦面板后可用 <span className="font-mono">j/k</span> 或 <span className="font-mono">↑/↓</span> 切换 trace。
         </div>
         <ScrollArea className="h-[420px]">
           <div className="p-2">
@@ -928,9 +1415,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               const documentId = String(citation.document_id || '').trim()
                               const chunkId = String(citation.chunk_id || '').trim() || undefined
                               const pageLabel = citation.page_number == null ? null : `P.${citation.page_number}`
-                              const citationRecord = citation as Record<string, unknown>
-                              const rawDocumentName = typeof citationRecord.document_name === 'string' ? citationRecord.document_name : ''
-                              const label = String(rawDocumentName || documentId || `citation-${index + 1}`).trim()
+                              const label = getTraceCitationLabel(citation, `citation-${index + 1}`)
                               return (
                                 <button
                                   key={`${documentId}:${chunkId || index}`}
@@ -940,7 +1425,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                   onFocus={() => prefetchTraceCitationTarget(documentId, chunkId)}
                                   onClick={() => {
                                     if (!documentId) return
-                                    openDocument(documentId, chunkId, getTraceCitationRange(citation))
+                                    openTraceCitation(citation, { label })
                                   }}
                                   className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-left transition-colors hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
                                 >
@@ -973,6 +1458,52 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
               <div className="p-4 space-y-3">
                 {channels ? (
                   <>
+                    <div className="rounded-2xl border border-border/60 bg-card/50 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Focus citations</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            点击 channel，直接筛出真正带来最终证据的命中。
+                          </div>
+                        </div>
+                        {activeChannelSummary ? (
+                          <Badge variant="soft" className="text-[10px]">
+                            {activeChannelSummary.matchCount}/{selected.citations.length} hits · focus=
+                            {getRagTraceCitationChannelLabel(selectedCitationChannel)}
+                          </Badge>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {channelSummaries.map((summary) => (
+                          <button
+                            key={summary.key}
+                            type="button"
+                            aria-pressed={summary.active}
+                            onClick={() => setSelectedCitationChannel(summary.key)}
+                            className={cn(
+                              'rounded-full border px-3 py-1.5 text-left text-xs transition-colors',
+                              'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
+                              summary.active
+                                ? 'border-sky-500/50 bg-sky-500/10 text-sky-900 dark:text-sky-100'
+                                : 'border-border/60 bg-background/80 text-muted-foreground hover:border-sky-500/30 hover:text-foreground'
+                            )}
+                          >
+                            <span className="font-semibold">{summary.label}</span>
+                            <span className="ml-2 font-mono">{summary.matchCount}</span>
+                            {summary.candidateCount != null ? <span className="ml-2 text-[11px]">cand {summary.candidateCount}</span> : null}
+                          </button>
+                        ))}
+                      </div>
+
+                      {activeChannelSummary ? (
+                        <div className="mt-3 text-xs text-muted-foreground">
+                          {activeChannelSummary.summary}
+                          {activeChannelSummary.maxScore == null ? null : ` · top=${activeChannelSummary.maxScore.toFixed(3)}`}
+                        </div>
+                      ) : null}
+                    </div>
+
                     <div className="flex flex-wrap items-center gap-2">
                       {channels.retrieval_mode ? (
                         <Badge variant="soft" className="text-[10px]">
@@ -1076,12 +1607,129 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       </div>
                     ) : null}
 
+                    {availableCitationSimulationChannels.length > 1 && simulatedCitationRows.length > 1 ? (
+                      <Panel variant="muted" className="space-y-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="space-y-1">
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Fusion Simulator</div>
+                            <div className="text-xs text-muted-foreground">
+                              拖动权重，实时模拟当前 trace 在不同 channel 配比下的 TopK 重排。
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('balanced')}>
+                              平衡
+                            </Button>
+                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('vector')}>
+                              Vector 优先
+                            </Button>
+                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('lexical')}>
+                              Lexical 优先
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                          {availableCitationSimulationChannels.map((channel) => {
+                            const value = citationSimulationWeights[channel.key] ?? 0
+                            return (
+                              <label key={channel.key} className="space-y-2 rounded-xl border border-border/60 bg-card/60 px-3 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-xs font-semibold text-foreground">{channel.label}</span>
+                                  <span className="text-[11px] font-mono text-muted-foreground">{Math.round(value * 100)}%</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={100}
+                                  step={5}
+                                  value={Math.round(value * 100)}
+                                  onChange={(event) => {
+                                    const nextValue = clampCitationSimulationWeight(Number(event.target.value) / 100)
+                                    setCitationSimulationWeights((current) => ({
+                                      ...current,
+                                      [channel.key]: nextValue,
+                                    }))
+                                  }}
+                                  className="w-full accent-sky-600"
+                                />
+                              </label>
+                            )
+                          })}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Simulated TopK</div>
+                            <div className="text-[11px] text-muted-foreground">Δ 表示相对当前排序的升降。</div>
+                          </div>
+                          <div className="space-y-2">
+                            {simulatedCitationRows.slice(0, 4).map((row) => {
+                              const docId = String(row.citation.document_id || '').trim()
+                              const chunkId = String(row.citation.chunk_id || '').trim() || undefined
+                              const deltaLabel =
+                                row.rankDelta > 0 ? `↑${row.rankDelta}` : row.rankDelta < 0 ? `↓${Math.abs(row.rankDelta)}` : '—'
+                              const label = getTraceCitationLabel(row.citation, docId || `citation-${row.rank}`)
+                              return (
+                                <div
+                                  key={`sim-${docId}:${chunkId || row.rank}`}
+                                  className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-3"
+                                >
+                                  <div className="min-w-0 space-y-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="soft" className="text-[10px]">
+                                        #{row.rank}
+                                      </Badge>
+                                      <Badge variant="soft" className="text-[10px]">
+                                        Δ {deltaLabel}
+                                      </Badge>
+                                      <Badge variant="soft" className="text-[10px]">
+                                        score={row.compositeScore.toFixed(3)}
+                                      </Badge>
+                                      {row.dominantChannelLabel ? (
+                                        <Badge variant="soft" className="text-[10px]">
+                                          dominant={row.dominantChannelLabel}
+                                        </Badge>
+                                      ) : null}
+                                    </div>
+                                    <div className="text-sm font-medium text-foreground break-all">{label}</div>
+                                    <div className="text-[11px] text-muted-foreground break-all">
+                                      {chunkId ? `chunk=${chunkId}` : 'document-level evidence'} · base rank #{row.baseRank}
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="rounded-xl"
+                                    disabled={!docId}
+                                    onMouseEnter={() => prefetchTraceCitationTarget(docId, chunkId)}
+                                    onFocus={() => prefetchTraceCitationTarget(docId, chunkId)}
+                                    onClick={() => openTraceCitation(row.citation, { label })}
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </Panel>
+                    ) : null}
+
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {(['vector', 'colbert_ann', 'bm25', 'lexical_db', 'sparse']).map((k) => {
                         const box = (channels as any)?.[k] as Record<string, any> | null | undefined
                         if (!box) return null
+                        const summary = channelSummaries.find((item) => item.key === k)
                         return (
-                          <Panel key={k} variant="muted" className="flex items-center justify-between gap-3">
+                          <Panel
+                            key={k}
+                            variant="muted"
+                            className={cn(
+                              'flex items-center justify-between gap-3',
+                              summary?.active ? 'border-sky-500/40 bg-sky-500/10' : undefined
+                            )}
+                          >
                             <div className="min-w-0">
                               <div className="text-xs font-semibold text-foreground">{k}</div>
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
@@ -1095,6 +1743,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             </div>
                             <div className="shrink-0 text-xs font-medium text-muted-foreground">
                               {box.candidates == null ? '—' : `${box.candidates}`}
+                              {summary ? <span className="ml-2 text-[11px] text-foreground/70">hits {summary.matchCount}</span> : null}
                             </div>
                           </Panel>
                         )
@@ -1108,12 +1757,35 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
             </Panel>
 
             <Panel variant="glass" className="overflow-hidden" padding="none">
-              <div className="px-4 py-3 border-b border-border/60">
-                <div className="text-sm font-semibold">TopK Citations</div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold">TopK Citations</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {activeChannelSummary
+                      ? `${activeChannelSummary.label} · ${activeChannelSummary.matchCount}/${selected.citations.length} hits`
+                      : `All · ${selected.citations.length} hits`}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="soft" className="text-[10px]">
+                    focus={getRagTraceCitationChannelLabel(selectedCitationChannel)}
+                  </Badge>
+                  {lastOpenedTraceCitationTarget ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={reopenLastTraceCitation}
+                      title="重新打开当前 request 最近查看过的证据"
+                    >
+                      重新打开最近证据
+                    </Button>
+                  ) : null}
+                </div>
               </div>
               <ScrollArea className="h-[360px]">
                 <div className="p-2">
-                  {(selected.citations || []).map((c, idx) => {
+                  {filteredCitations.length ? filteredCitations.map((c, idx) => {
                     const score = getPrimaryScore(c)
                     const docId = c.document_id || ''
                     const chunkId = c.chunk_id || ''
@@ -1128,6 +1800,11 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     const colbertScore = isNonZero(c.colbert_score) ? formatScore(c.colbert_score, 3) : null
                     const role = c.retrieval_role ? String(c.retrieval_role) : null
                     const neighborOf = c.neighbor_of ? String(c.neighbor_of) : null
+                    const label = getTraceCitationLabel(c, docId || `citation-${idx + 1}`)
+                    const focusedChannelScore =
+                      selectedCitationChannel === 'all'
+                        ? null
+                        : getRagTraceCitationChannelScore(c, selectedCitationChannel)
                     return (
                       <div
                         key={`${docId}:${chunkId}:${role || ''}:${neighborOf || ''}`}
@@ -1153,6 +1830,11 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 score={score.toFixed(3)}
                               </Badge>
                             )}
+                            {focusedChannelScore != null && selectedCitationChannel !== 'all' ? (
+                              <Badge variant="soft" className="text-[10px] border-sky-500/20 bg-sky-500/10">
+                                {getRagTraceCitationChannelLabel(selectedCitationChannel)}={focusedChannelScore.toFixed(3)}
+                              </Badge>
+                            ) : null}
                             {rerankScore ? (
                               <Badge variant="soft" className="text-[10px]">
                                 rerank={rerankScore}
@@ -1219,10 +1901,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           onMouseEnter={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}
                           onFocus={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}
                           onClick={() => {
-                            const start = c.start_char
-                            const end = c.end_char
-                            openDocument(docId, chunkId || undefined, start != null && end != null ? { start, end } : undefined)
-                            toast.message('已打开引用文档', { description: '右侧面板可查看对应 chunk 位置' })
+                            openTraceCitation(c, { label, notify: true })
                           }}
                         >
                           <ExternalLink className="h-4 w-4" />
@@ -1230,7 +1909,11 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         </Button>
                       </div>
                     )
-                  })}
+                  }) : (
+                    <div className="rounded-xl border border-dashed border-border/60 bg-card/30 px-4 py-6 text-sm text-muted-foreground">
+                      当前 channel 没有可展示的 citations。切回 <span className="font-mono">All</span> 或其他 channel 继续排查。
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
             </Panel>

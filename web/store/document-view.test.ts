@@ -79,4 +79,28 @@ describe('document view store persistence', () => {
       textScrollTop: 512,
     })
   })
+
+  it('keeps the last opened target after closing and can reopen the same context', async () => {
+    const { useDocumentView } = await loadStore()
+
+    useDocumentView.getState().openDocument('doc-7', 'chunk-9', { start: 15, end: 45 })
+    useDocumentView.getState().setActiveTab('chunks')
+    useDocumentView.getState().closeDocument()
+
+    expect(useDocumentView.getState().isOpen).toBe(false)
+    expect(useDocumentView.getState().lastOpenedTarget).toEqual({
+      documentId: 'doc-7',
+      chunkId: 'chunk-9',
+      highlightRange: { start: 15, end: 45 },
+      activeTab: 'chunks',
+    })
+
+    useDocumentView.getState().reopenLastDocument()
+
+    expect(useDocumentView.getState().isOpen).toBe(true)
+    expect(useDocumentView.getState().documentId).toBe('doc-7')
+    expect(useDocumentView.getState().highlightChunkId).toBe('chunk-9')
+    expect(useDocumentView.getState().highlightRange).toEqual({ start: 15, end: 45 })
+    expect(useDocumentView.getState().activeTab).toBe('chunks')
+  })
 })
