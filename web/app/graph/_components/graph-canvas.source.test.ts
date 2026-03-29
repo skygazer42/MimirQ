@@ -29,4 +29,13 @@ describe('graph canvas accessibility source', () => {
     expect(src).toContain('type="button"')
     expect(src).toContain('aria-label={`聚焦节点：${node.label}`}')
   })
+
+  it('shows a branded loading shell instead of plain text', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'graph-canvas.tsx'), 'utf8')
+
+    expect(src).toContain('PageLoading')
+    expect(src).toContain('正在构建 3D 图谱...')
+    expect(src).toContain('<Skeleton className="h-3 w-full" />')
+    expect(src).not.toContain('Loading 3D graph...')
+  })
 })

@@ -11,6 +11,7 @@ import { GraphViewer, type GraphViewerRef, type LayoutMode } from '@/components/
 import type { KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { PageLoading } from '@/components/ui/page-loading'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { GraphClusterResult } from '@/lib/graph-clustering'
 import type { GraphData } from '@/lib/graph-parser'
@@ -25,7 +26,22 @@ const KnowledgeGraph3D = dynamic(
   () => import('@/components/graph/force-graph-3d').then((mod) => mod.KnowledgeGraph3D),
   {
     ssr: false,
-    loading: () => <div className="absolute inset-0 z-10 flex items-center justify-center text-muted-foreground">Loading 3D graph...</div>,
+    loading: () => (
+      <div className="absolute inset-0 z-10 flex items-center justify-center">
+        <div className="flex w-full max-w-lg flex-col items-center gap-3 rounded-2xl border border-border/60 bg-card/90 p-6 shadow-soft backdrop-blur-sm">
+          <PageLoading
+            className="min-h-0"
+            message="正在构建 3D 图谱..."
+            srMessage="Loading graph canvas"
+          />
+          <div className="grid w-full gap-2">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-3/4" />
+            <Skeleton className="h-3 w-[60%]" />
+          </div>
+        </div>
+      </div>
+    ),
   }
 )
 
