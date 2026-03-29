@@ -964,10 +964,10 @@ function WelcomeScreen({
         </div>
 
         <div className="space-y-3">
-          <h2 className="text-balance text-3xl font-semibold text-foreground md:text-4xl">
+          <h2 className="text-balance text-3xl font-semibold leading-tight tracking-tight text-foreground md:text-4xl">
             {greeting}，<span className="text-primary">探索者</span>
           </h2>
-          <p className="mx-auto max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground md:text-base">
+          <p className="mx-auto max-w-2xl text-pretty text-sm leading-7 text-muted-foreground/90 md:text-base">
             我是 MimirQ，你的智能知识中枢。先选一个示例问题热身，或者直接在下方输入具体问题，
             我会结合你的知识库给出可追溯的回答。
           </p>
@@ -980,11 +980,11 @@ function WelcomeScreen({
             <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/80">
               快速开始
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">
+            <div className="mt-1 text-sm leading-6 text-muted-foreground">
               点击任意问题直接填入输入框，再按 Enter 发送。
             </div>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground shadow-sm">
             <span className="font-mono text-foreground/80">/</span>
             <span>快捷指令</span>
           </div>
@@ -1064,8 +1064,8 @@ function QuickStartChip({
           <Icon className="h-4 w-4" aria-hidden="true" />
         </div>
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-foreground">{title}</div>
-          <div className="mt-1 text-xs leading-5 text-muted-foreground group-hover:text-foreground/80">
+          <div className="text-sm font-semibold leading-snug text-foreground">{title}</div>
+          <div className="mt-1 text-xs leading-5 text-muted-foreground/90 group-hover:text-foreground/80">
             {prompt}
           </div>
         </div>
@@ -1092,8 +1092,8 @@ function WelcomeStatusCard({
       <div className="mb-3 flex size-11 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
         <Icon className="h-5 w-5" aria-hidden="true" />
       </div>
-      <h3 className="text-sm font-semibold text-foreground/95">{title}</h3>
-      <p className="mt-2 text-xs leading-6 text-muted-foreground">{desc}</p>
+      <h3 className="text-sm font-semibold leading-snug tracking-tight text-foreground/95">{title}</h3>
+      <p className="mt-2 text-xs leading-6 text-muted-foreground/90">{desc}</p>
       {actionLabel && onAction ? (
         <Button type="button" variant="outline" size="sm" className="mt-4 rounded-full" onClick={onAction}>
           {actionLabel}
