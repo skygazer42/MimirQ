@@ -1,6 +1,7 @@
 "use client"
 
 import { FileText, ScanLine, Scissors, Database, CheckCircle2 } from "lucide-react"
+import { useTranslations } from 'next-intl'
 import { cn } from "@/lib/utils"
 
 interface PipelineVisualizerProps {
@@ -9,18 +10,22 @@ interface PipelineVisualizerProps {
   className?: string
 }
 
-const STAGES = [
-  { id: 'upload', label: '上传', icon: FileText, threshold: 10 },
-  { id: 'parse', label: '解析', icon: ScanLine, threshold: 40 },
-  { id: 'chunk', label: '切片', icon: Scissors, threshold: 70 },
-  { id: 'index', label: '索引', icon: Database, threshold: 90 },
-]
+function getStages(t: ReturnType<typeof useTranslations<'CommonUi'>>) {
+  return [
+    { id: 'upload', label: t('pipelineVisualizer.upload'), icon: FileText, threshold: 10 },
+    { id: 'parse', label: t('pipelineVisualizer.parse'), icon: ScanLine, threshold: 40 },
+    { id: 'chunk', label: t('pipelineVisualizer.chunk'), icon: Scissors, threshold: 70 },
+    { id: 'index', label: t('pipelineVisualizer.index'), icon: Database, threshold: 90 },
+  ]
+}
 
 export function PipelineVisualizer({ progress, stage, className }: Readonly<PipelineVisualizerProps>) {
+  const t = useTranslations('CommonUi')
+  const stages = getStages(t)
   // Calculate active stage index based on progress
   const clamped = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0
-  const nextIndex = STAGES.findIndex((s) => clamped < s.threshold)
-  const activeIndex = nextIndex === -1 ? STAGES.length - 1 : nextIndex
+  const nextIndex = stages.findIndex((s) => clamped < s.threshold)
+  const activeIndex = nextIndex === -1 ? stages.length - 1 : nextIndex
   const progressScale = clamped / 100
   
   return (
@@ -37,7 +42,7 @@ export function PipelineVisualizer({ progress, stage, className }: Readonly<Pipe
         />
 
         {/* Nodes */}
-        {STAGES.map((s, idx) => {
+        {stages.map((s, idx) => {
             const Icon = s.icon
             const isActive = idx <= activeIndex
             const isCompleted = idx < activeIndex || clamped >= 100
