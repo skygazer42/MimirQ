@@ -1,6 +1,7 @@
 'use client'
 
 import { Play } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { DocumentFolderTree } from '@/components/document-library/folder-tree'
 import { FileQueueItem } from '@/components/ui/file-queue-item'
@@ -50,19 +51,21 @@ export function ParsingMobileQueueContent({
   onRetryParse,
   onFileDragStart,
 }: Readonly<ParsingMobileQueueContentProps>) {
+  const t = useTranslations('ParsingWorkbench')
+
   return (
     <>
       <div className="flex-none border-b border-border/60 bg-card/70 p-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-foreground">文件队列</div>
+            <div className="text-sm font-semibold text-foreground">{t('mobileQueue.title')}</div>
             <div className="mt-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">{queueCountLabel}</div>
           </div>
 
           {parseableCount > 0 ? (
             <Button type="button" variant="outline" size="sm" className="gap-2" onClick={onParseAllPending}>
               <Play className="h-4 w-4" />
-              全部解析
+              {t('mobileQueue.parseAll')}
             </Button>
           ) : null}
         </div>
@@ -90,7 +93,7 @@ export function ParsingMobileQueueContent({
         {visibleQueueFiles.length > 0 ? (
           <div className="rounded-2xl border border-border/60 bg-card p-2">
             <div className="flex items-center justify-between px-2 pb-2">
-              <div className="text-sm font-semibold text-foreground">当前会话</div>
+              <div className="text-sm font-semibold text-foreground">{t('mobileQueue.currentSession')}</div>
               <div className="font-mono text-[11px] tabular-nums text-muted-foreground">{visibleQueueFiles.length}</div>
             </div>
             <div className="space-y-1">
@@ -126,7 +129,7 @@ export function ParsingMobileQueueContent({
         {visibleLibraryOnlyFiles.length > 0 ? (
           <div className="rounded-2xl border border-border/60 bg-card p-2">
             <div className="flex items-center justify-between px-2 pb-2">
-              <div className="text-sm font-semibold text-foreground">文档库</div>
+              <div className="text-sm font-semibold text-foreground">{t('mobileQueue.library')}</div>
               <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
                 {visibleLibraryOnlyFiles.length}
               </div>
