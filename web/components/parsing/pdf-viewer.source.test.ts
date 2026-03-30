@@ -52,7 +52,31 @@ describe('pdf viewer source', () => {
     expect(src).toContain('if (renderedPagesRef.current.has(pageIndex)) return')
     expect(src).toContain('renderedPagesRef.current = new Set()')
     expect(src).toContain('renderedPagesRef.current = next')
-    expect(src).toContain('[pdfDoc, pageCount, scale]')
+    expect(src).toContain('[pdfDoc, pageCount, rememberPageAspectRatio, scale]')
     expect(src).not.toContain('[pdfDoc, pageCount, renderedPages, scale]')
+  })
+
+  it('queues viewport-triggered page renders behind idle scheduling instead of rendering every page immediately', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('requestIdleCallback')
+    expect(src).toContain('const queuedPagesRef = useRef<Set<number>>(new Set())')
+    expect(src).toContain('const queuePageRender = useCallback(')
+    expect(src).toContain('queuedPagesRef.current.add(pageIndex)')
+    expect(src).toContain('flushQueuedPageRendersRef')
+    expect(src).toContain('detachPromise(flushQueuedPageRendersRef.current())')
+    expect(src).not.toContain('detachPromise(renderPage(idx))')
+    expect(src).not.toContain('detachPromise(renderPage(0))')
+  })
+
+  it('releases far-off pages while preserving intrinsic page size hints for long PDFs', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('const releasePage = useCallback(')
+    expect(src).toContain('canvas.width = 0')
+    expect(src).toContain('canvas.height = 0')
+    expect(src).toContain("contentVisibility: 'auto'")
+    expect(src).toContain('containIntrinsicSize')
+    expect(src).toContain('releasePage(idx)')
   })
 })
