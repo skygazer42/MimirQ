@@ -704,6 +704,25 @@ const zhCNMessages = {
         simulatedTitle: 'Simulated TopK',
         simulatedDescription: 'Δ 表示相对当前排序的升降。',
       },
+      pipelineSummary: {
+        retrieve: 'Retrieve',
+        reranker: 'Reranker',
+        citations: 'Citations',
+      },
+      timeline: {
+        title: 'Pipeline Timeline',
+        description: '点击 stage 进入检查器；聚焦时间线后可用 ←/→ 或 h/l 切换阶段。',
+        metricsUnavailable: '当前阶段没有额外指标，更多细节可继续看下方 channel / citation 面板。',
+        quickEvidence: 'Quick Evidence',
+        documentLevelEvidence: 'document-level evidence',
+        unavailable: 'pipeline steps unavailable',
+      },
+      channels: {
+        title: 'Channels',
+        focusTitle: 'Focus citations',
+        focusDescription: '点击 channel，直接筛出真正带来最终证据的命中。',
+        unavailable: '暂无 per-channel 指标（旧 trace 或 retriever_debug 被裁剪）。',
+      },
       topCitations: {
         title: 'TopK Citations',
         reopenRecent: '重新打开最近证据',
