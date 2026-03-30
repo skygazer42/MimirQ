@@ -552,6 +552,21 @@ const zhCNMessages = {
       description: '调整分块策略并预览结果',
       settingsPanelTitle: '参数面板',
     },
+    sidebar: {
+      ingestionPipeline: '入库管线',
+      previewActions: {
+        loading: '生成中...',
+        run: '生成预览',
+        cancel: '取消',
+        ignoreCache: '忽略缓存',
+        forceRefresh: '强制刷新',
+      },
+      analysis: {
+        title: '分析结果',
+        collapse: '收起',
+        expand: '更多',
+      },
+    },
     topBar: {
       parserLabel: '解析',
       strategyLabel: '策略',
