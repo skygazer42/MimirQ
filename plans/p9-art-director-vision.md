@@ -3,8 +3,8 @@
 ## 1. 视觉哲学：AI-Native Minimalism
 
 ### 1.1 空间与层次 (Depth & Layering)
-- [ ] **Surface-First Design**: 移除所有 `border-border`，改用 `bg-secondary/50` 和 `shadow-soft` 进行区域划分。界面应感觉是由多个悬浮的层级组成的。
-- [ ] **Geist Typography**: 统一使用更具 modern 态的 `Geist` 字体栈，利用 1.7-1.8 倍行高，将“阅读知识库”变成一种享受。
+- [x] **Surface-First Design**: 移除所有 `border-border`，改用 `bg-secondary/50` 和 `shadow-soft` 进行区域划分。界面应感觉是由多个悬浮的层级组成的。
+- [x] **Geist Typography**: 统一使用更具 modern 态的 `Geist` 字体栈，利用 1.7-1.8 倍行高，将“阅读知识库”变成一种享受。
 
 ### 1.2 呼吸感动效 (Breathing Interactions)
 

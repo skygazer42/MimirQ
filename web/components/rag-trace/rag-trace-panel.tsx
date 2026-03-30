@@ -1672,7 +1672,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           </div>
 
                           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                            <div className="rounded-xl border border-border/60 bg-card/60 px-3 py-3">
+                            <div className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft">
                               <div className="text-[11px] font-semibold uppercase text-muted-foreground">Shared</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.sharedCount}</div>
                             </div>
@@ -1684,7 +1684,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               <div className="text-[11px] font-semibold uppercase text-amber-700 dark:text-amber-300">Removed From A</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.removedCount}</div>
                             </div>
-                            <div className="rounded-xl border border-border/60 bg-card/60 px-3 py-3">
+                            <div className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft">
                               <div className="text-[11px] font-semibold uppercase text-muted-foreground">Score Shift</div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.scoreShiftCount}</div>
                             </div>
@@ -1716,7 +1716,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           />
                         </Panel>
                       ) : diffOtherRequestId.trim() ? (
-                        <div className="rounded-xl border border-dashed border-border/60 bg-card/30 px-3 py-3 text-xs text-muted-foreground">
+                        <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-3 py-3 text-xs text-muted-foreground">
                           当前 request_id B 不在已加载的 trace 列表里，所以只能显示 bundle diff，无法给出本地 evidence drift 摘要。
                         </div>
                       ) : null}
@@ -1724,7 +1724,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       {diffResult ? (
                         <div className="space-y-3">
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                            <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+                            <div className="rounded-xl border border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
                               <div className="text-[11px] text-muted-foreground">A</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 mode={diffResult.summary_a?.retrieval_mode || '—'} · cfg=
@@ -1732,7 +1732,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 {diffResult.summary_a?.citations_count ?? '—'}
                               </div>
                             </div>
-                            <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+                            <div className="rounded-xl border border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
                               <div className="text-[11px] text-muted-foreground">B</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 mode={diffResult.summary_b?.retrieval_mode || '—'} · cfg=
@@ -1749,7 +1749,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             {(diffResult.diff || []).map((it) => (
                               <div
                                 key={String(it.key)}
-                                className="grid grid-cols-1 gap-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 md:grid-cols-3"
+                                className="grid grid-cols-1 gap-2 rounded-xl border border-sidebar-border/60 bg-sidebar/45 px-3 py-2 md:grid-cols-3"
                               >
                                 <div className="text-xs font-mono text-foreground">{it.key}</div>
                                 <div className="text-xs text-muted-foreground break-words">{formatDiffValue(it.a)}</div>
@@ -1848,14 +1848,17 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         {selectedPipelineSection.metrics.length ? (
                           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             {selectedPipelineSection.metrics.map((metric) => (
-                              <div key={`${selectedPipelineSection.id}:${metric.label}`} className="rounded-xl border border-border/60 bg-card/60 px-3 py-2">
+                              <div
+                                key={`${selectedPipelineSection.id}:${metric.label}`}
+                                className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-2 shadow-soft"
+                              >
                                 <div className="text-[11px] font-semibold uppercase text-muted-foreground">{metric.label}</div>
                                 <div className="mt-1 text-sm font-semibold text-foreground">{metric.value}</div>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <div className="rounded-xl border border-dashed border-border/60 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+                          <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
                             当前阶段没有额外指标，更多细节可继续看下方 channel / citation 面板。
                           </div>
                         )}
@@ -1879,7 +1882,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                     if (!documentId) return
                                     openTraceCitation(citation, { label })
                                   }}
-                                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-left transition-colors hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-2 text-left transition-colors shadow-soft hover:bg-sidebar/70 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   <div className="min-w-0">
                                     <div className="truncate text-sm font-medium text-foreground">{label}</div>
@@ -1910,7 +1913,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
               <div className="p-4 space-y-3">
                 {channels ? (
                   <>
-                    <div className="rounded-2xl border border-border/60 bg-card/50 p-3">
+                    <div className="rounded-2xl border border-sidebar-border/70 bg-sidebar/60 p-3 shadow-soft">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <div className="text-[11px] font-semibold uppercase text-muted-foreground">Focus citations</div>
@@ -2085,7 +2088,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           {availableCitationSimulationChannels.map((channel) => {
                             const value = citationSimulationWeights[channel.key] ?? 0
                             return (
-                              <label key={channel.key} className="space-y-2 rounded-xl border border-border/60 bg-card/60 px-3 py-3">
+                              <label
+                                key={channel.key}
+                                className="space-y-2 rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft"
+                              >
                                 <div className="flex items-center justify-between gap-3">
                                   <span className="text-xs font-semibold text-foreground">{channel.label}</span>
                                   <span className="text-[11px] font-mono text-muted-foreground">{Math.round(value * 100)}%</span>
@@ -2125,7 +2131,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               return (
                                 <div
                                   key={`sim-${docId}:${chunkId || row.rank}`}
-                                  className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-3"
+                                  className="flex items-start justify-between gap-3 rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft"
                                 >
                                   <div className="min-w-0 space-y-1">
                                     <div className="flex flex-wrap items-center gap-2">
@@ -2260,7 +2266,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     return (
                       <div
                         key={`${docId}:${chunkId}:${role || ''}:${neighborOf || ''}`}
-                        className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card/40 px-3 py-2"
+                        className="flex items-start justify-between gap-3 rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-2 text-left transition-colors shadow-soft hover:bg-sidebar/70"
                       >
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -2362,7 +2368,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       </div>
                     )
                   }) : (
-                    <div className="rounded-xl border border-dashed border-border/60 bg-card/30 px-4 py-6 text-sm text-muted-foreground">
+                    <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-6 text-sm text-muted-foreground">
                       当前 channel 没有可展示的 citations。切回 <span className="font-mono">All</span> 或其他 channel 继续排查。
                     </div>
                   )}
