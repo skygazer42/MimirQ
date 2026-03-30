@@ -66,7 +66,8 @@ describe('pdf viewer source', () => {
     expect(src).toContain('if (renderedPagesRef.current.has(pageIndex)) return')
     expect(src).toContain('renderedPagesRef.current = new Set()')
     expect(src).toContain('renderedPagesRef.current = next')
-    expect(src).toContain('[attachOffscreenPageCanvas, offscreenRenderEnabled, pdfDoc, pageCount, rememberPageAspectRatio, scale]')
+    expect(src).toContain('markPageRendered')
+    expect(src).toContain('trimRenderedPagePool')
     expect(src).not.toContain('[pdfDoc, pageCount, renderedPages, scale]')
   })
 
@@ -92,6 +93,21 @@ describe('pdf viewer source', () => {
     expect(src).toContain("contentVisibility: 'auto'")
     expect(src).toContain('containIntrinsicSize')
     expect(src).toContain('releasePage(idx)')
+  })
+
+  it('bounds retained rasterized pages behind an explicit canvas pool budget', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain("from '@/components/parsing/pdf-render-canvas-pool'")
+    expect(src).toContain('const retainedPageIndicesRef = useRef<Set<number>>(new Set())')
+    expect(src).toContain('const trimRenderedPagePool = useCallback(')
+    expect(src).toContain('selectPdfPagesToReleaseForPool({')
+    expect(src).toContain('maxRetainedPages: MAX_RETAINED_PAGE_CANVASES')
+    expect(src).toContain('retainedPages: retainedPageIndicesRef.current')
+    expect(src).toContain('queuedPages: queuedPagesRef.current')
+    expect(src).toContain('renderingPages: renderingPagesRef.current')
+    expect(src).toContain('releasePage(stalePageIndex)')
+    expect(src).toContain('trimRenderedPagePool(pageIndex)')
   })
 
   it('can hand page raster work to a dedicated OffscreenCanvas render worker when the browser supports it', () => {

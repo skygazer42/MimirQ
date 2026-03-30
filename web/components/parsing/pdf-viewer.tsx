@@ -11,6 +11,10 @@ import { ParsingBlock } from '@/lib/parsing-positions'
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { Button } from '@/components/ui/button'
 import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
+import {
+  MAX_RETAINED_PAGE_CANVASES,
+  selectPdfPagesToReleaseForPool,
+} from '@/components/parsing/pdf-render-canvas-pool'
 import { detachPromise } from '@/lib/utils'
 import type { PdfPageRenderWorkerApi } from '@/workers/pdf-page-render.worker'
 
@@ -92,6 +96,7 @@ export function PdfViewer({
   const transferredPageCanvasRef = useRef<Set<number>>(new Set())
   const offscreenRenderWorkerDisabledRef = useRef(false)
   const queuedPagesRef = useRef<Set<number>>(new Set())
+  const retainedPageIndicesRef = useRef<Set<number>>(new Set())
   const renderQueueRef = useRef<number[]>([])
   const idleRenderHandleRef = useRef<IdleCallbackHandle | null>(null)
   const idleRenderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -135,6 +140,7 @@ export function PdfViewer({
         setPageCount(0)
         setDefaultPageAspectRatio(null)
         setPageAspectRatios(new Map())
+        retainedPageIndicesRef.current.clear()
         renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
         setLoadError(null)
@@ -157,6 +163,7 @@ export function PdfViewer({
         setPageCount(doc.numPages)
         setDefaultPageAspectRatio(null)
         setPageAspectRatios(new Map())
+        retainedPageIndicesRef.current.clear()
         renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
       } catch (err) {
@@ -167,6 +174,7 @@ export function PdfViewer({
           setPageCount(0)
           setDefaultPageAspectRatio(null)
           setPageAspectRatios(new Map())
+          retainedPageIndicesRef.current.clear()
           renderedPagesRef.current = new Set()
           setRenderedPages(new Set())
         }
@@ -340,6 +348,26 @@ export function PdfViewer({
     })
   }, [])
 
+  const markPageRendered = useCallback((pageIndex: number) => {
+    if (renderedPagesRef.current.has(pageIndex)) return false
+
+    const next = new Set(renderedPagesRef.current)
+    next.add(pageIndex)
+    renderedPagesRef.current = next
+    setRenderedPages(next)
+    return true
+  }, [])
+
+  const unmarkPageRendered = useCallback((pageIndex: number) => {
+    if (!renderedPagesRef.current.has(pageIndex)) return false
+
+    const next = new Set(renderedPagesRef.current)
+    next.delete(pageIndex)
+    renderedPagesRef.current = next
+    setRenderedPages(next)
+    return true
+  }, [])
+
   const releasePage = useCallback((pageIndex: number) => {
     const activeRenderTask = renderTasksRef.current.get(pageIndex)
     activeRenderTask?.cancel()
@@ -357,16 +385,23 @@ export function PdfViewer({
       canvas.height = 0
     }
 
-    if (!renderedPagesRef.current.has(pageIndex)) return
+    unmarkPageRendered(pageIndex)
+  }, [offscreenRenderEnabled, unmarkPageRendered])
 
-    setRenderedPages((prev) => {
-      if (!prev.has(pageIndex)) return prev
-      const next = new Set(prev)
-      next.delete(pageIndex)
-      renderedPagesRef.current = next
-      return next
+  const trimRenderedPagePool = useCallback((pageIndex: number) => {
+    const stalePageIndices = selectPdfPagesToReleaseForPool({
+      renderedPages: renderedPagesRef.current,
+      keepPage: pageIndex,
+      maxRetainedPages: MAX_RETAINED_PAGE_CANVASES,
+      retainedPages: retainedPageIndicesRef.current,
+      queuedPages: queuedPagesRef.current,
+      renderingPages: renderingPagesRef.current,
     })
-  }, [offscreenRenderEnabled])
+
+    for (const stalePageIndex of stalePageIndices) {
+      releasePage(stalePageIndex)
+    }
+  }, [releasePage])
 
   const scheduleQueuedRenderFlush = useCallback(() => {
     if (idleRenderHandleRef.current != null || idleRenderTimeoutRef.current != null) return
@@ -397,6 +432,7 @@ export function PdfViewer({
     cancelRenderTasks()
     activeRenderCountRef.current = 0
     queuedPagesRef.current.clear()
+    retainedPageIndicesRef.current.clear()
     renderQueueRef.current = []
     renderedPagesRef.current = new Set()
     renderingPagesRef.current.clear()
@@ -449,13 +485,9 @@ export function PdfViewer({
           await api.renderPage({ pageIndex, scale })
           if (renderGenRef.current !== gen) return
 
-          setRenderedPages((prev) => {
-            if (prev.has(pageIndex)) return prev
-            const next = new Set(prev)
-            next.add(pageIndex)
-            renderedPagesRef.current = next
-            return next
-          })
+          if (markPageRendered(pageIndex)) {
+            trimRenderedPagePool(pageIndex)
+          }
           return
         }
 
@@ -470,13 +502,9 @@ export function PdfViewer({
         await renderTask.promise
         releasePageResources?.()
         if (renderGenRef.current !== gen) return
-        setRenderedPages((prev) => {
-          if (prev.has(pageIndex)) return prev
-          const next = new Set(prev)
-          next.add(pageIndex)
-          renderedPagesRef.current = next
-          return next
-        })
+        if (markPageRendered(pageIndex)) {
+          trimRenderedPagePool(pageIndex)
+        }
       } catch {
         // Best-effort: leave it as not rendered; user can scroll away/back to retry.
       } finally {
@@ -487,7 +515,16 @@ export function PdfViewer({
         renderingPagesRef.current.delete(pageIndex)
       }
     },
-    [attachOffscreenPageCanvas, offscreenRenderEnabled, pdfDoc, pageCount, rememberPageAspectRatio, scale]
+    [
+      attachOffscreenPageCanvas,
+      markPageRendered,
+      offscreenRenderEnabled,
+      pdfDoc,
+      pageCount,
+      rememberPageAspectRatio,
+      scale,
+      trimRenderedPagePool,
+    ]
   )
 
   const flushQueuedPageRenders = useCallback(async () => {
@@ -580,10 +617,14 @@ export function PdfViewer({
       (entries) => {
         if (cancelled) return
         for (const entry of entries) {
-          if (entry.isIntersecting) continue
           const idxAttr = (entry.target as HTMLElement).dataset.pageIndex
           const idx = idxAttr ? Number(idxAttr) : Number.NaN
           if (!Number.isFinite(idx)) continue
+          if (entry.isIntersecting) {
+            retainedPageIndicesRef.current.add(idx)
+            continue
+          }
+          retainedPageIndicesRef.current.delete(idx)
           releasePage(idx)
         }
       },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { isBlockedMarkdownImageTarget, parseMarkdownImageUrl } from '@/lib/markdown-image-proxy'
+import { mintMarkdownImageProxyToken, resolveMarkdownImageProxyToken } from '@/lib/markdown-image-proxy-token'
 
 export const runtime = 'nodejs'
 
@@ -13,11 +14,29 @@ function jsonNoStore(data: unknown, init?: { status?: number }) {
   return response
 }
 
-export async function GET(req: NextRequest) {
+function resolveImageTarget(req: NextRequest): { target: URL | null; error: string | null } {
+  const rawToken = String(req.nextUrl.searchParams.get('token') || '').trim()
+  if (rawToken) {
+    const resolvedSrc = resolveMarkdownImageProxyToken(rawToken)
+    const target = parseMarkdownImageUrl(resolvedSrc)
+    if (!target || isBlockedMarkdownImageTarget(target.toString())) {
+      return { target: null, error: 'invalid_image_token' }
+    }
+    return { target, error: null }
+  }
+
   const rawSrc = String(req.nextUrl.searchParams.get('src') || '').trim()
   const target = parseMarkdownImageUrl(rawSrc)
   if (!target || isBlockedMarkdownImageTarget(target.toString())) {
-    return jsonNoStore({ error: 'invalid_image_src' }, { status: 400 })
+    return { target: null, error: 'invalid_image_src' }
+  }
+  return { target, error: null }
+}
+
+export async function GET(req: NextRequest) {
+  const { target, error } = resolveImageTarget(req)
+  if (!target || error) {
+    return jsonNoStore({ error }, { status: 400 })
   }
 
   let upstream: Response
@@ -66,5 +85,32 @@ export async function GET(req: NextRequest) {
   return new NextResponse(upstream.body, {
     status: 200,
     headers,
+  })
+}
+
+export async function POST(req: NextRequest) {
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return jsonNoStore({ error: 'invalid_image_src' }, { status: 400 })
+  }
+
+  const rawSrc =
+    body && typeof body === 'object' && 'src' in body && typeof body.src === 'string'
+      ? body.src.trim()
+      : ''
+  const target = parseMarkdownImageUrl(rawSrc)
+  if (!target || isBlockedMarkdownImageTarget(target.toString())) {
+    return jsonNoStore({ error: 'invalid_image_src' }, { status: 400 })
+  }
+
+  const token = mintMarkdownImageProxyToken(target.toString())
+  if (!token) {
+    return jsonNoStore({ error: 'proxy_secret_unavailable' }, { status: 503 })
+  }
+
+  return jsonNoStore({
+    src: `/api/markdown-image?token=${encodeURIComponent(token)}`,
   })
 }

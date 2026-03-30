@@ -1,8 +1,6 @@
 import { toAbsoluteBackendUrl } from '@/lib/env'
 import {
-  buildMarkdownImageProxyUrl,
   isBlockedMarkdownImageTarget,
-  isSameBackendMarkdownImageUrl,
 } from '@/lib/markdown-image-proxy'
 
 const SAFE_LINK_PROTOCOLS = new Set(['http', 'https', 'mailto', 'tel'])
@@ -89,6 +87,5 @@ export function resolveMarkdownImageSrc(value: string | null | undefined): strin
   if (!scheme || !SAFE_IMAGE_PROTOCOLS.has(scheme)) return null
   if (scheme === 'blob') return normalized
   if (isBlockedMarkdownImageTarget(normalized)) return null
-  if (isSameBackendMarkdownImageUrl(normalized)) return normalized
-  return buildMarkdownImageProxyUrl(normalized)
+  return normalized
 }

@@ -19,9 +19,7 @@ describe('markdown safety helpers', () => {
   })
 
   it('allows safe image sources and drops unsafe image payloads', () => {
-    expect(resolveMarkdownImageSrc('https://example.com/image.png')).toBe(
-      '/api/markdown-image?src=https%3A%2F%2Fexample.com%2Fimage.png'
-    )
+    expect(resolveMarkdownImageSrc('https://example.com/image.png')).toBe('https://example.com/image.png')
     expect(resolveMarkdownImageSrc('blob:https://example.com/image-id')).toBe('blob:https://example.com/image-id')
     expect(resolveMarkdownImageSrc('data:image/png;base64,AAAA')).toBe('data:image/png;base64,AAAA')
 
