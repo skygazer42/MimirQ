@@ -11,7 +11,15 @@ describe('rag trace dialog source', () => {
     expect(src).toContain("import { PageLoading } from '@/components/ui/page-loading'")
     expect(src).toContain("const RagTracePanel = dynamic(() => import('@/components/rag-trace/rag-trace-panel').then((mod) => mod.RagTracePanel), {")
     expect(src).toContain('ssr: false')
-    expect(src).toContain('正在加载 RAG Trace...')
     expect(src).not.toContain("import { RagTracePanel } from '@/components/rag-trace/rag-trace-panel'")
+  })
+
+  it('moves dialog title and loading copy into next-intl lookups', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'rag-trace-dialog.tsx'), 'utf8')
+
+    expect(src).toContain("useTranslations('RagTrace')")
+    expect(src).toContain('t("dialog.title")')
+    expect(src).toContain('t("dialog.loadingMessage")')
+    expect(src).toContain('t("dialog.loadingSrMessage")')
   })
 })
