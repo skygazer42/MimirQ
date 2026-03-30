@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 
 import { Share2, Upload } from 'lucide-react'
 import dynamic from 'next/dynamic'
@@ -19,6 +19,7 @@ import { detachPromise } from '@/lib/utils'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
 import type { GraphLinkLike, GraphNodeLike } from '../graph-page-utils'
+import { getNextKeyboardRovingIndex } from './graph-keyboard-roving'
 
 const SEMANTIC_LIST_ITEM_LIMIT = 200
 const FRONTEND_TRACE_MIN_DURATION_MS = 12
@@ -156,6 +157,7 @@ export function GraphCanvas({
   const [isSemanticListVisible, setIsSemanticListVisible] = useState(viewMode === '3d')
   const [clusterResult, setClusterResult] = useState<GraphClusterResult | null>(null)
   const [effectiveGraphRenderData, setEffectiveGraphRenderData] = useState<GraphData>(graphRenderData)
+  const [keyboardRovingIndex, setKeyboardRovingIndex] = useState(-1)
   const semanticPanelId = useId()
   const semanticNodeCount = graphRenderData.nodes.length
   const semanticLinkCount = graphRenderData.links.length
@@ -168,6 +170,7 @@ export function GraphCanvas({
   const clusteringDisabledRef = useRef(false)
   const lastClusterTraceKeyRef = useRef<string | null>(null)
   const lastPaletteTraceKeyRef = useRef<string | null>(null)
+  const semanticNodeButtonRefs = useRef(new Map<string, HTMLButtonElement>())
 
   useEffect(() => {
     if (viewMode === '3d') {
@@ -318,8 +321,7 @@ export function GraphCanvas({
 
   const semanticNodes = useMemo(
     () =>
-      isSemanticListVisible
-        ? graphRenderData.nodes.slice(0, SEMANTIC_LIST_ITEM_LIMIT).map((node, index) => {
+      graphRenderData.nodes.slice(0, SEMANTIC_LIST_ITEM_LIMIT).map((node, index) => {
         const nodeRecord = node as Record<string, unknown>
         const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
         const nodeId =
@@ -333,14 +335,12 @@ export function GraphCanvas({
           kind,
           raw: node as GraphNodeLike,
         }
-      })
-        : [],
-    [graphRenderData.nodes, isSemanticListVisible]
+      }),
+    [graphRenderData.nodes]
   )
   const semanticLinks = useMemo(
     () =>
-      isSemanticListVisible
-        ? graphRenderData.links.slice(0, SEMANTIC_LIST_ITEM_LIMIT).map((link, index) => {
+      graphRenderData.links.slice(0, SEMANTIC_LIST_ITEM_LIMIT).map((link, index) => {
         const linkRecord = link as Record<string, unknown>
         const meta = (linkRecord.meta ?? {}) as Record<string, unknown>
         const source = normalizeLinkEndpoint(linkRecord.source)
@@ -352,9 +352,8 @@ export function GraphCanvas({
           target,
           relation,
         }
-      })
-        : [],
-    [graphRenderData.links, isSemanticListVisible]
+      }),
+    [graphRenderData.links]
   )
   const focusSemanticNode = useCallback(
     (nodeId: string) => {
@@ -363,9 +362,64 @@ export function GraphCanvas({
     },
     [graph2dRef, graph3dRef]
   )
+  const setSemanticNodeButtonRef = useCallback((nodeId: string, element: HTMLButtonElement | null) => {
+    if (element) {
+      semanticNodeButtonRefs.current.set(nodeId, element)
+      return
+    }
+    semanticNodeButtonRefs.current.delete(nodeId)
+  }, [])
+
+  const moveKeyboardRovingFocus = useCallback((direction: 1 | -1) => {
+    if (!semanticNodes.length) return
+
+    const nextIndex = getNextKeyboardRovingIndex(keyboardRovingIndex, semanticNodes.length, direction)
+    if (nextIndex < 0) return
+
+    const nextNode = semanticNodes[nextIndex]
+    const focusNextNode = () => {
+      setKeyboardRovingIndex(nextIndex)
+      focusSemanticNode(nextNode.id)
+      onNodeClick(nextNode.raw)
+      semanticNodeButtonRefs.current.get(nextNode.id)?.focus()
+    }
+
+    if (!isSemanticListVisible) {
+      setIsSemanticListVisible(true)
+      globalThis.window.requestAnimationFrame(focusNextNode)
+      return
+    }
+
+    focusNextNode()
+  }, [focusSemanticNode, isSemanticListVisible, keyboardRovingIndex, onNodeClick, semanticNodes])
+
+  const handleCanvasKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (viewMode !== '3d') return
+    if (event.key !== 'Tab') return
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+    if (event.target !== event.currentTarget) return
+
+    event.preventDefault()
+    moveKeyboardRovingFocus(event.shiftKey ? -1 : 1)
+  }, [moveKeyboardRovingFocus, viewMode])
+
+  useEffect(() => {
+    setKeyboardRovingIndex((currentIndex) => {
+      if (!semanticNodes.length) return -1
+      return currentIndex >= semanticNodes.length ? semanticNodes.length - 1 : currentIndex
+    })
+  }, [semanticNodes.length])
 
   return (
-    <div ref={viewportRef} className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px]">
+    <div
+      ref={viewportRef}
+      className="flex-1 w-full relative bg-background overflow-hidden min-h-[500px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      tabIndex={viewMode === '3d' && semanticNodes.length > 0 ? 0 : undefined}
+      role={viewMode === '3d' ? 'region' : undefined}
+      aria-label={viewMode === '3d' ? '3D 知识图谱画布' : undefined}
+      aria-describedby={viewMode === '3d' ? `${semanticPanelId}-keyboard-help ${semanticPanelId}-keyboard-status` : undefined}
+      onKeyDown={handleCanvasKeyDown}
+    >
       <div
         className="absolute inset-0 z-0 opacity-[0.4]"
         style={{
@@ -440,10 +494,19 @@ export function GraphCanvas({
                 </Button>
               </div>
               {viewMode === '3d' ? (
-                <p className="px-3 pt-2 text-xs text-muted-foreground">
-                  3D 视图为视觉展示，语义列表提供可读结构，便于键盘与屏幕阅读器访问；按 Tab 键可逐个聚焦节点。
+                <p id={`${semanticPanelId}-keyboard-help`} className="px-3 pt-2 text-xs text-muted-foreground">
+                  3D 视图为视觉展示，语义列表提供可读结构，便于键盘与屏幕阅读器访问；按 Tab 键可逐个聚焦节点，Shift + Tab 可反向切换。
                 </p>
               ) : null}
+              <p
+                id={`${semanticPanelId}-keyboard-status`}
+                aria-live="polite"
+                className="px-3 pt-1 text-xs text-muted-foreground"
+              >
+                {keyboardRovingIndex >= 0 && semanticNodes[keyboardRovingIndex]
+                  ? `键盘当前聚焦：${semanticNodes[keyboardRovingIndex].label}（${keyboardRovingIndex + 1}/${semanticNodes.length}）`
+                  : '键盘当前聚焦：尚未选中节点'}
+              </p>
               <div
                 id={semanticPanelId}
                 hidden={!isSemanticListVisible}
@@ -464,15 +527,20 @@ export function GraphCanvas({
                         节点
                       </h3>
                       <ul className="mt-2 space-y-1.5 text-sm text-foreground">
-                        {semanticNodes.map((node) => (
+                        {semanticNodes.map((node, index) => (
                           <li key={node.id}>
                             <button
+                              ref={(element) => setSemanticNodeButtonRef(node.id, element)}
                               type="button"
                               className="w-full rounded-lg border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border/70 hover:bg-muted/50 focus-visible:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
                               aria-label={`聚焦节点：${node.label}`}
                               aria-pressed={selectedNodeId === node.id}
-                              onFocus={() => focusSemanticNode(node.id)}
+                              onFocus={() => {
+                                setKeyboardRovingIndex(index)
+                                focusSemanticNode(node.id)
+                              }}
                               onClick={() => {
+                                setKeyboardRovingIndex(index)
                                 focusSemanticNode(node.id)
                                 onNodeClick(node.raw)
                               }}

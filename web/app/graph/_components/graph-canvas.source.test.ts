@@ -25,9 +25,23 @@ describe('graph canvas accessibility source', () => {
 
     expect(src).toContain('graph3dRef.current?.focusNode')
     expect(src).toContain('graph2dRef.current?.focusNode')
-    expect(src).toContain('onFocus={() => focusSemanticNode(node.id)}')
+    expect(src).toContain('setKeyboardRovingIndex(index)')
+    expect(src).toContain('onFocus={() => {')
     expect(src).toContain('type="button"')
     expect(src).toContain('aria-label={`聚焦节点：${node.label}`}')
+  })
+
+  it('adds a 3D keyboard roving entrypoint for tab-based node traversal', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'graph-canvas.tsx'), 'utf8')
+
+    expect(src).toContain("import { getNextKeyboardRovingIndex } from './graph-keyboard-roving'")
+    expect(src).toContain('const semanticNodeButtonRefs = useRef')
+    expect(src).toContain('const handleCanvasKeyDown = useCallback')
+    expect(src).toContain("event.key !== 'Tab'")
+    expect(src).toContain('event.preventDefault()')
+    expect(src).toContain("tabIndex={viewMode === '3d' && semanticNodes.length > 0 ? 0 : undefined}")
+    expect(src).toContain('onKeyDown={handleCanvasKeyDown}')
+    expect(src).toContain('Shift + Tab 可反向切换')
   })
 
   it('shows a branded loading shell instead of plain text', () => {
