@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Loader2, Route, Quote, Timer, Database, ExternalLink, Download, GitCompare } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api'
@@ -1003,10 +1004,12 @@ function TraceCitationScoreShiftList({
   onPrefetchCitation: (documentId?: string | null, chunkId?: string | null) => void
   onOpenCitation: (citation: RagTraceCitation, opts?: { label?: string; notify?: boolean }) => void
 }>) {
+  const t = useTranslations('RagTrace')
+
   return (
     <div className="rounded-2xl border border-border/60 bg-card/40 p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-foreground">分数漂移</div>
+        <div className="text-sm font-semibold text-foreground">{t("panel.evidenceDrift.scoreShiftTitle")}</div>
         <Badge variant="soft" className="text-[10px]">
           {items.length}
         </Badge>
@@ -1064,6 +1067,7 @@ type RagTracePanelProps = {
 }
 
 export function RagTracePanel({ conversationId, className }: Readonly<RagTracePanelProps>) {
+  const t = useTranslations('RagTrace')
   const { openDocument } = useDocumentView()
 
   const [data, setData] = React.useState<RagTraceListResponse | null>(null)
@@ -1574,7 +1578,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       {diffCandidateOptions.length ? (
                         <div className="space-y-2">
                           <div>
-                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">Trace 对比候选</div>
+                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                              {t("panel.compareCandidates.title")}
+                            </div>
                             <div className="mt-1 text-xs text-muted-foreground">
                               优先展示 retrieval config 有变化、且时间上最接近当前 trace 的候选。
                             </div>
@@ -1661,7 +1667,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         <Panel variant="glass" className="space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
-                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">Evidence Drift</div>
+                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                                {t("panel.evidenceDrift.title")}
+                              </div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 直接比较当前 trace（A）和候选 trace（B）的 citation 漂移，优先看新增、丢失和分数变化最大的证据。
                               </div>
@@ -1673,26 +1681,34 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
                           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                             <div className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft">
-                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">Shared</div>
+                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                                {t("panel.evidenceDrift.sharedTitle")}
+                              </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.sharedCount}</div>
                             </div>
                             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-3">
-                              <div className="text-[11px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">Added In B</div>
+                              <div className="text-[11px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                                {t("panel.evidenceDrift.addedSummaryTitle")}
+                              </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.addedCount}</div>
                             </div>
                             <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-3">
-                              <div className="text-[11px] font-semibold uppercase text-amber-700 dark:text-amber-300">Removed From A</div>
+                              <div className="text-[11px] font-semibold uppercase text-amber-700 dark:text-amber-300">
+                                {t("panel.evidenceDrift.removedSummaryTitle")}
+                              </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.removedCount}</div>
                             </div>
                             <div className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft">
-                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">Score Shift</div>
+                              <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                                {t("panel.evidenceDrift.scoreShiftSummaryTitle")}
+                              </div>
                               <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.scoreShiftCount}</div>
                             </div>
                           </div>
 
                           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                             <TraceCitationDiffList
-                              title="新增证据（B）"
+                              title={t("panel.evidenceDrift.addedTitle")}
                               emptyLabel="当前候选 trace 没有带来新的最终 citations。"
                               items={localCitationDiff.added}
                               tone="added"
@@ -1700,7 +1716,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               onOpenCitation={openTraceCitation}
                             />
                             <TraceCitationDiffList
-                              title="丢失证据（A）"
+                              title={t("panel.evidenceDrift.removedTitle")}
                               emptyLabel="当前 trace 没有丢失任何最终 citations。"
                               items={localCitationDiff.removed}
                               tone="removed"

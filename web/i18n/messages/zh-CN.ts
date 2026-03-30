@@ -673,6 +673,21 @@ const zhCNMessages = {
       loadingMessage: '正在加载 RAG Trace...',
       loadingSrMessage: 'Loading RAG trace panel',
     },
+    panel: {
+      compareCandidates: {
+        title: 'Trace 对比候选',
+      },
+      evidenceDrift: {
+        title: 'Evidence Drift',
+        sharedTitle: 'Shared',
+        addedSummaryTitle: 'Added In B',
+        removedSummaryTitle: 'Removed From A',
+        scoreShiftSummaryTitle: 'Score Shift',
+        addedTitle: '新增证据（B）',
+        removedTitle: '丢失证据（A）',
+        scoreShiftTitle: '分数漂移',
+      },
+    },
   },
   EvidenceWorkbench: {
     controls: {

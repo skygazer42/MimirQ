@@ -24,11 +24,12 @@ describe('rag trace panel source', () => {
 
     expect(src).toContain('buildTraceDiffCandidateOptions')
     expect(src).toContain('buildTraceCitationDiff')
-    expect(src).toContain('Trace 对比候选')
-    expect(src).toContain('Evidence Drift')
-    expect(src).toContain('新增证据（B）')
-    expect(src).toContain('丢失证据（A）')
-    expect(src).toContain('分数漂移')
+    expect(src).toContain("useTranslations('RagTrace')")
+    expect(src).toContain('t("panel.compareCandidates.title")')
+    expect(src).toContain('t("panel.evidenceDrift.title")')
+    expect(src).toContain('t("panel.evidenceDrift.addedTitle")')
+    expect(src).toContain('t("panel.evidenceDrift.removedTitle")')
+    expect(src).toContain('t("panel.evidenceDrift.scoreShiftTitle")')
     expect(src).toContain('setDiffOtherRequestId(candidate.requestId)')
   })
 
