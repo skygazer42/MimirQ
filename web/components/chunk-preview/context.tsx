@@ -5,8 +5,9 @@
 'use client'
 
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, ReactNode } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
+import { useRouter } from '@/i18n/navigation'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { generateRequestId } from '@/lib/request-id'
@@ -219,7 +220,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     lastSyncedChunkParamRef.current = next
 
     const qs = params.toString()
-    const path = globalThis.window.location.pathname || '/chunk-preview'
+    const path = '/chunk-preview'
     router.replace(`${path}${qs ? `?${qs}` : ''}`)
   }, [router, searchParams, selectedChunkIndex])
 
