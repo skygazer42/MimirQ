@@ -3,7 +3,8 @@
  */
 'use client'
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { startTransition, useActionState, useCallback, useEffect, useId, useMemo, useOptimistic, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useFormStatus } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, Tags, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -49,6 +50,14 @@ const EMPTY_CHUNKS: DocumentChunk[] = []
 const ACTIVE_PIPELINE_VALUE = '__active__'
 const CHUNK_PAGE_SIZE = 200
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+type DocumentPublicationStatus = 'draft' | 'published' | 'deprecated'
+type LifecycleDraftValues = {
+  publicationStatus: DocumentPublicationStatus
+  owner: string
+  reviewDueAt: string
+  authorityLevel: string
+  supersedesDocumentId: string
+}
 
 function asStatusBadgeStatus(status: string | undefined): StatusBadgeStatus {
   switch (status) {
@@ -123,6 +132,109 @@ function toDatetimeLocalValue(value: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+function normalizeAccessMode(value: FormDataEntryValue | string | null | undefined): DocumentAccessMode {
+  const normalized = String(value || '').trim()
+  switch (normalized) {
+    case 'inherit':
+    case 'only_me':
+    case 'partial_members':
+    case 'all_team_members':
+      return normalized
+    default:
+      return 'inherit'
+  }
+}
+
+function parseStringArrayField(value: FormDataEntryValue | string | null | undefined): string[] {
+  let parsed: unknown = []
+  try {
+    parsed = JSON.parse(String(value || '[]'))
+  } catch {
+    parsed = []
+  }
+
+  if (!Array.isArray(parsed)) return []
+
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of parsed) {
+    const next = String(item || '').trim()
+    if (!next || seen.has(next)) continue
+    seen.add(next)
+    out.push(next)
+    if (out.length >= 200) break
+  }
+
+  return out
+}
+
+function normalizePublicationStatus(value: FormDataEntryValue | string | null | undefined): DocumentPublicationStatus {
+  const normalized = String(value || '').trim()
+  return normalized === 'draft' || normalized === 'deprecated' ? normalized : 'published'
+}
+
+function getLifecycleValidationError(values: Pick<LifecycleDraftValues, 'authorityLevel' | 'reviewDueAt' | 'supersedesDocumentId'>) {
+  const sup = values.supersedesDocumentId.trim()
+  if (sup && !UUID_RE.test(sup)) return 'supersedes_document_id 不是合法 UUID'
+
+  const auth = values.authorityLevel.trim()
+  if (auth) {
+    const n = Number.parseInt(auth, 10)
+    if (!Number.isFinite(n)) return 'authority_level 必须是整数'
+    if (n < 0 || n > 100) return 'authority_level 需在 0-100 之间'
+  }
+
+  const due = values.reviewDueAt.trim()
+  if (due) {
+    const d = new Date(due)
+    if (Number.isNaN(d.getTime())) return 'review_due_at 不是合法时间'
+  }
+
+  return null
+}
+
+function hasLifecycleChanges(doc: Document, values: LifecycleDraftValues) {
+  const currentPublicationStatus = String(doc.publication_status || 'published').trim()
+  const currentOwner = String(doc.lifecycle_owner || '').trim()
+  const currentReviewDueAt = toDatetimeLocalValue(doc.review_due_at)
+  const currentAuthorityLevel = doc.authority_level == null ? '' : String(doc.authority_level)
+  const currentSupersedesDocumentId = String(doc.supersedes_document_id || '').trim()
+
+  return (
+    currentPublicationStatus !== values.publicationStatus ||
+    currentOwner !== values.owner ||
+    currentReviewDueAt !== values.reviewDueAt ||
+    currentAuthorityLevel !== values.authorityLevel ||
+    currentSupersedesDocumentId !== values.supersedesDocumentId
+  )
+}
+
+function DocumentTagsSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+  const { pending } = useFormStatus()
+
+  return (
+    <Button size="sm" type="submit" disabled={disabled || pending}>
+      {pending ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+      ) : null}
+      保存
+    </Button>
+  )
+}
+
+function DocumentLifecycleSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+  const { pending } = useFormStatus()
+
+  return (
+    <Button size="sm" type="submit" disabled={disabled || pending}>
+      {pending ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+      ) : null}
+      保存
+    </Button>
+  )
+}
+
 export function DocumentDetailDialog({ document: initialDocument, trigger }: Readonly<DocumentDetailDialogProps>) {
   const viewTabsId = useId()
   const chunksTabId = `${viewTabsId}-chunks-tab`
@@ -162,11 +274,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [accessDialogOpen, setAccessDialogOpen] = useState(false)
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
 
-  const currentTags = useMemo(() => getUserTagsFromDocument(detail || initialDocument), [detail, initialDocument])
+  const persistedTags = useMemo(() => getUserTagsFromDocument(detail || initialDocument), [detail, initialDocument])
+  const [optimisticTags, applyOptimisticTags] = useOptimistic(
+    persistedTags,
+    (_currentTags, nextTags: string[]) => normalizeTags(nextTags)
+  )
   const [tagsEditing, setTagsEditing] = useState(false)
   const [tagsDraft, setTagsDraft] = useState<string[]>([])
   const [tagsError, setTagsError] = useState<string | null>(null)
-  const [isSavingTags, setIsSavingTags] = useState(false)
 
   const [lifecycleWritable, setLifecycleWritable] = useState<boolean | null>(null)
   const [lifecyclePermError, setLifecyclePermError] = useState<string | null>(null)
@@ -179,7 +294,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [lifecycleAuthorityDraft, setLifecycleAuthorityDraft] = useState('')
   const [lifecycleSupersedesDraft, setLifecycleSupersedesDraft] = useState('')
   const [lifecycleError, setLifecycleError] = useState<string | null>(null)
-  const [isSavingLifecycle, setIsSavingLifecycle] = useState(false)
 
   const canMutateChunks = viewPipelineHash === ACTIVE_PIPELINE_VALUE
 
@@ -228,9 +342,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
   const beginEditTags = useCallback(() => {
     setTagsError(null)
-    setTagsDraft(currentTags)
+    setTagsDraft(persistedTags)
     setTagsEditing(true)
-  }, [currentTags])
+  }, [persistedTags])
 
   const cancelEditTags = useCallback(() => {
     setTagsError(null)
@@ -238,16 +352,55 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     setTagsEditing(false)
   }, [])
 
-  const canSaveTags = useMemo(() => {
+  const hasPendingTagChanges = useMemo(() => {
     if (!tagsEditing) return false
-    if (isSavingTags) return false
     const next = normalizeTags(tagsDraft)
-    if (next.length !== currentTags.length) return true
+    if (next.length !== persistedTags.length) return true
     for (let i = 0; i < next.length; i += 1) {
-      if (next[i] !== currentTags[i]) return true
+      if (next[i] !== persistedTags[i]) return true
     }
     return false
-  }, [currentTags, isSavingTags, tagsDraft, tagsEditing])
+  }, [persistedTags, tagsDraft, tagsEditing])
+
+  const [, saveTagsAction, isSavingTags] = useActionState(async (_state: null, formData: FormData) => {
+    if (!tagsEditing) return null
+
+    let parsedTags: unknown = []
+    try {
+      parsedTags = JSON.parse(String(formData.get('tags_json') || '[]'))
+    } catch {
+      parsedTags = []
+    }
+
+    const nextTags = normalizeTags(parsedTags)
+    if (nextTags.length === persistedTags.length && nextTags.every((tag, index) => tag === persistedTags[index])) {
+      return null
+    }
+
+    setTagsError(null)
+    startTransition(() => {
+      applyOptimisticTags(nextTags)
+    })
+    setTagsEditing(false)
+    setTagsDraft([])
+
+    try {
+      const updated = await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(nextTags))
+      setDetail(updated)
+      toast.success('已更新标签')
+    } catch (err: any) {
+      console.error('Update document tags failed:', err)
+      const msg = formatApiError(err, '保存标签失败')
+      setTagsError(msg)
+      setTagsDraft(nextTags)
+      setTagsEditing(true)
+      toast.error(msg)
+    }
+
+    return null
+  }, null)
+
+  const canSaveTags = hasPendingTagChanges && !isSavingTags
 
   const saveEditChunk = useCallback(async () => {
     if (!editingChunkId) return
@@ -312,7 +465,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   )
   const [accessMembersText, setAccessMembersText] = useState('')
   const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
-  const [isSavingAccess, setIsSavingAccess] = useState(false)
 
   const loadDetail = useCallback(async () => {
     setIsLoadingDoc(true)
@@ -347,26 +499,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     }
   }, [initialDocument.id])
 
-  const saveTags = useCallback(async () => {
-    if (!canSaveTags) return
-    setIsSavingTags(true)
-    setTagsError(null)
-    try {
-      await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(tagsDraft))
-      toast.success('已更新标签')
-      setTagsEditing(false)
-      setTagsDraft([])
-      await loadDetail()
-    } catch (err: any) {
-      console.error('Update document tags failed:', err)
-      const msg = formatApiError(err, '保存标签失败')
-      setTagsError(msg)
-      toast.error(msg)
-    } finally {
-      setIsSavingTags(false)
-    }
-  }, [canSaveTags, initialDocument.id, loadDetail, tagsDraft])
-
   const beginEditLifecycle = useCallback(() => {
     const doc = detail || initialDocument
     setLifecycleError(null)
@@ -389,81 +521,62 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     setLifecycleEditing(false)
   }, [])
 
-  const lifecycleValidationError = useMemo(() => {
-    const sup = lifecycleSupersedesDraft.trim()
-    if (sup && !UUID_RE.test(sup)) return 'supersedes_document_id 不是合法 UUID'
-
-    const auth = lifecycleAuthorityDraft.trim()
-    if (auth) {
-      const n = Number.parseInt(auth, 10)
-      if (!Number.isFinite(n)) return 'authority_level 必须是整数'
-      if (n < 0 || n > 100) return 'authority_level 需在 0-100 之间'
-    }
-
-    const due = lifecycleReviewDueDraft.trim()
-    if (due) {
-      const d = new Date(due)
-      if (Number.isNaN(d.getTime())) return 'review_due_at 不是合法时间'
-    }
-
-    return null
-  }, [lifecycleAuthorityDraft, lifecycleReviewDueDraft, lifecycleSupersedesDraft])
-
-  const canSaveLifecycle = useMemo(() => {
-    if (!lifecycleEditing) return false
-    if (isSavingLifecycle) return false
-    if (lifecycleValidationError) return false
-
-    const doc = detail || initialDocument
-
-    const ps0 = String(doc.publication_status || 'published').trim()
-    const ps1 = lifecyclePublicationStatusDraft
-
-    const owner0 = String(doc.lifecycle_owner || '').trim()
-    const owner1 = lifecycleOwnerDraft.trim()
-
-    const due0 = toDatetimeLocalValue(doc.review_due_at)
-    const due1 = lifecycleReviewDueDraft.trim()
-
-    const auth0 = doc.authority_level == null ? '' : String(doc.authority_level)
-    const auth1 = lifecycleAuthorityDraft.trim()
-
-    const sup0 = String(doc.supersedes_document_id || '').trim()
-    const sup1 = lifecycleSupersedesDraft.trim()
-
-    return ps0 !== ps1 || owner0 !== owner1 || due0 !== due1 || auth0 !== auth1 || sup0 !== sup1
-  }, [
-    detail,
-    initialDocument,
-    isSavingLifecycle,
+  const lifecycleDraftValues = useMemo<LifecycleDraftValues>(() => ({
+    publicationStatus: lifecyclePublicationStatusDraft,
+    owner: lifecycleOwnerDraft.trim(),
+    reviewDueAt: lifecycleReviewDueDraft.trim(),
+    authorityLevel: lifecycleAuthorityDraft.trim(),
+    supersedesDocumentId: lifecycleSupersedesDraft.trim(),
+  }), [
     lifecycleAuthorityDraft,
-    lifecycleEditing,
     lifecycleOwnerDraft,
     lifecyclePublicationStatusDraft,
     lifecycleReviewDueDraft,
     lifecycleSupersedesDraft,
-    lifecycleValidationError,
   ])
 
-  const saveLifecycle = useCallback(async () => {
-    if (!canSaveLifecycle) return
-    setIsSavingLifecycle(true)
+  const lifecycleValidationError = useMemo(
+    () => getLifecycleValidationError(lifecycleDraftValues),
+    [lifecycleDraftValues]
+  )
+
+  const lifecycleHasChanges = useMemo(
+    () => hasLifecycleChanges(detail || initialDocument, lifecycleDraftValues),
+    [detail, initialDocument, lifecycleDraftValues]
+  )
+
+  const [, saveLifecycleAction, isSavingLifecycle] = useActionState(async (_state: null, formData: FormData) => {
+    if (!lifecycleEditing) return null
+
+    const nextValues: LifecycleDraftValues = {
+      publicationStatus: normalizePublicationStatus(formData.get('publication_status')),
+      owner: String(formData.get('lifecycle_owner') || '').trim(),
+      reviewDueAt: String(formData.get('review_due_at') || '').trim(),
+      authorityLevel: String(formData.get('authority_level') || '').trim(),
+      supersedesDocumentId: String(formData.get('supersedes_document_id') || '').trim(),
+    }
+
+    const validationError = getLifecycleValidationError(nextValues)
+    if (validationError) {
+      setLifecycleError(validationError)
+      return null
+    }
+
+    const currentDoc = detail || initialDocument
+    if (!hasLifecycleChanges(currentDoc, nextValues)) {
+      return null
+    }
+
     setLifecycleError(null)
+
     try {
-      const owner = lifecycleOwnerDraft.trim()
-      const sup = lifecycleSupersedesDraft.trim()
-      const authStr = lifecycleAuthorityDraft.trim()
-      const dueStr = lifecycleReviewDueDraft.trim()
-
-      const payload: any = {
-        publication_status: lifecyclePublicationStatusDraft,
-        lifecycle_owner: owner || null,
-        supersedes_document_id: sup || null,
-        authority_level: authStr ? Number.parseInt(authStr, 10) : null,
-        review_due_at: dueStr ? new Date(dueStr).toISOString() : null,
-      }
-
-      await documentApi.patchLifecycleMetadata(initialDocument.id, payload)
+      await documentApi.patchLifecycleMetadata(initialDocument.id, {
+        publication_status: nextValues.publicationStatus,
+        lifecycle_owner: nextValues.owner || null,
+        supersedes_document_id: nextValues.supersedesDocumentId || null,
+        authority_level: nextValues.authorityLevel ? Number.parseInt(nextValues.authorityLevel, 10) : null,
+        review_due_at: nextValues.reviewDueAt ? new Date(nextValues.reviewDueAt).toISOString() : null,
+      })
       toast.success('已更新 lifecycle 信息')
       cancelEditLifecycle()
       await loadDetail()
@@ -472,20 +585,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       const msg = formatApiError(err, '保存 lifecycle 信息失败')
       setLifecycleError(msg)
       toast.error(msg)
-    } finally {
-      setIsSavingLifecycle(false)
     }
-  }, [
-    canSaveLifecycle,
-    cancelEditLifecycle,
-    initialDocument.id,
-    lifecycleAuthorityDraft,
-    lifecycleOwnerDraft,
-    lifecyclePublicationStatusDraft,
-    lifecycleReviewDueDraft,
-    lifecycleSupersedesDraft,
-    loadDetail,
-  ])
+
+    return null
+  }, null)
+
+  const canSaveLifecycle = lifecycleEditing && !isSavingLifecycle && !lifecycleValidationError && lifecycleHasChanges
 
   const loadVersions = useCallback(async () => {
     setIsLoadingVersions(true)
@@ -917,17 +1022,25 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     return out
   }, [])
 
-  const handleSaveAccess = useCallback(async () => {
-    if (!displayDoc?.id) return
-    setIsSavingAccess(true)
+  const [, saveAccessAction, isSavingAccess] = useActionState(async (_state: null, formData: FormData) => {
+    if (!displayDoc?.id) return null
+
+    const nextAccessMode = normalizeAccessMode(formData.get('access_mode'))
+    const nextAccessGroupIds =
+      nextAccessMode === 'partial_members' ? parseStringArrayField(formData.get('access_group_ids_json')) : []
+    const nextAccessMembersText = String(formData.get('access_members_text') || '')
+
     try {
-      const payload = {
-        mode: accessMode,
-        partial_member_list: accessMode === 'partial_members' ? parseAccessMembers(accessMembersText) : null,
-        partial_group_list: accessMode === 'partial_members' ? accessGroupIds : null,
-      }
-      const res = await documentApi.updateAccess(displayDoc.id, payload)
+      const res = await documentApi.updateAccess(displayDoc.id, {
+        mode: nextAccessMode,
+        partial_member_list:
+          nextAccessMode === 'partial_members' ? parseAccessMembers(nextAccessMembersText) : null,
+        partial_group_list: nextAccessMode === 'partial_members' ? nextAccessGroupIds : null,
+      })
       setAccessInfo(res)
+      setAccessMode(res.mode)
+      setAccessMembersText((res.partial_member_list || []).join('\n'))
+      setAccessGroupIds((res.partial_group_list || []).map(String))
       setDetail((prev) =>
         prev
           ? {
@@ -942,10 +1055,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     } catch (err: any) {
       console.error('Update document access failed:', err)
       toast.error(formatApiError(err, '更新访问控制失败'))
-    } finally {
-      setIsSavingAccess(false)
     }
-  }, [accessMode, accessMembersText, accessGroupIds, displayDoc?.id, parseAccessMembers])
+
+    return null
+  }, null)
 
   const handleVersionsDialogOpenChange = useCallback((next: boolean) => {
     setVersionsDialogOpen(next)
@@ -955,13 +1068,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   }, [loadVersions])
 
   const handleAccessDialogOpenChange = useCallback((next: boolean) => {
+    if (!next && isSavingAccess) return
     if (next) {
       setAccessMode(effectiveAccessMode)
       setAccessMembersText((accessInfo?.partial_member_list || []).join('\n'))
       setAccessGroupIds((accessInfo?.partial_group_list || []).map(String))
     }
     setAccessDialogOpen(next)
-  }, [accessInfo?.partial_group_list, accessInfo?.partial_member_list, effectiveAccessMode])
+  }, [accessInfo?.partial_group_list, accessInfo?.partial_member_list, effectiveAccessMode, isSavingAccess])
 
   const handleVersionsRefresh = useCallback(() => {
     detachPromise(loadVersions())
@@ -978,10 +1092,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const handleDeleteVersionAction = useCallback((pipelineHash: string) => {
     detachPromise(handleDeleteVersion(pipelineHash))
   }, [handleDeleteVersion])
-
-  const handleSaveAccessAction = useCallback(() => {
-    detachPromise(handleSaveAccess())
-  }, [handleSaveAccess])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -1147,229 +1257,273 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           </div>
 
           <Panel className="rounded-2xl">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
-                  <Tags className="h-5 w-5" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-foreground">Tags</div>
-                  <div className="text-xs text-muted-foreground truncate">用于分组与检索过滤（document_user.tags）</div>
-                </div>
-              </div>
+            {tagsEditing ? (
+              <form action={saveTagsAction} className="space-y-4">
+                <input type="hidden" name="tags_json" value={JSON.stringify(tagsDraft)} />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
+                      <Tags className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-foreground">Tags</div>
+                      <div className="text-xs text-muted-foreground truncate">用于分组与检索过滤（document_user.tags）</div>
+                    </div>
+                  </div>
 
-              <div className="flex flex-wrap items-center gap-2 justify-end">
-                {tagsEditing ? (
-                  <>
-                    <Button variant="outline" size="sm" onClick={cancelEditTags} disabled={isSavingTags}>
+                  <div className="flex flex-wrap items-center gap-2 justify-end">
+                    <Button type="button" variant="outline" size="sm" onClick={cancelEditTags} disabled={isSavingTags}>
                       取消
                     </Button>
-                    <Button size="sm" onClick={() => detachPromise(saveTags())} disabled={!canSaveTags}>
-                      {isSavingTags ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                      ) : null}
-                      保存
+                    <DocumentTagsSaveButton disabled={!canSaveTags} />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <TagInput value={tagsDraft} onValueChange={setTagsDraft} disabled={isSavingTags} />
+
+                  {tagsError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>保存失败</AlertTitle>
+                      <AlertDescription>{tagsError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
+                      <Tags className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-foreground">Tags</div>
+                      <div className="text-xs text-muted-foreground truncate">用于分组与检索过滤（document_user.tags）</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 justify-end">
+                    <Button variant="outline" size="sm" className="gap-2" onClick={beginEditTags}>
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                      编辑
                     </Button>
-                  </>
-                ) : (
-                  <Button variant="outline" size="sm" className="gap-2" onClick={beginEditTags}>
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                    编辑
-                  </Button>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
 
-            <div className="mt-4 space-y-3">
-              {(() => {
-    if (tagsEditing) {
-        return (<TagInput value={tagsDraft} onValueChange={setTagsDraft} disabled={isSavingTags}/>);
-    }
-    else if (currentTags.length) {
-            return (<DocumentTags tags={currentTags} max={10}/>);
-        }
-        else {
-            return (<div className="text-xs text-muted-foreground">暂无标签（可用于知识库分组、检索过滤与运维标记）</div>);
-        }
-})()}
+                <div className="mt-4 space-y-3">
+                  {optimisticTags.length ? (
+                    <DocumentTags tags={optimisticTags} max={10} />
+                  ) : (
+                    <div className="text-xs text-muted-foreground">暂无标签（可用于知识库分组、检索过滤与运维标记）</div>
+                  )}
 
-              {tagsError ? (
-                <Alert variant="destructive">
-                  <AlertTitle>保存失败</AlertTitle>
-                  <AlertDescription>{tagsError}</AlertDescription>
-                </Alert>
-              ) : null}
-            </div>
+                  {tagsError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>保存失败</AlertTitle>
+                      <AlertDescription>{tagsError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+                </div>
+              </>
+            )}
           </Panel>
 
           <Panel className="rounded-2xl">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-3 min-w-0">
-                <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-warning/10 text-warning">
-                  <Calendar className="h-5 w-5" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-foreground">Lifecycle</div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    owner / review_due / authority / supersedes（用于治理与检索偏好）
-                  </div>
-                </div>
-              </div>
+            {lifecycleEditing ? (
+              <form action={saveLifecycleAction}>
+                <input type="hidden" name="publication_status" value={lifecyclePublicationStatusDraft} />
 
-              <div className="flex flex-wrap items-center gap-2 justify-end">
-                {lifecycleEditing ? (
-                  <>
-                    <Button variant="outline" size="sm" onClick={cancelEditLifecycle} disabled={isSavingLifecycle}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-warning/10 text-warning">
+                      <Calendar className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-foreground">Lifecycle</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        owner / review_due / authority / supersedes（用于治理与检索偏好）
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 justify-end">
+                    <Button type="button" variant="outline" size="sm" onClick={cancelEditLifecycle} disabled={isSavingLifecycle}>
                       取消
                     </Button>
-                    <Button size="sm" onClick={() => detachPromise(saveLifecycle())} disabled={!canSaveLifecycle}>
-                      {isSavingLifecycle ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                      ) : null}
-                      保存
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={beginEditLifecycle}
-                    disabled={lifecycleWritable === false || lifecycleWritable == null}
-                    title={
-                      (() => {
-    if (lifecycleWritable === false) {
-        return "只读：需要数据集编辑权限";
-    }
-    else if (lifecycleWritable == null) {
-            return "权限确认中";
-        }
-        else {
-            return undefined;
-        }
-})()
-                    }
-                  >
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                    编辑
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {lifecyclePermError ? (
-                <Alert variant="destructive">
-                  <AlertTitle>权限检查失败</AlertTitle>
-                  <AlertDescription>{lifecyclePermError}</AlertDescription>
-                </Alert>
-              ) : null}
-
-              {lifecycleEditing ? (
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-medium text-muted-foreground">publication_status</div>
-                    <Select
-                      value={lifecyclePublicationStatusDraft}
-                      onValueChange={(v) =>
-                        setLifecyclePublicationStatusDraft(v === 'draft' || v === 'deprecated' ? v : 'published')
-                      }
-                      disabled={isSavingLifecycle}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="published" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="published">published（默认参与检索）</SelectItem>
-                        <SelectItem value="draft">draft（默认不参与检索）</SelectItem>
-                        <SelectItem value="deprecated">deprecated（默认不参与检索）</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-medium text-muted-foreground">owner</div>
-                    <Input
-                      value={lifecycleOwnerDraft}
-                      onChange={(e) => setLifecycleOwnerDraft(e.target.value)}
-                      placeholder="团队/负责人（建议使用 team alias，避免个人邮箱）"
-                      disabled={isSavingLifecycle}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-medium text-muted-foreground">review_due_at</div>
-                    <Input
-                      type="datetime-local"
-                      value={lifecycleReviewDueDraft}
-                      onChange={(e) => setLifecycleReviewDueDraft(e.target.value)}
-                      disabled={isSavingLifecycle}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-medium text-muted-foreground">authority_level</div>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={lifecycleAuthorityDraft}
-                      onChange={(e) => setLifecycleAuthorityDraft(e.target.value)}
-                      placeholder="0-100"
-                      disabled={isSavingLifecycle}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-medium text-muted-foreground">supersedes_document_id</div>
-                    <Input
-                      value={lifecycleSupersedesDraft}
-                      onChange={(e) => setLifecycleSupersedesDraft(e.target.value)}
-                      placeholder="被替代的旧文档 UUID（可留空）"
-                      disabled={isSavingLifecycle}
-                    />
+                    <DocumentLifecycleSaveButton disabled={!canSaveLifecycle} />
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <TraceRow label="publication_status" value={String(displayDoc.publication_status || 'published')} />
-                  <TraceRow label="lifecycle_owner" value={String(displayDoc.lifecycle_owner || '-')} />
-                  <TraceRow
-                    label="review_due_at"
-                    value={
-                      displayDoc.review_due_at
-                        ? new Date(String(displayDoc.review_due_at)).toLocaleString('zh-CN')
-                        : '-'
-                    }
-                  />
-                  <TraceRow
-                    label="authority_level"
-                    value={displayDoc.authority_level == null ? '-' : String(displayDoc.authority_level)}
-                    mono
-                  />
-                  <TraceRow label="supersedes_document_id" value={String(displayDoc.supersedes_document_id || '-')} mono />
 
-                  {!displayDoc.lifecycle_owner && !displayDoc.review_due_at && displayDoc.authority_level == null && !displayDoc.supersedes_document_id ? (
-                    <div className="text-xs text-muted-foreground">暂无 lifecycle 信息（可用于 stale 报表、检索偏好与治理审计）</div>
+                <div className="mt-4 space-y-3">
+                  {lifecyclePermError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>权限检查失败</AlertTitle>
+                      <AlertDescription>{lifecyclePermError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-muted-foreground">publication_status</div>
+                      <Select
+                        value={lifecyclePublicationStatusDraft}
+                        onValueChange={(v) =>
+                          setLifecyclePublicationStatusDraft(v === 'draft' || v === 'deprecated' ? v : 'published')
+                        }
+                        disabled={isSavingLifecycle}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="published" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="published">published（默认参与检索）</SelectItem>
+                          <SelectItem value="draft">draft（默认不参与检索）</SelectItem>
+                          <SelectItem value="deprecated">deprecated（默认不参与检索）</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-muted-foreground">owner</div>
+                      <Input
+                        name="lifecycle_owner"
+                        value={lifecycleOwnerDraft}
+                        onChange={(e) => setLifecycleOwnerDraft(e.target.value)}
+                        placeholder="团队/负责人（建议使用 team alias，避免个人邮箱）"
+                        disabled={isSavingLifecycle}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-muted-foreground">review_due_at</div>
+                      <Input
+                        name="review_due_at"
+                        type="datetime-local"
+                        value={lifecycleReviewDueDraft}
+                        onChange={(e) => setLifecycleReviewDueDraft(e.target.value)}
+                        disabled={isSavingLifecycle}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-muted-foreground">authority_level</div>
+                      <Input
+                        name="authority_level"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={lifecycleAuthorityDraft}
+                        onChange={(e) => setLifecycleAuthorityDraft(e.target.value)}
+                        placeholder="0-100"
+                        disabled={isSavingLifecycle}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-xs font-medium text-muted-foreground">supersedes_document_id</div>
+                      <Input
+                        name="supersedes_document_id"
+                        value={lifecycleSupersedesDraft}
+                        onChange={(e) => setLifecycleSupersedesDraft(e.target.value)}
+                        placeholder="被替代的旧文档 UUID（可留空）"
+                        disabled={isSavingLifecycle}
+                      />
+                    </div>
+                  </div>
+
+                  {lifecycleValidationError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>输入有误</AlertTitle>
+                      <AlertDescription>{lifecycleValidationError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  {lifecycleError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>保存失败</AlertTitle>
+                      <AlertDescription>{lifecycleError}</AlertDescription>
+                    </Alert>
                   ) : null}
                 </div>
-              )}
+              </form>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-warning/10 text-warning">
+                      <Calendar className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-foreground">Lifecycle</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        owner / review_due / authority / supersedes（用于治理与检索偏好）
+                      </div>
+                    </div>
+                  </div>
 
-              {lifecycleValidationError ? (
-                <Alert variant="destructive">
-                  <AlertTitle>输入有误</AlertTitle>
-                  <AlertDescription>{lifecycleValidationError}</AlertDescription>
-                </Alert>
-              ) : null}
+                  <div className="flex flex-wrap items-center gap-2 justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={beginEditLifecycle}
+                      disabled={lifecycleWritable === false || lifecycleWritable == null}
+                      title={
+                        lifecycleWritable === false
+                          ? '只读：需要数据集编辑权限'
+                          : lifecycleWritable == null
+                            ? '权限确认中'
+                            : undefined
+                      }
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
+                      编辑
+                    </Button>
+                  </div>
+                </div>
 
-              {lifecycleError ? (
-                <Alert variant="destructive">
-                  <AlertTitle>保存失败</AlertTitle>
-                  <AlertDescription>{lifecycleError}</AlertDescription>
-                </Alert>
-              ) : null}
-            </div>
+                <div className="mt-4 space-y-3">
+                  {lifecyclePermError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>权限检查失败</AlertTitle>
+                      <AlertDescription>{lifecyclePermError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+
+                  <div className="space-y-1.5">
+                    <TraceRow label="publication_status" value={String(displayDoc.publication_status || 'published')} />
+                    <TraceRow label="lifecycle_owner" value={String(displayDoc.lifecycle_owner || '-')} />
+                    <TraceRow
+                      label="review_due_at"
+                      value={
+                        displayDoc.review_due_at
+                          ? new Date(String(displayDoc.review_due_at)).toLocaleString('zh-CN')
+                          : '-'
+                      }
+                    />
+                    <TraceRow
+                      label="authority_level"
+                      value={displayDoc.authority_level == null ? '-' : String(displayDoc.authority_level)}
+                      mono
+                    />
+                    <TraceRow label="supersedes_document_id" value={String(displayDoc.supersedes_document_id || '-')} mono />
+
+                    {!displayDoc.lifecycle_owner && !displayDoc.review_due_at && displayDoc.authority_level == null && !displayDoc.supersedes_document_id ? (
+                      <div className="text-xs text-muted-foreground">暂无 lifecycle 信息（可用于 stale 报表、检索偏好与治理审计）</div>
+                    ) : null}
+                  </div>
+
+                  {lifecycleError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>保存失败</AlertTitle>
+                      <AlertDescription>{lifecycleError}</AlertDescription>
+                    </Alert>
+                  ) : null}
+                </div>
+              </>
+            )}
           </Panel>
 
           <Panel padding="none" className="flex-1 min-h-0 overflow-hidden rounded-2xl">
@@ -1741,8 +1895,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 onAccessGroupIdsChange={setAccessGroupIds}
                 accessMembersText={accessMembersText}
                 onAccessMembersTextChange={setAccessMembersText}
-                isSaving={isSavingAccess}
-                onSave={handleSaveAccessAction}
+                action={saveAccessAction}
               />
 
               <Button variant="outline" onClick={handleExtractKG} disabled={!canRunKg} className="w-full gap-2 sm:w-auto">

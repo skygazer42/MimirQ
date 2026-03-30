@@ -398,6 +398,7 @@ export interface GovernanceRulePackListResponse {
 // ==================== Governance (Lifecycle) ====================
 
 export interface DocumentLifecycleMetadata {
+  publication_status?: 'draft' | 'published' | 'deprecated'
   lifecycle_owner?: string | null
   review_due_at?: string | null
   authority_level?: number | null
@@ -405,6 +406,7 @@ export interface DocumentLifecycleMetadata {
 }
 
 export interface DocumentLifecycleMetadataUpdateRequest {
+  publication_status?: 'draft' | 'published' | 'deprecated'
   lifecycle_owner?: string | null
   review_due_at?: string | null
   authority_level?: number | null
