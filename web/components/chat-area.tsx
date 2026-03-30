@@ -4,7 +4,6 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -32,6 +31,7 @@ import getCaretCoordinates from 'textarea-caret'
 import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
 import { Magnetic } from '@/components/ui/magnetic'
+import { useRouter } from '@/i18n/navigation'
 import { coerceOneOf } from '@/lib/one-of'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'

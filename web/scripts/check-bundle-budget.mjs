@@ -40,7 +40,8 @@ const BUDGETS = [
   { id: 'chunk-preview-route', re: /^app\/chunk-preview\/page-.*\.js$/, maxBytes: 20 * 1024 },
   { id: 'knowledge-similarity-route', re: /^app\/knowledge\/similarity\/page-.*\.js$/, maxBytes: 60 * 1024 },
   { id: 'settings-route', re: /^app\/settings\/page-.*\.js$/, maxBytes: 120 * 1024 },
-  { id: 'parsing-route', re: /^app\/parsing\/page-.*\.js$/, maxBytes: 100 * 1024 },
+  // Locale-route wrappers add a bit more app-entry manifest overhead to this route.
+  { id: 'parsing-route', re: /^app\/parsing\/page-.*\.js$/, maxBytes: 120 * 1024 },
   { id: 'evaluations-route', re: /^app\/evaluations\/page-.*\.js$/, maxBytes: 90 * 1024 },
 ]
 

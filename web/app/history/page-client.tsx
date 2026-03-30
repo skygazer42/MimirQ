@@ -4,8 +4,8 @@
 'use client'
 
 import { useState, useEffect, useLayoutEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
+import { useSearchParams } from 'next/navigation'
 import {
   MessageSquare,
   Trash2,
@@ -27,6 +27,7 @@ import { SearchInput } from '@/components/ui/search-input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { useRouter } from '@/i18n/navigation'
 import { chatApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
