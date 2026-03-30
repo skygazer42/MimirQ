@@ -19,6 +19,7 @@ import {
   Keyboard,
 } from "lucide-react"
 import { useTheme } from "next-themes"
+import { useTranslations } from 'next-intl'
 
 import type { Conversation, Dataset, Document } from "@/types"
 import { chatApi, datasetApi, documentApi } from "@/lib/api"
@@ -38,8 +39,24 @@ import {
   CommandSeparator,
 } from "@/components/ui/command"
 
+type SlashCommandId =
+  | "resume"
+  | "upload"
+  | "analyze"
+  | "stats"
+  | "datasets"
+  | "history"
+  | "graph"
+  | "diagnostics"
+  | "settings"
+  | "parsing"
+  | "reports"
+  | "observability"
+  | "governance"
+  | "accessReview"
+
 type SlashCommand = {
-  id: string
+  id: SlashCommandId
   label: string
   description: string
   shortcut: string
@@ -48,7 +65,10 @@ type SlashCommand = {
   run: () => void
 }
 
+type KeyChordCommandId = "documents" | "chat" | "graph" | "slice" | "resume"
+
 type KeyChordCommand = {
+  id: KeyChordCommandId
   key: string
   label: string
   description: string
@@ -61,14 +81,26 @@ type ShortcutGuideItem = {
   description: string
 }
 
+type ViewerShortcutId = "resume" | "focusSearch" | "cycleHits" | "find" | "dismiss"
+
 type ShortcutDocItem = {
   key: string
   label: string
   description: string
 }
 
+type ModuleWorkbenchId =
+  | "knowledge"
+  | "graph"
+  | "slices"
+  | "parsing"
+  | "reports"
+  | "observability"
+  | "governance"
+  | "accessReview"
+
 type ModuleWorkbenchItem = {
-  id: string
+  id: ModuleWorkbenchId
   label: string
   description: string
   keywords: string[]
@@ -76,65 +108,67 @@ type ModuleWorkbenchItem = {
   run: () => void
 }
 
+type CommandMenuTranslationGetter = (key: string) => string
+
 const KEY_CHORD_TIMEOUT_MS = 1600
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   const tagName = target.tagName
-  return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+  return target.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT"
 }
 
 function normalizeChordKey(key: string): string {
-  return String(key || '').trim().toLowerCase()
+  return String(key || "").trim().toLowerCase()
 }
 
-function buildCurrentViewPrompt(pathname: string): { prompt: string; description: string } {
+function buildCurrentViewPrompt(pathname: string, t: CommandMenuTranslationGetter): { prompt: string; description: string } {
   if (pathname.startsWith("/graph")) {
     return {
-      prompt: "请基于当前图谱视图，总结关键实体、关系模式、异常断点，并给出最值得继续下钻的节点。",
-      description: "把当前图谱视图送入对话区，自动生成下钻建议。",
+      prompt: t("currentView.graph.prompt"),
+      description: t("currentView.graph.description"),
     }
   }
 
   if (pathname.startsWith("/knowledge")) {
     return {
-      prompt: "请基于当前知识库工作台，总结文档状态、导入风险和最值得优先处理的事项。",
-      description: "把当前知识库上下文转成一条可直接发起的分析问题。",
+      prompt: t("currentView.knowledge.prompt"),
+      description: t("currentView.knowledge.description"),
     }
   }
 
   if (pathname.startsWith("/datasets")) {
     return {
-      prompt: "请基于当前数据集页面，总结关键质量信号、风险项，以及建议的下一步治理动作。",
-      description: "针对当前数据集页面生成一条诊断型提问。",
+      prompt: t("currentView.datasets.prompt"),
+      description: t("currentView.datasets.description"),
     }
   }
 
   if (pathname.startsWith("/settings")) {
     return {
-      prompt: "请基于当前系统设置页面，指出高风险配置、建议保守值和需要复核的项。",
-      description: "针对当前设置视图生成一条配置审查提问。",
+      prompt: t("currentView.settings.prompt"),
+      description: t("currentView.settings.description"),
     }
   }
 
   if (pathname.startsWith("/observability") || pathname.startsWith("/reports")) {
     return {
-      prompt: "请基于当前可观测/报表页面，总结异常指标、可能根因和建议的排查顺序。",
-      description: "把当前监控视图转成可直接追问的调查提示。",
+      prompt: t("currentView.observability.prompt"),
+      description: t("currentView.observability.description"),
     }
   }
 
   return {
-    prompt: "请分析我当前所在页面的重点信息、潜在风险，以及建议的下一步操作。",
-    description: "将当前视图整理成一条可直接发送的分析问题。",
+    prompt: t("currentView.default.prompt"),
+    description: t("currentView.default.description"),
   }
 }
 
 function matchesSearchNeedle(values: Array<string | null | undefined>, needle: string): boolean {
-  const normalizedNeedle = String(needle || '').trim().toLowerCase()
+  const normalizedNeedle = String(needle || "").trim().toLowerCase()
   if (!normalizedNeedle) return true
 
-  return values.some((value) => String(value || '').toLowerCase().includes(normalizedNeedle))
+  return values.some((value) => String(value || "").toLowerCase().includes(normalizedNeedle))
 }
 
 export function CommandMenu() {
@@ -151,11 +185,12 @@ export function CommandMenu() {
   const router = useRouter()
   const pathname = usePathname()
   const { setTheme } = useTheme()
+  const t = useTranslations('CommandMenu')
   const open = useCommandMenuState((state) => state.open)
   const setOpen = useCommandMenuState((state) => state.setOpen)
   const toggleOpen = useCommandMenuState((state) => state.toggle)
   const { lastOpenedTarget, openDocument, reopenLastDocument } = useDocumentView()
-  const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || "/"), [pathname])
+  const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || '/', t), [pathname, t])
   const isSlashMode = query.trim().startsWith("/")
   const slashNeedle = query.trim().slice(1).toLowerCase()
   const hasResumeTarget = Boolean(lastOpenedTarget?.documentId)
@@ -204,7 +239,6 @@ export function CommandMenu() {
     }
   }, [setOpen, toggleOpen])
 
-  // Server-backed document search for large knowledge bases.
   React.useEffect(() => {
     if (!open) {
       setQuery("")
@@ -234,7 +268,7 @@ export function CommandMenu() {
     setDocLoading(true)
     setDatasetLoading(true)
     setConversationLoading(true)
-    const t = globalThis.window.setTimeout(() => {
+    const timeoutId = globalThis.window.setTimeout(() => {
       const needle = q.toLowerCase()
 
       Promise.allSettled([
@@ -273,262 +307,203 @@ export function CommandMenu() {
       })
     }, 220)
 
-    return () => globalThis.window.clearTimeout(t)
+    return () => globalThis.window.clearTimeout(timeoutId)
   }, [open, query])
 
-  const runCommand = React.useCallback((command: () => unknown) => {
-    setOpen(false)
-    command()
-  }, [setOpen])
+  const runCommand = React.useCallback(
+    (command: () => unknown) => {
+      setOpen(false)
+      command()
+    },
+    [setOpen]
+  )
 
   const keyChordCommands = React.useMemo<KeyChordCommand[]>(
-    () => [
-      {
-        key: 'g d',
-        label: 'Go to Documents',
-        description: '跳到知识库文档工作台。',
-        run: () => router.push('/knowledge'),
-      },
-      {
-        key: 'g c',
-        label: 'Go to Chat',
-        description: '返回主对话视图。',
-        run: () => router.push('/'),
-      },
-      {
-        key: 'g g',
-        label: 'Go to Graph',
-        description: '打开图谱工作台。',
-        run: () => router.push('/graph'),
-      },
-      {
-        key: 'f s',
-        label: 'Find Slice',
-        description: '进入切片工作台，继续检索与诊断。',
-        run: () => router.push('/chunk-preview'),
-      },
-      {
-        key: 'g v',
-        label: 'Resume Viewer Context',
-        description: hasResumeTarget ? '恢复最近一次文档/引用定位。' : '最近没有可恢复的文档定位。',
-        run: resumeLastDocumentContext,
-      },
-    ],
-    [hasResumeTarget, resumeLastDocumentContext, router]
+    () =>
+      ([
+        { id: "documents", key: "g d", run: () => router.push("/knowledge") },
+        { id: "chat", key: "g c", run: () => router.push("/") },
+        { id: "graph", key: "g g", run: () => router.push("/graph") },
+        { id: "slice", key: "f s", run: () => router.push("/chunk-preview") },
+        { id: "resume", key: "g v", run: resumeLastDocumentContext },
+      ] as const).map(({ id, key, run }) => ({
+        id,
+        key,
+        label: t(`keyChords.${id}.label`),
+        description:
+          id === "resume" && !hasResumeTarget
+            ? t("keyChords.resume.emptyDescription")
+            : t(`keyChords.${id}.description`),
+        run,
+      })),
+    [hasResumeTarget, resumeLastDocumentContext, router, t]
   )
+
   const chordPrefixes = React.useMemo(
-    () => new Set(keyChordCommands.map((command) => command.key.split(' ')[0] || '')),
+    () => new Set(keyChordCommands.map((command) => command.key.split(" ")[0] || "")),
     [keyChordCommands]
   )
+
   const keyChordCommandMap = React.useMemo(
     () => new Map(keyChordCommands.map((command) => [command.key, command.run])),
     [keyChordCommands]
   )
+
   const shortcutGuideItems = React.useMemo<ShortcutGuideItem[]>(
     () => [
       {
         shortcut: "⌘K / Ctrl+K",
-        label: "打开 Command Center",
-        description: "全局呼出命令中心，并继续搜索页面、数据集、对话与快捷动作。",
+        label: t("shortcutGuide.open.label"),
+        description: t("shortcutGuide.open.description"),
       },
       {
         shortcut: "?",
-        label: "查看快捷键地图",
-        description: "当光标不在输入框时，直接打开当前这份快捷键说明。",
+        label: t("shortcutGuide.help.label"),
+        description: t("shortcutGuide.help.description"),
       },
       ...keyChordCommands.map((command) => ({
         shortcut: command.key,
         label: command.label,
-        description: `导航 Chord · ${command.description}`,
+        description: `${t("shortcutGuide.chordPrefix")} ${command.description}`,
       })),
       {
         shortcut: "h / l",
-        label: "切换 Trace Stage",
-        description: "RAG Trace 时间线聚焦后，在 pipeline stages 之间左右切换。",
+        label: t("shortcutGuide.stagePrevNext.label"),
+        description: t("shortcutGuide.stagePrevNext.description"),
       },
       {
         shortcut: "← / →",
-        label: "切换 Trace Stage",
-        description: "和 h/l 等价，用方向键快速浏览 pipeline inspector。",
+        label: t("shortcutGuide.stageArrows.label"),
+        description: t("shortcutGuide.stageArrows.description"),
       },
       {
         shortcut: "j / k",
-        label: "切片焦点跳转",
-        description: "Document Viewer 内在检索命中或已加载切片之间循环切换。",
+        label: t("shortcutGuide.sliceFocus.label"),
+        description: t("shortcutGuide.sliceFocus.description"),
       },
     ],
-    [keyChordCommands]
+    [keyChordCommands, t]
   )
 
   const slashCommands = React.useMemo<SlashCommand[]>(
-    () => [
-      {
-        id: "resume-document-view",
-        label: "恢复最近文档上下文",
-        description: hasResumeTarget
-          ? "重新打开最近一次查看的文档、切片与高亮位置。"
-          : "最近没有可恢复的文档定位。",
-        shortcut: "/resume",
-        keywords: ["resume", "viewer", "document", "citation", "恢复", "文档", "引用", "继续查看"],
-        icon: FileText,
-        run: resumeLastDocumentContext,
-      },
-      {
-        id: "upload",
-        label: "上传文档",
-        description: "直达知识库工作台，继续上传、整理和查看导入状态。",
-        shortcut: "/upload",
-        keywords: ["upload", "文档", "知识库", "导入"],
-        icon: Upload,
-        run: () => router.push("/knowledge"),
-      },
-      {
-        id: "analyze-current-view",
-        label: "分析当前视图",
-        description: currentViewPrompt.description,
-        shortcut: "/analyze",
-        keywords: ["analyze", "分析", "当前视图", "总结", "诊断"],
-        icon: Sparkles,
+    () =>
+      ([
+        { id: "resume", shortcut: "/resume", icon: FileText },
+        { id: "upload", shortcut: "/upload", icon: Upload },
+        { id: "analyze", shortcut: "/analyze", icon: Sparkles },
+        { id: "stats", shortcut: "/stats", icon: Coins },
+        { id: "datasets", shortcut: "/datasets", icon: Database },
+        { id: "history", shortcut: "/history", icon: History },
+        { id: "graph", shortcut: "/graph", icon: Workflow },
+        { id: "diagnostics", shortcut: "/diagnostics", icon: Activity },
+        { id: "settings", shortcut: "/settings", icon: Settings },
+        { id: "parsing", shortcut: "/parsing", icon: FileText },
+        { id: "reports", shortcut: "/reports", icon: FileText },
+        { id: "observability", shortcut: "/observability", icon: Activity },
+        { id: "governance", shortcut: "/governance", icon: Database },
+        { id: "accessReview", shortcut: "/access", icon: Settings },
+      ] as const).map(({ id, shortcut, icon }) => ({
+        id,
+        label: t(`slash.commands.${id}.label`),
+        description:
+          id === "analyze"
+            ? currentViewPrompt.description
+            : id === "resume" && !hasResumeTarget
+              ? t("slash.commands.resume.emptyDescription")
+              : t(`slash.commands.${id}.description`),
+        shortcut,
+        keywords: t.raw(`slash.commands.${id}.keywords`) as string[],
+        icon,
         run: () => {
-          const params = new URLSearchParams({
-            prompt: currentViewPrompt.prompt,
-            autorun: "1",
-          })
-          router.push(`/?${params.toString()}`)
+          if (id === "resume") {
+            resumeLastDocumentContext()
+            return
+          }
+
+          if (id === "analyze") {
+            const params = new URLSearchParams({
+              prompt: currentViewPrompt.prompt,
+              autorun: "1",
+            })
+            router.push(`/?${params.toString()}`)
+            return
+          }
+
+          if (id === "upload") {
+            router.push("/knowledge")
+            return
+          }
+
+          if (id === "stats") {
+            router.push("/usage")
+            return
+          }
+
+          if (id === "datasets") {
+            router.push("/datasets")
+            return
+          }
+
+          if (id === "history") {
+            router.push("/history")
+            return
+          }
+
+          if (id === "graph") {
+            router.push("/graph")
+            return
+          }
+
+          if (id === "diagnostics") {
+            router.push("/diagnostics")
+            return
+          }
+
+          if (id === "settings") {
+            router.push("/settings")
+            return
+          }
+
+          if (id === "parsing") {
+            router.push("/parsing")
+            return
+          }
+
+          if (id === "reports") {
+            router.push("/reports")
+            return
+          }
+
+          if (id === "observability") {
+            router.push("/observability")
+            return
+          }
+
+          if (id === "governance") {
+            router.push("/data-governance")
+            return
+          }
+
+          router.push("/access-review")
         },
-      },
-      {
-        id: "stats",
-        label: "查看统计与诊断",
-        description: "打开用量/配额视图，快速查看 tokens、成本和系统诊断入口。",
-        shortcut: "/stats",
-        keywords: ["stats", "usage", "diagnostics", "quota", "token", "cost", "统计", "诊断", "用量"],
-        icon: Coins,
-        run: () => router.push("/usage"),
-      },
-      {
-        id: "datasets",
-        label: "打开数据集",
-        description: "跳到数据集列表，查看质量信号与治理入口。",
-        shortcut: "/datasets",
-        keywords: ["datasets", "数据集", "质量", "治理"],
-        icon: Database,
-        run: () => router.push("/datasets"),
-      },
-      {
-        id: "history",
-        label: "打开问答历史",
-        description: "查看最近问答记录，便于复盘与复用。",
-        shortcut: "/history",
-        keywords: ["history", "qa", "对话历史", "复盘"],
-        icon: History,
-        run: () => router.push("/history"),
-      },
-      {
-        id: "graph",
-        label: "打开图谱工作台",
-        description: "跳到图谱视图，查看实体关系和路径分析。",
-        shortcut: "/graph",
-        keywords: ["graph", "图谱", "关系", "实体"],
-        icon: Workflow,
-        run: () => router.push("/graph"),
-      },
-      {
-        id: "diagnostics",
-        label: "打开运行诊断",
-        description: "进入系统诊断页，查看健康状态、依赖和前端运行信息。",
-        shortcut: "/diagnostics",
-        keywords: ["diagnostics", "health", "observability", "诊断", "健康检查"],
-        icon: Activity,
-        run: () => router.push("/diagnostics"),
-      },
-      {
-        id: "settings",
-        label: "打开系统设置",
-        description: "快速进入模型、RAG 和治理配置。",
-        shortcut: "/settings",
-        keywords: ["settings", "设置", "rag", "配置"],
-        icon: Settings,
-        run: () => router.push("/settings"),
-      },
-      {
-        id: "parsing",
-        label: "打开解析工作台",
-        description: "进入文档解析工作台，检查切分策略、解析质量与提取结果。",
-        shortcut: "/parsing",
-        keywords: ["parsing", "parser", "chunking", "extract", "解析", "文档解析", "切分", "抽取", "解析工作台"],
-        icon: FileText,
-        run: () => router.push("/parsing"),
-      },
-      {
-        id: "reports",
-        label: "打开报表中心",
-        description: "查看系统报表与分析概览，快速定位趋势和异常波动。",
-        shortcut: "/reports",
-        keywords: ["reports", "report", "analytics", "dashboard", "报表", "报告", "分析看板", "指标"],
-        icon: FileText,
-        run: () => router.push("/reports"),
-      },
-      {
-        id: "observability",
-        label: "打开可观测中心",
-        description: "直达可观测页面，追踪指标、日志和诊断线索。",
-        shortcut: "/observability",
-        keywords: ["observability", "monitoring", "metrics", "logs", "trace", "可观测", "监控", "指标", "日志", "链路"],
-        icon: Activity,
-        run: () => router.push("/observability"),
-      },
-      {
-        id: "data-governance",
-        label: "打开数据治理",
-        description: "进入数据治理工作台，处理画像、规则与质量治理任务。",
-        shortcut: "/governance",
-        keywords: ["governance", "data governance", "policy", "compliance", "数据治理", "治理", "规则", "合规", "画像"],
-        icon: Database,
-        run: () => router.push("/data-governance"),
-      },
-      {
-        id: "access-review",
-        label: "打开访问审查",
-        description: "进入访问审查工作台，快速检查权限分配和高风险访问。",
-        shortcut: "/access",
-        keywords: ["access review", "rbac", "permission", "admin", "access", "访问审查", "权限", "角色", "管理员"],
-        icon: Settings,
-        run: () => router.push("/access-review"),
-      },
-    ],
-    [currentViewPrompt.description, currentViewPrompt.prompt, hasResumeTarget, resumeLastDocumentContext, router]
+      })),
+    [currentViewPrompt.description, currentViewPrompt.prompt, hasResumeTarget, resumeLastDocumentContext, router, t]
   )
 
   const viewerShortcutDocs = React.useMemo<ShortcutDocItem[]>(
-    () => [
-      {
-        key: 'g v',
-        label: '恢复最近文档上下文',
-        description: '重新打开最近一次文档/引用定位，减少误关后的重找成本。',
-      },
-      {
-        key: '/',
-        label: '聚焦切片搜索',
-        description: '在文档查看器切片页中直接把焦点拉到搜索框。',
-      },
-      {
-        key: 'j / k',
-        label: '切换命中切片',
-        description: '在当前命中列表里快速前后切换。',
-      },
-      {
-        key: 'Ctrl/Cmd+F',
-        label: '打开切片查找',
-        description: '在切片页里快速开始关键字定位。',
-      },
-      {
-        key: 'Esc',
-        label: '清空搜索或关闭查看器',
-        description: '优先清空切片搜索；没有搜索词时直接关闭查看器。',
-      },
-    ],
-    []
+    () =>
+      ([
+        { id: "resume", key: "g v" },
+        { id: "focusSearch", key: "/" },
+        { id: "cycleHits", key: "j / k" },
+        { id: "find", key: "Ctrl/Cmd+F" },
+        { id: "dismiss", key: "Esc" },
+      ] as const).map(({ id, key }) => ({
+        key,
+        label: t(`viewerShortcuts.${id}.label`),
+        description: t(`viewerShortcuts.${id}.description`),
+      })),
+    [t]
   )
 
   const filteredSlashCommands = React.useMemo(
@@ -542,75 +517,29 @@ export function CommandMenu() {
       }),
     [slashCommands, slashNeedle]
   )
+
   const moduleWorkbenchItems = React.useMemo<ModuleWorkbenchItem[]>(
-    () => [
-      {
-        id: "workbench-knowledge",
-        label: "知识库工作台",
-        description: "管理文档导入、索引状态与知识库检索质量。",
-        keywords: ["workbench modules", "knowledge", "document", "kb", "上传", "知识库", "文档", "导入", "索引"],
-        icon: Database,
-        run: () => router.push('/knowledge'),
-      },
-      {
-        id: "workbench-graph",
-        label: "图谱工作台",
-        description: "查看实体关系、路径洞察和图谱诊断。",
-        keywords: ["graph", "entity", "relationship", "图谱", "实体", "关系", "路径"],
-        icon: Workflow,
-        run: () => router.push('/graph'),
-      },
-      {
-        id: "workbench-slices",
-        label: "切片工作台",
-        description: "定位切片召回结果，检查检索命中与上下文。",
-        keywords: ["slice", "chunk", "retrieval", "find", "切片", "召回", "检索", "chunk-preview"],
-        icon: FileText,
-        run: () => router.push('/chunk-preview'),
-      },
-      {
-        id: "workbench-parsing",
-        label: "解析工作台",
-        description: "检查文档解析策略、切分结果和提取质量。",
-        keywords: ["parsing", "parser", "extract", "文档解析", "解析", "切分", "抽取"],
-        icon: FileText,
-        run: () => router.push('/parsing'),
-      },
-      {
-        id: "workbench-reports",
-        label: "报表中心",
-        description: "追踪趋势指标、系统报表和异常波动。",
-        keywords: ["reports", "report", "analytics", "dashboard", "报表", "报告", "指标", "趋势"],
-        icon: FileText,
-        run: () => router.push('/reports'),
-      },
-      {
-        id: "workbench-observability",
-        label: "可观测中心",
-        description: "查看监控指标、日志与链路诊断线索。",
-        keywords: ["observability", "monitoring", "metrics", "logs", "trace", "可观测", "监控", "日志"],
-        icon: Activity,
-        run: () => router.push('/observability'),
-      },
-      {
-        id: "workbench-governance",
-        label: "数据治理",
-        description: "处理治理规则、画像与合规策略。",
-        keywords: ["governance", "policy", "compliance", "数据治理", "治理", "规则", "合规", "画像"],
-        icon: Database,
-        run: () => router.push('/data-governance'),
-      },
-      {
-        id: "workbench-access-review",
-        label: "访问审查",
-        description: "复核权限分配与高风险访问行为。",
-        keywords: ["access review", "rbac", "permission", "admin", "访问审查", "权限", "角色"],
-        icon: Settings,
-        run: () => router.push('/access-review'),
-      },
-    ],
-    [router]
+    () =>
+      ([
+        { id: "knowledge", icon: Database, run: () => router.push("/knowledge") },
+        { id: "graph", icon: Workflow, run: () => router.push("/graph") },
+        { id: "slices", icon: FileText, run: () => router.push("/chunk-preview") },
+        { id: "parsing", icon: FileText, run: () => router.push("/parsing") },
+        { id: "reports", icon: FileText, run: () => router.push("/reports") },
+        { id: "observability", icon: Activity, run: () => router.push("/observability") },
+        { id: "governance", icon: Database, run: () => router.push("/data-governance") },
+        { id: "accessReview", icon: Settings, run: () => router.push("/access-review") },
+      ] as const).map(({ id, icon, run }) => ({
+        id,
+        label: t(`modules.${id}.label`),
+        description: t(`modules.${id}.description`),
+        keywords: t.raw(`modules.${id}.keywords`) as string[],
+        icon,
+        run,
+      })),
+    [router, t]
   )
+
   const moduleWorkbenchResults = React.useMemo(() => {
     if (isSlashMode) return []
     const needle = query.trim().toLowerCase()
@@ -620,6 +549,35 @@ export function CommandMenu() {
       matchesSearchNeedle([item.label, item.description, item.keywords.join(" ")], needle)
     )
   }, [isSlashMode, moduleWorkbenchItems, query])
+
+  const navigationItems = React.useMemo(
+    () => [
+      { icon: Home, label: t("navigation.home"), run: () => router.push("/") },
+      { icon: MessageSquare, label: t("navigation.newConversation"), run: () => router.push("/") },
+      { icon: Database, label: t("navigation.knowledge"), run: () => router.push("/knowledge") },
+      { icon: FileText, label: t("navigation.parsing"), run: () => router.push("/parsing") },
+      { icon: History, label: t("navigation.history"), run: () => router.push("/history") },
+      { icon: Settings, label: t("navigation.settings"), run: () => router.push("/settings") },
+    ],
+    [router, t]
+  )
+
+  const actionItems = React.useMemo(
+    () => [
+      { icon: Upload, label: t("actions.uploadDocument"), run: () => router.push("/knowledge") },
+      { icon: Settings, label: t("actions.ragSettings"), run: () => router.push("/?rag=1") },
+    ],
+    [router, t]
+  )
+
+  const themeItems = React.useMemo(
+    () => [
+      { icon: Sun, label: t("theme.light"), run: () => setTheme("light") },
+      { icon: Moon, label: t("theme.dark"), run: () => setTheme("dark") },
+      { icon: Laptop, label: t("theme.system"), run: () => setTheme("system") },
+    ],
+    [setTheme, t]
+  )
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -642,7 +600,7 @@ export function CommandMenu() {
 
       const key = normalizeChordKey(e.key)
       if (!key || key.length !== 1) {
-        if (key === 'escape') clearPendingChord()
+        if (key === "escape") clearPendingChord()
         return
       }
 
@@ -689,16 +647,16 @@ export function CommandMenu() {
         id="mimirq-command-menu"
         className="flex items-center justify-between border-b border-border/50 bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground"
       >
-        <span className="font-medium text-foreground/80">Command Center</span>
-        <span>输入 <span className="font-semibold text-foreground">/</span> 查看快捷动作 · 试试 ? / g d / g c / g g / f s / g v</span>
+        <span className="font-medium text-foreground/80">{t("header.title")}</span>
+        <span>{t("header.hint")}</span>
       </div>
-      <CommandInput placeholder="输入命令或搜索..." value={query} onValueChange={setQuery} />
+      <CommandInput placeholder={t('search.placeholder')} value={query} onValueChange={setQuery} />
       <CommandList>
-        <CommandEmpty>未找到相关结果</CommandEmpty>
+        <CommandEmpty>{t('search.empty')}</CommandEmpty>
 
         {isSlashMode ? (
           <>
-            <CommandGroup heading="快捷指令">
+            <CommandGroup heading={t('groups.slash')}>
               {filteredSlashCommands.map((command) => {
                 const Icon = command.icon
                 return (
@@ -724,7 +682,7 @@ export function CommandMenu() {
           </>
         ) : null}
 
-        <CommandGroup heading="键盘工作流">
+        <CommandGroup heading={t("groups.keyboardWorkflow")}>
           {keyChordCommands.map((command) => (
             <CommandItem key={command.key} onSelect={() => runCommand(command.run)}>
               <Workflow className="mr-2 h-4 w-4" />
@@ -739,7 +697,7 @@ export function CommandMenu() {
 
         <CommandSeparator />
 
-        <CommandGroup heading="文档查看器快捷键">
+        <CommandGroup heading={t('groups.viewerShortcuts')}>
           {viewerShortcutDocs.map((shortcut) => (
             <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
               <FileText className="mr-2 h-4 w-4" />
@@ -754,7 +712,7 @@ export function CommandMenu() {
 
         <CommandSeparator />
 
-        <CommandGroup heading="工作流快捷键地图">
+        <CommandGroup heading={t('groups.shortcutMap')}>
           {shortcutGuideItems.map((item) => (
             <CommandItem key={`${item.shortcut}:${item.label}`} disabled value={`${item.shortcut} ${item.label}`}>
               <Keyboard className="mr-2 h-4 w-4" />
@@ -769,40 +727,22 @@ export function CommandMenu() {
 
         <CommandSeparator />
 
-        <CommandGroup heading="导航">
-          <CommandItem onSelect={() => runCommand(() => router.push('/'))}>
-            <Home className="mr-2 h-4 w-4" />
-            <span>对话</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push('/'))}>
-            <MessageSquare className="mr-2 h-4 w-4" />
-            <span>新对话</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push('/knowledge'))}>
-            <Database className="mr-2 h-4 w-4" />
-            <span>知识库</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push('/parsing'))}>
-            <FileText className="mr-2 h-4 w-4" />
-            <span>文档解析</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push('/history'))}>
-            <History className="mr-2 h-4 w-4" />
-            <span>问答历史</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push('/settings'))}>
-            <Settings className="mr-2 h-4 w-4" />
-            <span>设置</span>
-          </CommandItem>
+        <CommandGroup heading={t('groups.navigation')}>
+          {navigationItems.map((item) => (
+            <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+              <item.icon className="mr-2 h-4 w-4" />
+              <span>{item.label}</span>
+            </CommandItem>
+          ))}
         </CommandGroup>
-        
+
         <CommandSeparator />
 
         {query.trim().length >= 2 && !isSlashMode ? (
           <>
             {query.trim().length >= 4 ? (
               <>
-                <CommandGroup heading="AI 快捷动作">
+                <CommandGroup heading={t('groups.aiActions')}>
                   <CommandItem
                     value={`ai ${query.trim()}`}
                     onSelect={() =>
@@ -817,10 +757,8 @@ export function CommandMenu() {
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <span>执行自然语言指令</span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        直接把当前输入发送给 AI，并立即开始执行。
-                      </span>
+                      <span>{t("aiAction.label")}</span>
+                      <span className="truncate text-xs text-muted-foreground">{t("aiAction.description")}</span>
                     </div>
                   </CommandItem>
                 </CommandGroup>
@@ -829,7 +767,7 @@ export function CommandMenu() {
               </>
             ) : null}
 
-            <CommandGroup heading="模块与工作台">
+            <CommandGroup heading={t('groups.modules')}>
               {moduleWorkbenchResults.length ? (
                 moduleWorkbenchResults.map((item) => {
                   const Icon = item.icon
@@ -850,129 +788,129 @@ export function CommandMenu() {
               ) : (
                 <CommandItem disabled value="workbench:empty">
                   <Workflow className="mr-2 h-4 w-4" />
-                  <span>未找到匹配的模块</span>
+                  <span>{t("results.modulesEmpty")}</span>
                 </CommandItem>
               )}
             </CommandGroup>
 
             <CommandSeparator />
 
-            <CommandGroup heading="文档">
-              {(() => {
-    if (docLoading) {
-        return (<CommandItem disabled value="doc:loading">
-                  <FileText className="mr-2 h-4 w-4"/>
-                  <span>搜索中…</span>
-                </CommandItem>);
-    }
-    else if (docResults.length) {
-            return (docResults.map((doc) => (<CommandItem key={doc.id} value={doc.filename} onSelect={() => runCommand(() => {
-                    openDocument(doc.id);
-                    router.push("/");
-                })}>
-                    <FileText className="mr-2 h-4 w-4"/>
+            <CommandGroup heading={t('groups.documents')}>
+              {docLoading ? (
+                <CommandItem disabled value="doc:loading">
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span>{t("results.documentsLoading")}</span>
+                </CommandItem>
+              ) : docResults.length ? (
+                docResults.map((doc) => (
+                  <CommandItem
+                    key={doc.id}
+                    value={doc.filename}
+                    onSelect={() =>
+                      runCommand(() => {
+                        openDocument(doc.id)
+                        router.push("/")
+                      })
+                    }
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
                     <span className="truncate">{doc.filename}</span>
-                  </CommandItem>)));
-        }
-        else {
-            return (<CommandItem disabled value="doc:empty">
-                  <FileText className="mr-2 h-4 w-4"/>
-                  <span>未找到文档</span>
-                </CommandItem>);
-        }
-})()}
+                  </CommandItem>
+                ))
+              ) : (
+                <CommandItem disabled value="doc:empty">
+                  <FileText className="mr-2 h-4 w-4" />
+                  <span>{t("results.documentsEmpty")}</span>
+                </CommandItem>
+              )}
             </CommandGroup>
 
             <CommandSeparator />
 
-            <CommandGroup heading="数据集">
-              {(() => {
-    if (datasetLoading) {
-        return (<CommandItem disabled value="dataset:loading">
-                  <Database className="mr-2 h-4 w-4"/>
-                  <span>搜索中…</span>
-                </CommandItem>);
-    }
-    else if (datasetResults.length) {
-            return (datasetResults.map((dataset) => (<CommandItem key={dataset.id} value={`${dataset.name} ${dataset.description || ''}`} onSelect={() => runCommand(() => {
-                    router.push(`/datasets/${dataset.id}/profile`);
-                })}>
-                    <Database className="mr-2 h-4 w-4"/>
+            <CommandGroup heading={t('groups.datasets')}>
+              {datasetLoading ? (
+                <CommandItem disabled value="dataset:loading">
+                  <Database className="mr-2 h-4 w-4" />
+                  <span>{t("results.datasetsLoading")}</span>
+                </CommandItem>
+              ) : datasetResults.length ? (
+                datasetResults.map((dataset) => (
+                  <CommandItem
+                    key={dataset.id}
+                    value={`${dataset.name} ${dataset.description || ""}`}
+                    onSelect={() => runCommand(() => router.push(`/datasets/${dataset.id}/profile`))}
+                  >
+                    <Database className="mr-2 h-4 w-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{dataset.name}</span>
-                      {dataset.description ? <span className="truncate text-xs text-muted-foreground">{dataset.description}</span> : null}
+                      {dataset.description ? (
+                        <span className="truncate text-xs text-muted-foreground">{dataset.description}</span>
+                      ) : null}
                     </div>
-                  </CommandItem>)));
-        }
-        else {
-            return (<CommandItem disabled value="dataset:empty">
-                  <Database className="mr-2 h-4 w-4"/>
-                  <span>未找到数据集</span>
-                </CommandItem>);
-        }
-})()}
+                  </CommandItem>
+                ))
+              ) : (
+                <CommandItem disabled value="dataset:empty">
+                  <Database className="mr-2 h-4 w-4" />
+                  <span>{t("results.datasetsEmpty")}</span>
+                </CommandItem>
+              )}
             </CommandGroup>
 
             <CommandSeparator />
 
-            <CommandGroup heading="对话">
-              {(() => {
-    if (conversationLoading) {
-        return (<CommandItem disabled value="conversation:loading">
-                  <MessageSquare className="mr-2 h-4 w-4"/>
-                  <span>搜索中…</span>
-                </CommandItem>);
-    }
-    else if (conversationResults.length) {
-            return (conversationResults.map((conversation) => (<CommandItem key={conversation.id} value={`${conversation.title || ''} ${conversation.last_message || ''}`} onSelect={() => runCommand(() => {
-                    router.push(`/history?id=${conversation.id}`);
-                })}>
-                    <MessageSquare className="mr-2 h-4 w-4"/>
+            <CommandGroup heading={t('groups.conversations')}>
+              {conversationLoading ? (
+                <CommandItem disabled value="conversation:loading">
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  <span>{t("results.conversationsLoading")}</span>
+                </CommandItem>
+              ) : conversationResults.length ? (
+                conversationResults.map((conversation) => (
+                  <CommandItem
+                    key={conversation.id}
+                    value={`${conversation.title || ""} ${conversation.last_message || ""}`}
+                    onSelect={() => runCommand(() => router.push(`/history?id=${conversation.id}`))}
+                  >
+                    <MessageSquare className="mr-2 h-4 w-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">{conversation.title || '未命名对话'}</span>
-                      {conversation.last_message ? <span className="truncate text-xs text-muted-foreground">{conversation.last_message}</span> : null}
+                      <span className="truncate">{conversation.title || t("results.untitledConversation")}</span>
+                      {conversation.last_message ? (
+                        <span className="truncate text-xs text-muted-foreground">{conversation.last_message}</span>
+                      ) : null}
                     </div>
-                  </CommandItem>)));
-        }
-        else {
-            return (<CommandItem disabled value="conversation:empty">
-                  <MessageSquare className="mr-2 h-4 w-4"/>
-                  <span>未找到对话</span>
-                </CommandItem>);
-        }
-})()}
+                  </CommandItem>
+                ))
+              ) : (
+                <CommandItem disabled value="conversation:empty">
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  <span>{t("results.conversationsEmpty")}</span>
+                </CommandItem>
+              )}
             </CommandGroup>
 
             <CommandSeparator />
           </>
         ) : null}
 
-        <CommandGroup heading="操作">
-           <CommandItem onSelect={() => runCommand(() => router.push('/knowledge'))}>
-            <Upload className="mr-2 h-4 w-4" />
-            <span>上传文档</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push('/?rag=1'))}>
-            <Settings className="mr-2 h-4 w-4" />
-            <span>RAG 设置</span>
-          </CommandItem>
+        <CommandGroup heading={t("groups.actions")}>
+          {actionItems.map((item) => (
+            <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+              <item.icon className="mr-2 h-4 w-4" />
+              <span>{item.label}</span>
+            </CommandItem>
+          ))}
         </CommandGroup>
-        
+
         <CommandSeparator />
-        
-        <CommandGroup heading="主题">
-          <CommandItem onSelect={() => runCommand(() => setTheme("light"))}>
-            <Sun className="mr-2 h-4 w-4" />
-            <span>浅色模式</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => setTheme("dark"))}>
-            <Moon className="mr-2 h-4 w-4" />
-            <span>深色模式</span>
-          </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => setTheme("system"))}>
-            <Laptop className="mr-2 h-4 w-4" />
-            <span>跟随系统</span>
-          </CommandItem>
+
+        <CommandGroup heading={t('groups.theme')}>
+          {themeItems.map((item) => (
+            <CommandItem key={item.label} onSelect={() => runCommand(item.run)}>
+              <item.icon className="mr-2 h-4 w-4" />
+              <span>{item.label}</span>
+            </CommandItem>
+          ))}
         </CommandGroup>
       </CommandList>
     </CommandDialog>
