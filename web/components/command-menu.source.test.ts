@@ -4,6 +4,18 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('command menu source', () => {
+  it('uses locale-aware navigation helpers and has wrappers for its remaining route targets', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
+    const webRoot = path.resolve(__dirname, '..')
+
+    expect(src).toContain('usePathname, useRouter')
+    expect(src).toContain('@/i18n/navigation')
+    expect(src).not.toContain('from "next/navigation"')
+
+    expect(fs.existsSync(path.resolve(webRoot, 'app/[locale]/observability/page.tsx'))).toBe(true)
+    expect(fs.existsSync(path.resolve(webRoot, 'app/[locale]/datasets/[id]/profile/page.tsx'))).toBe(true)
+  })
+
   it('supports slash commands and current-view analysis handoff', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'command-menu.tsx'), 'utf8')
 
