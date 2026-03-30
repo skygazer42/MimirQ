@@ -89,6 +89,8 @@ export function useDocumentViewerPanelState() {
   const [chunkEditorTarget, setChunkEditorTarget] = React.useState<DocumentChunk | null>(null)
   const [chunkEditorContent, setChunkEditorContent] = React.useState("")
   const [chunkEditorPageNumber, setChunkEditorPageNumber] = React.useState<string>("")
+  const [chunkEditorStartChar, setChunkEditorStartChar] = React.useState<string>("")
+  const [chunkEditorEndChar, setChunkEditorEndChar] = React.useState<string>("")
   const [chunkEditorSubmitting, setChunkEditorSubmitting] = React.useState(false)
   const [chunkDeleteSubmitting, setChunkDeleteSubmitting] = React.useState<string | null>(null)
 
@@ -628,12 +630,46 @@ export function useDocumentViewerPanelState() {
   )
 
   const canEditChunks = Boolean(doc && !["pending", "processing"].includes(String(doc.status || "").toLowerCase()))
+  const canRerunRetrieve = Boolean(retrieveQuery.trim())
+
+  const parseOptionalChunkNumber = React.useCallback((value: string) => {
+    const text = (value || "").trim()
+    if (!text) return undefined
+    const next = Number(text)
+    return Number.isFinite(next) ? Math.max(0, Math.trunc(next)) : undefined
+  }, [])
+
+  const runRetrievePreviewForQuery = React.useCallback(
+    async (query: string) => {
+      if (!documentId) return
+      const normalized = query.trim()
+      if (!normalized) return
+
+      setRetrieveLoading(true)
+      setRetrieveError(null)
+      try {
+        const res = await ragApi.retrievePreview({ query: normalized, document_ids: [documentId] })
+        const raw = Array.isArray(res?.citations) ? res.citations : []
+        const items = raw.map(toCitation).filter(Boolean) as Citation[]
+        setRetrieveCitations(items.filter((citation) => citation.document_id === documentId))
+      } catch (err) {
+        console.error(err)
+        setRetrieveError("检索测试失败，请稍后重试")
+        setRetrieveCitations([])
+      } finally {
+        setRetrieveLoading(false)
+      }
+    },
+    [documentId]
+  )
 
   const openCreateChunk = React.useCallback(() => {
     setChunkEditorMode("create")
     setChunkEditorTarget(null)
     setChunkEditorContent("")
     setChunkEditorPageNumber("")
+    setChunkEditorStartChar("")
+    setChunkEditorEndChar("")
     setChunkEditorOpen(true)
     setActiveTab("chunks")
   }, [setActiveTab])
@@ -644,13 +680,15 @@ export function useDocumentViewerPanelState() {
       setChunkEditorTarget(chunk)
       setChunkEditorContent(chunk.content || "")
       setChunkEditorPageNumber(typeof chunk.page_number === "number" ? String(chunk.page_number) : "")
+      setChunkEditorStartChar(typeof chunk.start_char === "number" ? String(chunk.start_char) : "")
+      setChunkEditorEndChar(typeof chunk.end_char === "number" ? String(chunk.end_char) : "")
       setChunkEditorOpen(true)
       setActiveTab("chunks")
     },
     [setActiveTab]
   )
 
-  const submitChunkEditor = React.useCallback(async () => {
+  const submitChunkEditor = React.useCallback(async (mode: "save" | "save_reembed" | "save_rerun" = "save") => {
     if (!documentId) return
     if (!canEditChunks) return
 
@@ -660,16 +698,23 @@ export function useDocumentViewerPanelState() {
       return
     }
 
-    const pageText = (chunkEditorPageNumber || "").trim()
-    const pageNumber =
-      pageText && Number.isFinite(Number(pageText)) ? Math.max(0, Math.trunc(Number(pageText))) : undefined
+    const pageNumber = parseOptionalChunkNumber(chunkEditorPageNumber)
+    const startChar = parseOptionalChunkNumber(chunkEditorStartChar)
+    const endChar = parseOptionalChunkNumber(chunkEditorEndChar)
+    if (startChar != null && endChar != null && endChar <= startChar) {
+      toast.error("End Char 必须大于 Start Char")
+      return
+    }
 
     setChunkEditorSubmitting(true)
     try {
+      let savedChunk: DocumentChunk | null = null
       if (chunkEditorMode === "create") {
         const created = await documentApi.createChunk(documentId, {
           content,
           page_number: pageNumber,
+          start_char: startChar,
+          end_char: endChar,
           metadata: {},
         })
         toast.success("切片已创建")
@@ -686,17 +731,47 @@ export function useDocumentViewerPanelState() {
             : prev
         )
         setHighlightChunk(created.id)
+        savedChunk = created
       } else {
         const target = chunkEditorTarget
         if (!target) return
-        const updated = await documentApi.updateChunk(documentId, target.id, { content, page_number: pageNumber })
+        const updated = await documentApi.updateChunk(documentId, target.id, {
+          content,
+          page_number: pageNumber,
+          start_char: startChar,
+          end_char: endChar,
+        })
         toast.success("切片已更新")
         setChunks((prev) => prev.map((chunk) => (chunk.id === updated.id ? updated : chunk)))
         setHighlightChunkState((prev) => (prev?.id === updated.id ? updated : prev))
+        setHighlightChunk(updated.id)
+        savedChunk = updated
       }
 
       globalThis.window.requestAnimationFrame(() => rowVirtualizer.measure())
       setChunkEditorOpen(false)
+
+      if (savedChunk && mode !== "save") {
+        try {
+          const res = await documentApi.reembedChunks(documentId, {
+            chunk_ids: [savedChunk.id],
+            include_disabled: Boolean(savedChunk.disabled_at),
+          })
+          toast.success(`已重新嵌入 ${res.reembedded} 个切片`)
+
+          if (mode === "save_rerun") {
+            const query = retrieveQuery.trim()
+            if (query) {
+              await runRetrievePreviewForQuery(query)
+            } else {
+              toast.message("已保存并重新嵌入；当前没有检索 query 可复跑")
+            }
+          }
+        } catch (err) {
+          console.error(err)
+          toast.error(formatApiError(err, "切片已保存，但后续重嵌入失败"))
+        }
+      }
     } catch (err) {
       console.error(err)
       toast.error(formatApiError(err, "切片保存失败"))
@@ -706,12 +781,17 @@ export function useDocumentViewerPanelState() {
   }, [
     canEditChunks,
     chunkEditorContent,
+    chunkEditorEndChar,
     chunkEditorMode,
     chunkEditorPageNumber,
+    chunkEditorStartChar,
     chunkEditorTarget,
     chunksLoaded,
     documentId,
+    parseOptionalChunkNumber,
+    retrieveQuery,
     rowVirtualizer,
+    runRetrievePreviewForQuery,
     setHighlightChunk,
   ])
 
@@ -891,25 +971,10 @@ export function useDocumentViewerPanelState() {
   }, [isOpen, activeTab, chunkQuery, closeDocument, matchChunkIds.length, matchCursor, chunks, highlightIndex, jumpToMatch, setActiveTab, setHighlightChunk])
 
   const runRetrievePreview = React.useCallback(async () => {
-    if (!documentId) return
     const query = retrieveQuery.trim()
     if (!query) return
-
-    setRetrieveLoading(true)
-    setRetrieveError(null)
-    try {
-      const res = await ragApi.retrievePreview({ query, document_ids: [documentId] })
-      const raw = Array.isArray(res?.citations) ? res.citations : []
-      const items = raw.map(toCitation).filter(Boolean) as Citation[]
-      setRetrieveCitations(items.filter((citation) => citation.document_id === documentId))
-    } catch (err) {
-      console.error(err)
-      setRetrieveError("检索测试失败，请稍后重试")
-      setRetrieveCitations([])
-    } finally {
-      setRetrieveLoading(false)
-    }
-  }, [documentId, retrieveQuery])
+    await runRetrievePreviewForQuery(query)
+  }, [retrieveQuery, runRetrievePreviewForQuery])
 
   const handleTextScrollTopChange = React.useCallback(
     (textScrollTop: number) => {
@@ -944,11 +1009,14 @@ export function useDocumentViewerPanelState() {
     activeTab,
     canEditChunks,
     canInlinePreview,
+    canRerunRetrieve,
     chunkDeleteSubmitting,
     chunkEditorContent,
+    chunkEditorEndChar,
     chunkEditorMode,
     chunkEditorOpen,
     chunkEditorPageNumber,
+    chunkEditorStartChar,
     chunkEditorSubmitting,
     chunkEditorTarget,
     chunkMatchSummary,
@@ -1007,7 +1075,9 @@ export function useDocumentViewerPanelState() {
     runRetrievePreview,
     serverMatchTruncated,
     setChunkEditorContent,
+    setChunkEditorEndChar,
     setChunkEditorPageNumber,
+    setChunkEditorStartChar,
     setChunkQuery,
     setHighlightChunk,
     setIsExpanded,

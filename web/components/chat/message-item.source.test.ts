@@ -51,4 +51,14 @@ describe('message item source', () => {
     expect(src).toContain('layout={!reduceMotion && isStreaming}')
     expect(src).toContain('transition={streamingLayoutTransition}')
   })
+
+  it('exposes expert-loop actions after feedback is captured', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'message-item.tsx'), 'utf8')
+
+    expect(src).toContain('feedbackApi.toRegressionCase(')
+    expect(src).toContain('documentApi.get(')
+    expect(src).toContain('送入证据库')
+    expect(src).toContain('转为回归用例')
+    expect(src).toContain('/evidence?feedback_id=')
+  })
 })

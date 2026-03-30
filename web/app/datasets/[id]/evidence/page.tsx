@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Activity, ArrowLeft, BarChart3, FileSearch, ShieldCheck, Settings2, Table2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
@@ -18,7 +18,12 @@ function asDatasetId(raw: unknown): string | null {
 export default function DatasetEvidencePage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const datasetId = useMemo(() => asDatasetId((params as any)?.id), [params])
+  const initialFeedbackId = useMemo(() => {
+    const raw = searchParams.get('feedback_id')
+    return raw?.trim() ? raw.trim() : undefined
+  }, [searchParams])
 
   return (
     <AppFrame>
@@ -67,9 +72,8 @@ export default function DatasetEvidencePage() {
           </div>
         }
       >
-        {datasetId ? <EvidenceSuiteWorkbench datasetId={datasetId} /> : null}
+        {datasetId ? <EvidenceSuiteWorkbench datasetId={datasetId} initialFeedbackId={initialFeedbackId} /> : null}
       </PageScaffold>
     </AppFrame>
   )
 }
-

@@ -47,4 +47,16 @@ describe('EvidenceSuiteWorkbench guards', () => {
     expect(hookSrc).not.toContain(': any')
     expect(hookSrc).not.toContain('Record<string, any>')
   })
+
+  it('bridges pending feedback imports into the current suite workbench', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'evidence-suite-workbench.tsx'), 'utf8')
+    const shellSrc = fs.readFileSync(path.resolve(__dirname, 'evidence-suite-workbench-shell.tsx'), 'utf8')
+    const hookSrc = fs.readFileSync(path.resolve(__dirname, 'use-evidence-suite-workbench-state.ts'), 'utf8')
+
+    expect(src).toContain('initialFeedbackId')
+    expect(shellSrc).toContain('导入待处理反馈')
+    expect(shellSrc).toContain('feedback_id')
+    expect(hookSrc).toContain('pendingFeedbackId')
+    expect(hookSrc).toContain('setPendingFeedbackId')
+  })
 })
