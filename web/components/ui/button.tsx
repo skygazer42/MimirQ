@@ -46,13 +46,25 @@ export type ButtonProps = Readonly<
     }
 >
 
+function normalizeAccessibleLabel(value: string | undefined): string | undefined {
+  const normalized = typeof value === "string" ? value.trim() : ""
+  return normalized || undefined
+}
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, title, "aria-label": ariaLabel, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
+    const iconAccessibleLabel =
+      size === "icon"
+        ? normalizeAccessibleLabel(ariaLabel) ?? normalizeAccessibleLabel(title)
+        : undefined
+
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
+        title={size === "icon" ? title ?? iconAccessibleLabel : title}
+        aria-label={iconAccessibleLabel ?? ariaLabel}
         {...props}
       />
     )

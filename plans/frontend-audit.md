@@ -28,7 +28,7 @@
 ### 阶段 1: 基础设施模块化 (Immediate Priority)
 
 ### 阶段 2: 逻辑解耦与缓存 (Medium Priority)
-- [ ] **迁移至 React Query**: 优先从 `observability` 和 `parsing` 页面开始，移除手动管理的 `useEffect` 取数逻辑。
+- [x] **迁移至 React Query**: 优先从 `observability` 和 `parsing` 页面开始，移除手动管理的 `useEffect` 取数逻辑。
 
 ### 阶段 3: 性能增强 (Long Term)
 - [ ] **Canvas 资源池化**: 优化 `chunk-preview` 中的 Canvas 回收机制，防止 PDF 频繁渲染导致的内存泄漏。
