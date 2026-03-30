@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react"
 import { AlertCircle, AlertTriangle, Ban, CheckCircle2, Clock, Loader2 } from "lucide-react"
+import { useTranslations } from 'next-intl'
 
 import { cn } from "@/lib/utils"
 
@@ -11,41 +12,45 @@ export type StatusBadgeStatus =
   | "quarantined"
   | "cancelled"
 
-const STATUS_META: Record<
+function getStatusMeta(
+  t: ReturnType<typeof useTranslations<'CommonUi'>>
+): Record<
   StatusBadgeStatus,
   { label: string; icon: LucideIcon; className: string; spin?: boolean }
-> = {
-  pending: {
-    label: "等待",
-    icon: Clock,
-    className: "bg-info/10 text-info border-info/25",
-  },
-  processing: {
-    label: "处理中",
-    icon: Loader2,
-    className: "bg-info/10 text-info border-info/25",
-    spin: true,
-  },
-  completed: {
-    label: "已完成",
-    icon: CheckCircle2,
-    className: "bg-success/10 text-success border-success/25",
-  },
-  failed: {
-    label: "失败",
-    icon: AlertCircle,
-    className: "bg-destructive/10 text-destructive border-destructive/25",
-  },
-  quarantined: {
-    label: "已隔离",
-    icon: AlertTriangle,
-    className: "bg-warning/10 text-warning border-warning/25",
-  },
-  cancelled: {
-    label: "已取消",
-    icon: Ban,
-    className: "bg-muted/60 text-muted-foreground border-border/60",
-  },
+> {
+  return {
+    pending: {
+      label: t('statusBadge.pending'),
+      icon: Clock,
+      className: "bg-info/10 text-info border-info/25",
+    },
+    processing: {
+      label: t('statusBadge.processing'),
+      icon: Loader2,
+      className: "bg-info/10 text-info border-info/25",
+      spin: true,
+    },
+    completed: {
+      label: t('statusBadge.completed'),
+      icon: CheckCircle2,
+      className: "bg-success/10 text-success border-success/25",
+    },
+    failed: {
+      label: t('statusBadge.failed'),
+      icon: AlertCircle,
+      className: "bg-destructive/10 text-destructive border-destructive/25",
+    },
+    quarantined: {
+      label: t('statusBadge.quarantined'),
+      icon: AlertTriangle,
+      className: "bg-warning/10 text-warning border-warning/25",
+    },
+    cancelled: {
+      label: t('statusBadge.cancelled'),
+      icon: Ban,
+      className: "bg-muted/60 text-muted-foreground border-border/60",
+    },
+  }
 }
 
 export function StatusBadge({
@@ -61,7 +66,8 @@ export function StatusBadge({
   showIcon?: boolean
   dense?: boolean
 }>) {
-  const meta = STATUS_META[status]
+  const t = useTranslations('CommonUi')
+  const meta = getStatusMeta(t)[status]
   const Icon = meta.icon
   return (
     <span

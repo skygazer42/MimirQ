@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from "react"
+import { useTranslations } from 'next-intl'
 import { cn } from "@/lib/utils"
 
 interface PageLoadingProps {
@@ -19,10 +20,14 @@ interface PageLoadingProps {
 }
 
 const PageLoading = ({
-  message = "正在加载...",
-  srMessage = "Loading",
+  message,
+  srMessage,
   className,
 }: PageLoadingProps) => {
+  const t = useTranslations('CommonUi')
+  const resolvedMessage = message ?? t('pageLoading.message')
+  const resolvedSrMessage = srMessage ?? t('pageLoading.srMessage')
+
   return (
     <div
       role="status"
@@ -37,8 +42,8 @@ const PageLoading = ({
           className="h-6 w-6 animate-spin motion-reduce:animate-none rounded-full border-2 border-border border-t-primary"
           aria-hidden="true"
         />
-        <span>{message}</span>
-        <span className="sr-only">{srMessage}</span>
+        <span>{resolvedMessage}</span>
+        <span className="sr-only">{resolvedSrMessage}</span>
       </div>
     </div>
   )
