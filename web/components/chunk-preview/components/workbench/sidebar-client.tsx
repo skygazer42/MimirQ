@@ -867,19 +867,19 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	            />
 	          </div>
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">解析器</div>
+            <div className="text-xs font-medium text-muted-foreground">{t('sidebar.parser.title')}</div>
             <ChunkPresetPanel className="mb-3" />
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
             {parserAvailable === false && (
               <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
-                当前解析器不可用，建议切换为 {capabilities?.default_parser_backend || 'auto'}。
+                {t('sidebar.parser.unavailable', { parser: capabilities?.default_parser_backend || 'auto' })}
               </div>
             )}
           </div>
 
           {/* 策略选择 */}
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">切块策略</div>
+            <div className="text-xs font-medium text-muted-foreground">{t('sidebar.strategy.title')}</div>
             <ChunkStrategyDropdown
               value={chunkStrategy}
               onChange={(value) => {
@@ -891,31 +891,31 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             />
             <p className="text-[10px] text-muted-foreground leading-relaxed mt-1.5">{chunkStrategyOption.description}</p>
             <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] text-muted-foreground">
-              <span className="opacity-80">快速预设:</span>
+              <span className="opacity-80">{t('sidebar.strategy.quickPresets')}</span>
               {[
                 {
                   key: 'general',
-                  label: '通用',
+                  label: t('sidebar.strategy.presets.general'),
                   apply: () => updateSettings({ strategy: 'auto', chunkSize: 1000, chunkOverlap: 200 }),
                 },
                 {
                   key: 'faq',
-                  label: 'FAQ/Q&A',
+                  label: t('sidebar.strategy.presets.faq'),
                   apply: () => updateSettings({ strategy: 'qa_pairs', chunkSize: 800, chunkOverlap: 120 }),
                 },
                 {
                   key: 'code',
-                  label: '代码',
+                  label: t('sidebar.strategy.presets.code'),
                   apply: () => updateSettings({ strategy: 'smart_code', chunkSize: 1000, chunkOverlap: 150 }),
                 },
                 {
                   key: 'contract',
-                  label: '条款/合同',
+                  label: t('sidebar.strategy.presets.contract'),
                   apply: () => updateSettings({ strategy: 'laws_structured', chunkSize: 1200, chunkOverlap: 200 }),
                 },
                 {
                   key: 'separator',
-                  label: '分隔符',
+                  label: t('sidebar.strategy.presets.separator'),
                   apply: () => {
                     updateSettings({ strategy: 'separator', chunkSize: 1000, chunkOverlap: 0 })
                     updateSeparatorSettings({ separatorPreset: 'paragraph' })
@@ -928,7 +928,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60 hover:bg-muted transition-colors focus-ring"
                   onClick={() => {
                     item.apply()
-                    toast.success(`已应用预设：${item.label}`)
+                    toast.success(t('sidebar.strategy.presetApplied', { label: item.label }))
                   }}
                 >
                   {item.label}

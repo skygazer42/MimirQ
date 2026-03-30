@@ -640,6 +640,22 @@ const zhCNMessages = {
           applyRecommendationSuccess: '已应用推荐的解析器与切块策略',
         },
       },
+      parser: {
+        title: '解析器',
+        unavailable: '当前解析器不可用，建议切换为 {parser}。',
+      },
+      strategy: {
+        title: '切块策略',
+        quickPresets: '快速预设:',
+        presets: {
+          general: '通用',
+          faq: 'FAQ/Q&A',
+          code: '代码',
+          contract: '条款/合同',
+          separator: '分隔符',
+        },
+        presetApplied: '已应用预设：{label}',
+      },
       ingestionPipeline: '入库管线',
       previewActions: {
         loading: '生成中...',
