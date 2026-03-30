@@ -667,6 +667,13 @@ const zhCNMessages = {
     loadingPage: '正在加载报告中心...',
     loadingPageSr: 'Loading reports center',
   },
+  RagTrace: {
+    dialog: {
+      title: 'RAG Trace',
+      loadingMessage: '正在加载 RAG Trace...',
+      loadingSrMessage: 'Loading RAG trace panel',
+    },
+  },
   ParsingWorkbench: {
     rootFolder: '根目录',
     title: '文档解析工作台',
