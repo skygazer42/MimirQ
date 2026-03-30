@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { FileText, Loader2, AlertCircle } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { getChunkRole } from '@/components/chunk-preview/utils/metadata'
@@ -52,6 +53,7 @@ function canReadFileAsText(file: File | null) {
 }
 
 function DeferredMarkdownToc({ markdown }: Readonly<{ markdown: string }>) {
+  const t = useTranslations('ChunkPreview')
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -84,13 +86,14 @@ function DeferredMarkdownToc({ markdown }: Readonly<{ markdown: string }>) {
   }, [markdown])
 
   if (!ready) {
-    return <div className="text-[11px] text-muted-foreground">正在生成目录…</div>
+    return <div className="text-[11px] text-muted-foreground">{t('originalPreview.tocLoading')}</div>
   }
 
   return <MarkdownToc markdown={markdown} />
 }
 
 export function OriginalPreview() {
+  const t = useTranslations('ChunkPreview')
   const {
     previewData,
     chunkOverrides,
@@ -225,7 +228,7 @@ export function OriginalPreview() {
       })
       .catch((error: unknown) => {
         if (!alive) return
-        setLocalError(getErrorMessage(error, '从本地文件读取失败'))
+        setLocalError(getErrorMessage(error, t('originalPreview.errors.readLocalFailed')))
       })
       .finally(() => {
         if (!alive) return
@@ -235,7 +238,7 @@ export function OriginalPreview() {
     return () => {
       alive = false
     }
-  }, [canLoadFromFile, currentFile, localLoading, localOriginalText, previewData])
+  }, [canLoadFromFile, currentFile, localLoading, localOriginalText, previewData, t])
 
   const highlightModel = useMemo(() => {
     if (!effectiveOriginalText || activeChunkIndex === null) return null
@@ -364,7 +367,7 @@ export function OriginalPreview() {
       <div className="h-10 border-b border-border/60 bg-card flex items-center justify-between px-4 shrink-0">
         <span className="text-sm font-semibold text-foreground flex items-center gap-2 whitespace-nowrap shrink-0">
           <FileText className="w-4 h-4 text-muted-foreground" />
-          原文内容
+          {t('originalPreview.title')}
         </span>
         <div className="flex items-center gap-2">
           {previewData && (
@@ -382,7 +385,11 @@ export function OriginalPreview() {
                   ) : null}
                 </span>
               ) : null}
-              <span>{(effectiveOriginalText?.length ?? previewData.total_characters).toLocaleString()} chars</span>
+              <span>
+                {t('originalPreview.charCount', {
+                  count: (effectiveOriginalText?.length ?? previewData.total_characters).toLocaleString(),
+                })}
+              </span>
               <CoverageHeatmapMini
                 chunks={displayChunks}
                 totalChars={effectiveOriginalText?.length ?? previewData.total_characters}
@@ -391,7 +398,9 @@ export function OriginalPreview() {
               />
               {originalTextSource ? (
                 <span className="px-1.5 py-0.5 rounded bg-muted border border-border/60">
-                  {originalTextSource === 'server' ? 'server' : 'local'}
+                  {originalTextSource === 'server'
+                    ? t('originalPreview.source.server')
+                    : t('originalPreview.source.local')}
                 </span>
               ) : null}
               {previewData.original_text ? null : (() => {
@@ -400,9 +409,17 @@ export function OriginalPreview() {
                 return (
                   <span
                     className="px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25"
-                    title={truncated ? `原文超过 ${limit.toLocaleString()} chars，后端已省略返回` : '原文未返回'}
+                    title={
+                      truncated
+                        ? t('originalPreview.badges.originalTooLargeTitle', {
+                            limit: limit.toLocaleString(),
+                          })
+                        : t('originalPreview.badges.originalMissingTitle')
+                    }
                   >
-                    {truncated ? '原文过大，已省略' : '原文未返回'}
+                    {truncated
+                      ? t('originalPreview.badges.originalTooLarge')
+                      : t('originalPreview.badges.originalMissing')}
                   </span>
                 )
               })()}
@@ -414,9 +431,15 @@ export function OriginalPreview() {
               size="sm"
               className="h-7 px-2 text-[11px]"
               onClick={() => setForceFullHighlight((v) => !v)}
-              title={forceFullHighlight ? '切换为窗口高亮（更省内存）' : '切换为全文高亮（可能更卡）'}
+              title={
+                forceFullHighlight
+                  ? t('originalPreview.toggle.windowedTitle')
+                  : t('originalPreview.toggle.fullTitle')
+              }
             >
-              {forceFullHighlight ? '窗口' : '全文'}
+              {forceFullHighlight
+                ? t('originalPreview.toggle.windowed')
+                : t('originalPreview.toggle.full')}
             </Button>
           ) : null}
           <div className="flex items-center gap-1 rounded-md border border-border/60 bg-muted/20 p-0.5">
@@ -427,7 +450,7 @@ export function OriginalPreview() {
               onClick={() => setPreviewMode('raw')}
               disabled={!effectiveOriginalText}
             >
-              源码
+              {t('originalPreview.tabs.raw')}
             </Button>
             <Button
               variant={previewMode === 'rendered' ? 'secondary' : 'ghost'}
@@ -436,7 +459,7 @@ export function OriginalPreview() {
               onClick={() => setPreviewMode('rendered')}
               disabled={!effectiveOriginalText}
             >
-              预览
+              {t('originalPreview.tabs.rendered')}
             </Button>
             <Button
               variant={previewMode === 'editor' ? 'secondary' : 'ghost'}
@@ -444,9 +467,9 @@ export function OriginalPreview() {
               className="h-7 px-2 text-[11px]"
               onClick={() => setPreviewMode('editor')}
               disabled={!effectiveOriginalText}
-              title="Large-text viewer with stable highlight + overview markers"
+              title={t('originalPreview.tabs.editorTitle')}
             >
-              编辑器
+              {t('originalPreview.tabs.editor')}
             </Button>
             {isPdf ? (
               <Button
@@ -455,7 +478,11 @@ export function OriginalPreview() {
                 className="h-7 px-2 text-[11px]"
                 onClick={() => setPreviewMode('pdf')}
                 disabled={!previewData || !currentFile}
-                title={serverTextInfo.hasPositionTags ? 'PDF 框选高亮（解析器位置标签）' : 'PDF 预览（需要解析器位置标签）'}
+                title={
+                  serverTextInfo.hasPositionTags
+                    ? t('originalPreview.tabs.pdfAvailableTitle')
+                    : t('originalPreview.tabs.pdfUnavailableTitle')
+                }
               >
                 PDF
               </Button>
@@ -492,7 +519,7 @@ export function OriginalPreview() {
                       <MarkdownRenderer markdown={effectiveOriginalText} autoScrollToHash/>
                     </div>
                     <p className="mt-4 text-[11px] text-muted-foreground">
-                      提示：渲染模式下不支持高亮显示，请切换至源码/编辑器模式查看切片对应位置
+                      {t('originalPreview.hints.renderedMode')}
                     </p>
                   </div>
 	                  {tocEnabled && (<aside className="hidden xl:block w-64 shrink-0">
@@ -506,7 +533,7 @@ export function OriginalPreview() {
                         return (<div className="mx-auto w-full max-w-6xl h-full">
                   <OriginalPreviewMonaco text={effectiveOriginalText} chunks={displayChunks} activeChunkIndex={activeChunkIndex} chunkOverrides={chunkOverrides} onSelectChunkIndex={setSelectedChunkIndex}/>
                   <p className="mt-3 text-[11px] text-muted-foreground">
-                    提示：右侧滚动条有 chunk 标记；点击原文可自动选中最细粒度的 chunk（child 优先）。
+                    {t('originalPreview.hints.editorMode')}
                   </p>
                 </div>);
                     }
@@ -550,16 +577,25 @@ export function OriginalPreview() {
                     }
         })()) : (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
                 <FileText className="w-12 h-12 opacity-10"/>
-                <p className="text-xs">{previewData.original_text_truncated ? '原文已省略' : '原文未返回'}</p>
+                <p className="text-xs">
+                  {previewData.original_text_truncated
+                    ? t('originalPreview.empty.truncated')
+                    : t('originalPreview.empty.missing')}
+                </p>
                 <p className="text-xs text-muted-foreground max-w-[480px] text-center leading-relaxed">
                   {(() => {
                 const limit = previewData.original_text_max_chars ?? 100000;
                 if (previewData.original_text_truncated) {
-                    return `原文超过 ${limit.toLocaleString()} chars（当前 ${previewData.total_characters.toLocaleString()} chars），后端已省略返回以避免传输过大。`;
+                    return t('originalPreview.empty.truncatedDetail', {
+                      limit: limit.toLocaleString(),
+                      total: previewData.total_characters.toLocaleString(),
+                    });
                 }
-                return `原文内容较大（${previewData.total_characters.toLocaleString()} chars）时，后端可能会省略原文以避免传输过大。`;
+                return t('originalPreview.empty.missingDetail', {
+                  total: previewData.total_characters.toLocaleString(),
+                });
             })()}
-                  你仍可使用右侧切片列表进行检查与入库。
+                  {t('originalPreview.empty.fallbackHint')}
                 </p>
 
                 {localError ? (<p className="text-[10px] text-destructive bg-destructive/10 border border-destructive/25 px-2 py-1 rounded-lg">
@@ -574,33 +610,35 @@ export function OriginalPreview() {
                         setLocalOriginalText(text);
                     }
                     catch (error: unknown) {
-                        setLocalError(getErrorMessage(error, '从本地文件读取失败'));
+                        setLocalError(getErrorMessage(error, t('originalPreview.errors.readLocalFailed')));
                     }
                     finally {
                         setLocalLoading(false);
                     }
                 }}>
-                    {localLoading ? '正在读取本地原文...' : '从本地文件读取原文'}
-                  </Button>) : (<p className="text-[10px] text-muted-foreground">当前文件格式不支持在浏览器侧读取原文。</p>)}
+                    {localLoading
+                      ? t('originalPreview.empty.readLocalLoading')
+                      : t('originalPreview.empty.readLocal')}
+                  </Button>) : (<p className="text-[10px] text-muted-foreground">{t('originalPreview.empty.unsupportedFile')}</p>)}
               </div>));
     }
     else if (isLoading) {
             return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none opacity-20"/>
-              <p className="text-xs">加载中...</p>
+              <p className="text-xs">{t('originalPreview.states.loading')}</p>
             </div>);
         }
         else if (error) {
                 return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <AlertCircle className="w-10 h-10 opacity-20"/>
-              <p className="text-xs text-muted-foreground">加载失败</p>
+              <p className="text-xs text-muted-foreground">{t('originalPreview.states.loadFailed')}</p>
               <p className="text-xs text-muted-foreground max-w-[360px] text-center break-words line-clamp-3">{error}</p>
             </div>);
             }
             else {
                 return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2">
               <FileText className="w-12 h-12 opacity-10"/>
-              <p className="text-xs">等待预览</p>
+              <p className="text-xs">{t('originalPreview.states.waiting')}</p>
             </div>);
             }
 })()}
