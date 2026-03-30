@@ -9,7 +9,9 @@ describe('KG diagnostics quality report wiring', () => {
     const apiClientSrc = fs.readFileSync(path.resolve(__dirname, '../../lib/api-client.ts'), 'utf8')
     const evaluationApiSrc = fs.readFileSync(path.resolve(__dirname, '../../lib/api/evaluation.ts'), 'utf8')
 
-    expect(pageSrc).toContain('KG Extraction Quality（aggregate）')
+    expect(pageSrc).toContain("useTranslations('KGDiagnosticsPage')")
+    expect(pageSrc).toContain('t("qualityReport.title")')
+    expect(pageSrc).toContain('t("qualityReport.hint")')
     expect(pageSrc).toContain('loadQualityReport')
     expect(pageSrc).toContain('evaluationApi.getKgQualityReport')
     expect(pageSrc).toContain('qualityPipelineHash')

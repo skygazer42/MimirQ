@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { Activity, Download, GitCompare, PlayCircle, RefreshCcw } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
@@ -70,6 +71,7 @@ function caseKey(item: any): string | null {
 }
 
 export function KGDiagnosticsPage() {
+  const t = useTranslations('KGDiagnosticsPage')
   const [datasetId, setDatasetId] = useState('')
 
   const [qualityDocLimit, setQualityDocLimit] = useState(200)
@@ -77,8 +79,8 @@ export function KGDiagnosticsPage() {
   const [qualityLoading, setQualityLoading] = useState(false)
   const [qualityReport, setQualityReport] = useState<any | null>(null)
   const qualityJson = useMemo(
-    () => prettyJson(qualityReport ?? { hint: '加载 KG extraction quality report（aggregate-only）' }),
-    [qualityReport]
+    () => prettyJson(qualityReport ?? { hint: t("qualityReport.hint") }),
+    [qualityReport, t]
   )
 
   const [maxCases, setMaxCases] = useState(50)
@@ -478,7 +480,7 @@ export function KGDiagnosticsPage() {
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle className="text-base">KG Extraction Quality（aggregate）</CardTitle>
+              <CardTitle className="text-base">{t("qualityReport.title")}</CardTitle>
               <Button variant="outline" size="sm" className="gap-2" onClick={loadQualityReport} disabled={qualityLoading}>
                 <RefreshCcw className="h-4 w-4" aria-hidden="true" />
                 拉取
