@@ -131,6 +131,14 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const hideChunkSizeControl = isSentenceStrategy || isIntegratedPipelineStrategy
   const showOverlapControl =
     !isSentenceStrategy && !isIntegratedPipelineStrategy && !isHierarchicalStrategy && !isSeparatorStrategy
+  const chunkSizeLabel = isTokenStrategy ? t('sidebar.chunkControls.sizeTokenLabel') : t('sidebar.chunkControls.sizeCharsLabel')
+  const chunkSizeAria = isTokenStrategy ? t('sidebar.chunkControls.sizeTokenAria') : t('sidebar.chunkControls.sizeCharsAria')
+  const overlapLabel = isTokenStrategy ? t('sidebar.chunkControls.overlapTokenLabel') : t('sidebar.chunkControls.overlapCharsLabel')
+  const overlapAria = isTokenStrategy ? t('sidebar.chunkControls.overlapTokenAria') : t('sidebar.chunkControls.overlapCharsAria')
+  const averageStatLabel = isTokenStrategy ? t('sidebar.stats.averageTokens') : t('sidebar.stats.averageLength')
+  const p95StatLabel = isTokenStrategy ? t('sidebar.stats.p95Tokens') : t('sidebar.stats.p95')
+  const minMaxStatLabel = isTokenStrategy ? t('sidebar.stats.minMaxTokens') : t('sidebar.stats.minMaxLength')
+  const histogramTitle = isTokenStrategy ? t('sidebar.stats.histogramTokens') : t('sidebar.stats.histogramLength')
 
   const chunkSizeMin = isTokenStrategy ? 50 : 100
   const chunkSizeMax = isTokenStrategy ? 2000 : 4000
@@ -366,7 +374,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     )
 
     if (!result.ok) {
-      toast.error(result.error || options?.errorMessage || '应用入库管线 patch 失败')
+      toast.error(result.error || options?.errorMessage || t('sidebar.errors.applyPipelinePatch'))
       return false
     }
 
@@ -404,7 +412,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
       })
       .catch((error: unknown) => {
         if (!alive) return
-        setDatasetsError(getErrorMessage(error, '加载数据集失败'))
+        setDatasetsError(getErrorMessage(error, t('sidebar.dataset.loadError')))
       })
       .finally(() => {
         if (!alive) return
@@ -413,7 +421,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     return () => {
       alive = false
     }
-  }, [])
+  }, [t])
 
   const content = (
     <div
@@ -919,7 +927,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	              preview={ingestionPreview}
 	              datasetId={datasetId}
 	              onApplyPipelinePatch={(patch) => {
-	                applyPipelinePatch(patch, { errorMessage: '应用 suggested pipeline patch 失败' })
+	                applyPipelinePatch(patch, { errorMessage: t('sidebar.ingestionPreview.applySuggestedPipelinePatchError') })
 	              }}
 	            />
 	          </div>
@@ -1095,7 +1103,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     onChange={(e) => updateSeparatorSettings({ keepSeparator: e.target.checked })}
                     className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
                   />
-                  {keepSeparator ? '开启' : '关闭'}
+                  {keepSeparator ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
                 </label>
               </div>
 
@@ -1225,7 +1233,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           {!hideChunkSizeControl && (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-medium text-muted-foreground">{isTokenStrategy ? 'Token 上限' : '块大小 (Chars)'}</label>
+                <label className="text-xs font-medium text-muted-foreground">{chunkSizeLabel}</label>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkSize}</span>
                   <Input
@@ -1244,7 +1252,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       updateSettings({ chunkSize: nextSize, chunkOverlap: nextOverlap })
                     }}
                     className="h-7 w-24 text-[11px] font-mono bg-background"
-                    aria-label={isTokenStrategy ? 'Token 上限' : '块大小'}
+                    aria-label={chunkSizeAria}
                   />
                 </div>
               </div>
@@ -1262,7 +1270,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 <span>{chunkSizeMax}</span>
               </div>
               <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                <span>预设:</span>
+                <span>{t('sidebar.chunkControls.presets')}</span>
                 {(isTokenStrategy ? [256, 512, 1024] : [600, 800, 1000, 1500]).map((size) => (
                   <button
                     key={size}
@@ -1288,7 +1296,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           {showOverlapControl && (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-medium text-muted-foreground">{isTokenStrategy ? 'Token 重叠' : '重叠 (Chars)'}</label>
+                <label className="text-xs font-medium text-muted-foreground">{overlapLabel}</label>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-mono font-medium text-primary bg-primary/10 px-2 py-0.5 rounded">{chunkOverlap}</span>
                   <Input
@@ -1304,7 +1312,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       updateSettings({ chunkOverlap: clampInt(n, 0, overlapMax) })
                     }}
                     className="h-7 w-24 text-[11px] font-mono bg-background"
-                    aria-label={isTokenStrategy ? 'Token 重叠' : '重叠'}
+                    aria-label={overlapAria}
                   />
                 </div>
               </div>
@@ -1320,15 +1328,20 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               {overlapGuidance ? (
                 <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                   <span>
-                    建议 {overlapGuidance.min}-{overlapGuidance.max}（10-25%）
+                    {t('sidebar.chunkControls.overlapGuidance', {
+                      min: overlapGuidance.min,
+                      max: overlapGuidance.max,
+                    })}
                   </span>
                   <span className={cn(overlapGuidance.outOfRange ? 'text-warning' : 'text-muted-foreground')}>
-                    当前 {Math.round(overlapGuidance.ratio * 100)}%
+                    {t('sidebar.chunkControls.overlapCurrent', {
+                      ratio: Math.round(overlapGuidance.ratio * 100),
+                    })}
                   </span>
                 </div>
               ) : null}
               <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                <span>快捷:</span>
+                <span>{t('sidebar.chunkControls.overlapShortcuts')}</span>
                 {[10, 15, 20, 25].map((pct) => (
                   <button
                     key={pct}
@@ -1414,13 +1427,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">切片数量</div>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.totalChunks')}</div>
                 <div className="text-xl font-bold text-foreground mt-1">{previewData.total_chunks}</div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">
-                  {isTokenStrategy ? '平均 TOKENS' : '平均长度'}
-                </div>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{averageStatLabel}</div>
                 <div className="text-xl font-bold text-foreground mt-1">
                   {previewData?.stats?.avg ?? chunkStats?.avg ?? '-'}
                   {isTokenStrategy ? (
@@ -1429,9 +1440,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 </div>
               </div>
               <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">
-                  {isTokenStrategy ? 'P95 TOKENS' : 'P95'}
-                </div>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{p95StatLabel}</div>
                 <div className="text-xl font-bold text-foreground mt-1">
                   {chunkStats?.p95 ?? chunkStats?.p90 ?? previewData?.stats?.p90 ?? '-'}
                   {isTokenStrategy ? (
@@ -1439,25 +1448,27 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   ) : null}
                 </div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="coverage_ratio">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">覆盖率</div>
+              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title={t('sidebar.stats.coverage')}>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.coverage')}</div>
                 <div className="text-xl font-bold text-foreground mt-1">
                   {coverageSignals?.coveragePct == null ? '-' : `${coverageSignals.coveragePct}%`}
                 </div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="overlap_waste_ratio">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">重叠浪费</div>
+              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title={t('sidebar.stats.overlapWaste')}>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.overlapWaste')}</div>
                 <div className="text-xl font-bold text-foreground mt-1">
                   {coverageSignals?.overlapWastePct == null ? '-' : `${coverageSignals.overlapWastePct}%`}
                 </div>
               </div>
-              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title="gap_count / largest_gap">
-                <div className="text-[10px] text-muted-foreground uppercase  font-medium">Gaps</div>
+              <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm" title={t('sidebar.stats.gaps')}>
+                <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.gaps')}</div>
                 <div className="text-xl font-bold text-foreground mt-1">
                   {coverageSignals?.gapCount == null ? '-' : String(coverageSignals.gapCount)}
                 </div>
                 {coverageSignals?.largestGap == null ? null : (
-                  <div className="mt-1 text-[10px] text-muted-foreground font-mono">largest {coverageSignals.largestGap}</div>
+                  <div className="mt-1 text-[10px] text-muted-foreground font-mono">
+                    {t('sidebar.stats.largestGap', { value: coverageSignals.largestGap })}
+                  </div>
                 )}
               </div>
             </div>
@@ -1465,23 +1476,27 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             {showAdvancedStats && chunkStats ? (
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">
-                    {isTokenStrategy ? '最小 / 最大 TOKENS' : '最短 / 最长'}
-                  </div>
+                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">{minMaxStatLabel}</div>
                   <div className="mt-1 text-sm font-mono text-foreground/90">
                     {chunkStats.min} / {chunkStats.max}
                   </div>
-                  <div className="mt-1 text-[10px] text-muted-foreground font-mono">P10: {chunkStats.p10}</div>
+                  <div className="mt-1 text-[10px] text-muted-foreground font-mono">{t('sidebar.stats.p10', { value: chunkStats.p10 })}</div>
                 </div>
                 <div className="bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">质量信号</div>
+                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.qualitySignals')}</div>
                   <div className="mt-1 text-[11px] text-muted-foreground">
-                    <span className="font-mono text-foreground/90">{chunkStats.shortCount}</span> 个短切片 ·{' '}
-                    <span className="font-mono text-foreground/90">{chunkStats.duplicateCount}</span> 个重复（估算）
+                    {t('sidebar.stats.qualitySummary', {
+                      shortCount: chunkStats.shortCount,
+                      duplicateCount: chunkStats.duplicateCount,
+                    })}
                   </div>
                   {overlapGuidance ? (
                     <div className={cn('mt-1 text-[10px]', overlapGuidance.outOfRange ? 'text-warning' : 'text-muted-foreground')}>
-                      overlap {Math.round(overlapGuidance.ratio * 100)}%（建议 10-25%）
+                      {t('sidebar.stats.overlapSummary', {
+                        ratio: Math.round(overlapGuidance.ratio * 100),
+                        min: 10,
+                        max: 25,
+                      })}
                     </div>
                   ) : null}
                   {coverageSignals ? (
@@ -1490,16 +1505,18 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                         'mt-1 text-[10px]',
                         coverageSignals.coveragePct != null && coverageSignals.coveragePct < 95 ? 'text-warning' : 'text-muted-foreground'
                       )}
-                      title={coverageSignals.largestGap == null ? undefined : `largest_gap: ${coverageSignals.largestGap}`}
+                      title={coverageSignals.largestGap == null ? undefined : t('sidebar.stats.largestGap', { value: coverageSignals.largestGap })}
                     >
-                      coverage {coverageSignals.coveragePct ?? '-'}% · waste {coverageSignals.overlapWastePct ?? '-'}% · gaps {coverageSignals.gapCount ?? '-'}
+                      {t('sidebar.stats.coverageSummary', {
+                        coverage: coverageSignals.coveragePct ?? '-',
+                        waste: coverageSignals.overlapWastePct ?? '-',
+                        gaps: coverageSignals.gapCount ?? '-',
+                      })}
                     </div>
                   ) : null}
                 </div>
                 <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
-                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">
-                    {isTokenStrategy ? 'TOKENS 分布' : '长度分布'}
-                  </div>
+                  <div className="text-[10px] text-muted-foreground uppercase  font-medium">{histogramTitle}</div>
                   {histogramData.length ? (
                     <div className="mt-2 h-[120px]">
                       <ResponsiveContainer width="100%" height="100%">
@@ -1508,7 +1525,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                           <XAxis dataKey="label" hide />
                           <YAxis hide />
                           <Tooltip
-                            formatter={(value) => [value ?? 0, 'count']}
+                            formatter={(value) => [value ?? 0, t('sidebar.stats.histogramCount')]}
                             labelFormatter={(label, payload) => {
                               const p = payload?.[0]?.payload
                               const min = typeof p?.min === 'number' ? p.min : null
@@ -1522,7 +1539,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       </ResponsiveContainer>
                     </div>
                   ) : (
-                    <div className="mt-2 text-[11px] text-muted-foreground">No histogram data</div>
+                    <div className="mt-2 text-[11px] text-muted-foreground">{t('sidebar.stats.histogramEmpty')}</div>
                   )}
                   <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground font-mono">
                     <span>0</span>
@@ -1532,7 +1549,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 {previewData?.recommendations?.length || previewData?.recommendation_patches?.length ? (
                   <div className="col-span-2 bg-card p-3 rounded-xl border border-border/60 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-[10px] text-muted-foreground uppercase  font-medium">RECOMMENDATIONS</div>
+                      <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.recommendations.title')}</div>
                       {previewData?.recommendation_patches?.length ? (
                         <Button
                           type="button"
@@ -1547,16 +1564,16 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                                 const next = buildPreviewSettingsPatch(patch)
                                 if (Object.keys(next).length) updateSettings(next)
                               } else if (target === 'pipeline') {
-                                applyPipelinePatch(patch, { errorMessage: '应用推荐的入库管线 patch 失败' })
+                                applyPipelinePatch(patch, { errorMessage: t('sidebar.recommendations.applyAllPipelineError') })
                               } else if (target === 'perf') {
                                 const next = buildPerfSettingsPatch(patch)
                                 if (Object.keys(next).length) updatePerfSettings(next)
                               }
                             }
-                            toast.success('已应用全部 recommendations（best-effort）')
+                            toast.success(t('sidebar.recommendations.applyAllSuccess'))
                           }}
                         >
-                          一键应用
+                          {t('sidebar.recommendations.applyAll')}
                         </Button>
                       ) : null}
                     </div>
@@ -1564,10 +1581,18 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     {previewData?.recommendation_patches?.length ? (
                       <div className="mt-2 space-y-2">
                         {(previewData.recommendation_patches || []).slice(0, 6).map((patchItem: ChunkPreviewRecommendationPatch) => {
-                          const title = patchItem.title || patchItem.id || 'patch'
+                          const title = patchItem.title || patchItem.id || t('sidebar.recommendations.patchFallback')
                           const desc = patchItem.description || ''
                           const target = patchItem.target || 'preview'
                           const patch = patchItem.patch || {}
+                          const targetLabel =
+                            target === 'preview'
+                              ? t('sidebar.recommendations.targets.preview')
+                              : target === 'pipeline'
+                                ? t('sidebar.recommendations.targets.pipeline')
+                                : target === 'perf'
+                                  ? t('sidebar.recommendations.targets.perf')
+                                  : target
                           return (
                             <div key={patchItem.id || title} className="rounded-lg border border-border/60 bg-background p-2">
                               <div className="flex items-center justify-between gap-2">
@@ -1584,13 +1609,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                                       const next = buildPreviewSettingsPatch(patch)
                                       if (Object.keys(next).length) {
                                         updateSettings(next)
-                                        toast.success('已应用到预览参数')
+                                        toast.success(t('sidebar.recommendations.applyPreviewSuccess'))
                                       }
                                       return
                                     }
                                     if (target === 'pipeline') {
-                                      if (applyPipelinePatch(patch, { errorMessage: '应用到入库管线失败' })) {
-                                        toast.success('已应用到入库管线')
+                                      if (applyPipelinePatch(patch, { errorMessage: t('sidebar.recommendations.applyPipelineError') })) {
+                                        toast.success(t('sidebar.recommendations.applyPipelineSuccess'))
                                       }
                                       return
                                     }
@@ -1598,16 +1623,18 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                                       const next = buildPerfSettingsPatch(patch)
                                       if (Object.keys(next).length) {
                                         updatePerfSettings(next)
-                                        toast.success('已应用到性能参数')
+                                        toast.success(t('sidebar.recommendations.applyPerfSuccess'))
                                       }
                                     }
                                   }}
                                   title={Object.keys(patch || {}).length ? JSON.stringify(patch) : undefined}
                                 >
-                                  应用
+                                  {t('sidebar.recommendations.apply')}
                                 </Button>
                               </div>
-                              <div className="mt-1 text-[10px] text-muted-foreground font-mono">target: {target}</div>
+                              <div className="mt-1 text-[10px] text-muted-foreground font-mono">
+                                {t('sidebar.recommendations.target', { value: targetLabel })}
+                              </div>
                             </div>
                           )
                         })}
@@ -1636,7 +1663,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
-                <h2 className="text-sm font-semibold text-foreground">最近预览</h2>
+                <h2 className="text-sm font-semibold text-foreground">{t('sidebar.history.title')}</h2>
               </div>
               <Button
                 type="button"
@@ -1645,10 +1672,10 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 className="h-7 px-2 text-[11px]"
                 onClick={() => {
                   clearRunHistory()
-                  toast.success('已清空最近预览')
+                  toast.success(t('sidebar.history.clearSuccess'))
                 }}
               >
-                清空
+                {t('sidebar.history.clear')}
               </Button>
             </div>
             <div className="space-y-2 max-h-[180px] overflow-y-auto overscroll-contain no-scrollbar pr-1">
@@ -1668,7 +1695,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       chunkOverlap: item.chunkOverlap,
                     })
                     runPreview({ force: true })
-                    toast.success('已恢复历史预览配置')
+                    toast.success(t('sidebar.history.restoreSuccess'))
                   }}
                 >
                   <div className="flex items-center justify-between">
@@ -1676,11 +1703,15 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     <span>{new Date(item.createdAt).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2">
-                    <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60">Chunks: {item.totalChunks}</span>
-                    <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60">耗时: {item.durationMs}ms</span>
+                    <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60">
+                      {t('sidebar.history.chunks', { count: item.totalChunks })}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60">
+                      {t('sidebar.history.duration', { ms: item.durationMs })}
+                    </span>
                     <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/60">{item.strategy}</span>
                     {item.cacheHit && (
-                      <span className="px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/25">缓存</span>
+                      <span className="px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/25">{t('sidebar.history.cacheHit')}</span>
                     )}
                   </div>
                 </button>
