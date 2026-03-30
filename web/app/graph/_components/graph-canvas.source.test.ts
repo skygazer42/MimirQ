@@ -38,4 +38,16 @@ describe('graph canvas accessibility source', () => {
     expect(src).toContain('<Skeleton className="h-3 w-full" />')
     expect(src).not.toContain('Loading 3D graph...')
   })
+
+  it('reports graph clustering and palette work to frontend trace telemetry', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'graph-canvas.tsx'), 'utf8')
+
+    expect(src).toContain("import('@/lib/frontend-trace')")
+    expect(src).toContain('reportFrontendTrace(')
+    expect(src).toContain("event: 'graph_cluster_compute'")
+    expect(src).toContain("event: 'graph_cluster_palette'")
+    expect(src).toContain('duration_ms:')
+    expect(src).toContain('input_node_count:')
+    expect(src).toContain('output_node_count:')
+  })
 })

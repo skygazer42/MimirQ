@@ -363,6 +363,29 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     prefetchCitationTarget(citation, target)
   }, [citationByChunkId, citationByDocumentId, prefetchCitationTarget])
 
+  const handlePreviewCitation = useCallback((href?: string) => {
+    const target = parseInlineCitationHref(href)
+    if (!target) return
+
+    const citation =
+      (target.chunkId ? citationByChunkId.get(target.chunkId) : undefined) ||
+      (target.documentId ? citationByDocumentId.get(target.documentId) : undefined)
+
+    const documentId = citation?.document_id || target.documentId
+    if (!documentId) return
+
+    handleInlineCitationPrefetch(href)
+    openDocument(
+      documentId,
+      citation?.chunk_id || target.chunkId,
+      citation ? getCitationRange(citation) : undefined,
+      {
+        activeTab: 'preview',
+        previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+      }
+    )
+  }, [citationByChunkId, citationByDocumentId, handleInlineCitationPrefetch, openDocument])
+
   const handleOpenCitation = useCallback((citation: Citation) => {
     if (!citation.document_id) return
     openDocument(
@@ -382,8 +405,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           <button
             type="button"
             onClick={() => handleInlineCitationClick(href)}
-            onMouseEnter={() => handleInlineCitationPrefetch(href)}
-            onFocus={() => handleInlineCitationPrefetch(href)}
+            onMouseEnter={() => handlePreviewCitation(href)}
+            onFocus={() => handlePreviewCitation(href)}
             className="inline-flex items-center rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[0.75em] font-semibold text-primary no-underline transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
             {children}
@@ -1168,14 +1191,29 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
     })
   }, [citation])
 
+  const handlePreview = useCallback(() => {
+    handlePrefetch()
+    if (!citation.document_id) return
+
+    openDocument(
+      citation.document_id,
+      citation.chunk_id,
+      getCitationRange(citation),
+      {
+        activeTab: 'preview',
+        previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+      }
+    )
+  }, [citation, handlePrefetch, openDocument])
+
   return (
     <>
       <div className="group/card text-xs rounded-lg p-3 border bg-card border-border/60 shadow-sm transition-colors transition-shadow duration-200 motion-reduce:transition-none hover:bg-muted/40 hover:border-primary/25 hover:shadow-md">
         <button
           type="button"
           onClick={handleClick}
-          onMouseEnter={handlePrefetch}
-          onFocus={handlePrefetch}
+          onMouseEnter={handlePreview}
+          onFocus={handlePreview}
           className="block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <div className="flex items-start gap-3">

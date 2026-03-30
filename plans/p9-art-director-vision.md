@@ -20,7 +20,7 @@
 ## 3. RAG 专家级体验 (Expert RAG UX)
 
 ### 3.1 语义联动 (Semantic Linkage)
-- [ ] **Integrated Doc Viewer**: 消息区引用的切片 [1] 悬浮时，侧边栏直接展示 PDF 缩略图并定位到高亮行。
+- [x] **Integrated Doc Viewer**: 消息区引用的切片 [1] 悬浮时，侧边栏直接展示 PDF 缩略图并定位到高亮行。
 
 ## 4. 基础设施可观测性
-- [ ] **Frontend Trace Integration**: 在前端日志中记录每一个复杂计算（如图谱拓扑）的耗时，上报至后端监控平台，将可观测性做到用户端。
+- [x] **Frontend Trace Integration**: 在前端日志中记录每一个复杂计算（如图谱拓扑）的耗时，上报至后端监控平台，将可观测性做到用户端。
