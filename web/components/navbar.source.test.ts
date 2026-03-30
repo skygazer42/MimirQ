@@ -48,4 +48,15 @@ describe('navbar source', () => {
       expect(fs.existsSync(path.resolve(webRoot, wrapperPath))).toBe(true)
     }
   })
+
+  it('declares translations for the navbar copy', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
+
+    expect(src).toContain("import { useTranslations } from 'next-intl'")
+    expect(src).toContain("const t = useTranslations('Navbar')")
+    expect(src).toContain("t('actions.newConversation')")
+    expect(src).toContain("titleKey: 'sections.core'")
+    expect(src).toContain('t(section.titleKey)')
+    expect(src).toContain("t('command.triggerLabel')")
+  })
 })
