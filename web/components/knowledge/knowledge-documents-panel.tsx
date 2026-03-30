@@ -2,7 +2,6 @@
 
 import type { Document } from '@/types'
 
-import Link from 'next/link'
 import { Activity, AlertTriangle, Database, Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -31,6 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Link } from '@/i18n/navigation'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
