@@ -1,9 +1,8 @@
 'use client'
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { FileText, MessageSquare, Scissors, ShieldCheck } from 'lucide-react'
 
+import { Link, usePathname } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 import type { ComponentType } from 'react'
 

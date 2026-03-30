@@ -1,10 +1,9 @@
 'use client'
 
 import { useMemo } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
 
+import { Link, usePathname } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 
 /* ------------------------------------------------------------------ */
