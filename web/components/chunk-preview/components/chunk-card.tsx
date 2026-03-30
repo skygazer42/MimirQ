@@ -7,6 +7,7 @@ import { useCallback, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff, Link2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { chunkNeedsReview, getChunkMetadata, getSemanticQualityMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
 import { cn, detachPromise } from '@/lib/utils'
@@ -97,6 +98,7 @@ export function ChunkCard({
   onEdit,
   onToggleDisabled,
 }: Readonly<ChunkCardProps>) {
+  const t = useTranslations('ChunkPreview')
   const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
   const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
   const chunkMetadata = getChunkMetadata(chunk)
@@ -110,7 +112,7 @@ export function ChunkCard({
     return reasons.length > 0 ? `needs_review: ${reasons.join(', ')}` : 'needs_review'
   }, [needsReview, semanticQuality?.reasons])
   const citationText = useMemo(() => {
-    const name = (sourceFilename || '').trim() || 'document'
+    const name = (sourceFilename || '').trim() || t('chunkCard.documentFallback')
     const pageLabel = chunk.page_number == null ? '' : ` · P.${chunk.page_number}`
     const tokLabel = tokens == null ? '' : ` · ${tokens} tok`
     const fence = '````'
@@ -122,7 +124,7 @@ export function ChunkCard({
       excerpt,
       fence,
     ].join('\n')
-  }, [chunk.content, chunk.page_number, index, rangeLabel, sourceFilename, tokens])
+  }, [chunk.content, chunk.page_number, index, rangeLabel, sourceFilename, t, tokens])
 
   const copyText = useCallback(async (text: string, okMsg: string) => {
     try {
@@ -134,8 +136,8 @@ export function ChunkCard({
     } catch {
       // ignore
     }
-    toast.error('复制失败：浏览器不支持 Clipboard API')
-  }, [])
+    toast.error(t('chunkCard.copyClipboardUnsupported'))
+  }, [t])
 
   return (
     <div
@@ -165,7 +167,7 @@ export function ChunkCard({
           onToggleSelect()
         }
       }}
-      aria-label={`切片 #${index + 1}`}
+      aria-label={t('chunkCard.ariaLabel', { index: index + 1 })}
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
@@ -273,12 +275,12 @@ export function ChunkCard({
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEdit()
-                }}
-                aria-label="编辑切片"
-                title="编辑切片"
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit()
+              }}
+                aria-label={t('chunkCard.edit')}
+                title={t('chunkCard.edit')}
               >
                 <Pencil className="h-4 w-4" />
               </Button>
@@ -293,8 +295,8 @@ export function ChunkCard({
                   e.stopPropagation()
                   onToggleDisabled()
                 }}
-                aria-label={isDisabled ? 'Enable chunk' : 'Skip chunk'}
-                title={isDisabled ? 'Enable chunk' : 'Skip chunk'}
+                aria-label={isDisabled ? t('chunkCard.enable') : t('chunkCard.skip')}
+                title={isDisabled ? t('chunkCard.enable') : t('chunkCard.skip')}
               >
                 {isDisabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               </Button>
@@ -306,10 +308,10 @@ export function ChunkCard({
               className="h-7 w-7"
               onClick={(e) => {
                 e.stopPropagation()
-                detachPromise(copyText(citationText, '已复制引用'))
+                detachPromise(copyText(citationText, t('chunkCard.copyCitationSuccess')))
               }}
-              aria-label="复制引用"
-              title="复制引用"
+              aria-label={t('chunkCard.copyCitation')}
+              title={t('chunkCard.copyCitation')}
             >
               <Quote className="h-4 w-4" />
             </Button>
@@ -323,13 +325,13 @@ export function ChunkCard({
                 try {
                   const url = new URL(globalThis.window.location.href)
                   url.searchParams.set('chunk', String(index + 1))
-                  detachPromise(copyText(url.toString(), '已复制链接'))
+                  detachPromise(copyText(url.toString(), t('chunkCard.copyLinkSuccess')))
                 } catch {
-                  toast.error('无法生成链接')
+                  toast.error(t('chunkCard.cannotGenerateLink'))
                 }
               }}
-              aria-label="复制链接"
-              title="复制链接"
+              aria-label={t('chunkCard.copyLink')}
+              title={t('chunkCard.copyLink')}
             >
               <Link2 className="h-4 w-4" />
             </Button>
@@ -340,10 +342,10 @@ export function ChunkCard({
               className="h-7 w-7"
               onClick={(e) => {
                 e.stopPropagation()
-                detachPromise(copyText(chunk.content || '', '已复制切片内容'))
+                detachPromise(copyText(chunk.content || '', t('chunkCard.copyContentSuccess')))
               }}
-              aria-label="复制切片内容"
-              title="复制切片内容"
+              aria-label={t('chunkCard.copyContent')}
+              title={t('chunkCard.copyContent')}
             >
               <Copy className="h-4 w-4" />
             </Button>
@@ -354,10 +356,10 @@ export function ChunkCard({
               className="h-7 w-7"
               onClick={(e) => {
                 e.stopPropagation()
-                detachPromise(copyText(JSON.stringify(chunk, null, 2), '已复制切片 JSON'))
+                detachPromise(copyText(JSON.stringify(chunk, null, 2), t('chunkCard.copyJsonSuccess')))
               }}
-              aria-label="复制切片 JSON"
-              title="复制切片 JSON"
+              aria-label={t('chunkCard.copyJson')}
+              title={t('chunkCard.copyJson')}
             >
               <Braces className="h-4 w-4" />
             </Button>
@@ -370,8 +372,8 @@ export function ChunkCard({
                 e.stopPropagation()
                 onToggleSelect()
               }}
-              aria-label={isSelected ? '取消锁定切片' : '锁定切片'}
-              title={isSelected ? '取消锁定切片' : '锁定切片'}
+              aria-label={isSelected ? t('chunkCard.unpin') : t('chunkCard.pin')}
+              title={isSelected ? t('chunkCard.unpin') : t('chunkCard.pin')}
             >
               {isSelected ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
             </Button>
