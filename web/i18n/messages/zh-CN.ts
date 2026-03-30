@@ -194,6 +194,43 @@ const zhCNMessages = {
       processing: '处理中',
     },
   },
+  SlashMenu: {
+    placeholder: '搜索命令或用途...',
+    empty: '未找到匹配命令',
+    heading: '快捷指令',
+    commands: {
+      knowledge: {
+        label: '打开知识库',
+        description: '跳转到知识库页面，查看文档与索引状态',
+        keywords: ['knowledge', 'kb', 'docs', '文档', '知识库'],
+      },
+      history: {
+        label: '打开历史会话',
+        description: '前往历史会话页，回看旧问答与上下文',
+        keywords: ['history', '会话', '记录', 'trace'],
+      },
+      prompt: {
+        label: '插入提示模板',
+        description: '快速填入一条适合知识库摘要的提示',
+        keywords: ['prompt', '模板', 'summary', '摘要'],
+      },
+      cite_analysis: {
+        label: '引用核查 + 差异分析',
+        description: '预填一条强约束提示，要求结论、证据与差异并列输出',
+        keywords: ['citation', 'analysis', 'evidence', '引用', '分析'],
+      },
+      config: {
+        label: '打开 RAG 配置',
+        description: '调整检索模式、Top K 与过滤条件',
+        keywords: ['config', 'settings', '检索', '参数'],
+      },
+      clear: {
+        label: '清空当前输入',
+        description: '只清理输入框，不影响已有会话记录',
+        keywords: ['clear', 'erase', '清空'],
+      },
+    },
+  },
 } as const
 
 export default zhCNMessages
