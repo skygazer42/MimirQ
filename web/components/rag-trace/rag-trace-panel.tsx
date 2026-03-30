@@ -1582,7 +1582,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               {t("panel.compareCandidates.title")}
                             </div>
                             <div className="mt-1 text-xs text-muted-foreground">
-                              优先展示 retrieval config 有变化、且时间上最接近当前 trace 的候选。
+                              {t("panel.compareCandidates.description")}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -1624,11 +1624,11 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
                           <div className="space-y-1">
-                            <div className="text-[11px] text-muted-foreground">request_id A</div>
+                            <div className="text-[11px] text-muted-foreground">{t("panel.compare.requestIdA")}</div>
                             <Input value={requestId} readOnly className="font-mono text-xs" />
                           </div>
                           <div className="space-y-1">
-                            <div className="text-[11px] text-muted-foreground">request_id B</div>
+                            <div className="text-[11px] text-muted-foreground">{t("panel.compare.requestIdB")}</div>
                             <Input
                               value={diffOtherRequestId}
                               onChange={(e) => {
@@ -1636,7 +1636,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 setDiffResult(null)
                                 setDiffError(null)
                               }}
-                              placeholder="输入另一个 request_id"
+                              placeholder={t("panel.compare.requestIdBPlaceholder")}
                               className="font-mono text-xs"
                             />
                           </div>
@@ -1653,7 +1653,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           ) : (
                             <GitCompare className="h-4 w-4" />
                           )}
-                          比较
+                          {t("panel.compare.action")}
                         </Button>
                       </div>
 
@@ -1671,7 +1671,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 {t("panel.evidenceDrift.title")}
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
-                                直接比较当前 trace（A）和候选 trace（B）的 citation 漂移，优先看新增、丢失和分数变化最大的证据。
+                                {t("panel.evidenceDrift.description")}
                               </div>
                             </div>
                             <Badge variant="soft" className="text-[10px]">
