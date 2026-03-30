@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion"
-import { usePathname } from "next/navigation"
+import { usePathname } from "@/i18n/navigation"
 
 import { cn } from "@/lib/utils"
 

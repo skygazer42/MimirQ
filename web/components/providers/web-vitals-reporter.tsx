@@ -1,9 +1,9 @@
 'use client'
 
 import { useRef } from 'react'
-import { usePathname } from 'next/navigation'
 import { useReportWebVitals } from 'next/web-vitals'
 
+import { usePathname } from '@/i18n/navigation'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { observabilityApi } from '@/lib/api'
 
