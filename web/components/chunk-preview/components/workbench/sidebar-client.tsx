@@ -1127,10 +1127,10 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
           {isParentChildStrategy ? (
             <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
-              <div className="text-[10px] text-muted-foreground uppercase  font-medium">PARENT-CHILD OPTIONS</div>
+              <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.parentChild.title')}</div>
 
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[10px] text-muted-foreground">同步到 Pipeline.chunk_strategy_params</div>
+                <div className="text-[10px] text-muted-foreground">{t('sidebar.parentChild.syncToPipeline')}</div>
                 <Button
                   type="button"
                   size="sm"
@@ -1143,23 +1143,29 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     }
                     pipelineCtx.setEnabled(true)
                     pipelineCtx.updateOption('chunk_strategy_params', patch)
-                    toast.success('已写入 Pipeline.chunk_strategy_params（parent_child）')
+                    toast.success(t('sidebar.parentChild.writeSuccess'))
                   }}
                 >
-                  写入
+                  {t('sidebar.parentChild.write')}
                 </Button>
               </div>
               {pipelineCtx.options.chunk_strategy_params ? (
                 <div className="text-[10px] text-muted-foreground font-mono break-all">
-                  当前 pipeline: {JSON.stringify(pipelineCtx.options.chunk_strategy_params)}
+                  {t('sidebar.parentChild.currentPipeline', {
+                    value: JSON.stringify(pipelineCtx.options.chunk_strategy_params),
+                  })}
                 </div>
               ) : (
-                <div className="text-[10px] text-muted-foreground font-mono">当前 pipeline: (empty)</div>
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  {t('sidebar.parentChild.currentPipeline', {
+                    value: t('sidebar.parentChild.currentPipelineEmpty'),
+                  })}
+                </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">child_ratio</div>
+                  <div className="text-xs font-medium text-muted-foreground">{t('sidebar.parentChild.ratioLabel')}</div>
                   <Input
                     type="number"
                     inputMode="decimal"
@@ -1173,13 +1179,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       updateParentChildSettings({ parentChildRatio: Math.max(0.05, Math.min(1, n)) })
                     }}
                     className="h-9 text-[11px] font-mono bg-background"
-                    aria-label="parent_child child_ratio"
+                    aria-label={t('sidebar.parentChild.ratioAria')}
                   />
-                  <div className="text-[10px] text-muted-foreground">child_size = max(chunk_size × ratio, min_child_size)</div>
+                  <div className="text-[10px] text-muted-foreground">{t('sidebar.parentChild.ratioHelp')}</div>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">min_child_size</div>
+                  <div className="text-xs font-medium text-muted-foreground">{t('sidebar.parentChild.minChildSizeLabel')}</div>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1193,20 +1199,24 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       updateParentChildSettings({ parentChildMinChildSize: clampInt(n, 50, 4000) })
                     }}
                     className="h-9 text-[11px] font-mono bg-background"
-                    aria-label="parent_child min_child_size"
+                    aria-label={t('sidebar.parentChild.minChildSizeAria')}
                   />
-                  <div className="text-[10px] text-muted-foreground">recommended: 200–600 for text docs</div>
+                  <div className="text-[10px] text-muted-foreground">{t('sidebar.parentChild.minChildSizeHelp')}</div>
                 </div>
               </div>
 
               {parentChildEffective ? (
                 <div className="text-[10px] text-muted-foreground font-mono">
-                  effective child_size: {parentChildEffective.childSize} chars · child_overlap: {parentChildEffective.childOverlap} chars · ratio: {Math.round(parentChildEffective.ratio * 100)}%
+                  {t('sidebar.parentChild.effectiveSummary', {
+                    childSize: parentChildEffective.childSize,
+                    childOverlap: parentChildEffective.childOverlap,
+                    ratio: Math.round(parentChildEffective.ratio * 100),
+                  })}
                 </div>
               ) : null}
 
               <div className="text-[10px] text-muted-foreground leading-relaxed">
-                parent_child 会生成 parent/child 两类 chunks，并在 metadata 中写入 parent_id 与 chunk_role，便于后端 parent-child 检索/重排。
+                {t('sidebar.parentChild.description')}
               </div>
             </div>
           ) : null}
