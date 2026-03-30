@@ -676,9 +676,17 @@ const zhCNMessages = {
     panel: {
       compareCandidates: {
         title: 'Trace 对比候选',
+        description: '优先展示 retrieval config 有变化、且时间上最接近当前 trace 的候选。',
+      },
+      compare: {
+        requestIdA: 'request_id A',
+        requestIdB: 'request_id B',
+        requestIdBPlaceholder: '输入另一个 request_id',
+        action: '比较',
       },
       evidenceDrift: {
         title: 'Evidence Drift',
+        description: '直接比较当前 trace（A）和候选 trace（B）的 citation 漂移，优先看新增、丢失和分数变化最大的证据。',
         sharedTitle: 'Shared',
         addedSummaryTitle: 'Added In B',
         removedSummaryTitle: 'Removed From A',
