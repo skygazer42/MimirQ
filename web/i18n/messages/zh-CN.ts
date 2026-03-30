@@ -730,6 +730,42 @@ const zhCNMessages = {
         focusTitle: 'Focus citations',
         focusDescription: '点击 channel，直接筛出真正带来最终证据的命中。',
         unavailable: '暂无 per-channel 指标（旧 trace 或 retriever_debug 被裁剪）。',
+        options: {
+          all: {
+            label: 'All',
+            summary: '查看整条链路的最终证据面。',
+          },
+          vector: {
+            label: 'Vector',
+            summary: '聚焦 dense/vector 通道真正贡献到最终引用的证据。',
+          },
+          bm25: {
+            label: 'BM25',
+            summary: '排查 lexical keyword 命中是否主导了召回结果。',
+          },
+          lexicalDb: {
+            label: 'Lexical DB',
+            summary: '查看数据库级词法通道在最终证据里的存在感。',
+          },
+          sparse: {
+            label: 'Sparse',
+            summary: '检查 learned sparse / SPLADE 风格通道是否带来额外证据。',
+          },
+          colbert: {
+            label: 'ColBERT',
+            summary: '聚焦 late-interaction / ColBERT 通道影响到的证据。',
+          },
+        },
+      },
+      inspector: {
+        retrieveSummary: '检索层决定候选面宽度，可以直接看 query 扩散、top_k 和融合策略是否异常。',
+        retrieveCallout: 'hierarchy recall {status}{overfetch}',
+        retrieveEnabled: '已启用',
+        retrieveDisabled: '未启用',
+        rerankSummary: '重排层用于判断“为什么这个 chunk 最终浮到前面”，适合排查 provider、top_n 和跳过原因。',
+        rerankSkipped: '当前 trace 跳过 rerank：{reason}',
+        citationsSummary: '证据层把最终引用聚合成可验证的来源，你可以直接跳到高分 chunk 做人工复核。',
+        defaultSummary: '该阶段没有专门的诊断面板，保留关键计数与耗时，方便对照整条流水线。',
       },
       topCitations: {
         title: 'TopK Citations',

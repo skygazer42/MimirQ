@@ -342,27 +342,71 @@ type StoredTraceCitationTarget = {
 
 const RAG_TRACE_LAST_TARGETS_STORAGE_KEY = 'mimirq_rag_trace_last_targets_v1'
 
-const RAG_TRACE_CITATION_CHANNEL_OPTIONS: ReadonlyArray<{
+type RagTraceTranslation = (key: string, values?: Record<string, string | number | Date>) => string
+
+const RAG_TRACE_FALLBACK_MESSAGES: Record<string, string> = {
+  'panel.channels.options.all.label': 'All',
+  'panel.channels.options.all.summary': '查看整条链路的最终证据面。',
+  'panel.channels.options.vector.label': 'Vector',
+  'panel.channels.options.vector.summary': '聚焦 dense/vector 通道真正贡献到最终引用的证据。',
+  'panel.channels.options.bm25.label': 'BM25',
+  'panel.channels.options.bm25.summary': '排查 lexical keyword 命中是否主导了召回结果。',
+  'panel.channels.options.lexicalDb.label': 'Lexical DB',
+  'panel.channels.options.lexicalDb.summary': '查看数据库级词法通道在最终证据里的存在感。',
+  'panel.channels.options.sparse.label': 'Sparse',
+  'panel.channels.options.sparse.summary': '检查 learned sparse / SPLADE 风格通道是否带来额外证据。',
+  'panel.channels.options.colbert.label': 'ColBERT',
+  'panel.channels.options.colbert.summary': '聚焦 late-interaction / ColBERT 通道影响到的证据。',
+  'panel.inspector.retrieveSummary': '检索层决定候选面宽度，可以直接看 query 扩散、top_k 和融合策略是否异常。',
+  'panel.inspector.retrieveCallout': 'hierarchy recall {status}{overfetch}',
+  'panel.inspector.retrieveEnabled': '已启用',
+  'panel.inspector.retrieveDisabled': '未启用',
+  'panel.inspector.rerankSummary': '重排层用于判断“为什么这个 chunk 最终浮到前面”，适合排查 provider、top_n 和跳过原因。',
+  'panel.inspector.rerankSkipped': '当前 trace 跳过 rerank：{reason}',
+  'panel.inspector.citationsSummary': '证据层把最终引用聚合成可验证的来源，你可以直接跳到高分 chunk 做人工复核。',
+  'panel.inspector.defaultSummary': '该阶段没有专门的诊断面板，保留关键计数与耗时，方便对照整条流水线。',
+}
+
+function fallbackRagTraceTranslation(key: string, values?: Record<string, string | number | Date>) {
+  const template = RAG_TRACE_FALLBACK_MESSAGES[key] ?? key
+  if (!values) return template
+
+  return template.replace(/\{(\w+)\}/g, (_match, token: string) => {
+    const value = values[token]
+    return value == null ? '' : String(value)
+  })
+}
+
+function getRagTraceCitationChannelOptions(t: RagTraceTranslation = fallbackRagTraceTranslation): ReadonlyArray<{
   key: RagTraceCitationChannelFilter
   label: string
   summary: string
-}> = [
-  { key: 'all', label: 'All', summary: '查看整条链路的最终证据面。' },
-  { key: 'vector', label: 'Vector', summary: '聚焦 dense/vector 通道真正贡献到最终引用的证据。' },
-  { key: 'bm25', label: 'BM25', summary: '排查 lexical keyword 命中是否主导了召回结果。' },
-  { key: 'lexical_db', label: 'Lexical DB', summary: '查看数据库级词法通道在最终证据里的存在感。' },
-  { key: 'sparse', label: 'Sparse', summary: '检查 learned sparse / SPLADE 风格通道是否带来额外证据。' },
-  { key: 'colbert_ann', label: 'ColBERT', summary: '聚焦 late-interaction / ColBERT 通道影响到的证据。' },
-]
-
-function getRagTraceCitationChannelLabel(channel: RagTraceCitationChannelFilter) {
-  return RAG_TRACE_CITATION_CHANNEL_OPTIONS.find((option) => option.key === channel)?.label || 'All'
+}> {
+  return [
+    { key: 'all', label: t("panel.channels.options.all.label"), summary: t("panel.channels.options.all.summary") },
+    { key: 'vector', label: t("panel.channels.options.vector.label"), summary: t("panel.channels.options.vector.summary") },
+    { key: 'bm25', label: t("panel.channels.options.bm25.label"), summary: t("panel.channels.options.bm25.summary") },
+    {
+      key: 'lexical_db',
+      label: t("panel.channels.options.lexicalDb.label"),
+      summary: t("panel.channels.options.lexicalDb.summary"),
+    },
+    { key: 'sparse', label: t("panel.channels.options.sparse.label"), summary: t("panel.channels.options.sparse.summary") },
+    {
+      key: 'colbert_ann',
+      label: t("panel.channels.options.colbert.label"),
+      summary: t("panel.channels.options.colbert.summary"),
+    },
+  ]
 }
 
-function getRagTraceCitationChannelSummary(channel: RagTraceCitationChannelFilter) {
+function getRagTraceCitationChannelLabel(channel: RagTraceCitationChannelFilter, t: RagTraceTranslation = fallbackRagTraceTranslation) {
+  return getRagTraceCitationChannelOptions(t).find((option) => option.key === channel)?.label || t("panel.channels.options.all.label")
+}
+
+function getRagTraceCitationChannelSummary(channel: RagTraceCitationChannelFilter, t: RagTraceTranslation = fallbackRagTraceTranslation) {
   return (
-    RAG_TRACE_CITATION_CHANNEL_OPTIONS.find((option) => option.key === channel)?.summary ||
-    '查看整条链路的最终证据面。'
+    getRagTraceCitationChannelOptions(t).find((option) => option.key === channel)?.summary || t("panel.channels.options.all.summary")
   )
 }
 
@@ -413,7 +457,8 @@ export function filterTraceCitationsByChannel(
 
 export function buildTraceCitationChannelSummaries(
   trace: RagTrace | null,
-  activeChannel: RagTraceCitationChannelFilter
+  activeChannel: RagTraceCitationChannelFilter,
+  t: RagTraceTranslation = fallbackRagTraceTranslation
 ): RagTraceCitationChannelSummary[] {
   const citations = trace?.citations || []
   const mainQuery =
@@ -425,13 +470,15 @@ export function buildTraceCitationChannelSummaries(
     | null
     | undefined
 
-  return RAG_TRACE_CITATION_CHANNEL_OPTIONS.map((option) => {
+  return getRagTraceCitationChannelOptions(t).map((option) => {
+    const label = getRagTraceCitationChannelLabel(option.key, t)
+    const summary = getRagTraceCitationChannelSummary(option.key, t)
     if (option.key === 'all') {
       const sorted = filterTraceCitationsByChannel(citations, option.key)
       return {
         key: option.key,
-        label: option.label,
-        summary: option.summary,
+        label,
+        summary,
         matchCount: sorted.length,
         candidateCount: trace?.citations_count ?? sorted.length,
         maxScore: sorted[0] ? getPrimaryScore(sorted[0]) : null,
@@ -443,8 +490,8 @@ export function buildTraceCitationChannelSummaries(
     const box = getRagTraceChannelBox(channels, option.key)
     return {
       key: option.key,
-      label: option.label,
-      summary: option.summary,
+      label,
+      summary,
       matchCount: filtered.length,
       candidateCount:
         typeof box?.candidates === 'number' && Number.isFinite(box.candidates) ? Number(box.candidates) : null,
@@ -704,7 +751,7 @@ export function movePipelineSelectionIndex(currentIndex: number, total: number, 
   return (base + direction + total) % total
 }
 
-export function buildPipelineInspectorSections(trace: RagTrace | null): PipelineInspectorSection[] {
+export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTraceTranslation = fallbackRagTraceTranslation): PipelineInspectorSection[] {
   if (!trace) return []
 
   const mainQuery = (trace.retrieval?.per_query || []).find((query) => query?.kind === 'main') ?? (trace.retrieval?.per_query || [])[0] ?? null
@@ -729,11 +776,14 @@ export function buildPipelineInspectorSections(trace: RagTrace | null): Pipeline
       return {
         id,
         label: step.label,
-        summary: '检索层决定候选面宽度，可以直接看 query 扩散、top_k 和融合策略是否异常。',
+        summary: t("panel.inspector.retrieveSummary"),
         callout:
           hierarchyRecall?.enabled == null
             ? null
-            : `hierarchy recall ${hierarchyRecall.enabled ? '已启用' : '未启用'}${hierarchyRecall.overfetch_factor == null ? '' : ` · overfetch=${hierarchyRecall.overfetch_factor}`}`,
+            : t("panel.inspector.retrieveCallout", {
+                status: hierarchyRecall.enabled ? t("panel.inspector.retrieveEnabled") : t("panel.inspector.retrieveDisabled"),
+                overfetch: hierarchyRecall.overfetch_factor == null ? '' : ` · overfetch=${hierarchyRecall.overfetch_factor}`,
+              }),
         metrics,
         citations: citationSummary.top,
       }
@@ -752,8 +802,8 @@ export function buildPipelineInspectorSections(trace: RagTrace | null): Pipeline
       return {
         id,
         label: step.label,
-        summary: '重排层用于判断“为什么这个 chunk 最终浮到前面”，适合排查 provider、top_n 和跳过原因。',
-        callout: rerankMeta?.skip_reason ? `当前 trace 跳过 rerank：${String(rerankMeta.skip_reason)}` : null,
+        summary: t("panel.inspector.rerankSummary"),
+        callout: rerankMeta?.skip_reason ? t("panel.inspector.rerankSkipped", { reason: String(rerankMeta.skip_reason) }) : null,
         metrics,
         citations: citationSummary.top,
       }
@@ -770,7 +820,7 @@ export function buildPipelineInspectorSections(trace: RagTrace | null): Pipeline
       return {
         id,
         label: step.label,
-        summary: '证据层把最终引用聚合成可验证的来源，你可以直接跳到高分 chunk 做人工复核。',
+        summary: t("panel.inspector.citationsSummary"),
         metrics,
         citations: citationSummary.top,
       }
@@ -786,7 +836,7 @@ export function buildPipelineInspectorSections(trace: RagTrace | null): Pipeline
     return {
       id,
       label: step.label,
-      summary: '该阶段没有专门的诊断面板，保留关键计数与耗时，方便对照整条流水线。',
+      summary: t("panel.inspector.defaultSummary"),
       metrics,
       citations: [],
     }
@@ -796,7 +846,7 @@ export function buildPipelineInspectorSections(trace: RagTrace | null): Pipeline
     sections.push({
       id: 'citations',
       label: 'Citations',
-      summary: '证据层把最终引用聚合成可验证的来源，你可以直接跳到高分 chunk 做人工复核。',
+      summary: t("panel.inspector.citationsSummary"),
       metrics: [
         buildInspectorMetric('Citations', trace.citations_count),
         buildInspectorMetric('Distinct docs', citationSummary.distinctDocuments),
@@ -1113,7 +1163,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     [selected, selectedDiffComparisonTrace]
   )
   const pipelineSteps = React.useMemo(() => buildPipelineTimelineSteps(selected), [selected])
-  const pipelineInspectorSections = React.useMemo(() => buildPipelineInspectorSections(selected), [selected])
+  const pipelineInspectorSections = React.useMemo(() => buildPipelineInspectorSections(selected, t), [selected, t])
   const availableCitationSimulationChannels = React.useMemo(
     () => getAvailableCitationSimulationChannels(selected?.citations || []),
     [selected]
@@ -1123,8 +1173,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     [citationSimulationWeights, selected]
   )
   const channelSummaries = React.useMemo(
-    () => buildTraceCitationChannelSummaries(selected, selectedCitationChannel),
-    [selected, selectedCitationChannel]
+    () => buildTraceCitationChannelSummaries(selected, selectedCitationChannel, t),
+    [selected, selectedCitationChannel, t]
   )
   const filteredCitations = React.useMemo(
     () => filterTraceCitationsByChannel(selected?.citations || [], selectedCitationChannel),
@@ -1943,7 +1993,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         {activeChannelSummary ? (
                           <Badge variant="soft" className="text-[10px]">
                             {activeChannelSummary.matchCount}/{selected.citations.length} hits · focus=
-                            {getRagTraceCitationChannelLabel(selectedCitationChannel)}
+                            {getRagTraceCitationChannelLabel(selectedCitationChannel, t)}
                           </Badge>
                         ) : null}
                       </div>
@@ -2251,7 +2301,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="soft" className="text-[10px]">
-                    focus={getRagTraceCitationChannelLabel(selectedCitationChannel)}
+                    focus={getRagTraceCitationChannelLabel(selectedCitationChannel, t)}
                   </Badge>
                    {lastOpenedTraceCitationTarget ? (
                       <Button
@@ -2315,7 +2365,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             )}
                             {focusedChannelScore != null && selectedCitationChannel !== 'all' ? (
                               <Badge variant="soft" className="text-[10px] border-sky-500/20 bg-sky-500/10">
-                                {getRagTraceCitationChannelLabel(selectedCitationChannel)}={focusedChannelScore.toFixed(3)}
+                                {getRagTraceCitationChannelLabel(selectedCitationChannel, t)}={focusedChannelScore.toFixed(3)}
                               </Badge>
                             ) : null}
                             {rerankScore ? (
@@ -2394,7 +2444,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     )
                   }) : (
                      <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-6 text-sm text-muted-foreground">
-                       {t("panel.topCitations.empty")} <span className="font-mono">All</span> {t("panel.topCitations.emptySuffix")}
+                       {t("panel.topCitations.empty")} <span className="font-mono">{getRagTraceCitationChannelLabel('all', t)}</span> {t("panel.topCitations.emptySuffix")}
                      </div>
                    )}
                 </div>
