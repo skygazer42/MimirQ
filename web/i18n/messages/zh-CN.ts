@@ -674,6 +674,39 @@ const zhCNMessages = {
       loadingSrMessage: 'Loading RAG trace panel',
     },
   },
+  EvidenceWorkbench: {
+    controls: {
+      datasetScope: '数据集范围',
+      datasetPlaceholder: '选择数据集',
+      allDocuments: '全部可访问文档',
+      loadingDatasets: '加载数据集中…',
+      profile: '检索 Profile',
+      profilePlaceholder: '选择 profile',
+      query: 'Query',
+      queryPlaceholder: '输入要检索的 query（只检索，不生成回答）',
+    },
+    profiles: {
+      recall50: 'recall50 (默认)',
+      coverage80: 'coverage80',
+      recall20: 'recall20',
+    },
+    actions: {
+      searching: '检索中…',
+      search: '检索',
+      reset: '清空',
+      export: '导出',
+    },
+    toasts: {
+      foundEvidence: '找到证据',
+      abstainTriggered: '已触发 abstain：{reason}',
+      noEvidence: '未找到证据',
+      exportedPack: '已导出 Evidence Pack',
+    },
+    errors: {
+      loadDatasetsFailed: '加载数据集失败',
+      retrieveFailed: '检索失败，请检查后端服务状态',
+    },
+  },
   ParsingWorkbench: {
     rootFolder: '根目录',
     title: '文档解析工作台',
