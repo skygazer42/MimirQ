@@ -8,6 +8,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Copy, Pencil, RotateCcw, Save, Sparkles } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -59,16 +61,17 @@ export function ChunkInspectorDialog({
   onSave: (payload: { content: string; metadata: JsonObject }) => void
   onReset: () => void
 }>) {
+  const t = useTranslations('ChunkPreview')
   const pipelineCtx = usePipelineOptions()
   const [content, setContent] = useState('')
   const [metadataText, setMetadataText] = useState('{}')
   const sectionLabel = useMemo(() => (chunk ? getChunkSectionLabel(chunk) : null), [chunk])
 
   const title = useMemo(() => {
-    const name = (sourceFilename || '').trim() || 'document'
+    const name = (sourceFilename || '').trim() || t('chunkInspector.documentFallback')
     if (index == null) return name
-    return `${name} · chunk #${index + 1}`
-  }, [index, sourceFilename])
+    return t('chunkInspector.chunkLabel', { name, index: index + 1 })
+  }, [index, sourceFilename, t])
 
   // Initialize draft when dialog opens / chunk changes.
   useEffect(() => {
@@ -86,13 +89,19 @@ export function ChunkInspectorDialog({
     try {
       const obj = JSON.parse(metadataText || '{}') as unknown
       if (!isJsonObject(obj)) {
-        return { value: null as JsonObject | null, error: 'metadata 必须是 JSON 对象（{}）' }
+        return {
+          value: null as JsonObject | null,
+          error: t('chunkInspector.metadataObjectError'),
+        }
       }
       return { value: obj, error: null as string | null }
     } catch (error: unknown) {
-      return { value: null as JsonObject | null, error: getErrorMessage(error, 'metadata JSON 解析失败') }
+      return {
+        value: null as JsonObject | null,
+        error: getErrorMessage(error, t('chunkInspector.metadataParseError')),
+      }
     }
-  }, [metadataText])
+  }, [metadataText, t])
   const parsedMetadata = metadataParse.value
   const metadataError = metadataParse.error
 
@@ -111,7 +120,7 @@ export function ChunkInspectorDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Pencil className="w-5 h-5 text-primary" />
-            Chunk Inspector
+            {t('chunkInspector.title')}
           </DialogTitle>
           <DialogDescription className="space-y-1">
             <div className="text-xs">
@@ -121,19 +130,26 @@ export function ChunkInspectorDialog({
             </div>
             {sectionLabel ? (
               <div className="text-[11px] text-muted-foreground">
-                Section: <span title={sectionLabel.full}>{sectionLabel.full}</span>
+                {t('chunkInspector.sectionLabel')}:{' '}
+                <span title={sectionLabel.full}>{sectionLabel.full}</span>
               </div>
             ) : null}
             <div className="text-[11px] text-muted-foreground">
-              仅影响入库/导出；不会重新切块，也不会改变原文定位。
-              {overrideUpdatedAt ? `（已编辑：${new Date(overrideUpdatedAt).toLocaleString()}）` : ''}
+              {t('chunkInspector.description')}
+              {overrideUpdatedAt
+                ? t('chunkInspector.editedAt', {
+                    value: new Date(overrideUpdatedAt).toLocaleString(),
+                  })
+                : ''}
             </div>
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-3">
           <div className="grid gap-1">
-            <div className="text-xs font-medium text-muted-foreground">content</div>
+            <div className="text-xs font-medium text-muted-foreground">
+              {t('chunkInspector.contentLabel')}
+            </div>
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -144,11 +160,15 @@ export function ChunkInspectorDialog({
 
           <div className="grid gap-1">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-medium text-muted-foreground">metadata (JSON object)</div>
+              <div className="text-xs font-medium text-muted-foreground">
+                {t('chunkInspector.metadataLabel')}
+              </div>
               {metadataError ? (
                 <span className="text-[11px] text-destructive">{metadataError}</span>
               ) : (
-                <span className="text-[11px] text-muted-foreground">OK</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {t('chunkInspector.metadataOk')}
+                </span>
               )}
             </div>
             <Textarea
@@ -164,11 +184,15 @@ export function ChunkInspectorDialog({
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-primary" />
-                <div className="text-xs font-medium text-muted-foreground">embedding text (vector-only)</div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  {t('chunkInspector.embeddingLabel')}
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">
-                  {embeddingPrefixEnabled ? 'prefix: on' : 'prefix: off'}
+                  {embeddingPrefixEnabled
+                    ? t('chunkInspector.prefixOn')
+                    : t('chunkInspector.prefixOff')}
                 </span>
                 <Button
                   type="button"
@@ -183,11 +207,11 @@ export function ChunkInspectorDialog({
                     }
                   }}
                   disabled={disabled || !embeddingText}
-                  aria-label="复制 embedding text"
-                  title="复制 embedding text"
+                  aria-label={t('chunkInspector.copyEmbedding')}
+                  title={t('chunkInspector.copyEmbedding')}
                 >
                   <Copy className="w-3.5 h-3.5 mr-1.5" />
-                  复制
+                  {t('chunkInspector.copyEmbedding')}
                 </Button>
               </div>
             </div>
@@ -198,7 +222,7 @@ export function ChunkInspectorDialog({
               disabled={disabled}
             />
             <div className="text-[11px] text-muted-foreground">
-              当启用 “Embedding · 结构化上下文前缀” 时，入库向量 embedding 会使用该文本；不会改变原文定位与 chunk.content（DB）。
+              {t('chunkInspector.embeddingHint')}
             </div>
           </div>
         </div>
@@ -216,7 +240,7 @@ export function ChunkInspectorDialog({
             disabled={disabled}
           >
             <RotateCcw className="w-4 h-4" />
-            重置本 chunk 编辑
+            {t('chunkInspector.reset')}
           </Button>
 
           <Button
@@ -231,7 +255,7 @@ export function ChunkInspectorDialog({
             disabled={disabled || !parsedMetadata}
           >
             <Save className="w-4 h-4" />
-            保存
+            {t('chunkInspector.save')}
           </Button>
         </div>
       </DialogContent>
