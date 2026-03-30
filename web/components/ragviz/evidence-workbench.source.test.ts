@@ -38,4 +38,16 @@ describe('evidence workbench source', () => {
     expect(src).toContain('t("errors.loadDatasetsFailed")')
     expect(src).toContain('t("errors.retrieveFailed")')
   })
+
+  it('moves result panel headings and empty states into next-intl lookups', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'evidence-workbench.tsx'), 'utf8')
+
+    expect(src).toContain('t("results.summary.title")')
+    expect(src).toContain('t("results.summary.description")')
+    expect(src).toContain('t("results.citations.title")')
+    expect(src).toContain('t("results.citations.hitsHint")')
+    expect(src).toContain('t("results.citations.emptyHits")')
+    expect(src).toContain('t("results.citations.emptyContent")')
+    expect(src).toContain('t("results.citations.noCitations")')
+  })
 })
