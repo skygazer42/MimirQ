@@ -687,6 +687,13 @@ const zhCNMessages = {
         removedTitle: '丢失证据（A）',
         scoreShiftTitle: '分数漂移',
       },
+      topCitations: {
+        reopenRecent: '重新打开最近证据',
+      },
+      toasts: {
+        openedCitationDocument: '已打开引用文档',
+        reopenedRecentEvidence: '已重新打开最近证据',
+      },
     },
   },
   EvidenceWorkbench: {

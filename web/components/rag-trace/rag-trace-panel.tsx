@@ -1242,12 +1242,12 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
         previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
       })
       if (opts?.notify) {
-        toast.message('已打开引用文档', {
+        toast.message(t("panel.toasts.openedCitationDocument"), {
           description: `${label}${chunkId ? ` · ${chunkId}` : ''}`,
         })
       }
     },
-    [openDocument, rememberOpenedTraceCitationTarget, requestId]
+    [openDocument, rememberOpenedTraceCitationTarget, requestId, t]
   )
 
   const reopenLastTraceCitation = React.useCallback(() => {
@@ -1274,10 +1274,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
     const pageLabel =
       lastOpenedTraceCitationTarget.pageNumber != null ? ` · P.${lastOpenedTraceCitationTarget.pageNumber}` : ''
-    toast.message('已重新打开最近证据', {
+    toast.message(t("panel.toasts.reopenedRecentEvidence"), {
       description: `${lastOpenedTraceCitationTarget.label || lastOpenedTraceCitationTarget.documentId}${pageLabel}`,
     })
-  }, [lastOpenedTraceCitationTarget, openDocument])
+  }, [lastOpenedTraceCitationTarget, openDocument, t])
 
   const downloadBundle = React.useCallback(async () => {
     const rid = requestId
@@ -2244,17 +2244,17 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                   <Badge variant="soft" className="text-[10px]">
                     focus={getRagTraceCitationChannelLabel(selectedCitationChannel)}
                   </Badge>
-                  {lastOpenedTraceCitationTarget ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-xl"
-                      onClick={reopenLastTraceCitation}
-                      title="重新打开当前 request 最近查看过的证据"
-                    >
-                      重新打开最近证据
-                    </Button>
-                  ) : null}
+                   {lastOpenedTraceCitationTarget ? (
+                     <Button
+                       variant="outline"
+                       size="sm"
+                       className="rounded-xl"
+                       onClick={reopenLastTraceCitation}
+                       title="重新打开当前 request 最近查看过的证据"
+                     >
+                       {t("panel.topCitations.reopenRecent")}
+                     </Button>
+                   ) : null}
                 </div>
               </div>
               <ScrollArea className="h-[360px]">
