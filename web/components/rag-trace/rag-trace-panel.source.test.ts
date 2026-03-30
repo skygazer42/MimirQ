@@ -103,4 +103,18 @@ describe('rag trace panel source', () => {
     expect(src).toContain('t("panel.channels.focusDescription")')
     expect(src).toContain('t("panel.channels.unavailable")')
   })
+
+  it('moves evidence drift empty states and diff summary labels into next-intl lookups', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'rag-trace-panel.tsx'), 'utf8')
+
+    expect(src).toContain('t("panel.evidenceDrift.addedEmpty")')
+    expect(src).toContain('t("panel.evidenceDrift.removedEmpty")')
+    expect(src).toContain('t("panel.evidenceDrift.missingLocalSummary")')
+    expect(src).toContain('t("panel.compare.summaryA")')
+    expect(src).toContain('t("panel.compare.summaryB")')
+    expect(src).toContain('t("panel.compare.changesMeta"')
+    expect(src).toContain('t("panel.compare.truncatedYes")')
+    expect(src).toContain('t("panel.compare.truncatedNo")')
+    expect(src).toContain('t("panel.topCitations.open")')
+  })
 })
