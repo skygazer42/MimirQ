@@ -326,19 +326,23 @@ export function KGDiagnosticsPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">运行参数</CardTitle>
+              <CardTitle className="text-base">{t("runConfig.title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
-                  <Label>dataset_id</Label>
-                  <Input value={datasetId} onChange={(e) => setDatasetId(e.target.value)} placeholder="UUID" />
+                  <Label>{t("runConfig.datasetId")}</Label>
+                  <Input
+                    value={datasetId}
+                    onChange={(e) => setDatasetId(e.target.value)}
+                    placeholder={t("runConfig.datasetPlaceholder")}
+                  />
                 </div>
                 <div className="space-y-1">
-                  <Label>hardcase_mode</Label>
+                  <Label>{t("runConfig.hardcaseMode")}</Label>
                   <Select value={hardcaseMode} onValueChange={(v) => setHardcaseMode(v as KGHardcaseMode)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="选择 hardcase_mode" />
+                      <SelectValue placeholder={t("runConfig.hardcaseModePlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="off">off</SelectItem>
@@ -348,7 +352,7 @@ export function KGDiagnosticsPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>max_cases</Label>
+                  <Label>{t("runConfig.maxCases")}</Label>
                   <Input
                     type="number"
                     value={String(maxCases)}
@@ -358,7 +362,7 @@ export function KGDiagnosticsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>k</Label>
+                  <Label>{t("runConfig.k")}</Label>
                   <Input
                     type="number"
                     value={String(k)}
@@ -368,7 +372,7 @@ export function KGDiagnosticsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>hardcases_per_failed_case</Label>
+                  <Label>{t("runConfig.hardcasesPerFailedCase")}</Label>
                   <Input
                     type="number"
                     value={String(hardcasesPerFailed)}
@@ -378,7 +382,7 @@ export function KGDiagnosticsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>max_failed_cases_for_hardcase</Label>
+                  <Label>{t("runConfig.maxFailedCasesForHardcase")}</Label>
                   <Input
                     type="number"
                     value={String(maxFailedForHardcase)}
@@ -388,7 +392,7 @@ export function KGDiagnosticsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>llm_temperature</Label>
+                  <Label>{t("runConfig.llmTemperature")}</Label>
                   <Input
                     type="number"
                     value={String(llmTemperature)}
@@ -399,13 +403,13 @@ export function KGDiagnosticsPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>extract_skills</Label>
+                  <Label>{t("runConfig.extractSkills")}</Label>
                   <Select
                     value={extractSkills}
                     onValueChange={(value) => setExtractSkills(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="auto/on/off" />
+                      <SelectValue placeholder={t("runConfig.extractModePlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="auto">auto</SelectItem>
@@ -415,13 +419,13 @@ export function KGDiagnosticsPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>extract_relations</Label>
+                  <Label>{t("runConfig.extractRelations")}</Label>
                   <Select
                     value={extractRelations}
                     onValueChange={(value) => setExtractRelations(coerceOneOf(KG_EXTRACT_MODE_VALUES, value, 'auto'))}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="auto/on/off" />
+                      <SelectValue placeholder={t("runConfig.extractModePlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="auto">auto</SelectItem>
@@ -435,11 +439,11 @@ export function KGDiagnosticsPage() {
               <div className="flex flex-wrap items-center gap-4">
                 <Label className="flex items-center gap-2">
                   <Checkbox checked={autoExtractKg} onCheckedChange={(v) => setAutoExtractKg(Boolean(v))} />
-                  auto_extract_kg
+                  {t("runConfig.autoExtractKg")}
                 </Label>
                 <Label className="flex items-center gap-2">
                   <Checkbox checked={persistRun} onCheckedChange={(v) => setPersistRun(Boolean(v))} />
-                  persist_run（用于 diff）
+                  {t("runConfig.persistRun")}
                 </Label>
               </div>
             </CardContent>
