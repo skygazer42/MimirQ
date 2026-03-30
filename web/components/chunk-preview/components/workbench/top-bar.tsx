@@ -5,46 +5,58 @@
 
 import { useRef, useState } from 'react'
 import {
-  Layers,
-  FileText,
-  SlidersHorizontal,
-  ExternalLink,
-  Save,
-  RotateCcw,
-  HelpCircle,
-  MoreVertical,
-  Download,
-  Upload,
-  Copy,
-  X,
-  Check,
   AlertCircle,
-  Loader2,
+  Check,
+  Copy,
+  Download,
+  ExternalLink,
+  FileText,
   GitCompareArrows,
+  HelpCircle,
+  Layers,
+  Loader2,
+  MoreVertical,
+  RotateCcw,
+  Save,
+  SlidersHorizontal,
   TestTube2,
+  Upload,
+  X,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
+
+import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
+import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
+import { useChunkPreview } from '@/components/chunk-preview/context'
+import {
+  applyChunkOverridesToPreview,
+  chunkPreviewToCsv,
+  chunkPreviewToJsonl,
+  chunkPreviewToMarkdown,
+  chunkPreviewToReviewMarkdown,
+  chunkPreviewToReviewReport,
+  downloadTextFile,
+  sanitizeFilename,
+  toChunkPreviewExport,
+} from '@/components/chunk-preview/utils/export'
+import { isChunkOverrideDisabled } from '@/components/chunk-preview/utils/metadata'
+import { TestGenerationDialog } from '@/components/test-generation-dialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { cn, formatFileSize, detachPromise } from '@/lib/utils'
-import { API_V1_BASE_URL } from '@/lib/env'
-import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
-import { isChunkOverrideDisabled } from '@/components/chunk-preview/utils/metadata'
+import { useRouter } from '@/i18n/navigation'
+import { API_V1_BASE_URL } from '@/lib/env'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
-import { applyChunkOverridesToPreview, chunkPreviewToCsv, chunkPreviewToJsonl, chunkPreviewToMarkdown, chunkPreviewToReviewMarkdown, chunkPreviewToReviewReport, downloadTextFile, sanitizeFilename, toChunkPreviewExport } from '@/components/chunk-preview/utils/export'
-import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
-import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
-import { TestGenerationDialog } from '@/components/test-generation-dialog'
-import { useRouter } from '@/i18n/navigation'
+import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -71,6 +83,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 export function TopBar() {
   const router = useRouter()
+  const t = useTranslations('ChunkPreview')
   const [helpOpen, setHelpOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
   const [testGenOpen, setTestGenOpen] = useState(false)
@@ -121,36 +134,55 @@ export function TopBar() {
 
   const effectiveParserBackend = previewData?.parser_backend || parserBackend
   const effectiveChunkStrategy = previewData?.chunk_strategy || chunkStrategy
-  const skippedCount = Object.values(chunkOverrides).reduce((acc, override) => acc + (isChunkOverrideDisabled(override) ? 1 : 0), 0)
+  const skippedCount = Object.values(chunkOverrides).reduce(
+    (acc, override) => acc + (isChunkOverrideDisabled(override) ? 1 : 0),
+    0
+  )
 
-  const exportPreviewEnabledOnly = previewData ? applyChunkOverridesToPreview(previewData, chunkOverrides) : null
+  const exportPreviewEnabledOnly = previewData
+    ? applyChunkOverridesToPreview(previewData, chunkOverrides)
+    : null
   const exportPreviewAll = previewData
     ? applyChunkOverridesToPreview(previewData, chunkOverrides, { include_disabled: true })
     : null
-  const exportPreview = includeSkippedInExports ? exportPreviewAll : exportPreviewEnabledOnly
+  const exportPreview = includeSkippedInExports
+    ? exportPreviewAll
+    : exportPreviewEnabledOnly
 
   const shouldIncludeSeparatorSettings = effectiveChunkStrategy === 'separator'
-  const shouldIncludeParentChildSettings = effectiveChunkStrategy === 'parent_child'
-  const selectedPreviewChunk = selectedChunkIndex == null ? null : previewData?.chunks?.[selectedChunkIndex] || null
+  const shouldIncludeParentChildSettings =
+    effectiveChunkStrategy === 'parent_child'
+  const selectedPreviewChunk =
+    selectedChunkIndex == null ? null : previewData?.chunks?.[selectedChunkIndex] || null
   const selectedChunkStart =
-    typeof selectedPreviewChunk?.start_index === 'number' && Number.isFinite(selectedPreviewChunk.start_index)
+    typeof selectedPreviewChunk?.start_index === 'number' &&
+    Number.isFinite(selectedPreviewChunk.start_index)
       ? Math.trunc(selectedPreviewChunk.start_index)
       : null
   const selectedChunkEnd =
-    typeof selectedPreviewChunk?.end_index === 'number' && Number.isFinite(selectedPreviewChunk.end_index)
+    typeof selectedPreviewChunk?.end_index === 'number' &&
+    Number.isFinite(selectedPreviewChunk.end_index)
       ? Math.trunc(selectedPreviewChunk.end_index)
       : null
   const canOpenSelectedChunkInChatPage =
-    selectedChunkStart != null && selectedChunkEnd != null && selectedChunkEnd > selectedChunkStart
+    selectedChunkStart != null &&
+    selectedChunkEnd != null &&
+    selectedChunkEnd > selectedChunkStart
   const selectedDocumentChunkId = (() => {
-    if (!selectedPreviewChunk || !isRecord(selectedPreviewChunk.metadata)) return undefined
-    const chunkId = (getStringValue(selectedPreviewChunk.metadata, 'chunk_id') || '').trim()
+    if (!selectedPreviewChunk || !isRecord(selectedPreviewChunk.metadata)) {
+      return undefined
+    }
+    const chunkId =
+      (getStringValue(selectedPreviewChunk.metadata, 'chunk_id') || '').trim()
     return chunkId || undefined
   })()
   const canCompare = Boolean(
     previewData &&
       (runHistory || []).filter(
-        (item) => item.fileName === currentFile.name && typeof item.cacheKey === 'string' && Boolean(item.cacheKey)
+        (item) =>
+          item.fileName === currentFile.name &&
+          typeof item.cacheKey === 'string' &&
+          Boolean(item.cacheKey)
       ).length >= 2
   )
 
@@ -158,20 +190,49 @@ export function TopBar() {
     if (!previewData) return undefined
     const rows: string[] = []
     rows.push(`server_total: ${previewData.preview_duration_ms ?? '-'}ms`)
-    if (typeof previewData.upload_duration_ms === 'number') rows.push(`upload: ${previewData.upload_duration_ms}ms`)
-    if (previewData.parse_duration_ms != null) rows.push(`parse: ${previewData.parse_duration_ms}ms`)
-    if (typeof previewData.governance_duration_ms === 'number') rows.push(`govern: ${previewData.governance_duration_ms}ms`)
-    if (typeof previewData.chunking_duration_ms === 'number') rows.push(`chunk: ${previewData.chunking_duration_ms}ms`)
-    if (typeof previewData.stats_duration_ms === 'number') rows.push(`stats: ${previewData.stats_duration_ms}ms`)
+    if (typeof previewData.upload_duration_ms === 'number') {
+      rows.push(`upload: ${previewData.upload_duration_ms}ms`)
+    }
+    if (previewData.parse_duration_ms != null) {
+      rows.push(`parse: ${previewData.parse_duration_ms}ms`)
+    }
+    if (typeof previewData.governance_duration_ms === 'number') {
+      rows.push(`govern: ${previewData.governance_duration_ms}ms`)
+    }
+    if (typeof previewData.chunking_duration_ms === 'number') {
+      rows.push(`chunk: ${previewData.chunking_duration_ms}ms`)
+    }
+    if (typeof previewData.stats_duration_ms === 'number') {
+      rows.push(`stats: ${previewData.stats_duration_ms}ms`)
+    }
     rows.push(`parse_cache_hit: ${previewData.parse_cache_hit ? 'true' : 'false'}`)
-    if (previewData.parse_cache_hit) rows.push(`parse_cache_age_ms: ${previewData.parse_cache_age_ms ?? '-'}`)
+    if (previewData.parse_cache_hit) {
+      rows.push(`parse_cache_age_ms: ${previewData.parse_cache_age_ms ?? '-'}`)
+    }
     return rows.join('\\n')
   })()
 
   const escapeForAnsiC = (value: string) => {
     // Used for bash $'...' strings in generated cURL.
-    return value.replaceAll("\\", '\\\\').replaceAll("'", "\\\\'")
+    return value.replaceAll('\\', '\\\\').replaceAll("'", "\\\\'")
   }
+
+  const buildConfig = () => ({
+    dataset_id: datasetId || undefined,
+    chunk_size: chunkSize,
+    chunk_overlap: chunkOverlap,
+    parser_backend: effectiveParserBackend,
+    chunk_strategy: effectiveChunkStrategy,
+    pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
+    ...(shouldIncludeSeparatorSettings
+      ? {
+          separator_preset: separatorPreset,
+          separator: separatorPreset === 'custom' ? separatorCustom : undefined,
+          keep_separator: keepSeparator,
+          separator_max_chunk_size: separatorMaxChunkSize,
+        }
+      : {}),
+  })
 
   const copyText = async (value: string, okMessage: string) => {
     try {
@@ -183,13 +244,13 @@ export function TopBar() {
     } catch {
       // ignore
     }
-    toast.error('复制失败：浏览器不支持 Clipboard API')
+    toast.error(t('topBar.toasts.clipboardUnsupported'))
   }
 
   const applyConfigFromText = async (text: string) => {
     const parsed = JSON.parse(text || '{}') as unknown
     if (!isRecord(parsed)) {
-      toast.error('配置格式错误：不是有效的 JSON 对象')
+      toast.error(t('topBar.toasts.invalidJsonObject'))
       return false
     }
 
@@ -211,8 +272,12 @@ export function TopBar() {
 
     updateSettings({
       ...(nextStrategy ? { strategy: nextStrategy } : {}),
-      ...(nextSize !== undefined ? { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) } : {}),
-      ...(nextOverlap !== undefined ? { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) } : {}),
+      ...(nextSize !== undefined
+        ? { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) }
+        : {}),
+      ...(nextOverlap !== undefined
+        ? { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) }
+        : {}),
     })
 
     const separatorPresetValue = getStringValue(parsed, 'separator_preset')
@@ -229,10 +294,16 @@ export function TopBar() {
       updateSeparatorSettings({ keepSeparator: parsed.keep_separator })
     }
 
-    const separatorMaxChunkSizeValue = getFiniteNumber(parsed, 'separator_max_chunk_size')
+    const separatorMaxChunkSizeValue = getFiniteNumber(
+      parsed,
+      'separator_max_chunk_size'
+    )
     if (separatorMaxChunkSizeValue !== undefined) {
       updateSeparatorSettings({
-        separatorMaxChunkSize: Math.max(0, Math.min(20000, Math.trunc(separatorMaxChunkSizeValue))),
+        separatorMaxChunkSize: Math.max(
+          0,
+          Math.min(20000, Math.trunc(separatorMaxChunkSizeValue))
+        ),
       })
     }
 
@@ -249,7 +320,7 @@ export function TopBar() {
       )
 
       if (!importResult.ok) {
-        toast.error(importResult.error || '配置格式错误：pipeline 配置无效')
+        toast.error(importResult.error || t('topBar.toasts.invalidPipelineConfig'))
         return false
       }
     }
@@ -258,160 +329,178 @@ export function TopBar() {
   }
 
   return (
-	    <div className="flex items-center justify-between gap-4 min-w-0">
-	      <div className="flex items-center gap-4">
-	        {/* Logo Icon */}
-	        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 text-primary shadow-soft ring-1 ring-border/60">
-	          <Layers className="w-5 h-5" />
-	        </div>
-        
+    <div className="flex items-center justify-between gap-4 min-w-0">
+      <div className="flex items-center gap-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 text-primary shadow-soft ring-1 ring-border/60">
+          <Layers className="w-5 h-5" />
+        </div>
+
         <div className="flex flex-col justify-center min-w-0">
-          {/* Row 1: Title & File Info */}
           <div className="flex items-center gap-3">
-            <h1 className="text-sm font-semibold text-foreground whitespace-nowrap">切片预览</h1>
+            <h1 className="text-sm font-semibold text-foreground whitespace-nowrap">
+              {t('workbench.title')}
+            </h1>
             <div className="h-3 w-px bg-muted-foreground/40" />
             <div className="flex items-center gap-2 min-w-0">
-               <span className="text-sm font-bold text-foreground truncate max-w-[300px]" title={currentFileItem?.displayName || currentFile.name}>
-                 {currentFileItem?.displayName || currentFile.name}
-               </span>
-               <div className="flex items-center gap-1.5">
-                 <span className="text-[10px] font-bold bg-primary/15 text-primary px-1.5 py-0.5 rounded-md min-w-[2rem] text-center">
-                   #{currentFileIndex + 1}
-                 </span>
-                 {currentFileItem?.originalFileType && (
-                    <span className="text-[10px] font-mono font-medium text-muted-foreground border border-border px-1.5 py-0.5 rounded bg-muted">
-                      {String(currentFileItem.originalFileType).toUpperCase()}
-                    </span>
-                 )}
-                 <span className="text-[10px] text-muted-foreground font-mono">
-                   {formatFileSize(currentFileItem?.originalFileSize ?? currentFile.size)}
-                 </span>
-               </div>
+              <span
+                className="text-sm font-bold text-foreground truncate max-w-[300px]"
+                title={currentFileItem?.displayName || currentFile.name}
+              >
+                {currentFileItem?.displayName || currentFile.name}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold bg-primary/15 text-primary px-1.5 py-0.5 rounded-md min-w-[2rem] text-center">
+                  #{currentFileIndex + 1}
+                </span>
+                {currentFileItem?.originalFileType ? (
+                  <span className="text-[10px] font-mono font-medium text-muted-foreground border border-border px-1.5 py-0.5 rounded bg-muted">
+                    {String(currentFileItem.originalFileType).toUpperCase()}
+                  </span>
+                ) : null}
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {formatFileSize(currentFileItem?.originalFileSize ?? currentFile.size)}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Row 2: Process Configs & Stats */}
           <div className="flex items-center gap-3 mt-1.5">
-             <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
-                <span className="text-muted-foreground">解析:</span>
-                <span className="font-medium text-primary" title={effectiveParserBackend}>
-                  {getParserLabel(effectiveParserBackend)}
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-md">
+              <span className="text-muted-foreground">{t('topBar.parserLabel')}:</span>
+              <span className="font-medium text-primary" title={effectiveParserBackend}>
+                {getParserLabel(effectiveParserBackend)}
+              </span>
+              {effectiveChunkStrategy === 'auto' && previewData?.auto_selected_strategy ? (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-medium"
+                  title={t('topBar.status.autoSelectedStrategyTitle', {
+                    strategy: previewData.auto_selected_strategy,
+                  })}
+                >
+                  → {getChunkStrategyLabel(previewData.auto_selected_strategy)}
                 </span>
-                {effectiveChunkStrategy === 'auto' && previewData?.auto_selected_strategy ? (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-medium"
-                    title={`auto_selected_strategy: ${previewData.auto_selected_strategy}`}
-                  >
-                    → {getChunkStrategyLabel(previewData.auto_selected_strategy)}
+              ) : null}
+              <span className="w-px h-2.5 bg-border mx-0.5" />
+              <span className="text-muted-foreground">{t('topBar.strategyLabel')}:</span>
+              <span className="font-medium text-primary" title={effectiveChunkStrategy}>
+                {getChunkStrategyLabel(effectiveChunkStrategy)}
+              </span>
+              <span className="w-px h-2.5 bg-border mx-0.5" />
+              <span className="text-muted-foreground">{t('topBar.paramsLabel')}:</span>
+              <span className="font-medium font-mono text-foreground/80">
+                {chunkSize}/{chunkOverlap}
+              </span>
+            </div>
+
+            {typeof lastPreviewDurationMs === 'number' || previewData ? (
+              <div className="flex items-center gap-2 text-[11px]">
+                {typeof lastPreviewDurationMs === 'number' ? (
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
+                    <span title={serverTimingTitle}>{lastPreviewDurationMs}ms</span>
                   </span>
                 ) : null}
-                <span className="w-px h-2.5 bg-border mx-0.5" />
-                <span className="text-muted-foreground">策略:</span>
-                <span className="font-medium text-primary" title={effectiveChunkStrategy}>
-                  {getChunkStrategyLabel(effectiveChunkStrategy)}
-                </span>
-                <span className="w-px h-2.5 bg-border mx-0.5" />
-                <span className="text-muted-foreground">参数:</span>
-                <span className="font-medium font-mono text-foreground/80">{chunkSize}/{chunkOverlap}</span>
-             </div>
+                {previewData ? (
+                  <span className="text-muted-foreground font-medium flex items-center gap-1">
+                    <span
+                      className={cn(
+                        'w-1.5 h-1.5 rounded-full',
+                        previewData.chunks_truncated ? 'bg-warning' : 'bg-success'
+                      )}
+                    />
+                    {(() => {
+                      const shown = Number(previewData.total_chunks || 0)
+                      const full = Number(previewData.total_chunks_full ?? shown)
+                      return t('topBar.status.chunks', {
+                        count: full && full !== shown ? `${shown}/${full}` : `${shown}`,
+                      })
+                    })()}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
 
-             {(typeof lastPreviewDurationMs === 'number' || previewData) && (
-               <div className="flex items-center gap-2 text-[11px]">
-                  {typeof lastPreviewDurationMs === 'number' && (
-                    <span className="text-muted-foreground flex items-center gap-1">
-                       <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40" />
-                       <span title={serverTimingTitle}>{lastPreviewDurationMs}ms</span>
-                    </span>
-                  )}
-                  {previewData && (
-                    <span className="text-muted-foreground font-medium flex items-center gap-1">
-                       <span className={cn('w-1.5 h-1.5 rounded-full', previewData.chunks_truncated ? 'bg-warning' : 'bg-success')} />
-                       {(() => {
-                         const shown = Number(previewData.total_chunks || 0)
-                         const full = Number(previewData.total_chunks_full ?? shown)
-                         return full && full !== shown ? `${shown}/${full}` : `${shown}`
-                       })()} Chunks
-                    </span>
-                  )}
-               </div>
-             )}
+            {cacheHit ? (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success border border-success/30 font-medium">
+                {t('topBar.status.cacheHit')}
+              </span>
+            ) : null}
 
-             {cacheHit && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success border border-success/30 font-medium">
-                  Hit Cache
-                </span>
-             )}
+            {previewData?.parse_cache_hit ? (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/30 font-medium"
+                title={t('topBar.status.parseCacheAgeTitle', {
+                  age: previewData.parse_cache_age_ms ?? '-',
+                })}
+              >
+                {t('topBar.status.parseCache')}
+              </span>
+            ) : null}
 
-             {previewData?.parse_cache_hit ? (
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/30 font-medium"
-                  title={`parse_cache_age_ms: ${previewData.parse_cache_age_ms ?? '-'}`}
-                >
-                  Parse Cache
-                </span>
-             ) : null}
+            {previewData?.quality_gate?.grade ? (
+              <span
+                className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded border font-medium',
+                  previewData.quality_gate.grade === 'pass'
+                    ? 'bg-success/10 text-success border-success/30'
+                    : previewData.quality_gate.grade === 'fail'
+                      ? 'bg-destructive/10 text-destructive border-destructive/30'
+                      : 'bg-warning/10 text-warning border-warning/30'
+                )}
+                title={(previewData.quality_gate.reasons || []).join('\\n')}
+              >
+                {t('topBar.status.quality', {
+                  grade: String(previewData.quality_gate.grade).toUpperCase(),
+                })}
+              </span>
+            ) : null}
 
-             {previewData?.quality_gate?.grade ? (
-                <span
-                  className={cn(
-                    'text-[10px] px-1.5 py-0.5 rounded border font-medium',
-                    (() => {
-    if (previewData.quality_gate.grade === 'pass') {
-        return 'bg-success/10 text-success border-success/30';
-    }
-    else if (previewData.quality_gate.grade === 'fail') {
-            return 'bg-destructive/10 text-destructive border-destructive/30';
-        }
-        else {
-            return 'bg-warning/10 text-warning border-warning/30';
-        }
-})()
-                  )}
-                  title={(previewData.quality_gate.reasons || []).join('\\n')}
-                >
-                  Quality: {String(previewData.quality_gate.grade).toUpperCase()}
-                </span>
-             ) : null}
-
-             {previewData?.warnings?.length ? (
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/30 font-medium"
-                  title={(previewData.warnings || []).join('\\n')}
-                >
-                  Warnings: {previewData.warnings.length}
-                </span>
-             ) : null}
+            {previewData?.warnings?.length ? (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/30 font-medium"
+                title={(previewData.warnings || []).join('\\n')}
+              >
+                {t('topBar.status.warnings', {
+                  count: previewData.warnings.length,
+                })}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
-        {submitSuccess && (
+        {submitSuccess ? (
           <div className="flex items-center gap-1.5 text-success text-xs font-medium bg-success/10 px-3 py-1.5 rounded-full border border-success/30 animate-in fade-in slide-in-from-right-4 motion-reduce:animate-none">
             <Check className="w-3.5 h-3.5" />
-            已成功入库
+            {t('topBar.submitSuccess')}
           </div>
-        )}
+        ) : null}
 
         {isPreviewDirty && !submitSuccess && !error ? (
           <div className="flex items-center gap-1.5 text-warning text-xs font-medium bg-warning/10 px-3 py-1.5 rounded-full border border-warning/30">
             <AlertCircle className="w-3.5 h-3.5" />
-            配置已变更，未重新预览
+            {t('topBar.dirtyWarning')}
           </div>
         ) : null}
 
-        {error && (
+        {error ? (
           <div className="flex items-center gap-1.5 text-destructive text-xs bg-destructive/10 px-3 py-1.5 rounded-full border border-destructive/30 max-w-[300px] truncate">
             <AlertCircle className="w-3.5 h-3.5" />
             {error}
           </div>
-        )}
+        ) : null}
 
         <div className="h-8 w-px bg-border mx-2" />
 
-        <Button variant="ghost" size="sm" onClick={reset} className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={reset}
+          className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
+        >
           <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-          重置
+          {t('topBar.actions.reset')}
         </Button>
 
         <Button
@@ -420,11 +509,11 @@ export function TopBar() {
           size="sm"
           onClick={toggleSettingsPanel}
           className="lg:hidden text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
-          aria-label="打开参数面板"
-          title="打开参数面板"
+          aria-label={t('topBar.actions.openSettingsPanel')}
+          title={t('topBar.actions.openSettingsPanel')}
         >
           <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
-          参数
+          {t('topBar.actions.settings')}
         </Button>
 
         <Button
@@ -433,11 +522,21 @@ export function TopBar() {
           size="sm"
           onClick={toggleOriginalPanel}
           className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
-          aria-label={showOriginalPanel ? '隐藏原文面板' : '显示原文面板'}
-          title={showOriginalPanel ? '隐藏原文面板' : '显示原文面板'}
+          aria-label={
+            showOriginalPanel
+              ? t('topBar.actions.hideOriginalPanel')
+              : t('topBar.actions.showOriginalPanel')
+          }
+          title={
+            showOriginalPanel
+              ? t('topBar.actions.hideOriginalPanel')
+              : t('topBar.actions.showOriginalPanel')
+          }
         >
           <FileText className="w-3.5 h-3.5 mr-1.5" />
-          {showOriginalPanel ? '隐藏原文' : '显示原文'}
+          {showOriginalPanel
+            ? t('topBar.actions.hideOriginal')
+            : t('topBar.actions.showOriginal')}
         </Button>
 
         <Button
@@ -446,11 +545,11 @@ export function TopBar() {
           size="sm"
           onClick={() => setHelpOpen(true)}
           className="text-muted-foreground hover:text-foreground h-9 px-3 text-xs font-medium hover:bg-muted"
-          aria-label="切块指南"
-          title="切块指南"
+          aria-label={t('topBar.actions.helpTitle')}
+          title={t('topBar.actions.helpTitle')}
         >
           <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
-          <span className="hidden md:inline">指南</span>
+          <span className="hidden md:inline">{t('topBar.actions.help')}</span>
         </Button>
 
         <DropdownMenu>
@@ -460,8 +559,8 @@ export function TopBar() {
               variant="ghost"
               size="sm"
               className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted"
-              aria-label="更多操作"
-              title="更多操作"
+              aria-label={t('topBar.actions.moreActions')}
+              title={t('topBar.actions.moreActions')}
             >
               <MoreVertical className="w-4 h-4" />
             </Button>
@@ -480,95 +579,84 @@ export function TopBar() {
                   .text()
                   .then(async (text) => {
                     const ok = await applyConfigFromText(text)
-                    if (ok) toast.success('已从文件导入配置')
+                    if (ok) {
+                      toast.success(t('topBar.toasts.importedFromFile'))
+                    }
                   })
-                  .catch((error: unknown) => toast.error(getErrorMessage(error, '读取配置文件失败')))
+                  .catch((error: unknown) =>
+                    toast.error(
+                      getErrorMessage(error, t('topBar.toasts.readConfigFileFailed'))
+                    )
+                  )
               }}
             />
             <DropdownMenuItem
               onSelect={() => {
-                const config = {
-                  dataset_id: datasetId || undefined,
-                  chunk_size: chunkSize,
-                  chunk_overlap: chunkOverlap,
-                  parser_backend: effectiveParserBackend,
-                  chunk_strategy: effectiveChunkStrategy,
-                  pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-                  ...(shouldIncludeSeparatorSettings
-                    ? {
-                        separator_preset: separatorPreset,
-                        separator: separatorPreset === 'custom' ? separatorCustom : undefined,
-                        keep_separator: keepSeparator,
-                        separator_max_chunk_size: separatorMaxChunkSize,
-                      }
-                    : {}),
-                }
-                detachPromise(copyText(JSON.stringify(config, null, 2), '已复制预览配置'))
+                detachPromise(
+                  copyText(
+                    JSON.stringify(buildConfig(), null, 2),
+                    t('topBar.toasts.copiedConfig')
+                  )
+                )
               }}
             >
               <Copy className="mr-2 h-4 w-4" />
-              复制预览配置
+              {t('topBar.actions.copyConfig')}
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => {
-                const config = {
-                  dataset_id: datasetId || undefined,
-                  chunk_size: chunkSize,
-                  chunk_overlap: chunkOverlap,
-                  parser_backend: effectiveParserBackend,
-                  chunk_strategy: effectiveChunkStrategy,
-                  pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
-                  ...(shouldIncludeSeparatorSettings
-                    ? {
-                        separator_preset: separatorPreset,
-                        separator: separatorPreset === 'custom' ? separatorCustom : undefined,
-                        keep_separator: keepSeparator,
-                        separator_max_chunk_size: separatorMaxChunkSize,
-                      }
-                    : {}),
-                }
-                const filename = `${sanitizeFilename(currentFileItem?.displayName || currentFile.name)}.chunk-preview.config.json`
-                downloadTextFile(filename, JSON.stringify(config, null, 2), 'application/json;charset=utf-8')
-                toast.success('已导出配置')
+                const filename = `${sanitizeFilename(
+                  currentFileItem?.displayName || currentFile.name
+                )}.chunk-preview.config.json`
+                downloadTextFile(
+                  filename,
+                  JSON.stringify(buildConfig(), null, 2),
+                  'application/json;charset=utf-8'
+                )
+                toast.success(t('topBar.toasts.exportedConfig'))
               }}
             >
               <Download className="mr-2 h-4 w-4" />
-              导出配置.json
+              {t('topBar.actions.exportConfig')}
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => {
-                importConfigInputRef.current?.click()
-              }}
-            >
+            <DropdownMenuItem onSelect={() => importConfigInputRef.current?.click()}>
               <Upload className="mr-2 h-4 w-4" />
-              从文件导入配置
+              {t('topBar.actions.importConfigFromFile')}
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={async () => {
                 try {
                   if (!navigator.clipboard?.readText) {
-                    toast.error('读取剪贴板失败：浏览器不支持 Clipboard API')
+                    toast.error(t('topBar.toasts.clipboardReadUnsupported'))
                     return
                   }
                   const text = await navigator.clipboard.readText()
                   const ok = await applyConfigFromText(text)
-                  if (ok) toast.success('已从剪贴板导入配置')
+                  if (ok) {
+                    toast.success(t('topBar.toasts.importedFromClipboard'))
+                  }
                 } catch (error: unknown) {
-                  toast.error(getErrorMessage(error, '导入配置失败'))
+                  toast.error(
+                    getErrorMessage(error, t('topBar.toasts.importConfigFailed'))
+                  )
                 }
               }}
             >
               <Copy className="mr-2 h-4 w-4" />
-              从剪贴板导入配置
+              {t('topBar.actions.importConfigFromClipboard')}
             </DropdownMenuItem>
             {previewData && skippedCount > 0 ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuCheckboxItem
                   checked={includeSkippedInExports}
-                  onCheckedChange={(checked) => setIncludeSkippedInExports(Boolean(checked))}
+                  onCheckedChange={(checked) =>
+                    setIncludeSkippedInExports(Boolean(checked))
+                  }
                 >
-                  Include SKIP chunks in exports ({skippedCount})
+                  {t('topBar.actions.includeSkippedInExports', {
+                    count: skippedCount,
+                  })}
                 </DropdownMenuCheckboxItem>
               </>
             ) : null}
@@ -578,79 +666,99 @@ export function TopBar() {
               onSelect={() => {
                 if (!exportPreview) return
                 const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.json`
-                downloadTextFile(filename, JSON.stringify(toChunkPreviewExport(exportPreview), null, 2), 'application/json;charset=utf-8')
-                toast.success('已导出 JSON')
+                downloadTextFile(
+                  filename,
+                  JSON.stringify(toChunkPreviewExport(exportPreview), null, 2),
+                  'application/json;charset=utf-8'
+                )
+                toast.success(t('topBar.toasts.exportedJson'))
               }}
             >
               <Download className="mr-2 h-4 w-4" />
-              导出 chunks.json
+              {t('topBar.actions.exportJson')}
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
                 if (!exportPreview) return
                 const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.md`
-                downloadTextFile(filename, chunkPreviewToMarkdown(exportPreview), 'text/markdown;charset=utf-8')
-                toast.success('已导出 Markdown')
+                downloadTextFile(
+                  filename,
+                  chunkPreviewToMarkdown(exportPreview),
+                  'text/markdown;charset=utf-8'
+                )
+                toast.success(t('topBar.toasts.exportedMarkdown'))
               }}
             >
               <Download className="mr-2 h-4 w-4" />
-              导出 chunks.md
+              {t('topBar.actions.exportMarkdown')}
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
                 if (!exportPreview) return
                 const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.csv`
-                downloadTextFile(filename, chunkPreviewToCsv(exportPreview), 'text/csv;charset=utf-8')
-                toast.success('已导出 CSV')
+                downloadTextFile(
+                  filename,
+                  chunkPreviewToCsv(exportPreview),
+                  'text/csv;charset=utf-8'
+                )
+                toast.success(t('topBar.toasts.exportedCsv'))
               }}
             >
               <Download className="mr-2 h-4 w-4" />
-              导出 chunks.csv
+              {t('topBar.actions.exportCsv')}
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
                 if (!exportPreview) return
                 const filename = `${sanitizeFilename(exportPreview.filename)}.chunks.jsonl`
-                downloadTextFile(filename, chunkPreviewToJsonl(exportPreview), 'application/x-ndjson;charset=utf-8')
-                toast.success('已导出 JSONL')
+                downloadTextFile(
+                  filename,
+                  chunkPreviewToJsonl(exportPreview),
+                  'application/x-ndjson;charset=utf-8'
+                )
+                toast.success(t('topBar.toasts.exportedJsonl'))
               }}
             >
               <Download className="mr-2 h-4 w-4" />
-              导出 chunks.jsonl
+              {t('topBar.actions.exportJsonl')}
             </DropdownMenuItem>
-             <DropdownMenuItem
-               disabled={!previewData}
-               onSelect={() => {
-                 if (!previewData) return
-                 const report = chunkPreviewToReviewReport(previewData, chunkOverrides, {
-                   include_disabled: includeSkippedInExports,
-                 })
-                 const filename = `${sanitizeFilename(previewData.filename)}.chunk-review.json`
-                 downloadTextFile(filename, JSON.stringify(report, null, 2), 'application/json;charset=utf-8')
-                 toast.success('Review report exported')
-               }}
-             >
-               <Download className="mr-2 h-4 w-4" />
-               Export review-report.json
-             </DropdownMenuItem>
-             <DropdownMenuItem
-               disabled={!previewData}
-               onSelect={() => {
-                 if (!previewData) return
-                 const md = chunkPreviewToReviewMarkdown(previewData, chunkOverrides, {
-                   include_disabled: includeSkippedInExports,
-                 })
-                 const filename = `${sanitizeFilename(previewData.filename)}.chunk-review.md`
-                 downloadTextFile(filename, md, 'text/markdown;charset=utf-8')
-                 toast.success('Review report exported')
-               }}
-             >
-               <Download className="mr-2 h-4 w-4" />
-               Export review-report.md
-             </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!previewData}
+              onSelect={() => {
+                if (!previewData) return
+                const report = chunkPreviewToReviewReport(previewData, chunkOverrides, {
+                  include_disabled: includeSkippedInExports,
+                })
+                const filename = `${sanitizeFilename(previewData.filename)}.chunk-review.json`
+                downloadTextFile(
+                  filename,
+                  JSON.stringify(report, null, 2),
+                  'application/json;charset=utf-8'
+                )
+                toast.success(t('topBar.toasts.exportedReviewReport'))
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {t('topBar.actions.exportReviewJson')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={!previewData}
+              onSelect={() => {
+                if (!previewData) return
+                const markdown = chunkPreviewToReviewMarkdown(previewData, chunkOverrides, {
+                  include_disabled: includeSkippedInExports,
+                })
+                const filename = `${sanitizeFilename(previewData.filename)}.chunk-review.md`
+                downloadTextFile(filename, markdown, 'text/markdown;charset=utf-8')
+                toast.success(t('topBar.toasts.exportedReviewReport'))
+              }}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {t('topBar.actions.exportReviewMarkdown')}
+            </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!previewData}
               onSelect={() => {
@@ -661,12 +769,12 @@ export function TopBar() {
                   file_type: payloadPreview.file_type,
                   file_size: payloadPreview.file_size,
                   dataset_id: datasetId || undefined,
-                  chunks: (payloadPreview.chunks || []).map((c) => ({
-                    content: c.content ?? '',
-                    page_number: c.page_number,
-                    start_char: c.start_index,
-                    end_char: c.end_index,
-                    metadata: c.metadata ?? {},
+                  chunks: (payloadPreview.chunks || []).map((chunk) => ({
+                    content: chunk.content ?? '',
+                    page_number: chunk.page_number,
+                    start_char: chunk.start_index,
+                    end_char: chunk.end_index,
+                    metadata: chunk.metadata ?? {},
                   })),
                   pipeline: pipelineOverridesEnabled
                     ? {
@@ -676,20 +784,23 @@ export function TopBar() {
                       }
                     : undefined,
                 }
-                detachPromise(copyText(JSON.stringify(payload, null, 2), '已复制手动入库 payload'))
+                detachPromise(
+                  copyText(
+                    JSON.stringify(payload, null, 2),
+                    t('topBar.toasts.copiedIngestPayload')
+                  )
+                )
               }}
             >
               <Copy className="mr-2 h-4 w-4" />
-              复制手动入库 payload
+              {t('topBar.actions.copyIngestPayload')}
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={!canCompare}
-              onSelect={() => {
-                setCompareOpen(true)
-              }}
+              onSelect={() => setCompareOpen(true)}
             >
               <GitCompareArrows className="mr-2 h-4 w-4" />
-              预览对比（A/B）
+              {t('topBar.actions.comparePreview')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -697,7 +808,9 @@ export function TopBar() {
                 const url = `${API_V1_BASE_URL}/documents/chunk-preview?chunk_size=${encodeURIComponent(
                   String(chunkSize)
                 )}&chunk_overlap=${encodeURIComponent(String(chunkOverlap))}`
-                const pipeline = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : null
+                const pipeline = pipelineOverridesEnabled
+                  ? JSON.stringify(pipelineOptions || {})
+                  : null
                 const lines = [
                   `curl -X POST "${url}" \\`,
                   `  -H "X-User-ID: demo" \\`,
@@ -709,7 +822,10 @@ export function TopBar() {
                   lines.push(`  -F "dataset_id=${datasetId}"`)
                 }
                 if (shouldIncludeParentChildSettings) {
-                                    lines.push(`  -F "child_ratio=${parentChildRatio}"`, `  -F "min_child_size=${parentChildMinChildSize}"`)
+                  lines.push(
+                    `  -F "child_ratio=${parentChildRatio}"`,
+                    `  -F "min_child_size=${parentChildMinChildSize}"`
+                  )
                 }
                 if (shouldIncludeSeparatorSettings) {
                   lines.push(`  -F "separator_preset=${separatorPreset}"`)
@@ -717,7 +833,10 @@ export function TopBar() {
                     lines.push(`  -F $'separator=${escapeForAnsiC(separatorCustom)}'`)
                   }
                   lines.push(`  -F "keep_separator=${keepSeparator ? 'true' : 'false'}"`)
-                  if (typeof separatorMaxChunkSize === 'number' && separatorMaxChunkSize > 0) {
+                  if (
+                    typeof separatorMaxChunkSize === 'number' &&
+                    separatorMaxChunkSize > 0
+                  ) {
                     lines.push(`  -F "separator_max_chunk_size=${separatorMaxChunkSize}"`)
                   }
                 }
@@ -725,31 +844,30 @@ export function TopBar() {
                   lines[lines.length - 1] = `${lines[lines.length - 1]} \\`
                   lines.push(`  -F 'pipeline=${pipeline}'`)
                 }
-                const curl = lines.join('\n')
-                detachPromise(copyText(curl, '已复制 cURL'))
+                detachPromise(
+                  copyText(lines.join('\n'), t('topBar.toasts.copiedCurl'))
+                )
               }}
             >
               <Copy className="mr-2 h-4 w-4" />
-              复制 cURL（chunk-preview）
+              {t('topBar.actions.copyCurl')}
             </DropdownMenuItem>
             {createdDocumentId ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onSelect={() => {
-                    detachPromise(copyText(createdDocumentId, '已复制文档 ID'))
+                    detachPromise(
+                      copyText(createdDocumentId, t('topBar.toasts.copiedDocumentId'))
+                    )
                   }}
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  复制文档 ID
+                  {t('topBar.actions.copyDocumentId')}
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => {
-                    setTestGenOpen(true)
-                  }}
-                >
+                <DropdownMenuItem onSelect={() => setTestGenOpen(true)}>
                   <TestTube2 className="mr-2 h-4 w-4" />
-                  生成评测问题（RAGAS）
+                  {t('topBar.actions.generateEvalQuestions')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={!canOpenSelectedChunkInChatPage}
@@ -757,43 +875,44 @@ export function TopBar() {
                     if (!canOpenSelectedChunkInChatPage) return
                     const params = new URLSearchParams()
                     params.set('doc', createdDocumentId)
-                    if (selectedDocumentChunkId) params.set('chunk', selectedDocumentChunkId)
+                    if (selectedDocumentChunkId) {
+                      params.set('chunk', selectedDocumentChunkId)
+                    }
                     params.set('start', String(selectedChunkStart))
                     params.set('end', String(selectedChunkEnd))
                     router.push(`/?${params.toString()}`)
-                    toast.success('已跳转到对话页并定位当前切片')
+                    toast.success(t('topBar.toasts.openedCurrentChunkInChat'))
                   }}
                 >
                   <ExternalLink className="mr-2 h-4 w-4" />
-                  打开当前切片（对话页）
+                  {t('topBar.actions.openCurrentChunkInChat')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={() => {
-                    const url = `/?doc=${encodeURIComponent(createdDocumentId)}`
-                    router.push(url)
-                    toast.success('已跳转到对话页并打开文档面板')
+                    router.push(`/?doc=${encodeURIComponent(createdDocumentId)}`)
+                    toast.success(t('topBar.toasts.openedDocumentInChat'))
                   }}
                 >
                   <ExternalLink className="mr-2 h-4 w-4" />
-                  打开文档（对话页）
+                  {t('topBar.actions.openDocumentInChat')}
                 </DropdownMenuItem>
               </>
             ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {onClose && (
+        {onClose ? (
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted"
-            aria-label="关闭"
-            title="关闭"
+            aria-label={t('topBar.actions.close')}
+            title={t('topBar.actions.close')}
           >
             <X className="w-4 h-4" />
           </Button>
-        )}
+        ) : null}
 
         <Button
           onClick={submitChunks}
@@ -805,24 +924,23 @@ export function TopBar() {
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
           )}
         >
-          {(() => {
-    if (isSubmitting) {
-        return (<Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2"/>);
-    }
-    else if (submitSuccess) {
-            return (<Check className="w-3.5 h-3.5 mr-2"/>);
-        }
-        else {
-            return (<Save className="w-3.5 h-3.5 mr-2"/>);
-        }
-})()}
-          {submitSuccess ? '已完成' : '确认入库'}
-	        </Button>
-	      </div>
-	      <div className="absolute inset-x-6 bottom-0 h-px bg-border/60" />
+          {isSubmitting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2" />
+          ) : submitSuccess ? (
+            <Check className="w-3.5 h-3.5 mr-2" />
+          ) : (
+            <Save className="w-3.5 h-3.5 mr-2" />
+          )}
+          {submitSuccess
+            ? t('topBar.actions.completed')
+            : t('topBar.actions.confirmIngest')}
+        </Button>
+      </div>
 
-	      <ChunkingHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
-	      {previewData ? (
+      <div className="absolute inset-x-6 bottom-0 h-px bg-border/60" />
+
+      <ChunkingHelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+      {previewData ? (
         <ChunkCompareDialog
           open={compareOpen}
           onOpenChange={setCompareOpen}
@@ -835,11 +953,11 @@ export function TopBar() {
       <TestGenerationDialog
         open={testGenOpen}
         onClose={() => setTestGenOpen(false)}
-        onGenerated={() => toast.success('已生成评测用例，可在「评测」页查看')}
+        onGenerated={() => toast.success(t('topBar.toasts.generatedEvalCases'))}
         initialSourceType="documents"
         initialDatasetId={datasetId || undefined}
         initialDocumentIds={createdDocumentId ? [createdDocumentId] : undefined}
-	      />
-	    </div>
-	  )
+      />
+    </div>
+  )
 }
