@@ -849,10 +849,12 @@ export function RagTracePipelineTimeline({
   steps,
   selectedKey = null,
   onSelectStep,
+  emptyLabel = 'pipeline steps unavailable',
 }: Readonly<{
   steps: PipelineTimelineStep[]
   selectedKey?: string | null
   onSelectStep?: ((key: string) => void) | undefined
+  emptyLabel?: string
 }>) {
   return (
     <div className="p-4 space-y-2">
@@ -914,7 +916,7 @@ export function RagTracePipelineTimeline({
           )
         })
       ) : (
-        <div className="text-xs text-muted-foreground">pipeline steps unavailable</div>
+        <div className="text-xs text-muted-foreground">{emptyLabel}</div>
       )}
     </div>
   )
@@ -1789,14 +1791,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 <Panel variant="muted" className="flex items-center gap-3">
                   <Timer className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                   <div>
-                    <div className="text-xs font-semibold text-foreground">Retrieve</div>
+                    <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.retrieve")}</div>
                     <div className="text-xs text-muted-foreground">{formatSec(selected?.retrieval?.elapsed_sec)}</div>
                   </div>
                 </Panel>
                 <Panel variant="muted" className="flex items-center gap-3">
                   <Database className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                   <div>
-                    <div className="text-xs font-semibold text-foreground">Reranker</div>
+                    <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.reranker")}</div>
                     <div className="text-xs text-muted-foreground">
                       {selected?.rerank?.enabled ? selected?.rerank?.provider || 'enabled' : 'disabled'}
                     </div>
@@ -1805,7 +1807,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 <Panel variant="muted" className="flex items-center gap-3">
                   <Quote className="h-4 w-4 text-sky-600 dark:text-sky-400" />
                   <div>
-                    <div className="text-xs font-semibold text-foreground">Citations</div>
+                    <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.citations")}</div>
                     <div className="text-xs text-muted-foreground">{selected.citations_count}</div>
                   </div>
                 </Panel>
@@ -1815,11 +1817,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
             <Panel variant="glass" className="overflow-hidden" padding="none">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                 <div>
-                  <div className="text-sm font-semibold">Pipeline Timeline</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    点击 stage 进入检查器；聚焦时间线后可用 <span className="font-mono">←/→</span> 或{' '}
-                    <span className="font-mono">h/l</span> 切换阶段。
-                  </div>
+                  <div className="text-sm font-semibold">{t("panel.timeline.title")}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{t("panel.timeline.description")}</div>
                 </div>
                 {selectedPipelineSection && selectedPipelineSectionIndex >= 0 ? (
                   <Badge variant="soft" className="text-[10px]">
@@ -1837,6 +1836,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     steps={pipelineSteps}
                     selectedKey={selectedPipelineSection?.id ?? selectedPipelineSectionId}
                     onSelectStep={(key) => setSelectedPipelineSectionId(normalizePipelineSectionId(key))}
+                    emptyLabel={t("panel.timeline.unavailable")}
                   />
                 </div>
                 <div className="border-t border-border/60 bg-muted/10 lg:border-l lg:border-t-0">
@@ -1875,13 +1875,15 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           </div>
                         ) : (
                           <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
-                            当前阶段没有额外指标，更多细节可继续看下方 channel / citation 面板。
+                            {t("panel.timeline.metricsUnavailable")}
                           </div>
                         )}
 
                         {selectedPipelineSection.citations.length ? (
                           <div className="space-y-2">
-                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">Quick Evidence</div>
+                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                              {t("panel.timeline.quickEvidence")}
+                            </div>
                             {selectedPipelineSection.citations.slice(0, 3).map((citation, index) => {
                               const documentId = String(citation.document_id || '').trim()
                               const chunkId = String(citation.chunk_id || '').trim() || undefined
@@ -1904,7 +1906,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                     <div className="truncate text-sm font-medium text-foreground">{label}</div>
                                     <div className="mt-1 text-[11px] text-muted-foreground">
                                       {pageLabel ? `${pageLabel} · ` : ''}
-                                      {chunkId ? `chunk=${chunkId}` : 'document-level evidence'}
+                                      {chunkId ? `chunk=${chunkId}` : t("panel.timeline.documentLevelEvidence")}
                                     </div>
                                   </div>
                                   <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1915,7 +1917,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         ) : null}
                       </motion.div>
                     ) : (
-                      <div className="p-4 text-xs text-muted-foreground">pipeline steps unavailable</div>
+                      <div className="p-4 text-xs text-muted-foreground">{t("panel.timeline.unavailable")}</div>
                     )}
                   </AnimatePresence>
                 </div>
@@ -1924,7 +1926,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
             <Panel variant="glass" className="overflow-hidden" padding="none">
               <div className="px-4 py-3 border-b border-border/60">
-                <div className="text-sm font-semibold">Channels</div>
+                <div className="text-sm font-semibold">{t("panel.channels.title")}</div>
               </div>
               <div className="p-4 space-y-3">
                 {channels ? (
@@ -1932,10 +1934,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     <div className="rounded-2xl border border-sidebar-border/70 bg-sidebar/60 p-3 shadow-soft">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <div className="text-[11px] font-semibold uppercase text-muted-foreground">Focus citations</div>
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            点击 channel，直接筛出真正带来最终证据的命中。
-                          </div>
+                          <div className="text-[11px] font-semibold uppercase text-muted-foreground">{t("panel.channels.focusTitle")}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{t("panel.channels.focusDescription")}</div>
                         </div>
                         {activeChannelSummary ? (
                           <Badge variant="soft" className="text-[10px]">
@@ -2231,7 +2231,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     </div>
                   </>
                 ) : (
-                  <div className="text-xs text-muted-foreground">暂无 per-channel 指标（旧 trace 或 retriever_debug 被裁剪）。</div>
+                  <div className="text-xs text-muted-foreground">{t("panel.channels.unavailable")}</div>
                 )}
               </div>
             </Panel>
