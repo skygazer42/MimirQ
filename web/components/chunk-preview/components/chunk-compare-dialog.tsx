@@ -5,6 +5,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Download, GitCompareArrows, Info } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -60,6 +62,7 @@ function EvidenceHighlightsPanel(props: Readonly<{
   tone: 'added' | 'removed'
   items: ReturnType<typeof buildSemanticEvidenceHighlights>['added']
 }>) {
+  const t = useTranslations('ChunkPreview')
   const { title, emptyLabel, tone, items } = props
   const toneClass =
     tone === 'added'
@@ -84,8 +87,8 @@ function EvidenceHighlightsPanel(props: Readonly<{
           {items.map((item) => (
             <div key={`${tone}:${item.index}:${item.example.slice(0, 24)}`} className="rounded-xl border border-border/60 bg-background/80 p-3">
               <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                <span>Chunk #{item.index}</span>
-                <span className="font-mono">x{item.count}</span>
+                <span>{t('compareDialog.evidence.itemLabel', { index: item.index })}</span>
+                <span className="font-mono">{t('compareDialog.evidence.countLabel', { count: item.count })}</span>
               </div>
               <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground/90">
                 {item.segments.map((segment, index) =>
@@ -108,7 +111,9 @@ function EvidenceHighlightsPanel(props: Readonly<{
               </div>
               {item.referenceExample ? (
                 <div className="mt-3 border-t border-border/50 pt-3">
-                  <div className="text-[10px] font-medium uppercase text-muted-foreground">Closest opposite evidence</div>
+                  <div className="text-[10px] font-medium uppercase text-muted-foreground">
+                    {t('compareDialog.evidence.referenceLabel')}
+                  </div>
                   <div className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
                     {item.referenceExample}
                   </div>
@@ -131,6 +136,7 @@ export function ChunkCompareDialog(props: Readonly<{
   getCachedPreview: (cacheKey: string) => ChunkPreviewResponse | null
 }>) {
   const { open, onOpenChange, current, currentFileName, runHistory, getCachedPreview } = props
+  const t = useTranslations('ChunkPreview')
 
   const candidates = useMemo(() => {
     const list = (runHistory || [])
@@ -176,10 +182,10 @@ export function ChunkCompareDialog(props: Readonly<{
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <GitCompareArrows className="w-5 h-5 text-primary" />
-              预览对比（A/B）
+              {t('compareDialog.title')}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              基于 chunk 内容的快速对比（哈希匹配，适合调参时判断“块有没有变好/变坏”）。
+              {t('compareDialog.description')}
             </DialogDescription>
           </DialogHeader>
         </div>
@@ -188,30 +194,45 @@ export function ChunkCompareDialog(props: Readonly<{
           {candidates.length < 2 ? (
             <div className="flex items-start gap-2 text-sm text-muted-foreground bg-muted/40 border border-border/60 rounded-xl p-4">
               <Info className="w-4 h-4 mt-0.5" />
-              <div>
-                需要至少两次预览（同一个文件）才能对比。先修改参数并点击“预览”。
-              </div>
+              <div>{t('compareDialog.needTwoRuns')}</div>
             </div>
           ) : (
             <>
               <div className="flex flex-col md:flex-row md:items-center gap-3">
-                <div className="text-xs text-muted-foreground min-w-[72px]">基线（A）</div>
+                <div className="text-xs text-muted-foreground min-w-[72px]">{t('compareDialog.baselineLabel')}</div>
                 <Select value={baselineKey} onValueChange={(v) => setBaselineKey(v)}>
                   <SelectTrigger className="h-9 w-full md:w-[520px] text-xs bg-card/80">
-                    <SelectValue placeholder="选择一个历史预览作为基线" />
+                    <SelectValue placeholder={t('compareDialog.baselinePlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {candidates.slice(1).map((item) => (
                       <SelectItem key={item.id} value={String(item.cacheKey || '')}>
-                        {new Date(item.createdAt).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}{' '}
-                        · {item.strategy} · {item.chunkSize}/{item.chunkOverlap} · {item.totalChunks} chunks
+                        {t('compareDialog.candidateSummary', {
+                          timestamp: new Date(item.createdAt).toLocaleString([], {
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          }),
+                          strategy: item.strategy,
+                          chunkSize: item.chunkSize,
+                          chunkOverlap: item.chunkOverlap,
+                          totalChunks: item.totalChunks,
+                        })}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <div className="text-xs text-muted-foreground flex-1">
-                  当前（B）：{current.chunk_strategy} · {current.params?.chunk_size}/{current.params?.chunk_overlap} · {current.total_chunks} chunks
-                  {currentHierarchyBasis.length ? ` · hierarchy_basis=${currentHierarchyBasis.join(',')}` : ''}
+                  {t('compareDialog.currentSummary', {
+                    strategy: current.chunk_strategy,
+                    chunkSize: current.params?.chunk_size ?? '-',
+                    chunkOverlap: current.params?.chunk_overlap ?? '-',
+                    totalChunks: current.total_chunks,
+                  })}
+                  {currentHierarchyBasis.length
+                    ? t('compareDialog.hierarchyBasis', { value: currentHierarchyBasis.join(',') })
+                    : ''}
                 </div>
               </div>
 
@@ -219,98 +240,114 @@ export function ChunkCompareDialog(props: Readonly<{
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
                     <div className="bg-card border border-border/60 rounded-xl p-4">
-                    <div className="text-[10px] text-muted-foreground uppercase  font-medium">Chunks</div>
-                    <div className="mt-2 flex items-end justify-between">
-                      <div className="text-sm font-mono text-foreground/90">{diff.bCount}</div>
-                      <div className={cn('text-xs font-mono', (() => {
-    if (diff.deltaCount === 0) {
-        return 'text-muted-foreground';
-    }
-    else if (diff.deltaCount > 0) {
-            return 'text-info';
-        }
-        else {
-            return 'text-warning';
-        }
-})())}>
-                        {formatDelta(diff.deltaCount)}
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                        {t('compareDialog.cards.chunkCount')}
                       </div>
-                    </div>
-                    <div className="mt-2 text-[11px] text-muted-foreground">
-                      A: {diff.aCount} · B: {diff.bCount}
-                    </div>
+                      <div className="mt-2 flex items-end justify-between">
+                        <div className="text-sm font-mono text-foreground/90">{diff.bCount}</div>
+                        <div
+                          className={cn(
+                            'text-xs font-mono',
+                            diff.deltaCount === 0
+                              ? 'text-muted-foreground'
+                              : diff.deltaCount > 0
+                                ? 'text-info'
+                                : 'text-warning'
+                          )}
+                        >
+                          {formatDelta(diff.deltaCount)}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        {t('compareDialog.cards.countSummary', { aCount: diff.aCount, bCount: diff.bCount })}
+                      </div>
                     </div>
 
                     <div className="bg-card border border-border/60 rounded-xl p-4">
-                    <div className="text-[10px] text-muted-foreground uppercase  font-medium">长度分布（{diff.unit}）</div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-                      <div className="text-muted-foreground">
-                        P10<br />
-                        <span className="font-mono text-foreground/90">{diff.bP10 ?? '-'}</span>
-                        <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP10 ?? 0) - (diff.aP10 ?? 0))})</span>
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                        {t('compareDialog.cards.lengthDistribution', { unit: diff.unit })}
                       </div>
-                      <div className="text-muted-foreground">
-                        Avg<br />
-                        <span className="font-mono text-foreground/90">{diff.bAvg ?? '-'}</span>
-                        <span className="ml-1 text-muted-foreground">({formatDelta((diff.bAvg ?? 0) - (diff.aAvg ?? 0))})</span>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                        <div className="text-muted-foreground">
+                          {t('compareDialog.cards.metrics.p10')}
+                          <br />
+                          <span className="font-mono text-foreground/90">{diff.bP10 ?? '-'}</span>
+                          <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP10 ?? 0) - (diff.aP10 ?? 0))})</span>
+                        </div>
+                        <div className="text-muted-foreground">
+                          {t('compareDialog.cards.metrics.avg')}
+                          <br />
+                          <span className="font-mono text-foreground/90">{diff.bAvg ?? '-'}</span>
+                          <span className="ml-1 text-muted-foreground">({formatDelta((diff.bAvg ?? 0) - (diff.aAvg ?? 0))})</span>
+                        </div>
+                        <div className="text-muted-foreground">
+                          {t('compareDialog.cards.metrics.p95')}
+                          <br />
+                          <span className="font-mono text-foreground/90">{diff.bP95 ?? '-'}</span>
+                          <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP95 ?? 0) - (diff.aP95 ?? 0))})</span>
+                        </div>
                       </div>
-                      <div className="text-muted-foreground">
-                        P95<br />
-                        <span className="font-mono text-foreground/90">{diff.bP95 ?? '-'}</span>
-                        <span className="ml-1 text-muted-foreground">({formatDelta((diff.bP95 ?? 0) - (diff.aP95 ?? 0))})</span>
-                      </div>
-                    </div>
                     </div>
 
                     <div className="bg-card border border-border/60 rounded-xl p-4">
-                    <div className="text-[10px] text-muted-foreground uppercase  font-medium">内容重合度（估算）</div>
-                    <div className="mt-2 flex items-end justify-between">
-                      <div className="text-sm font-mono text-foreground/90">{Math.round((diff.overlap || 0) * 100)}%</div>
-                      <div className="text-[11px] text-muted-foreground">
-                        +{diff.added} / -{diff.removed}
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                        {t('compareDialog.cards.contentOverlap')}
                       </div>
-                    </div>
-                    <div className="mt-2 text-[11px] text-muted-foreground">
-                      以 trimmed chunk 内容哈希做 multiset 匹配；不考虑顺序和微小改动。
-                    </div>
+                      <div className="mt-2 flex items-end justify-between">
+                        <div className="text-sm font-mono text-foreground/90">{Math.round((diff.overlap || 0) * 100)}%</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {t('compareDialog.cards.addedRemoved', { added: diff.added, removed: diff.removed })}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        {t('compareDialog.cards.contentOverlapDescription')}
+                      </div>
                     </div>
 
                     <div className="bg-card border border-border/60 rounded-xl p-4">
-                    <div className="text-[10px] text-muted-foreground uppercase  font-medium">覆盖/重叠/质量</div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-                      <div className="text-muted-foreground">
-                        coverage<br />
-                        <span className="font-mono text-foreground/90">{formatPct(diff.bCoverage)}</span>
-                        <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaCoverage)})</span>
+                      <div className="text-[10px] text-muted-foreground uppercase font-medium">
+                        {t('compareDialog.cards.qualityOverview')}
                       </div>
-                      <div className="text-muted-foreground">
-                        waste<br />
-                        <span className="font-mono text-foreground/90">{formatPct(diff.bWaste)}</span>
-                        <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaWaste)})</span>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+                        <div className="text-muted-foreground">
+                          {t('compareDialog.cards.metrics.coverage')}
+                          <br />
+                          <span className="font-mono text-foreground/90">{formatPct(diff.bCoverage)}</span>
+                          <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaCoverage)})</span>
+                        </div>
+                        <div className="text-muted-foreground">
+                          {t('compareDialog.cards.metrics.waste')}
+                          <br />
+                          <span className="font-mono text-foreground/90">{formatPct(diff.bWaste)}</span>
+                          <span className="ml-1 text-muted-foreground">({formatDeltaPct(diff.deltaWaste)})</span>
+                        </div>
+                        <div className="text-muted-foreground">
+                          {t('compareDialog.cards.metrics.gaps')}
+                          <br />
+                          <span className="font-mono text-foreground/90">{diff.bGapCount ?? '-'}</span>
+                          <span className="ml-1 text-muted-foreground">({formatDelta((diff.bGapCount ?? 0) - (diff.aGapCount ?? 0))})</span>
+                        </div>
                       </div>
-                      <div className="text-muted-foreground">
-                        gaps<br />
-                        <span className="font-mono text-foreground/90">{diff.bGapCount ?? '-'}</span>
-                        <span className="ml-1 text-muted-foreground">({formatDelta((diff.bGapCount ?? 0) - (diff.aGapCount ?? 0))})</span>
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        {t('compareDialog.cards.qualitySummary', {
+                          baseline: baseline.quality_gate?.grade ?? '-',
+                          current: current.quality_gate?.grade ?? '-',
+                        })}
                       </div>
-                    </div>
-                    <div className="mt-2 text-[11px] text-muted-foreground">
-                      quality A: {baseline.quality_gate?.grade ?? '-'} · B: {current.quality_gate?.grade ?? '-'}
-                    </div>
                     </div>
                   </div>
 
                   {evidenceHighlights ? (
                     <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                       <EvidenceHighlightsPanel
-                        title="新增证据"
-                        emptyLabel="当前版本没有新增的关键证据。"
+                        title={t('compareDialog.evidence.addedTitle')}
+                        emptyLabel={t('compareDialog.evidence.addedEmpty')}
                         tone="added"
                         items={evidenceHighlights.added}
                       />
                       <EvidenceHighlightsPanel
-                        title="丢失证据"
-                        emptyLabel="当前版本没有丢失的关键证据。"
+                        title={t('compareDialog.evidence.removedTitle')}
+                        emptyLabel={t('compareDialog.evidence.removedEmpty')}
                         tone="removed"
                         items={evidenceHighlights.removed}
                       />
@@ -321,9 +358,16 @@ export function ChunkCompareDialog(props: Readonly<{
 
               {baselineMeta ? (
                 <div className="text-[11px] text-muted-foreground">
-                  基线（A）来源：{baselineMeta.strategy} · {baselineMeta.chunkSize}/{baselineMeta.chunkOverlap} · {baselineMeta.durationMs}ms
-                  {baselineMeta.cacheHit ? ' · Hit Cache' : ''}
-                  {baselineHierarchyBasis.length ? ` · hierarchy_basis=${baselineHierarchyBasis.join(',')}` : ''}
+                  {t('compareDialog.baselineSource', {
+                    strategy: baselineMeta.strategy,
+                    chunkSize: baselineMeta.chunkSize,
+                    chunkOverlap: baselineMeta.chunkOverlap,
+                    durationMs: baselineMeta.durationMs,
+                  })}
+                  {baselineMeta.cacheHit ? t('compareDialog.cacheHitSuffix') : ''}
+                  {baselineHierarchyBasis.length
+                    ? t('compareDialog.hierarchyBasis', { value: baselineHierarchyBasis.join(',') })
+                    : ''}
                 </div>
               ) : null}
 
@@ -342,10 +386,10 @@ export function ChunkCompareDialog(props: Readonly<{
                   }}
                 >
                   <Download className="mr-2 h-4 w-4" />
-                  导出 diff.json
+                  {t('compareDialog.actions.exportDiff')}
                 </Button>
                 <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                  关闭
+                  {t('compareDialog.actions.close')}
                 </Button>
               </div>
             </>
