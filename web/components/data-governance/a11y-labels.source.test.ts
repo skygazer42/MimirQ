@@ -8,8 +8,8 @@ describe('data governance accessibility labels', () => {
     const classifierSrc = fs.readFileSync(path.resolve(__dirname, 'data-classifier.tsx'), 'utf8')
     const annotatorSrc = fs.readFileSync(path.resolve(__dirname, 'data-annotator.tsx'), 'utf8')
 
-    expect(classifierSrc).toContain('aria-label={`移除标签 ${tag}`}')
-    expect(classifierSrc).toContain("aria-label={newTag ? `添加标签 ${newTag}` : '添加标签'}")
-    expect(annotatorSrc).toContain('aria-label={`删除 ${type.label} 标注 ${anno.start}-${anno.end}`}')
+    expect(classifierSrc).toContain("aria-label={t('a11y.removeTagWithValue', { tag })}")
+    expect(classifierSrc).toContain("aria-label={newTag ? t('a11y.addTagWithValue', { tag: newTag }) : t('a11y.addTag')}")
+    expect(annotatorSrc).toContain("aria-label={t('a11y.deleteAnnotation', {")
   })
 })

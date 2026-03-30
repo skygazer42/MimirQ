@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useTranslations } from 'next-intl'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
@@ -12,7 +13,7 @@ const GovernanceCommonLinesPage = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <PageLoading message="正在加载 Common Lines 学习..." srMessage="Loading common lines learning page" />,
+    loading: () => <GovernanceCommonLinesRouteLoading />,
   }
 )
 
@@ -24,3 +25,8 @@ export default function GovernanceCommonLinesRoutePage() {
   )
 }
 
+function GovernanceCommonLinesRouteLoading() {
+  const t = useTranslations('GovernanceCommonLinesRoutePage')
+
+  return <PageLoading message={t('loading.message')} srMessage={t('loading.srMessage')} />
+}

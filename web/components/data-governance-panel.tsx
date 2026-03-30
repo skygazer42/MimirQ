@@ -6,6 +6,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { ShieldCheck, Sparkles, Tag, FolderTree, FileText, Upload, Save, RotateCcw, Trash2, Eye, Search, Wrench, ScanLine, FileSearch, Hash, Layers, X, Info, AlertTriangle, Copy, PanelRightOpen, PanelRightClose } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
@@ -44,15 +45,14 @@ import { DocumentFolderTree, getFileIcon } from '@/components/document-library/f
 import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { UPLOAD_ACCEPT_WITH_ZIP, ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 
-// 娌荤悊鏍囩椤?
-const GOVERNANCE_TABS = [
-  { id: 'quality', label: '质量检测', icon: ScanLine, color: 'blue', desc: '检测文档质量与格式问题' },
-  { id: 'clean', label: '智能清洗', icon: Wrench, color: 'green', desc: '修复格式错误与乱码' },
-  { id: 'annotate', label: '数据标注', icon: Tag, color: 'purple', desc: '标记关键实体与敏感信息' },
-  { id: 'classify', label: '分类归档', icon: FolderTree, color: 'orange', desc: '设置文档分类与标签' },
-]
+const GOVERNANCE_TAB_CONFIGS = [
+  { id: 'quality', icon: ScanLine, color: 'blue' },
+  { id: 'clean', icon: Wrench, color: 'green' },
+  { id: 'annotate', icon: Tag, color: 'purple' },
+  { id: 'classify', icon: FolderTree, color: 'orange' },
+] as const
 
-type GovernanceTab = typeof GOVERNANCE_TABS[number]['id']
+type GovernanceTab = typeof GOVERNANCE_TAB_CONFIGS[number]['id']
 
 // 鏂囦欢娌荤悊鐘舵€?
 interface FileGovernanceState {
@@ -80,6 +80,7 @@ interface FileGovernanceState {
 }
 
 export function DataGovernancePanel() {
+  const t = useTranslations('DataGovernancePanel')
   const router = useRouter()
   const searchParams = useSearchParams()
   const files = useParsedFiles((state) => state.files)
@@ -104,6 +105,19 @@ export function DataGovernancePanel() {
   const [deleteFileOpen, setDeleteFileOpen] = useState(false)
   const [deleteFileTarget, setDeleteFileTarget] = useState<{ id: string; filename: string } | null>(null)
   const uploadAbortRef = useRef<AbortController | null>(null)
+  const headerTitle = t("header.title")
+  const headerSubtitle = t("header.subtitle")
+  const governanceTabs = useMemo(
+    () =>
+      GOVERNANCE_TAB_CONFIGS.map(({ id, icon, color }) => ({
+        id,
+        icon,
+        color,
+        label: t(`tabs.${id}.label`),
+        desc: t(`tabs.${id}.description`),
+      })),
+    [t]
+  )
 
   useEffect(() => {
     return () => {
@@ -115,10 +129,10 @@ export function DataGovernancePanel() {
   useEffect(() => {
     const raw = (searchParams.get('tab') || '').trim()
     if (!raw) return
-    if (GOVERNANCE_TABS.some((t) => t.id === raw)) {
-      setActiveTab(raw)
+    if (governanceTabs.some((tab) => tab.id === raw)) {
+      setActiveTab(raw as GovernanceTab)
     }
-  }, [searchParams])
+  }, [governanceTabs, searchParams])
 
   const inboundContext = useMemo(() => {
     const from = (searchParams.get('from') || '').trim()
@@ -137,26 +151,26 @@ export function DataGovernancePanel() {
     return (
       <div className="mt-3 rounded-xl border border-border/60 bg-card px-4 py-3 text-[12px] text-muted-foreground flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase  text-muted-foreground/80">Inbound</div>
+          <div className="text-[11px] uppercase  text-muted-foreground/80">{t('inbound.title')}</div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {inboundContext.from ? (
               <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
-                from: {inboundContext.from}
+                {t('inbound.fromLabel')}: {inboundContext.from}
               </span>
             ) : null}
             {inboundContext.datasetId ? (
               <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
-                dataset_id: {inboundContext.datasetId}
+                {t('inbound.datasetLabel')}: {inboundContext.datasetId}
               </span>
             ) : null}
             {inboundContext.governanceProfileRef ? (
               <span className="px-2 py-0.5 rounded-full border border-border/60 bg-muted/40 font-mono">
-                governance_profile_ref: {inboundContext.governanceProfileRef}
+                {t('inbound.profileLabel')}: {inboundContext.governanceProfileRef}
               </span>
             ) : null}
           </div>
           <div className="mt-2 text-[11px] text-muted-foreground">
-            鎻愮ず锛氳椤靛綋鍓嶄粎鍋氬紩瀵煎睍绀猴紱濡傞渶绮剧‘澶嶇幇娓呮礂鏁堟灉锛岃鍦ㄥ叆搴撻厤缃?瑙勫垯涓簲鐢ㄥ搴旂殑 pipeline/governance 閰嶇疆銆?
+            {t('inbound.description')}
           </div>
         </div>
         <Button
@@ -164,21 +178,27 @@ export function DataGovernancePanel() {
           variant="ghost"
           size="sm"
           className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-foreground"
-          aria-label="关闭提示"
+          aria-label={t('inbound.close')}
           onClick={() => setInboundBannerDismissed(true)}
         >
           <X className="w-4 h-4" />
         </Button>
       </div>
     )
-  }, [inboundBannerDismissed, inboundContext.datasetId, inboundContext.from, inboundContext.governanceProfileRef])
+  }, [
+    inboundBannerDismissed,
+    inboundContext.datasetId,
+    inboundContext.from,
+    inboundContext.governanceProfileRef,
+    t,
+  ])
 
   const cancelUploadAndParse = useCallback(() => {
     uploadAbortRef.current?.abort()
     uploadAbortRef.current = null
     setUploading(false)
-    toast.info('已取消解析')
-  }, [])
+    toast.info(t('toasts.uploadCancelled'))
+  }, [t])
 
   // 鏂囦欢娌荤悊鐘舵€?
   const [governanceStates, setGovernanceStates] = useState<Record<string, FileGovernanceState>>({})
@@ -394,9 +414,9 @@ export function DataGovernancePanel() {
       if (selectedFileId === fileId) {
         setSelectedFileId(null)
       }
-      toast.success('已删除文件')
+      toast.success(t('toasts.fileDeleted'))
     },
-    [files, removeFile, selectedFileId]
+    [files, removeFile, selectedFileId, t]
   )
 
   // 鍒濆鍖栵細鑷姩閫夋嫨绗竴涓枃浠?
@@ -492,20 +512,20 @@ export function DataGovernancePanel() {
             }
           } catch (e) {
             console.error('Failed to extract zip:', e)
-            toast.error(`ZIP 解压失败：${file.name}`)
+            toast.error(t('toasts.zipExtractFailed', { filename: file.name }))
           }
 
           if (addedInZip === 0) {
             toast.warning(
               extractedCount === 0
-                ? `ZIP 中未找到文件：${file.name}`
-                : `ZIP 中没有可解析文件：${file.name}`
+                ? t('toasts.zipNoFilesFound', { filename: file.name })
+                : t('toasts.zipNoSupportedFiles', { filename: file.name })
             )
           } else {
             toast.success(
               skippedInZip > 0
-                ? `已从 ZIP 添加 ${addedInZip} 个文件（跳过 ${skippedInZip} 个）`
-                : `已从 ZIP 添加 ${addedInZip} 个文件`
+                ? t('toasts.zipAddedWithSkipped', { added: addedInZip, skipped: skippedInZip })
+                : t('toasts.zipAdded', { added: addedInZip })
             )
           }
           continue
@@ -544,19 +564,19 @@ export function DataGovernancePanel() {
         setSelectedFileId((prev) => prev ?? newId)
       }
 
-      if (added > 0) toast.success('已解析并加入：' + added + ' 个文件')
-      if (skipped > 0) toast.warning('已跳过 ' + skipped + ' 个不支持的文件')
+      if (added > 0) toast.success(t('toasts.parsedAndAdded', { count: added }))
+      if (skipped > 0) toast.warning(t('toasts.skippedUnsupported', { count: skipped }))
     } catch (error) {
       if (controller.signal.aborted || uploadAbortRef.current !== controller) return
       console.error('Failed to parse file:', error)
-      toast.error('解析失败，请稍后重试')
+      toast.error(t('toasts.parseFailed'))
     } finally {
       if (uploadAbortRef.current === controller) {
         uploadAbortRef.current = null
         setUploading(false)
       }
     }
-  }, [addParsedFile, initializeGovernanceState, parserBackend, activeFolderId, libraryFolders, createFolder])
+  }, [activeFolderId, addParsedFile, createFolder, initializeGovernanceState, libraryFolders, parserBackend, t])
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
@@ -580,7 +600,7 @@ export function DataGovernancePanel() {
     if (!governanceState) return ''
     return viewMode === 'original' ? governanceState.originalContent : governanceState.cleanedContent
   }, [governanceState, viewMode])
-  const libraryOnlyNotice = '该条目来自文档库（未保留本地 PDF 原文件）'
+  const libraryOnlyNotice = t('libraryFile.notice')
 
 
   // 鏂囦欢閫夋嫨
@@ -700,8 +720,8 @@ export function DataGovernancePanel() {
 
   const handleSave = useCallback(() => {
     persistGovernanceEdits()
-    toast.success('已保存治理结果')
-  }, [persistGovernanceEdits])
+    toast.success(t('toasts.resultsSaved'))
+  }, [persistGovernanceEdits, t])
 
 
   const handlePushToChunkPreview = useCallback(() => {
@@ -726,14 +746,14 @@ export function DataGovernancePanel() {
   if (isLoaded && files.length === 0) {
     return (
       <WorkbenchScaffold
-        title="数据治理工作台"
-        badge="Governance"
+        title={headerTitle}
+        badge={t('header.emptyBadge')}
         icon={ShieldCheck}
         iconColor="text-primary"
         description={
           <span className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-primary/20" aria-hidden="true" />
-            <span>智能文档清洗、标注与结构化处理中枢</span>
+            <span>{headerSubtitle}</span>
           </span>
         }
         size="full"
@@ -763,7 +783,7 @@ export function DataGovernancePanel() {
                       className="flex flex-col items-center rounded-2xl bg-transparent text-center"
                       onClick={() => globalThis.document.getElementById('file-upload')?.click()}
                       disabled={uploading}
-                      aria-label="打开文件上传对话框"
+                      aria-label={t('emptyUpload.openUploadDialog')}
                     >
 			                  <div className="mb-8 flex size-24 items-center justify-center rounded-full border border-primary/20 bg-primary/10 shadow-sm">
 			                    {uploading ? (
@@ -774,18 +794,18 @@ export function DataGovernancePanel() {
 			                  </div>
 
                       <h3 className="text-3xl font-bold text-foreground mb-4">
-                        {uploading ? '正在解析文档...' : '拖拽文档至全息工作台'}
+                        {uploading ? t('emptyUpload.uploadingTitle') : t('emptyUpload.idleTitle')}
                       </h3>
                       <p className="text-muted-foreground mb-10 max-w-lg mx-auto text-lg leading-relaxed">
                         {uploading
-                          ? 'AI 正在分析文档结构并提取内容，请稍候...'
-                          : '支持 PDF, Word, Excel, TXT, MD, ZIP 等格式。即刻开启智能治理流程。'
+                          ? t('emptyUpload.uploadingDescription')
+                          : t('emptyUpload.idleDescription')
                         }
                       </p>
                     </button>
 
 	              <div className="relative z-20 mx-auto mb-10 w-full max-w-md text-left">
-	                  <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">文档结构</div>
+	                  <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">{t('emptyUpload.structureTitle')}</div>
                 <div className="max-h-48 overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/30 p-5 shadow-sm">
                   <DocumentFolderTree />
                 </div>
@@ -810,7 +830,7 @@ export function DataGovernancePanel() {
                     )}
                   >
                     <Upload className="w-5 h-5" />
-                    选择本地文件
+                    {t('emptyUpload.selectLocalFiles')}
                   </label>
                 </div>
                 {uploading && (
@@ -821,20 +841,20 @@ export function DataGovernancePanel() {
                     className="flex items-center gap-2 px-8 py-4 rounded-xl border-border/40 bg-card/5 hover:bg-red-500/10 dark:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-colors duration-150 motion-reduce:transition-none text-muted-foreground"
                   >
                     <X className="w-5 h-5" />
-                    取消解析
+                    {t('emptyUpload.cancelParsing')}
                   </Button>
                 )}
               </div>
 
               <div className="mt-12 flex items-center justify-center gap-8 text-xs font-mono text-muted-foreground uppercase ">
                 <span className="flex items-center gap-2 hover:text-sky-400 transition-colors">
-                  <FileText className="w-4 h-4" /> Smart Parse
+                  <FileText className="w-4 h-4" /> {t('emptyUpload.stages.parse')}
                 </span>
                 <span className="flex items-center gap-2 hover:text-sky-400 transition-colors">
-                  <ShieldCheck className="w-4 h-4" /> Quality Check
+                  <ShieldCheck className="w-4 h-4" /> {t('emptyUpload.stages.quality')}
                 </span>
                 <span className="flex items-center gap-2 hover:text-sky-400 transition-colors">
-                  <Sparkles className="w-4 h-4" /> Auto Clean
+                  <Sparkles className="w-4 h-4" /> {t('emptyUpload.stages.clean')}
                 </span>
               </div>
             </div>
@@ -851,7 +871,7 @@ export function DataGovernancePanel() {
       <div className="grid grid-cols-2 gap-4 h-full">
         <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
           <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
-            瀹炴椂棰勮
+            {t('canvas.livePreview')}
           </div>
           <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
             <MarkdownRenderer markdown={displayContent || ''} />
@@ -859,7 +879,7 @@ export function DataGovernancePanel() {
         </div>
         <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
           <div className="px-4 py-2 bg-muted border-b border-border text-xs font-semibold text-muted-foreground">
-            婧愮爜缂栬緫
+            {t('canvas.sourceEditor')}
           </div>
           <textarea
             value={displayContent}
@@ -875,22 +895,22 @@ export function DataGovernancePanel() {
           <FileText className="w-8 h-8 text-muted-foreground" />
         </div>
         <h3 className="text-lg font-bold text-foreground mb-2 truncate max-w-lg">
-          {selectedFile?.filename || '未知文件'}
+          {selectedFile?.filename || t('libraryFile.unknownFile')}
         </h3>
         <div className="flex items-center gap-2 mb-8">
           <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
-            文档库
+            {t('libraryFile.badge')}
           </span>
           <span className="px-2.5 py-1 rounded-full bg-amber-500/10 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-xs font-medium border border-amber-500/30 flex items-center gap-1">
             <div className="w-1.5 h-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/20" />
-            Pending
+            {t('libraryFile.pending')}
           </span>
         </div>
 
         <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
           <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
             <Info className="w-5 h-5 text-sky-500 flex-shrink-0 mt-0.5" />
-            {libraryOnlyNotice}。可查看解析后的 Markdown；如需 PDF 预览请重新上传该文件。
+            {t('libraryFile.description', { notice: libraryOnlyNotice })}
           </p>
         </div>
 
@@ -901,18 +921,18 @@ export function DataGovernancePanel() {
             onClick={() => {
               if (selectedFile?.filename) {
                 navigator.clipboard.writeText(selectedFile.filename)
-                toast.success('文件名已复制')
+                toast.success(t('toasts.filenameCopied'))
               }
             }}
           >
             <Copy className="w-4 h-4" />
-            复制名称
+            {t('libraryFile.copyName')}
           </Button>
           <ConfirmDialog
-            title="移除该文件？"
-            description="将从文档库中移除该文件记录。此操作不可恢复。"
-            confirmLabel="移除"
-            cancelLabel="返回"
+            title={t('libraryFile.removeDialog.title')}
+            description={t('libraryFile.removeDialog.description')}
+            confirmLabel={t('libraryFile.removeDialog.confirm')}
+            cancelLabel={t('libraryFile.removeDialog.cancel')}
             confirmVariant="destructive"
             confirmDisabled={!selectedFileId}
             onConfirm={() => {
@@ -920,7 +940,7 @@ export function DataGovernancePanel() {
               const { removeFile } = useParsedFiles.getState()
               removeFile(selectedFileId)
               setSelectedFileId(null)
-              toast.success('文件已移除')
+              toast.success(t('toasts.fileRemoved'))
             }}
           >
             <Button
@@ -929,7 +949,7 @@ export function DataGovernancePanel() {
               disabled={!selectedFileId}
             >
               <Trash2 className="w-4 h-4" />
-              移除文件
+              {t('libraryFile.removeButton')}
             </Button>
           </ConfirmDialog>
         </div>
@@ -946,14 +966,14 @@ export function DataGovernancePanel() {
 
   return (
     <WorkbenchScaffold
-      title="数据治理工作台"
-      badge="Workbench"
+      title={headerTitle}
+      badge={t('header.mainBadge')}
       icon={ShieldCheck}
       iconColor="text-sky-400"
       description={
         <span className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20" aria-hidden="true" />
-          <span>智能文档结构化处理与质量修复</span>
+          <span>{t('header.workspaceSubtitle')}</span>
         </span>
       }
       actions={
@@ -966,7 +986,7 @@ export function DataGovernancePanel() {
             className="gap-1.5 h-8 text-xs"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            閲嶇疆
+            {t('actions.reset')}
           </Button>
           <Button
             variant="info"
@@ -976,7 +996,7 @@ export function DataGovernancePanel() {
             className="gap-2 h-8 text-xs"
           >
             <Save className="w-3.5 h-3.5" />
-            淇濆瓨
+            {t('actions.save')}
           </Button>
           <div className="w-px h-4 bg-border dark:bg-card/10 mx-1" />
           <Button
@@ -987,7 +1007,7 @@ export function DataGovernancePanel() {
             className="gap-2 h-8 text-xs"
           >
             <Layers className="w-3.5 h-3.5" />
-            鎺ㄩ€佸垏鍧楅瑙?
+            {t('actions.pushToChunkPreview')}
           </Button>
         </div>
       }
@@ -1016,8 +1036,8 @@ export function DataGovernancePanel() {
               isSidebarCollapsed && "opacity-100 -right-8 translate-x-2"
             )}
 	            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-	            title={isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-	            aria-label={isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+	            title={isSidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+	            aria-label={isSidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')}
 	          >
             {isSidebarCollapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
           </Button>
@@ -1029,11 +1049,11 @@ export function DataGovernancePanel() {
                 <SelectTrigger className="h-9 text-xs bg-muted border-border text-foreground/80 focus:bg-card focus-ring transition-colors duration-200 motion-reduce:transition-none">
                   <div className="flex items-center gap-2 truncate">
                     <FolderTree className="w-3.5 h-3.5 text-primary" />
-                    <SelectValue placeholder="鍒囨崲鐩綍" />
+                    <SelectValue placeholder={t('sidebar.folderPlaceholder')} />
                   </div>
                 </SelectTrigger>
                 <SelectContent className="bg-card border-border text-foreground/80">
-                  <SelectItem value={ROOT_FOLDER_ID}>根目录</SelectItem>
+                  <SelectItem value={ROOT_FOLDER_ID}>{t('sidebar.rootFolder')}</SelectItem>
                   {libraryFolders.map(f => (
                     <SelectItem key={f.id} value={f.id}>
                       {f.name}
@@ -1046,7 +1066,7 @@ export function DataGovernancePanel() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="鎼滅储褰撳墠鐩綍鏂囦欢..."
+                  placeholder={t('sidebar.searchPlaceholder')}
                   className="w-full rounded-lg border border-border bg-muted py-1.5 pl-9 pr-3 text-xs text-foreground/80 placeholder:text-muted-foreground focus:bg-card focus:outline-none focus:border-primary/30 focus-ring transition-colors duration-200 motion-reduce:transition-none"
                 />
               </div>
@@ -1061,13 +1081,13 @@ export function DataGovernancePanel() {
 
             <div className="flex items-center justify-between px-4 py-2 mt-2">
               <h3 className="text-xs font-bold text-muted-foreground uppercase  pl-1">
-                Files ({visibleFiles.length})
+                {t('sidebar.filesTitle', { count: visibleFiles.length })}
               </h3>
             </div>
 
             <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar px-3 pb-3 space-y-2">
               {visibleFiles.length === 0 ? (
-                <div className="text-xs text-muted-foreground text-center py-8">该目录暂无文件</div>
+                <div className="text-xs text-muted-foreground text-center py-8">{t('sidebar.emptyDirectory')}</div>
               ) : (
                 visibleFiles.map((file) => {
                   const state = governanceStates[file.id]
@@ -1085,7 +1105,7 @@ export function DataGovernancePanel() {
                               ? "bg-sky-500/10 dark:bg-sky-500/20 border-sky-200 shadow-md ring-1 ring-sky-100"
                               : "bg-card border-border hover:border-sky-200 hover:shadow-sm"
                           )}
-                          aria-label={`打开文件：${file.filename}`}
+                          aria-label={t('a11y.openFile', { filename: file.filename })}
                         >
 	                      <div className="flex items-start gap-4">
 	                        {/* File Icon */}
@@ -1118,12 +1138,12 @@ export function DataGovernancePanel() {
         else {
             return "bg-rose-50 text-rose-700 border-rose-100";
         }
-})()
+                                })()
                               )}>
-                                {score}鍒?
+                                {t('sidebar.scoreLabel', { score })}
                               </span>
                             ) : (
-                              <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border font-medium">未检测</span>
+                              <span className="flex-shrink-0 text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border font-medium">{t('sidebar.notScanned')}</span>
                             )}
                           </div>
 
@@ -1145,12 +1165,12 @@ export function DataGovernancePanel() {
 	                            <div className="flex items-center gap-2">
 	                              {state?.isModified && (
 	                                <span className="text-[9px] text-sky-600 dark:text-sky-300 flex items-center gap-1 bg-sky-500/10 dark:bg-sky-500/20 px-1.5 py-0.5 rounded border border-sky-500/30 font-bold">
-                                  <Sparkles className="w-2.5 h-2.5" /> 已清洗
+                                  <Sparkles className="w-2.5 h-2.5" /> {t('sidebar.cleaned')}
                                 </span>
                               )}
                               {hasIssue && (
                                 <span className="text-[9px] text-rose-600 flex items-center gap-1 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 font-bold">
-	                                  <AlertTriangle className="w-2.5 h-2.5" /> 需关注
+	                                  <AlertTriangle className="w-2.5 h-2.5" /> {t('sidebar.needsAttention')}
 	                                </span>
 	                              )}
 	                            </div>
@@ -1165,8 +1185,8 @@ export function DataGovernancePanel() {
                             setDeleteFileOpen(true)
                           }}
                           className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none"
-                          aria-label={`删除文件：${file.filename}`}
-                          title="删除文件"
+                          aria-label={t('a11y.deleteFile', { filename: file.filename })}
+                          title={t('dialogs.deleteFile.confirm')}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1180,13 +1200,13 @@ export function DataGovernancePanel() {
             <div className="mt-auto border-t border-border bg-muted/50 p-3 space-y-2 backdrop-blur-sm">
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-card p-2 rounded-lg border border-border hover:border-sky-500/30 transition-colors">
-                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase ">Storage</div>
+                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase ">{t('stats.storage')}</div>
                   <div className="text-sm font-bold text-foreground/80 flex items-baseline gap-1 font-mono">
                     {stats.completedFiles} <span className="text-muted-foreground font-normal text-xs">/ {stats.totalFiles}</span>
                   </div>
                 </div>
                 <div className="bg-card p-2 rounded-lg border border-border hover:border-emerald-500/30 transition-colors">
-                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase ">Avg Score</div>
+                  <div className="text-[10px] text-muted-foreground mb-0.5 uppercase ">{t('stats.avgScore')}</div>
                   <div className="text-sm font-bold text-foreground/80 font-mono">
                     {stats.avgScore > 0 ? stats.avgScore.toFixed(1) : '-'}
                   </div>
@@ -1202,7 +1222,7 @@ export function DataGovernancePanel() {
               "absolute right-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
               isResizing && "bg-primary opacity-100"
             )}
-            aria-label="调整侧边栏宽度"
+            aria-label={t('sidebar.adjustWidth')}
             onMouseDown={startResizing}
           />
         </aside>
@@ -1225,7 +1245,7 @@ export function DataGovernancePanel() {
                         viewMode === 'preview' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
-                      棰勮
+                      {t('canvas.viewModes.preview')}
                     </button>
                     <button
                       onClick={() => setViewMode('edit')}
@@ -1234,7 +1254,7 @@ export function DataGovernancePanel() {
                         viewMode === 'edit' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
-                      缂栬緫
+                      {t('canvas.viewModes.edit')}
                     </button>
                     <button
                       onClick={() => setViewMode('original')}
@@ -1243,7 +1263,7 @@ export function DataGovernancePanel() {
                         viewMode === 'original' ? "bg-card text-sky-600 dark:text-sky-300 shadow-sm ring-1 ring-black/5" : "text-muted-foreground hover:text-foreground/80 hover:bg-black/5"
                       )}
                     >
-                      瀵规瘮
+                      {t('canvas.viewModes.original')}
                     </button>
                   </div>
 
@@ -1254,8 +1274,8 @@ export function DataGovernancePanel() {
 	                    size="icon"
 	                    className="h-7 w-7 rounded-full text-muted-foreground hover:text-foreground/80 hover:bg-muted"
 	                    onClick={() => setPreviewFormat(prev => prev === 'rendered' ? 'markdown' : 'rendered')}
-	                    title={previewFormat === 'rendered' ? '查看源码' : '查看渲染'}
-	                    aria-label={previewFormat === 'rendered' ? '查看源码' : '查看渲染'}
+	                    title={previewFormat === 'rendered' ? t('canvas.viewSource') : t('canvas.viewRendered')}
+	                    aria-label={previewFormat === 'rendered' ? t('canvas.viewSource') : t('canvas.viewRendered')}
 	                  >
 	                    {previewFormat === 'rendered' ? <Hash className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
 	                  </Button>
@@ -1268,8 +1288,8 @@ export function DataGovernancePanel() {
 	                    size="icon"
 	                    onClick={() => setIsSidebarCollapsed(false)}
 	                    className="absolute left-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-colors duration-150 motion-reduce:transition-none"
-	                    aria-label="展开侧边栏"
-	                    title="展开侧边栏"
+	                    aria-label={t('sidebar.expand')}
+	                    title={t('sidebar.expand')}
 	                  >
 	                    <PanelRightOpen className="w-4 h-4" />
 	                  </Button>
@@ -1281,8 +1301,8 @@ export function DataGovernancePanel() {
 	                    size="icon"
 	                    onClick={() => setIsPanelCollapsed(false)}
 	                    className="absolute right-4 top-4 z-20 h-8 w-8 bg-card/80 border border-border shadow-sm rounded-lg text-muted-foreground hover:text-sky-600 dark:text-sky-300 hover:bg-card backdrop-blur-md transition-colors duration-150 motion-reduce:transition-none"
-	                    aria-label="展开右侧面板"
-	                    title="展开右侧面板"
+	                    aria-label={t('panel.expand')}
+	                    title={t('panel.expand')}
 	                  >
 	                    <PanelRightClose className="w-4 h-4 rotate-180" />
 	                  </Button>
@@ -1303,7 +1323,7 @@ export function DataGovernancePanel() {
                       {viewMode !== 'edit' && governanceState.isModified && (
                         <div className="absolute top-0 right-0 p-4">
                           <span className="bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30 text-xs px-2 py-1 rounded-md font-medium shadow-sm">
-                            已修改
+                            {t('canvas.modified')}
                           </span>
                         </div>
                       )}
@@ -1328,14 +1348,14 @@ export function DataGovernancePanel() {
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-sky-600 dark:text-sky-300" />
-                      娌荤悊宸ュ叿绠?
+                      {t('panel.title')}
                     </h2>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6 text-muted-foreground hover:text-muted-foreground hover:bg-muted"
-                      aria-label="收起右侧面板"
-                      title="收起右侧面板"
+                      aria-label={t('panel.collapse')}
+                      title={t('panel.collapse')}
                       onClick={() => setIsPanelCollapsed(true)}
                     >
                       <PanelRightClose className="w-4 h-4 rotate-180" />
@@ -1344,7 +1364,7 @@ export function DataGovernancePanel() {
 
                   {/* 鏂扮殑 Tab 閫夋嫨鍣?*/}
                   <div className="grid grid-cols-4 gap-1 p-1 bg-muted rounded-lg border border-border">
-                    {GOVERNANCE_TABS.map((tab) => {
+                    {governanceTabs.map((tab) => {
                       const Icon = tab.icon
                       const isActive = activeTab === tab.id
                       return (
@@ -1373,7 +1393,7 @@ export function DataGovernancePanel() {
                   {/* 褰撳墠宸ュ叿鎻忚堪 */}
                   <div className="mt-3 text-xs text-muted-foreground bg-sky-500/10 dark:bg-sky-500/20 p-2 rounded border border-sky-500/30 flex items-start gap-2">
                     <Info className="w-3.5 h-3.5 text-sky-500 mt-0.5 flex-shrink-0" />
-                    {GOVERNANCE_TABS.find(t => t.id === activeTab)?.desc}
+                    {governanceTabs.find(tab => tab.id === activeTab)?.desc}
                   </div>
                 </div>
 
@@ -1418,7 +1438,7 @@ export function DataGovernancePanel() {
                     "absolute left-0 top-0 w-1 h-full cursor-col-resize z-20 border-0 bg-transparent p-0 transition-colors opacity-0 hover:opacity-100 hover:bg-primary/10 dark:hover:bg-primary/20 active:bg-primary/30",
                     isPanelResizing && "bg-primary opacity-100"
                   )}
-                  aria-label="调整右侧面板宽度"
+                  aria-label={t('panel.adjustWidth')}
                   onMouseDown={startPanelResizing}
                 />
               </div>
@@ -1429,9 +1449,9 @@ export function DataGovernancePanel() {
               <div className="w-24 h-24 bg-card rounded-full border border-border flex items-center justify-center mb-6 shadow-sm">
                 <FileSearch className="w-10 h-10 text-muted-foreground" />
               </div>
-              <h3 className="text-xl font-medium text-foreground mb-2">选择文件开始治理</h3>
+              <h3 className="text-xl font-medium text-foreground mb-2">{t('emptySelection.title')}</h3>
               <p className="text-muted-foreground max-w-sm text-center">
-                从左侧列表选择一个文件，使用右侧工具箱进行质量检测、清洗与标注。
+                {t('emptySelection.description')}
               </p>
             </div>
           )}
@@ -1447,13 +1467,13 @@ export function DataGovernancePanel() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除文件？</AlertDialogTitle>
+            <AlertDialogTitle>{t('dialogs.deleteFile.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              你将删除文件 <span className="font-mono">{deleteFileTarget?.filename || '-'}</span>。此操作不可撤销。
+              {t('dialogs.deleteFile.description', { filename: deleteFileTarget?.filename || '-' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t('dialogs.deleteFile.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 const id = deleteFileTarget?.id
@@ -1461,7 +1481,7 @@ export function DataGovernancePanel() {
                 handleDeleteFile(id)
               }}
             >
-              删除
+              {t('dialogs.deleteFile.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
