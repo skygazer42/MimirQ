@@ -6,31 +6,27 @@
 import { startTransition, useActionState, useCallback, useEffect, useId, useMemo, useOptimistic, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, Tags, X } from 'lucide-react'
+import { Calendar, Database, Eye, FileType, Hash, Loader2, Shield } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { DocumentAccessDialog } from '@/components/document-detail-dialog/document-access-dialog'
+import { DocumentDetailActivityPanel } from '@/components/document-detail-dialog/document-detail-activity-panel'
+import { DocumentDetailLifecyclePanel } from '@/components/document-detail-dialog/document-detail-lifecycle-panel'
+import { DocumentDetailSummaryCards } from '@/components/document-detail-dialog/document-detail-summary-cards'
+import { DocumentDetailTagsPanel } from '@/components/document-detail-dialog/document-detail-tags-panel'
 import { DocumentVersionsDialog } from '@/components/document-detail-dialog/document-versions-dialog'
-import { DocumentTags } from '@/components/documents/document-tags'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
-import { Input } from '@/components/ui/input'
-import { Panel } from '@/components/ui/panel'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
-import { TagInput } from '@/components/ui/tag-input'
-import { Textarea } from '@/components/ui/textarea'
 import { documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'
 import { getParserLabel } from '@/lib/parser-options'
-import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
+import { formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
   Document,
   DocumentAccessInfo,
@@ -43,7 +39,7 @@ import type {
 
 interface DocumentDetailDialogProps {
   document: Document
-  trigger?: React.ReactNode
+  trigger?: ReactNode
 }
 
 const EMPTY_CHUNKS: DocumentChunk[] = []
@@ -76,56 +72,6 @@ function asStatusBadgeStatus(status: string | undefined): StatusBadgeStatus {
     default:
       return 'pending'
   }
-}
-
-function highlightText(text: string, query: string) {
-  const needle = query.trim()
-  if (!needle) return text
-
-  const haystack = text
-  const haystackLower = haystack.toLowerCase()
-  const needleLower = needle.toLowerCase()
-
-  const nodes: ReactNode[] = []
-  let cursor = 0
-
-  while (cursor < haystack.length) {
-    const matchAt = haystackLower.indexOf(needleLower, cursor)
-    if (matchAt === -1) {
-      nodes.push(haystack.slice(cursor))
-      break
-    }
-
-    if (matchAt > cursor) {
-      nodes.push(haystack.slice(cursor, matchAt))
-    }
-
-    const matched = haystack.slice(matchAt, matchAt + needle.length)
-    nodes.push(
-      <mark key={`${matchAt}-${matched.length}`} className="rounded bg-primary/15 px-0.5 text-foreground">
-        {matched}
-      </mark>
-    )
-
-    cursor = matchAt + needle.length
-  }
-
-  return nodes
-}
-
-function TraceRow({ label, value, mono }: Readonly<{ label: string; value: string; mono?: boolean }>) {
-  const display = value?.trim?.() ? value : '-'
-  return (
-    <div className="flex items-center justify-between gap-3 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span
-        className={cn("min-w-0 truncate text-foreground", mono ? "font-mono" : null)}
-        title={display}
-      >
-        {display}
-      </span>
-    </div>
-  )
 }
 
 function toDatetimeLocalValue(value: string | null | undefined): string {
@@ -247,7 +193,6 @@ function DocumentLifecycleSaveButton({ disabled }: Readonly<{ disabled: boolean 
 
 export function DocumentDetailDialog({ document: initialDocument, trigger }: Readonly<DocumentDetailDialogProps>) {
   const commonT = useTranslations('Common')
-  const documentsT = useTranslations('Documents')
   const t = useTranslations('DocumentDetailDialog')
   const permissionAlertTitle = t('alerts.permissionCheckFailedTitle')
   const validationAlertTitle = t('alerts.validationFailedTitle')
@@ -722,19 +667,20 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
   const docMeta = (displayDoc.metadata || {}) as any
   const pipeline = (displayDoc as any)?.pipeline || null
+  const requestedParserBackend = String(
+    pipeline?.parser_backend_requested || docMeta?.parser_backend_requested || '-'
+  )
   const pipelineEffective = (pipeline?.pipeline_effective || docMeta.pipeline_effective || {})
   const analyticsRaw = (pipeline?.analytics_raw || docMeta.document_analytics_raw || {})
   const governanceRulePacks: string[] = (() => {
     if (Array.isArray(pipeline?.governance_rule_packs)) {
-        return pipeline.governance_rule_packs;
+      return pipeline.governance_rule_packs
     }
-    else if (Array.isArray(docMeta.governance_rule_packs)) {
-            return docMeta.governance_rule_packs;
-        }
-        else {
-            return [];
-        }
-})()
+    if (Array.isArray(docMeta.governance_rule_packs)) {
+      return docMeta.governance_rule_packs
+    }
+    return []
+  })()
 
   const activePipelineHash =
     String(
@@ -767,142 +713,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const loadError = docError || chunkError
   const timelineItems: DocumentTimelineItem[] = timeline?.items || []
   const timelineTotal = Number(timeline?.total || timelineItems.length)
-  /*
-  const headerAction = (() => {
-    if (activeView === 'chunks') {
-      if (!chunkQuery) return null
-
-      return (
-        <IconButton
-          label="娓呴櫎鎼滅储"
-          variant="ghost"
-          className="h-10 w-10 text-muted-foreground hover:text-foreground"
-          onClick={() => setChunkQuery('')}
-        >
-          <X className="h-4 w-4" />
-        </IconButton>
-      )
-    }
-
-    return (
-      <IconButton
-        label="鍒锋柊鏃堕棿绾?"
-        variant="ghost"
-        className="h-10 w-10 text-muted-foreground hover:text-foreground"
-        onClick={() => detachPromise(loadTimeline())}
-        disabled={isLoadingTimeline}
-      >
-        {isLoadingTimeline ? (
-          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-        ) : (
-          <RefreshCw className="h-4 w-4" />
-        )}
-      </IconButton>
-    )
-  })()
-  let versionsListContent: ReactNode = null
-  if (!isLoadingVersions && !versionsError) {
-    if (versions?.items?.length) {
-      versionsListContent = (
-        <div className="space-y-2">
-          {versions.items.map((v) => (
-            <div
-              key={v.pipeline_hash}
-              className={cn(
-                'flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card p-3',
-                v.active ? 'border-primary/30 bg-primary/5' : 'bg-card'
-              )}
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs text-foreground">{v.pipeline_hash}</span>
-                  {v.active ? (
-                    <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                      ACTIVE
-                    </span>
-                  ) : null}
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {v.chunk_count} chunks
-                  {v.last_chunk_at ? ` 路 鏇存柊 ${formatDate(v.last_chunk_at)}` : ''}
-                </div>
-              </div>
-
-              <div className="flex flex-shrink-0 items-center gap-2">
-                <IconButton
-                  label="澶嶅埗鐗堟湰 hash"
-                  variant="ghost"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                  onClick={() => detachPromise(copyToClipboard(v.pipeline_hash))}
-                >
-                  <Copy className="h-4 w-4" />
-                </IconButton>
-
-                {v.active ? (
-                  <Button size="sm" variant="secondary" disabled>
-                    宸叉縺娲?
-                  </Button>
-                ) : (
-                  <>
-                    <ConfirmDialog
-                      title="鍒囨崲婵€娲荤増鏈紵"
-                      description={
-                        <>
-                          灏嗘妸婵€娲荤増鏈垏鎹负 <span className="font-mono">{v.pipeline_hash.slice(0, 12)}鈥?/span>銆傝繖涓嶄細閲嶆柊瑙ｆ瀽/閲嶆柊鍚戦噺鍖栵紝鍙細褰卞搷妫€绱笌寮曠敤銆?
-                        </>
-                      }
-                      confirmLabel="鍒囨崲"
-                      cancelLabel="杩斿洖"
-                      confirmVariant="default"
-                      confirmDisabled={isVersionWorking}
-                      onConfirm={() => detachPromise(handleActivateVersion(v.pipeline_hash))}
-                    >
-                      <Button size="sm" variant="outline" disabled={isVersionWorking}>
-                        婵€娲?
-                      </Button>
-                    </ConfirmDialog>
-                    <ConfirmDialog
-                      title="鍒犻櫎璇ョ増鏈紵"
-                      description={
-                        <>
-                          灏嗗垹闄ょ増鏈?<span className="font-mono">{v.pipeline_hash.slice(0, 12)}鈥?/span>銆傛敞鎰忥細褰撳墠婵€娲荤増鏈棤娉曞垹闄ゃ€?
-                        </>
-                      }
-                      confirmLabel="鍒犻櫎"
-                      cancelLabel="杩斿洖"
-                      confirmVariant="destructive"
-                      confirmDisabled={isVersionWorking}
-                      onConfirm={() => detachPromise(handleDeleteVersion(v.pipeline_hash))}
-                    >
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isVersionWorking}
-                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      >
-                        鍒犻櫎
-                      </Button>
-                    </ConfirmDialog>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )
-    } else {
-      versionsListContent = (
-        <EmptyState
-          icon={Hash}
-          title="鏆傛棤鐗堟湰淇℃伅"
-          description="褰撳墠鏂囨。杩樻病鏈夊彲鐢ㄧ殑 pipeline 鐗堟湰璁板綍锛堟垨灏氭湭鐢熸垚鍒囩墖锛夈€?
-          className="min-h-[240px]"
-        />
-      )
-    }
-  }
-
-  */
   const chunkRowVirtualizer = useVirtualizer({
     count: activeView === 'chunks' ? chunks.length : 0,
     getScrollElement: () => scrollParentRef.current,
@@ -1178,704 +988,121 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
         {/* Body */}
         <main className="min-h-0 p-6 flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Panel className="rounded-2xl">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-primary/10 text-primary">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">{t("cards.parse.title")}</div>
-                    <div className="text-xs text-muted-foreground truncate">{parserLabel || parserBackend || '-'}</div>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 space-y-1.5">
-                <TraceRow label="parser_backend" value={String(pipeline?.parser_backend || parserBackend || '-')} mono />
-                <TraceRow
-                  label="requested"
-                  value={String(pipeline?.parser_backend_requested || docMeta?.parser_backend_requested || '-')}
-                  mono
-                />
-                <TraceRow label="char_count" value={String(analyticsRaw?.char_count ?? '-')} mono />
-                <TraceRow label="page_count" value={String(analyticsRaw?.page_count ?? '-')} mono />
-                <TraceRow label="table_count" value={String(analyticsRaw?.table_count ?? '-')} mono />
-                <TraceRow label="image_count" value={String(analyticsRaw?.image_count ?? '-')} mono />
-              </div>
-            </Panel>
+          <DocumentDetailSummaryCards
+            parserLabel={parserLabel}
+            parserBackend={String(pipeline?.parser_backend || parserBackend || '-')}
+            requestedParserBackend={requestedParserBackend}
+            chunkStrategyLabel={chunkStrategyLabel}
+            chunkStrategy={chunkStrategy}
+            analyticsRaw={analyticsRaw}
+            governanceEnabled={Boolean(displayDoc.governance?.enabled)}
+            governanceRulesApplied={displayDoc.governance?.rules_applied}
+            governanceChangedDocuments={displayDoc.governance?.changed_documents}
+            governanceDroppedDocuments={displayDoc.governance?.dropped_documents}
+            governanceRulePacks={governanceRulePacks}
+            viewingPipelineHash={viewingPipelineHash}
+            activePipelineHash={activePipelineHash}
+            lastPipelineHash={lastPipelineHash}
+            pipelineEffective={pipelineEffective}
+            onCopyPipelineHash={(hash) => detachPromise(copyToClipboard(hash))}
+          />
 
-            <Panel className="rounded-2xl">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-success/10 text-success">
-                    <Shield className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">{t('cards.governance.title')}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {displayDoc.governance?.enabled ? t('cards.governance.enabled') : t('cards.governance.disabled')}
-                    </div>
-                  </div>
-                </div>
-                {governanceRulePacks.length ? (
-                  <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground">
-                    {t('cards.governance.packsCount', { count: governanceRulePacks.length })}
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-3 space-y-1.5">
-                <TraceRow label="rules_applied" value={String(displayDoc.governance?.rules_applied ?? '-')} mono />
-                <TraceRow label="changed_docs" value={String(displayDoc.governance?.changed_documents ?? '-')} mono />
-                <TraceRow label="dropped_docs" value={String(displayDoc.governance?.dropped_documents ?? '-')} mono />
-                <TraceRow
-                  label="rule_packs"
-                  value={governanceRulePacks.length ? governanceRulePacks.slice(0, 4).join(', ') : '-'}
-                />
-              </div>
-            </Panel>
+          <DocumentDetailTagsPanel
+            editing={tagsEditing}
+            saveAction={saveTagsAction}
+            saveButton={<DocumentTagsSaveButton disabled={!canSaveTags} />}
+            isSaving={isSavingTags}
+            tagsDraft={tagsDraft}
+            onTagsDraftChange={setTagsDraft}
+            optimisticTags={optimisticTags}
+            tagsError={tagsError}
+            onBeginEdit={beginEditTags}
+            onCancelEdit={cancelEditTags}
+          />
 
-            <Panel className="rounded-2xl">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-info/10 text-info">
-                    <Hash className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">{t('cards.chunking.title')}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {chunkStrategyLabel || chunkStrategy || '-'}
-                    </div>
-                  </div>
-                </div>
-                {viewingPipelineHash ? (
-                  <IconButton
-                    label={t('cards.chunking.copyPipelineHash')}
-                    variant="ghost"
-                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                    onClick={() => detachPromise(copyToClipboard(String(viewingPipelineHash || '')))}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </IconButton>
-                ) : null}
-              </div>
-              <div className="mt-3 space-y-1.5">
-                <TraceRow label="viewing_pipeline_hash" value={String(viewingPipelineHash || '-')} mono />
-                <TraceRow label="active_pipeline_hash" value={String(activePipelineHash || '-')} mono />
-                <TraceRow label="last_pipeline_hash" value={String(lastPipelineHash || '-')} mono />
-                <TraceRow label="chunk_size" value={String(pipelineEffective?.chunk_size ?? '-')} mono />
-                <TraceRow label="chunk_overlap" value={String(pipelineEffective?.chunk_overlap ?? '-')} mono />
-                <TraceRow label="vector_enabled" value={pipelineEffective?.chunk_vector_enabled ? 'true' : 'false'} mono />
-                <TraceRow label="bm25_enabled" value={pipelineEffective?.bm25_index_enabled ? 'true' : 'false'} mono />
-              </div>
-            </Panel>
-          </div>
-
-          <Panel className="rounded-2xl">
-            {tagsEditing ? (
-              <form action={saveTagsAction} className="space-y-4">
-                <input type="hidden" name="tags_json" value={JSON.stringify(tagsDraft)} />
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
-                      <Tags className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">{t("tags.title")}</div>
-                      <div className="text-xs text-muted-foreground truncate">{t('tags.description')}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 justify-end">
-                    <Button type="button" variant="outline" size="sm" onClick={cancelEditTags} disabled={isSavingTags}>
-                      {commonT('cancel')}
-                    </Button>
-                    <DocumentTagsSaveButton disabled={!canSaveTags} />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <TagInput value={tagsDraft} onValueChange={setTagsDraft} disabled={isSavingTags} />
-
-                  {tagsError ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                      <AlertDescription>{tagsError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-                </div>
-              </form>
-            ) : (
-              <>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-muted/40 text-muted-foreground">
-                      <Tags className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">{t("tags.title")}</div>
-                      <div className="text-xs text-muted-foreground truncate">{t('tags.description')}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 justify-end">
-                    <Button variant="outline" size="sm" className="gap-2" onClick={beginEditTags}>
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                      {t('actions.edit')}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {optimisticTags.length ? (
-                    <DocumentTags tags={optimisticTags} max={10} />
-                  ) : (
-                    <div className="text-xs text-muted-foreground">{t('tags.empty')}</div>
-                  )}
-
-                  {tagsError ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                      <AlertDescription>{tagsError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-                </div>
-              </>
-            )}
-          </Panel>
-
-          <Panel className="rounded-2xl">
-            {lifecycleEditing ? (
-              <form action={saveLifecycleAction}>
-                <input type="hidden" name="publication_status" value={lifecyclePublicationStatusDraft} />
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-warning/10 text-warning">
-                      <Calendar className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">{t('lifecycle.title')}</div>
-                      <div className="text-xs text-muted-foreground truncate">{t('lifecycle.description')}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 justify-end">
-                    <Button type="button" variant="outline" size="sm" onClick={cancelEditLifecycle} disabled={isSavingLifecycle}>
-                      {commonT('cancel')}
-                    </Button>
-                    <DocumentLifecycleSaveButton disabled={!canSaveLifecycle} />
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {lifecyclePermError ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>{permissionAlertTitle}</AlertTitle>
-                      <AlertDescription>{lifecyclePermError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.publicationStatus.label')}</div>
-                      <Select
-                        value={lifecyclePublicationStatusDraft}
-                        onValueChange={(v) =>
-                          setLifecyclePublicationStatusDraft(v === 'draft' || v === 'deprecated' ? v : 'published')
-                        }
-                        disabled={isSavingLifecycle}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={t('lifecycle.fields.publicationStatus.placeholder')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="published">{t('lifecycle.fields.publicationStatus.options.published')}</SelectItem>
-                          <SelectItem value="draft">{t('lifecycle.fields.publicationStatus.options.draft')}</SelectItem>
-                          <SelectItem value="deprecated">{t('lifecycle.fields.publicationStatus.options.deprecated')}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.owner.label')}</div>
-                      <Input
-                        name="lifecycle_owner"
-                        value={lifecycleOwnerDraft}
-                        onChange={(e) => setLifecycleOwnerDraft(e.target.value)}
-                        placeholder={t('lifecycle.fields.owner.placeholder')}
-                        disabled={isSavingLifecycle}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.reviewDueAt.label')}</div>
-                      <Input
-                        name="review_due_at"
-                        type="datetime-local"
-                        value={lifecycleReviewDueDraft}
-                        onChange={(e) => setLifecycleReviewDueDraft(e.target.value)}
-                        disabled={isSavingLifecycle}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.authorityLevel.label')}</div>
-                      <Input
-                        name="authority_level"
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={lifecycleAuthorityDraft}
-                        onChange={(e) => setLifecycleAuthorityDraft(e.target.value)}
-                        placeholder={t('lifecycle.fields.authorityLevel.placeholder')}
-                        disabled={isSavingLifecycle}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.supersedesDocumentId.label')}</div>
-                      <Input
-                        name="supersedes_document_id"
-                        value={lifecycleSupersedesDraft}
-                        onChange={(e) => setLifecycleSupersedesDraft(e.target.value)}
-                        placeholder={t('lifecycle.fields.supersedesDocumentId.placeholder')}
-                        disabled={isSavingLifecycle}
-                      />
-                    </div>
-                  </div>
-
-                  {lifecycleValidationError ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>{validationAlertTitle}</AlertTitle>
-                      <AlertDescription>{lifecycleValidationError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-
-                  {lifecycleError ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                      <AlertDescription>{lifecycleError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-                </div>
-              </form>
-            ) : (
-              <>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl border border-border bg-warning/10 text-warning">
-                      <Calendar className="h-5 w-5" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">{t('lifecycle.title')}</div>
-                      <div className="text-xs text-muted-foreground truncate">{t('lifecycle.description')}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2 justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                      onClick={beginEditLifecycle}
-                      disabled={lifecycleWritable === false || lifecycleWritable == null}
-                      title={
-                        lifecycleWritable === false
-                          ? t("lifecycle.readOnly")
-                          : lifecycleWritable == null
-                            ? t('lifecycle.permissionChecking')
-                            : undefined
-                      }
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                      {t('actions.edit')}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {lifecyclePermError ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>{permissionAlertTitle}</AlertTitle>
-                      <AlertDescription>{lifecyclePermError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-
-                  <div className="space-y-1.5">
-                    <TraceRow label="publication_status" value={String(displayDoc.publication_status || 'published')} />
-                    <TraceRow label="lifecycle_owner" value={String(displayDoc.lifecycle_owner || '-')} />
-                    <TraceRow
-                      label="review_due_at"
-                      value={
-                        displayDoc.review_due_at
-                          ? new Date(String(displayDoc.review_due_at)).toLocaleString('zh-CN')
-                          : '-'
-                      }
-                    />
-                    <TraceRow
-                      label="authority_level"
-                      value={displayDoc.authority_level == null ? '-' : String(displayDoc.authority_level)}
-                      mono
-                    />
-                    <TraceRow label="supersedes_document_id" value={String(displayDoc.supersedes_document_id || '-')} mono />
-
-                    {!displayDoc.lifecycle_owner && !displayDoc.review_due_at && displayDoc.authority_level == null && !displayDoc.supersedes_document_id ? (
-                      <div className="text-xs text-muted-foreground">{t('lifecycle.empty')}</div>
-                    ) : null}
-                  </div>
-
-                  {lifecycleError ? (
-                    <Alert variant="destructive">
-                      <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
-                      <AlertDescription>{lifecycleError}</AlertDescription>
-                    </Alert>
-                  ) : null}
-                </div>
-              </>
-            )}
-          </Panel>
-
-          <Panel padding="none" className="flex-1 min-h-0 overflow-hidden rounded-2xl">
-            <div className="flex items-center gap-3 border-b border-border/60 bg-background/40 px-4 py-3">
-              <div
-                className="inline-flex h-10 items-center rounded-md bg-muted p-1 text-muted-foreground"
-                role="tablist"
-                aria-label={t("views.ariaLabel")}
-              >
-                <button
-                  type="button"
-                  id={chunksTabId}
-                  role="tab"
-                  aria-controls={chunksPanelId}
-                  aria-selected={activeView === 'chunks'}
-                  tabIndex={activeView === 'chunks' ? 0 : -1}
-                  className={cn(
-                    "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none",
-                    activeView === "chunks" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"
-                  )}
-                  onClick={() => setActiveView("chunks")}
-                  onKeyDown={handleViewTabKeyDown}
-                >
-                  {t('views.chunks')}
-                </button>
-                <button
-                  type="button"
-                  id={timelineTabId}
-                  role="tab"
-                  aria-controls={timelinePanelId}
-                  aria-selected={activeView === 'timeline'}
-                  tabIndex={activeView === 'timeline' ? 0 : -1}
-                  className={cn(
-                    "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-sm px-3 text-sm font-medium transition-colors duration-150 motion-reduce:transition-none",
-                    activeView === "timeline" ? "bg-background text-foreground shadow-sm" : "hover:text-foreground"
-                  )}
-                  onClick={() => setActiveView("timeline")}
-                  onKeyDown={handleViewTabKeyDown}
-                >
-                  {t('views.timeline')}
-                </button>
-              </div>
-
-              {null}
-              {activeView === "chunks" ? (
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={chunkQuery}
-                    onChange={(e) => setChunkQuery(e.target.value)}
-                    placeholder={t("search.placeholder")}
-                    className="h-10 pl-9"
-                  />
-                </div>
-              ) : (
-                <div className="flex-1 text-sm text-muted-foreground">{t('timeline.description')}</div>
-              )}
-
-              {activeView === "chunks" && versions?.items?.length ? (
-                <Select value={viewPipelineHash} onValueChange={setViewPipelineHash}>
-                  <SelectTrigger className="hidden h-10 w-[220px] sm:flex">
-                    <SelectValue placeholder={t('versions.selectPlaceholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ACTIVE_PIPELINE_VALUE}>{t('versions.active')}</SelectItem>
-                    {versions.items.map((v) => (
-                      <SelectItem key={v.pipeline_hash} value={v.pipeline_hash}>
-                        {v.active ? t('versions.activeTag') : t('versions.historyTag')} {v.pipeline_hash.slice(0, 10)}… · {t('versions.chunkCount', { count: v.chunk_count })}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-
-              <span className="hidden sm:inline-flex rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-xs text-muted-foreground">
-                {activeView === "chunks"
-                  ? `${chunks.length}/${chunksTotal}`
-                  : `${timelineItems.length}/${timelineTotal}`}
-              </span>
-
-              {activeView === "chunks" ? (
-                chunkQuery ? (
-                  <IconButton
-                    label={t('search.clear')}
-                    variant="ghost"
-                    className="h-10 w-10 text-muted-foreground hover:text-foreground"
-                    onClick={() => setChunkQuery("")}
-                  >
-                    <X className="h-4 w-4" />
-                  </IconButton>
-                ) : null
-              ) : (
-                <IconButton
-                  label={t('timeline.refresh')}
-                  variant="ghost"
-                  className="h-10 w-10 text-muted-foreground hover:text-foreground"
-                  onClick={() => detachPromise(loadTimeline())}
-                  disabled={isLoadingTimeline}
-                >
-                  {isLoadingTimeline ? (
-                    <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                </IconButton>
-              )}
-            </div>
-
-            <div
-              ref={scrollParentRef}
-              id={activeView === 'chunks' ? chunksPanelId : timelinePanelId}
-              role="tabpanel"
-              aria-labelledby={activeView === 'chunks' ? chunksTabId : timelineTabId}
-              className="h-full overflow-y-auto overscroll-contain no-scrollbar p-4"
-            >
-              {(() => {
-    if (activeView === "chunks") {
-        return ((() => {
-            if ((isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0)) {
-                return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-                    <p className="text-sm">{documentsT('loadingChunks')}</p>
-                  </div>);
+          <DocumentDetailLifecyclePanel
+            editing={lifecycleEditing}
+            saveAction={saveLifecycleAction}
+            saveButton={<DocumentLifecycleSaveButton disabled={!canSaveLifecycle} />}
+            isSaving={isSavingLifecycle}
+            canEdit={!(lifecycleWritable === false || lifecycleWritable == null)}
+            editTitle={
+              lifecycleWritable === false
+                ? t('lifecycle.readOnly')
+                : lifecycleWritable == null
+                  ? t('lifecycle.permissionChecking')
+                  : undefined
             }
-            else if (loadError && chunks.length === 0) {
-                    return (<div className="mx-auto max-w-2xl py-10">
-                    <Alert variant="destructive">
-                      <AlertTitle>{t('alerts.loadFailedTitle')}</AlertTitle>
-                      <AlertDescription>{loadError}</AlertDescription>
-                    </Alert>
-                    <div className="mt-4 flex items-center justify-end gap-2">
-                      <Button variant="outline" onClick={() => {
-                            detachPromise(loadDetail());
-                            detachPromise(loadVersions());
-                            detachPromise(reloadChunks());
-                        }}>
-                        {commonT('retry')}
-                      </Button>
-                      <Button variant="secondary" onClick={() => setOpen(false)}>
-                        {commonT('close')}
-                      </Button>
-                    </div>
-                  </div>);
-                }
-                else if (chunksTotal === 0 && !isSearching) {
-                        return (<EmptyState icon={FileText} title={documentsT('emptyChunks')} description={t("chunks.emptyDescription")} className="min-h-[320px]"/>);
-                    }
-                    else if (chunksTotal === 0 && isSearching) {
-                            return (<EmptyState icon={Search} title={t("chunks.searchEmptyTitle")} description={<span>{t('chunks.searchEmptyDescription')}</span>} className="min-h-[320px]">
-	                    <Button variant="outline" onClick={() => setChunkQuery("")}>
-	                      {t("chunks.clearFilter")}
-	                    </Button>
-	                  </EmptyState>);
-                        }
-                        else {
-                            return (<div className="pb-6 space-y-3">
-	                    {chunkError && chunks.length > 0 ? (<Alert variant="destructive">
-	                        <AlertTitle>{t('alerts.loadChunksFailedTitle')}</AlertTitle>
-	                        <AlertDescription>{chunkError}</AlertDescription>
-	                      </Alert>) : null}
-	
-	                    <div role="list" aria-label={t("chunks.listAriaLabel")} style={{
-                                    height: `${chunkRowVirtualizer.getTotalSize()}px`,
-                                    width: '100%',
-                                    position: 'relative',
-                                }}>
-	                      {chunkRowVirtualizer.getVirtualItems().map((virtualRow) => {
-                                    const chunk = chunks[virtualRow.index];
-                                    if (!chunk)
-                                        return null;
-                                    return (<div key={virtualRow.key} data-index={virtualRow.index} ref={chunkRowVirtualizer.measureElement} role="listitem" style={{
-                                            position: 'absolute',
-                                            top: 0,
-                                            left: 0,
-                                            width: '100%',
-                                            transform: `translateY(${virtualRow.start}px)`,
-                                        }} className="pb-3">
-	                            <div className={cn("group rounded-xl border border-border/60 bg-card p-4 transition-colors", "hover:border-primary/25 hover:shadow-soft/30", chunk.disabled_at ? "opacity-70" : null)}>
-	                              <div className="flex items-start justify-between gap-3">
-	                                <div className="flex flex-wrap items-center gap-2 text-xs">
-	                                  <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono font-medium text-muted-foreground">
-	                                    #{chunk.chunk_index}
-	                                  </span>
-	                                  {typeof chunk.page_number === "number" ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
-	                                      P.{chunk.page_number}
-	                                    </span>) : null}
-	                                  <span className="text-muted-foreground">{t('chunks.charCount', { count: (chunk.content || '').length })}</span>
-	                                  {chunk.disabled_at ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
-	                                      {t('chunks.disabledBadge')}
-	                                    </span>) : null}
-	                                </div>
-	                                <div className="flex items-center gap-1">
-	                                  <IconButton label={canMutateChunks ? t("chunks.actions.edit") : t("chunks.actions.editDisabled")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => beginEditChunk(chunk)} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}>
-	                                    <Pencil className="h-4 w-4"/>
-	                                  </IconButton>
-	                                  <IconButton label={chunk.disabled_at ? t("chunks.actions.enable") : t("chunks.actions.disable")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(toggleChunkDisabled(chunk))} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}>
-	                                    {chunk.disabled_at ? <CheckCircle2 className="h-4 w-4"/> : <Ban className="h-4 w-4"/>}
-	                                  </IconButton>
-	                                  <IconButton label={chunk.disabled_at ? t("chunks.actions.reembedDisabled") : t("chunks.actions.reembed")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(reembedChunk(chunk))} disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}>
-	                                    <RefreshCw className="h-4 w-4"/>
-	                                  </IconButton>
-	                                  <IconButton label={t("chunks.actions.copy")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(copyToClipboard(chunk.content))} disabled={chunkOpWorkingId === chunk.id}>
-	                                    <Copy className="h-4 w-4"/>
-	                                  </IconButton>
-	                                </div>
-	                              </div>
-	
-	                              {editingChunkId === chunk.id ? (<div className="mt-3 space-y-2">
-	                                  <Textarea value={editingChunkContent} onChange={(e) => setEditingChunkContent(e.target.value)} className="min-h-[140px] font-mono text-xs" disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}/>
-	                                  <div className="flex items-center justify-end gap-2">
-	                                    <Button type="button" variant="outline" size="sm" onClick={cancelEditChunk} disabled={chunkOpWorkingId === chunk.id}>
-	                                      {commonT('cancel')}
-	                                    </Button>
-	                                    <Button type="button" size="sm" onClick={() => detachPromise(saveEditChunk())} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id} className="gap-2">
-	                                      {chunkOpWorkingId === chunk.id ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : (<Save className="h-4 w-4"/>)}
-	                                      {commonT('save')}
-	                                    </Button>
-	                                  </div>
-	                                </div>) : (<div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
-	                                  {highlightText(chunk.content || "", chunkQuery)}
-	                                </div>)}
-	                            </div>
-	                          </div>);
-                                })}
-	                    </div>
-	
-	                    {canLoadMoreChunks ? (<div className="flex justify-center pt-2">
-	                        <Button variant="outline" onClick={() => detachPromise(loadMoreChunks())} disabled={isLoadingChunks} className="gap-2">
-	                          {isLoadingChunks ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : null}
-	                          {t("chunks.loadMore")}
-	                        </Button>
-	                      </div>) : null}
-	                  </div>);
-                        }
-        })());
-    }
-    else if (isLoadingTimeline && timelineItems.length === 0) {
-            return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-	                  <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-                  <p className="text-sm">{documentsT('loadingTimeline')}</p>
-                </div>);
-        }
-        else if ((timelineError || docError) && timelineItems.length === 0) {
-                return (<div className="mx-auto max-w-2xl py-10">
-                  <Alert variant="destructive">
-                    <AlertTitle>{t('alerts.loadFailedTitle')}</AlertTitle>
-                    <AlertDescription>{timelineError || docError}</AlertDescription>
-                  </Alert>
-                  <div className="mt-4 flex items-center justify-end gap-2">
-                    <Button variant="outline" onClick={() => detachPromise(loadTimeline())}>
-                      {commonT('retry')}
-                    </Button>
-                    <Button variant="secondary" onClick={() => setOpen(false)}>
-                      {commonT('close')}
-                    </Button>
-                  </div>
-                </div>);
-            }
-            else if (timelineItems.length === 0) {
-                    return (<EmptyState icon={Calendar} title={documentsT('emptyTimeline')} description={t("timeline.emptyDescription")} className="min-h-[320px]"/>);
-                }
-                else {
-                    return (<div className="pb-6 space-y-3">
-	                  {timelineError ? (<Alert variant="destructive">
-	                      <AlertTitle>{t('alerts.loadTimelineFailedTitle')}</AlertTitle>
-	                      <AlertDescription>{timelineError}</AlertDescription>
-	                    </Alert>) : null}
-	
-	                  <div role="list" aria-label={t("timeline.listAriaLabel")} style={{
-                            height: `${timelineRowVirtualizer.getTotalSize()}px`,
-                            width: '100%',
-                            position: 'relative',
-                        }}>
-	                    {timelineRowVirtualizer.getVirtualItems().map((virtualRow) => {
-                            const ev = timelineItems[virtualRow.index];
-                            if (!ev)
-                                return null;
-                            const detailPairs = Object.entries(ev.details || {}).slice(0, 12);
-                            const hasDetails = detailPairs.length > 0;
-                            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={timelineRowVirtualizer.measureElement} role="listitem" style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                }} className="pb-3">
-	                          <div className={cn("group rounded-xl border border-border/60 bg-card p-4 transition-colors", "hover:border-primary/25 hover:shadow-soft/30")}>
-	                            <div className="flex items-start justify-between gap-3">
-	                              <div className="min-w-0">
-	                                <div className="flex flex-wrap items-center gap-2">
-	                                  <span className="rounded-full border border-border/60 bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
-	                                    {formatDate(ev.created_at)}
-	                                  </span>
-	                                  <span className="truncate font-mono text-xs text-foreground/90">{ev.action}</span>
-	                                  {ev.source === "synthetic" ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-	                                      {t('timeline.synthetic')}
-	                                    </span>) : null}
-	                                </div>
-	
-	                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-	                                  {ev.stage ? <span>{t('timeline.meta.stage')}: {ev.stage}</span> : null}
-	                                  {ev.status ? <span>{t('timeline.meta.status')}: {ev.status}</span> : null}
-	                                  {typeof ev.progress === "number" ? <span>{t('timeline.meta.progress')}: {ev.progress}%</span> : null}
-	                                  {ev.request_id ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
-	                                      {t('timeline.meta.requestId')}: {ev.request_id}
-	                                    </span>) : null}
-	                                  {ev.actor_id ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
-	                                      {t('timeline.meta.actorId')}: {ev.actor_id}
-	                                    </span>) : null}
-	                                </div>
-	                              </div>
-	
-	                              <IconButton label={t("timeline.actions.copyEvent")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(copyToClipboard(JSON.stringify({
-                                    id: ev.id,
-                                    action: ev.action,
-                                    created_at: ev.created_at,
-                                    stage: ev.stage,
-                                    status: ev.status,
-                                    progress: ev.progress,
-                                    request_id: ev.request_id,
-                                    actor_id: ev.actor_id,
-                                    details: ev.details,
-                                }, null, 2)))}>
-	                                <Copy className="h-4 w-4"/>
-	                              </IconButton>
-	                            </div>
-	
-	                            {hasDetails ? (<div className="mt-3 flex flex-wrap gap-2">
-	                                {detailPairs.map(([k, v]) => (<span key={`${ev.id}:${k}`} className="rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-muted-foreground" title={`${k}: ${String(v)}`}>
-	                                    {k}: {String(v)}
-	                                  </span>))}
-	                              </div>) : null}
-	                          </div>
-	                        </div>);
-                        })}
-	                  </div>
-	                </div>);
-                }
-})()}
-            </div>
-          </Panel>
+            permissionAlertTitle={permissionAlertTitle}
+            validationAlertTitle={validationAlertTitle}
+            lifecyclePermError={lifecyclePermError}
+            lifecycleValidationError={lifecycleValidationError}
+            lifecycleError={lifecycleError}
+            lifecyclePublicationStatusDraft={lifecyclePublicationStatusDraft}
+            onLifecyclePublicationStatusDraftChange={setLifecyclePublicationStatusDraft}
+            lifecycleOwnerDraft={lifecycleOwnerDraft}
+            onLifecycleOwnerDraftChange={setLifecycleOwnerDraft}
+            lifecycleReviewDueDraft={lifecycleReviewDueDraft}
+            onLifecycleReviewDueDraftChange={setLifecycleReviewDueDraft}
+            lifecycleAuthorityDraft={lifecycleAuthorityDraft}
+            onLifecycleAuthorityDraftChange={setLifecycleAuthorityDraft}
+            lifecycleSupersedesDraft={lifecycleSupersedesDraft}
+            onLifecycleSupersedesDraftChange={setLifecycleSupersedesDraft}
+            displayDoc={displayDoc}
+            onBeginEdit={beginEditLifecycle}
+            onCancelEdit={cancelEditLifecycle}
+          />
+
+          <DocumentDetailActivityPanel
+            activeView={activeView}
+            onActiveViewChange={setActiveView}
+            chunksTabId={chunksTabId}
+            timelineTabId={timelineTabId}
+            chunksPanelId={chunksPanelId}
+            timelinePanelId={timelinePanelId}
+            scrollParentRef={scrollParentRef}
+            onViewTabKeyDown={handleViewTabKeyDown}
+            chunkQuery={chunkQuery}
+            onChunkQueryChange={setChunkQuery}
+            versions={versions}
+            viewPipelineHash={viewPipelineHash}
+            onViewPipelineHashChange={setViewPipelineHash}
+            chunks={chunks}
+            chunksTotal={chunksTotal}
+            isLoadingDoc={isLoadingDoc}
+            detail={detail}
+            isLoadingChunks={isLoadingChunks}
+            loadError={loadError}
+            onRetryChunks={() => {
+              detachPromise(loadDetail())
+              detachPromise(loadVersions())
+              detachPromise(reloadChunks())
+            }}
+            onClose={() => setOpen(false)}
+            isSearching={isSearching}
+            chunkError={chunkError}
+            chunkRowVirtualizer={chunkRowVirtualizer}
+            canMutateChunks={canMutateChunks}
+            chunkOpWorkingId={chunkOpWorkingId}
+            onBeginEditChunk={beginEditChunk}
+            onToggleChunkDisabled={(chunk) => detachPromise(toggleChunkDisabled(chunk))}
+            onReembedChunk={(chunk) => detachPromise(reembedChunk(chunk))}
+            onCopyText={(text) => detachPromise(copyToClipboard(text))}
+            editingChunkId={editingChunkId}
+            editingChunkContent={editingChunkContent}
+            onEditingChunkContentChange={setEditingChunkContent}
+            onCancelEditChunk={cancelEditChunk}
+            onSaveEditChunk={() => detachPromise(saveEditChunk())}
+            canLoadMoreChunks={canLoadMoreChunks}
+            onLoadMoreChunks={() => detachPromise(loadMoreChunks())}
+            timelineItems={timelineItems}
+            timelineTotal={timelineTotal}
+            isLoadingTimeline={isLoadingTimeline}
+            timelineError={timelineError}
+            docError={docError}
+            onLoadTimeline={() => detachPromise(loadTimeline())}
+            timelineRowVirtualizer={timelineRowVirtualizer}
+          />
         </main>
 
         {/* Footer */}

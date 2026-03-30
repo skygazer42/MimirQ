@@ -7,100 +7,127 @@ function read(relativePath: string) {
   return fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')
 }
 
+function expectTranslationNamespace(src: string, namespace: string) {
+  expect(
+    src.includes(`useTranslations('${namespace}')`) || src.includes(`useTranslations("${namespace}")`)
+  ).toBe(true)
+}
+
+function expectTranslationCall(src: string, key: string) {
+  expect(src.includes(`t('${key}'`) || src.includes(`t("${key}"`)).toBe(true)
+}
+
+function expectNoTranslationCall(src: string, key: string) {
+  expect(src.includes(`t('${key}'`) || src.includes(`t("${key}"`)).toBe(false)
+}
+
 describe('document detail message sources', () => {
   it('moves document detail dialog copy into next-intl catalogs', () => {
     const mainSrc = read('document-detail-dialog.tsx')
+    const detailSrc = [
+      mainSrc,
+      read('document-detail-dialog/document-detail-summary-cards.tsx'),
+      read('document-detail-dialog/document-detail-tags-panel.tsx'),
+      read('document-detail-dialog/document-detail-lifecycle-panel.tsx'),
+      read('document-detail-dialog/document-detail-activity-panel.tsx'),
+    ].join('\n')
     const accessSrc = read('document-detail-dialog/document-access-dialog.tsx')
     const versionsSrc = read('document-detail-dialog/document-versions-dialog.tsx')
     const messagesSrc = read('../i18n/messages/zh-CN.ts')
 
-    expect(mainSrc).toContain("useTranslations('DocumentDetailDialog')")
-    expect(mainSrc).toContain('t("toasts.tagsUpdated")')
-    expect(mainSrc).toContain('t("toasts.copySuccess")')
-    expect(mainSrc).toContain("t('toasts.chunkSaved')")
-    expect(mainSrc).toContain("t('toasts.chunkEnabled')")
-    expect(mainSrc).toContain("t('toasts.chunkDisabled')")
-    expect(mainSrc).toContain("t('toasts.chunkReembedded'")
-    expect(mainSrc).toContain("t('toasts.lifecycleUpdated')")
-    expect(mainSrc).toContain("t('toasts.versionActivated')")
-    expect(mainSrc).toContain("t('toasts.versionDeleted')")
-    expect(mainSrc).toContain("t('toasts.kgExtractStarted')")
-    expect(mainSrc).toContain("t('toasts.kgDeleted'")
-    expect(mainSrc).toContain("t('toasts.accessUpdated')")
-    expect(mainSrc).toContain('t("accessModes.inherit")')
-    expect(mainSrc).toContain("t('trigger.preview')")
-    expect(mainSrc).toContain("t('header.chunkCount'")
-    expect(mainSrc).toContain("t('header.parserChip'")
-    expect(mainSrc).toContain("t('header.chunkingChip'")
-    expect(mainSrc).toContain('t("cards.parse.title")')
-    expect(mainSrc).toContain("t('cards.governance.title')")
-    expect(mainSrc).toContain("t('cards.chunking.title')")
-    expect(mainSrc).toContain('t("tags.title")')
-    expect(mainSrc).toContain("t('tags.description')")
-    expect(mainSrc).toContain("t('tags.empty')")
-    expect(mainSrc).toContain("t('alerts.saveFailedTitle')")
-    expect(mainSrc).toContain("t('alerts.loadFailedTitle')")
-    expect(mainSrc).toContain("t('alerts.permissionCheckFailedTitle')")
-    expect(mainSrc).toContain("t('alerts.validationFailedTitle')")
-    expect(mainSrc).not.toContain("t('alerts.permissionFailedTitle')")
-    expect(mainSrc).not.toContain("t('alerts.inputInvalidTitle')")
-    expect(mainSrc).toContain("t('actions.edit')")
-    expect(mainSrc).toContain('t("lifecycle.readOnly")')
-    expect(mainSrc).toContain("t('lifecycle.title')")
-    expect(mainSrc).toContain("t('lifecycle.description')")
-    expect(mainSrc).toContain("t('lifecycle.fields.publicationStatus.label')")
-    expect(mainSrc).toContain("t('lifecycle.empty')")
-    expect(mainSrc).toContain("t('errors.saveChunkFailed')")
-    expect(mainSrc).toContain("t('errors.chunkOperationFailed')")
-    expect(mainSrc).toContain("t('errors.reembedFailed')")
-    expect(mainSrc).toContain("t('errors.lifecyclePermissionCheckUnknown')")
-    expect(mainSrc).toContain("t('errors.loadDetailFailed')")
-    expect(mainSrc).toContain("t('errors.saveLifecycleFailed')")
-    expect(mainSrc).toContain("t('errors.loadVersionsFailed')")
-    expect(mainSrc).toContain("t('errors.loadTimelineFailed')")
-    expect(mainSrc).toContain("t('errors.loadChunksFailed')")
-    expect(mainSrc).toContain("t('errors.loadMoreChunksFailed')")
-    expect(mainSrc).toContain("t('errors.activateVersionFailed')")
-    expect(mainSrc).toContain("t('errors.deleteVersionFailed')")
-    expect(mainSrc).toContain("t('errors.kgExtractFailed')")
-    expect(mainSrc).toContain("t('errors.kgDeleteFailed')")
-    expect(mainSrc).toContain("t('errors.updateAccessFailed')")
-    expect(mainSrc).toContain('t("chunks.emptyDescription")')
-    expect(mainSrc).toContain('t("chunks.searchEmptyTitle")')
-    expect(mainSrc).toContain('t("chunks.clearFilter")')
-    expect(mainSrc).toContain('t("chunks.listAriaLabel")')
-    expect(mainSrc).toContain("t('chunks.charCount'")
-    expect(mainSrc).toContain("t('chunks.disabledBadge')")
-    expect(mainSrc).toContain('t("chunks.actions.edit")')
-    expect(mainSrc).toContain('t("chunks.actions.editDisabled")')
-    expect(mainSrc).toContain('t("chunks.actions.enable")')
-    expect(mainSrc).toContain('t("chunks.actions.disable")')
-    expect(mainSrc).toContain('t("chunks.actions.reembed")')
-    expect(mainSrc).toContain('t("chunks.actions.reembedDisabled")')
-    expect(mainSrc).toContain('t("chunks.actions.copy")')
-    expect(mainSrc).toContain('t("chunks.loadMore")')
-    expect(mainSrc).toContain('t("timeline.emptyDescription")')
-    expect(mainSrc).toContain('t("timeline.listAriaLabel")')
-    expect(mainSrc).toContain("t('timeline.synthetic')")
-    expect(mainSrc).toContain("t('timeline.meta.stage')")
-    expect(mainSrc).toContain("t('timeline.meta.status')")
-    expect(mainSrc).toContain("t('timeline.meta.progress')")
-    expect(mainSrc).toContain("t('timeline.meta.requestId')")
-    expect(mainSrc).toContain("t('timeline.meta.actorId')")
-    expect(mainSrc).toContain('t("timeline.actions.copyEvent")')
-    expect(mainSrc).toContain('t("kg.extract")')
-    expect(mainSrc).toContain('t("kg.deleteDialog.title")')
-    expect(mainSrc).toContain('t("search.placeholder")')
-    expect(mainSrc).toContain('t("views.ariaLabel")')
+    expectTranslationNamespace(detailSrc, 'DocumentDetailDialog')
+    ;[
+      'toasts.tagsUpdated',
+      'toasts.copySuccess',
+      'toasts.chunkSaved',
+      'toasts.chunkEnabled',
+      'toasts.chunkDisabled',
+      'toasts.chunkReembedded',
+      'toasts.lifecycleUpdated',
+      'toasts.versionActivated',
+      'toasts.versionDeleted',
+      'toasts.kgExtractStarted',
+      'toasts.kgDeleted',
+      'toasts.accessUpdated',
+      'accessModes.inherit',
+      'trigger.preview',
+      'header.chunkCount',
+      'header.parserChip',
+      'header.chunkingChip',
+      'cards.parse.title',
+      'cards.governance.title',
+      'cards.chunking.title',
+      'tags.title',
+      'tags.description',
+      'tags.empty',
+      'alerts.saveFailedTitle',
+      'alerts.loadFailedTitle',
+      'alerts.permissionCheckFailedTitle',
+      'alerts.validationFailedTitle',
+      'actions.edit',
+      'lifecycle.readOnly',
+      'lifecycle.title',
+      'lifecycle.description',
+      'lifecycle.fields.publicationStatus.label',
+      'lifecycle.empty',
+      'errors.saveChunkFailed',
+      'errors.chunkOperationFailed',
+      'errors.reembedFailed',
+      'errors.lifecyclePermissionCheckUnknown',
+      'errors.loadDetailFailed',
+      'errors.saveLifecycleFailed',
+      'errors.loadVersionsFailed',
+      'errors.loadTimelineFailed',
+      'errors.loadChunksFailed',
+      'errors.loadMoreChunksFailed',
+      'errors.activateVersionFailed',
+      'errors.deleteVersionFailed',
+      'errors.kgExtractFailed',
+      'errors.kgDeleteFailed',
+      'errors.updateAccessFailed',
+      'chunks.emptyDescription',
+      'chunks.searchEmptyTitle',
+      'chunks.clearFilter',
+      'chunks.listAriaLabel',
+      'chunks.charCount',
+      'chunks.disabledBadge',
+      'chunks.actions.edit',
+      'chunks.actions.editDisabled',
+      'chunks.actions.enable',
+      'chunks.actions.disable',
+      'chunks.actions.reembed',
+      'chunks.actions.reembedDisabled',
+      'chunks.actions.copy',
+      'chunks.loadMore',
+      'timeline.emptyDescription',
+      'timeline.listAriaLabel',
+      'timeline.synthetic',
+      'timeline.meta.stage',
+      'timeline.meta.status',
+      'timeline.meta.progress',
+      'timeline.meta.requestId',
+      'timeline.meta.actorId',
+      'timeline.actions.copyEvent',
+      'kg.extract',
+      'kg.deleteDialog.title',
+      'search.placeholder',
+      'views.ariaLabel',
+    ].forEach((key) => {
+      expectTranslationCall(detailSrc, key)
+    })
+    ;['alerts.permissionFailedTitle', 'alerts.inputInvalidTitle'].forEach((key) => {
+      expectNoTranslationCall(detailSrc, key)
+    })
 
-    expect(accessSrc).toContain("useTranslations('DocumentAccessDialog')")
-    expect(accessSrc).toContain('t("trigger")')
-    expect(accessSrc).toContain('t("mode.placeholder")')
+    expectTranslationNamespace(accessSrc, 'DocumentAccessDialog')
+    ;['trigger', 'mode.placeholder'].forEach((key) => {
+      expectTranslationCall(accessSrc, key)
+    })
 
-    expect(versionsSrc).toContain("useTranslations('DocumentVersionsDialog')")
-    expect(versionsSrc).toContain('t("trigger")')
-    expect(versionsSrc).toContain('t("dialogs.activate.title")')
-    expect(versionsSrc).toContain('t("empty.title")')
+    expectTranslationNamespace(versionsSrc, 'DocumentVersionsDialog')
+    ;['trigger', 'dialogs.activate.title', 'empty.title'].forEach((key) => {
+      expectTranslationCall(versionsSrc, key)
+    })
 
     expect(messagesSrc).toContain("synthetic: '系统生成'")
     expect(messagesSrc).toContain("stage: '阶段'")

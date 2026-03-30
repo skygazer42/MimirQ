@@ -44,7 +44,10 @@ describe('long-term cleanup source guards', () => {
   })
 
   it('keeps document detail tabs accessible and seeds centralized messages for future i18n work', () => {
-    const dialog = read('components/document-detail-dialog.tsx')
+    const dialog = [
+      read('components/document-detail-dialog.tsx'),
+      read('components/document-detail-dialog/document-detail-activity-panel.tsx'),
+    ].join('\n')
     const messageCatalog = read('i18n/messages/zh-CN.ts')
 
     expect(dialog).toContain('role="tablist"')
