@@ -842,10 +842,18 @@ const zhCNMessages = {
       summary: {
         title: '摘要',
         description: '仅证据检索',
+        abstainTriggered: 'abstain_triggered',
+        abstainReason: 'abstain_reason',
+        topRelevanceScore: 'top_relevance_score',
+        retrievalElapsed: 'retrieval_elapsed_sec',
+        citations: 'citations',
+        queryForRetrieval: 'query_for_retrieval',
       },
       citations: {
         title: '引用',
+        fallbackTitle: 'Citation',
         hitsHint: '点击可复制引用（手动）',
+        scoreLabel: 'score',
         emptyHits: '暂无命中',
         emptyContent: '空内容',
         noCitations: '没有检索到可用的 citations。',

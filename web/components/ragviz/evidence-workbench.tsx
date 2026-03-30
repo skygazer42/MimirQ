@@ -41,12 +41,12 @@ function scoreLabel(c: Citation): string {
   return '0.0000'
 }
 
-function titleForCitation(c: Citation): string {
+function titleForCitation(c: Citation, fallbackTitle: string): string {
   const parts: string[] = []
   if (c.document_name) parts.push(c.document_name)
   if (typeof c.page_number === 'number') parts.push(`P.${c.page_number}`)
   if (typeof c.chunk_index === 'number') parts.push(`#${c.chunk_index}`)
-  return parts.join(' · ') || (c.document_id ? String(c.document_id) : 'Citation')
+  return parts.join(' · ') || (c.document_id ? String(c.document_id) : fallbackTitle)
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -344,29 +344,29 @@ export function EvidenceWorkbench() {
 
             <div className="mt-3 space-y-2 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">abstain_triggered</div>
+                <div className="text-muted-foreground">{t("results.summary.abstainTriggered")}</div>
                 <div className="font-mono">{String(Boolean(result.abstain_triggered))}</div>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">abstain_reason</div>
+                <div className="text-muted-foreground">{t("results.summary.abstainReason")}</div>
                 <div className="font-mono max-w-[220px] truncate" title={String(result.abstain_reason || '')}>
                   {result.abstain_reason || '-'}
                 </div>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">top_relevance_score</div>
+                <div className="text-muted-foreground">{t("results.summary.topRelevanceScore")}</div>
                 <div className="font-mono">{topRel}</div>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">retrieval_elapsed_sec</div>
+                <div className="text-muted-foreground">{t("results.summary.retrievalElapsed")}</div>
                 <div className="font-mono">{elapsed}</div>
               </div>
               <div className="flex items-center justify-between gap-2">
-                <div className="text-muted-foreground">citations</div>
+                <div className="text-muted-foreground">{t("results.summary.citations")}</div>
                 <div className="font-mono">{citations.length}</div>
               </div>
               <div className="pt-2">
-                <div className="text-muted-foreground text-[11px]">query_for_retrieval</div>
+                <div className="text-muted-foreground text-[11px]">{t("results.summary.queryForRetrieval")}</div>
                 <Input
                   readOnly
                   value={result.query_for_retrieval || ''}
@@ -391,6 +391,7 @@ export function EvidenceWorkbench() {
                 {citations.map((c) => {
                   const content = String(c.chunk_content || '')
                   const safeImgUrl = c.has_image && c.img_url ? resolveSafeCitationImageUrl(c.img_url) : null
+                  const citationTitle = titleForCitation(c, t("results.citations.fallbackTitle"))
                   return (
                     <div
                       key={`${String(c.document_id || '')}:${String(c.chunk_id || '')}:${String(c.page_number ?? '')}`}
@@ -401,8 +402,8 @@ export function EvidenceWorkbench() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-xs font-medium truncate" title={titleForCitation(c)}>
-                            {titleForCitation(c)}
+                          <div className="text-xs font-medium truncate" title={citationTitle}>
+                            {citationTitle}
                           </div>
                           {c.header_path ? (
                             <div className="text-[11px] text-muted-foreground truncate" title={String(c.header_path)}>
@@ -428,7 +429,7 @@ export function EvidenceWorkbench() {
                               />
                             </AuthImageLink>
                           ) : null}
-                          <div className="text-[11px] text-muted-foreground">score</div>
+                          <div className="text-[11px] text-muted-foreground">{t("results.citations.scoreLabel")}</div>
                           <div className="text-[11px] font-mono">{scoreLabel(c)}</div>
                         </div>
                       </div>
