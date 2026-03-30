@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ShieldCheck, RefreshCw, Search, Copy, FilterX, ScrollText } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -23,14 +24,14 @@ function fmtTs(ts: string) {
   }
 }
 
-async function copyText(text: string, okMsg: string) {
+async function copyText(text: string, okMsg: string, errMsg: string) {
   const value = (text || '').trim()
   if (!value) return
   try {
     await navigator.clipboard.writeText(value)
     toast.success(okMsg)
   } catch {
-    toast.error('复制失败')
+    toast.error(errMsg)
   }
 }
 
@@ -39,6 +40,8 @@ export default function AuditLogsPage() {
   const [resp, setResp] = useState<AuditLogListResponse | null>(null)
   const [skip, setSkip] = useState(0)
   const limit = 50
+
+  const t = useTranslations('AuditPage')
 
   const [filters, setFilters] = useState({
     actor_id: '',
@@ -54,12 +57,12 @@ export default function AuditLogsPage() {
 
   const presets = useMemo(
     () => [
-      { label: 'Access Review（日常）', action: 'compliance.access_review.daily' },
-      { label: 'Index Audit（日常）', action: 'observability.index_audit.daily' },
-      { label: 'Evidence Drift（日常）', action: 'evidence.drift_audit.daily' },
-      { label: 'Access Graph（导出）', action: 'compliance.access_graph.export' },
+      { label: t('presets.accessReviewDaily'), action: 'compliance.access_review.daily' },
+      { label: t('presets.indexAuditDaily'), action: 'observability.index_audit.daily' },
+      { label: t('presets.evidenceDriftDaily'), action: 'evidence.drift_audit.daily' },
+      { label: t('presets.accessGraphExport'), action: 'compliance.access_graph.export' },
     ],
-    []
+    [t]
   )
 
   const params = useMemo(() => {
@@ -79,11 +82,11 @@ export default function AuditLogsPage() {
       setResp(data)
     } catch (err: any) {
       setResp(null)
-      toast.error(formatApiError(err, '加载审计日志失败'))
+      toast.error(formatApiError(err, t('errors.loadLogs')))
     } finally {
       setLoading(false)
     }
-  }, [params])
+  }, [params, t])
 
   useEffect(() => {
     detachPromise(load())
@@ -98,8 +101,8 @@ export default function AuditLogsPage() {
     <AppFrame>
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <PageScaffold
-          title="审计日志"
-          description="关键操作留痕（admin-only）"
+          title={t('title')}
+          description={t('description')}
           icon={ShieldCheck}
           iconColor="text-emerald-600 dark:text-emerald-400"
           size="7xl"
@@ -113,7 +116,7 @@ export default function AuditLogsPage() {
                 disabled={loading}
               >
                 <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
-                刷新
+                {t('actions.refresh')}
               </Button>
               <Button
                 size="sm"
@@ -132,16 +135,16 @@ export default function AuditLogsPage() {
                     until: '',
                   })
                 }}
-              >
-                <FilterX className="w-4 h-4" />
-                重置
-              </Button>
+                >
+                  <FilterX className="w-4 h-4" />
+                  {t('actions.reset')}
+                </Button>
             </div>
           }
         >
           <Panel padding="lg" className="mt-4">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="text-xs text-muted-foreground">快速预设：</div>
+            <div className="text-xs text-muted-foreground">{t('labels.quickPresets')}</div>
               {presets.map((p) => (
                 <Button
                   key={p.action}
@@ -209,9 +212,7 @@ export default function AuditLogsPage() {
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-              <div>
-                total: {total} · page: {page}/{totalPages}
-              </div>
+              <div>{t('pagination.status', { total, page, totalPages })}</div>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -220,7 +221,7 @@ export default function AuditLogsPage() {
                   onClick={() => setSkip((v) => Math.max(0, v - limit))}
                   disabled={skip <= 0}
                 >
-                  上一页
+                  {t('pagination.previous')}
                 </Button>
                 <Button
                   size="sm"
@@ -229,7 +230,7 @@ export default function AuditLogsPage() {
                   onClick={() => setSkip((v) => (v + limit < total ? v + limit : v))}
                   disabled={skip + limit >= total}
                 >
-                  下一页
+                  {t('pagination.next')}
                 </Button>
               </div>
             </div>
@@ -241,8 +242,8 @@ export default function AuditLogsPage() {
         if (items.length === 0) {
             return (<EmptyState
                       icon={ScrollText}
-                      title="暂无审计记录"
-                      description="当前筛选条件下没有找到任何审计日志。"
+                      title={t('emptyState.title')}
+                      description={t('emptyState.description')}
                     />);
         }
         else {
@@ -267,11 +268,11 @@ export default function AuditLogsPage() {
                           {it.request_id ? (<Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => {
                                 setSkip(0);
                                 setFilters((p) => ({ ...p, request_id: it.request_id || '' }));
-                            }} title="按 request_id 过滤">
+                            }} title={t('actions.requestFilterTitle')}>
                               <Search className="w-4 h-4"/>
                               req
                             </Button>) : null}
-                          <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => detachPromise(copyText(JSON.stringify(it.details || {}, null, 2), '已复制 details JSON'))}>
+                          <Button variant="outline" size="sm" className="h-8 gap-2" onClick={() => detachPromise(copyText(JSON.stringify(it.details || {}, null, 2), t('toasts.copySuccess'), t('toasts.copyFailure')))}>
                             <Copy className="w-4 h-4"/>
                             JSON
                           </Button>
@@ -290,7 +291,7 @@ export default function AuditLogsPage() {
     }
     else {
         return (<div className="text-sm text-muted-foreground">
-                无法加载审计日志。请确认你是 owner/admin，并且后端已更新到包含 /api/v1/audit 的版本。
+                {t('alerts.unableToLoad')}
               </div>);
     }
 })()}

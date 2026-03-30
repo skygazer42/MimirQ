@@ -321,6 +321,92 @@ const zhCNMessages = {
     unnamed: '(未命名目录)',
     allDirectories: '全部目录',
   },
+  AuditPage: {
+    title: '审计日志',
+    description: '关键操作留痕（admin-only）',
+    presets: {
+      accessReviewDaily: 'Access Review（日常）',
+      indexAuditDaily: 'Index Audit（日常）',
+      evidenceDriftDaily: 'Evidence Drift（日常）',
+      accessGraphExport: 'Access Graph（导出）',
+    },
+    actions: {
+      refresh: '刷新',
+      reset: '重置',
+      requestFilterTitle: '按 request_id 过滤',
+    },
+    labels: {
+      quickPresets: '快速预设：',
+    },
+    pagination: {
+      status: 'total: {total} · page: {page}/{totalPages}',
+      previous: '上一页',
+      next: '下一页',
+    },
+    emptyState: {
+      title: '暂无审计记录',
+      description: '当前筛选条件下没有找到任何审计日志。',
+    },
+    alerts: {
+      unableToLoad: '无法加载审计日志。请确认你是 owner/admin，并且后端已更新到包含 /api/v1/audit 的版本。',
+    },
+    toasts: {
+      copySuccess: '已复制 details JSON',
+      copyFailure: '复制失败',
+    },
+    errors: {
+      loadLogs: '加载审计日志失败',
+    },
+  },
+  AccessReviewPage: {
+    title: '访问审查',
+    description: '权限图谱汇总与导出（admin-only，默认 PII-safe）',
+    actions: {
+      refresh: '刷新',
+      export: '下载导出',
+    },
+    summary: {
+      heading: '汇总',
+      description:
+        '用于日常 access review 与排查“为什么某个用户被拒绝”（目录/组/allowlist 维度），不包含文档内容。',
+      generatedAt: 'generated_at: {timestamp}',
+    },
+    stats: {
+      datasetDistribution: 'Dataset 权限分布',
+      documentDistribution: 'Document 访问模式分布',
+    },
+    export: {
+      heading: '导出（Access Graph Export）',
+      description:
+        '建议优先使用 NDJSON（便于分页与流式处理）。浏览器下载会自动解压 gzip 编码，因此 “gzip” 主要用于网络传输节省带宽。',
+      formatLabel: '格式',
+      formatPlaceholder: '选择格式',
+      formatOptions: {
+        ndjson: 'NDJSON（推荐）',
+        json: 'JSON（单页）',
+      },
+      limitLabel: '每页条数（limit）',
+      gzipLabel: 'gzip 传输',
+      gzipDescription: '仅影响传输编码，不保证保存为 .gz',
+      includeSensitiveLabel: '包含敏感字段（谨慎）',
+      includeSensitiveDescription:
+        '开启后可能包含 group name / external_id / user_id 等字段，仅建议用于审计导出与合规流程。',
+    },
+    warnings: {
+      reachedPageLimit: '导出已达到最大分页上限（{maxPages}页）。建议用脚本/后端导出处理更大租户。',
+      reachedByteLimit: '导出内容过大，已停止追加分页。建议用脚本/后端导出处理更大租户。',
+    },
+    toasts: {
+      downloadJson: '已下载 access graph（JSON）',
+      downloadPages: '已下载 access graph（{pages}页）',
+    },
+    errors: {
+      loadSummary: '加载访问审查汇总失败',
+      loadSummaryFallback:
+        '无法加载访问审查汇总。请确认你是 owner/admin，并且后端已更新到包含 `/api/v1/audit/access-graph/summary` 的版本。',
+      export: '导出 access graph 失败',
+    },
+  },
 } as const
 
 export default zhCNMessages
