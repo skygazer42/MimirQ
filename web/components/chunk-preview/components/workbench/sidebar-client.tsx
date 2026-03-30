@@ -517,14 +517,14 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           <div className="bg-card border border-border/60 rounded-xl px-3 py-3 shadow-sm space-y-3">
             <div className="flex items-center gap-2">
               <Wand2 className="w-4 h-4 text-primary" />
-              <div className="text-xs font-medium text-foreground/80">预览性能</div>
-              <div className="text-[10px] text-muted-foreground">仅影响预览载荷，不影响入库</div>
+              <div className="text-xs font-medium text-foreground/80">{t('sidebar.performance.title')}</div>
+              <div className="text-[10px] text-muted-foreground">{t('sidebar.performance.description')}</div>
             </div>
 
             <div className="flex items-center justify-between gap-2">
               <div>
-                <div className="text-xs font-medium text-foreground/80">返回原文（用于高亮）</div>
-                <div className="text-[10px] text-muted-foreground">大文档建议关闭或降低上限</div>
+                <div className="text-xs font-medium text-foreground/80">{t('sidebar.performance.includeOriginalText.title')}</div>
+                <div className="text-[10px] text-muted-foreground">{t('sidebar.performance.includeOriginalText.description')}</div>
               </div>
               <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
                 <input
@@ -533,12 +533,12 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   onChange={(e) => updatePerfSettings({ includeOriginalText: e.target.checked })}
                   className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
                 />
-                {includeOriginalText ? '开启' : '关闭'}
+                {includeOriginalText ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
               </label>
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-medium text-muted-foreground">原文上限（chars）</div>
+              <div className="text-xs font-medium text-muted-foreground">{t('sidebar.performance.originalTextMaxChars')}</div>
               <Input
                 type="number"
                 inputMode="numeric"
@@ -548,13 +548,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 value={originalTextMaxChars}
                 onChange={(e) => updatePerfSettings({ originalTextMaxChars: Number(e.target.value) })}
                 className="h-7 w-28 text-[11px] font-mono bg-background"
-                aria-label="原文上限"
+                aria-label={t('sidebar.performance.originalTextMaxCharsAria')}
                 disabled={!includeOriginalText}
               />
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-medium text-muted-foreground">最多返回 chunks</div>
+              <div className="text-xs font-medium text-muted-foreground">{t('sidebar.performance.maxChunks')}</div>
               <Input
                 type="number"
                 inputMode="numeric"
@@ -564,14 +564,14 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 value={maxChunks}
                 onChange={(e) => updatePerfSettings({ maxChunks: Number(e.target.value) })}
                 className="h-7 w-28 text-[11px] font-mono bg-background"
-                aria-label="最多返回 chunks"
+                aria-label={t('sidebar.performance.maxChunksAria')}
               />
             </div>
 
             <div className="flex items-center justify-between gap-2">
               <div>
-                <div className="text-xs font-medium text-foreground/80">后端解析缓存</div>
-                <div className="text-[10px] text-muted-foreground">同一文件/解析器调参时可显著提速</div>
+                <div className="text-xs font-medium text-foreground/80">{t('sidebar.performance.parseCache.title')}</div>
+                <div className="text-[10px] text-muted-foreground">{t('sidebar.performance.parseCache.description')}</div>
               </div>
               <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
                 <input
@@ -580,21 +580,24 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   onChange={(e) => updatePerfSettings({ useParseCache: e.target.checked })}
                   className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
                 />
-                {useParseCache ? '开启' : '关闭'}
+                {useParseCache ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
               </label>
             </div>
 
             <div className="text-[10px] text-muted-foreground leading-relaxed">
-              0 表示不限制。建议 1000-5000；太大可能导致浏览器卡顿。
+              {t('sidebar.performance.maxChunksGuidance')}
             </div>
 
             {previewData?.chunks_truncated ? (
               <div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
-                已截断：当前显示 {previewData.total_chunks}
                 {previewData.total_chunks_full && previewData.total_chunks_full !== previewData.total_chunks
-                  ? ` / ${previewData.total_chunks_full}`
-                  : ''}{' '}
-                chunks
+                  ? t('sidebar.performance.truncatedSummaryWithFull', {
+                    current: previewData.total_chunks,
+                    full: previewData.total_chunks_full,
+                  })
+                  : t('sidebar.performance.truncatedSummary', {
+                    current: previewData.total_chunks,
+                  })}
                 <Button
                   type="button"
                   variant="ghost"
@@ -602,10 +605,10 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   className="h-6 px-2 ml-2 text-[10px]"
                   onClick={() => {
                     updatePerfSettings({ maxChunks: 0 })
-                    toast.success('已取消限制，请重新生成预览')
+                    toast.success(t('sidebar.performance.clearLimitSuccess'))
                   }}
                 >
-                  取消限制
+                  {t('sidebar.performance.clearLimit')}
                 </Button>
               </div>
             ) : null}
