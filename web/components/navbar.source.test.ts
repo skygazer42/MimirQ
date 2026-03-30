@@ -9,4 +9,43 @@ describe('navbar source', () => {
     expect(src).toContain("if (globalThis.navigator?.webdriver) return")
     expect(src).toContain('router.prefetch(href)')
   })
+
+  it('uses locale-aware navigation helpers and has locale wrappers for navbar routes', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
+    const webRoot = path.resolve(__dirname, '..')
+    const wrapperPaths = [
+      'app/[locale]/access-review/page.tsx',
+      'app/[locale]/audit/page.tsx',
+      'app/[locale]/auth/page.tsx',
+      'app/[locale]/chunk-preview/page.tsx',
+      'app/[locale]/data-governance/page.tsx',
+      'app/[locale]/data-governance/common-lines/page.tsx',
+      'app/[locale]/data-governance/profiles/page.tsx',
+      'app/[locale]/datasets/page.tsx',
+      'app/[locale]/diagnostics/page.tsx',
+      'app/[locale]/evaluations/ablations/page.tsx',
+      'app/[locale]/graph/page.tsx',
+      'app/[locale]/graph/diagnostics/page.tsx',
+      'app/[locale]/graph/snapshots/page.tsx',
+      'app/[locale]/knowledge/feedback/page.tsx',
+      'app/[locale]/knowledge/ingestion/page.tsx',
+      'app/[locale]/knowledge/quarantine/page.tsx',
+      'app/[locale]/knowledge/similarity/page.tsx',
+      'app/[locale]/parsing/page.tsx',
+      'app/[locale]/prompts/page.tsx',
+      'app/[locale]/reports/page.tsx',
+      'app/[locale]/settings/page.tsx',
+      'app/[locale]/settings/groups/page.tsx',
+      'app/[locale]/settings/rbac/page.tsx',
+      'app/[locale]/usage/page.tsx',
+    ]
+
+    expect(src).toContain("import { Link, usePathname, useRouter } from '@/i18n/navigation'")
+    expect(src).not.toContain("import Link from 'next/link'")
+    expect(src).not.toContain("import { usePathname, useRouter } from 'next/navigation'")
+
+    for (const wrapperPath of wrapperPaths) {
+      expect(fs.existsSync(path.resolve(webRoot, wrapperPath))).toBe(true)
+    }
+  })
 })

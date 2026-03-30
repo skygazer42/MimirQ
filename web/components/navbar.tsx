@@ -4,8 +4,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
 import {
   Activity,
   AlertTriangle,
@@ -42,6 +40,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Link, usePathname, useRouter } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
 import { useAuth } from '@/hooks/use-auth'
