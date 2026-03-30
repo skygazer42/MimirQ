@@ -667,6 +667,25 @@ const zhCNMessages = {
     loadingPage: '正在加载报告中心...',
     loadingPageSr: 'Loading reports center',
   },
+  RouteBoundaries: {
+    notFound: {
+      title: '页面不存在',
+      description: '你访问的地址可能已被移除或暂时不可用。',
+      goHome: '返回首页',
+      goKnowledge: '前往知识库',
+    },
+    loading: {
+      pageSr: '页面加载中…',
+    },
+    error: {
+      title: '页面加载失败',
+      message: '发生了一个临时错误，请重试或返回首页继续操作。',
+      retry: '重试',
+      home: '返回首页',
+      requestId: '请求 ID：request_id={requestId}',
+      errorId: '错误 ID：{errorId}',
+    },
+  },
   RagTrace: {
     dialog: {
       title: 'RAG Trace',

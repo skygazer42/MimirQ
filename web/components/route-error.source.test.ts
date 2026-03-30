@@ -12,10 +12,16 @@ describe('route error source', () => {
     const src = read('./route-error.tsx')
 
     expect(src).toContain('export function RouteError(')
-    expect(src).toContain('title = ')
-    expect(src).toContain('message = ')
+    expect(src).toContain("useTranslations('RouteBoundaries')")
+    expect(src).toContain('const resolvedTitle = title ?? t("error.title")')
+    expect(src).toContain('const resolvedMessage = message ?? t("error.message")')
+    expect(src).toContain('t("error.title")')
+    expect(src).toContain('t("error.message")')
+    expect(src).toContain('t("error.retry")')
+    expect(src).toContain('t("error.home")')
+    expect(src).toContain('t("error.requestId"')
+    expect(src).toContain('t("error.errorId"')
     expect(src).toContain('extractRequestIdFromError')
-    expect(src).toContain('request_id=')
   })
 
   it.each([
