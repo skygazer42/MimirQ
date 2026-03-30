@@ -755,9 +755,28 @@ const zhCNMessages = {
     },
   },
   KGDiagnosticsPage: {
+    page: {
+      title: 'KG 诊断',
+      description: 'KG Search diagnostics：run / list / compare（OneEval 风格）',
+      actions: {
+        refreshRuns: '刷新 runs',
+        run: '运行',
+        exportRun: '导出',
+      },
+    },
     qualityReport: {
       title: 'KG Extraction Quality（aggregate）',
       hint: '加载 KG extraction quality report（aggregate-only）',
+    },
+    toasts: {
+      datasetRequired: '请输入 dataset_id',
+      runsLoadFailed: '拉取 KG diagnostics runs 失败',
+      runLoadFailed: '加载 run {id} 失败',
+      qualityReportLoaded: '已拉取 KG quality report',
+      qualityReportLoadFailed: '拉取 KG quality report 失败',
+      diagnosticsRan: '已运行 KG diagnostics',
+      diagnosticsRunFailed: '运行 KG diagnostics 失败',
+      runExported: '已导出 run.json',
     },
   },
   ParsingWorkbench: {

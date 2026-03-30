@@ -201,7 +201,7 @@ export function KGDiagnosticsPage() {
   async function refreshRuns(): Promise<void> {
     const ds = datasetId.trim()
     if (!ds) {
-      toast.error('请输入 dataset_id')
+      toast.error(t("toasts.datasetRequired"))
       return
     }
     setRunsLoading(true)
@@ -211,7 +211,7 @@ export function KGDiagnosticsPage() {
       setRuns(items)
       if (!selectedRunA && items?.[0]?.id) setSelectedRunA(items[0].id)
     } catch (err) {
-      toast.error(formatApiError(err, '拉取 KG diagnostics runs 失败'))
+      toast.error(formatApiError(err, t("toasts.runsLoadFailed")))
     } finally {
       setRunsLoading(false)
     }
@@ -225,14 +225,14 @@ export function KGDiagnosticsPage() {
       if (which === 'a') setDetailA(detail)
       else setDetailB(detail)
     } catch (err) {
-      toast.error(formatApiError(err, `加载 run ${id.slice(0, 8)} 失败`))
+      toast.error(formatApiError(err, t("toasts.runLoadFailed", { id: id.slice(0, 8) })))
     }
   }
 
   async function loadQualityReport(): Promise<void> {
     const ds = datasetId.trim()
     if (!ds) {
-      toast.error('请输入 dataset_id')
+      toast.error(t("toasts.datasetRequired"))
       return
     }
     setQualityLoading(true)
@@ -243,9 +243,9 @@ export function KGDiagnosticsPage() {
         pipeline_hash: qualityPipelineHash.trim() || undefined,
       })
       setQualityReport(resp ?? null)
-      toast.success('已拉取 KG quality report')
+      toast.success(t("toasts.qualityReportLoaded"))
     } catch (err) {
-      toast.error(formatApiError(err, '拉取 KG quality report 失败'))
+      toast.error(formatApiError(err, t("toasts.qualityReportLoadFailed")))
     } finally {
       setQualityLoading(false)
     }
@@ -254,7 +254,7 @@ export function KGDiagnosticsPage() {
   async function runDiagnostics(): Promise<void> {
     const ds = datasetId.trim()
     if (!ds) {
-      toast.error('请输入 dataset_id')
+      toast.error(t("toasts.datasetRequired"))
       return
     }
     setRunning(true)
@@ -274,13 +274,13 @@ export function KGDiagnosticsPage() {
         persist_run: Boolean(persistRun),
       })
       setRunResp(resp || null)
-      toast.success('已运行 KG diagnostics')
+      toast.success(t("toasts.diagnosticsRan"))
       if (persistRun) {
         // Refresh runs so user can diff right away.
         await refreshRuns()
       }
     } catch (err) {
-      toast.error(formatApiError(err, '运行 KG diagnostics 失败'))
+      toast.error(formatApiError(err, t("toasts.diagnosticsRunFailed")))
     } finally {
       setRunning(false)
     }
@@ -291,8 +291,8 @@ export function KGDiagnosticsPage() {
   return (
     <AppFrame>
       <PageScaffold
-        title="KG 诊断"
-        description="KG Search diagnostics：run / list / compare（OneEval 风格）"
+        title={t("page.title")}
+        description={t("page.description")}
         icon={Activity}
         iconColor="text-sky-600 dark:text-sky-400"
         size="7xl"
@@ -300,11 +300,11 @@ export function KGDiagnosticsPage() {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="gap-2" onClick={refreshRuns} disabled={runsLoading}>
               <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-              刷新 runs
+              {t("page.actions.refreshRuns")}
             </Button>
             <Button size="sm" className="gap-2" onClick={runDiagnostics} disabled={running}>
               <PlayCircle className="h-4 w-4" aria-hidden="true" />
-              运行
+              {t("page.actions.run")}
             </Button>
             <Button
               variant="outline"
@@ -313,12 +313,12 @@ export function KGDiagnosticsPage() {
               onClick={() => {
                 const base = sanitizeFilename(`kg_diagnostics_${datasetId.trim() || 'dataset'}`)
                 downloadJson(runResp ?? {}, `${base}.json`)
-                toast.success('已导出 run.json')
+                toast.success(t("toasts.runExported"))
               }}
               disabled={!runResp}
             >
               <Download className="h-4 w-4" aria-hidden="true" />
-              导出
+              {t("page.actions.exportRun")}
             </Button>
           </div>
         }
