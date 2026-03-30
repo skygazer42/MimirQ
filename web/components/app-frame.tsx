@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useTranslations } from 'next-intl'
 
 import { Navbar } from "@/components/navbar"
 import { AppBackground } from "@/components/ui/app-background"
@@ -26,6 +27,7 @@ export function AppFrame({
   showNavbar = true,
   withDocumentViewerPadding = false,
 }: Readonly<AppFrameProps>) {
+  const t = useTranslations('Layout')
   const [isSidebarOpen, setSidebarOpen] = React.useState(true)
   const skipLinkRef = React.useRef<HTMLAnchorElement | null>(null)
   const appContentRef = React.useRef<HTMLDivElement | null>(null)
@@ -80,7 +82,7 @@ export function AppFrame({
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-60 focus:rounded-lg focus:bg-background focus:px-3 focus:py-2 focus:text-foreground focus:shadow-strong focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
       >
-        跳到主要内容
+        {t('skipToMainContent')}
       </a>
       {showBackground && <AppBackground />}
       <div className="relative z-10 flex h-full overflow-hidden">

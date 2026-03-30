@@ -7,6 +7,7 @@ import { startTransition, useActionState, useCallback, useEffect, useId, useMemo
 import { useFormStatus } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Ban, Calendar, CheckCircle2, Copy, Database, Eye, FileText, FileType, Hash, Loader2, Pencil, RefreshCw, Save, Search, Shield, Tags, X } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -28,7 +29,6 @@ import { documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'
-import { messages } from '@/lib/messages'
 import { getParserLabel } from '@/lib/parser-options'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
@@ -236,6 +236,8 @@ function DocumentLifecycleSaveButton({ disabled }: Readonly<{ disabled: boolean 
 }
 
 export function DocumentDetailDialog({ document: initialDocument, trigger }: Readonly<DocumentDetailDialogProps>) {
+  const commonT = useTranslations('Common')
+  const documentsT = useTranslations('Documents')
   const viewTabsId = useId()
   const chunksTabId = `${viewTabsId}-chunks-tab`
   const timelineTabId = `${viewTabsId}-timeline-tab`
@@ -1645,7 +1647,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             if ((isLoadingDoc && !detail) || (isLoadingChunks && chunks.length === 0)) {
                 return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-                    <p className="text-sm">{messages.documents.loadingChunks}</p>
+                    <p className="text-sm">{documentsT('loadingChunks')}</p>
                   </div>);
             }
             else if (loadError && chunks.length === 0) {
@@ -1660,16 +1662,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                             detachPromise(loadVersions());
                             detachPromise(reloadChunks());
                         }}>
-                        {messages.common.retry}
+                        {commonT('retry')}
                       </Button>
                       <Button variant="secondary" onClick={() => setOpen(false)}>
-                        {messages.common.close}
+                        {commonT('close')}
                       </Button>
                     </div>
                   </div>);
                 }
                 else if (chunksTotal === 0 && !isSearching) {
-                        return (<EmptyState icon={FileText} title={messages.documents.emptyChunks} description="该文档暂未生成可用切片，或后端未返回切片内容。" className="min-h-[320px]"/>);
+                        return (<EmptyState icon={FileText} title={documentsT('emptyChunks')} description="该文档暂未生成可用切片，或后端未返回切片内容。" className="min-h-[320px]"/>);
                     }
                     else if (chunksTotal === 0 && isSearching) {
                             return (<EmptyState icon={Search} title="未找到匹配切片" description={<span>尝试更换关键词，或清空筛选条件。</span>} className="min-h-[320px]">
@@ -1735,11 +1737,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 	                                  <Textarea value={editingChunkContent} onChange={(e) => setEditingChunkContent(e.target.value)} className="min-h-[140px] font-mono text-xs" disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}/>
 	                                  <div className="flex items-center justify-end gap-2">
 	                                    <Button type="button" variant="outline" size="sm" onClick={cancelEditChunk} disabled={chunkOpWorkingId === chunk.id}>
-	                                      {messages.common.cancel}
+	                                      {commonT('cancel')}
 	                                    </Button>
 	                                    <Button type="button" size="sm" onClick={() => detachPromise(saveEditChunk())} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id} className="gap-2">
 	                                      {chunkOpWorkingId === chunk.id ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : (<Save className="h-4 w-4"/>)}
-	                                      {messages.common.save}
+	                                      {commonT('save')}
 	                                    </Button>
 	                                  </div>
 	                                </div>) : (<div className="mt-2 whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
@@ -1763,7 +1765,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     else if (isLoadingTimeline && timelineItems.length === 0) {
             return (<div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
 	                  <Loader2 className="h-8 w-8 animate-spin motion-reduce:animate-none"/>
-                  <p className="text-sm">{messages.documents.loadingTimeline}</p>
+                  <p className="text-sm">{documentsT('loadingTimeline')}</p>
                 </div>);
         }
         else if ((timelineError || docError) && timelineItems.length === 0) {
@@ -1774,16 +1776,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   </Alert>
                   <div className="mt-4 flex items-center justify-end gap-2">
                     <Button variant="outline" onClick={() => detachPromise(loadTimeline())}>
-                      {messages.common.retry}
+                      {commonT('retry')}
                     </Button>
                     <Button variant="secondary" onClick={() => setOpen(false)}>
-                      {messages.common.close}
+                      {commonT('close')}
                     </Button>
                   </div>
                 </div>);
             }
             else if (timelineItems.length === 0) {
-                    return (<EmptyState icon={Calendar} title={messages.documents.emptyTimeline} description="该文档暂未产生可回溯的事件记录（或审计未启用）。" className="min-h-[320px]"/>);
+                    return (<EmptyState icon={Calendar} title={documentsT('emptyTimeline')} description="该文档暂未产生可回溯的事件记录（或审计未启用）。" className="min-h-[320px]"/>);
                 }
                 else {
                     return (<div className="pb-6 space-y-3">

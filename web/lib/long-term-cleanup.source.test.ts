@@ -45,15 +45,18 @@ describe('long-term cleanup source guards', () => {
 
   it('keeps document detail tabs accessible and seeds centralized messages for future i18n work', () => {
     const dialog = read('components/document-detail-dialog.tsx')
-    const messageCatalog = read('lib/messages.ts')
+    const messageCatalog = read('i18n/messages/zh-CN.ts')
 
     expect(dialog).toContain('role="tablist"')
     expect(dialog).toContain('role="tab"')
     expect(dialog).toContain('role="tabpanel"')
     expect(dialog).toContain('aria-controls={')
     expect(dialog).toContain('aria-labelledby={')
-    expect(messageCatalog).toContain('common:')
-    expect(messageCatalog).toContain('documents:')
+    expect(dialog).toContain("import { useTranslations } from 'next-intl'")
+    expect(dialog).toContain("const commonT = useTranslations('Common')")
+    expect(dialog).toContain("const documentsT = useTranslations('Documents')")
+    expect(messageCatalog).toContain('Common:')
+    expect(messageCatalog).toContain('Documents:')
   })
 
   it('keeps business-specific parser controls out of the ui primitives directory', () => {

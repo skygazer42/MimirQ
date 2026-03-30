@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, Suspense, useCallback, useDeferredValue, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
 import {
   MessageSquare,
   Trash2,
@@ -29,7 +30,6 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { chatApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
-import { messages as uiMessages } from '@/lib/messages'
 import { toast } from 'sonner'
 import type { Conversation, Message } from '@/types'
 
@@ -77,9 +77,11 @@ const DEFAULT_VISIBLE_MESSAGES = 80
 const LOAD_MORE_STEP = 40
 
 function HistoryPageLoading() {
+  const t = useTranslations('History')
+
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
-      <PageLoading message={uiMessages.history.loadingPage} srMessage={uiMessages.history.loadingPageSr} />
+      <PageLoading message={t('loadingPage')} srMessage={t('loadingPageSr')} />
     </AppFrame>
   )
 }
@@ -94,6 +96,8 @@ function HistoryPageContent({
 }: Readonly<HistoryPageContentProps>) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const locale = useLocale()
+  const t = useTranslations('History')
   const conversationId = searchParams.get('id') || initialConversationId || null
 
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
@@ -120,11 +124,11 @@ function HistoryPageContent({
       setConversations(result.items || [])
     } catch (error) {
       console.error('Failed to load conversations:', error)
-      toast.error(formatApiError(error, uiMessages.history.loadConversationListFailed))
+      toast.error(formatApiError(error, t('loadConversationListFailed')))
     } finally {
       setIsLoadingList(false)
     }
-  }, [])
+  }, [t])
 
   const handleSelectConversation = useCallback(async (conversation: Conversation) => {
     if (selectedConversation?.id === conversation.id && messages.length > 0) return
@@ -146,13 +150,13 @@ function HistoryPageContent({
       })
     } catch (error) {
       console.error('Failed to load messages:', error)
-      toast.error(formatApiError(error, uiMessages.history.loadConversationMessagesFailed))
+      toast.error(formatApiError(error, t('loadConversationMessagesFailed')))
       setMessages([])
       setHasMoreMessages(false)
     } finally {
       setIsLoadingMessages(false)
     }
-  }, [router, selectedConversation?.id, messages.length])
+  }, [router, selectedConversation?.id, messages.length, t])
 
   // 加载对话列表
   useEffect(() => {
@@ -223,12 +227,29 @@ function HistoryPageContent({
     )
   }, [conversations, deferredSearchQuery])
 
+  const groupLabels = useMemo(
+    () => ({
+      today: t('groupToday'),
+      yesterday: t('groupYesterday'),
+      last7Days: t('groupLast7Days'),
+      last30Days: t('groupLast30Days'),
+      earlier: t('groupEarlier'),
+    }),
+    [t]
+  )
+
   // 按日期分组
   const groupedConversations = useMemo(
-    () => groupConversationsByDate(filteredConversations),
-    [filteredConversations]
+    () => groupConversationsByDate(filteredConversations, groupLabels),
+    [filteredConversations, groupLabels]
   )
-  const groupOrder = ['今天', '昨天', '最近7天', '最近30天', '更早']
+  const groupOrder = [
+    groupLabels.today,
+    groupLabels.yesterday,
+    groupLabels.last7Days,
+    groupLabels.last30Days,
+    groupLabels.earlier,
+  ]
   const oldestMessageId = messages[0]?.id
 
   const loadOlderMessages = useCallback(async () => {
@@ -254,17 +275,17 @@ function HistoryPageContent({
       setHasMoreMessages(Boolean(result.has_more))
     } catch (error) {
       console.error('Failed to load older messages:', error)
-      toast.error(formatApiError(error, uiMessages.history.loadOlderMessagesFailed))
+      toast.error(formatApiError(error, t('loadOlderMessagesFailed')))
     } finally {
       setIsLoadingOlder(false)
     }
-  }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId])
+  }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId, t])
 
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding mainClassName="overflow-hidden">
       <PageScaffold
-        title={uiMessages.history.pageTitle}
-        description={uiMessages.history.pageDescription}
+        title={t('pageTitle')}
+        description={t('pageDescription')}
         icon={History}
         iconColor="text-sky-600 dark:text-sky-400"
         size="full"
@@ -278,7 +299,7 @@ function HistoryPageContent({
             onClick={() => router.push('/', { scroll: false })}
           >
             <Plus className="h-4 w-4" />
-            {uiMessages.history.newConversation}
+            {t('newConversation')}
           </Button>
         }
       >
@@ -290,7 +311,7 @@ function HistoryPageContent({
               <SearchInput
                 value={searchQuery}
                 onValueChange={setSearchQuery}
-                placeholder={uiMessages.history.searchPlaceholder}
+                placeholder={t('searchPlaceholder')}
                 inputClassName="rounded-xl bg-background/80 shadow-sm"
               />
             </div>
@@ -306,8 +327,8 @@ function HistoryPageContent({
     else if (filteredConversations.length === 0) {
             return (<div className="text-center py-12 px-4 text-muted-foreground text-sm">
                   <MessageSquare className="h-8 w-8 mx-auto mb-3 opacity-20"/>
-                  <p>{searchQuery ? uiMessages.history.noMatchedConversation : uiMessages.history.noConversationRecords}</p>
-                  {searchQuery ? null : (<p className="mt-2 text-[11px] text-muted-foreground/80">{uiMessages.history.startConversationHint}</p>)}
+                  <p>{searchQuery ? t('noMatchedConversation') : t('noConversationRecords')}</p>
+                  {searchQuery ? null : (<p className="mt-2 text-[11px] text-muted-foreground/80">{t('startConversationHint')}</p>)}
                 </div>);
         }
         else {
@@ -339,10 +360,10 @@ function HistoryPageContent({
 		                    </div>
 		                    <div>
 		                      <h2 className="font-semibold text-foreground">
-		                        {selectedConversation.title || uiMessages.history.untitledConversation}
+		                        {selectedConversation.title || t('untitledConversation')}
 	                      </h2>
 	                      <p className="text-[11px] font-medium text-muted-foreground mt-0.5 tabular-nums">
-	                        {selectedConversation.message_count} 条消息 · {formatDate(selectedConversation.created_at)}
+	                        {t('messageCount', { count: selectedConversation.message_count })} · {formatDate(selectedConversation.created_at, locale)}
 	                      </p>
 	                    </div>
 	                  </div>
@@ -354,7 +375,7 @@ function HistoryPageContent({
                       className="gap-2 rounded-xl hover:bg-muted/50"
                     >
                       <BarChart3 className="h-3.5 w-3.5" />
-                      RAGAS 评测
+                      {t('evaluateConversation')}
                     </Button>
                     <Button
                       variant="outline"
@@ -363,7 +384,7 @@ function HistoryPageContent({
                       className="gap-2 rounded-xl hover:bg-muted/50"
                     >
                       <Route className="h-3.5 w-3.5" />
-                      RAG Trace
+                      {t('ragTrace')}
                     </Button>
                     <Button
                       size="sm"
@@ -371,7 +392,7 @@ function HistoryPageContent({
                       className="gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground"
                     >
                       <Send className="h-3.5 w-3.5" />
-                      {uiMessages.history.continueConversation}
+                      {t('continueConversation')}
                     </Button>
                   </div>
                 </div>
@@ -387,14 +408,14 @@ function HistoryPageContent({
     else if (messages.length === 0) {
             return (<div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                       <MessageSquare className="h-12 w-12 mb-4 opacity-10"/>
-                      <p>{uiMessages.history.noMessageRecords}</p>
+                      <p>{t('noMessageRecords')}</p>
                     </div>);
         }
         else {
             return (<div className="max-w-3xl mx-auto space-y-10">
                       {hasMoreMessages ? (<div className="flex justify-center">
                           <Button variant="outline" size="sm" onClick={loadOlderMessages} disabled={isLoadingOlder} className="rounded-full text-xs">
-                            {isLoadingOlder ? uiMessages.history.loading : uiMessages.history.loadOlderMessages}
+                            {isLoadingOlder ? t('loading') : t('loadOlderMessages')}
                           </Button>
                         </div>) : null}
                       {messages.map((message) => (<ChatMessageItem key={message.id} message={message}/>))}
@@ -409,11 +430,11 @@ function HistoryPageContent({
                 <EmptyState
                   icon={History}
                   iconClassName="text-primary"
-                  title={uiMessages.history.noConversationSelected}
+                  title={t('noConversationSelected')}
                   description={
                     <>
-                      {uiMessages.history.noConversationSelectedDescription.split('\n')[0]}<br />
-                      {uiMessages.history.noConversationSelectedDescription.split('\n')[1]}
+                      {t('noConversationSelectedDescription').split('\n')[0]}<br />
+                      {t('noConversationSelectedDescription').split('\n')[1]}
                     </>
                   }
                   className="min-h-full border-0 bg-transparent shadow-none"
@@ -423,7 +444,7 @@ function HistoryPageContent({
                     onClick={() => router.push('/', { scroll: false })}
                     className="rounded-full"
                   >
-                    {uiMessages.history.startNewConversation}
+                    {t('startNewConversation')}
                   </Button>
                 </EmptyState>
               </div>
@@ -459,6 +480,9 @@ function ConversationItem({
   onConfirmDelete: () => void
   onCancelDelete: () => void
 }>) {
+  const locale = useLocale()
+  const t = useTranslations('History')
+
   return (
     <div
       className={cn(
@@ -472,21 +496,21 @@ function ConversationItem({
         <button
           type="button"
           onClick={onSelect}
-          aria-label={`${uiMessages.history.selectConversation}：${conversation.title || uiMessages.history.untitledConversation}`}
+          aria-label={`${t('selectConversation')}: ${conversation.title || t('untitledConversation')}`}
           className="flex-1 min-w-0 px-4 py-4 text-left cursor-pointer focus-ring"
         >
 	          <h3 className={cn(
 	            'font-semibold truncate text-[14px]',
 	            isSelected ? 'text-primary' : 'text-foreground'
 	          )}>
-	            {conversation.title || uiMessages.history.untitledConversation}
+	            {conversation.title || t('untitledConversation')}
 	          </h3>
           <p className="text-xs text-muted-foreground truncate mt-1 leading-relaxed opacity-70">
-            {conversation.last_message || uiMessages.history.noMessage}
+            {conversation.last_message || t('noMessage')}
           </p>
 	          <div className="flex items-center gap-2 mt-2">
 	            <span className="text-[10px] font-medium text-muted-foreground tabular-nums bg-muted/60 px-1.5 py-0.5 rounded">
-	              {formatRelativeTime(conversation.updated_at)}
+	              {formatRelativeTime(conversation.updated_at, locale, t('justNow'))}
 	            </span>
 	          </div>
         </button>
@@ -496,14 +520,14 @@ function ConversationItem({
           {showDeleteConfirm ? (
             <div className="flex items-center gap-1">
               <IconButton
-                label={uiMessages.history.confirmDeleteConversation}
+                label={t('confirmDeleteConversation')}
                 className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={onConfirmDelete}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </IconButton>
               <IconButton
-                label={uiMessages.history.cancelDelete}
+                label={t('cancelDelete')}
                 className="text-muted-foreground hover:bg-muted"
                 onClick={onCancelDelete}
               >
@@ -513,7 +537,7 @@ function ConversationItem({
           ) : (
             <IconButton
               onClick={onDelete}
-              label={uiMessages.history.deleteConversation}
+              label={t('deleteConversation')}
               className="hover:bg-muted hover:text-destructive"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -526,7 +550,16 @@ function ConversationItem({
 }
 
 // 辅助函数：按日期分组
-function groupConversationsByDate(conversations: Conversation[]) {
+function groupConversationsByDate(
+  conversations: Conversation[],
+  labels: Readonly<{
+    earlier: string
+    last30Days: string
+    last7Days: string
+    today: string
+    yesterday: string
+  }>
+) {
   const groups: Record<string, Conversation[]> = {}
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -543,15 +576,15 @@ function groupConversationsByDate(conversations: Conversation[]) {
 
     let group: string
     if (convDate.getTime() === today.getTime()) {
-      group = '今天'
+      group = labels.today
     } else if (convDate.getTime() === yesterday.getTime()) {
-      group = '昨天'
+      group = labels.yesterday
     } else if (convDate.getTime() >= lastWeek.getTime()) {
-      group = '最近7天'
+      group = labels.last7Days
     } else if (convDate.getTime() >= lastMonth.getTime()) {
-      group = '最近30天'
+      group = labels.last30Days
     } else {
-      group = '更早'
+      group = labels.earlier
     }
 
     if (!groups[group]) {
@@ -564,32 +597,33 @@ function groupConversationsByDate(conversations: Conversation[]) {
 }
 
 // 辅助函数：格式化相对时间
-function formatRelativeTime(dateString: string) {
+function formatRelativeTime(dateString: string, locale: string, justNowLabel: string) {
   const date = new Date(dateString)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / (1000 * 60))
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
 
-  if (diffMins < 1) return '刚刚'
-  if (diffMins < 60) return `${diffMins} 分钟前`
-  if (diffHours < 24) return `${diffHours} 小时前`
-  if (diffDays < 7) return `${diffDays} 天前`
+  if (diffMins < 1) return justNowLabel
+  if (diffMins < 60) return relative.format(-diffMins, 'minute')
+  if (diffHours < 24) return relative.format(-diffHours, 'hour')
+  if (diffDays < 7) return relative.format(-diffDays, 'day')
 
-  return date.toLocaleDateString('zh-CN', {
+  return new Intl.DateTimeFormat(locale, {
     month: 'short',
     day: 'numeric',
-  })
+  }).format(date)
 }
 
 // 辅助函数：格式化日期
-function formatDate(dateString: string) {
-  return new Date(dateString).toLocaleDateString('zh-CN', {
+function formatDate(dateString: string, locale: string) {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  })
+  }).format(new Date(dateString))
 }

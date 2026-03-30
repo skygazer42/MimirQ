@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { connection } from 'next/server'
+import { NextIntlClientProvider } from 'next-intl'
+import { getLocale, getMessages } from 'next-intl/server'
 import './globals.css'
 import { ThemeProvider } from "@/components/theme-provider"
 import { SonnerToaster } from "@/components/sonner-toaster"
@@ -34,34 +36,37 @@ export default async function RootLayout({
   await connection()
 
   const enableFluidCursor = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === "1"
+  const locale = await getLocale()
+  const messages = await getMessages()
   const requestHeaders = await headers()
-  // Full locale-segment routing is still deferred; the root shell honors request language and direction today.
   const { lang: documentLang, dir: documentDir } = resolveRequestDocumentSettings(
     requestHeaders,
-    process.env.NEXT_PUBLIC_APP_LANG?.trim() || undefined
+    locale || process.env.NEXT_PUBLIC_APP_LANG?.trim() || undefined
   )
 
   return (
     <html lang={documentLang} dir={documentDir} suppressHydrationWarning className="h-full overflow-hidden">
       {/* Lock window scrolling: the app uses panel-internal scrolling for better UX. */}
       <body className="font-sans h-dvh overflow-hidden">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <QueryProvider>
-            <ServiceWorkerRegistrar />
-            <WebVitalsReporter />
-            <SonnerToaster />
-            <CommandMenu />
-            <RouteScrollReset />
-            {enableFluidCursor ? <FluidCursor /> : null}
-            <TaskCenter />
-            <AuthGuard>{children}</AuthGuard>
-          </QueryProvider>
-        </ThemeProvider>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <QueryProvider>
+              <ServiceWorkerRegistrar />
+              <WebVitalsReporter />
+              <SonnerToaster />
+              <CommandMenu />
+              <RouteScrollReset />
+              {enableFluidCursor ? <FluidCursor /> : null}
+              <TaskCenter />
+              <AuthGuard>{children}</AuthGuard>
+            </QueryProvider>
+          </ThemeProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   )

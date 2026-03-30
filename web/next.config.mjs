@@ -1,8 +1,10 @@
 import { withSentryConfig } from '@sentry/nextjs'
+import createNextIntlPlugin from 'next-intl/plugin'
 
 const sentryEnabled = Boolean(
   process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN || process.env.SENTRY_AUTH_TOKEN
 )
+const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -46,9 +48,11 @@ const nextConfig = {
   },
 }
 
-const sentryWrappedConfig = withSentryConfig(nextConfig, {
+const nextIntlConfig = withNextIntl(nextConfig)
+
+const sentryWrappedConfig = withSentryConfig(nextIntlConfig, {
   silent: true,
   disableLogger: true,
 })
 
-export default sentryEnabled ? sentryWrappedConfig : nextConfig
+export default sentryEnabled ? sentryWrappedConfig : nextIntlConfig
