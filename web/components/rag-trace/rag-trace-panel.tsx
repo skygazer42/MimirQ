@@ -1328,23 +1328,23 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
-      toast.success('已下载 incident bundle')
+      toast.success(t("panel.toasts.bundleDownloaded"))
     } catch (err) {
-      const msg = formatApiError(err, '下载 bundle 失败')
+      const msg = formatApiError(err, t("panel.errors.bundleDownloadFailed"))
       setBundleError(msg)
       toast.error(msg)
     } finally {
       bundleDownloadingRef.current = false
       setBundleDownloading(false)
     }
-	  }, [requestId])
+	  }, [requestId, t])
 
 	  const runDiffForRequestId = React.useCallback(async (otherRequestId: string) => {
 	    const a = requestId
 	    const b = String(otherRequestId || '').trim()
 	    if (!a || !b) return
 	    if (a === b) {
-	      toast.error('请提供两个不同的 request_id')
+	      toast.error(t("panel.errors.diffSameRequest"))
 	      return
 	    }
 
@@ -1354,14 +1354,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 	      const res = await observabilityApi.getRagTraceBundleDiff({ request_id_a: a, request_id_b: b })
 	      setDiffResult(res)
 	    } catch (err) {
-	      const msg = formatApiError(err, '加载 diff 失败')
+	      const msg = formatApiError(err, t("panel.errors.diffLoadFailed"))
 	      setDiffResult(null)
 	      setDiffError(msg)
 	      toast.error(msg)
 	    } finally {
 	      setDiffLoading(false)
 	    }
-	  }, [requestId])
+	  }, [requestId, t])
 
 	  const runDiff = React.useCallback(async () => {
       const b = diffOtherRequestId.trim()
@@ -1382,17 +1382,17 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
 	  const load = React.useCallback(async () => {
 	    setLoading(true)
-	    try {
+    try {
 	      const res = await chatApi.getRagTraces(conversationId, { limit: 40, window_minutes: 24 * 60 })
       setData(res)
       setSelectedIndex(0)
     } catch (err) {
       setData(null)
-      toast.error(formatApiError(err, '加载 RAG Trace 失败'))
+      toast.error(formatApiError(err, t("panel.errors.traceLoadFailed")))
     } finally {
       setLoading(false)
     }
-  }, [conversationId])
+  }, [conversationId, t])
 
   React.useEffect(() => {
     detachPromise(load())
@@ -1410,10 +1410,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     return (
       <EmptyState
         className={className}
-        title="RAG Trace 未启用"
+        title={t("panel.states.notEnabledTitle")}
         description={
           <span>
-            后端未开启 metrics JSONL（ENABLE_METRICS_LOG=false），或当前环境未配置 METRICS_LOG_PATH。
+            {t("panel.states.notEnabledDescription")}
           </span>
         }
         icon={Route}
@@ -1426,18 +1426,18 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     return (
       <EmptyState
         className={className}
-        title="暂无 RAG Trace"
+        title={t("panel.states.emptyTitle")}
         description={
           <span className="space-y-1">
-            <span className="block">提示：只有走到检索链路时才会记录 trace。</span>
-            <span className="block text-xs">可尝试在该会话继续提问后再刷新。</span>
+            <span className="block">{t("panel.states.emptyHint")}</span>
+            <span className="block text-xs">{t("panel.states.emptyFollowup")}</span>
           </span>
         }
         icon={Quote}
         iconClassName="text-sky-600 dark:text-sky-400"
       >
         <Button variant="outline" onClick={load} className="rounded-xl">
-          刷新
+          {t("panel.actions.refresh")}
         </Button>
       </EmptyState>
     )
@@ -1453,14 +1453,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
           <div className="flex items-center gap-2">
             <Route className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-            <div className="text-sm font-semibold">RAG Trace</div>
+            <div className="text-sm font-semibold">{t("panel.header.title")}</div>
           </div>
           <Button variant="outline" size="sm" onClick={load} className="rounded-xl">
-            刷新
+            {t("panel.actions.refresh")}
           </Button>
         </div>
         <div className="border-b border-border/60 bg-muted/20 px-4 py-2 text-[11px] text-muted-foreground">
-          聚焦面板后可用 <span className="font-mono">j/k</span> 或 <span className="font-mono">↑/↓</span> 切换 trace。
+          {t("panel.header.keyboardHint")}
         </div>
         <ScrollArea className="h-[420px]">
           <div className="p-2">
@@ -1536,14 +1536,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     className="gap-2 rounded-xl"
                     disabled={!requestId || bundleDownloading}
                     onClick={() => detachPromise(downloadBundle())}
-                    title="下载 request_id bundle（admin-only）"
+                    title={t("panel.actions.downloadBundleTitle")}
                   >
                     {bundleDownloading ? (
                       <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                     ) : (
                       <Download className="h-4 w-4" />
                     )}
-                    下载 bundle
+                    {t("panel.actions.downloadBundle")}
                   </Button>
                   <Button
                     variant="outline"
@@ -1551,10 +1551,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     className="gap-2 rounded-xl"
                     disabled={!requestId}
                     onClick={() => setDiffOpen((v) => !v)}
-                    title="对比两个 request_id 的 trace bundle（admin-only）"
+                    title={t("panel.actions.compareTitle")}
                   >
                     <GitCompare className="h-4 w-4" />
-                    对比
+                    {t("panel.actions.compare")}
                   </Button>
                 </div>
               </div>
@@ -2082,20 +2082,22 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       <Panel variant="muted" className="space-y-4">
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="space-y-1">
-                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">Fusion Simulator</div>
+                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                              {t("panel.fusionSimulator.title")}
+                            </div>
                             <div className="text-xs text-muted-foreground">
-                              拖动权重，实时模拟当前 trace 在不同 channel 配比下的 TopK 重排。
+                              {t("panel.fusionSimulator.description")}
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
                             <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('balanced')}>
-                              平衡
+                              {t("panel.fusionSimulator.presetBalanced")}
                             </Button>
                             <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('vector')}>
-                              Vector 优先
+                              {t("panel.fusionSimulator.presetVector")}
                             </Button>
                             <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('lexical')}>
-                              Lexical 优先
+                              {t("panel.fusionSimulator.presetLexical")}
                             </Button>
                           </div>
                         </div>
@@ -2134,8 +2136,12 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
                         <div className="space-y-2">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">Simulated TopK</div>
-                            <div className="text-[11px] text-muted-foreground">Δ 表示相对当前排序的升降。</div>
+                            <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                              {t("panel.fusionSimulator.simulatedTitle")}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground">
+                              {t("panel.fusionSimulator.simulatedDescription")}
+                            </div>
                           </div>
                           <div className="space-y-2">
                             {simulatedCitationRows.slice(0, 4).map((row) => {
