@@ -576,6 +576,27 @@ const zhCNMessages = {
         label: '快捷键',
         hint: 'Ctrl/⌘ + Enter 预览 · Ctrl/⌘ + S 入库',
       },
+      performance: {
+        title: '预览性能',
+        description: '仅影响预览载荷，不影响入库',
+        includeOriginalText: {
+          title: '返回原文（用于高亮）',
+          description: '大文档建议关闭或降低上限',
+        },
+        originalTextMaxChars: '原文上限（chars）',
+        originalTextMaxCharsAria: '原文上限',
+        maxChunks: '最多返回 chunks',
+        maxChunksAria: '最多返回 chunks',
+        parseCache: {
+          title: '后端解析缓存',
+          description: '同一文件/解析器调参时可显著提速',
+        },
+        maxChunksGuidance: '0 表示不限制。建议 1000-5000；太大可能导致浏览器卡顿。',
+        truncatedSummary: '已截断：当前显示 {current} chunks',
+        truncatedSummaryWithFull: '已截断：当前显示 {current} / {full} chunks',
+        clearLimit: '取消限制',
+        clearLimitSuccess: '已取消限制，请重新生成预览',
+      },
       ingestionPipeline: '入库管线',
       previewActions: {
         loading: '生成中...',
