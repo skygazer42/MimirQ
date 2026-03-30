@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Remote } from 'comlink'
 import { AlertCircle } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import { useTranslations } from 'next-intl'
 
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { Button } from '@/components/ui/button'
@@ -27,13 +28,15 @@ const PdfViewer = dynamic(() => import('@/components/parsing/pdf-viewer').then((
 })
 
 function PdfPreviewLoadingSkeleton() {
+  const t = useTranslations('ChunkPreview')
+
   return (
     <div className="flex h-full items-center justify-center px-6">
       <div className="w-full max-w-2xl rounded-2xl border border-border/60 bg-card/90 p-6 shadow-soft">
         <PageLoading
           className="min-h-0 flex-none justify-start"
-          message="正在预计算 PDF 高亮..."
-          srMessage="Preparing PDF highlight overlays"
+          message={t('pdfPreview.loading.message')}
+          srMessage={t('pdfPreview.loading.srMessage')}
         />
         <div className="mt-5 space-y-3">
           <Skeleton className="h-4 w-48" />
@@ -46,6 +49,7 @@ function PdfPreviewLoadingSkeleton() {
 }
 
 export function PdfPreview() {
+  const t = useTranslations('ChunkPreview')
   const {
     currentFile,
     previewData,
@@ -99,7 +103,7 @@ export function PdfPreview() {
     const handleMainThreadFailure = (error: unknown) => {
       console.warn('PDF preview preprocessing failed', error)
       if (cancelled || pdfPreviewSeqRef.current !== seq) return
-      setPdfPreparationError('PDF 高亮预处理失败，请刷新后重试。')
+      setPdfPreparationError(t('pdfPreview.errors.preparationFailedDescription'))
       setPdfComputation(null)
       setIsPreparingPdfPreview(false)
     }
@@ -145,7 +149,7 @@ export function PdfPreview() {
     return () => {
       cancelled = true
     }
-  }, [previewChunks, rawOriginal])
+  }, [previewChunks, rawOriginal, t])
 
   useEffect(() => {
     return () => {
@@ -213,7 +217,7 @@ export function PdfPreview() {
   if (!isPdf) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        当前文件不是 PDF
+        {t('pdfPreview.states.notPdf')}
       </div>
     )
   }
@@ -221,7 +225,7 @@ export function PdfPreview() {
   if (!currentFile) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        未选择文件
+        {t('pdfPreview.states.noFile')}
       </div>
     )
   }
@@ -233,11 +237,13 @@ export function PdfPreview() {
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10 text-warning">
             <AlertCircle className="h-5 w-5" />
           </div>
-          <div className="text-sm font-semibold text-foreground">无法显示 PDF 高亮</div>
+          <div className="text-sm font-semibold text-foreground">
+            {t('pdfPreview.states.cannotRenderTitle')}
+          </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {includeOriginalText
-              ? '后端未返回 original_text（可能被 original_text_max_chars 限制）。'
-              : '当前关闭了 include_original_text（预览性能设置）。'}
+              ? t('pdfPreview.states.originalTextMissing')
+              : t('pdfPreview.states.includeOriginalTextDisabled')}
           </div>
         </div>
       </div>
@@ -255,7 +261,9 @@ export function PdfPreview() {
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
             <AlertCircle className="h-5 w-5" />
           </div>
-          <div className="text-sm font-semibold text-foreground">PDF 高亮预处理失败</div>
+          <div className="text-sm font-semibold text-foreground">
+            {t('pdfPreview.errors.preparationFailedTitle')}
+          </div>
           <div className="mt-1 text-xs text-muted-foreground">{pdfPreparationError}</div>
         </div>
       </div>
@@ -269,9 +277,11 @@ export function PdfPreview() {
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10 text-warning">
             <AlertCircle className="h-5 w-5" />
           </div>
-          <div className="text-sm font-semibold text-foreground">未检测到 PDF 位置标签</div>
+          <div className="text-sm font-semibold text-foreground">
+            {t('pdfPreview.states.noPositionTagsTitle')}
+          </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            该解析结果不包含 @@page\tl\tr\tt\tb## 标签，无法做 PDF 框选高亮。你仍可使用“源码”面板做 offset 高亮。
+            {t('pdfPreview.states.noPositionTagsDescription')}
           </div>
         </div>
       </div>
@@ -288,7 +298,9 @@ export function PdfPreview() {
           className="h-8 rounded-full bg-background/70 px-3 backdrop-blur"
           onClick={() => setShowAllBoxes((prev) => !prev)}
         >
-          {showAllBoxes ? '仅高亮' : '显示全部框'}
+          {showAllBoxes
+            ? t('pdfPreview.actions.highlightOnly')
+            : t('pdfPreview.actions.showAllBoxes')}
         </Button>
       </div>
       <PdfViewer

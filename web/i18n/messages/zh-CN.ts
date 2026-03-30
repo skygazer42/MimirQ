@@ -624,6 +624,30 @@ const zhCNMessages = {
         generatedEvalCases: '已生成评测用例，可在「评测」页查看',
       },
     },
+    pdfPreview: {
+      loading: {
+        message: '正在预计算 PDF 高亮...',
+        srMessage: 'Preparing PDF highlight overlays',
+      },
+      errors: {
+        preparationFailedTitle: 'PDF 高亮预处理失败',
+        preparationFailedDescription: 'PDF 高亮预处理失败，请刷新后重试。',
+      },
+      states: {
+        notPdf: '当前文件不是 PDF',
+        noFile: '未选择文件',
+        cannotRenderTitle: '无法显示 PDF 高亮',
+        originalTextMissing: '后端未返回 original_text（可能被 original_text_max_chars 限制）。',
+        includeOriginalTextDisabled: '当前关闭了 include_original_text（预览性能设置）。',
+        noPositionTagsTitle: '未检测到 PDF 位置标签',
+        noPositionTagsDescription:
+          '该解析结果不包含 @@page\\tl\\tr\\tt\\tb## 标签，无法做 PDF 框选高亮。你仍可使用“源码”面板做 offset 高亮。',
+      },
+      actions: {
+        highlightOnly: '仅高亮',
+        showAllBoxes: '显示全部框',
+      },
+    },
     compareDialog: {
       title: '预览对比（A/B）',
       description: '基于 chunk 内容的快速对比（哈希匹配，适合调参时判断“块有没有变好/变坏”）。',
