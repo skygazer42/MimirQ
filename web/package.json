@@ -58,6 +58,7 @@
     "lucide-react": "^0.577.0",
     "minisearch": "^7.2.0",
     "next": "^16.2.1",
+    "next-intl": "^4.8.3",
     "next-themes": "^0.4.6",
     "pdfjs-dist": "^5.5.207",
     "plotly.js-dist-min": "^3.4.0",

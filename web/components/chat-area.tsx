@@ -5,6 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
@@ -32,7 +33,6 @@ import { SlashMenu } from '@/components/chat/slash-menu'
 import { globalEventBus } from '@/lib/event-bus'
 import { Magnetic } from '@/components/ui/magnetic'
 import { coerceOneOf } from '@/lib/one-of'
-import { messages as uiMessages } from '@/lib/messages'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
@@ -53,6 +53,7 @@ export function ChatArea({
   onConversationId?: (conversationId: string) => void
 }> = {}) {
   const router = useRouter()
+  const t = useTranslations('Chat')
   const summaryMemoryId = 'chat-enable-summary-memory'
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
@@ -204,17 +205,17 @@ export function ChatArea({
     try {
       const parsed = JSON.parse(raw)
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        setMetadataFilterError('metadata_filter must be a JSON object (filter disabled)')
+        setMetadataFilterError(t('metadataFilterObjectError'))
         setRagConfig((prev) => ({ ...prev, metadata_filter: undefined }))
         return
       }
       setMetadataFilterError(null)
       setRagConfig((prev) => ({ ...prev, metadata_filter: parsed }))
     } catch {
-      setMetadataFilterError('Invalid JSON (filter disabled)')
+      setMetadataFilterError(t('metadataFilterInvalidJson'))
       setRagConfig((prev) => ({ ...prev, metadata_filter: undefined }))
     }
-  }, [metadataFilterMode, metadataFilterText])
+  }, [metadataFilterMode, metadataFilterText, t])
 
   const handleKeyUp = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === '/') {
@@ -259,26 +260,26 @@ export function ChatArea({
     }
 
     if (cmd === 'prompt') {
-      handlePrefillInput('请基于知识库内容整理一份重点摘要，并标出需要我进一步确认的部分。')
+      handlePrefillInput(t('slashPromptSummary'))
       return
     }
 
     if (cmd === 'cite_analysis') {
-      handlePrefillInput('请先给出结论，再逐条列出对应的知识库引用依据；随后补充不同来源间的一致点与冲突点，并明确哪些判断仍需更多证据。')
+      handlePrefillInput(t('slashPromptCiteAnalysis'))
       return
     }
 
     if (cmd === 'config') {
       setShowRagSettings(true)
-      toast.info(uiMessages.chat.openRagConfig)
+      toast.info(t('openRagConfig'))
       return
     }
 
     if (cmd === 'clear') {
       setInputValue('')
-      toast.info(uiMessages.chat.clearInput)
+      toast.info(t('clearInput'))
     }
-  }, [handlePrefillInput, router])
+  }, [handlePrefillInput, router, t])
 
   // Load prompt templates
   useEffect(() => {
@@ -321,7 +322,7 @@ export function ChatArea({
     onConversationId,
     onError: (error) => {
       console.error('Chat error:', error)
-      toast.error(error || uiMessages.chat.requestFailed)
+      toast.error(error || t('requestFailed'))
     },
   })
 
@@ -514,7 +515,7 @@ export function ChatArea({
                 onClick={handleLoadMore}
                 className="rounded-full text-xs text-muted-foreground hover:bg-secondary"
               >
-                {uiMessages.chat.showEarlierMessages}（{hiddenCount}）
+                {t('showEarlierMessages')}（{hiddenCount}）
               </Button>
             </div>
           )}
@@ -556,11 +557,11 @@ export function ChatArea({
             variant="secondary"
             onClick={jumpToBottom}
             className="rounded-full shadow-md border border-border/60"
-            aria-label={uiMessages.chat.jumpToLatestMessage}
-            title={uiMessages.chat.jumpToLatestMessage}
+            aria-label={t('jumpToLatestMessage')}
+            title={t('jumpToLatestMessage')}
           >
             <ArrowDown className="h-4 w-4 mr-1" />
-            {uiMessages.chat.jumpToLatest}
+            {t('jumpToLatest')}
           </Button>
         </div>
       )}
@@ -572,10 +573,10 @@ export function ChatArea({
             <div className="flex min-w-0 items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span>{uiMessages.chat.conversationTools}</span>
+                <span>{t('conversationTools')}</span>
               </div>
               <div className="hidden text-[11px] text-muted-foreground md:block">
-                {uiMessages.chat.toolsHint}
+                {t('toolsHint')}
               </div>
             </div>
 
@@ -585,18 +586,18 @@ export function ChatArea({
                   <PopoverTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-9 gap-2 rounded-full border border-border/60 bg-card px-3 text-foreground shadow-sm hover:bg-secondary/80">
                       <Wand2 className="w-3.5 h-3.5 text-primary" />
-                      <span className="text-xs">{selectedPromptTemplate?.name || uiMessages.chat.defaultTemplate}</span>
+                      <span className="text-xs">{selectedPromptTemplate?.name || t('defaultTemplate')}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-2" align="start">
-                    <div className="text-xs font-medium text-muted-foreground mb-2 px-2">{uiMessages.chat.selectPromptTemplate}</div>
+                    <div className="text-xs font-medium text-muted-foreground mb-2 px-2">{t('selectPromptTemplate')}</div>
                     <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
                       <button
                         type="button"
                         className={cn('px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors', !promptTemplateId && 'bg-secondary/50 font-medium text-primary')}
                         onClick={() => setPromptTemplateId('')}
                       >
-                        {uiMessages.chat.defaultTemplate}
+                        {t('defaultTemplate')}
                       </button>
                       {promptTemplates.map((t) => (
                         <button
@@ -627,19 +628,19 @@ export function ChatArea({
                     )}
                   >
                     <Settings2 className="w-3.5 h-3.5" />
-                    <span className="text-xs">RAG 配置</span>
+                    <span className="text-xs">{t('ragSettings')}</span>
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <h4 className="font-medium text-sm">检索设置</h4>
-                      <span className="text-[10px] text-muted-foreground">调整检索参数</span>
+                      <h4 className="font-medium text-sm">{t('retrievalSettings')}</h4>
+                      <span className="text-[10px] text-muted-foreground">{t('adjustRetrievalParameters')}</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <div className="text-xs text-muted-foreground">检索模式</div>
+                        <div className="text-xs text-muted-foreground">{t('retrievalMode')}</div>
                         <Select
                           value={ragConfig.retrieval_mode}
                           onValueChange={(v) => {
@@ -651,16 +652,16 @@ export function ChatArea({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="auto">Auto (自动)</SelectItem>
-                            <SelectItem value="hybrid">Hybrid (混合)</SelectItem>
-                            <SelectItem value="vector">Vector (向量)</SelectItem>
-                            <SelectItem value="keyword">Keyword (关键词)</SelectItem>
-                            <SelectItem value="mmr">MMR (多样性)</SelectItem>
+                            <SelectItem value="auto">{t('retrievalModes.auto')}</SelectItem>
+                            <SelectItem value="hybrid">{t('retrievalModes.hybrid')}</SelectItem>
+                            <SelectItem value="vector">{t('retrievalModes.vector')}</SelectItem>
+                            <SelectItem value="keyword">{t('retrievalModes.keyword')}</SelectItem>
+                            <SelectItem value="mmr">{t('retrievalModes.mmr')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <div className="text-xs text-muted-foreground">Top K</div>
+                        <div className="text-xs text-muted-foreground">{t('topK')}</div>
                         <input
                           type="number"
                           min={1}
@@ -676,19 +677,19 @@ export function ChatArea({
                     </div>
 
                     <div className="space-y-2 pt-2 border-t">
-                      <div className="text-xs text-muted-foreground">Metadata filter</div>
+                      <div className="text-xs text-muted-foreground">{t('metadataFilter')}</div>
                       <Select
                         value={metadataFilterMode}
                         onValueChange={(value) => applyMetadataFilterPreset(coerceOneOf(METADATA_FILTER_MODE_VALUES, value, 'all'))}
                       >
                         <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Filter" />
+                          <SelectValue placeholder={t('metadataFilterPlaceholder')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">All chunks</SelectItem>
-                          <SelectItem value="exclude_qa">Exclude Q&A chunks (file_type != qa)</SelectItem>
-                          <SelectItem value="qa_only">Q&A only (file_type == qa)</SelectItem>
-                          <SelectItem value="custom">Custom JSON</SelectItem>
+                          <SelectItem value="all">{t('metadataFilters.allChunks')}</SelectItem>
+                          <SelectItem value="exclude_qa">{t('metadataFilters.excludeQa')}</SelectItem>
+                          <SelectItem value="qa_only">{t('metadataFilters.qaOnly')}</SelectItem>
+                          <SelectItem value="custom">{t('metadataFilters.customJson')}</SelectItem>
                         </SelectContent>
                       </Select>
 
@@ -700,7 +701,7 @@ export function ChatArea({
                               setRagConfigDirty(true)
                               setMetadataFilterText(e.target.value)
                             }}
-                            placeholder='{"source":{"$contains":"handbook"},"page":{"$gte":10}}'
+                            placeholder={t('metadataFilterExampleHandbook')}
                             className="w-full min-h-[92px] rounded-md border border-input bg-background px-3 py-2 text-[11px] font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           />
                           {metadataFilterError ? (
@@ -708,13 +709,13 @@ export function ChatArea({
                           ) : null}
                           <details className="group/details rounded-md border border-border bg-muted/30 px-3 py-2">
                             <summary className="cursor-pointer select-none text-[11px] text-muted-foreground">
-                              支持的操作符 / 示例
+                              {t('supportedOperatorsExamples')}
                             </summary>
                             <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-                              <div className="font-mono text-foreground/80">$eq $ne $gt $gte $lt $lte $in $nin $contains $exists</div>
-                              <div>多个字段默认 AND 关系；支持 dotted path（例如 document_user.tags）。</div>
-                              <div className="font-mono text-foreground/80">{'{"file_type":{"$ne":"qa"}}'}</div>
-                              <div className="font-mono text-foreground/80">{'{"page":{"$gte":10},"source":{"$contains":"handbook"}}'}</div>
+                              <div className="font-mono text-foreground/80">{t('supportedOperatorsList')}</div>
+                              <div>{t('supportedOperatorsHint')}</div>
+                              <div className="font-mono text-foreground/80">{t('metadataFilterExampleQa')}</div>
+                              <div className="font-mono text-foreground/80">{t('metadataFilterExampleHandbook')}</div>
                             </div>
                           </details>
                         </div>
@@ -723,7 +724,7 @@ export function ChatArea({
 
                     <div className="space-y-3 pt-2 border-t">
                       <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
-                        <span className="text-muted-foreground text-xs">使用知识图谱 (LangGraph)</span>
+                        <span className="text-muted-foreground text-xs">{t('useKnowledgeGraph')}</span>
                         <input
                           type="checkbox"
                           checked={ragConfig.use_graph}
@@ -735,7 +736,7 @@ export function ChatArea({
                         />
                       </label>
                       <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
-                      <span className="text-muted-foreground text-xs">启用长短期记忆</span>
+                      <span className="text-muted-foreground text-xs">{t('enableLongTermMemory')}</span>
                       <input
                         type="checkbox"
                         checked={enableLongTermMemory}
@@ -748,7 +749,7 @@ export function ChatArea({
                         htmlFor={summaryMemoryId}
                         className="text-muted-foreground text-xs cursor-pointer"
                       >
-                        启用摘要记忆（持久）
+                        {t('enableSummaryMemory')}
                       </Label>
                       <div className="flex items-center gap-2">
                         <Button
@@ -758,9 +759,9 @@ export function ChatArea({
                           className="h-7 px-2 text-[11px] rounded-lg"
                           onClick={() => setSummaryDialogOpen(true)}
                           disabled={!conversationId}
-                          title={conversationId ? '查看/更新摘要' : '请先发送一条消息生成会话'}
+                          title={conversationId ? t('viewOrUpdateSummary') : t('sendMessageFirst')}
                         >
-                          查看
+                          {t('viewSummary')}
                         </Button>
                         <input
                           id={summaryMemoryId}
@@ -772,7 +773,7 @@ export function ChatArea({
                       </div>
                     </div>
                     <label className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/50 p-1 rounded-md transition-colors">
-                      <span className="text-muted-foreground text-xs">结构化输出</span>
+                      <span className="text-muted-foreground text-xs">{t('structuredOutput')}</span>
                       <input
                         type="checkbox"
                         checked={structuredOutput}
@@ -787,13 +788,13 @@ export function ChatArea({
                           onValueChange={(v) => setStructuredPreset(v === SELECT_DEFAULT_VALUE ? '' : v)}
                         >
                           <SelectTrigger className="h-7 text-xs w-full">
-                            <SelectValue placeholder="选择 Preset" />
+                            <SelectValue placeholder={t('structuredPresetPlaceholder')} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value={SELECT_DEFAULT_VALUE}>Custom (默认)</SelectItem>
-                            <SelectItem value="faq">FAQ</SelectItem>
-                            <SelectItem value="summary">Summary</SelectItem>
-                            <SelectItem value="action_items">Action Items</SelectItem>
+                            <SelectItem value={SELECT_DEFAULT_VALUE}>{t('structuredPresetCustom')}</SelectItem>
+                            <SelectItem value="faq">{t('structuredPresetFaq')}</SelectItem>
+                            <SelectItem value="summary">{t('structuredPresetSummary')}</SelectItem>
+                            <SelectItem value="action_items">{t('structuredPresetActionItems')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -811,7 +812,7 @@ export function ChatArea({
 	            "focus-within:ring-1 focus-within:ring-primary/30 focus-within:border-primary/50"
 	          )}>
             <Label htmlFor="chat-composer" className="sr-only">
-                {uiMessages.chat.messageInput}
+                {t('messageInput')}
               </Label>
 	            <textarea
 	              id="chat-composer"
@@ -820,7 +821,7 @@ export function ChatArea({
 	              onChange={(e) => setInputValue(e.target.value)}
 	              onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
-	              placeholder={uiMessages.chat.composerPlaceholder}
+	              placeholder={t('composerPlaceholder')}
 	              autoFocus
 	              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium"
 	              rows={1}
@@ -833,8 +834,8 @@ export function ChatArea({
 	                  variant="ghost"
 	                  onClick={() => setVoiceModeOpen(true)}
 	                  className="rounded-full h-10 w-10 text-muted-foreground hover:text-foreground hover:bg-muted"
-	                  title={uiMessages.chat.voiceMode}
-	                  aria-label={uiMessages.chat.voiceMode}
+	                  title={t('voiceMode')}
+	                  aria-label={t('voiceMode')}
 	                >
 	                  <Mic className="h-5 w-5" />
 	                </Button>
@@ -846,8 +847,8 @@ export function ChatArea({
 	                    size="icon"
 	                    onClick={stopGeneration}
 	                    className="rounded-full h-9 w-9 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive shadow-sm"
-	                    title={uiMessages.chat.stopGeneration}
-	                    aria-label={uiMessages.chat.stopGeneration}
+	                    title={t('stopGeneration')}
+	                    aria-label={t('stopGeneration')}
 	                  >
 	                    <StopCircle className="h-4 w-4" />
 	                  </Button>
@@ -858,14 +859,14 @@ export function ChatArea({
 	                    size="icon"
 	                    onClick={handleSend}
 	                    disabled={!inputValue.trim()}
-                    className={cn(
+	                    className={cn(
                       "rounded-full size-9 shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none",
                       inputValue.trim()
                         ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
                         : "bg-secondary text-muted-foreground cursor-not-allowed"
 	                    )}
-	                    title={uiMessages.chat.send}
-	                    aria-label={uiMessages.chat.send}
+	                    title={t('send')}
+	                    aria-label={t('send')}
 	                  >
 	                    <Send className="h-4 w-4" />
 	                  </Button>
@@ -875,7 +876,11 @@ export function ChatArea({
           </div>
 
           <p className="text-[11px] text-center text-muted-foreground/75">
-            输入 <span className="font-mono text-foreground/80">/</span> 打开快捷指令 · <span className="font-medium text-foreground/80">Enter</span> 发送 · <span className="font-medium text-foreground/80">Shift + Enter</span> 换行
+            {t.rich('composerHelpText', {
+              slash: (chunks) => <span className="font-mono text-foreground/80">{chunks}</span>,
+              enter: (chunks) => <span className="font-medium text-foreground/80">{chunks}</span>,
+              shiftEnter: (chunks) => <span className="font-medium text-foreground/80">{chunks}</span>,
+            })}
           </p>
         </div>
       </div>
@@ -905,29 +910,6 @@ export function ChatArea({
   )
 }
 
-const QUICK_START_PROMPTS = [
-  {
-    icon: Sparkles,
-    title: '总结产品手册核心要点',
-    prompt: '请基于知识库总结产品手册的核心要点，并标出需要我继续确认的风险。',
-  },
-  {
-    icon: Database,
-    title: '提取关键指标与日期',
-    prompt: '请从知识库中提取这份报告里的关键指标、日期和负责人，并整理成列表。',
-  },
-  {
-    icon: Wand2,
-    title: '对比两个方案的差异',
-    prompt: '请对比方案 A 和方案 B 的优缺点，并说明分别适合什么场景。',
-  },
-  {
-    icon: Bot,
-    title: '生成一份行动清单',
-    prompt: '请基于知识库内容给我一份 5 条行动清单，按优先级排序。',
-  },
-] as const
-
 function WelcomeScreen({
   onSelectPrompt,
   onOpenKnowledge,
@@ -943,14 +925,40 @@ function WelcomeScreen({
     loading: boolean
   }
 }>) {
+  const t = useTranslations('Chat')
   const hour = new Date().getHours()
   const greeting = (() => {
-    if (hour < 5) return '夜深了'
-    if (hour < 11) return '早上好'
-    if (hour < 13) return '中午好'
-    if (hour < 18) return '下午好'
-    return '晚上好'
+    if (hour < 5) return t('greetings.lateNight')
+    if (hour < 11) return t('greetings.morning')
+    if (hour < 13) return t('greetings.noon')
+    if (hour < 18) return t('greetings.afternoon')
+    return t('greetings.evening')
   })()
+  const quickStartPrompts = useMemo(
+    () => [
+      {
+        icon: Sparkles,
+        title: t('quickStartExamples.productManual.title'),
+        prompt: t('quickStartExamples.productManual.prompt'),
+      },
+      {
+        icon: Database,
+        title: t('quickStartExamples.metrics.title'),
+        prompt: t('quickStartExamples.metrics.prompt'),
+      },
+      {
+        icon: Wand2,
+        title: t('quickStartExamples.comparePlans.title'),
+        prompt: t('quickStartExamples.comparePlans.prompt'),
+      },
+      {
+        icon: Bot,
+        title: t('quickStartExamples.actionItems.title'),
+        prompt: t('quickStartExamples.actionItems.prompt'),
+      },
+    ],
+    [t]
+  )
 
   const datasetCount = Number(stats.datasets || 0)
   const documentCount = Number(stats.documents || 0)
@@ -965,11 +973,10 @@ function WelcomeScreen({
 
         <div className="space-y-3">
           <h2 className="text-balance text-3xl font-semibold leading-tight text-foreground md:text-4xl">
-            {greeting}，<span className="text-primary">探索者</span>
+            {greeting}，<span className="text-primary">{t('explorer')}</span>
           </h2>
           <p className="mx-auto max-w-2xl text-pretty text-sm leading-7 text-muted-foreground/90 md:text-base">
-            我是 MimirQ，你的智能知识中枢。先选一个示例问题热身，或者直接在下方输入具体问题，
-            我会结合你的知识库给出可追溯的回答。
+            {t('welcomeLead')}
           </p>
         </div>
       </div>
@@ -978,20 +985,20 @@ function WelcomeScreen({
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/80">
-              快速开始
+              {t('quickStart.title')}
             </div>
             <div className="mt-1 text-sm leading-6 text-muted-foreground">
-              点击任意问题直接填入输入框，再按 Enter 发送。
+              {t('quickStart.description')}
             </div>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium tracking-[0.08em] text-muted-foreground shadow-sm">
             <span className="font-mono text-foreground/80">/</span>
-            <span>快捷指令</span>
+            <span>{t('quickStart.slashCommands')}</span>
           </div>
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {QUICK_START_PROMPTS.map((item) => (
+          {quickStartPrompts.map((item) => (
             <QuickStartChip
               key={item.title}
               icon={item.icon}
@@ -1008,34 +1015,34 @@ function WelcomeScreen({
           icon={Database}
           title={
             stats.loading
-              ? '正在读取知识库状态'
+              ? t('knowledgeStatus.loadingTitle')
               : hasKnowledge
-                ? `${documentCount} 份文档已就绪`
-                : '还没有可检索文档'
+                ? t('knowledgeStatus.readyTitle', { count: documentCount })
+                : t('knowledgeStatus.emptyTitle')
           }
           desc={
             stats.loading
-              ? '检查当前知识库与文档数量，稍后会显示实时状态。'
+              ? t('knowledgeStatus.loadingDescription')
               : hasKnowledge
-                ? `当前已连接 ${datasetCount} 个知识库，可以直接开始基于文档提问。`
-                : '先上传 PDF、网页或表格，再回来提问，回答会更可靠。'
+                ? t('knowledgeStatus.readyDescription', { count: datasetCount })
+                : t('knowledgeStatus.emptyDescription')
           }
-          actionLabel={stats.loading ? undefined : '前往知识库'}
+          actionLabel={stats.loading ? undefined : t('knowledgeStatus.actionLabel')}
           onAction={stats.loading ? undefined : onOpenKnowledge}
         />
         <WelcomeStatusCard
           icon={Wand2}
-          title={promptTemplateCount > 0 ? `${promptTemplateCount} 个 Prompt 模板可用` : uiMessages.chat.startFromDefaultTemplate}
+          title={promptTemplateCount > 0 ? t('promptTemplatesAvailable', { count: promptTemplateCount }) : t('startFromDefaultTemplate')}
           desc={
             promptTemplateCount > 0
-              ? '你可以在输入框上方切换模板，快速进入摘要、行动项或结构化输出模式。'
-              : '当前没有启用额外模板，直接提问即可，后续也可以再细化策略。'
+              ? t('promptTemplatesAvailableDescription')
+              : t('noPromptTemplateDescription')
           }
         />
         <WelcomeStatusCard
           icon={Sparkles}
-          title="第一次使用建议"
-          desc="先问一个具体问题，再用 / 快捷指令或 RAG 配置逐步缩小范围，会比一次性堆太多要求更稳。"
+          title={t('firstUseAdviceTitle')}
+          desc={t('firstUseAdviceDescription')}
         />
       </div>
     </div>
