@@ -8,8 +8,9 @@ describe('reports page loading shell', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
     expect(src).toContain('PageLoading')
-    expect(src).toContain('正在加载报告中心...')
-    expect(src).toContain('Loading reports center')
+    expect(src).toContain("useTranslations('Reports')")
+    expect(src).toContain("t('loadingPage')")
+    expect(src).toContain("t('loadingPageSr')")
     expect(src).not.toContain('<div className="min-h-dvh bg-background" />')
   })
 })
