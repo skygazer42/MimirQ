@@ -4,6 +4,7 @@
 'use client'
 
 import { Layers } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { TopBar } from './top-bar'
 import { Sidebar } from './sidebar'
@@ -13,14 +14,15 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { PipelineRail, WorkbenchPane, WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 
 export function Workbench() {
+  const t = useTranslations('ChunkPreview')
   const { currentFile, currentFileItem, showOriginalPanel, showSettingsPanel, toggleSettingsPanel } = useChunkPreview()
   const toolbar = currentFile && currentFileItem ? <TopBar /> : null
 
   return (
     <>
       <WorkbenchScaffold
-        title="切片预览"
-        description="调整分块策略并预览结果"
+        title={t('workbench.title')}
+        description={t('workbench.description')}
         icon={Layers}
         iconColor="text-primary"
         size="full"
@@ -47,7 +49,7 @@ export function Workbench() {
         onOpenChange={(open) => {
           if (open !== showSettingsPanel) toggleSettingsPanel()
         }}
-        title="参数面板"
+        title={t('workbench.settingsPanelTitle')}
       >
         <Sidebar variant="dialog" />
       </WorkbenchPanelDialog>

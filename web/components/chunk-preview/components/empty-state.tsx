@@ -17,10 +17,12 @@ import { Button } from '@/components/ui/button'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
+import { useTranslations } from 'next-intl'
 
 export function EmptyState() {
   const { isDragging, handleDragOver, handleDragLeave, handleDrop, addFiles, loadExample } = useChunkPreview()
   const [helpOpen, setHelpOpen] = useState(false)
+  const t = useTranslations('ChunkPreview')
 
   return (
     <div className="min-h-full w-full text-foreground font-sans flex items-center justify-center p-6 selection:bg-primary/20 selection:text-foreground">
@@ -28,16 +30,16 @@ export function EmptyState() {
         <div className="mb-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-card border border-border/70 shadow-sm">
             <Upload className="w-3.5 h-3.5 text-primary" />
-            <span className="text-xs font-semibold text-muted-foreground">切块预览</span>
+            <span className="text-xs font-semibold text-muted-foreground">{t('emptyState.badge')}</span>
           </div>
-          <h1 className="mt-4 text-2xl font-bold  text-foreground">上传文档，预览切片质量</h1>
+          <h1 className="mt-4 text-2xl font-bold  text-foreground">{t('emptyState.title')}</h1>
           <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            选择合适的解析器/切块策略与参数，右侧实时查看切片列表与原文定位，确认无误后再入库。
+            {t('emptyState.description')}
           </p>
           <div className="mt-4 flex items-center gap-2">
             <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => setHelpOpen(true)}>
               <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
-              切块指南
+              {t('emptyState.help')}
             </Button>
           </div>
         </div>
@@ -85,9 +87,9 @@ export function EmptyState() {
 
             <div className="text-center space-y-1.5">
               <h3 className="text-base font-semibold text-foreground/90">
-                {isDragging ? '松开鼠标上传文件' : '点击或拖拽上传文档'}
+                {isDragging ? t('emptyState.draggingTitle') : t('emptyState.idleTitle')}
               </h3>
-              <p className="text-xs text-muted-foreground">支持 PDF / Markdown / TXT，支持多文件上传</p>
+              <p className="text-xs text-muted-foreground">{t('emptyState.uploadHint')}</p>
             </div>
           </div>
         </div>
@@ -106,8 +108,8 @@ export function EmptyState() {
                 <BookOpen className="w-5 h-5" />
               </div>
               <div>
-                <div className="font-semibold text-foreground text-sm">试用示例文档</div>
-                <div className="text-xs text-muted-foreground mt-1">无需上传，一键体验切块预览流程</div>
+                <div className="font-semibold text-foreground text-sm">{t('emptyState.exampleTitle')}</div>
+                <div className="text-xs text-muted-foreground mt-1">{t('emptyState.exampleDescription')}</div>
               </div>
             </div>
           </button>
@@ -118,8 +120,8 @@ export function EmptyState() {
                 <ScanLine className="w-5 h-5" />
               </div>
               <div>
-                <div className="font-semibold text-foreground text-sm">预览与定位</div>
-                <div className="text-xs text-muted-foreground mt-1">悬停/选中切片，高亮原文对应区间</div>
+                <div className="font-semibold text-foreground text-sm">{t('emptyState.previewTitle')}</div>
+                <div className="text-xs text-muted-foreground mt-1">{t('emptyState.previewDescription')}</div>
               </div>
             </div>
           </div>
@@ -130,8 +132,8 @@ export function EmptyState() {
                 <Cpu className="w-5 h-5" />
               </div>
               <div>
-                <div className="font-semibold text-foreground text-sm">参数建议</div>
-                <div className="text-xs text-muted-foreground mt-1">常见 overlap 建议为 chunk 的 10-25%</div>
+                <div className="font-semibold text-foreground text-sm">{t('emptyState.tipsTitle')}</div>
+                <div className="text-xs text-muted-foreground mt-1">{t('emptyState.tipsDescription')}</div>
               </div>
             </div>
           </div>

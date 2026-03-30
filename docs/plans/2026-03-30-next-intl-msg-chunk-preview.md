@@ -1,0 +1,5 @@
+- [x] Inventory the chunk-preview copy owned by this slice and define a closed file set.
+- [x] Move empty-state, chunk-card, preset-panel, and workbench shell copy into `next-intl`.
+- [x] Add source-test coverage for the new translation wiring.
+- [x] Run focused vitest and eslint checks.
+- [x] Commit and push `parallel-next-intl-msg-chunk-preview`.
