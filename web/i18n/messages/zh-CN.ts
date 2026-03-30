@@ -553,6 +553,29 @@ const zhCNMessages = {
       settingsPanelTitle: '参数面板',
     },
     sidebar: {
+      fileList: {
+        title: '文件列表 ({count})',
+        addFile: '添加文件',
+        clearFiles: '清空文件列表',
+        clearFilesSuccess: '已清空文件列表',
+        removeFile: '移除文件：{name}',
+        selectFile: '选择文件：{name}',
+      },
+      settings: {
+        title: '配置参数',
+      },
+      common: {
+        enabled: '开启',
+        disabled: '关闭',
+      },
+      autoPreview: {
+        title: '自动预览',
+        description: '切换文件后自动生成预览',
+      },
+      shortcuts: {
+        label: '快捷键',
+        hint: 'Ctrl/⌘ + Enter 预览 · Ctrl/⌘ + S 入库',
+      },
       ingestionPipeline: '入库管线',
       previewActions: {
         loading: '生成中...',

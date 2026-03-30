@@ -370,7 +370,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <Folder className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">文件列表 ({fileList.length})</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t('sidebar.fileList.title', { count: fileList.length })}</h2>
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -378,8 +378,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 size="sm"
                 onClick={() => document.getElementById('add-file-input')?.click()}
                 className="h-6 w-6 p-0 hover:bg-primary/10"
-                aria-label="添加文件"
-                title="添加文件"
+                aria-label={t('sidebar.fileList.addFile')}
+                title={t('sidebar.fileList.addFile')}
               >
                 <Upload className="w-3.5 h-3.5 text-primary" />
               </Button>
@@ -388,12 +388,12 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 size="sm"
                 onClick={() => {
                   clearFiles()
-                  toast.success('已清空文件列表')
+                  toast.success(t('sidebar.fileList.clearFilesSuccess'))
                 }}
                 className="h-6 w-6 p-0 hover:bg-destructive/10 hover:text-destructive"
                 disabled={fileList.length === 0}
-                aria-label="清空文件列表"
-                title="清空文件列表"
+                aria-label={t('sidebar.fileList.clearFiles')}
+                title={t('sidebar.fileList.clearFiles')}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
@@ -439,7 +439,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     onClick={() => {
                       if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
                     }}
-                    aria-label={`选择文件：${f.displayName}`}
+                    aria-label={t('sidebar.fileList.selectFile', { name: f.displayName })}
                     className="flex flex-1 min-w-0 items-center justify-between gap-2 p-2 text-left rounded-lg cursor-pointer focus-ring"
                   >
                     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -474,8 +474,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       if (fileIndex >= 0) removeFile(fileIndex)
                     }}
                     className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1.5 mr-1 hover:bg-destructive/10 hover:text-destructive rounded transition-opacity transition-colors duration-150 motion-reduce:transition-none cursor-pointer focus-ring"
-                    aria-label={`移除文件：${f.displayName}`}
-                    title="移除文件"
+                    aria-label={t('sidebar.fileList.removeFile', { name: f.displayName })}
+                    title={t('sidebar.fileList.removeFile', { name: f.displayName })}
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>
@@ -487,14 +487,14 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
         <div className="flex items-center gap-2 mb-6">
           <Settings className="w-4 h-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">配置参数</h2>
+          <h2 className="text-sm font-semibold text-foreground">{t('sidebar.settings.title')}</h2>
         </div>
 
         <div className="space-y-8">
           <div className="flex items-center justify-between bg-card border border-border/60 rounded-xl px-3 py-2 shadow-sm">
             <div>
-              <div className="text-xs font-medium text-foreground/80">自动预览</div>
-              <div className="text-[10px] text-muted-foreground">切换文件后自动生成预览</div>
+              <div className="text-xs font-medium text-foreground/80">{t('sidebar.autoPreview.title')}</div>
+              <div className="text-[10px] text-muted-foreground">{t('sidebar.autoPreview.description')}</div>
             </div>
             <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
               <input
@@ -503,14 +503,14 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 onChange={(e) => toggleAutoPreview(e.target.checked)}
                 className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
               />
-              {autoPreviewEnabled ? '开启' : '关闭'}
+              {autoPreviewEnabled ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
             </label>
           </div>
 
           <div className="flex items-center justify-between bg-card border border-border/60 rounded-xl px-3 py-2 shadow-sm">
-            <div className="text-[10px] text-muted-foreground">快捷键</div>
+            <div className="text-[10px] text-muted-foreground">{t('sidebar.shortcuts.label')}</div>
             <div className="text-[10px] text-muted-foreground">
-              Ctrl/⌘ + Enter 预览 · Ctrl/⌘ + S 入库
+              {t('sidebar.shortcuts.hint')}
             </div>
           </div>
 
