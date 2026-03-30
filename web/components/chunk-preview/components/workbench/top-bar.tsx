@@ -44,7 +44,7 @@ import { applyChunkOverridesToPreview, chunkPreviewToCsv, chunkPreviewToJsonl, c
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/i18n/navigation'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
