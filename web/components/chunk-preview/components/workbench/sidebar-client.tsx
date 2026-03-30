@@ -17,6 +17,7 @@ import {
   Loader2,
   Wand2,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -69,6 +70,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
+  const t = useTranslations('ChunkPreview')
   const {
     fileList,
     currentFileIndex,
@@ -1249,7 +1251,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           )}
 
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">入库管线</div>
+            <div className="text-xs font-medium text-muted-foreground">{t('sidebar.ingestionPipeline')}</div>
             <PipelineOptionsPanel compact />
           </div>
 
@@ -1264,7 +1266,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               ) : (
                 <Sparkles className="w-4 h-4 mr-2" />
               )}
-              {isLoading ? '生成中...' : '生成预览'}
+              {isLoading ? t('sidebar.previewActions.loading') : t('sidebar.previewActions.run')}
             </Button>
             <Button
               variant="outline"
@@ -1279,13 +1281,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             >
               {(() => {
     if (isLoading) {
-        return '取消';
+        return t('sidebar.previewActions.cancel');
     }
     else if (cacheHit) {
-            return '忽略缓存';
+            return t('sidebar.previewActions.ignoreCache');
         }
         else {
-            return '强制刷新';
+            return t('sidebar.previewActions.forceRefresh');
         }
 })()}
             </Button>
@@ -1298,7 +1300,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-primary" />
-                <h2 className="text-sm font-semibold text-foreground">分析结果</h2>
+                <h2 className="text-sm font-semibold text-foreground">{t('sidebar.analysis.title')}</h2>
               </div>
               <div className="flex items-center gap-2">
                 <ChunkAutoTuneDialog />
@@ -1309,7 +1311,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   className="h-7 px-2 text-[11px]"
                   onClick={() => setShowAdvancedStats((v) => !v)}
                 >
-                  {showAdvancedStats ? '收起' : '更多'}
+                  {showAdvancedStats ? t('sidebar.analysis.collapse') : t('sidebar.analysis.expand')}
                 </Button>
               </div>
             </div>
