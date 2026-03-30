@@ -1,6 +1,7 @@
 'use client'
 
 import { Code, Copy, Download, Eye, FileStack, FileText } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { Button } from '@/components/ui/button'
@@ -32,10 +33,12 @@ export function ParsingMobileInspectorContent({
   onCopyMarkdown,
   onDownloadMarkdown,
 }: Readonly<ParsingMobileInspectorContentProps>) {
+  const t = useTranslations('ParsingWorkbench')
+
   return (
     <div className="flex-1 min-h-0 space-y-5 overflow-y-auto overscroll-contain no-scrollbar bg-muted/10 p-4">
       <div className="space-y-2">
-        <div className="text-xs font-semibold text-muted-foreground">视图</div>
+        <div className="text-xs font-semibold text-muted-foreground">{t('mobileInspector.view')}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -46,7 +49,7 @@ export function ParsingMobileInspectorContent({
             disabled={activeBlocksWithPositions.length === 0}
           >
             <FileStack className="h-4 w-4" />
-            版面
+            {t('mobileInspector.layout')}
           </Button>
           <Button
             type="button"
@@ -56,7 +59,7 @@ export function ParsingMobileInspectorContent({
             onClick={() => onRightPanelModeChange('markdown')}
           >
             <FileText className="h-4 w-4" />
-            Markdown
+            {t('mobileInspector.markdown')}
           </Button>
 
           {rightPanelMode === 'markdown' ? (
@@ -70,7 +73,7 @@ export function ParsingMobileInspectorContent({
                 onClick={() => onPreviewModeChange('rendered')}
               >
                 <Eye className="h-4 w-4" />
-                预览
+                {t('mobileInspector.preview')}
               </Button>
               <Button
                 type="button"
@@ -80,7 +83,7 @@ export function ParsingMobileInspectorContent({
                 onClick={() => onPreviewModeChange('raw')}
               >
                 <Code className="h-4 w-4" />
-                源码
+                {t('mobileInspector.source')}
               </Button>
             </>
           ) : null}
@@ -89,7 +92,7 @@ export function ParsingMobileInspectorContent({
 
       {rightPanelMode === 'blocks' && activeBlocksWithPositions.length > 0 ? (
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">定位块</div>
+          <div className="text-xs font-semibold text-muted-foreground">{t('mobileInspector.blocks')}</div>
           <div className="rounded-2xl border border-border/60 bg-card p-2">
             <div className="max-h-[46vh] space-y-1 overflow-y-auto overscroll-contain no-scrollbar">
               {activeBlocksWithPositions.slice(0, 80).map((block, idx) => {
@@ -108,9 +111,13 @@ export function ParsingMobileInspectorContent({
                     )}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="truncate font-medium">块 {idx + 1}</div>
+                      <div className="truncate font-medium">
+                        {t('mobileInspector.blockLabel', { index: String(idx + 1) })}
+                      </div>
                       <div className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                        {Number.isFinite(pageIndex) ? `页 ${Number(pageIndex) + 1}` : ''}
+                        {Number.isFinite(pageIndex)
+                          ? t('mobileInspector.pageLabel', { page: String(Number(pageIndex) + 1) })
+                          : ''}
                       </div>
                     </div>
                   </button>
@@ -121,7 +128,7 @@ export function ParsingMobileInspectorContent({
         </div>
       ) : rightPanelMode === 'markdown' ? (
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground">目录</div>
+          <div className="text-xs font-semibold text-muted-foreground">{t('mobileInspector.toc')}</div>
           <div className="rounded-2xl border border-border/60 bg-card p-3">
             <MarkdownToc markdown={activeMarkdown} />
           </div>
@@ -129,15 +136,15 @@ export function ParsingMobileInspectorContent({
       ) : null}
 
       <div className="space-y-2">
-        <div className="text-xs font-semibold text-muted-foreground">快捷操作</div>
+        <div className="text-xs font-semibold text-muted-foreground">{t('mobileInspector.quickActions')}</div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={onCopyMarkdown}>
             <Copy className="h-4 w-4" />
-            复制 Markdown
+            {t('mobileInspector.copyMarkdown')}
           </Button>
           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={onDownloadMarkdown}>
             <Download className="h-4 w-4" />
-            下载 Markdown
+            {t('mobileInspector.downloadMarkdown')}
           </Button>
         </div>
       </div>
