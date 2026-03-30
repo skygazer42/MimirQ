@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Clock,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 // 文件类型配置
 const FILE_TYPE_CONFIG: Record<
@@ -67,6 +68,7 @@ export function FileQueueItem({
   onRemove,
   onRetry,
 }: Readonly<FileQueueItemProps>) {
+  const t = useTranslations('CommonUi')
   const ext = file.name.split('.').pop()?.toLowerCase() || 'txt'
   const config = FILE_TYPE_CONFIG[ext] || FILE_TYPE_CONFIG.txt
   const Icon = config.icon
@@ -81,7 +83,7 @@ export function FileQueueItem({
         return (
           <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
             <Clock className="w-3 h-3" />
-            <span>等待解析</span>
+            <span>{t("fileQueueItem.pending")}</span>
           </div>
         )
       case 'parsing':
@@ -89,7 +91,7 @@ export function FileQueueItem({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs text-info">
               <Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" />
-              <span>解析中 {file.progress == null ? '' : `${progressPct}%`}</span>
+              <span>{t("fileQueueItem.parsing")} {file.progress == null ? '' : `${progressPct}%`}</span>
             </div>
             {file.progress !== undefined && (
               <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
@@ -106,7 +108,7 @@ export function FileQueueItem({
           <div className="flex items-center gap-2 text-xs">
             <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
               <CheckCircle className="w-3 h-3" />
-              已完成
+              {t("fileQueueItem.parsed")}
             </span>
             {file.parser && (
               <span className="text-slate-500 dark:text-slate-400">· {file.parser}</span>
@@ -123,7 +125,7 @@ export function FileQueueItem({
         return (
           <span className="flex items-center gap-1 text-xs text-red-700 dark:text-red-400">
             <XCircle className="w-3 h-3" />
-            解析失败
+            {t("fileQueueItem.error")}
           </span>
         )
     }
@@ -145,8 +147,8 @@ export function FileQueueItem({
             className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate"
             title={[file.folderPathLabel, file.sourcePath].filter(Boolean).join(' · ')}
           >
-            {file.folderPathLabel ? `目录：${file.folderPathLabel}` : ''}
-            {file.sourcePath ? ` · ZIP：${file.sourcePath}` : ''}
+            {file.folderPathLabel ? `${t("fileQueueItem.folderLabel")}${file.folderPathLabel}` : ''}
+            {file.sourcePath ? ` · ${t("fileQueueItem.sourcePathLabel")}${file.sourcePath}` : ''}
           </p>
         )}
 
@@ -155,7 +157,7 @@ export function FileQueueItem({
           {file.pageCount && (
             <>
               <span>·</span>
-              <span>{file.pageCount} 页</span>
+              <span>{t("fileQueueItem.pages", { count: String(file.pageCount) })}</span>
             </>
           )}
         </div>
@@ -200,15 +202,15 @@ export function FileQueueItem({
                 className="flex items-center gap-1 text-xs text-info hover:text-info/90 focus-ring rounded px-1.5 py-1"
               >
                 <RotateCcw className="w-3 h-3" />
-                重试
+                {t("fileQueueItem.retry")}
               </button>
             )}
             {onRemove && (
               <button
                 type="button"
                 onClick={onRemove}
-                aria-label="移除文件"
-                title="移除"
+                aria-label={t("fileQueueItem.removeLabel")}
+                title={t("fileQueueItem.removeTitle")}
                 className="opacity-0 group-hover:opacity-100 p-1 rounded flex-shrink-0 focus-ring transition-opacity transition-colors duration-200 motion-reduce:transition-none hover:bg-destructive/10"
               >
                 <Trash2 className="w-3.5 h-3.5 text-muted-foreground transition-colors duration-200 motion-reduce:transition-none hover:text-destructive" />

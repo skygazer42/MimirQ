@@ -42,4 +42,65 @@ describe('common UI copy source', () => {
     expect(src).toContain('t("ingestionWorkflow.chunk")')
     expect(src).toContain('t("ingestionWorkflow.chat")')
   })
+
+  it('moves file queue item copy into next-intl lookups', () => {
+    const src = read('./ui/file-queue-item.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain('t("fileQueueItem.pending")')
+    expect(src).toContain('t("fileQueueItem.parsing")')
+    expect(src).toContain('t("fileQueueItem.parsed")')
+    expect(src).toContain('t("fileQueueItem.error")')
+    expect(src).toContain('t("fileQueueItem.folderLabel")')
+    expect(src).toContain('t("fileQueueItem.sourcePathLabel")')
+    expect(src).toContain('t("fileQueueItem.pages"')
+    expect(src).toContain('t("fileQueueItem.retry")')
+    expect(src).toContain('t("fileQueueItem.removeLabel")')
+    expect(src).toContain('t("fileQueueItem.removeTitle")')
+  })
+
+  it('moves search input copy into next-intl lookups', () => {
+    const src = read('./ui/search-input.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain("placeholder ?? t('searchInput.placeholder')")
+    expect(src).toContain("label={t('searchInput.clearLabel')}")
+  })
+
+  it('moves tag input copy into next-intl lookups', () => {
+    const src = read('./ui/tag-input.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain("placeholder ?? t('tagInput.placeholder')")
+    expect(src).toContain("aria-label={t('tagInput.removeLabel'")
+    expect(src).toContain("t('tagInput.add')")
+  })
+
+  it('moves confirm dialog default copy into next-intl lookups', () => {
+    const src = read('./ui/confirm-dialog.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain("confirmLabel ?? t('confirmDialog.confirm')")
+    expect(src).toContain("cancelLabel ?? t('confirmDialog.cancel')")
+  })
+
+  it('moves status badge default labels into next-intl lookups', () => {
+    const src = read('./ui/status-badge.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain("t('statusBadge.pending')")
+    expect(src).toContain("t('statusBadge.processing')")
+    expect(src).toContain("t('statusBadge.completed')")
+    expect(src).toContain("t('statusBadge.failed')")
+    expect(src).toContain("t('statusBadge.quarantined')")
+    expect(src).toContain("t('statusBadge.cancelled')")
+  })
+
+  it('moves page loading default copy into next-intl lookups', () => {
+    const src = read('./ui/page-loading.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain("message ?? t('pageLoading.message')")
+    expect(src).toContain("srMessage ?? t('pageLoading.srMessage')")
+  })
 })

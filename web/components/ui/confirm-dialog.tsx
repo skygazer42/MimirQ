@@ -10,6 +10,7 @@
 
 import * as React from "react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
+import { useTranslations } from 'next-intl'
 
 import { buttonVariants, type ButtonProps } from "@/components/ui/button"
 import {
@@ -38,13 +39,17 @@ type ConfirmDialogProps = {
 export function ConfirmDialog({
   title,
   description,
-  confirmLabel = "确认",
-  cancelLabel = "返回",
+  confirmLabel,
+  cancelLabel,
   confirmVariant = "destructive",
   confirmDisabled = false,
   onConfirm,
   children,
 }: Readonly<ConfirmDialogProps>) {
+  const t = useTranslations('CommonUi')
+  const resolvedConfirmLabel = confirmLabel ?? t('confirmDialog.confirm')
+  const resolvedCancelLabel = cancelLabel ?? t('confirmDialog.cancel')
+
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
@@ -54,14 +59,14 @@ export function ConfirmDialog({
           {description ? <AlertDialogDescription>{description}</AlertDialogDescription> : null}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel>{resolvedCancelLabel}</AlertDialogCancel>
           <AlertDialogPrimitive.Action
             type="button"
             disabled={confirmDisabled}
             onClick={() => detachPromise(onConfirm())}
             className={cn(buttonVariants({ variant: confirmVariant, size: "sm" }))}
           >
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </AlertDialogPrimitive.Action>
         </AlertDialogFooter>
       </AlertDialogContent>

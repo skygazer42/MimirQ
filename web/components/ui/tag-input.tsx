@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { X } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,7 +11,7 @@ import { normalizeTag, parseTagsText } from '@/lib/document-user-tags'
 export function TagInput({
   value,
   onValueChange,
-  placeholder = '添加标签（回车 / 逗号分隔）',
+  placeholder,
   disabled,
   maxTags = 30,
   maxTagLen = 64,
@@ -26,9 +27,11 @@ export function TagInput({
   className?: string
   inputClassName?: string
   }>) {
+    const t = useTranslations('CommonUi')
     const [draft, setDraft] = React.useState('')
 
     const tags = React.useMemo(() => (Array.isArray(value) ? value : []), [value])
+    const resolvedPlaceholder = placeholder ?? t('tagInput.placeholder')
 
   const addTags = React.useCallback(
     (incoming: string[]) => {
@@ -85,17 +88,17 @@ export function TagInput({
     <div className={cn('space-y-2', className)}>
       {tags.length ? (
         <div className="flex flex-wrap items-center gap-2">
-          {tags.map((t) => (
-            <Badge key={t} variant="soft" className="gap-1 pr-1">
-              <span className="max-w-[14rem] truncate">{t}</span>
+          {tags.map((tag) => (
+            <Badge key={tag} variant="soft" className="gap-1 pr-1">
+              <span className="max-w-[14rem] truncate">{tag}</span>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="size-6 rounded-full hover:bg-muted"
-                onClick={() => removeTag(t)}
+                onClick={() => removeTag(tag)}
                 disabled={disabled}
-                aria-label={`移除标签 ${t}`}
+                aria-label={t('tagInput.removeLabel', { tag })}
               >
                 <X className="size-3.5" aria-hidden="true" />
               </Button>
@@ -122,7 +125,7 @@ export function TagInput({
             e.preventDefault()
             addTags(parsed)
           }}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           disabled={disabled}
           className={cn('h-10 rounded-xl', inputClassName)}
         />
@@ -133,7 +136,7 @@ export function TagInput({
           onClick={commitDraft}
           disabled={disabled || !draft.trim()}
         >
-          添加
+          {t('tagInput.add')}
         </Button>
       </div>
       <div className="text-[11px] text-muted-foreground">

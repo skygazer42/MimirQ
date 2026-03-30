@@ -45,6 +45,43 @@ const zhCNMessages = {
       chunk: '切块',
       chat: '对话',
     },
+    searchInput: {
+      placeholder: '搜索…',
+      clearLabel: '清除搜索',
+    },
+    tagInput: {
+      placeholder: '添加标签（回车 / 逗号分隔）',
+      removeLabel: '移除标签 {tag}',
+      add: '添加',
+    },
+    confirmDialog: {
+      confirm: '确认',
+      cancel: '返回',
+    },
+    statusBadge: {
+      pending: '等待',
+      processing: '处理中',
+      completed: '已完成',
+      failed: '失败',
+      quarantined: '已隔离',
+      cancelled: '已取消',
+    },
+    pageLoading: {
+      message: '正在加载...',
+      srMessage: 'Loading',
+    },
+    fileQueueItem: {
+      pending: '等待解析',
+      parsing: '解析中',
+      parsed: '已完成',
+      error: '解析失败',
+      folderLabel: '目录：',
+      sourcePathLabel: 'ZIP：',
+      pages: '{count} 页',
+      retry: '重试',
+      removeLabel: '移除文件',
+      removeTitle: '移除',
+    },
   },
   Chat: {
     requestFailed: '聊天请求失败',
