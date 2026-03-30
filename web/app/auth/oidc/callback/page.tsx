@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { FullScreenFrame } from '@/components/full-screen-frame'
+import { useRouter } from '@/i18n/navigation'
 import { completeOidcLogin } from '@/lib/oidc'
 
 export default function OidcCallbackPage() {
