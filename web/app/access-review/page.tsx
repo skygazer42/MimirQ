@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Download, RefreshCw, ShieldCheck } from 'lucide-react'
 
@@ -72,6 +73,8 @@ export default function AccessReviewPage() {
   const [exportPages, setExportPages] = useState(0)
   const [exportBytes, setExportBytes] = useState(0)
 
+  const t = useTranslations('AccessReviewPage')
+
   const permissionCounts = useMemo(() => {
     const m = summary?.dataset_permission_counts || {}
     return {
@@ -99,11 +102,11 @@ export default function AccessReviewPage() {
       setSummary(data || null)
     } catch (err: any) {
       setSummary(null)
-      toast.error(formatApiError(err, '加载访问审查汇总失败'))
+      toast.error(formatApiError(err, t('errors.loadSummary')))
     } finally {
       setLoadingSummary(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     detachPromise(loadSummary())
@@ -127,7 +130,7 @@ export default function AccessReviewPage() {
           gzip,
         })
         downloadBlob(blob, `access-graph.${safeTs()}.json`)
-        toast.success('已下载 access graph（JSON）')
+        toast.success(t('toasts.downloadJson'))
         return
       }
 
@@ -157,24 +160,24 @@ export default function AccessReviewPage() {
         cursor = res.nextCursor
 
         if (pages >= maxPages) {
-          toast.warning(`导出已达到最大分页上限（${maxPages}页）。建议用脚本/后端导出处理更大租户。`)
+        toast.warning(t('warnings.reachedPageLimit', { maxPages }))
           break
         }
         if (bytes >= maxTotalBytes) {
-          toast.warning('导出内容过大，已停止追加分页。建议用脚本/后端导出处理更大租户。')
+        toast.warning(t('warnings.reachedByteLimit'))
           break
         }
       }
 
       const out = new Blob(blobs, { type: 'application/x-ndjson' })
       downloadBlob(out, `access-graph.${safeTs()}.ndjson`)
-      toast.success(`已下载 access graph（${pages}页）`)
+      toast.success(t('toasts.downloadPages', { pages }))
     } catch (err: any) {
-      toast.error(formatApiError(err, '导出 access graph 失败'))
+      toast.error(formatApiError(err, t('errors.export')))
     } finally {
       setExporting(false)
     }
-  }, [exportFormat, includeSensitive, gzip, limit])
+  }, [exportFormat, gzip, includeSensitive, limit, t])
 
   const summaryStats = useMemo(() => {
     return {
@@ -193,8 +196,8 @@ export default function AccessReviewPage() {
     <AppFrame>
       <div className="flex-1 flex flex-col overflow-hidden relative">
         <PageScaffold
-          title="访问审查"
-          description="权限图谱汇总与导出（admin-only，默认 PII-safe）"
+          title={t('title')}
+          description={t('description')}
           icon={ShieldCheck}
           iconColor="text-emerald-600 dark:text-emerald-400"
           size="7xl"
@@ -208,7 +211,7 @@ export default function AccessReviewPage() {
                 disabled={loadingSummary}
               >
                 <RefreshCw className={cn('w-4 h-4', loadingSummary && 'animate-spin motion-reduce:animate-none')} />
-                刷新
+                {t('actions.refresh')}
               </Button>
               <Button
                 size="sm"
@@ -217,7 +220,7 @@ export default function AccessReviewPage() {
                 disabled={exporting}
               >
                 <Download className="w-4 h-4" />
-                下载导出
+                {t('actions.export')}
               </Button>
             </div>
           }
@@ -225,13 +228,11 @@ export default function AccessReviewPage() {
           <Panel padding="lg" className="mt-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-sm font-semibold text-foreground">汇总</div>
-                <div className="mt-1 text-xs text-muted-foreground text-pretty">
-                  用于日常 access review 与排查“为什么某个用户被拒绝”（目录/组/allowlist 维度），不包含文档内容。
-                </div>
+                <div className="text-sm font-semibold text-foreground">{t('summary.heading')}</div>
+                <div className="mt-1 text-xs text-muted-foreground text-pretty">{t('summary.description')}</div>
               </div>
               <div className="text-xs text-muted-foreground font-mono">
-                {summary?.generated_at ? `generated_at: ${summary.generated_at}` : null}
+                {summary?.generated_at ? t('summary.generatedAt', { timestamp: summary.generated_at }) : null}
               </div>
             </div>
 
@@ -257,7 +258,7 @@ export default function AccessReviewPage() {
 
                   <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                      <div className="text-sm font-semibold">Dataset 权限分布</div>
+                    <div className="text-sm font-semibold">{t('stats.datasetDistribution')}</div>
                       <div className="mt-2 text-xs text-muted-foreground font-mono tabular-nums space-y-1">
                         <div className="flex items-center justify-between gap-2">
                           <span>all_team_members</span>
@@ -275,7 +276,7 @@ export default function AccessReviewPage() {
                     </div>
 
                     <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
-                      <div className="text-sm font-semibold">Document 访问模式分布</div>
+                      <div className="text-sm font-semibold">{t('stats.documentDistribution')}</div>
                       <div className="mt-2 text-xs text-muted-foreground font-mono tabular-nums space-y-1">
                         {Object.entries(accessModeCounts).map(([k, v]) => (<div key={k} className="flex items-center justify-between gap-2">
                             <span>{k}</span>
@@ -287,39 +288,37 @@ export default function AccessReviewPage() {
                 </>);
         }
         else {
-            return (<div className="text-sm text-muted-foreground">
-                  无法加载访问审查汇总。请确认你是 owner/admin，并且后端已更新到包含 `/api/v1/audit/access-graph/summary` 的版本。
-                </div>);
+        return (<div className="text-sm text-muted-foreground">
+              {t('errors.loadSummaryFallback')}
+            </div>);
         }
 })()}
             </div>
           </Panel>
 
           <Panel padding="lg" className="mt-4">
-            <div className="text-sm font-semibold text-foreground">导出（Access Graph Export）</div>
-            <div className="mt-1 text-xs text-muted-foreground text-pretty">
-              建议优先使用 NDJSON（便于分页与流式处理）。浏览器下载会自动解压 gzip 编码，因此 “gzip” 主要用于网络传输节省带宽。
-            </div>
+          <div className="text-sm font-semibold text-foreground">{t('export.heading')}</div>
+            <div className="mt-1 text-xs text-muted-foreground text-pretty">{t('export.description')}</div>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-1">
-                <Label>格式</Label>
+                <Label>{t('export.formatLabel')}</Label>
                 <Select
                   value={exportFormat}
                   onValueChange={(value) => setExportFormat(coerceOneOf(EXPORT_FORMAT_VALUES, value, 'ndjson'))}
                 >
                   <SelectTrigger className="h-10 rounded-xl">
-                    <SelectValue placeholder="选择格式" />
+                    <SelectValue placeholder={t('export.formatPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ndjson">NDJSON（推荐）</SelectItem>
-                    <SelectItem value="json">JSON（单页）</SelectItem>
+                    <SelectItem value="ndjson">{t('export.formatOptions.ndjson')}</SelectItem>
+                    <SelectItem value="json">{t('export.formatOptions.json')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-1">
-                <Label>每页条数（limit）</Label>
+                <Label>{t('export.limitLabel')}</Label>
                 <Input
                   type="number"
                   min={1}
@@ -331,8 +330,8 @@ export default function AccessReviewPage() {
 
               <div className="flex items-end justify-between gap-3 rounded-xl border border-border/60 bg-muted/10 px-4 py-3">
                 <div className="min-w-0">
-                  <Label className="text-sm">gzip 传输</Label>
-                  <div className="text-xs text-muted-foreground truncate">仅影响传输编码，不保证保存为 .gz</div>
+                <Label className="text-sm">{t('export.gzipLabel')}</Label>
+                <div className="text-xs text-muted-foreground truncate">{t('export.gzipDescription')}</div>
                 </div>
                 <Switch checked={gzip} onCheckedChange={(v) => setGzip(Boolean(v))} />
               </div>
@@ -340,9 +339,9 @@ export default function AccessReviewPage() {
 
             <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/10 px-4 py-3">
               <div className="min-w-0">
-                <Label className="text-sm">包含敏感字段（谨慎）</Label>
+                <Label className="text-sm">{t('export.includeSensitiveLabel')}</Label>
                 <div className="text-xs text-muted-foreground text-pretty">
-                  开启后可能包含 group name / external_id / user_id 等字段，仅建议用于审计导出与合规流程。
+                  {t('export.includeSensitiveDescription')}
                 </div>
               </div>
               <Switch checked={includeSensitive} onCheckedChange={(v) => setIncludeSensitive(Boolean(v))} />
@@ -359,4 +358,3 @@ export default function AccessReviewPage() {
     </AppFrame>
   )
 }
-
