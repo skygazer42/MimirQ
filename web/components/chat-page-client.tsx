@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useEffect } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 import { AppFrame } from '@/components/app-frame'
 import { ChatArea } from '@/components/chat-area'
 import { DocumentViewerPanel } from '@/components/document-viewer-panel'
+import { useRouter } from '@/i18n/navigation'
 import { useDocumentView } from '@/store/document-view'
 
 export function ChatPageClient({
