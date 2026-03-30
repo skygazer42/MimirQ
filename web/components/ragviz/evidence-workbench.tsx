@@ -318,8 +318,8 @@ export function EvidenceWorkbench() {
           <Panel variant="glass" className="p-4 lg:col-span-1">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold">Summary</div>
-                <div className="text-xs text-muted-foreground mt-1">Evidence-only retrieval</div>
+                <div className="text-sm font-semibold">{t("results.summary.title")}</div>
+                <div className="text-xs text-muted-foreground mt-1">{t("results.summary.description")}</div>
               </div>
               <div
                 className={cn(
@@ -379,9 +379,9 @@ export function EvidenceWorkbench() {
           <Panel variant="glass" className="p-4 lg:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold">Citations</div>
+                <div className="text-sm font-semibold">{t("results.citations.title")}</div>
                 <div className="text-xs text-muted-foreground mt-1">
-                  {citations.length ? '点击可复制引用（手动）' : '暂无命中'}
+                  {citations.length ? t("results.citations.hitsHint") : t("results.citations.emptyHits")}
                 </div>
               </div>
             </div>
@@ -438,14 +438,14 @@ export function EvidenceWorkbench() {
                           {content}
                         </pre>
                       ) : (
-                        <div className="mt-2 text-[11px] text-muted-foreground">空内容</div>
+                        <div className="mt-2 text-[11px] text-muted-foreground">{t("results.citations.emptyContent")}</div>
                       )}
                     </div>
                   )
                 })}
               </div>
             ) : (
-              <div className="mt-4 text-sm text-muted-foreground">没有检索到可用的 citations。</div>
+              <div className="mt-4 text-sm text-muted-foreground">{t("results.citations.noCitations")}</div>
             )}
           </Panel>
         </div>

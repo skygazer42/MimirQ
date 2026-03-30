@@ -740,6 +740,19 @@ const zhCNMessages = {
       loadDatasetsFailed: '加载数据集失败',
       retrieveFailed: '检索失败，请检查后端服务状态',
     },
+    results: {
+      summary: {
+        title: '摘要',
+        description: '仅证据检索',
+      },
+      citations: {
+        title: '引用',
+        hitsHint: '点击可复制引用（手动）',
+        emptyHits: '暂无命中',
+        emptyContent: '空内容',
+        noCitations: '没有检索到可用的 citations。',
+      },
+    },
   },
   KGDiagnosticsPage: {
     qualityReport: {
