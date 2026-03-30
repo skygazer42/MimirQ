@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Remote } from 'comlink'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   ArrowLeft,
@@ -27,6 +27,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StepIndicator } from '@/components/ui/step-indicator'
+import { useRouter } from '@/i18n/navigation'
 
 import { datasetApi, documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'

@@ -1,13 +1,14 @@
 'use client'
 
 import { useMemo } from 'react'
-import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import { Activity, ArrowLeft, BarChart3, FileSearch, ShieldCheck, Settings2, Table2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { EvidenceSuiteWorkbench } from '@/components/evidence/evidence-suite-workbench'
 import { Button } from '@/components/ui/button'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { useRouter } from '@/i18n/navigation'
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
