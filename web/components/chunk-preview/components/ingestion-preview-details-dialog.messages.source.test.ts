@@ -53,4 +53,29 @@ describe('chunk preview ingestion preview details messages', () => {
     expect(src).toContain('t("ingestionPreview.diff.diffFull")')
     expect(src).toContain('t("ingestionPreview.diff.noDiff")')
   })
+
+  it('moves issues copy into next-intl lookups', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'ingestion-preview-details-dialog.tsx'), 'utf8')
+
+    expect(src).toContain('t("ingestionPreview.issues.title")')
+    expect(src).toContain('t("ingestionPreview.issues.actions.applyAll")')
+    expect(src).toContain('t("ingestionPreview.issues.toasts.missingHandler")')
+    expect(src).toContain('t("ingestionPreview.issues.labels.count")')
+    expect(src).toContain('t("ingestionPreview.issues.actions.applySuggestion")')
+    expect(src).toContain('t("ingestionPreview.issues.toasts.appliedSuggestion"')
+    expect(src).toContain('t("ingestionPreview.issues.labels.samples")')
+    expect(src).toContain('t("ingestionPreview.issues.labels.suggestedPatchWithCount"')
+    expect(src).toContain('t("ingestionPreview.issues.empty")')
+  })
+
+  it('moves explain copy into next-intl lookups', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'ingestion-preview-details-dialog.tsx'), 'utf8')
+
+    expect(src).toContain('t("ingestionPreview.explain.title")')
+    expect(src).toContain('t("ingestionPreview.explain.missingData")')
+    expect(src).toContain('t("ingestionPreview.explain.exportJson")')
+    expect(src).toContain('t("ingestionPreview.explain.exportSuccess")')
+    expect(src).toContain('t("ingestionPreview.explain.description")')
+    expect(src).toContain('t("ingestionPreview.explain.payloadLabel")')
+  })
 })

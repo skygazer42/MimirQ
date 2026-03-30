@@ -475,7 +475,7 @@ export function IngestionPreviewDetailsDialog({
 	          <TabsContent value="issues" className="mt-4">
 	            <div className="rounded-xl border border-border/60 bg-card p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium text-foreground">治理问题（Issues）</div>
+                <div className="text-sm font-medium text-foreground">{t("ingestionPreview.issues.title")}</div>
                 {preview?.clean?.suggested_pipeline_patch && Object.keys(preview.clean.suggested_pipeline_patch || {}).length ? (
                   <Button
                     type="button"
@@ -484,15 +484,15 @@ export function IngestionPreviewDetailsDialog({
                     onClick={() => {
                       const patch = preview?.clean?.suggested_pipeline_patch || {}
                       if (!onApplyPipelinePatch) {
-                        toast.message('未提供 patch 应用函数')
+                        toast.message(t("ingestionPreview.issues.toasts.missingHandler"))
                         return
                       }
                       onApplyPipelinePatch(patch)
-                      toast.success('已应用 suggested pipeline patch')
+                      toast.success(t("ingestionPreview.issues.toasts.appliedAll"))
                     }}
                     disabled={!onApplyPipelinePatch}
                   >
-                    应用全部建议
+                    {t("ingestionPreview.issues.actions.applyAll")}
                   </Button>
                 ) : null}
               </div>
@@ -530,7 +530,7 @@ export function IngestionPreviewDetailsDialog({
                                 </span>
                                 <span className="text-[11px] font-mono text-muted-foreground">{code}</span>
                                 <span className="text-[11px] text-muted-foreground">
-                                  count: <span className="font-mono">{count}</span>
+                                  {t("ingestionPreview.issues.labels.count")}: <span className="font-mono">{count}</span>
                                 </span>
                               </div>
                               <div className="mt-1 text-[12px] text-foreground/90">{message}</div>
@@ -543,22 +543,22 @@ export function IngestionPreviewDetailsDialog({
                                 className="h-8 px-3 text-[11px]"
                                 onClick={() => {
                                   if (!onApplyPipelinePatch) {
-                                    toast.message('未提供 patch 应用函数')
+                                    toast.message(t("ingestionPreview.issues.toasts.missingHandler"))
                                     return
                                   }
                                   onApplyPipelinePatch(patch)
-                                  toast.success(`已应用建议：${code}`)
+                                  toast.success(t("ingestionPreview.issues.toasts.appliedSuggestion", { code }))
                                 }}
                                 disabled={!onApplyPipelinePatch}
                               >
-                                应用建议
+                                {t("ingestionPreview.issues.actions.applySuggestion")}
                               </Button>
                             ) : null}
                           </div>
 
                           {samples.length ? (
                             <div className="mt-2">
-                              <div className="text-[10px] text-muted-foreground">samples</div>
+                              <div className="text-[10px] text-muted-foreground">{t("ingestionPreview.issues.labels.samples")}</div>
                               <div className="mt-1 space-y-1">
                                 {samples.slice(0, 4).map((s: string) => (
                                   <div
@@ -575,7 +575,7 @@ export function IngestionPreviewDetailsDialog({
                           {patch && patchKeys.length ? (
                             <details className="mt-2">
                               <summary className="cursor-pointer select-none text-[11px] text-muted-foreground hover:text-foreground">
-                                查看 suggested patch（{patchKeys.length}）
+                                {t("ingestionPreview.issues.labels.suggestedPatchWithCount", { count: patchKeys.length })}
                               </summary>
                               <pre className="mt-2 max-h-[180px] overflow-auto rounded-lg border border-border/60 bg-muted/30 p-2 text-[11px] text-muted-foreground">
                                 {JSON.stringify(patch, null, 2)}
@@ -588,7 +588,7 @@ export function IngestionPreviewDetailsDialog({
                   </div>
                 </ScrollArea>
               ) : (
-                <div className="mt-3 text-[12px] text-muted-foreground">暂无 issues（治理侧未发现明显问题）</div>
+                <div className="mt-3 text-[12px] text-muted-foreground">{t("ingestionPreview.issues.empty")}</div>
               )}
 	            </div>
 	          </TabsContent>
@@ -596,7 +596,7 @@ export function IngestionPreviewDetailsDialog({
           <TabsContent value="explain" className="mt-4">
             <div className="rounded-xl border border-border/60 bg-card p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium text-foreground">Explain（可追溯/可导出）</div>
+                <div className="text-sm font-medium text-foreground">{t("ingestionPreview.explain.title")}</div>
                 <Button
                   type="button"
                   size="sm"
@@ -605,37 +605,37 @@ export function IngestionPreviewDetailsDialog({
                   onClick={() => {
                     const exp = preview?.explain
                     if (!exp) {
-                      toast.error('后端未返回 explain 字段')
+                      toast.error(t("ingestionPreview.explain.missingData"))
                       return
                     }
                     const snapshotValue = isJsonObject(exp) && 'snapshot' in exp ? exp.snapshot ?? exp : exp
                     const snapshotRecord = isJsonObject(snapshotValue) ? snapshotValue : null
                     const rawName = String(snapshotRecord?.filename || 'ingestion-preview')
                       .trim()
-                      .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
-                      .slice(0, 64)
-                    downloadJsonObject(snapshotValue, `${rawName}.ingestion-preview.explain.json`)
-                    toast.success('已导出 explain 快照')
-                  }}
-                  disabled={!preview?.explain}
-                >
-                  <Download className="w-4 h-4" />
-                  导出 JSON
-                </Button>
-              </div>
+                       .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+                       .slice(0, 64)
+                     downloadJsonObject(snapshotValue, `${rawName}.ingestion-preview.explain.json`)
+                     toast.success(t("ingestionPreview.explain.exportSuccess"))
+                   }}
+                   disabled={!preview?.explain}
+                 >
+                   <Download className="w-4 h-4" />
+                   {t("ingestionPreview.explain.exportJson")}
+                 </Button>
+               </div>
 
-              <div className="mt-2 text-[11px] text-muted-foreground">
-                包含：命中规则、最终生效配置、pipeline_patch 与（可选）fallback 线索。建议作为入库前审计快照留存。
-              </div>
+               <div className="mt-2 text-[11px] text-muted-foreground">
+                 {t("ingestionPreview.explain.description")}
+               </div>
 
-              <div className="mt-3 rounded-lg border border-border/60 bg-background">
-                <div className="px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border/60">
-                  payload.explain
-                </div>
-                <ScrollArea className="h-[420px]">
-                  <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words text-foreground/80">
-                    {JSON.stringify(preview?.explain ?? null, null, 2)}
-                  </pre>
+               <div className="mt-3 rounded-lg border border-border/60 bg-background">
+                 <div className="px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border/60">
+                   {t("ingestionPreview.explain.payloadLabel")}
+                 </div>
+                 <ScrollArea className="h-[420px]">
+                   <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words text-foreground/80">
+                     {JSON.stringify(preview?.explain ?? null, null, 2)}
+                   </pre>
                 </ScrollArea>
               </div>
             </div>
