@@ -784,6 +784,19 @@ const zhCNMessages = {
     qualityReport: {
       title: 'KG Extraction Quality（aggregate）',
       hint: '加载 KG extraction quality report（aggregate-only）',
+      pull: '拉取',
+      documentLimit: 'document_limit',
+      pipelineHash: 'pipeline_hash（可选）',
+      pipelineHashPlaceholder: '留空 = active pipeline',
+    },
+    summary: {
+      title: 'Summary',
+      baselineHitRate: 'baseline_hit_rate',
+      baselineMrr: 'baseline_mrr',
+      baselineRecall: 'baseline_recall',
+      hardcasesGenerated: 'hardcases_generated',
+      empty: '尚未运行',
+      runHint: '运行一次 KG diagnostics 以生成 summary/items',
     },
     toasts: {
       datasetRequired: '请输入 dataset_id',
