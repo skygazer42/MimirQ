@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { usePathname, useRouter } from "next/navigation"
 import {
   Upload,
   Activity,
@@ -24,6 +23,7 @@ import { useTheme } from "next-themes"
 import type { Conversation, Dataset, Document } from "@/types"
 import { chatApi, datasetApi, documentApi } from "@/lib/api"
 import { globalEventBus } from "@/lib/event-bus"
+import { usePathname, useRouter } from "@/i18n/navigation"
 import { useCommandMenuState } from "@/store/command-menu"
 import { useDocumentView } from "@/store/document-view"
 
