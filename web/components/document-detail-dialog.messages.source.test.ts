@@ -42,6 +42,8 @@ describe('document detail message sources', () => {
     expect(mainSrc).toContain("t('alerts.loadFailedTitle')")
     expect(mainSrc).toContain("t('alerts.permissionCheckFailedTitle')")
     expect(mainSrc).toContain("t('alerts.validationFailedTitle')")
+    expect(mainSrc).not.toContain("t('alerts.permissionFailedTitle')")
+    expect(mainSrc).not.toContain("t('alerts.inputInvalidTitle')")
     expect(mainSrc).toContain("t('actions.edit')")
     expect(mainSrc).toContain('t("lifecycle.readOnly")')
     expect(mainSrc).toContain("t('lifecycle.title')")
