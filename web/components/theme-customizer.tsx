@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Moon, Sun, Settings2, RefreshCw } from "lucide-react"
+import { useTranslations } from 'next-intl'
 import { useTheme } from "next-themes"
 import chroma from "chroma-js"
 
@@ -26,6 +27,7 @@ const PRESET_COLORS = [
 
 export function ThemeCustomizer() {
   const [mounted, setMounted] = React.useState(false)
+  const t = useTranslations('CommonUi')
   const { theme, setTheme } = useTheme()
   const [color, setColor] = React.useState(PRESET_COLORS[0].value)
 
@@ -65,7 +67,7 @@ export function ThemeCustomizer() {
     <Popover>
       <PopoverTrigger asChild>
         <IconButton
-          label="打开主题定制"
+          label={t('themeCustomizer.openLabel')}
           variant="outline"
           className="fixed bottom-4 right-4 z-50 size-12 rounded-full border-primary/20 bg-background/80 backdrop-blur-md shadow-lg hover:border-primary transition-colors duration-200 motion-reduce:transition-none supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)] supports-[padding:env(safe-area-inset-right)]:right-[calc(env(safe-area-inset-right)+1rem)]"
         >
@@ -76,13 +78,13 @@ export function ThemeCustomizer() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <h4 className="font-medium leading-none">主题定制</h4>
+              <h4 className="font-medium leading-none">{t('themeCustomizer.title')}</h4>
               <p className="text-xs text-muted-foreground">
-                自定义界面颜色与风格
+                {t('themeCustomizer.description')}
               </p>
             </div>
             <IconButton
-              label="重置主色调"
+              label={t('themeCustomizer.resetColor')}
               variant="ghost"
               onClick={() => setColor(PRESET_COLORS[0].value)}
             >
@@ -91,13 +93,13 @@ export function ThemeCustomizer() {
           </div>
           
           <div className="space-y-2">
-            <Label className="text-xs">主色调</Label>
+            <Label className="text-xs">{t('themeCustomizer.colorLabel')}</Label>
             <div className="grid grid-cols-4 gap-2">
               {PRESET_COLORS.map((preset) => (
                 <button
                   key={preset.name}
                   onClick={() => setColor(preset.value)}
-                  aria-label={`选择主色调：${preset.name}`}
+                  aria-label={t('themeCustomizer.presetLabel', { name: preset.name })}
                   title={preset.name}
                   className={cn(
                     "flex h-8 w-full items-center justify-center rounded-md border border-muted bg-popover hover:bg-accent hover:text-accent-foreground transition-colors duration-200 motion-reduce:transition-none",
@@ -109,7 +111,7 @@ export function ThemeCustomizer() {
                     style={{ backgroundColor: preset.value }}
                   />
                   {color === preset.value && (
-                      <span className="sr-only">Selected</span>
+                      <span className="sr-only">{t('themeCustomizer.selected')}</span>
                   )}
                 </button>
               ))}
@@ -117,7 +119,7 @@ export function ThemeCustomizer() {
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs">模式</Label>
+            <Label className="text-xs">{t('themeCustomizer.modeLabel')}</Label>
             <div className="flex p-1 bg-muted rounded-lg">
                 <button 
                     onClick={() => setTheme('light')}
@@ -126,7 +128,7 @@ export function ThemeCustomizer() {
                         theme === 'light' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                     )}
                 >
-                    <Sun className="h-3.5 w-3.5" /> 浅色
+                    <Sun className="h-3.5 w-3.5" /> {t('modeToggle.light')}
                 </button>
                 <button 
                     onClick={() => setTheme('dark')}
@@ -135,7 +137,7 @@ export function ThemeCustomizer() {
                         theme === 'dark' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
                     )}
                 >
-                    <Moon className="h-3.5 w-3.5" /> 深色
+                    <Moon className="h-3.5 w-3.5" /> {t('modeToggle.dark')}
                 </button>
             </div>
           </div>

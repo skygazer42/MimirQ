@@ -70,6 +70,26 @@ const zhCNMessages = {
       message: '正在加载...',
       srMessage: 'Loading',
     },
+    command: {
+      title: '命令中心',
+      description: '输入命令或搜索应用内页面、数据和对话结果。',
+    },
+    pipelineVisualizer: {
+      upload: '上传',
+      parse: '解析',
+      chunk: '切片',
+      index: '索引',
+    },
+    themeCustomizer: {
+      openLabel: '打开主题定制',
+      title: '主题定制',
+      description: '自定义界面颜色与风格',
+      resetColor: '重置主色调',
+      colorLabel: '主色调',
+      modeLabel: '模式',
+      presetLabel: '选择主色调：{name}',
+      selected: '已选中',
+    },
     fileQueueItem: {
       pending: '等待解析',
       parsing: '解析中',

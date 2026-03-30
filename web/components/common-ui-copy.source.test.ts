@@ -103,4 +103,38 @@ describe('common UI copy source', () => {
     expect(src).toContain("message ?? t('pageLoading.message')")
     expect(src).toContain("srMessage ?? t('pageLoading.srMessage')")
   })
+
+  it('moves command dialog default copy into next-intl lookups', () => {
+    const src = read('./ui/command.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain("t('command.title')")
+    expect(src).toContain("t('command.description')")
+  })
+
+  it('moves pipeline visualizer stage labels into next-intl lookups', () => {
+    const src = read('./ui/pipeline-visualizer.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain("t('pipelineVisualizer.upload')")
+    expect(src).toContain("t('pipelineVisualizer.parse')")
+    expect(src).toContain("t('pipelineVisualizer.chunk')")
+    expect(src).toContain("t('pipelineVisualizer.index')")
+  })
+
+  it('moves theme customizer copy into next-intl lookups', () => {
+    const src = read('../components/theme-customizer.tsx')
+
+    expect(src).toContain("useTranslations('CommonUi')")
+    expect(src).toContain("t('themeCustomizer.openLabel')")
+    expect(src).toContain("t('themeCustomizer.title')")
+    expect(src).toContain("t('themeCustomizer.description')")
+    expect(src).toContain("t('themeCustomizer.resetColor')")
+    expect(src).toContain("t('themeCustomizer.colorLabel')")
+    expect(src).toContain("t('themeCustomizer.modeLabel')")
+    expect(src).toContain("t('themeCustomizer.presetLabel'")
+    expect(src).toContain("t('themeCustomizer.selected')")
+    expect(src).toContain("t('modeToggle.light')")
+    expect(src).toContain("t('modeToggle.dark')")
+  })
 })
