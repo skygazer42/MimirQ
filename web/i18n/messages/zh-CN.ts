@@ -648,6 +648,12 @@ const zhCNMessages = {
         showAllBoxes: '显示全部框',
       },
     },
+    originalPreview: {
+      monaco: {
+        loadingMessage: '正在加载文本预览...',
+        loadingSrMessage: 'Loading text preview',
+      },
+    },
     compareDialog: {
       title: '预览对比（A/B）',
       description: '基于 chunk 内容的快速对比（哈希匹配，适合调参时判断“块有没有变好/变坏”）。',

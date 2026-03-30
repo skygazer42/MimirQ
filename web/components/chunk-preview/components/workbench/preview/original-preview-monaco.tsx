@@ -5,20 +5,27 @@
 
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
 import { PageLoading } from '@/components/ui/page-loading'
 import { getChunkMetadata, getChunkRole } from '@/components/chunk-preview/utils/metadata'
 import type { ChunkPreviewItem } from '@/types'
 
-const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
-  ssr: false,
-  loading: () => (
+function OriginalPreviewMonacoLoading() {
+  const t = useTranslations('ChunkPreview')
+
+  return (
     <PageLoading
-      message="正在加载文本预览..."
-      srMessage="Loading text preview"
+      message={t('originalPreview.monaco.loadingMessage')}
+      srMessage={t('originalPreview.monaco.loadingSrMessage')}
       className="h-full min-h-[520px] rounded-xl border border-border/60 bg-background"
     />
-  ),
+  )
+}
+
+const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
+  ssr: false,
+  loading: () => <OriginalPreviewMonacoLoading />,
 })
 
 const MAX_OVERVIEW_MARKERS = 4000
