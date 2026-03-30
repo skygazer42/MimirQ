@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Download, Loader2, Search, X } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { AuthImage, AuthImageLink } from '@/components/auth-image'
@@ -91,6 +92,7 @@ function toCitation(value: unknown): Citation | null {
 }
 
 export function EvidenceWorkbench() {
+  const t = useTranslations('EvidenceWorkbench')
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const [datasetsError, setDatasetsError] = useState<string | null>(null)
@@ -113,11 +115,11 @@ export function EvidenceWorkbench() {
       const res = await datasetApi.list({ limit: 200 })
       setDatasets(res.items || [])
     } catch (error: unknown) {
-      setDatasetsError(formatApiError(error, '加载数据集失败'))
+      setDatasetsError(formatApiError(error, t("errors.loadDatasetsFailed")))
     } finally {
       setDatasetsLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     detachPromise(loadDatasets())
@@ -165,18 +167,18 @@ export function EvidenceWorkbench() {
 
       setResult(res || null)
       if (res?.has_evidence) {
-        toast.success('找到证据')
+        toast.success(t("toasts.foundEvidence"))
       } else if (res?.abstain_triggered) {
-        toast.warning(`已触发 abstain：${res.abstain_reason || 'unknown'}`)
+        toast.warning(t("toasts.abstainTriggered", { reason: res.abstain_reason || 'unknown' }))
       } else {
-        toast.message('未找到证据')
+        toast.message(t("toasts.noEvidence"))
       }
     } catch (error: unknown) {
-      setError(formatApiError(error, '检索失败，请检查后端服务状态'))
+      setError(formatApiError(error, t("errors.retrieveFailed")))
     } finally {
       setRunning(false)
     }
-  }, [datasetId, profile, query])
+  }, [datasetId, profile, query, t])
 
   const exportPack = useCallback(() => {
     if (!result) return
@@ -201,8 +203,8 @@ export function EvidenceWorkbench() {
     }
 
     downloadJson(filename, payload)
-    toast.success('已导出 Evidence Pack')
-  }, [datasetId, profile, query, result])
+    toast.success(t("toasts.exportedPack"))
+  }, [datasetId, profile, query, result, t])
 
   const citations: Citation[] = useMemo(() => {
     const raw = result?.citations
@@ -219,13 +221,13 @@ export function EvidenceWorkbench() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col md:flex-row gap-3 md:items-end">
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted-foreground mb-1">数据集范围</div>
+              <div className="text-xs text-muted-foreground mb-1">{t("controls.datasetScope")}</div>
               <Select value={datasetScope} onValueChange={(v) => setDatasetScope(String(v))}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择数据集" />
+                  <SelectValue placeholder={t("controls.datasetPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={DATASET_ALL}>全部可访问文档</SelectItem>
+                  <SelectItem value={DATASET_ALL}>{t("controls.allDocuments")}</SelectItem>
                   {datasetOptions.map((d) => (
                     <SelectItem key={d.id} value={d.id}>
                       {d.name}
@@ -235,7 +237,7 @@ export function EvidenceWorkbench() {
               </Select>
               {(() => {
     if (datasetsLoading) {
-        return (<div className="mt-1 text-[11px] text-muted-foreground">加载数据集中…</div>);
+        return (<div className="mt-1 text-[11px] text-muted-foreground">{t("controls.loadingDatasets")}</div>);
     }
     else if (datasetsError) {
             return (<div className="mt-1 text-[11px] text-destructive">{datasetsError}</div>);
@@ -247,15 +249,15 @@ export function EvidenceWorkbench() {
             </div>
 
             <div className="w-full md:w-[220px]">
-              <div className="text-xs text-muted-foreground mb-1">检索 Profile</div>
+              <div className="text-xs text-muted-foreground mb-1">{t("controls.profile")}</div>
               <Select value={profile} onValueChange={(v) => setProfile(v as RetrievalProfile)}>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="选择 profile" />
+                  <SelectValue placeholder={t("controls.profilePlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="recall50">recall50 (默认)</SelectItem>
-                  <SelectItem value="coverage80">coverage80</SelectItem>
-                  <SelectItem value="recall20">recall20</SelectItem>
+                  <SelectItem value="recall50">{t("profiles.recall50")}</SelectItem>
+                  <SelectItem value="coverage80">{t("profiles.coverage80")}</SelectItem>
+                  <SelectItem value="recall20">{t("profiles.recall20")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -263,11 +265,11 @@ export function EvidenceWorkbench() {
 
           <div className="flex flex-col md:flex-row gap-3 md:items-end">
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-muted-foreground mb-1">Query</div>
+              <div className="text-xs text-muted-foreground mb-1">{t("controls.query")}</div>
               <Textarea
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="输入要检索的 query（只检索，不生成回答）"
+                placeholder={t("controls.queryPlaceholder")}
                 className="min-h-[44px]"
               />
             </div>
@@ -277,12 +279,12 @@ export function EvidenceWorkbench() {
                 {running ? (
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                    检索中…
+                    {t("actions.searching")}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-2">
                     <Search className="h-4 w-4" />
-                    检索
+                    {t("actions.search")}
                   </span>
                 )}
               </Button>
@@ -290,14 +292,14 @@ export function EvidenceWorkbench() {
               <Button type="button" variant="outline" onClick={reset} disabled={running && !result && !error}>
                 <span className="inline-flex items-center gap-2">
                   <X className="h-4 w-4" />
-                  清空
+                  {t("actions.reset")}
                 </span>
               </Button>
 
               <Button type="button" variant="outline" onClick={exportPack} disabled={!result || running}>
                 <span className="inline-flex items-center gap-2">
                   <Download className="h-4 w-4" />
-                  导出
+                  {t("actions.export")}
                 </span>
               </Button>
             </div>
