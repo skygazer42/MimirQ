@@ -625,7 +625,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           </div>
 
           <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">目标数据集（可选）</div>
+            <div className="text-xs font-medium text-muted-foreground">{t('sidebar.dataset.title')}</div>
             <Select
               value={datasetId || DATASET_DEFAULT_VALUE}
               onValueChange={(value) => {
@@ -635,10 +635,10 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               }}
             >
               <SelectTrigger className="h-10 bg-background">
-                <SelectValue placeholder="选择数据集" />
+                <SelectValue placeholder={t('sidebar.dataset.selectPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={DATASET_DEFAULT_VALUE}>默认（自动选择可写数据集）</SelectItem>
+                <SelectItem value={DATASET_DEFAULT_VALUE}>{t('sidebar.dataset.defaultOption')}</SelectItem>
                 {datasets.map((ds) => (
                   <SelectItem key={ds.id} value={ds.id}>
                     {ds.name}
@@ -648,7 +648,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </Select>
             {(() => {
     if (datasetsLoading) {
-        return (<div className="text-[10px] text-muted-foreground">正在加载数据集...</div>);
+        return (<div className="text-[10px] text-muted-foreground">{t('sidebar.dataset.loading')}</div>);
     }
     else if (datasetsError) {
             return (<div className="text-[10px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
@@ -663,7 +663,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             {selectedDataset?.pipeline ? (
               <div className="rounded-xl border border-border/60 bg-background p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[10px] text-muted-foreground">数据集 Pipeline（摘要）</div>
+                  <div className="text-[10px] text-muted-foreground">{t('sidebar.dataset.pipelineSummary')}</div>
                   <Button
                     type="button"
                     variant="outline"
@@ -671,45 +671,45 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     className="h-7 px-2 text-[11px]"
                     onClick={() => {
                       applyPipelinePatch(selectedDataset.pipeline, {
-                        successMessage: '已应用数据集 Pipeline 到当前预览',
-                        errorMessage: '应用数据集 Pipeline 失败',
+                        successMessage: t('sidebar.dataset.applyPipelineSuccess'),
+                        errorMessage: t('sidebar.dataset.applyPipelineError'),
                       })
                     }}
                   >
-                    应用
+                    {t('sidebar.dataset.applyPipeline')}
                   </Button>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[10px]">
                   {selectedDataset.pipeline.governance_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-200 border border-sky-500/20">
-                      Governance
+                      {t('sidebar.dataset.badges.governanceOn')}
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
-                      Governance Off
+                      {t('sidebar.dataset.badges.governanceOff')}
                     </span>
                   )}
                   {selectedDataset.pipeline.chunk_vector_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      Vector
+                      {t('sidebar.dataset.badges.vectorOn')}
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
-                      Vector Off
+                      {t('sidebar.dataset.badges.vectorOff')}
                     </span>
                   )}
                   {selectedDataset.pipeline.bm25_index_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      BM25
+                      {t('sidebar.dataset.badges.bm25On')}
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
-                      BM25 Off
+                      {t('sidebar.dataset.badges.bm25Off')}
                     </span>
                   )}
                   {selectedDataset.pipeline.kg_enabled ? (
                     <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700 dark:text-purple-200 border border-purple-500/20">
-                      KG
+                      {t('sidebar.dataset.badges.kg')}
                     </span>
                   ) : null}
                 </div>
@@ -723,7 +723,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               className="w-full h-9 text-xs justify-start"
               onClick={async () => {
                 if (!datasetId) {
-                  toast.error('请先选择目标数据集')
+                  toast.error(t('sidebar.ingestionPreview.selectDatasetFirst'))
                   return
                 }
                 if (!currentFile) return
@@ -737,9 +737,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     diff_max_lines: 300,
                   })
                   setIngestionPreview(result)
-                  toast.success('已生成入库策略预览（可应用推荐）')
+                  toast.success(t('sidebar.ingestionPreview.generatedSuccess'))
                 } catch (error: unknown) {
-                  setIngestionError(getErrorMessage(error, '入库策略预览失败'))
+                  setIngestionError(getErrorMessage(error, t('sidebar.ingestionPreview.requestFailed')))
                 } finally {
                   setIngestionLoading(false)
                 }
@@ -750,7 +750,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               ) : (
                 <Wand2 className="w-4 h-4 mr-2 text-primary" />
               )}
-              按入库策略智能推荐
+              {t('sidebar.ingestionPreview.trigger')}
             </Button>
 
             {ingestionError ? (
