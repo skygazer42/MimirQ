@@ -10,6 +10,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import { Wand2, Loader2, X, Download } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -54,6 +55,7 @@ function uniqSorted(nums: number[]) {
 }
 
 export function ChunkAutoTuneDialog() {
+  const t = useTranslations('ChunkPreview')
   const {
     currentFile,
     currentFileItem,
@@ -162,7 +164,11 @@ export function ChunkAutoTuneDialog() {
 
   const runTune = async () => {
     if (!isAutoTuneAvailable) {
-      toast.error(isSeparatorStrategy ? 'separator 策略不支持 overlap 调优' : '请先生成一次预览以获得 file_sha256（并确保已选择文件）')
+      toast.error(
+        isSeparatorStrategy
+          ? t('autoTune.unavailable.separatorStrategy')
+          : t('autoTune.unavailable.previewRequired')
+      )
       return
     }
 
@@ -233,7 +239,7 @@ export function ChunkAutoTuneDialog() {
             chunkSize: c.chunkSize,
             chunkOverlap: c.chunkOverlap,
             ok: false,
-            error: formatApiError(err, '调优请求失败'),
+            error: formatApiError(err, t('autoTune.toasts.requestFailed')),
           })
         }
         // Keep UI responsive for long runs.
@@ -244,7 +250,13 @@ export function ChunkAutoTuneDialog() {
       setRunning(false)
       const total = Math.max(0, Math.round(performance.now() - started))
       if (!controller.signal.aborted) {
-        toast.success(`Auto-tune 完成（${out.filter((x) => x.ok).length}/${out.length} ok，${total}ms）`)
+        toast.success(
+          t('autoTune.toasts.completed', {
+            okCount: out.filter((x) => x.ok).length,
+            totalCount: out.length,
+            durationMs: total,
+          })
+        )
       }
     }
   }
@@ -284,10 +296,10 @@ export function ChunkAutoTuneDialog() {
         className="h-7 px-2 text-[11px]"
         onClick={() => setOpen(true)}
         disabled={!previewData || isLoading}
-        title={isAutoTuneAvailable ? '自动搜索切块参数（TopN 推荐）' : '请先生成预览'}
+        title={isAutoTuneAvailable ? t('autoTune.trigger.readyTitle') : t('autoTune.trigger.disabledTitle')}
       >
         <Wand2 className="w-3.5 h-3.5 mr-1 text-primary" />
-        自动调优
+        {t('autoTune.trigger.label')}
       </Button>
 
       <Dialog
@@ -299,16 +311,16 @@ export function ChunkAutoTuneDialog() {
       >
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>切块参数自动调优</DialogTitle>
+            <DialogTitle>{t('autoTune.dialog.title')}</DialogTitle>
             <DialogDescription>
-              基于 coverage_ratio / overlap_waste / chunk_count 等信号，搜索 chunk_size + chunk_overlap 组合并给出 TopN 推荐。
+              {t('autoTune.dialog.description')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="rounded-xl border border-border/60 bg-muted/10 p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium">当前文件</div>
+                <div className="text-sm font-medium">{t('autoTune.currentFile.title')}</div>
                 {running ? (
                   <Button
                     type="button"
@@ -318,23 +330,30 @@ export function ChunkAutoTuneDialog() {
                     onClick={() => abortRef.current?.abort()}
                   >
                     <X className="w-3.5 h-3.5 mr-1" />
-                    取消
+                    {t('autoTune.currentFile.cancel')}
                   </Button>
                 ) : null}
               </div>
               <div className="mt-1 text-xs text-muted-foreground font-mono break-all">
-                {filename} · sha:{sha ? String(sha).slice(0, 10) : '-'} · strategy:{chunkStrategy} · unit:{isTokenStrategy ? 'tokens' : 'chars'}
+                {t('autoTune.currentFile.summary', {
+                  filename,
+                  sha: sha ? String(sha).slice(0, 10) : '-',
+                  strategy: chunkStrategy,
+                  unit: isTokenStrategy ? 'tokens' : 'chars',
+                })}
               </div>
               {isAutoTuneAvailable ? null : (
                 <div className="mt-2 text-xs text-warning">
-                  {isSeparatorStrategy ? 'separator 策略不支持 overlap 调优（可用 chunk_size 调优建议后续补齐）' : '需要先生成一次预览以获得 file_sha256。'}
+                  {isSeparatorStrategy
+                    ? t('autoTune.unavailable.separatorStrategyDetail')
+                    : t('autoTune.unavailable.previewRequiredDetail')}
                 </div>
               )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Min 覆盖率（%）</Label>
+                <Label className="text-xs">{t('autoTune.labels.minCoverage')}</Label>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -347,7 +366,7 @@ export function ChunkAutoTuneDialog() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Max 重叠浪费（%）</Label>
+                <Label className="text-xs">{t('autoTune.labels.maxOverlapWaste')}</Label>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -360,7 +379,7 @@ export function ChunkAutoTuneDialog() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Max chunks（0=不限）</Label>
+                <Label className="text-xs">{t('autoTune.labels.maxChunks')}</Label>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -373,7 +392,7 @@ export function ChunkAutoTuneDialog() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">TopN</Label>
+                <Label className="text-xs">{t('autoTune.labels.topN')}</Label>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -389,7 +408,12 @@ export function ChunkAutoTuneDialog() {
 
             <div className="flex items-center justify-between gap-2">
               <div className="text-xs text-muted-foreground">
-                搜索空间：{candidates.length} 组（chunk_size: {sizeMin}-{sizeMax} step {effectiveStep}）
+                {t('autoTune.labels.searchSpace', {
+                  count: candidates.length,
+                  sizeMin,
+                  sizeMax,
+                  step: effectiveStep,
+                })}
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -401,7 +425,7 @@ export function ChunkAutoTuneDialog() {
                   disabled={!results.length}
                 >
                   <Download className="w-3.5 h-3.5 mr-1" />
-                  导出 JSON
+                  {t('autoTune.actions.exportJson')}
                 </Button>
                 <Button
                   type="button"
@@ -411,22 +435,22 @@ export function ChunkAutoTuneDialog() {
                   disabled={!isAutoTuneAvailable || running}
                 >
                   {running ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin motion-reduce:animate-none" /> : null}
-                  开始调优
+                  {t('autoTune.actions.start')}
                 </Button>
               </div>
             </div>
 
             <div className="rounded-xl border border-border/60 overflow-hidden">
-              <table aria-label="Chunk 自动调优候选方案" className="w-full text-xs">
+              <table aria-label={t('autoTune.table.ariaLabel')} className="w-full text-xs">
                 <thead className="bg-muted/40 text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 text-left font-medium">Params</th>
-                    <th className="px-3 py-2 text-left font-medium">coverage</th>
-                    <th className="px-3 py-2 text-left font-medium">waste</th>
-                    <th className="px-3 py-2 text-left font-medium">chunks</th>
-                    <th className="px-3 py-2 text-left font-medium">avg/p90</th>
-                    <th className="px-3 py-2 text-left font-medium">grade</th>
-                    <th className="px-3 py-2 text-right font-medium">Action</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('autoTune.table.params')}</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('autoTune.table.coverage')}</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('autoTune.table.waste')}</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('autoTune.table.chunks')}</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('autoTune.table.avgP90')}</th>
+                    <th className="px-3 py-2 text-left font-medium">{t('autoTune.table.grade')}</th>
+                    <th className="px-3 py-2 text-right font-medium">{t('autoTune.table.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -434,7 +458,10 @@ export function ChunkAutoTuneDialog() {
     if (scoredTop.length) {
         return (scoredTop.map((r) => (<tr key={`${r.chunkSize}:${r.chunkOverlap}`} className="border-t border-border/60">
                         <td className="px-3 py-2 font-mono">
-                          size:{r.chunkSize} · overlap:{r.chunkOverlap}
+                          {t('autoTune.table.paramsValue', {
+                            chunkSize: r.chunkSize,
+                            chunkOverlap: r.chunkOverlap,
+                          })}
                         </td>
                         <td className="px-3 py-2 font-mono">
                           {r.stats ? `${Math.round((r.stats.coverage_ratio || 0) * 100)}%` : '-'}
@@ -449,7 +476,7 @@ export function ChunkAutoTuneDialog() {
                         <td className="px-3 py-2 font-mono">{r.quality?.grade || '-'}</td>
                         <td className="px-3 py-2 text-right">
                           <Button type="button" size="sm" className="h-7 px-2 text-[11px]" onClick={() => detachPromise(applyCandidate(r))}>
-                            应用并预览
+                            {t('autoTune.actions.applyAndPreview')}
                           </Button>
                         </td>
                       </tr>)));
@@ -457,14 +484,14 @@ export function ChunkAutoTuneDialog() {
     else if (results.length) {
             return (<tr className="border-t border-border/60">
                       <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
-                        没有命中约束的组合（可尝试降低 min 覆盖率/提高 max 重叠浪费/放宽 max chunks）。
+                        {t('autoTune.empty.noMatches')}
                       </td>
                     </tr>);
         }
         else {
             return (<tr className="border-t border-border/60">
                       <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
-                        还没有结果。点击“开始调优”生成 TopN 推荐。
+                        {t('autoTune.empty.noResults')}
                       </td>
                     </tr>);
         }

@@ -675,6 +675,60 @@ const zhCNMessages = {
       reset: '重置本 chunk 编辑',
       save: '保存',
     },
+    autoTune: {
+      unavailable: {
+        separatorStrategy: 'separator 策略不支持 overlap 调优',
+        previewRequired: '请先生成一次预览以获得 file_sha256（并确保已选择文件）',
+        separatorStrategyDetail: 'separator 策略不支持 overlap 调优（可用 chunk_size 调优建议后续补齐）',
+        previewRequiredDetail: '需要先生成一次预览以获得 file_sha256。',
+      },
+      trigger: {
+        readyTitle: '自动搜索切块参数（TopN 推荐）',
+        disabledTitle: '请先生成预览',
+        label: '自动调优',
+      },
+      dialog: {
+        title: '切块参数自动调优',
+        description:
+          '基于 coverage_ratio / overlap_waste / chunk_count 等信号，搜索 chunk_size + chunk_overlap 组合并给出 TopN 推荐。',
+      },
+      currentFile: {
+        title: '当前文件',
+        cancel: '取消',
+        summary: '{filename} · sha:{sha} · strategy:{strategy} · unit:{unit}',
+      },
+      labels: {
+        minCoverage: 'Min 覆盖率（%）',
+        maxOverlapWaste: 'Max 重叠浪费（%）',
+        maxChunks: 'Max chunks（0=不限）',
+        topN: 'TopN',
+        searchSpace: '搜索空间：{count} 组（chunk_size: {sizeMin}-{sizeMax} step {step}）',
+      },
+      actions: {
+        exportJson: '导出 JSON',
+        start: '开始调优',
+        applyAndPreview: '应用并预览',
+      },
+      table: {
+        ariaLabel: 'Chunk 自动调优候选方案',
+        params: 'Params',
+        coverage: 'coverage',
+        waste: 'waste',
+        chunks: 'chunks',
+        avgP90: 'avg/p90',
+        grade: 'grade',
+        action: 'Action',
+        paramsValue: 'size:{chunkSize} · overlap:{chunkOverlap}',
+      },
+      empty: {
+        noMatches: '没有命中约束的组合（可尝试降低 min 覆盖率/提高 max 重叠浪费/放宽 max chunks）。',
+        noResults: '还没有结果。点击“开始调优”生成 TopN 推荐。',
+      },
+      toasts: {
+        requestFailed: '调优请求失败',
+        completed: 'Auto-tune 完成（{okCount}/{totalCount} ok，{durationMs}ms）',
+      },
+    },
     compareDialog: {
       title: '预览对比（A/B）',
       description: '基于 chunk 内容的快速对比（哈希匹配，适合调参时判断“块有没有变好/变坏”）。',
