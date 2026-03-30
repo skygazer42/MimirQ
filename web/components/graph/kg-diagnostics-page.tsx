@@ -196,7 +196,7 @@ export function KGDiagnosticsPage() {
     }
   }, [detailA, detailB])
 
-  const diffJson = useMemo(() => prettyJson(diff ?? { hint: '选择两个 runs 并加载后生成 diff' }), [diff])
+  const diffJson = useMemo(() => prettyJson(diff ?? { hint: t("compare.diffHint") }), [diff, t])
 
   async function refreshRuns(): Promise<void> {
     const ds = datasetId.trim()
@@ -519,22 +519,20 @@ export function KGDiagnosticsPage() {
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle className="text-base">Runs（持久化）</CardTitle>
+              <CardTitle className="text-base">{t("runs.title")}</CardTitle>
               <Button variant="outline" size="sm" className="gap-2" onClick={refreshRuns} disabled={runsLoading}>
                 <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-                刷新
+                {t("runs.refresh")}
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="text-xs text-muted-foreground">
-                需要先勾选 persist_run 才能在这里看到 runs；compare 以 run.items 的 case_id 为 key。
-              </div>
+              <div className="text-xs text-muted-foreground">{t("runs.hint")}</div>
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
-                  <Label>Run A</Label>
+                  <Label>{t("runs.runA")}</Label>
                   <Select value={selectedRunA} onValueChange={(v) => setSelectedRunA(v)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="选择 run A" />
+                      <SelectValue placeholder={t("runs.runAPlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       {runs.map((r) => (
@@ -551,14 +549,14 @@ export function KGDiagnosticsPage() {
                     onClick={() => loadRun('a', selectedRunA)}
                     disabled={!selectedRunA}
                   >
-                    加载 A
+                    {t("runs.loadA")}
                   </Button>
                 </div>
                 <div className="space-y-1">
-                  <Label>Run B</Label>
+                  <Label>{t("runs.runB")}</Label>
                   <Select value={selectedRunB} onValueChange={(v) => setSelectedRunB(v)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="选择 run B" />
+                      <SelectValue placeholder={t("runs.runBPlaceholder")} />
                     </SelectTrigger>
                     <SelectContent>
                       {runs.map((r) => (
@@ -575,7 +573,7 @@ export function KGDiagnosticsPage() {
                     onClick={() => loadRun('b', selectedRunB)}
                     disabled={!selectedRunB}
                   >
-                    加载 B
+                    {t("runs.loadB")}
                   </Button>
                 </div>
               </div>
@@ -584,7 +582,7 @@ export function KGDiagnosticsPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle className="text-base">Compare</CardTitle>
+              <CardTitle className="text-base">{t("compare.title")}</CardTitle>
               <Button
                 variant="outline"
                 size="sm"
@@ -593,48 +591,48 @@ export function KGDiagnosticsPage() {
                   const a = String(detailA?.run?.id || '').slice(0, 8) || 'A'
                   const b = String(detailB?.run?.id || '').slice(0, 8) || 'B'
                   downloadJson(diff ?? {}, `${sanitizeFilename(`kg_diagnostics_diff_${a}_vs_${b}`)}.json`)
-                  toast.success('已导出 diff.json')
+                  toast.success(t("compare.exported"))
                 }}
                 disabled={!diff}
               >
                 <Download className="h-4 w-4" aria-hidden="true" />
-                导出 diff
+                {t("compare.export")}
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
               {diff ? (
                 <div className="grid gap-2 md:grid-cols-2">
                   <div className="rounded-md border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">hit flips</div>
+                    <div className="text-xs text-muted-foreground">{t("compare.hitFlips")}</div>
                     <div className="text-sm tabular-nums">
                       total={diff.hit_flips.total} improved={diff.hit_flips.improved} regressed={diff.hit_flips.regressed}
                     </div>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">summary keys</div>
+                    <div className="text-xs text-muted-foreground">{t("compare.summaryKeys")}</div>
                     <div className="text-sm tabular-nums">{Object.keys(diff.summary_delta || {}).length}</div>
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-muted-foreground">选择并加载 run A/B 后自动生成 diff</div>
+                <div className="text-sm text-muted-foreground">{t("compare.empty")}</div>
               )}
 
               <div className="rounded-md border bg-muted/10 p-3">
                 <div className="text-xs text-muted-foreground mb-2 flex items-center gap-2">
                   <GitCompare className="h-4 w-4" aria-hidden="true" />
-                  diff（json）
+                  {t("compare.diffJson")}
                 </div>
                 <Textarea value={diffJson} readOnly rows={14} className="font-mono text-xs" />
               </div>
 
               {diff?.changed_cases?.length ? (
                 <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground mb-2">changed cases (top)</div>
+                  <div className="text-xs text-muted-foreground mb-2">{t("compare.changedCases")}</div>
                   <div className="grid gap-2">
                     {diff.changed_cases.map((r: any) => (
                       <div key={r.case_id} className="rounded-md border bg-background p-2">
                         <div className="text-xs text-muted-foreground tabular-nums">{String(r.case_id).slice(0, 8)}</div>
-                        <div className="text-sm">{r.question || '(no question)'}</div>
+                        <div className="text-sm">{r.question || t("compare.noQuestion")}</div>
                         <div className="text-xs text-muted-foreground tabular-nums mt-1">
                           hit: {String(r.a_hit)} → {String(r.b_hit)} | recall: {String(r.a_recall)} → {String(r.b_recall)} (Δ {String(r.delta_recall)})
                         </div>
