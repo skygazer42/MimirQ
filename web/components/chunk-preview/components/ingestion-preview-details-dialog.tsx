@@ -312,56 +312,49 @@ export function IngestionPreviewDetailsDialog({
               <div className="space-y-3">
                 <div className="rounded-xl border border-border/60 bg-card p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium text-foreground">治理清洗（Governance）</div>
+                    <div className="text-sm font-medium text-foreground">{t("ingestionPreview.clean.title")}</div>
                     <span
                       className={cn(
                         'text-[11px] px-2 py-0.5 rounded-full border',
-                        (() => {
-    if (cleanSummary.dropped) {
-        return 'bg-destructive/10 text-destructive border-destructive/25';
-    }
-    else if (cleanSummary.changed) {
-            return 'bg-warning/10 text-warning border-warning/25';
-        }
-        else {
-            return 'bg-success/10 text-success border-success/25';
-        }
-})()
+                        cleanSummary.dropped
+                          ? 'bg-destructive/10 text-destructive border-destructive/25'
+                          : cleanSummary.changed
+                            ? 'bg-warning/10 text-warning border-warning/25'
+                            : 'bg-success/10 text-success border-success/25'
                       )}
                     >
-                      {(() => {
-    if (cleanSummary.dropped) {
-        return 'dropped';
-    }
-    else if (cleanSummary.changed) {
-            return 'changed';
-        }
-        else {
-            return 'no change';
-        }
-})()}
+                      {cleanSummary.dropped
+                        ? t("ingestionPreview.clean.status.dropped")
+                        : cleanSummary.changed
+                          ? t("ingestionPreview.clean.status.changed")
+                          : t("ingestionPreview.clean.status.noChange")}
                     </span>
                   </div>
                   {cleanSummary.dropReason ? (
                     <div className="mt-2 text-[11px] text-destructive">
-                      drop_reason: <span className="font-mono">{cleanSummary.dropReason}</span>
+                      {t("ingestionPreview.clean.dropReasonLabel")}:{' '}
+                      <span className="font-mono">{cleanSummary.dropReason}</span>
                     </div>
                   ) : null}
                   <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
                     <div>
-                      chars: <span className="font-mono">{cleanSummary.inputChars}</span> →{' '}
+                      {t("ingestionPreview.clean.metrics.chars")}:{' '}
+                      <span className="font-mono">{cleanSummary.inputChars}</span> →{' '}
                       <span className="font-mono">{cleanSummary.outputChars}</span>
                     </div>
                     <div>
-                      lines: <span className="font-mono">{cleanSummary.inputLines}</span> →{' '}
+                      {t("ingestionPreview.clean.metrics.lines")}:{' '}
+                      <span className="font-mono">{cleanSummary.inputLines}</span> →{' '}
                       <span className="font-mono">{cleanSummary.outputLines}</span>
                     </div>
                     <div>
-                      rules: <span className="font-mono">{cleanSummary.appliedRules}</span> · urls:{' '}
+                      {t("ingestionPreview.clean.metrics.rules")}:{' '}
+                      <span className="font-mono">{cleanSummary.appliedRules}</span> · {t("ingestionPreview.clean.metrics.urls")}:{' '}
                       <span className="font-mono">{cleanSummary.urlsChanged}</span>
                     </div>
                     <div>
-                      dropped: <span className="font-mono">{cleanSummary.paragraphsDropped}</span> · refs:{' '}
+                      {t("ingestionPreview.clean.metrics.dropped")}:{' '}
+                      <span className="font-mono">{cleanSummary.paragraphsDropped}</span> · {t("ingestionPreview.clean.metrics.refs")}:{' '}
                       <span className="font-mono">{cleanSummary.referencesRemovedLines}</span>
                     </div>
                     <div>
@@ -369,7 +362,12 @@ export function IngestionPreviewDetailsDialog({
                       <span className="font-mono">{cleanSummary.changedLines}</span>
                     </div>
                     <div>
-                      diff: <span className="font-mono">{cleanSummary.diffTruncated ? 'truncated' : 'full'}</span>
+                      {t("ingestionPreview.clean.metrics.diff")}:{' '}
+                      <span className="font-mono">
+                        {cleanSummary.diffTruncated
+                          ? t("ingestionPreview.clean.metrics.diffTruncated")
+                          : t("ingestionPreview.clean.metrics.diffFull")}
+                      </span>
                     </div>
                   </div>
 
@@ -377,16 +375,18 @@ export function IngestionPreviewDetailsDialog({
                     <div className="mt-2 rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[11px] text-warning">
                       {cleanSummary.piiTotal > 0 ? (
                         <div>
-                          pii_hits: <span className="font-mono">{cleanSummary.piiTotal}</span>
+                          {t("ingestionPreview.clean.alerts.piiHits")}:{' '}
+                          <span className="font-mono">{cleanSummary.piiTotal}</span>
                         </div>
                       ) : null}
                       {cleanSummary.secretsTotal > 0 ? (
                         <div>
-                          secrets_hits: <span className="font-mono">{cleanSummary.secretsTotal}</span>
+                          {t("ingestionPreview.clean.alerts.secretsHits")}:{' '}
+                          <span className="font-mono">{cleanSummary.secretsTotal}</span>
                         </div>
                       ) : null}
                       <div className="text-[10px] text-muted-foreground mt-1">
-                        提示：如果你不希望脱敏，关闭对应治理开关；如果你希望强制脱敏，确保启用并设置 mask/token 策略。
+                        {t("ingestionPreview.clean.alerts.maskingHint")}
                       </div>
                     </div>
                   )}
@@ -395,7 +395,7 @@ export function IngestionPreviewDetailsDialog({
                 {preview?.clean?.suggested_pipeline_patch && Object.keys(preview.clean.suggested_pipeline_patch || {}).length ? (
                   <div className="rounded-xl border border-border/60 bg-card p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-[11px] font-medium text-muted-foreground">Suggested patch</div>
+                      <div className="text-[11px] font-medium text-muted-foreground">{t("ingestionPreview.clean.patch.title")}</div>
                       <Button
                         type="button"
                         size="sm"
@@ -403,15 +403,15 @@ export function IngestionPreviewDetailsDialog({
                         onClick={() => {
                           const patch = preview?.clean?.suggested_pipeline_patch || {}
                           if (!onApplyPipelinePatch) {
-                            toast.message('未提供 patch 应用函数')
+                            toast.message(t("ingestionPreview.clean.patch.missingHandler"))
                             return
                           }
                           onApplyPipelinePatch(patch)
-                          toast.success('已应用 suggested pipeline patch')
+                          toast.success(t("ingestionPreview.clean.patch.applied"))
                         }}
                         disabled={!onApplyPipelinePatch}
                       >
-                        应用
+                        {t("ingestionPreview.clean.patch.apply")}
                       </Button>
                     </div>
                     <pre className="mt-2 max-h-[160px] overflow-auto rounded-lg border border-border/60 bg-background p-2 text-[11px] text-muted-foreground">
@@ -421,7 +421,7 @@ export function IngestionPreviewDetailsDialog({
                 ) : null}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">暂无预览数据</div>
+              <div className="text-sm text-muted-foreground">{t("ingestionPreview.states.noPreviewData")}</div>
             )}
           </TabsContent>
 
@@ -430,7 +430,7 @@ export function IngestionPreviewDetailsDialog({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-primary" />
-                  <div className="text-sm font-medium text-foreground">Unified Diff</div>
+                  <div className="text-sm font-medium text-foreground">{t("ingestionPreview.diff.title")}</div>
                 </div>
                 {preview?.clean?.diff_unified ? (
                   <Button
@@ -441,13 +441,13 @@ export function IngestionPreviewDetailsDialog({
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(String(preview?.clean?.diff_unified || ''))
-                        toast.success('已复制 diff')
+                        toast.success(t("ingestionPreview.diff.copySuccess"))
                       } catch {
-                        toast.error('复制失败（请检查浏览器权限）')
+                        toast.error(t("ingestionPreview.diff.copyError"))
                       }
                     }}
                   >
-                    复制
+                    {t("ingestionPreview.diff.copy")}
                   </Button>
                 ) : null}
               </div>
@@ -455,13 +455,13 @@ export function IngestionPreviewDetailsDialog({
                 {preview?.clean?.diff_unified ? (
                   <span>
                     {preview.clean.diff_truncated ? (
-                      <span className="text-warning">diff_truncated=true（仅返回部分 diff）</span>
+                      <span className="text-warning">{t("ingestionPreview.diff.diffTruncated")}</span>
                     ) : (
-                      <span className="text-muted-foreground">diff_truncated=false</span>
+                      <span className="text-muted-foreground">{t("ingestionPreview.diff.diffFull")}</span>
                     )}
                   </span>
                 ) : (
-                  <span>本次未生成 diff（可能 changed=false 或 include_diff=false）</span>
+                  <span>{t("ingestionPreview.diff.noDiff")}</span>
                 )}
               </div>
               {preview?.clean?.diff_unified ? (
