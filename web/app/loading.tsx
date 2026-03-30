@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl'
+
 import { Skeleton } from "@/components/ui/skeleton"
 import { AppBackground } from "@/components/ui/app-background"
 
@@ -5,6 +7,8 @@ const NAV_SKELETON_KEYS = ["nav-1", "nav-2", "nav-3", "nav-4", "nav-5", "nav-6",
 const CARD_SKELETON_KEYS = ["card-1", "card-2", "card-3", "card-4", "card-5", "card-6"]
 
 export default function Loading() {
+  const t = useTranslations('RouteBoundaries')
+
   return (
     <div className="relative flex h-dvh overflow-hidden bg-background" role="status" aria-live="polite">
       <AppBackground />
@@ -53,7 +57,7 @@ export default function Loading() {
             </div>
           </div>
 
-          <span className="sr-only">页面加载中…</span>
+          <span className="sr-only">{t("loading.pageSr")}</span>
         </main>
       </div>
     </div>
