@@ -632,6 +632,32 @@ const zhCNMessages = {
         diffFull: 'diff_truncated=false',
         noDiff: '本次未生成 diff（可能 changed=false 或 include_diff=false）',
       },
+      issues: {
+        title: '治理问题（Issues）',
+        actions: {
+          applyAll: '应用全部建议',
+          applySuggestion: '应用建议',
+        },
+        toasts: {
+          missingHandler: '未提供 patch 应用函数',
+          appliedAll: '已应用 suggested pipeline patch',
+          appliedSuggestion: '已应用建议：{code}',
+        },
+        labels: {
+          count: 'count',
+          samples: 'samples',
+          suggestedPatchWithCount: '查看 suggested patch（{count}）',
+        },
+        empty: '暂无 issues（治理侧未发现明显问题）',
+      },
+      explain: {
+        title: 'Explain（可追溯/可导出）',
+        missingData: '后端未返回 explain 字段',
+        exportJson: '导出 JSON',
+        exportSuccess: '已导出 explain 快照',
+        description: '包含：命中规则、最终生效配置、pipeline_patch 与（可选）fallback 线索。建议作为入库前审计快照留存。',
+        payloadLabel: 'payload.explain',
+      },
       states: {
         noPreviewData: '暂无预览数据',
       },
