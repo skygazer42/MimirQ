@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { FullScreenFrame } from '@/components/full-screen-frame'
+import { useRouter } from '@/i18n/navigation'
 import { setAuthSession } from '@/lib/auth-storage'
 import { consumeSamlBridgeState } from '@/lib/saml-session'
 
