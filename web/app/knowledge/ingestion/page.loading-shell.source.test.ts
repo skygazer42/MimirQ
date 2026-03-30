@@ -7,8 +7,9 @@ describe('knowledge ingestion loading shell', () => {
   it('renders the branded PageLoading fallback message', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
-    expect(src).toContain('正在加载知识库入库流程...')
-    expect(src).toContain('Loading knowledge ingestion workspace')
+    expect(src).toContain("useTranslations('KnowledgeIngestionPage')")
+    expect(src).toContain("t('loadingMessage')")
+    expect(src).toContain("t('loadingSrMessage')")
     expect(src).toContain('PageLoading')
     expect(src).not.toContain('<div className="min-h-dvh bg-background" />')
   })

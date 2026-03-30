@@ -4,6 +4,7 @@ import type { ConnectorRunOut, Dataset } from '@/types'
 import type { ChangeEvent } from 'react'
 import { useCallback, useRef, useState } from 'react'
 import { Plus } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { KnowledgeImportMenu } from '@/components/knowledge/import/knowledge-import-menu'
 import { KnowledgeJiraProjectDialog } from '@/components/knowledge/import/knowledge-jira-project-dialog'
@@ -44,6 +45,7 @@ export function KnowledgeWorkbenchActions({
   onConnectorRunCreated,
   className,
 }: Readonly<KnowledgeWorkbenchActionsProps>) {
+  const t = useTranslations('KnowledgeWorkbenchActions')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [pipelineConfigOpen, setPipelineConfigOpen] = useState(false)
   const [urlImportOpen, setUrlImportOpen] = useState(false)
@@ -70,7 +72,7 @@ export function KnowledgeWorkbenchActions({
         <DropdownMenuTrigger asChild>
           <Button type="button" size="sm" className={className}>
             <Plus className="size-4" />
-            导入/新增
+            {t('importOrCreate')}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
