@@ -547,6 +547,55 @@ const zhCNMessages = {
         jumpEdges: '跳转首/尾',
       },
     },
+    ingestionPreview: {
+      title: '入库策略预览',
+      actions: {
+        openGovernance: '去数据治理',
+      },
+      rule: {
+        unmatched: '未命中策略规则（使用默认配置）',
+        matched: '已命中规则',
+      },
+      meta: {
+        parserLabel: 'parser',
+        strategyLabel: 'strategy',
+        governanceProfileLabel: 'governance profile',
+        previewSourcePrefix: '该预览来自',
+        previewSourceSuffix: '（不会入库）。',
+      },
+      tabs: {
+        preprocess: 'Preprocess',
+        governance: 'Governance',
+        diff: 'Diff',
+        issues: 'Issues',
+        issuesWithCount: 'Issues ({count})',
+        explain: 'Explain',
+      },
+      preprocess: {
+        title: '预处理（Preprocess）',
+        status: {
+          changed: 'changed',
+          noChange: 'no change',
+        },
+        sizeLabel: 'size',
+        warningsLabel: 'warnings',
+        stepsTitle: '步骤（Steps）',
+        warningsTitle: 'Warnings',
+        stepStatus: {
+          applied: 'applied',
+          skipped: 'skip',
+        },
+        stepChange: {
+          changed: 'changed',
+          same: 'same',
+        },
+        emptySteps: '无 preprocess steps',
+        emptyWarnings: '无 warnings',
+      },
+      states: {
+        noPreviewData: '暂无预览数据',
+      },
+    },
   },
   Reports: {
     loadingPage: '正在加载报告中心...',
