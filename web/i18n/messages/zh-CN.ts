@@ -707,6 +707,12 @@ const zhCNMessages = {
       retrieveFailed: '检索失败，请检查后端服务状态',
     },
   },
+  KGDiagnosticsPage: {
+    qualityReport: {
+      title: 'KG Extraction Quality（aggregate）',
+      hint: '加载 KG extraction quality report（aggregate-only）',
+    },
+  },
   ParsingWorkbench: {
     rootFolder: '根目录',
     title: '文档解析工作台',
