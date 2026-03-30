@@ -1,0 +1,5 @@
+- [x] Inventory the owned navbar copy and keep the slice closed to shell navigation.
+- [x] Move navbar labels, section titles, command trigger copy, and shell status text into `next-intl`.
+- [x] Update source tests to lock the translation wiring.
+- [x] Run focused vitest and eslint checks.
+- [x] Commit and push `parallel-next-intl-msg-shell`.

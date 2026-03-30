@@ -4,6 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   Activity,
   AlertTriangle,
@@ -48,69 +49,82 @@ import { useBackendMeta } from '@/hooks/use-backend-meta'
 import { useBackendReady } from '@/hooks/use-backend-ready'
 import { useCommandMenuState } from '@/store/command-menu'
 
+type SectionId = 'core' | 'ingestion' | 'knowledge' | 'analysis' | 'system'
+
 type MenuItem = {
   icon: React.ComponentType<{ className?: string }>
-  label: string
+  labelKey: string
   href: string
 }
 
+type MenuSection = {
+  id: SectionId
+  titleKey: string
+  items: MenuItem[]
+}
+
 // 导航信息架构：按「核心 → 入库流程 → 知识库管理 → 分析工具 → 系统」分组，降低认知负担。
-const menuSections: Array<{ title: string; items: MenuItem[] }> = [
+const menuSections: MenuSection[] = [
   {
-    title: '核心',
+    id: 'core',
+    titleKey: 'sections.core',
     items: [
-      { icon: MessageSquare, label: '对话', href: '/' },
-      { icon: History, label: '问答历史', href: '/history' },
+      { icon: MessageSquare, labelKey: 'items.conversation', href: '/' },
+      { icon: History, labelKey: 'items.history', href: '/history' },
     ],
   },
   {
-    title: '入库流程',
+    id: 'ingestion',
+    titleKey: 'sections.ingestion',
     items: [
-      { icon: FileText, label: '文档解析', href: '/parsing' },
-      { icon: ShieldCheck, label: '数据治理', href: '/data-governance' },
-      { icon: Braces, label: '治理配置', href: '/data-governance/profiles' },
-      { icon: Hash, label: 'Common Lines 学习', href: '/data-governance/common-lines' },
-      { icon: Scissors, label: '切块预览', href: '/chunk-preview' },
+      { icon: FileText, labelKey: 'items.parsing', href: '/parsing' },
+      { icon: ShieldCheck, labelKey: 'items.dataGovernance', href: '/data-governance' },
+      { icon: Braces, labelKey: 'items.governanceProfiles', href: '/data-governance/profiles' },
+      { icon: Hash, labelKey: 'items.commonLines', href: '/data-governance/common-lines' },
+      { icon: Scissors, labelKey: 'items.chunkPreview', href: '/chunk-preview' },
     ],
   },
   {
-    title: '知识库管理',
+    id: 'knowledge',
+    titleKey: 'sections.knowledge',
     items: [
-      { icon: Layers, label: '数据集', href: '/datasets' },
-      { icon: Database, label: '知识库', href: '/knowledge' },
-      { icon: Activity, label: '入库监控', href: '/knowledge/ingestion' },
-      { icon: AlertTriangle, label: '隔离队列', href: '/knowledge/quarantine' },
-      { icon: Star, label: '反馈质检', href: '/knowledge/feedback' },
+      { icon: Layers, labelKey: 'items.datasets', href: '/datasets' },
+      { icon: Database, labelKey: 'items.knowledgeBase', href: '/knowledge' },
+      { icon: Activity, labelKey: 'items.ingestion', href: '/knowledge/ingestion' },
+      { icon: AlertTriangle, labelKey: 'items.quarantine', href: '/knowledge/quarantine' },
+      { icon: Star, labelKey: 'items.feedback', href: '/knowledge/feedback' },
     ],
   },
   {
-    title: '分析工具',
+    id: 'analysis',
+    titleKey: 'sections.analysis',
     items: [
-      { icon: Grid3X3, label: 'RAG 可视化', href: '/knowledge/similarity' },
-      { icon: Share2, label: '知识图谱', href: '/graph' },
-      { icon: GitCompare, label: 'KG 快照', href: '/graph/snapshots' },
-      { icon: FileSearch, label: 'KG 诊断', href: '/graph/diagnostics' },
-      { icon: BarChart3, label: 'RAGAS 评测', href: '/evaluations' },
-      { icon: SlidersHorizontal, label: '检索消融', href: '/evaluations/ablations' },
-      { icon: FileText, label: '报告中心', href: '/reports' },
-      { icon: Wand2, label: '提示词', href: '/prompts' },
+      { icon: Grid3X3, labelKey: 'items.ragVisualization', href: '/knowledge/similarity' },
+      { icon: Share2, labelKey: 'items.knowledgeGraph', href: '/graph' },
+      { icon: GitCompare, labelKey: 'items.graphSnapshots', href: '/graph/snapshots' },
+      { icon: FileSearch, labelKey: 'items.graphDiagnostics', href: '/graph/diagnostics' },
+      { icon: BarChart3, labelKey: 'items.ragas', href: '/evaluations' },
+      { icon: SlidersHorizontal, labelKey: 'items.ablations', href: '/evaluations/ablations' },
+      { icon: FileText, labelKey: 'items.reports', href: '/reports' },
+      { icon: Wand2, labelKey: 'items.prompts', href: '/prompts' },
     ],
   },
   {
-    title: '系统',
+    id: 'system',
+    titleKey: 'sections.system',
     items: [
-      { icon: Activity, label: '诊断', href: '/diagnostics' },
-      { icon: Coins, label: '用量/配额', href: '/usage' },
-      { icon: ShieldCheck, label: '审计日志', href: '/audit' },
-      { icon: ShieldCheck, label: '访问审查', href: '/access-review' },
-      { icon: User, label: '成员权限', href: '/settings/rbac' },
-      { icon: Users, label: '组管理', href: '/settings/groups' },
-      { icon: Settings, label: '设置', href: '/settings' },
+      { icon: Activity, labelKey: 'items.diagnostics', href: '/diagnostics' },
+      { icon: Coins, labelKey: 'items.usage', href: '/usage' },
+      { icon: ShieldCheck, labelKey: 'items.audit', href: '/audit' },
+      { icon: ShieldCheck, labelKey: 'items.accessReview', href: '/access-review' },
+      { icon: User, labelKey: 'items.members', href: '/settings/rbac' },
+      { icon: Users, labelKey: 'items.groups', href: '/settings/groups' },
+      { icon: Settings, labelKey: 'items.settings', href: '/settings' },
     ],
   },
 ]
 
-const DEFAULT_OPEN_SECTIONS = new Set(['核心', '知识库管理'])
+const DEFAULT_OPEN_SECTIONS = new Set<SectionId>(['core', 'knowledge'])
 
 const menuItems: MenuItem[] = menuSections.flatMap((s) => s.items)
 
@@ -153,9 +167,9 @@ export function Navbar({
   const firstActionRef = useRef<HTMLButtonElement | null>(null)
   const prevIsSidebarOpenRef = useRef<boolean | null>(null)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
+  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(() =>
     Object.fromEntries(
-      menuSections.map((section) => [section.title, DEFAULT_OPEN_SECTIONS.has(section.title)] as const)
+      menuSections.map((section) => [section.id, DEFAULT_OPEN_SECTIONS.has(section.id)] as const)
     )
   )
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
@@ -163,6 +177,7 @@ export function Navbar({
   const pathname = usePathname()
   const router = useRouter()
   const { user, isAuthenticated, isDevMode, logout } = useAuth()
+  const t = useTranslations('Navbar')
   const { data: backendMeta } = useBackendMeta()
   const backendReady = useBackendReady()
   const commandMenuOpen = useCommandMenuState((state) => state.open)
@@ -189,10 +204,10 @@ export function Navbar({
       // ignore
     }
   }, [setSidebarOpen])
-  const toggleSection = useCallback((sectionTitle: string) => {
+  const toggleSection = useCallback((sectionId: SectionId) => {
     setOpenSections((current) => ({
       ...current,
-      [sectionTitle]: !current[sectionTitle],
+      [sectionId]: !current[sectionId],
     }))
   }, [])
 
@@ -267,10 +282,10 @@ export function Navbar({
     if (!activeSection) return
 
     setOpenSections((current) => {
-      if (current[activeSection.title]) return current
+      if (current[activeSection.id]) return current
       return {
         ...current,
-        [activeSection.title]: true,
+        [activeSection.id]: true,
       }
     })
   }, [pathname])
@@ -354,13 +369,20 @@ export function Navbar({
       ]
     : []
 
+  const statusBadgeState = backendOk === true ? 'completed' : backendOk === false ? 'failed' : 'processing'
+  const statusBadgeSuffix = backendOk === true ? 'OK' : backendOk === false ? 'Down' : '...'
+  const statusBadgeLabel = `${t('status.badgePrefix')}${statusBadgeSuffix}`
+  const userDisplayName =
+    user?.username || user?.email || (isDevMode ? t('user.developerMode') : t('user.unauthenticatedName'))
+  const userStatusLine = isAuthenticated ? user?.email || t('user.onlineStatus') : t('user.offlineEnvironment')
+
   return (
     <>
       {/* Mobile Overlay */}
       {isSidebarOpen ? (
-        <button
-          type="button"
-          aria-label="关闭侧边栏"
+      <button
+        type="button"
+        aria-label={t('toolbar.sidebarClose')}
           className="fixed inset-0 z-40 bg-black/50 transition-opacity md:hidden border-0 p-0 focus:outline-none"
           onClick={() => setSidebarOpen(false)}
         />
@@ -369,7 +391,7 @@ export function Navbar({
       <nav
         id="mimirq-sidebar"
         ref={navRef}
-        aria-label="主导航"
+        aria-label={t('toolbar.navLabel')}
         aria-hidden={!isSidebarOpen}
         className={cn(
           'peer flex-shrink-0 border-r border-sidebar-border/80 bg-sidebar/85 text-sidebar-foreground backdrop-blur-xl supports-[backdrop-filter]:bg-sidebar/72 flex flex-col transition-transform duration-200 ease-out z-50',
@@ -385,7 +407,7 @@ export function Navbar({
             </div>
             <div className="flex flex-col">
               <span className="font-semibold text-foreground leading-none">MimirQ</span>
-              <span className="text-[10px] text-muted-foreground font-medium mt-1">智能知识库</span>
+              <span className="text-[10px] text-muted-foreground font-medium mt-1">{t('brand.tagline')}</span>
             </div>
           </Link>
         </div>
@@ -406,7 +428,7 @@ export function Navbar({
             }}
           >
             <Plus className="h-4 w-4" />
-            <span>新对话</span>
+            <span>{t('actions.newConversation')}</span>
           </Button>
         </div>
 
@@ -418,19 +440,19 @@ export function Navbar({
               setCommandMenuOpen(true)
               closeSidebarOnMobile()
             }}
-            aria-label="打开命令搜索"
+            aria-label={t('command.triggerLabel')}
             aria-haspopup="dialog"
             aria-expanded={commandMenuOpen}
             aria-controls="mimirq-command-menu"
-            title="打开命令搜索"
+            title={t('command.triggerLabel')}
           >
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-primary/10 group-hover:text-primary">
                 <Search className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">打开命令搜索</p>
-                <p className="text-[11px] text-muted-foreground">快速跳转到页面和常用操作</p>
+                <p className="text-sm font-medium text-foreground">{t('command.triggerLabel')}</p>
+                <p className="text-[11px] text-muted-foreground">{t('command.triggerHint')}</p>
               </div>
             </div>
             <span className="rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm">⌘K</span>
@@ -442,13 +464,13 @@ export function Navbar({
         <div className="flex-1 min-h-0 px-3 py-2 overflow-y-auto overscroll-contain no-scrollbar">
           <div className="space-y-3">
             {menuSections.map((section, index) => {
-              const isOpen = openSections[section.title] ?? false
+              const isOpen = openSections[section.id] ?? false
               const hasActiveItem = sectionHasActiveRoute(pathname, section.items)
               const ToggleIcon = isOpen ? ChevronDown : ChevronRight
 
               return (
                 <section
-                  key={section.title}
+                  key={section.id}
                   className={cn('space-y-1.5', index > 0 ? 'border-t border-sidebar-border/70 pt-3' : '')}
                 >
                   <button
@@ -457,24 +479,24 @@ export function Navbar({
                       'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors duration-200 focus-ring',
                       hasActiveItem ? 'text-foreground' : 'text-muted-foreground hover:bg-muted/30 hover:text-foreground'
                     )}
-                    onClick={() => toggleSection(section.title)}
+                    onClick={() => toggleSection(section.id)}
                     aria-expanded={isOpen}
-                    aria-controls={`sidebar-section-${section.title}`}
+                    aria-controls={`sidebar-section-${section.id}`}
                   >
                     <div className="min-w-0">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.18em]">{section.title}</p>
-                      <p className="text-[10px] text-muted-foreground">{section.items.length} 个入口</p>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.18em]">{t(section.titleKey)}</p>
+                      <p className="text-[10px] text-muted-foreground">{t('sections.entryCount', { count: section.items.length })}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       {hasActiveItem ? (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">当前</span>
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{t('sections.current')}</span>
                       ) : null}
                       <ToggleIcon className="h-4 w-4 shrink-0" />
                     </div>
                   </button>
 
                   <div
-                    id={`sidebar-section-${section.title}`}
+                    id={`sidebar-section-${section.id}`}
                     className={cn(
                       'grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-out',
                       isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-70'
@@ -507,7 +529,7 @@ export function Navbar({
                                     isActive ? 'text-primary' : 'text-muted-foreground/70 group-hover:text-foreground'
                                   )}
                                 />
-                                <span className="text-sm">{item.label}</span>
+                                <span className="text-sm">{t(item.labelKey)}</span>
                               </Link>
                             </div>
                           )
@@ -526,8 +548,8 @@ export function Navbar({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              aria-label={isAuthenticated ? "打开设置" : "前往登录 / 注册"}
-              title={isAuthenticated ? "打开设置" : "前往登录 / 注册"}
+              aria-label={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
+              title={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
               className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-accent transition-colors duration-200 border border-transparent hover:border-border group text-left focus-ring"
               onClick={() => {
                 if (isAuthenticated) {
@@ -549,10 +571,10 @@ export function Navbar({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
-                  {user?.username || user?.email || (isDevMode ? '开发模式' : '未登录')}
+                  {userDisplayName}
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
-                  {isAuthenticated ? user?.email || '在线' : '本地开发环境'}
+                  {userStatusLine}
                 </p>
               </div>
             </button>
@@ -568,8 +590,8 @@ export function Navbar({
                   }
                   router.push('/auth')
                 }}
-                title={isAuthenticated ? '退出登录' : '登录 / 注册'}
-                aria-label={isAuthenticated ? '退出登录' : '登录 / 注册'}
+                title={isAuthenticated ? t('auth.logout') : t('auth.login')}
+                aria-label={isAuthenticated ? t('auth.logout') : t('auth.login')}
               >
                 {isAuthenticated ? (
                   <LogOut className="h-4 w-4" />
@@ -587,8 +609,8 @@ export function Navbar({
                 <button
                   type="button"
                   className="rounded-full focus-ring"
-                  aria-label="查看后端依赖状态"
-                  title="查看后端依赖状态"
+                  aria-label={t('deps.openStatus')}
+                  title={t('deps.openStatus')}
                 >
                   <StatusBadge
                     status={(() => {
@@ -620,7 +642,7 @@ export function Navbar({
               <PopoverContent align="start" side="top" className="w-80">
                 <div className="space-y-3 text-xs">
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold">依赖就绪</p>
+                    <p className="font-semibold">{t('deps.ready')}</p>
                     <span
                       className={cn(
                         "font-medium",
@@ -696,15 +718,15 @@ export function Navbar({
                         })}
                       </div>
                     ) : (
-                      <p className="text-[11px] text-muted-foreground">未能获取依赖状态（后端未启动或网络不可达）。</p>
+                      <p className="text-[11px] text-muted-foreground">{t('deps.unavailable')}</p>
                     )}
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
                     <Link href="/diagnostics" className="text-[11px] text-primary hover:underline">
-                      诊断页
+                      {t('deps.diagnosticsLink')}
                     </Link>
-                    <span className="text-[11px] text-muted-foreground">请求包含 X-Request-ID</span>
+                    <span className="text-[11px] text-muted-foreground">{t('deps.requestIdHint')}</span>
                   </div>
                 </div>
               </PopoverContent>
@@ -720,8 +742,8 @@ export function Navbar({
         size="icon"
         aria-controls="mimirq-sidebar"
         aria-expanded={isSidebarOpen}
-        aria-label={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
-        title={isSidebarOpen ? '收起侧边栏' : '展开侧边栏'}
+        aria-label={isSidebarOpen ? t('toolbar.collapse') : t('toolbar.expand')}
+        title={isSidebarOpen ? t('toolbar.collapse') : t('toolbar.expand')}
         className={cn(
           'fixed bottom-4 z-50 size-11 rounded-xl shadow-soft bg-background border border-border text-muted-foreground hover:text-primary hover:bg-muted transition-colors duration-200 ease-out sm:size-10 supports-[padding:env(safe-area-inset-bottom)]:bottom-[calc(env(safe-area-inset-bottom)+1rem)]',
           isSidebarOpen
