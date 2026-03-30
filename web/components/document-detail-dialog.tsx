@@ -58,6 +58,11 @@ type LifecycleDraftValues = {
   authorityLevel: string
   supersedesDocumentId: string
 }
+type LifecycleValidationKey =
+  | 'validation.supersedesUuid'
+  | 'validation.authorityInteger'
+  | 'validation.authorityRange'
+  | 'validation.reviewDueAt'
 
 function asStatusBadgeStatus(status: string | undefined): StatusBadgeStatus {
   switch (status) {
@@ -173,21 +178,24 @@ function normalizePublicationStatus(value: FormDataEntryValue | string | null | 
   return normalized === 'draft' || normalized === 'deprecated' ? normalized : 'published'
 }
 
-function getLifecycleValidationError(values: Pick<LifecycleDraftValues, 'authorityLevel' | 'reviewDueAt' | 'supersedesDocumentId'>) {
+function getLifecycleValidationError(
+  values: Pick<LifecycleDraftValues, 'authorityLevel' | 'reviewDueAt' | 'supersedesDocumentId'>,
+  translate: (key: LifecycleValidationKey) => string
+) {
   const sup = values.supersedesDocumentId.trim()
-  if (sup && !UUID_RE.test(sup)) return 'supersedes_document_id 不是合法 UUID'
+  if (sup && !UUID_RE.test(sup)) return translate('validation.supersedesUuid')
 
   const auth = values.authorityLevel.trim()
   if (auth) {
     const n = Number.parseInt(auth, 10)
-    if (!Number.isFinite(n)) return 'authority_level 必须是整数'
-    if (n < 0 || n > 100) return 'authority_level 需在 0-100 之间'
+    if (!Number.isFinite(n)) return translate('validation.authorityInteger')
+    if (n < 0 || n > 100) return translate('validation.authorityRange')
   }
 
   const due = values.reviewDueAt.trim()
   if (due) {
     const d = new Date(due)
-    if (Number.isNaN(d.getTime())) return 'review_due_at 不是合法时间'
+    if (Number.isNaN(d.getTime())) return translate('validation.reviewDueAt')
   }
 
   return null
@@ -210,6 +218,7 @@ function hasLifecycleChanges(doc: Document, values: LifecycleDraftValues) {
 }
 
 function DocumentTagsSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+  const commonT = useTranslations('Common')
   const { pending } = useFormStatus()
 
   return (
@@ -217,12 +226,13 @@ function DocumentTagsSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
       {pending ? (
         <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
       ) : null}
-      保存
+      {commonT('save')}
     </Button>
   )
 }
 
 function DocumentLifecycleSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+  const commonT = useTranslations('Common')
   const { pending } = useFormStatus()
 
   return (
@@ -230,7 +240,7 @@ function DocumentLifecycleSaveButton({ disabled }: Readonly<{ disabled: boolean 
       {pending ? (
         <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
       ) : null}
-      保存
+      {commonT('save')}
     </Button>
   )
 }
@@ -239,6 +249,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const commonT = useTranslations('Common')
   const documentsT = useTranslations('Documents')
   const t = useTranslations('DocumentDetailDialog')
+  const permissionAlertTitle = t('alerts.permissionFailedTitle') || t('alerts.permissionCheckFailedTitle')
+  const validationAlertTitle = t('alerts.inputInvalidTitle') || t('alerts.validationFailedTitle')
   const viewTabsId = useId()
   const chunksTabId = `${viewTabsId}-chunks-tab`
   const timelineTabId = `${viewTabsId}-timeline-tab`
@@ -418,14 +430,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setChunks((prev) => prev.map((c) => (c.id === chunkId ? updated : c)))
       setEditingChunkId(null)
       setEditingChunkContent('')
-      toast.success('已保存切片修改')
+      toast.success(t('toasts.chunkSaved'))
     } catch (err) {
       console.error('Update chunk failed:', err)
-      toast.error(formatApiError(err, '保存切片失败'))
+      toast.error(formatApiError(err, t('errors.saveChunkFailed')))
     } finally {
       setChunkOpWorkingId((prev) => (prev === chunkId ? null : prev))
     }
-  }, [canMutateChunks, editingChunkContent, editingChunkId, initialDocument.id])
+  }, [canMutateChunks, editingChunkContent, editingChunkId, initialDocument.id, t])
 
   const toggleChunkDisabled = useCallback(
     async (chunk: DocumentChunk) => {
@@ -436,15 +448,15 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           ? await documentApi.enableChunk(initialDocument.id, chunk.id)
           : await documentApi.disableChunk(initialDocument.id, chunk.id)
         setChunks((prev) => prev.map((c) => (c.id === chunk.id ? updated : c)))
-        toast.success(chunk.disabled_at ? '已启用切片' : '已禁用切片')
+        toast.success(chunk.disabled_at ? t('toasts.chunkEnabled') : t('toasts.chunkDisabled'))
       } catch (err) {
         console.error('Toggle chunk disabled failed:', err)
-        toast.error(formatApiError(err, '切片操作失败'))
+        toast.error(formatApiError(err, t('errors.chunkOperationFailed')))
       } finally {
         setChunkOpWorkingId((prev) => (prev === chunk.id ? null : prev))
       }
     },
-    [canMutateChunks, initialDocument.id]
+    [canMutateChunks, initialDocument.id, t]
   )
 
   const reembedChunk = useCallback(
@@ -456,15 +468,15 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           chunk_ids: [chunk.id],
           include_disabled: Boolean(chunk.disabled_at),
         })
-        toast.success(`已重新嵌入 ${res.reembedded} 个切片`)
+        toast.success(t('toasts.chunkReembedded', { count: res.reembedded }))
       } catch (err) {
         console.error('Re-embed chunk failed:', err)
-        toast.error(formatApiError(err, '重新嵌入失败'))
+        toast.error(formatApiError(err, t('errors.reembedFailed')))
       } finally {
         setChunkOpWorkingId((prev) => (prev === chunk.id ? null : prev))
       }
     },
-    [canMutateChunks, initialDocument.id]
+    [canMutateChunks, initialDocument.id, t]
   )
   const [accessMembersText, setAccessMembersText] = useState('')
   const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
@@ -487,7 +499,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           .catch((err) => {
             const status = err?.response?.status
             if (status === 403) return { writable: false, error: null }
-            return { writable: null, error: formatApiError(err, '无法确认 lifecycle 编辑权限') }
+            return { writable: null, error: formatApiError(err, t('errors.lifecyclePermissionCheckUnknown')) }
           }),
       ])
       setDetail(data)
@@ -496,11 +508,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       if (lifecyclePerm.error) setLifecyclePermError(lifecyclePerm.error)
     } catch (err: any) {
       console.error('Load document detail error:', err)
-      setDocError(formatApiError(err, '获取文档详情失败'))
+      setDocError(formatApiError(err, t('errors.loadDetailFailed')))
     } finally {
       setIsLoadingDoc(false)
     }
-  }, [initialDocument.id])
+  }, [initialDocument.id, t])
 
   const beginEditLifecycle = useCallback(() => {
     const doc = detail || initialDocument
@@ -539,8 +551,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   ])
 
   const lifecycleValidationError = useMemo(
-    () => getLifecycleValidationError(lifecycleDraftValues),
-    [lifecycleDraftValues]
+    () => getLifecycleValidationError(lifecycleDraftValues, t),
+    [lifecycleDraftValues, t]
   )
 
   const lifecycleHasChanges = useMemo(
@@ -559,7 +571,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       supersedesDocumentId: String(formData.get('supersedes_document_id') || '').trim(),
     }
 
-    const validationError = getLifecycleValidationError(nextValues)
+    const validationError = getLifecycleValidationError(nextValues, t)
     if (validationError) {
       setLifecycleError(validationError)
       return null
@@ -580,12 +592,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         authority_level: nextValues.authorityLevel ? Number.parseInt(nextValues.authorityLevel, 10) : null,
         review_due_at: nextValues.reviewDueAt ? new Date(nextValues.reviewDueAt).toISOString() : null,
       })
-      toast.success('已更新 lifecycle 信息')
+      toast.success(t('toasts.lifecycleUpdated'))
       cancelEditLifecycle()
       await loadDetail()
     } catch (err: any) {
       console.error('Update document lifecycle metadata failed:', err)
-      const msg = formatApiError(err, '保存 lifecycle 信息失败')
+      const msg = formatApiError(err, t('errors.saveLifecycleFailed'))
       setLifecycleError(msg)
       toast.error(msg)
     }
@@ -603,11 +615,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setVersions(data)
     } catch (err: any) {
       console.error('Load document versions error:', err)
-      setVersionsError(formatApiError(err, '获取文档版本失败'))
+      setVersionsError(formatApiError(err, t('errors.loadVersionsFailed')))
     } finally {
       setIsLoadingVersions(false)
     }
-  }, [initialDocument.id])
+  }, [initialDocument.id, t])
 
   const loadTimeline = useCallback(async () => {
     setIsLoadingTimeline(true)
@@ -617,11 +629,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setTimeline(data)
     } catch (err: any) {
       console.error('Load document timeline error:', err)
-      setTimelineError(formatApiError(err, '获取文档时间线失败'))
+      setTimelineError(formatApiError(err, t('errors.loadTimelineFailed')))
     } finally {
       setIsLoadingTimeline(false)
     }
-  }, [initialDocument.id])
+  }, [initialDocument.id, t])
 
   const fetchChunksPage = useCallback(
     async (skip: number) => {
@@ -649,11 +661,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setChunksTotal(Number(res.total || 0))
     } catch (err: any) {
       console.error('Load document chunks error:', err)
-      setChunkError(formatApiError(err, '获取切片失败'))
+      setChunkError(formatApiError(err, t('errors.loadChunksFailed')))
     } finally {
       setIsLoadingChunks(false)
     }
-  }, [fetchChunksPage])
+  }, [fetchChunksPage, t])
 
   const loadMoreChunks = useCallback(async () => {
     if (isLoadingChunks) return
@@ -666,11 +678,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setChunksTotal(Number(res.total || 0))
     } catch (err: any) {
       console.error('Load more chunks error:', err)
-      setChunkError(formatApiError(err, '加载更多切片失败'))
+      setChunkError(formatApiError(err, t('errors.loadMoreChunksFailed')))
     } finally {
       setIsLoadingChunks(false)
     }
-  }, [chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks])
+  }, [chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks, t])
 
   useEffect(() => {
     if (!open) return
@@ -926,12 +938,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         globalThis.window.document.body.removeChild(textarea)
         if (!ok) throw new Error('copy failed')
       }
-      toast.success('已复制到剪贴板')
+      toast.success(t("toasts.copySuccess"))
     } catch (err) {
       console.error('Copy failed:', err)
-      toast.error('复制失败')
+      toast.error(t("errors.copyFailed"))
     }
-  }, [])
+  }, [t])
 
   const handleActivateVersion = useCallback(
     async (pipelineHash: string) => {
@@ -941,18 +953,18 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setIsVersionWorking(true)
       try {
         await documentApi.activateVersion(initialDocument.id, ph)
-        toast.success('已切换激活版本')
+        toast.success(t('toasts.versionActivated'))
         setViewPipelineHash(ACTIVE_PIPELINE_VALUE)
         await Promise.all([loadDetail(), loadVersions()])
         await reloadChunks()
       } catch (err: any) {
         console.error('Activate document version failed:', err)
-        toast.error(formatApiError(err, '切换版本失败'))
+        toast.error(formatApiError(err, t('errors.activateVersionFailed')))
       } finally {
         setIsVersionWorking(false)
       }
     },
-    [initialDocument.id, loadDetail, loadVersions, reloadChunks]
+    [initialDocument.id, loadDetail, loadVersions, reloadChunks, t]
   )
 
   const handleDeleteVersion = useCallback(
@@ -963,7 +975,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setIsVersionWorking(true)
       try {
         await documentApi.deleteVersion(initialDocument.id, ph)
-        toast.success('已删除版本')
+        toast.success(t('toasts.versionDeleted'))
         // If the user was viewing this version, fallback to active.
         if (viewPipelineHash === ph) {
           setViewPipelineHash(ACTIVE_PIPELINE_VALUE)
@@ -973,12 +985,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         await reloadChunks()
       } catch (err: any) {
         console.error('Delete document version failed:', err)
-        toast.error(formatApiError(err, '删除版本失败'))
+        toast.error(formatApiError(err, t('errors.deleteVersionFailed')))
       } finally {
         setIsVersionWorking(false)
       }
     },
-    [initialDocument.id, loadDetail, loadVersions, reloadChunks, viewPipelineHash]
+    [initialDocument.id, loadDetail, loadVersions, reloadChunks, t, viewPipelineHash]
   )
 
   const handleExtractKG = async () => {
@@ -986,10 +998,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     setIsKgWorking(true)
     try {
       await kgApi.extract(displayDoc.id, { async: true, replace_existing: true, prune_orphan_entities: true })
-      toast.success('已提交 KG 抽取任务（可前往图谱页刷新查看）')
+      toast.success(t('toasts.kgExtractStarted'))
     } catch (err: any) {
       console.error('KG extract failed:', err)
-      toast.error(err?.message || 'KG 抽取失败')
+      toast.error(err?.message || t('errors.kgExtractFailed'))
     } finally {
       setIsKgWorking(false)
     }
@@ -1000,10 +1012,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     setIsKgWorking(true)
     try {
       const res = await kgApi.deleteDocumentKG(displayDoc.id, { prune_orphan_entities: true })
-      toast.success(`已删除 KG 事件 ${res.events_deleted}，清理实体 ${res.entities_pruned}`)
+      toast.success(t('toasts.kgDeleted', { events: res.events_deleted, entities: res.entities_pruned }))
     } catch (err: any) {
       console.error('KG delete failed:', err)
-      toast.error(err?.message || '删除 KG 失败')
+      toast.error(err?.message || t('errors.kgDeleteFailed'))
     } finally {
       setIsKgWorking(false)
     }
@@ -1053,11 +1065,11 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             }
           : prev
       )
-      toast.success('已更新文档访问控制')
+      toast.success(t('toasts.accessUpdated'))
       setAccessDialogOpen(false)
     } catch (err: any) {
       console.error('Update document access failed:', err)
-      toast.error(formatApiError(err, '更新访问控制失败'))
+      toast.error(formatApiError(err, t('errors.updateAccessFailed')))
     }
 
     return null
@@ -1101,7 +1113,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       <DialogTrigger asChild>
         {trigger || (
           <IconButton
-            label="预览文档内容"
+            label={t('trigger.preview')}
             variant="ghost"
             className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
             onClick={(e) => {
@@ -1137,7 +1149,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 <span className="text-muted-foreground/40">|</span>
                 <span className="inline-flex items-center gap-1">
                   <Hash className="h-3.5 w-3.5" />
-                  {chunks.length} 切片
+                  {t('header.chunkCount', { count: chunks.length })}
                 </span>
               </DialogDescription>
             </div>
@@ -1148,12 +1160,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             <div className="flex flex-wrap justify-end gap-2">
               {parserLabel ? (
                 <span className="rounded-full border border-border/60 bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  解析：{parserLabel}
+                  {t('header.parserChip', { label: parserLabel })}
                 </span>
               ) : null}
               {chunkStrategyLabel ? (
                 <span className="rounded-full border border-border/60 bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  切块：{chunkStrategyLabel}
+                  {t('header.chunkingChip', { label: chunkStrategyLabel })}
                 </span>
               ) : null}
               <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground">
@@ -1174,7 +1186,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                     <FileText className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">Parse</div>
+                    <div className="text-sm font-semibold text-foreground">{t("cards.parse.title")}</div>
                     <div className="text-xs text-muted-foreground truncate">{parserLabel || parserBackend || '-'}</div>
                   </div>
                 </div>
@@ -1200,15 +1212,15 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                     <Shield className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">Governance</div>
+                    <div className="text-sm font-semibold text-foreground">{t('cards.governance.title')}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {displayDoc.governance?.enabled ? 'enabled' : 'disabled'}
+                      {displayDoc.governance?.enabled ? t('cards.governance.enabled') : t('cards.governance.disabled')}
                     </div>
                   </div>
                 </div>
                 {governanceRulePacks.length ? (
                   <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-1 text-[11px] text-muted-foreground">
-                    {governanceRulePacks.length} packs
+                    {t('cards.governance.packsCount', { count: governanceRulePacks.length })}
                   </span>
                 ) : null}
               </div>
@@ -1230,7 +1242,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                     <Hash className="h-5 w-5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-foreground">Chunking</div>
+                    <div className="text-sm font-semibold text-foreground">{t('cards.chunking.title')}</div>
                     <div className="text-xs text-muted-foreground truncate">
                       {chunkStrategyLabel || chunkStrategy || '-'}
                     </div>
@@ -1238,7 +1250,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 </div>
                 {viewingPipelineHash ? (
                   <IconButton
-                    label="Copy pipeline_hash"
+                    label={t('cards.chunking.copyPipelineHash')}
                     variant="ghost"
                     className="h-9 w-9 text-muted-foreground hover:text-foreground"
                     onClick={() => detachPromise(copyToClipboard(String(viewingPipelineHash || '')))}
@@ -1269,14 +1281,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                       <Tags className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">Tags</div>
-                      <div className="text-xs text-muted-foreground truncate">用于分组与检索过滤（document_user.tags）</div>
+                      <div className="text-sm font-semibold text-foreground">{t("tags.title")}</div>
+                      <div className="text-xs text-muted-foreground truncate">{t('tags.description')}</div>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 justify-end">
                     <Button type="button" variant="outline" size="sm" onClick={cancelEditTags} disabled={isSavingTags}>
-                      取消
+                      {commonT('cancel')}
                     </Button>
                     <DocumentTagsSaveButton disabled={!canSaveTags} />
                   </div>
@@ -1287,7 +1299,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
                   {tagsError ? (
                     <Alert variant="destructive">
-                      <AlertTitle>保存失败</AlertTitle>
+                      <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
                       <AlertDescription>{tagsError}</AlertDescription>
                     </Alert>
                   ) : null}
@@ -1301,15 +1313,15 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                       <Tags className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">Tags</div>
-                      <div className="text-xs text-muted-foreground truncate">用于分组与检索过滤（document_user.tags）</div>
+                      <div className="text-sm font-semibold text-foreground">{t("tags.title")}</div>
+                      <div className="text-xs text-muted-foreground truncate">{t('tags.description')}</div>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 justify-end">
                     <Button variant="outline" size="sm" className="gap-2" onClick={beginEditTags}>
                       <Pencil className="h-4 w-4" aria-hidden="true" />
-                      编辑
+                      {t('actions.edit')}
                     </Button>
                   </div>
                 </div>
@@ -1318,12 +1330,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   {optimisticTags.length ? (
                     <DocumentTags tags={optimisticTags} max={10} />
                   ) : (
-                    <div className="text-xs text-muted-foreground">暂无标签（可用于知识库分组、检索过滤与运维标记）</div>
+                    <div className="text-xs text-muted-foreground">{t('tags.empty')}</div>
                   )}
 
                   {tagsError ? (
                     <Alert variant="destructive">
-                      <AlertTitle>保存失败</AlertTitle>
+                      <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
                       <AlertDescription>{tagsError}</AlertDescription>
                     </Alert>
                   ) : null}
@@ -1343,16 +1355,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                       <Calendar className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">Lifecycle</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        owner / review_due / authority / supersedes（用于治理与检索偏好）
-                      </div>
+                      <div className="text-sm font-semibold text-foreground">{t('lifecycle.title')}</div>
+                      <div className="text-xs text-muted-foreground truncate">{t('lifecycle.description')}</div>
                     </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 justify-end">
                     <Button type="button" variant="outline" size="sm" onClick={cancelEditLifecycle} disabled={isSavingLifecycle}>
-                      取消
+                      {commonT('cancel')}
                     </Button>
                     <DocumentLifecycleSaveButton disabled={!canSaveLifecycle} />
                   </div>
@@ -1361,14 +1371,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 <div className="mt-4 space-y-3">
                   {lifecyclePermError ? (
                     <Alert variant="destructive">
-                      <AlertTitle>权限检查失败</AlertTitle>
+                      <AlertTitle>{permissionAlertTitle}</AlertTitle>
                       <AlertDescription>{lifecyclePermError}</AlertDescription>
                     </Alert>
                   ) : null}
 
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">publication_status</div>
+                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.publicationStatus.label')}</div>
                       <Select
                         value={lifecyclePublicationStatusDraft}
                         onValueChange={(v) =>
@@ -1377,29 +1387,29 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                         disabled={isSavingLifecycle}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="published" />
+                          <SelectValue placeholder={t('lifecycle.fields.publicationStatus.placeholder')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="published">published（默认参与检索）</SelectItem>
-                          <SelectItem value="draft">draft（默认不参与检索）</SelectItem>
-                          <SelectItem value="deprecated">deprecated（默认不参与检索）</SelectItem>
+                          <SelectItem value="published">{t('lifecycle.fields.publicationStatus.options.published')}</SelectItem>
+                          <SelectItem value="draft">{t('lifecycle.fields.publicationStatus.options.draft')}</SelectItem>
+                          <SelectItem value="deprecated">{t('lifecycle.fields.publicationStatus.options.deprecated')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">owner</div>
+                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.owner.label')}</div>
                       <Input
                         name="lifecycle_owner"
                         value={lifecycleOwnerDraft}
                         onChange={(e) => setLifecycleOwnerDraft(e.target.value)}
-                        placeholder="团队/负责人（建议使用 team alias，避免个人邮箱）"
+                        placeholder={t('lifecycle.fields.owner.placeholder')}
                         disabled={isSavingLifecycle}
                       />
                     </div>
 
                     <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">review_due_at</div>
+                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.reviewDueAt.label')}</div>
                       <Input
                         name="review_due_at"
                         type="datetime-local"
@@ -1410,7 +1420,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                     </div>
 
                     <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">authority_level</div>
+                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.authorityLevel.label')}</div>
                       <Input
                         name="authority_level"
                         type="number"
@@ -1419,18 +1429,18 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                         step={1}
                         value={lifecycleAuthorityDraft}
                         onChange={(e) => setLifecycleAuthorityDraft(e.target.value)}
-                        placeholder="0-100"
+                        placeholder={t('lifecycle.fields.authorityLevel.placeholder')}
                         disabled={isSavingLifecycle}
                       />
                     </div>
 
                     <div className="space-y-1.5">
-                      <div className="text-xs font-medium text-muted-foreground">supersedes_document_id</div>
+                      <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.fields.supersedesDocumentId.label')}</div>
                       <Input
                         name="supersedes_document_id"
                         value={lifecycleSupersedesDraft}
                         onChange={(e) => setLifecycleSupersedesDraft(e.target.value)}
-                        placeholder="被替代的旧文档 UUID（可留空）"
+                        placeholder={t('lifecycle.fields.supersedesDocumentId.placeholder')}
                         disabled={isSavingLifecycle}
                       />
                     </div>
@@ -1438,14 +1448,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
                   {lifecycleValidationError ? (
                     <Alert variant="destructive">
-                      <AlertTitle>输入有误</AlertTitle>
+                      <AlertTitle>{validationAlertTitle}</AlertTitle>
                       <AlertDescription>{lifecycleValidationError}</AlertDescription>
                     </Alert>
                   ) : null}
 
                   {lifecycleError ? (
                     <Alert variant="destructive">
-                      <AlertTitle>保存失败</AlertTitle>
+                      <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
                       <AlertDescription>{lifecycleError}</AlertDescription>
                     </Alert>
                   ) : null}
@@ -1459,10 +1469,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                       <Calendar className="h-5 w-5" aria-hidden="true" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-foreground">Lifecycle</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        owner / review_due / authority / supersedes（用于治理与检索偏好）
-                      </div>
+                      <div className="text-sm font-semibold text-foreground">{t('lifecycle.title')}</div>
+                      <div className="text-xs text-muted-foreground truncate">{t('lifecycle.description')}</div>
                     </div>
                   </div>
 
@@ -1475,14 +1483,14 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                       disabled={lifecycleWritable === false || lifecycleWritable == null}
                       title={
                         lifecycleWritable === false
-                          ? '只读：需要数据集编辑权限'
+                          ? t("lifecycle.readOnly")
                           : lifecycleWritable == null
-                            ? '权限确认中'
+                            ? t('lifecycle.permissionChecking')
                             : undefined
                       }
                     >
                       <Pencil className="h-4 w-4" aria-hidden="true" />
-                      编辑
+                      {t('actions.edit')}
                     </Button>
                   </div>
                 </div>
@@ -1490,7 +1498,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 <div className="mt-4 space-y-3">
                   {lifecyclePermError ? (
                     <Alert variant="destructive">
-                      <AlertTitle>权限检查失败</AlertTitle>
+                      <AlertTitle>{permissionAlertTitle}</AlertTitle>
                       <AlertDescription>{lifecyclePermError}</AlertDescription>
                     </Alert>
                   ) : null}
@@ -1514,13 +1522,13 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                     <TraceRow label="supersedes_document_id" value={String(displayDoc.supersedes_document_id || '-')} mono />
 
                     {!displayDoc.lifecycle_owner && !displayDoc.review_due_at && displayDoc.authority_level == null && !displayDoc.supersedes_document_id ? (
-                      <div className="text-xs text-muted-foreground">暂无 lifecycle 信息（可用于 stale 报表、检索偏好与治理审计）</div>
+                      <div className="text-xs text-muted-foreground">{t('lifecycle.empty')}</div>
                     ) : null}
                   </div>
 
                   {lifecycleError ? (
                     <Alert variant="destructive">
-                      <AlertTitle>保存失败</AlertTitle>
+                      <AlertTitle>{t('alerts.saveFailedTitle')}</AlertTitle>
                       <AlertDescription>{lifecycleError}</AlertDescription>
                     </Alert>
                   ) : null}
@@ -1654,7 +1662,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             else if (loadError && chunks.length === 0) {
                     return (<div className="mx-auto max-w-2xl py-10">
                     <Alert variant="destructive">
-                      <AlertTitle>加载失败</AlertTitle>
+                      <AlertTitle>{t('alerts.loadFailedTitle')}</AlertTitle>
                       <AlertDescription>{loadError}</AlertDescription>
                     </Alert>
                     <div className="mt-4 flex items-center justify-end gap-2">
@@ -1672,23 +1680,23 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   </div>);
                 }
                 else if (chunksTotal === 0 && !isSearching) {
-                        return (<EmptyState icon={FileText} title={documentsT('emptyChunks')} description="该文档暂未生成可用切片，或后端未返回切片内容。" className="min-h-[320px]"/>);
+                        return (<EmptyState icon={FileText} title={documentsT('emptyChunks')} description={t("chunks.emptyDescription")} className="min-h-[320px]"/>);
                     }
                     else if (chunksTotal === 0 && isSearching) {
-                            return (<EmptyState icon={Search} title="未找到匹配切片" description={<span>尝试更换关键词，或清空筛选条件。</span>} className="min-h-[320px]">
+                            return (<EmptyState icon={Search} title={t("chunks.searchEmptyTitle")} description={<span>{t('chunks.searchEmptyDescription')}</span>} className="min-h-[320px]">
 	                    <Button variant="outline" onClick={() => setChunkQuery("")}>
-	                      清空筛选
+	                      {t("chunks.clearFilter")}
 	                    </Button>
 	                  </EmptyState>);
                         }
                         else {
                             return (<div className="pb-6 space-y-3">
 	                    {chunkError && chunks.length > 0 ? (<Alert variant="destructive">
-	                        <AlertTitle>加载切片失败</AlertTitle>
+	                        <AlertTitle>{t('alerts.loadChunksFailedTitle')}</AlertTitle>
 	                        <AlertDescription>{chunkError}</AlertDescription>
 	                      </Alert>) : null}
 	
-	                    <div role="list" aria-label="文档切片列表" style={{
+	                    <div role="list" aria-label={t("chunks.listAriaLabel")} style={{
                                     height: `${chunkRowVirtualizer.getTotalSize()}px`,
                                     width: '100%',
                                     position: 'relative',
@@ -1713,22 +1721,22 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 	                                  {typeof chunk.page_number === "number" ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
 	                                      P.{chunk.page_number}
 	                                    </span>) : null}
-	                                  <span className="text-muted-foreground">{(chunk.content || "").length} chars</span>
+	                                  <span className="text-muted-foreground">{t('chunks.charCount', { count: (chunk.content || '').length })}</span>
 	                                  {chunk.disabled_at ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-muted-foreground">
-	                                      disabled
+	                                      {t('chunks.disabledBadge')}
 	                                    </span>) : null}
 	                                </div>
 	                                <div className="flex items-center gap-1">
-	                                  <IconButton label={canMutateChunks ? "编辑切片" : "仅当前激活版本可编辑"} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => beginEditChunk(chunk)} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}>
+	                                  <IconButton label={canMutateChunks ? t("chunks.actions.edit") : t("chunks.actions.editDisabled")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => beginEditChunk(chunk)} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}>
 	                                    <Pencil className="h-4 w-4"/>
 	                                  </IconButton>
-	                                  <IconButton label={chunk.disabled_at ? "启用切片" : "禁用切片"} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(toggleChunkDisabled(chunk))} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}>
+	                                  <IconButton label={chunk.disabled_at ? t("chunks.actions.enable") : t("chunks.actions.disable")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(toggleChunkDisabled(chunk))} disabled={!canMutateChunks || chunkOpWorkingId === chunk.id}>
 	                                    {chunk.disabled_at ? <CheckCircle2 className="h-4 w-4"/> : <Ban className="h-4 w-4"/>}
 	                                  </IconButton>
-	                                  <IconButton label={chunk.disabled_at ? "禁用切片不能 re-embed" : "重新嵌入切片"} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(reembedChunk(chunk))} disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}>
+	                                  <IconButton label={chunk.disabled_at ? t("chunks.actions.reembedDisabled") : t("chunks.actions.reembed")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(reembedChunk(chunk))} disabled={!canMutateChunks || Boolean(chunk.disabled_at) || chunkOpWorkingId === chunk.id}>
 	                                    <RefreshCw className="h-4 w-4"/>
 	                                  </IconButton>
-	                                  <IconButton label="复制切片内容" variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(copyToClipboard(chunk.content))} disabled={chunkOpWorkingId === chunk.id}>
+	                                  <IconButton label={t("chunks.actions.copy")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(copyToClipboard(chunk.content))} disabled={chunkOpWorkingId === chunk.id}>
 	                                    <Copy className="h-4 w-4"/>
 	                                  </IconButton>
 	                                </div>
@@ -1756,7 +1764,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 	                    {canLoadMoreChunks ? (<div className="flex justify-center pt-2">
 	                        <Button variant="outline" onClick={() => detachPromise(loadMoreChunks())} disabled={isLoadingChunks} className="gap-2">
 	                          {isLoadingChunks ? (<Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>) : null}
-	                          加载更多
+	                          {t("chunks.loadMore")}
 	                        </Button>
 	                      </div>) : null}
 	                  </div>);
@@ -1772,7 +1780,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         else if ((timelineError || docError) && timelineItems.length === 0) {
                 return (<div className="mx-auto max-w-2xl py-10">
                   <Alert variant="destructive">
-                    <AlertTitle>加载失败</AlertTitle>
+                    <AlertTitle>{t('alerts.loadFailedTitle')}</AlertTitle>
                     <AlertDescription>{timelineError || docError}</AlertDescription>
                   </Alert>
                   <div className="mt-4 flex items-center justify-end gap-2">
@@ -1786,16 +1794,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 </div>);
             }
             else if (timelineItems.length === 0) {
-                    return (<EmptyState icon={Calendar} title={documentsT('emptyTimeline')} description="该文档暂未产生可回溯的事件记录（或审计未启用）。" className="min-h-[320px]"/>);
+                    return (<EmptyState icon={Calendar} title={documentsT('emptyTimeline')} description={t("timeline.emptyDescription")} className="min-h-[320px]"/>);
                 }
                 else {
                     return (<div className="pb-6 space-y-3">
 	                  {timelineError ? (<Alert variant="destructive">
-	                      <AlertTitle>加载时间线失败</AlertTitle>
+	                      <AlertTitle>{t('alerts.loadTimelineFailedTitle')}</AlertTitle>
 	                      <AlertDescription>{timelineError}</AlertDescription>
 	                    </Alert>) : null}
 	
-	                  <div role="list" aria-label="文档时间线" style={{
+	                  <div role="list" aria-label={t("timeline.listAriaLabel")} style={{
                             height: `${timelineRowVirtualizer.getTotalSize()}px`,
                             width: '100%',
                             position: 'relative',
@@ -1822,24 +1830,24 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 	                                  </span>
 	                                  <span className="truncate font-mono text-xs text-foreground/90">{ev.action}</span>
 	                                  {ev.source === "synthetic" ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-	                                      synthetic
+	                                      {t('timeline.synthetic')}
 	                                    </span>) : null}
 	                                </div>
 	
 	                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-	                                  {ev.stage ? <span>stage: {ev.stage}</span> : null}
-	                                  {ev.status ? <span>status: {ev.status}</span> : null}
-	                                  {typeof ev.progress === "number" ? <span>progress: {ev.progress}%</span> : null}
+	                                  {ev.stage ? <span>{t('timeline.meta.stage')}: {ev.stage}</span> : null}
+	                                  {ev.status ? <span>{t('timeline.meta.status')}: {ev.status}</span> : null}
+	                                  {typeof ev.progress === "number" ? <span>{t('timeline.meta.progress')}: {ev.progress}%</span> : null}
 	                                  {ev.request_id ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
-	                                      req: {ev.request_id}
+	                                      {t('timeline.meta.requestId')}: {ev.request_id}
 	                                    </span>) : null}
 	                                  {ev.actor_id ? (<span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 font-mono">
-	                                      by: {ev.actor_id}
+	                                      {t('timeline.meta.actorId')}: {ev.actor_id}
 	                                    </span>) : null}
 	                                </div>
 	                              </div>
 	
-	                              <IconButton label="复制事件信息" variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(copyToClipboard(JSON.stringify({
+	                              <IconButton label={t("timeline.actions.copyEvent")} variant="ghost" className="h-9 w-9 text-muted-foreground hover:text-foreground" onClick={() => detachPromise(copyToClipboard(JSON.stringify({
                                     id: ev.id,
                                     action: ev.action,
                                     created_at: ev.created_at,
@@ -1905,13 +1913,13 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 {isKgWorking && canRunKg ? (
                   <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                 ) : null}
-                抽取 KG
+                {t("kg.extract")}
               </Button>
               <ConfirmDialog
-                title="清理 KG 事件？"
-                description="将删除该文档的 KG 事件，并尝试清理孤儿实体。此操作不可恢复。"
-                confirmLabel="清理"
-                cancelLabel="返回"
+                title={t("kg.deleteDialog.title")}
+                description={t('kg.deleteDialog.description')}
+                confirmLabel={t('kg.deleteDialog.confirm')}
+                cancelLabel={t('kg.deleteDialog.cancel')}
                 confirmVariant="destructive"
                 confirmDisabled={isKgWorking}
                 onConfirm={() => detachPromise(handleDeleteKG())}
@@ -1921,13 +1929,13 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   disabled={isKgWorking}
                   className="w-full gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
                 >
-                  清理 KG
+                  {t('kg.delete')}
                 </Button>
               </ConfirmDialog>
             </div>
 
             <Button variant="secondary" onClick={() => setOpen(false)} className="w-full sm:w-auto">
-              关闭
+              {commonT('close')}
             </Button>
           </div>
         </footer>
