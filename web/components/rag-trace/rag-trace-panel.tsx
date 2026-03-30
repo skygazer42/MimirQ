@@ -2233,7 +2233,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
             <Panel variant="glass" className="overflow-hidden" padding="none">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                 <div>
-                  <div className="text-sm font-semibold">TopK Citations</div>
+                  <div className="text-sm font-semibold">{t("panel.topCitations.title")}</div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {activeChannelSummary
                       ? `${activeChannelSummary.label} · ${activeChannelSummary.matchCount}/${selected.citations.length} hits`
@@ -2245,15 +2245,15 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     focus={getRagTraceCitationChannelLabel(selectedCitationChannel)}
                   </Badge>
                    {lastOpenedTraceCitationTarget ? (
-                     <Button
-                       variant="outline"
-                       size="sm"
-                       className="rounded-xl"
-                       onClick={reopenLastTraceCitation}
-                       title="重新打开当前 request 最近查看过的证据"
-                     >
-                       {t("panel.topCitations.reopenRecent")}
-                     </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-xl"
+                        onClick={reopenLastTraceCitation}
+                        title={t("panel.topCitations.reopenRecentTitle")}
+                      >
+                        {t("panel.topCitations.reopenRecent")}
+                      </Button>
                    ) : null}
                 </div>
               </div>
@@ -2384,10 +2384,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       </div>
                     )
                   }) : (
-                    <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-6 text-sm text-muted-foreground">
-                      当前 channel 没有可展示的 citations。切回 <span className="font-mono">All</span> 或其他 channel 继续排查。
-                    </div>
-                  )}
+                     <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-6 text-sm text-muted-foreground">
+                       {t("panel.topCitations.empty")} <span className="font-mono">All</span> {t("panel.topCitations.emptySuffix")}
+                     </div>
+                   )}
                 </div>
               </ScrollArea>
             </Panel>

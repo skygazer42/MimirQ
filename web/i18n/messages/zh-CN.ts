@@ -696,7 +696,11 @@ const zhCNMessages = {
         scoreShiftTitle: '分数漂移',
       },
       topCitations: {
+        title: 'TopK Citations',
         reopenRecent: '重新打开最近证据',
+        reopenRecentTitle: '重新打开当前 request 最近查看过的证据',
+        empty: '当前 channel 没有可展示的 citations。切回',
+        emptySuffix: '或其他 channel 继续排查。',
       },
       toasts: {
         openedCitationDocument: '已打开引用文档',
