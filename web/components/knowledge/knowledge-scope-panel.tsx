@@ -3,6 +3,7 @@ import { DatasetFolderTree } from '@/components/document-library/dataset-folder-
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { Dataset } from '@/types'
+import { useTranslations } from 'next-intl'
 
 type DocLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
 type DocStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quarantined'
@@ -52,31 +53,42 @@ export function KnowledgeScopePanel({
   failedDocsValue,
   quarantinedDocsValue,
 }: Readonly<KnowledgeScopePanelProps>) {
+  const t = useTranslations('KnowledgeScopePanel')
   const DATASET_ALL = datasetAllValue ?? '__all__'
+  const statusItems = [
+    { key: 'all', count: totalDocs },
+    { key: 'completed', count: completedDocsValue },
+    { key: 'processing', count: processingDocsValue },
+    { key: 'failed', count: failedDocsValue },
+    { key: 'quarantined', count: quarantinedDocsValue },
+  ].map((item) => ({
+    ...item,
+    label: t(`status.${item.key}.label`),
+  }))
 
   return (
     <WorkbenchPane
       className={cn(className)}
       header={
         <div className="flex items-baseline gap-2">
-          <div className="text-sm font-semibold">范围</div>
-          <div className="text-xs text-muted-foreground">Scope</div>
+          <div className="text-sm font-semibold">{t('header.title')}</div>
+          <div className="text-xs text-muted-foreground">{t('header.subtitle')}</div>
         </div>
       }
     >
       <div className="space-y-4">
         <div className="space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">数据集</div>
+          <div className="text-xs font-medium text-muted-foreground">{t("dataset.label")}</div>
           <Select value={datasetScope} onValueChange={setDatasetScope}>
             <SelectTrigger
               className="h-9 w-full"
               disabled={datasetsLoading}
-              aria-label="筛选数据集"
+              aria-label={t("dataset.ariaLabel")}
             >
-              <SelectValue placeholder={datasetsLoading ? '加载数据集…' : '全部数据集'} />
+              <SelectValue placeholder={datasetsLoading ? t('dataset.loading') : t('dataset.all')} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={DATASET_ALL}>全部数据集</SelectItem>
+              <SelectItem value={DATASET_ALL}>{t("dataset.all")}</SelectItem>
               {datasets.map((ds) => (
                 <SelectItem key={ds.id} value={ds.id}>
                   {ds.name}
@@ -87,17 +99,9 @@ export function KnowledgeScopePanel({
         </div>
 
         <div className="space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">状态</div>
+          <div className="text-xs font-medium text-muted-foreground">{t('status.label')}</div>
           <div className="flex flex-wrap items-center gap-2">
-            {(
-              [
-    { key: 'all', label: '全部', count: totalDocs },
-    { key: 'completed', label: '已就绪', count: completedDocsValue },
-    { key: 'processing', label: '处理中', count: processingDocsValue },
-    { key: 'failed', label: '失败', count: failedDocsValue },
-    { key: 'quarantined', label: '隔离', count: quarantinedDocsValue },
-]
-            ).map((item) => (
+            {statusItems.map((item) => (
               <button
                 key={item.key}
                 type="button"
@@ -120,14 +124,14 @@ export function KnowledgeScopePanel({
         {selectedDatasetId ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-xs font-medium text-muted-foreground">目录</div>
+              <div className="text-xs font-medium text-muted-foreground">{t('folder.label')}</div>
               {folderPath ? (
                 <button
                   type="button"
                   onClick={() => setFolderPath(null)}
                   className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-4"
                 >
-                  清除
+                  {t('folder.clear')}
                 </button>
               ) : null}
             </div>
@@ -140,21 +144,21 @@ export function KnowledgeScopePanel({
           </div>
         ) : (
           <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-xs text-muted-foreground">
-            选择一个数据集以浏览目录范围。
+            {t('folder.empty')}
           </div>
         )}
 
         <div className="space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">生命周期</div>
+          <div className="text-xs font-medium text-muted-foreground">{t('lifecycle.label')}</div>
           <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
-            <SelectTrigger className="h-9 w-full" aria-label="筛选生命周期">
-              <SelectValue placeholder="生命周期" />
+            <SelectTrigger className="h-9 w-full" aria-label={t("lifecycle.ariaLabel")}>
+              <SelectValue placeholder={t("lifecycle.placeholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="active">启用中</SelectItem>
-              <SelectItem value="disabled">已禁用</SelectItem>
-              <SelectItem value="archived">已归档</SelectItem>
-              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="active">{t("lifecycle.active")}</SelectItem>
+              <SelectItem value="disabled">{t('lifecycle.disabled')}</SelectItem>
+              <SelectItem value="archived">{t("lifecycle.archived")}</SelectItem>
+              <SelectItem value="all">{t('lifecycle.all')}</SelectItem>
             </SelectContent>
           </Select>
         </div>

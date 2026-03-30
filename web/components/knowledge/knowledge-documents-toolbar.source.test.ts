@@ -10,14 +10,14 @@ describe('Knowledge documents toolbar', () => {
 
     // Main surface keeps search + sort + view toggle.
     expect(panelSrc).toContain('<SearchInput')
-    expect(panelSrc).toContain('aria-label="排序"')
-    expect(pageSrc).toContain('aria-label="网格视图"')
-    expect(pageSrc).toContain('aria-label="列表视图"')
+    expect(panelSrc).toContain('aria-label={t("sort.ariaLabel")}')
+    expect(pageSrc).toContain('aria-label={t("actions.viewGrid")}')
+    expect(pageSrc).toContain('aria-label={t("actions.viewList")}')
 
     // Scope filters should not live in the main documents toolbar anymore.
-    expect(panelSrc).not.toContain('aria-label="筛选数据集"')
-    expect(panelSrc).not.toContain('aria-label="按目录筛选"')
-    expect(panelSrc).not.toContain('aria-label="筛选生命周期"')
+    expect(panelSrc).not.toContain('aria-label={t("dataset.ariaLabel")}')
+    expect(panelSrc).not.toContain('aria-label={t("folder.ariaLabel")}')
+    expect(panelSrc).not.toContain('aria-label={t("lifecycle.ariaLabel")}')
     expect(panelSrc).not.toContain('aria-pressed={statusFilter === item.key}')
   })
 })

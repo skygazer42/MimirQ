@@ -9,6 +9,7 @@ import { useSearchParams } from 'next/navigation'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { motion, useReducedMotion, type Transition } from 'framer-motion'
 import { Database, FileText, Settings, Loader2, CheckCircle, XCircle, AlertTriangle, RefreshCw, Layers, HardDrive, FileStack, Eye, LayoutGrid, List as ListIcon, MoreVertical, Zap, Filter } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { AppFrame } from '@/components/app-frame'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
 
@@ -55,6 +56,7 @@ function docGridColumnsForViewportWidth(width: number): number {
 }
 
 export default function KnowledgePage() {
+  const t = useTranslations('KnowledgePage')
   const router = useRouter()
   const searchParams = useSearchParams()
   const reduceMotion = useReducedMotion()
@@ -249,12 +251,12 @@ export default function KnowledgePage() {
   const attentionDocsCount = failedDocsCount + quarantinedDocsCount
   const showExtraCard = docStats ? (processingDocsCount > 0 || failedDocsCount > 0 || quarantinedDocsCount > 0) : false
   let extraCardIcon = Loader2
-  let extraCardLabel = '处理中'
+  let extraCardLabel = t('stats.processing')
   let extraCardValue: number = processingDocsCount
   let extraCardColor: 'red' | 'amber' | 'sky' = 'sky'
 
   if (attentionDocsCount > 0) {
-    extraCardLabel = '需关注'
+    extraCardLabel = t('stats.needsAttention')
     extraCardValue = attentionDocsCount
     if (failedDocsCount > 0) {
       extraCardIcon = XCircle
@@ -302,6 +304,44 @@ export default function KnowledgePage() {
 
   const selectedSet = useMemo(() => new Set(selectedDocIds), [selectedDocIds])
   const allVisibleSelected = filteredDocuments.length > 0 && filteredDocuments.every((d) => selectedSet.has(d.id))
+  const tabs = useMemo(
+    () =>
+      ([
+        { key: 'documents' as TabType, icon: FileText },
+        { key: 'retrieval' as TabType, icon: Zap },
+        { key: 'settings' as TabType, icon: Settings },
+      ]).map((tab) => ({
+        ...tab,
+        label: t(`tabs.${tab.key}.label`),
+      })),
+    [t]
+  )
+  const statusSummaryLabel = useMemo(() => {
+    switch (statusFilter) {
+      case 'completed':
+        return t('scopeSummary.status.completed')
+      case 'processing':
+        return t('scopeSummary.status.processing')
+      case 'failed':
+        return t('scopeSummary.status.failed')
+      case 'quarantined':
+        return t('scopeSummary.status.quarantined')
+      default:
+        return statusFilter
+    }
+  }, [statusFilter, t])
+  const lifecycleSummaryLabel = useMemo(() => {
+    switch (lifecycleFilter) {
+      case 'archived':
+        return t('scopeSummary.lifecycle.archived')
+      case 'disabled':
+        return t('scopeSummary.lifecycle.disabled')
+      case 'all':
+        return t('scopeSummary.lifecycle.all')
+      default:
+        return lifecycleFilter
+    }
+  }, [lifecycleFilter, t])
 
   const toggleDocSelection = useCallback((docId: string) => {
     setSelectedDocIds((prev) => (prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]))
@@ -342,12 +382,12 @@ export default function KnowledgePage() {
       await loadDocuments()
     } catch (err) {
       console.error('Batch delete failed:', err)
-      toast.error(formatApiError(err, '批量删除失败'))
+      toast.error(formatApiError(err, t('toasts.batchDeleteFailed')))
     } finally {
       setBatchDeleting(false)
       setBatchDeleteOpen(false)
     }
-  }, [selectedDocIds, loadDocuments])
+  }, [selectedDocIds, loadDocuments, t])
 
   const selectedDocs = useMemo(
     () => filteredDocuments.filter((d) => selectedSet.has(d.id)),
@@ -386,30 +426,22 @@ export default function KnowledgePage() {
         }
         toast.success(
           (() => {
-    if (action === 'disable') {
-        return `已禁用 ${res.updated} 份文档`;
-    }
-    else if (action === 'enable') {
-            return `已启用 ${res.updated} 份文档`;
-        }
-        else if (action === 'archive') {
-                return `已归档 ${res.updated} 份文档`;
-            }
-            else {
-                return `已取消归档 ${res.updated} 份文档`;
-            }
-})()
+            if (action === 'disable') return t('toasts.batchLifecycle.disable', { count: res.updated })
+            if (action === 'enable') return t('toasts.batchLifecycle.enable', { count: res.updated })
+            if (action === 'archive') return t('toasts.batchLifecycle.archive', { count: res.updated })
+            return t('toasts.batchLifecycle.unarchive', { count: res.updated })
+          })()
         )
         setSelectedDocIds([])
         await loadDocuments()
       } catch (err) {
         console.error('Batch lifecycle failed:', err)
-        toast.error(formatApiError(err, '批量操作失败'))
+        toast.error(formatApiError(err, t('toasts.batchLifecycleFailed')))
       } finally {
         setBatchLifecycleWorking(false)
       }
     },
-    [selectedDocIds, loadDocuments]
+    [selectedDocIds, loadDocuments, t]
   )
 
   const runBatchReingest = useCallback(async () => {
@@ -418,7 +450,7 @@ export default function KnowledgePage() {
 
     // Keep this conservative to avoid accidental mass re-embedding.
     if (ids.length > 50) {
-      toast.error('一次最多重新入库 50 份文档')
+      toast.error(t('toasts.reingestLimitExceeded'))
       return
     }
 
@@ -436,16 +468,16 @@ export default function KnowledgePage() {
         console.warn('Batch reingest partial result:', res)
       }
 
-      toast.success(`已触发重新入库 ${res.queued} 份文档`)
+      toast.success(t('toasts.reingestQueued', { count: res.queued }))
       setSelectedDocIds([])
       await loadDocuments()
     } catch (err) {
       console.error('Batch reingest failed:', err)
-      toast.error(formatApiError(err, '批量重新入库失败'))
+      toast.error(formatApiError(err, t('toasts.reingestFailed')))
     } finally {
       setBatchReingestWorking(false)
     }
-  }, [loadDocuments, pipelineOptions, pipelineOverridesEnabled, selectedDocIds])
+  }, [loadDocuments, pipelineOptions, pipelineOverridesEnabled, selectedDocIds, t])
 
   const {
     connectorRuns,
@@ -488,23 +520,29 @@ export default function KnowledgePage() {
     try {
       const res = await uploadDocuments(Array.from(files), { maxRetries: 1, maxConcurrent: 5 })
       if (res.failed_count > 0) {
-        toast.warning(`已上传 ${res.successful_count}/${res.total} 个文件，失败 ${res.failed_count} 个（可重试）`)
+        toast.warning(
+          t('toasts.uploadPartial', {
+            successful: res.successful_count,
+            total: res.total,
+            failed: res.failed_count,
+          })
+        )
       } else {
-        toast.success(`已上传 ${res.successful_count} 个文件`)
+        toast.success(t('toasts.uploadSuccess', { count: res.successful_count }))
       }
     } catch (err: any) {
-      toast.error(formatApiError(err, '上传失败'))
+      toast.error(formatApiError(err, t('toasts.uploadFailed')))
     }
     e.target.value = ''
-  }, [uploadDocuments])
+  }, [uploadDocuments, t])
 
   return (
     <AppFrame>
         <WorkbenchScaffold
-          title="知识库管理"
+          title={t("header.title")}
           icon={Database}
           iconColor="text-primary"
-          description="管理您的文档资产，构建专属知识大脑"
+          description={t('header.description')}
           leftPanel={
             <KnowledgeScopePanel
               datasets={datasets}
@@ -554,28 +592,28 @@ export default function KnowledgePage() {
 	            <StatsGrid className={showExtraCard ? "lg:grid-cols-5" : "lg:grid-cols-4"}>
 	              <StatCard
 	                icon={FileStack}
-	                label="文档总数"
+	                label={t("stats.totalDocuments")}
 	                value={totalDocs}
 	                color="sky"
 	                className="bg-card border-border/60 shadow-soft"
 	              />
 	              <StatCard
 	                icon={CheckCircle}
-	                label="已就绪"
+	                label={t('stats.ready')}
 	                value={completedDocsValue}
 	                color="green"
 	                className="bg-card border-border/60 shadow-soft"
 	              />
 	              <StatCard
 	                icon={Layers}
-	                label="知识分块"
+	                label={t('stats.totalChunks')}
 	                value={totalChunksValue}
 	                color="teal"
 	                className="bg-card border-border/60 shadow-soft"
 	              />
 	              <StatCard
 	                icon={HardDrive}
-	                label="存储占用"
+	                label={t('stats.storageUsage')}
 	                value={totalSizeValue}
 	                color="orange"
 	                className="bg-card border-border/60 shadow-soft"
@@ -594,11 +632,7 @@ export default function KnowledgePage() {
 	          toolbar={
             <div className="flex items-center justify-between">
               <div className="flex gap-1 -mb-px">
-                {[
-                  { key: 'documents' as TabType, label: '文档列表', icon: FileText },
-                  { key: 'retrieval' as TabType, label: '检索测试', icon: Zap },
-                  { key: 'settings' as TabType, label: '配置', icon: Settings },
-	                ].map((tab) => (
+                {tabs.map((tab) => (
 	                  <button
 	                    key={tab.key}
 	                    onClick={() => setActiveTab(tab.key)}
@@ -625,10 +659,10 @@ export default function KnowledgePage() {
                   <WorkbenchPanelDialog
                     open={scopeOpen}
                     onOpenChange={setScopeOpen}
-                    title="范围筛选"
+                    title={t('dialogs.scope.title')}
                     trigger={
                       <IconButton
-                        label="范围筛选"
+                        label={t('actions.scope')}
                         variant="ghost"
                         className="h-9 w-9 text-muted-foreground hover:text-foreground"
                       >
@@ -666,10 +700,10 @@ export default function KnowledgePage() {
                     <WorkbenchPanelDialog
                       open={inspectorOpen}
                       onOpenChange={setInspectorOpen}
-                      title="Inspector"
+                      title={t('dialogs.inspector.title')}
                       trigger={
                         <IconButton
-                          label="Inspector"
+                          label={t('dialogs.inspector.title')}
                           variant="ghost"
                           className="h-9 w-9 text-muted-foreground hover:text-foreground"
                         >
@@ -689,7 +723,7 @@ export default function KnowledgePage() {
                 {activeTab === 'documents' ? (
                   <>
                     <IconButton
-                      label="刷新列表"
+                      label={t('actions.refresh')}
                       variant="ghost"
                       onClick={() => loadDocuments()}
                       className="h-9 w-9 text-muted-foreground hover:text-foreground"
@@ -697,7 +731,7 @@ export default function KnowledgePage() {
                       <RefreshCw className="w-4 h-4" />
                     </IconButton>
                     <IconButton
-                      label="预览分块"
+                      label={t('actions.previewChunks')}
                       variant="ghost"
                       onClick={() => globalThis.window.open('/chunk-preview', '_blank')}
                       className="h-9 w-9 text-muted-foreground hover:text-foreground"
@@ -710,7 +744,7 @@ export default function KnowledgePage() {
                       className="bg-muted/40 border border-border/60 p-1 rounded-lg flex gap-1"
                     >
                       <button
-                        aria-label="网格视图"
+                        aria-label={t("actions.viewGrid")}
                         onClick={() => setViewMode('grid')}
                         className={cn(
                           "relative p-1.5 rounded-md transition-colors focus-ring",
@@ -730,7 +764,7 @@ export default function KnowledgePage() {
                         <LayoutGrid className="relative z-10 w-4 h-4" />
                       </button>
                       <button
-                        aria-label="列表视图"
+                        aria-label={t("actions.viewList")}
                         onClick={() => setViewMode('list')}
                         className={cn(
                           "relative p-1.5 rounded-md transition-colors focus-ring",
@@ -789,13 +823,17 @@ export default function KnowledgePage() {
 	                <div className="flex flex-wrap items-center gap-2">
 		                  <span
 		                    className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground"
-		                    title={selectedDatasetId ? `dataset ${selectedDatasetId}` : 'all datasets'}
+		                    title={
+                          selectedDatasetId
+                            ? t('scopeSummary.datasetTitleScoped', { datasetId: selectedDatasetId })
+                            : t('scopeSummary.datasetTitleAll')
+                        }
 		                  >
-		                    范围:{' '}
+		                    {t('scopeSummary.labels.scope')}:{' '}
 		                    <span className="font-medium text-foreground ml-1">
 		                      {selectedDatasetId
 		                        ? (datasets.find((d) => d.id === selectedDatasetId)?.name ?? selectedDatasetId)
-		                        : '全部数据集'}
+		                        : t('scopeSummary.allDatasets')}
 		                    </span>
 		                  </span>
 
@@ -804,54 +842,22 @@ export default function KnowledgePage() {
 	                      className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground max-w-xs truncate"
 	                      title={folderPath}
 	                    >
-	                      目录: <span className="ml-1 truncate font-medium text-foreground">{folderPath}</span>
+	                      {t('scopeSummary.labels.directory')}:{' '}
+                        <span className="ml-1 truncate font-medium text-foreground">{folderPath}</span>
 	                    </span>
 	                  ) : null}
 
 		                  {statusFilter === 'all' ? null : (
 		                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
-		                      状态:{' '}
-		                      <span className="ml-1 font-medium text-foreground">
-		                        {(() => {
-	    if (statusFilter === 'completed') {
-	        return '已就绪';
-    }
-    else if (statusFilter === 'processing') {
-            return '处理中';
-        }
-        else if (statusFilter === 'failed') {
-                return '失败';
-            }
-            else if (statusFilter === 'quarantined') {
-                    return '隔离';
-                }
-                else {
-                    return statusFilter;
-                }
-})()}
-                      </span>
+		                      {t('scopeSummary.labels.status')}:{' '}
+		                      <span className="ml-1 font-medium text-foreground">{statusSummaryLabel}</span>
                     </span>
 	                  )}
 
 		                  {lifecycleFilter === 'active' ? null : (
 		                    <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/20 px-2 py-0.5 text-xs text-muted-foreground">
-		                      生命周期:{' '}
-		                      <span className="ml-1 font-medium text-foreground">
-		                        {(() => {
-	    if (lifecycleFilter === 'archived') {
-	        return '已归档';
-    }
-    else if (lifecycleFilter === 'disabled') {
-            return '已禁用';
-        }
-        else if (lifecycleFilter === 'all') {
-                return '全部';
-            }
-            else {
-                return lifecycleFilter;
-            }
-})()}
-                      </span>
+		                      {t('scopeSummary.labels.lifecycle')}:{' '}
+		                      <span className="ml-1 font-medium text-foreground">{lifecycleSummaryLabel}</span>
                     </span>
                   )}
                 </div>

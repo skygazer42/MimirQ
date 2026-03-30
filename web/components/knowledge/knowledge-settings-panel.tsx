@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   ChevronDown,
   ChevronRight,
@@ -62,21 +63,22 @@ type KnowledgeSettingsPanelProps = {
 }
 
 type ConnectorRunStatusFilter = 'all' | 'pending' | 'running' | 'failed' | 'completed' | 'cancelled'
+type TranslateFn = (key: string, values?: Record<string, any>) => string
 
-function getConnectorRunBadge(status: string): { status: StatusBadgeStatus; label: string } {
+function getConnectorRunBadge(status: string, t: TranslateFn): { status: StatusBadgeStatus; label: string } {
   switch (String(status || '').toLowerCase()) {
     case 'pending':
-      return { status: 'pending', label: '等待' }
+      return { status: 'pending', label: t('runStatus.pending') }
     case 'running':
-      return { status: 'processing', label: '运行中' }
+      return { status: 'processing', label: t('runStatus.running') }
     case 'completed':
-      return { status: 'completed', label: '已完成' }
+      return { status: 'completed', label: t('runStatus.completed') }
     case 'failed':
-      return { status: 'failed', label: '失败' }
+      return { status: 'failed', label: t('runStatus.failed') }
     case 'cancelled':
-      return { status: 'cancelled', label: '已取消' }
+      return { status: 'cancelled', label: t('runStatus.cancelled') }
     default:
-      return { status: 'pending', label: String(status || '等待') }
+      return { status: 'pending', label: String(status || t('runStatus.pending')) }
   }
 }
 
@@ -91,18 +93,18 @@ function formatDurationMs(ms: number): string {
   return `${s}s`
 }
 
-function formatAclModeLabel(mode: string): string {
+function formatAclModeLabel(mode: string, t: TranslateFn): string {
   switch (String(mode || '').toLowerCase()) {
     case 'inherit':
-      return '继承'
+      return t('aclModes.inherit')
     case 'only_me':
-      return '仅我'
+      return t('aclModes.onlyMe')
     case 'all_team_members':
-      return '全员'
+      return t('aclModes.allTeamMembers')
     case 'partial_members':
-      return '白名单'
+      return t('aclModes.partialMembers')
     case 'mixed':
-      return '混合'
+      return t('aclModes.mixed')
     default:
       return String(mode || 'inherit')
   }
@@ -117,13 +119,13 @@ function formatAclCountRange(min: number | null | undefined, max: number | null 
   return `${lo}-${hi}`
 }
 
-function formatAclModeBreakdown(counts: Record<string, number> | null | undefined): string | null {
+function formatAclModeBreakdown(counts: Record<string, number> | null | undefined, t: TranslateFn): string | null {
   if (!counts) return null
   const parts = Object.entries(counts)
     .filter(([, v]) => Number(v) > 0)
     .sort((a, b) => Number(b[1]) - Number(a[1]))
     .slice(0, 4)
-    .map(([m, v]) => `${formatAclModeLabel(m)} ${Number(v)}`)
+    .map(([m, v]) => `${formatAclModeLabel(m, t)} ${Number(v)}`)
   return parts.length ? parts.join(' · ') : null
 }
 
@@ -148,14 +150,14 @@ function getConnectorRunProgress(stats: Record<string, unknown>): { total: numbe
   }
 }
 
-function formatConnectorSyncCapabilities(info: ConnectorInfo | undefined): string | null {
+function formatConnectorSyncCapabilities(info: ConnectorInfo | undefined, t: TranslateFn): string | null {
   if (!info) return null
   const supportsIncremental = Boolean(info.supports_incremental)
   const supportsResume = Boolean(info.supports_resume)
-  if (supportsIncremental && supportsResume) return '源增量 + 续跑'
-  if (supportsIncremental) return '源增量'
-  if (supportsResume) return '仅续跑'
-  return '全量'
+  if (supportsIncremental && supportsResume) return t('syncCapabilities.incrementalAndResume')
+  if (supportsIncremental) return t('syncCapabilities.incremental')
+  if (supportsResume) return t('syncCapabilities.resumeOnly')
+  return t('syncCapabilities.full')
 }
 
 function normalizeConnectorRunDocumentId(value: unknown): string | null {
@@ -187,6 +189,7 @@ export function KnowledgeSettingsPanel({
   onResumeConnectorRun,
   onRetryFailedConnectorRun,
 }: Readonly<KnowledgeSettingsPanelProps>) {
+  const t = useTranslations('KnowledgeSettingsPanel')
   const [runStatusFilter, setRunStatusFilter] = useState<ConnectorRunStatusFilter>('all')
   const [autoRefreshRuns, setAutoRefreshRuns] = useState(false)
   const autoRefreshIntervalMs = 10_000
@@ -198,7 +201,17 @@ export function KnowledgeSettingsPanel({
 
   const runsUpdatedAtLabel = connectorRunsUpdatedAt
     ? new Date(connectorRunsUpdatedAt).toLocaleTimeString()
-    : '—'
+    : t('connectorRuns.emptyValue')
+  const runStatusOptions = (['all', 'pending', 'running', 'failed', 'completed', 'cancelled'] as const).map((value) => ({
+    value,
+    label: t(`runStatus.${value}`),
+  }))
+  const embeddingModels = ['text-embedding-v3', 'text-embedding-3-small', 'bge-large-zh']
+  const retrievalModes = [
+    { value: 'vector', icon: Zap },
+    { value: 'fulltext', icon: FileText },
+    { value: 'hybrid', icon: Layers },
+  ] as const
 
   useEffect(() => {
     let cancelled = false
@@ -224,13 +237,13 @@ export function KnowledgeSettingsPanel({
   const copyText = async (text: string, okMsg: string) => {
     try {
       if (!navigator.clipboard?.writeText) {
-        toast.error('复制失败：浏览器不支持 Clipboard API')
+        toast.error(t('toasts.copyUnsupported'))
         return
       }
       await navigator.clipboard.writeText(text)
       toast.success(okMsg)
     } catch {
-      toast.error('复制失败')
+      toast.error(t('toasts.copyFailed'))
     }
   }
 
@@ -297,7 +310,7 @@ export function KnowledgeSettingsPanel({
 
   const runDatasetPurge = async (params: { dry_run: boolean }) => {
     if (!selectedDatasetId) {
-      toast.error('请先选择一个数据集')
+      toast.error(t('toasts.selectDatasetFirst'))
       return
     }
 
@@ -311,12 +324,12 @@ export function KnowledgeSettingsPanel({
       })
       setPurgePreview(res)
       if (params.dry_run) {
-        toast.success(`已预览：eligible=${String(res?.eligible ?? '—')}`)
+        toast.success(t('toasts.purgePreviewReady', { eligible: String(res?.eligible ?? t('connectorRuns.emptyValue')) }))
       } else {
-        toast.success(`已清空：deleted=${String(res?.deleted ?? '—')}（如还有剩余可重复执行）`)
+        toast.success(t('toasts.purgeCompleted', { deleted: String(res?.deleted ?? t('connectorRuns.emptyValue')) }))
       }
     } catch (err: any) {
-      const msg = formatApiError(err, '清空数据集失败')
+      const msg = formatApiError(err, t('toasts.purgeFailed'))
       setPurgeError(msg)
       toast.error(msg)
     } finally {
@@ -328,15 +341,15 @@ export function KnowledgeSettingsPanel({
     <div className="max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none motion-reduce:transition-none">
       <Panel padding="none" className="rounded-xl overflow-hidden">
         <div className="p-6 border-b border-border/60 bg-muted/20">
-          <h3 className="text-lg font-bold text-foreground">知识库参数配置</h3>
-          <p className="text-sm text-muted-foreground mt-1">调整 Embedding 模型、检索策略及相似度阈值</p>
+          <h3 className="text-lg font-bold text-foreground">{t("header.title")}</h3>
+          <p className="text-sm text-muted-foreground mt-1">{t('header.description')}</p>
         </div>
 
         <div className="p-8 space-y-8">
           <div className="space-y-3">
-            <div className="text-sm font-semibold text-foreground">Embedding 模型</div>
+            <div className="text-sm font-semibold text-foreground">{t('embedding.title')}</div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {['text-embedding-v3', 'text-embedding-3-small', 'bge-large-zh'].map((model) => (
+              {embeddingModels.map((model) => (
                 <div key={model} className="relative">
                   <input type="radio" name="model" id={model} className="peer sr-only" defaultChecked={model === 'text-embedding-v3'} />
                   <label
@@ -344,7 +357,7 @@ export function KnowledgeSettingsPanel({
                     className="flex flex-col p-4 border-2 border-border/60 rounded-xl cursor-pointer transition-colors hover:border-border peer-checked:border-primary peer-checked:bg-primary/10"
                   >
                     <span className="font-medium text-sm text-foreground">{model}</span>
-                    <span className="text-xs text-muted-foreground mt-1">768 维 / 中英支持</span>
+                    <span className="text-xs text-muted-foreground mt-1">{t('embedding.modelHint')}</span>
                   </label>
                 </div>
               ))}
@@ -354,13 +367,9 @@ export function KnowledgeSettingsPanel({
           <div className="h-px bg-border/60" />
 
           <div className="space-y-3">
-            <div className="text-sm font-semibold text-foreground">检索模式</div>
+            <div className="text-sm font-semibold text-foreground">{t('retrieval.title')}</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {[
-                { value: 'vector', label: '向量检索', desc: '基于语义相似度，适合模糊匹配', icon: Zap },
-                { value: 'fulltext', label: '全文检索', desc: '基于关键词匹配，适合专有名词', icon: FileText },
-                { value: 'hybrid', label: '混合检索', desc: '向量 + 全文加权，效果最佳', icon: Layers },
-              ].map((mode) => (
+              {retrievalModes.map((mode) => (
                 <div key={mode.value} className="relative">
                   <input
                     type="radio"
@@ -375,9 +384,9 @@ export function KnowledgeSettingsPanel({
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <mode.icon className="w-4 h-4 text-primary" />
-                      <span className="font-medium text-sm text-foreground">{mode.label}</span>
+                      <span className="font-medium text-sm text-foreground">{t(`retrieval.options.${mode.value}.label`)}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground leading-relaxed">{mode.desc}</span>
+                    <span className="text-xs text-muted-foreground leading-relaxed">{t(`retrieval.options.${mode.value}.description`)}</span>
                   </label>
                 </div>
               ))}
@@ -389,7 +398,7 @@ export function KnowledgeSettingsPanel({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-3">
               <div className="flex justify-between">
-                <div className="text-sm font-semibold text-foreground">召回数量 (Top K)</div>
+                <div className="text-sm font-semibold text-foreground">{t('sliders.topK.title')}</div>
                 <span className="text-sm font-mono text-primary">5</span>
               </div>
               <input
@@ -399,12 +408,12 @@ export function KnowledgeSettingsPanel({
                 defaultValue="5"
                 className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
               />
-              <p className="text-xs text-muted-foreground">单次检索返回的最大片段数，建议 3-8 之间</p>
+              <p className="text-xs text-muted-foreground">{t('sliders.topK.description')}</p>
             </div>
 
             <div className="space-y-3">
               <div className="flex justify-between">
-                <div className="text-sm font-semibold text-foreground">相似度阈值</div>
+                <div className="text-sm font-semibold text-foreground">{t('sliders.similarity.title')}</div>
                 <span className="text-sm font-mono text-primary">0.7</span>
               </div>
               <input
@@ -415,7 +424,7 @@ export function KnowledgeSettingsPanel({
                 defaultValue="0.7"
                 className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
               />
-              <p className="text-xs text-muted-foreground">过滤低相关度的结果，值越大匹配越精准</p>
+              <p className="text-xs text-muted-foreground">{t('sliders.similarity.description')}</p>
             </div>
           </div>
 
@@ -424,23 +433,22 @@ export function KnowledgeSettingsPanel({
           <div className="space-y-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <div className="text-sm font-semibold text-foreground">Connectors 导入任务</div>
+                <div className="text-sm font-semibold text-foreground">{t("connectorRuns.title")}</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  用于批量 URL 导入/同步；仅展示你有写权限的数据集的运行记录。
+                  {t('connectorRuns.description')}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <Select value={runStatusFilter} onValueChange={(v) => setRunStatusFilter(v as ConnectorRunStatusFilter)}>
-                  <SelectTrigger className="h-9 w-40" aria-label="筛选运行状态">
-                    <SelectValue placeholder="状态" />
+                  <SelectTrigger className="h-9 w-40" aria-label={t("connectorRuns.filter.ariaLabel")}>
+                    <SelectValue placeholder={t('connectorRuns.filter.placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">全部状态</SelectItem>
-                    <SelectItem value="pending">等待</SelectItem>
-                    <SelectItem value="running">运行中</SelectItem>
-                    <SelectItem value="failed">失败</SelectItem>
-                    <SelectItem value="completed">已完成</SelectItem>
-                    <SelectItem value="cancelled">已取消</SelectItem>
+                    {runStatusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Button
@@ -450,7 +458,7 @@ export function KnowledgeSettingsPanel({
                   disabled={connectorRunsLoading}
                 >
                   <RefreshCw className={cn('w-4 h-4', connectorRunsLoading && 'animate-spin motion-reduce:animate-none')} />
-                  刷新
+                  {t('connectorRuns.actions.refresh')}
                 </Button>
                 <Button
                   type="button"
@@ -459,35 +467,39 @@ export function KnowledgeSettingsPanel({
                   aria-pressed={autoRefreshRuns}
                   onClick={() => setAutoRefreshRuns((v) => !v)}
                   disabled={!hasActiveRuns && !autoRefreshRuns}
-                  title={!hasActiveRuns && !autoRefreshRuns ? '仅在有运行中任务时可开启' : undefined}
+                  title={!hasActiveRuns && !autoRefreshRuns ? t('connectorRuns.autoRefresh.onlyWhenActive') : undefined}
                 >
-                  自动刷新
+                  {t("connectorRuns.autoRefresh.label")}
                 </Button>
               </div>
             </div>
             <div className="text-[11px] text-muted-foreground">
-              范围:{' '}
+              {t('connectorRuns.scopeLabel')}:{' '}
               <span
                 className="font-mono tabular-nums"
-                title={selectedDatasetId ? `dataset ${selectedDatasetId}` : 'all datasets'}
+                title={
+                  selectedDatasetId
+                    ? t('connectorRuns.scopeTitleScoped', { datasetId: selectedDatasetId })
+                    : t('connectorRuns.scopeTitleAll')
+                }
               >
-                {selectedDatasetId || '全部数据集'}
+                {selectedDatasetId || t('connectorRuns.allDatasets')}
               </span>
-              <span className="text-muted-foreground/40">{' · 上次刷新: '}</span>
+              <span className="text-muted-foreground/40">{` · ${t('connectorRuns.lastRefreshLabel')}: `}</span>
               <span className="font-mono tabular-nums">{runsUpdatedAtLabel}</span>
-              <span className="text-muted-foreground/40">{' · 自动刷新: '}</span>
+              <span className="text-muted-foreground/40">{` · ${t('connectorRuns.autoRefresh.statusLabel')}: `}</span>
               <span className="font-mono tabular-nums">
                 {(() => {
     if (autoRefreshRuns) {
         if (hasActiveRuns) {
-            return `开（${Math.round(autoRefreshIntervalMs / 1000)}s）`;
+            return t('connectorRuns.autoRefresh.onInterval', { seconds: Math.round(autoRefreshIntervalMs / 1000) });
         }
         else {
-            return '开（等待任务）';
+            return t('connectorRuns.autoRefresh.waiting');
         }
     }
     else {
-        return '关';
+        return t('connectorRuns.autoRefresh.off');
     }
 })()}
               </span>
@@ -496,19 +508,19 @@ export function KnowledgeSettingsPanel({
             {(() => {
     if (connectorRunsLoading) {
         return (<div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                正在加载导入任务...
+                {t('connectorRuns.loading')}
               </div>);
     }
     else if (connectorRuns.length === 0) {
             return (<div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                暂无导入任务。可通过顶部“导入/新增”创建批量导入/同步任务。
+                {t("connectorRuns.zeroState.description")}
               </div>);
         }
         else if (visibleConnectorRuns.length === 0) {
                 return (<div className="rounded-xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground flex items-center justify-between gap-3">
-                <div>当前筛选条件下暂无任务。</div>
+                <div>{t("connectorRuns.empty.description")}</div>
                 <Button type="button" variant="outline" size="sm" onClick={() => setRunStatusFilter('all')}>
-                  清除筛选
+                  {t('connectorRuns.empty.clearFilters')}
                 </Button>
               </div>);
             }
@@ -517,28 +529,28 @@ export function KnowledgeSettingsPanel({
                 {expandedConnectorRunId && !expandedRunIsVisible ? (<div className="rounded-xl border border-border/60 bg-muted/20 p-3 text-sm">
                     {expandedRun ? (<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-muted-foreground">
-                          当前任务被筛选条件隐藏。run_id: <span className="font-mono tabular-nums">{expandedConnectorRunId}</span>
+                          {t('connectorRuns.hidden.selectedRunHidden')} <span className="font-mono tabular-nums">{expandedConnectorRunId}</span>
                         </div>
                         <Button type="button" variant="outline" size="sm" onClick={() => setRunStatusFilter('all')}>
-                          清除筛选
+                          {t('connectorRuns.empty.clearFilters')}
                         </Button>
                       </div>) : (<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-muted-foreground">
-                          未在当前列表中找到该任务。可能任务较旧，或当前范围不包含该数据集。run_id:{' '}
+                          {t('connectorRuns.hidden.selectedRunMissing')}{' '}
                           <span className="font-mono tabular-nums">{expandedConnectorRunId}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button type="button" variant="outline" size="sm" onClick={() => detachPromise(onLoadConnectorRuns({ datasetId: selectedDatasetId }))}>
-                            刷新
+                            {t('connectorRuns.actions.refresh')}
                           </Button>
                           <Button type="button" variant="outline" size="sm" onClick={() => onToggleExpandedConnectorRun(expandedConnectorRunId)}>
-                            清除定位
+                            {t("connectorRuns.location.clear")}
                           </Button>
                         </div>
                       </div>)}
                   </div>) : null}
                 {visibleConnectorRuns.map((run) => {
-                        const badge = getConnectorRunBadge(run.status);
+                        const badge = getConnectorRunBadge(run.status, t);
                         const status = String(run.status || '').toLowerCase();
                         const stats = run.stats ?? {};
                         const created = Number(stats.created || 0);
@@ -559,7 +571,7 @@ export function KnowledgeSettingsPanel({
                         const isActive = status === 'pending' || status === 'running';
                         const canRetryFailed = !isActive && failed > 0;
                         const connectorInfo = connectorInfoById[String(run.connector_id || '').toLowerCase()];
-                        const syncCapabilities = formatConnectorSyncCapabilities(connectorInfo);
+                        const syncCapabilities = formatConnectorSyncCapabilities(connectorInfo, t);
                         const supportsResume = Boolean(connectorInfo?.supports_resume);
                         const hasRemainingResumeWork = totalItems > 0 ? totalItems > processedItems : processedItems > 0;
                         const canResume = !isActive &&
@@ -572,62 +584,62 @@ export function KnowledgeSettingsPanel({
                         const aclDocsTotal = Number(acl?.documents_total || 0);
                         const aclModeRaw = String(acl?.mode || '').trim();
                         const aclMode = aclModeRaw ? aclModeRaw.toLowerCase() : '';
-                        const aclModeLabel = aclMode ? formatAclModeLabel(aclMode) : null;
+                        const aclModeLabel = aclMode ? formatAclModeLabel(aclMode, t) : null;
                         const aclMemberRange = formatAclCountRange(acl?.partial_member_count_min, acl?.partial_member_count_max);
                         const aclGroupRange = formatAclCountRange(acl?.partial_group_count_min, acl?.partial_group_count_max);
-                        const aclBreakdown = aclMode === 'mixed' ? formatAclModeBreakdown(acl?.access_mode_counts) : null;
+                        const aclBreakdown = aclMode === 'mixed' ? formatAclModeBreakdown(acl?.access_mode_counts, t) : null;
                         const aclHasAllowlist = Number(acl?.partial_members_doc_count || 0) > 0 || aclMemberRange !== null || aclGroupRange !== null;
                         return (<div key={run.id} id={`connector-run-${run.id}`} className={cn('rounded-xl border border-border/60 bg-background/60 p-4 scroll-mt-6', expandedConnectorRunId === run.id && 'ring-1 ring-primary/30')}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <StatusBadge status={badge.status} label={badge.label} dense/>
-                            <button type="button" className="text-xs font-mono text-muted-foreground truncate hover:text-foreground underline underline-offset-4" onClick={() => detachPromise(copyText(run.id, '已复制 run_id'))} title="点击复制 run_id">
+                            <button type="button" className="text-xs font-mono text-muted-foreground truncate hover:text-foreground underline underline-offset-4" onClick={() => detachPromise(copyText(run.id, t('toasts.copyRunId')))} title={t('connectorRuns.actions.copyRunIdTitle')}>
                               {run.id}
                             </button>
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
-                            {formatDate(run.created_at)} · {run.connector_id} · dataset {run.dataset_id || '-'}
+                            {formatDate(run.created_at)} · {run.connector_id} · {t('connectorRuns.datasetLabel')} {run.dataset_id || '-'}
                             {durationLabel ? (<>
-                                <span className="text-muted-foreground/40">{' · 耗时 '}</span>
+                                <span className="text-muted-foreground/40">{` · ${t('connectorRuns.durationLabel')} `}</span>
                                 <span className="font-mono tabular-nums">{durationLabel}</span>
                               </>) : null}
                           </div>
                           <div className="mt-2 text-xs text-foreground/80">
-                            created <span className="font-mono">{created}</span> · failed{' '}
+                            {t('connectorRuns.metrics.created')} <span className="font-mono">{created}</span> · {t('connectorRuns.metrics.failed')}{' '}
                             <span className={cn('font-mono', failed > 0 && 'text-destructive')}>{failed}</span>
                           </div>
 
                           {syncCapabilities ? (<div className="mt-1 text-xs text-muted-foreground">
-                              sync <span className="font-mono">{syncCapabilities}</span>
+                              {t('connectorRuns.metrics.sync')} <span className="font-mono">{syncCapabilities}</span>
                             </div>) : null}
 
                           {aclModeLabel && aclDocsTotal > 0 ? (<div className="mt-1 text-xs text-muted-foreground">
-                              ACL <span className="font-mono">{aclModeLabel}</span>
+                              {t('connectorRuns.metrics.acl')} <span className="font-mono">{aclModeLabel}</span>
                               {aclBreakdown ? <span className="text-muted-foreground/60">（{aclBreakdown}）</span> : null}
-                              <span className="text-muted-foreground/40">{' · 文档 '}</span>
+                              <span className="text-muted-foreground/40">{` · ${t('connectorRuns.metrics.documents')} `}</span>
                               <span className="font-mono tabular-nums">{aclDocsTotal}</span>
                               {aclHasAllowlist ? (<>
-                                  <span className="text-muted-foreground/40">{' · 成员 '}</span>
-                                  <span className="font-mono tabular-nums">{aclMemberRange ?? '—'}</span>
-                                  <span className="text-muted-foreground/40">{' · 组 '}</span>
-                                  <span className="font-mono tabular-nums">{aclGroupRange ?? '—'}</span>
+                                  <span className="text-muted-foreground/40">{` · ${t('connectorRuns.metrics.members')} `}</span>
+                                  <span className="font-mono tabular-nums">{aclMemberRange ?? t('connectorRuns.emptyValue')}</span>
+                                  <span className="text-muted-foreground/40">{` · ${t('connectorRuns.metrics.groups')} `}</span>
+                                  <span className="font-mono tabular-nums">{aclGroupRange ?? t('connectorRuns.emptyValue')}</span>
                                 </>) : null}
                             </div>) : null}
 
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <Button type="button" variant="outline" size="sm" className="h-7 px-2 gap-1.5" onClick={() => {
                                 const url = new URL(`/knowledge?tab=settings&run=${run.id}`, globalThis.window.location.origin).toString();
-                                detachPromise(copyText(url, '已复制任务链接'));
+                                detachPromise(copyText(url, t('toasts.copyTaskLink')));
                             }}>
                               <Link2 className="h-3.5 w-3.5"/>
-                              复制链接
+                              {t("connectorRuns.actions.copyLink")}
                             </Button>
                           </div>
 
                           {totalItems > 0 ? (<div className="mt-2">
                               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>progress</span>
+                                <span>{t('connectorRuns.metrics.progress')}</span>
                                 <span className="font-mono">
                                   {processedItems}/{totalItems} ({progressPct}%)
                                 </span>
@@ -640,7 +652,7 @@ export function KnowledgeSettingsPanel({
                           {run.error_message ? (<div className="mt-2 text-xs text-destructive">{run.error_message}</div>) : null}
 
                           {errorGroups.length > 0 ? (<div className="mt-2 text-xs text-muted-foreground">
-                              <div className="font-medium text-foreground/80">错误聚类：</div>
+                              <div className="font-medium text-foreground/80">{t('connectorRuns.errorGroupsTitle')}</div>
                               <div className="mt-1 space-y-1">
                                 {errorGroups.slice(0, 3).map((g) => (<div key={`${String(g?.code || 'error')}-${String(g?.error || '')}`} className="font-mono truncate">
                                     [{String(g?.code || 'error')}] x{Number(g?.count || 0)} —{' '}
@@ -650,7 +662,7 @@ export function KnowledgeSettingsPanel({
                             </div>) : null}
 
                           {errors.length > 0 ? (<div className="mt-2 text-xs text-muted-foreground">
-                              <div className="font-medium text-foreground/80">错误示例：</div>
+                              <div className="font-medium text-foreground/80">{t('connectorRuns.errorSamplesTitle')}</div>
                               <div className="mt-1 space-y-1">
                                 {errors.slice(0, 3).map((e) => (<div key={`${String(e?.url || '')}-${String(e?.code || '')}-${String(e?.error || '')}`} className="font-mono truncate">
                                     {String(e?.url || '').slice(0, 80)} — {e?.code ? `[${String(e.code)}] ` : ''}
@@ -662,18 +674,18 @@ export function KnowledgeSettingsPanel({
                           {hasDocs ? (<div className="mt-3">
                               <button type="button" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground/80" onClick={() => onToggleExpandedConnectorRun(run.id)}>
                                 {expandedConnectorRunId === run.id ? (<ChevronDown className="h-4 w-4"/>) : (<ChevronRight className="h-4 w-4"/>)}
-                                产物列表（{documents.length}）
+                                {t('connectorRuns.documentList.toggle', { count: documents.length })}
                               </button>
 
                               {expandedConnectorRunId === run.id ? (<div className="mt-2 rounded-lg border border-border/60 bg-background/40 p-3">
 	                                    <div className="flex items-center justify-between gap-2">
-	                                      <div className="text-xs font-medium text-foreground/80">Documents</div>
+	                                      <div className="text-xs font-medium text-foreground/80">{t('connectorRuns.documentList.title')}</div>
 	                                      <Button type="button" variant="outline" size="sm" className="h-7 px-2 gap-1.5" onClick={() => {
 	                                        const ids = collectConnectorRunDocumentIds(documents);
-	                                        detachPromise(copyText(ids.join('\n'), '已复制文档 ID 列表'));
+	                                        detachPromise(copyText(ids.join('\n'), t('toasts.copyDocumentIds')));
 	                                    }}>
 	                                        <Copy className="h-3.5 w-3.5"/>
-	                                        复制 IDs
+	                                        {t('connectorRuns.actions.copyIds')}
                                     </Button>
                                   </div>
                                   <div className="mt-2 space-y-1">
@@ -690,7 +702,7 @@ export function KnowledgeSettingsPanel({
                                               </div>) : null}
                                           </div>
                                           <div className="shrink-0 text-[10px] font-mono rounded-full border border-border/60 bg-background px-2 py-0.5">
-                                            {String(d?.status || 'created')}
+                                            {String(d?.status || t('connectorRuns.documentList.defaultStatus'))}
                                           </div>
                                         </div>
                                       )
@@ -708,20 +720,20 @@ export function KnowledgeSettingsPanel({
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" className="gap-2">
                                   <Trash2 className="w-4 h-4"/>
-                                  取消
+                                  {t('connectorRuns.actions.cancel')}
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>取消导入任务？</AlertDialogTitle>
+                                  <AlertDialogTitle>{t('connectorRuns.dialogs.cancel.title')}</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    将标记任务为 cancelled（best-effort）。仅影响后端后续处理，不会删除已产出的文档。run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>
+                                    {t('connectorRuns.dialogs.cancel.description')} <span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>返回</AlertDialogCancel>
+                                  <AlertDialogCancel>{t('connectorRuns.dialogs.cancel.back')}</AlertDialogCancel>
                                   <AlertDialogAction onClick={() => detachPromise(onCancelConnectorRun(run.id))}>
-                                    取消任务
+                                    {t('connectorRuns.dialogs.cancel.confirm')}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -731,19 +743,19 @@ export function KnowledgeSettingsPanel({
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" className="gap-2">
                                   <Play className="w-4 h-4"/>
-                                  续跑
+                                  {t('connectorRuns.actions.resume')}
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>续跑导入任务？</AlertDialogTitle>
+                                  <AlertDialogTitle>{t('connectorRuns.dialogs.resume.title')}</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    将从上次 cursor 位置创建一个新的导入任务（best-effort）。run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>
+                                    {t('connectorRuns.dialogs.resume.description')} <span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>返回</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => detachPromise(onResumeConnectorRun(run.id))}>续跑</AlertDialogAction>
+                                  <AlertDialogCancel>{t('connectorRuns.dialogs.resume.back')}</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => detachPromise(onResumeConnectorRun(run.id))}>{t('connectorRuns.dialogs.resume.confirm')}</AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
                             </AlertDialog>) : null}
@@ -752,20 +764,20 @@ export function KnowledgeSettingsPanel({
                               <AlertDialogTrigger asChild>
                                 <Button variant="outline" className="gap-2">
                                   <RotateCcw className="w-4 h-4"/>
-                                  只重试失败
+                                  {t('connectorRuns.actions.retryFailed')}
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>只重试失败项？</AlertDialogTitle>
+                                  <AlertDialogTitle>{t('connectorRuns.dialogs.retry.title')}</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    将创建一个新的导入任务（best-effort），仅处理失败项。run_id：<span className="font-mono">{run.id.slice(0, 8)}</span>
+                                    {t('connectorRuns.dialogs.retry.description')} <span className="font-mono">{run.id.slice(0, 8)}</span>
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>返回</AlertDialogCancel>
+                                  <AlertDialogCancel>{t('connectorRuns.dialogs.retry.back')}</AlertDialogCancel>
                                   <AlertDialogAction onClick={() => detachPromise(onRetryFailedConnectorRun(run.id))}>
-                                    创建重试任务
+                                    {t('connectorRuns.dialogs.retry.confirm')}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -783,9 +795,9 @@ export function KnowledgeSettingsPanel({
 
           <div className="space-y-3">
             <div>
-              <div className="text-sm font-semibold text-foreground">危险操作</div>
+              <div className="text-sm font-semibold text-foreground">{t('dangerZone.title')}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                仅用于管理员生命周期治理：批量删除数据集内的文档（不删除数据集本身）。默认 <span className="font-mono">dry_run</span> 预览。
+                {t('dangerZone.description')} <span className="font-mono">dry_run</span> {t('dangerZone.descriptionSuffix')}
               </p>
             </div>
 
@@ -804,24 +816,24 @@ export function KnowledgeSettingsPanel({
                   variant="outline"
                   className="gap-2"
                   disabled={!selectedDatasetId || purgeWorking}
-                  title={selectedDatasetId ? undefined : '请先选择一个数据集'}
+                  title={selectedDatasetId ? undefined : t('dangerZone.selectDatasetTitle')}
                 >
                   <Trash2 className="w-4 h-4" />
-                  清空数据集文档
+                  {t("dangerZone.trigger")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>清空数据集文档？</AlertDialogTitle>
+                  <AlertDialogTitle>{t('dangerZone.dialog.title')}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    将调用 <span className="font-mono">POST /api/v1/datasets/{'{id}'}/purge</span>，每次最多删除{' '}
-                    <span className="font-mono">max_delete</span> 条。若数据集有扫描任务（pending/running），后端会返回 409。
+                    {t('dangerZone.dialog.descriptionPrefix')} <span className="font-mono">POST /api/v1/datasets/{'{id}'}/purge</span>{' '}
+                    {t('dangerZone.dialog.descriptionMiddle')} <span className="font-mono">max_delete</span> {t('dangerZone.dialog.descriptionSuffix')}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
 
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <div className="text-xs text-muted-foreground shrink-0">max_delete</div>
+                    <div className="text-xs text-muted-foreground shrink-0">{t('dangerZone.maxDelete')}</div>
                     <Input
                       type="number"
                       className="h-9"
@@ -838,25 +850,25 @@ export function KnowledgeSettingsPanel({
                       disabled={purgeWorking}
                       onClick={() => detachPromise(runDatasetPurge({ dry_run: true }))}
                     >
-                      预览（dry-run）
+                      {t('dangerZone.preview')}
                     </Button>
                   </div>
 
                   {purgePreview ? (
                     <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-xs">
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-muted-foreground">preview</div>
+                        <div className="text-muted-foreground">{t('dangerZone.previewSummaryLabel')}</div>
                         <div className="font-mono tabular-nums text-foreground/90">
-                          eligible={String(purgePreview.eligible ?? '—')} deleted={String(purgePreview.deleted ?? 0)}
+                          eligible={String(purgePreview.eligible ?? t('connectorRuns.emptyValue'))} deleted={String(purgePreview.deleted ?? 0)}
                         </div>
                       </div>
                       <div className="mt-1 text-[11px] text-muted-foreground">
-                        dataset_id: <span className="font-mono">{String(purgePreview.dataset_id || selectedDatasetId).slice(0, 8)}</span>
+                        {t('dangerZone.datasetLabel')}: <span className="font-mono">{String(purgePreview.dataset_id || selectedDatasetId).slice(0, 8)}</span>
                       </div>
                     </div>
                   ) : (
                     <div className="text-xs text-muted-foreground">
-                      建议先点击“预览（dry-run）”确认 eligible 数量，再执行清空。
+                      {t('dangerZone.previewHint')}
                     </div>
                   )}
 
@@ -868,12 +880,12 @@ export function KnowledgeSettingsPanel({
                 </div>
 
                 <AlertDialogFooter>
-                  <AlertDialogCancel disabled={purgeWorking}>返回</AlertDialogCancel>
+                  <AlertDialogCancel disabled={purgeWorking}>{t('dangerZone.cancel')}</AlertDialogCancel>
                   <AlertDialogAction
                     disabled={purgeWorking}
                     onClick={() => detachPromise(runDatasetPurge({ dry_run: false }))}
                   >
-                    确认清空
+                    {t('dangerZone.confirm')}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -884,7 +896,7 @@ export function KnowledgeSettingsPanel({
         <div className="p-6 bg-muted/20 border-t border-border/60 flex justify-end">
           <Button className="gap-2">
             <Settings className="w-4 h-4" />
-            保存所有更改
+            {t('actions.saveAll')}
           </Button>
         </div>
       </Panel>

@@ -8,7 +8,8 @@ describe('KnowledgeDocumentsPanel empty states', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-documents-panel.tsx'), 'utf8')
 
     expect(src).toContain('onSwitchToAllDatasets')
-    expect(src).toContain('切换到全部数据集')
-    expect(src).toContain('当前范围为 ${selectedDatasetLabel || selectedDatasetId}')
+    expect(src).toContain("useTranslations('KnowledgeDocumentsPanel')")
+    expect(src).toContain('t("empty.emptyDataset.actions.switchToAllDatasets")')
+    expect(src).toContain('t("empty.emptyDataset.description", {')
   })
 })

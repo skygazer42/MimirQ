@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { documentApi } from '@/lib/api'
@@ -15,13 +16,7 @@ import { useDocumentView } from '@/store/document-view'
 import { formatApiError } from '@/lib/api-errors'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-const STAGES = [
-    { key: 'queued', label: '排队' },
-    { key: 'parsing', label: '解析' },
-    { key: 'chunking', label: '切块' },
-    { key: 'embedding', label: '向量化' },
-    { key: 'completed', label: '完成' },
-]
+const STAGE_KEYS = ['queued', 'parsing', 'chunking', 'embedding', 'completed'] as const
 
 function displayPrimitive(value: unknown, fallback: string = '-'): string {
   if (typeof value === 'string') return value || fallback
@@ -31,7 +26,7 @@ function displayPrimitive(value: unknown, fallback: string = '-'): string {
 
 function inferStage(doc: Document): string {
   const raw = (doc.current_stage || '').toLowerCase()
-  if (STAGES.some((s) => s.key === raw)) return raw
+  if (STAGE_KEYS.some((key) => key === raw)) return raw
   if (doc.status === 'pending') return 'queued'
   if (doc.status === 'processing') return 'parsing'
   if (doc.status === 'completed') return 'completed'
@@ -56,6 +51,7 @@ export function IngestionDetailDialog({
   onOpenChange: (open: boolean) => void
   documentId: string | null
 }>) {
+  const t = useTranslations('IngestionDetailDialog')
   const { openDocument } = useDocumentView()
   const [isActing, setIsActing] = useState(false)
   const [diffFrom, setDiffFrom] = useState<string | null>(null)
@@ -104,7 +100,17 @@ export function IngestionDetailDialog({
   }, [versions, diffFrom, diffTo])
 
   const stageKey = doc ? inferStage(doc) : 'queued'
-  const activeIndex = Math.max(0, STAGES.findIndex((s) => s.key === stageKey))
+  const stages = useMemo(
+    () =>
+      STAGE_KEYS
+        .map((key) => ({ key }))
+        .map((stage) => ({
+          ...stage,
+          label: t(`stages.${stage.key}`),
+        })),
+    [t]
+  )
+  const activeIndex = Math.max(0, stages.findIndex((s) => s.key === stageKey))
 
   const runtime = useMemo(() => {
     if (!doc) return []
@@ -113,22 +119,22 @@ export function IngestionDetailDialog({
     const user = (meta.user ?? {}) as Record<string, unknown>
     const userTags = user.tags
     return [
-      { k: 'Document ID', v: doc.id },
-      { k: 'Dataset ID', v: doc.dataset_id || '-' },
-      { k: 'File', v: `${doc.file_type} · ${formatFileSize(doc.file_size)}` },
-      { k: 'Chunks', v: String(doc.chunk_count ?? '-') },
-      { k: 'Progress', v: `${doc.processing_progress ?? 0}%` },
-      { k: 'Stage', v: doc.current_stage || '-' },
-      { k: 'Updated', v: formatDate(doc.updated_at) },
-      { k: 'Parser', v: displayPrimitive(meta.parser_backend) },
-      { k: 'Chunker', v: displayPrimitive(meta.chunk_strategy) },
-      { k: 'Pipeline Hash', v: displayPrimitive(meta.pipeline_hash) },
-      { k: 'Task ID', v: displayPrimitive(meta.task_id) },
-      { k: 'KG Task ID', v: displayPrimitive(meta.kg_task_id) },
-      { k: 'User Tags', v: Array.isArray(userTags) ? userTags.join(', ') || '-' : displayPrimitive(userTags) },
-      { k: 'Pipeline', v: typeof pipeline === 'object' ? JSON.stringify(pipeline) : displayPrimitive(pipeline) },
+      { k: t('runtime.documentId'), v: doc.id },
+      { k: t('runtime.datasetId'), v: doc.dataset_id || '-' },
+      { k: t('runtime.file'), v: `${doc.file_type} · ${formatFileSize(doc.file_size)}` },
+      { k: t('runtime.chunks'), v: String(doc.chunk_count ?? '-') },
+      { k: t('runtime.progress'), v: `${doc.processing_progress ?? 0}%` },
+      { k: t('runtime.stage'), v: doc.current_stage || '-' },
+      { k: t('runtime.updated'), v: formatDate(doc.updated_at) },
+      { k: t('runtime.parser'), v: displayPrimitive(meta.parser_backend) },
+      { k: t('runtime.chunker'), v: displayPrimitive(meta.chunk_strategy) },
+      { k: t('runtime.pipelineHash'), v: displayPrimitive(meta.pipeline_hash) },
+      { k: t('runtime.taskId'), v: displayPrimitive(meta.task_id) },
+      { k: t('runtime.kgTaskId'), v: displayPrimitive(meta.kg_task_id) },
+      { k: t('runtime.userTags'), v: Array.isArray(userTags) ? userTags.join(', ') || '-' : displayPrimitive(userTags) },
+      { k: t('runtime.pipeline'), v: typeof pipeline === 'object' ? JSON.stringify(pipeline) : displayPrimitive(pipeline) },
     ]
-  }, [doc])
+  }, [doc, t])
 
   const canCancel = Boolean(doc?.status === 'pending' || doc?.status === 'processing')
   const canRetry = Boolean(doc?.status === 'failed' || doc?.status === 'cancelled' || doc?.status === 'quarantined')
@@ -147,7 +153,7 @@ export function IngestionDetailDialog({
       })
       setDiff(data)
     } catch (err: any) {
-      setDiffError(formatApiError(err, '对比失败'))
+      setDiffError(formatApiError(err, t("errors.diffFailed")))
       setDiff(null)
     } finally {
       setDiffLoading(false)
@@ -159,10 +165,10 @@ export function IngestionDetailDialog({
     setIsActing(true)
     try {
       await documentApi.cancel(doc.id)
-      toast.success('已取消入库任务')
+      toast.success(t('toasts.cancelSuccess'))
       await refetch()
     } catch (err: any) {
-      toast.error(formatApiError(err, '取消失败'))
+      toast.error(formatApiError(err, t('errors.cancelFailed')))
     } finally {
       setIsActing(false)
     }
@@ -173,10 +179,10 @@ export function IngestionDetailDialog({
     setIsActing(true)
     try {
       await documentApi.retry(doc.id, force ? { force: true } : undefined)
-      toast.success(force ? '已触发重新入库（强制）' : '已触发重新入库')
+      toast.success(force ? t('toasts.retryForced') : t('toasts.retry'))
       await refetch()
     } catch (err: any) {
-      toast.error(formatApiError(err, '重试失败'))
+      toast.error(formatApiError(err, t('errors.retryFailed')))
     } finally {
       setIsActing(false)
     }
@@ -188,10 +194,10 @@ export function IngestionDetailDialog({
 
         <DialogHeader className="px-8 pt-8 pb-6 border-b border-border/60 bg-card relative z-10">
           <DialogTitle className="flex items-center justify-between gap-3">
-            <span className="truncate text-xl font-bold text-foreground">{doc?.filename || '入库详情'}</span>
+            <span className="truncate text-xl font-bold text-foreground">{doc?.filename || t("header.fallbackTitle")}</span>
             {doc && (
               <Badge variant={statusBadgeVariant(doc.status)} className="shrink-0">
-                {doc.status}
+                {t(`status.${doc.status}`)}
               </Badge>
             )}
           </DialogTitle>
@@ -207,9 +213,9 @@ export function IngestionDetailDialog({
           <div className="m-8 rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 relative z-10">
             <div className="flex items-center gap-2 mb-2">
               <AlertCircle className="w-5 h-5 text-red-500" />
-              <span className="font-bold">加载失败</span>
+              <span className="font-bold">{t('errors.loadTitle')}</span>
             </div>
-            <p>无法获取文档详情，请重试。</p>
+            <p>{t('errors.loadDescription')}</p>
             <div className="mt-4">
               <Button
                 size="sm"
@@ -217,7 +223,7 @@ export function IngestionDetailDialog({
                 className="bg-card border-destructive/30 text-destructive hover:bg-destructive/10"
                 onClick={() => refetch()}
               >
-                重新加载
+                {t('actions.reload')}
               </Button>
             </div>
           </div>
@@ -229,15 +235,15 @@ export function IngestionDetailDialog({
             {/* Pipeline Stage Card */}
             <div className="rounded-2xl border border-border bg-card shadow-sm p-6 relative overflow-hidden">
               <div className="flex items-center justify-between gap-3 mb-6">
-                <div className="text-sm font-bold uppercase text-foreground">Processing Pipeline</div>
+                <div className="text-sm font-bold uppercase text-foreground">{t('pipeline.title')}</div>
                 <div className="rounded-md bg-muted px-2 py-1 text-xs font-mono tabular-nums text-muted-foreground">
-                  Progress: {doc.processing_progress ?? 0}%
+                  {t('pipeline.progress')}: {doc.processing_progress ?? 0}%
                 </div>
               </div>
 
               <div className="relative z-10">
                 <div className="grid grid-cols-5 gap-4">
-                  {STAGES.map((s, idx) => {
+                  {stages.map((s, idx) => {
                     const isDone = doc.status === 'completed' ? true : idx < activeIndex
                     const isActive = doc.status !== 'completed' && idx === activeIndex
                     const isFailed = (doc.status === 'failed' || doc.status === 'quarantined') && isActive
@@ -312,7 +318,7 @@ export function IngestionDetailDialog({
                   doc.status === 'quarantined' ? "text-amber-700" : "text-red-700"
                 )}>
                   <AlertCircle className="w-4 h-4" />
-                  {doc.status === 'quarantined' ? '隔离原因' : '错误信息'}
+                  {doc.status === 'quarantined' ? t('errors.quarantineReason') : t('errors.errorMessage')}
                 </div>
 	                <pre className={cn(
 	                  "whitespace-pre-wrap break-words rounded-xl bg-card border p-4 text-xs font-mono leading-relaxed shadow-sm",
@@ -325,7 +331,7 @@ export function IngestionDetailDialog({
 
             {/* Runtime Info - Ticket Style */}
             <div className="rounded-2xl border border-border bg-muted/30 p-6">
-              <div className="mb-4 text-sm font-semibold text-foreground">Runtime Details</div>
+              <div className="mb-4 text-sm font-semibold text-foreground">{t('runtime.title')}</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {runtime.map((item) => (
                   <div key={item.k} className="bg-card rounded-xl border border-border p-3 shadow-sm hover:shadow-md transition-shadow duration-200 motion-reduce:transition-none">
@@ -339,7 +345,7 @@ export function IngestionDetailDialog({
             {/* Pipeline Versions Diff */}
             <div className="rounded-2xl border border-border bg-card shadow-sm p-6">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold text-foreground">版本对比（Pipeline Diff）</div>
+                <div className="text-sm font-semibold text-foreground">{t('versions.title')}</div>
                 <Button
                   size="sm"
                   variant="outline"
@@ -348,25 +354,25 @@ export function IngestionDetailDialog({
                   onClick={() => refetchVersions()}
                 >
                   {versionsLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
-                  刷新版本
+                  {t('actions.refreshVersions')}
                 </Button>
               </div>
 
               {versionsError ? (
-                <div className="mt-3 text-xs text-destructive">加载版本列表失败</div>
+                <div className="mt-3 text-xs text-destructive">{t('errors.loadVersions')}</div>
               ) : null}
 
               <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                 <div className="space-y-1">
-                  <div className="text-[11px] font-semibold text-muted-foreground">From</div>
+                  <div className="text-[11px] font-semibold text-muted-foreground">{t('versions.fromLabel')}</div>
                   <Select value={diffFrom || ''} onValueChange={(v) => setDiffFrom(v || null)}>
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="选择版本" />
+                      <SelectValue placeholder={t('versions.selectVersion')} />
                     </SelectTrigger>
                     <SelectContent>
                       {(versions?.items || []).map((it) => (
                         <SelectItem key={it.pipeline_hash} value={it.pipeline_hash}>
-                          {it.pipeline_hash} {it.active ? '（active）' : ''}
+                          {it.pipeline_hash} {it.active ? `（${t('versions.activeTag')}）` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -374,15 +380,15 @@ export function IngestionDetailDialog({
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-[11px] font-semibold text-muted-foreground">To</div>
+                  <div className="text-[11px] font-semibold text-muted-foreground">{t('versions.toLabel')}</div>
                   <Select value={diffTo || ''} onValueChange={(v) => setDiffTo(v || null)}>
                     <SelectTrigger className="h-9">
-                      <SelectValue placeholder="选择版本" />
+                      <SelectValue placeholder={t('versions.selectVersion')} />
                     </SelectTrigger>
                     <SelectContent>
                       {(versions?.items || []).map((it) => (
                         <SelectItem key={it.pipeline_hash} value={it.pipeline_hash}>
-                          {it.pipeline_hash} {it.active ? '（active）' : ''}
+                          {it.pipeline_hash} {it.active ? `（${t('versions.activeTag')}）` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -391,7 +397,7 @@ export function IngestionDetailDialog({
 
                 <Button className="rounded-full" disabled={diffLoading || !diffFrom || !diffTo} onClick={handleDiff}>
                   {diffLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
-                  对比
+                  {t('actions.compare')}
                 </Button>
               </div>
 
@@ -402,11 +408,11 @@ export function IngestionDetailDialog({
               {diff ? (
                 <div className="mt-4 grid grid-cols-2 md:grid-cols-5 gap-3">
                   {[
-                    { k: 'From Chunks', v: diff.from_chunk_count },
-                    { k: 'To Chunks', v: diff.to_chunk_count },
-                    { k: 'Unchanged', v: diff.unchanged_chunks },
-                    { k: 'Added', v: diff.added_chunks },
-                    { k: 'Removed', v: diff.removed_chunks },
+                    { k: t('versions.metrics.fromChunks'), v: diff.from_chunk_count },
+                    { k: t('versions.metrics.toChunks'), v: diff.to_chunk_count },
+                    { k: t('versions.metrics.unchanged'), v: diff.unchanged_chunks },
+                    { k: t('versions.metrics.added'), v: diff.added_chunks },
+                    { k: t('versions.metrics.removed'), v: diff.removed_chunks },
                   ].map((x) => (
                     <div key={x.k} className="rounded-xl border border-border bg-muted/20 p-3">
                       <div className="text-[10px] font-semibold text-muted-foreground">{x.k}</div>
@@ -416,7 +422,7 @@ export function IngestionDetailDialog({
 
                   {diff.changed_transforms?.length ? (
                     <div className="md:col-span-5 rounded-xl border border-border bg-background p-3">
-                      <div className="text-[10px] font-semibold text-muted-foreground">Changed Transforms</div>
+                      <div className="text-[10px] font-semibold text-muted-foreground">{t('versions.metrics.changedTransforms')}</div>
                       <div className="mt-2 text-xs font-mono text-foreground break-words">
                         {diff.changed_transforms.join(', ')}
                       </div>
@@ -425,7 +431,7 @@ export function IngestionDetailDialog({
                 </div>
               ) : (
                 <div className="mt-3 text-[11px] text-muted-foreground">
-                  说明：对比基于 chunk <span className="font-mono">content_hash</span> 的多重集差异；不会返回切片文本。
+                  {t('versions.diffHintPrefix')} <span className="font-mono">content_hash</span> {t('versions.diffHintSuffix')}
                 </div>
               )}
             </div>
@@ -437,21 +443,21 @@ export function IngestionDetailDialog({
                 disabled={!doc || isActing}
                 onClick={() => doc && openDocument(doc.id)}
               >
-                查看解析内容
+                {t('actions.viewParsedContent')}
               </Button>
               {canCancel && (
                 <Button variant="destructive" className="rounded-full" disabled={isActing} onClick={handleCancel}>
-                  取消任务
+                  {t('actions.cancelTask')}
                 </Button>
               )}
               {canRetry && (
                 <Button className="rounded-full" disabled={isActing} onClick={() => handleRetry(false)}>
-                  重试入库
+                  {t("actions.retry")}
                 </Button>
               )}
               {canForceRetry && (
                 <Button variant="outline" className="rounded-full hover:border-destructive/30 hover:text-destructive" disabled={isActing} onClick={() => handleRetry(true)}>
-                  强制重跑
+                  {t('actions.forceRetry')}
                 </Button>
               )}
             </div>

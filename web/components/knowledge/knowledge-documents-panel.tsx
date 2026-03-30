@@ -3,6 +3,7 @@
 import type { Document } from '@/types'
 
 import { Activity, AlertTriangle, Database, Eye, Filter, Loader2, MoreVertical, Trash2, Upload } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -41,6 +42,7 @@ import { getFileTypeMeta } from '@/components/knowledge/file-type'
 type ViewMode = 'grid' | 'list'
 type DocSortKey = 'created_at' | 'filename' | 'file_size'
 type DocSortDir = 'asc' | 'desc'
+type TranslateFn = (key: string, values?: Record<string, any>) => string
 
 type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
@@ -96,20 +98,20 @@ type KnowledgeDocumentsPanelProps = {
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
 }
 
-function getStatusBadge(status: string): { status: StatusBadgeStatus; label: string } {
+function getStatusBadge(status: string, t: TranslateFn): { status: StatusBadgeStatus; label: string } {
   switch (status) {
     case 'completed':
-      return { status: 'completed', label: '已就绪' }
+      return { status: 'completed', label: t('status.completed') }
     case 'failed':
-      return { status: 'failed', label: '失败' }
+      return { status: 'failed', label: t('status.failed') }
     case 'quarantined':
-      return { status: 'quarantined', label: '已隔离' }
+      return { status: 'quarantined', label: t('status.quarantined') }
     case 'processing':
-      return { status: 'processing', label: '处理中' }
+      return { status: 'processing', label: t('status.processing') }
     case 'pending':
-      return { status: 'pending', label: '等待' }
+      return { status: 'pending', label: t('status.pending') }
     default:
-      return { status: 'pending', label: '等待' }
+      return { status: 'pending', label: t('status.pending') }
   }
 }
 
@@ -172,6 +174,7 @@ export function KnowledgeDocumentsPanel({
   deleteDocument,
   handleFileUpload,
 }: Readonly<KnowledgeDocumentsPanelProps>) {
+  const t = useTranslations('KnowledgeDocumentsPanel')
   const [singleDeleteDoc, setSingleDeleteDoc] = useState<Document | null>(null)
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
   const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
@@ -185,23 +188,31 @@ export function KnowledgeDocumentsPanel({
   const docsTablePaddingBottom = docsTableVirtualRows.length
     ? docsTableVirtualizer.getTotalSize() - docsTableVirtualRows[docsTableVirtualRows.length - 1].end
     : 0
+  const sortOptions = [
+    { value: 'created_at:desc', label: t('sort.createdDesc') },
+    { value: 'created_at:asc', label: t('sort.createdAsc') },
+    { value: 'filename:asc', label: t('sort.filenameAsc') },
+    { value: 'filename:desc', label: t('sort.filenameDesc') },
+    { value: 'file_size:desc', label: t('sort.fileSizeDesc') },
+    { value: 'file_size:asc', label: t('sort.fileSizeAsc') },
+  ]
 
   const singleDeleteTitle = useMemo(() => {
-    if (!singleDeleteDoc) return '确认删除'
-    return `删除文档？`
-  }, [singleDeleteDoc])
+    if (!singleDeleteDoc) return t('singleDelete.titleDefault')
+    return t('singleDelete.title')
+  }, [singleDeleteDoc, t])
 
   const singleDeleteDescription = useMemo(() => {
     if (!singleDeleteDoc) return null
     return (
       <div className="space-y-2">
         <div>
-          将删除文档 <span className="font-mono tabular-nums">{singleDeleteDoc.filename}</span>，此操作不可撤销。
+          {t('singleDelete.description', { filename: singleDeleteDoc.filename })}
         </div>
         <div className="text-xs text-muted-foreground font-mono break-all">{singleDeleteDoc.id}</div>
       </div>
     )
-  }, [singleDeleteDoc])
+  }, [singleDeleteDoc, t])
 
   const confirmSingleDelete = useCallback(async () => {
     const doc = singleDeleteDoc
@@ -212,15 +223,15 @@ export function KnowledgeDocumentsPanel({
     setSingleDeleteError(null)
     try {
       await deleteDocument(doc.id)
-      toast.success('已删除文档')
+      toast.success(t("toasts.deleteSuccess"))
       setSingleDeleteDoc(null)
     } catch (err: any) {
       console.error('Delete document failed:', err)
-      setSingleDeleteError(formatApiError(err, '删除失败'))
+      setSingleDeleteError(formatApiError(err, t('singleDelete.errorFallback')))
     } finally {
       setSingleDeleteWorking(false)
     }
-  }, [deleteDocument, singleDeleteDoc, singleDeleteWorking])
+  }, [deleteDocument, singleDeleteDoc, singleDeleteWorking, t])
 
   const requestSingleDelete = useCallback((doc: Document) => {
     setSingleDeleteError(null)
@@ -230,15 +241,15 @@ export function KnowledgeDocumentsPanel({
   const copyText = useCallback(async (text: string, okMsg: string) => {
     try {
       if (!navigator.clipboard?.writeText) {
-        toast.error('复制失败：浏览器不支持 Clipboard API')
+        toast.error(t('toasts.copyUnsupported'))
         return
       }
       await navigator.clipboard.writeText(text)
       toast.success(okMsg)
     } catch {
-      toast.error('复制失败')
+      toast.error(t('toasts.copyFailed'))
     }
-  }, [])
+  }, [t])
 
   const buildCopyHandler = useCallback(
     (text: string, okMsg: string) => () => detachPromise(copyText(text, okMsg)),
@@ -256,7 +267,7 @@ export function KnowledgeDocumentsPanel({
   )
 
   const renderGridDocCard = (doc: Document) => {
-    const badge = getStatusBadge(doc.status)
+    const badge = getStatusBadge(doc.status, t)
     return (
       <div key={doc.id}>
         <DocumentCard
@@ -265,6 +276,7 @@ export function KnowledgeDocumentsPanel({
           statusBarClassName={statusBarClassName(badge.status)}
           onRequestDelete={requestSingleDelete}
           copyText={copyText}
+          t={t}
           selected={selectedSet.has(doc.id)}
           onToggleSelect={buildToggleDocSelectionHandler(doc.id)}
         />
@@ -302,7 +314,7 @@ export function KnowledgeDocumentsPanel({
               onClick={() => setSingleDeleteDoc(null)}
               disabled={singleDeleteWorking}
             >
-              取消
+              {t('actions.cancel')}
             </Button>
             <Button
               type="button"
@@ -310,7 +322,7 @@ export function KnowledgeDocumentsPanel({
               onClick={() => detachPromise(confirmSingleDelete())}
               disabled={singleDeleteWorking || !singleDeleteDoc}
             >
-              {singleDeleteWorking ? '删除中…' : '确认删除'}
+              {singleDeleteWorking ? t('actions.deleting') : t('actions.confirmDelete')}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -320,41 +332,43 @@ export function KnowledgeDocumentsPanel({
     if (isLoading && documents.length === 0) {
         return (<div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
           <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none mb-3"/>
-          <p className="text-sm">正在加载文档库...</p>
+          <p className="text-sm">{t('loading')}</p>
         </div>);
     }
     else if (documents.length === 0 && hasActiveFilters) {
             return (<div className="py-10">
-          <EmptyState icon={Filter} title="未找到匹配的文档" description={<span className="text-muted-foreground">尝试清空筛选条件，重新查看范围内的全部文档。</span>} className="bg-transparent shadow-none">
+          <EmptyState icon={Filter} title={t("empty.filtered.title")} description={<span className="text-muted-foreground">{t('empty.filtered.description')}</span>} className="bg-transparent shadow-none">
             <Button type="button" variant="outline" className="rounded-xl" onClick={onClearFilters}>
-              清空筛选
+              {t("actions.clearFilters")}
             </Button>
           </EmptyState>
         </div>);
         }
         else if (documents.length === 0 && selectedDatasetId && onSwitchToAllDatasets) {
                 return (<div className="py-10">
-          <EmptyState icon={Database} title="该数据集暂无文档" description={<span className="text-muted-foreground">
-                {`当前范围为 ${selectedDatasetLabel || selectedDatasetId}。可切换到全部数据集查看其他文档，或通过顶部“导入/新增”上传/导入。`}
+          <EmptyState icon={Database} title={t('empty.emptyDataset.title')} description={<span className="text-muted-foreground">
+                {t("empty.emptyDataset.description", {
+                  dataset: selectedDatasetLabel || selectedDatasetId,
+                })}
               </span>} className="bg-transparent shadow-none">
             <Button type="button" variant="outline" className="rounded-xl" onClick={onSwitchToAllDatasets}>
-              切换到全部数据集
+              {t("empty.emptyDataset.actions.switchToAllDatasets")}
             </Button>
           </EmptyState>
         </div>);
             }
             else if (documents.length === 0) {
                     return (<div className="py-10">
-          <EmptyState icon={Upload} title="知识库空空如也" description={<span className="text-muted-foreground">
-                上传您的第一份文档，MimirQ 将自动解析并构建专属知识索引。
+          <EmptyState icon={Upload} title={t('empty.blank.title')} description={<span className="text-muted-foreground">
+                {t('empty.blank.description')}
                 <br />
-                支持 PDF, TXT, Markdown, Excel, Word 等常见格式。
+                {t('empty.blank.formats')}
               </span>} className="bg-transparent shadow-none">
             <div>
               <Button size="lg" className="gap-2 rounded-xl shadow-sm" asChild>
                 <span>
                   <Upload className="w-5 h-5"/>
-                  立即上传文档
+                  {t('actions.uploadNow')}
                 </span>
               </Button>
               <input type="file" multiple accept={UPLOAD_ACCEPT} className="hidden" onChange={handleFileUpload}/>
@@ -366,7 +380,7 @@ export function KnowledgeDocumentsPanel({
                     return (<>
           <div className="mb-4 flex flex-col lg:flex-row lg:items-center gap-3">
             <div className="flex w-full lg:max-w-2xl flex-col sm:flex-row gap-3">
-              <SearchInput value={docFilter} onValueChange={setDocFilter} placeholder="搜索文档名称…" containerClassName="w-full" inputClassName="h-9 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"/>
+              <SearchInput value={docFilter} onValueChange={setDocFilter} placeholder={t('search.placeholder')} containerClassName="w-full" inputClassName="h-9 rounded-lg border-border/60 bg-background placeholder:text-muted-foreground/60 focus:border-primary/40"/>
 
               <Select value={`${sortKey}:${sortDir}`} onValueChange={(value) => {
                             const [k, d] = String(value || '').split(':');
@@ -375,16 +389,15 @@ export function KnowledgeDocumentsPanel({
                             if (d === 'asc' || d === 'desc')
                                 setSortDir(d);
                         }}>
-                <SelectTrigger className="h-9 w-full sm:w-[200px] rounded-lg border-border/60 bg-background" aria-label="排序">
-                  <SelectValue placeholder="排序"/>
+                <SelectTrigger className="h-9 w-full sm:w-[200px] rounded-lg border-border/60 bg-background" aria-label={t("sort.ariaLabel")}>
+                  <SelectValue placeholder={t("sort.placeholder")}/>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="created_at:desc">最新上传</SelectItem>
-                  <SelectItem value="created_at:asc">最早上传</SelectItem>
-                  <SelectItem value="filename:asc">文件名 A-Z</SelectItem>
-                  <SelectItem value="filename:desc">文件名 Z-A</SelectItem>
-                  <SelectItem value="file_size:desc">大小 从大到小</SelectItem>
-                  <SelectItem value="file_size:asc">大小 从小到大</SelectItem>
+                  {sortOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -394,32 +407,32 @@ export function KnowledgeDocumentsPanel({
 
           {selectedDocIds.length > 0 ? (<div className="mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
               <div className="text-sm text-foreground">
-                已选 <span className="font-mono tabular-nums">{selectedDocIds.length}</span> 项
+                {t('selection.selectedCount', { count: selectedDocIds.length })}
               </div>
               <div className="flex flex-wrap items-center gap-2 justify-end">
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={toggleSelectAllVisible}>
-                  {allVisibleSelected ? '取消全选' : '全选当前列表'}
+                  {allVisibleSelected ? t('selection.clearSelectAll') : t('selection.selectAllVisible')}
                 </Button>
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => setSelectedDocIds([])}>
-                  清除选择
+                  {t('actions.clearSelection')}
                 </Button>
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchReingest())} disabled={batchDeleting || batchLifecycleWorking || batchReingestWorking}>
-                  {batchReingestWorking ? '重新入库中…' : '重新入库'}
+                  {batchReingestWorking ? t('actions.reingesting') : t('actions.reingest')}
                 </Button>
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('disable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedEnabled}>
-                  禁用
+                  {t('actions.disable')}
                 </Button>
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('enable'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedDisabled}>
-                  启用
+                  {t('actions.enable')}
                 </Button>
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('archive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedNotArchived}>
-                  归档
+                  {t('actions.archive')}
                 </Button>
                 <Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => detachPromise(runBatchLifecycle('unarchive'))} disabled={batchDeleting || batchLifecycleWorking || !anySelectedArchived}>
-                  取消归档
+                  {t('actions.unarchive')}
                 </Button>
                 <Button type="button" variant="destructive" size="sm" className="rounded-xl" onClick={() => setBatchDeleteOpen(true)} disabled={batchDeleting || batchLifecycleWorking}>
-                  批量删除
+                  {t('actions.batchDelete')}
                 </Button>
               </div>
             </div>) : null}
@@ -427,17 +440,17 @@ export function KnowledgeDocumentsPanel({
           <AlertDialog open={batchDeleteOpen} onOpenChange={setBatchDeleteOpen}>
             <AlertDialogContent className="max-w-md">
               <AlertDialogHeader>
-                <AlertDialogTitle>确认删除</AlertDialogTitle>
+                <AlertDialogTitle>{t("batchDelete.title")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  将删除已选中的 <span className="font-mono tabular-nums">{selectedDocIds.length}</span> 份文档，此操作不可撤销。
+                  {t('batchDelete.description', { count: selectedDocIds.length })}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <Button type="button" variant="outline" onClick={() => setBatchDeleteOpen(false)} disabled={batchDeleting}>
-                  取消
+                  {t('actions.cancel')}
                 </Button>
                 <Button type="button" variant="destructive" onClick={() => detachPromise(confirmBatchDelete())} disabled={batchDeleting || selectedDocIds.length === 0}>
-                  {batchDeleting ? '删除中…' : '确认删除'}
+                  {batchDeleting ? t('actions.deleting') : t('actions.confirmDelete')}
                 </Button>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -446,15 +459,15 @@ export function KnowledgeDocumentsPanel({
           {(() => {
                             if (filteredDocuments.length === 0) {
                                 return (<div className="py-10">
-              <EmptyState icon={Filter} title="未找到匹配的文档" description={<span className="text-muted-foreground">尝试调整筛选条件，或清空筛选后重新查看全部文档。</span>} className="bg-transparent shadow-none">
+              <EmptyState icon={Filter} title={t("empty.filtered.title")} description={<span className="text-muted-foreground">{t('empty.filtered.refinedDescription')}</span>} className="bg-transparent shadow-none">
                 <Button type="button" variant="outline" className="rounded-xl" onClick={onClearFilters}>
-                  清空筛选
+                  {t("actions.clearFilters")}
                 </Button>
               </EmptyState>
             </div>);
                             }
 	                            else if (viewMode === 'grid') {
-	                                    return (<div aria-label="文档列表" style={{
+	                                    return (<div aria-label={t('grid.ariaLabel')} style={{
 	                                            height: `${docsGridVirtualizer.getTotalSize()}px`,
 	                                            width: '100%',
 	                                            position: 'relative',
@@ -480,20 +493,20 @@ export function KnowledgeDocumentsPanel({
                                 }
                                 else {
                                     return (<Panel padding="none" className="rounded-xl overflow-hidden">
-	              <table aria-label="知识库文档列表" className="w-full text-sm text-left">
+	              <table aria-label={t('table.ariaLabel')} className="w-full text-sm text-left">
 	                <thead className="text-xs text-muted-foreground uppercase border-b border-border/60">
 	                  <tr>
 	                    <th className="sticky top-0 z-10 bg-card px-3 py-3 font-medium w-10">
-	                      <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="全选当前列表"/>
+	                      <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label={t('table.selectAllVisible')}/>
 	                    </th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">文档名称</th>
-	                    {showDatasetColumn ? (<th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">数据集</th>) : null}
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">标签</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">状态</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">分块</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">大小</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">上传时间</th>
-	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">操作</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t('table.columns.name')}</th>
+	                    {showDatasetColumn ? (<th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t("table.columns.dataset")}</th>) : null}
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t('table.columns.tags')}</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t('table.columns.status')}</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">{t('table.columns.chunks')}</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">{t('table.columns.size')}</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium">{t('table.columns.uploadedAt')}</th>
+	                    <th className="sticky top-0 z-10 bg-card px-4 py-3 font-medium text-right">{t('table.columns.actions')}</th>
 	                  </tr>
 	                </thead>
 	                <tbody className="divide-y divide-border/60">
@@ -505,7 +518,7 @@ export function KnowledgeDocumentsPanel({
 	                                            const doc = filteredDocuments[virtualRow.index];
 	                                            if (!doc)
 	                                                return null;
-	                                            const badge = getStatusBadge(doc.status);
+	                                            const badge = getStatusBadge(doc.status, t);
                                             const fileType = getFileTypeMeta(doc);
                                             const TypeIcon = fileType.icon;
                                             const userTags = getUserTagsFromDocument(doc);
@@ -515,7 +528,7 @@ export function KnowledgeDocumentsPanel({
 	                                            const parseLow = parseScore !== null && parseScore < 0.35;
 	                                            return (<tr key={virtualRow.key} data-index={virtualRow.index} ref={docsTableVirtualizer.measureElement} className="group hover:bg-muted/20 transition-colors">
 		                        <td className="px-3 py-3 align-middle">
-		                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={buildToggleDocSelectionHandler(doc.id)} aria-label={`选择文档 ${doc.filename}`}/>
+		                          <input type="checkbox" className="h-4 w-4 rounded border-border/60 text-primary focus-ring" checked={selectedSet.has(doc.id)} onChange={buildToggleDocSelectionHandler(doc.id)} aria-label={t('table.selectDocument', { filename: doc.filename })}/>
 		                        </td>
 	                        <td className="px-4 py-3 font-medium text-foreground">
 	                          <div className="flex items-start gap-3">
@@ -533,13 +546,13 @@ export function KnowledgeDocumentsPanel({
 	                                {parseLow ? (
 	                                  <span
 	                                    className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] font-semibold text-amber-700 dark:text-amber-300"
-	                                    title={`解析质量偏低 (score=${parseScore?.toFixed?.(3) ?? '—'})`}
+	                                    title={t("row.parseQualityLow", { score: parseScore?.toFixed?.(3) ?? '—' })}
 	                                  >
 	                                    <AlertTriangle className="h-3.5 w-3.5" />
 	                                  </span>
 	                                ) : null}
 	                              </div>
-	                              {sourcePath ? (<button type="button" className={cn('mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4 transition-opacity', contextualRevealClassName)} onClick={buildCopyHandler(sourcePath, '已复制 Source Path')} title="点击复制 Source Path">
+	                              {sourcePath ? (<button type="button" className={cn('mt-0.5 block max-w-[420px] truncate text-[11px] font-mono tabular-nums text-muted-foreground hover:text-foreground underline underline-offset-4 transition-opacity', contextualRevealClassName)} onClick={buildCopyHandler(sourcePath, t('toasts.copySourcePath'))} title={t('row.copySourcePathTitle')}>
 	                                  {sourcePath}
 	                                </button>) : null}
 	                            </div>
@@ -548,10 +561,10 @@ export function KnowledgeDocumentsPanel({
 	                        {showDatasetColumn ? (<td className="px-4 py-3 align-middle">
 	                            {doc.dataset_id ? (<span className="text-xs text-muted-foreground truncate block max-w-[180px]" title={doc.dataset_id}>
 	                                {datasetLabelById?.[doc.dataset_id] ?? doc.dataset_id}
-	                              </span>) : (<span className="text-xs text-muted-foreground">—</span>)}
+	                              </span>) : (<span className="text-xs text-muted-foreground">{t('table.emptyValue')}</span>)}
 	                          </td>) : null}
 	                        <td className="px-4 py-3 align-middle">
-	                          {userTags.length ? (<DocumentTags tags={userTags} max={3} dense/>) : (<span className="text-xs text-muted-foreground">—</span>)}
+	                          {userTags.length ? (<DocumentTags tags={userTags} max={3} dense/>) : (<span className="text-xs text-muted-foreground">{t('table.emptyValue')}</span>)}
 	                        </td>
 	                        <td className="px-4 py-3 align-middle">
 	                          <StatusBadge status={badge.status} label={badge.label} dense/>
@@ -566,36 +579,36 @@ export function KnowledgeDocumentsPanel({
 	                          {formatDate(doc.created_at)}
 	                        </td>
 	                        <td className="px-4 py-3 align-middle text-right flex items-center justify-end gap-1">
-	                          <DocumentDetailDialog document={doc} trigger={<IconButton label="预览内容" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity', contextualRevealClassName)}>
+	                          <DocumentDetailDialog document={doc} trigger={<IconButton label={t('actions.previewContent')} variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted transition-opacity', contextualRevealClassName)}>
 	                                <Eye className="h-4 w-4"/>
 	                              </IconButton>}/>
 
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-	                              <IconButton label="更多操作" variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity', contextualRevealClassName)}>
+	                              <IconButton label={t('actions.moreActions')} variant="ghost" className={cn('h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted transition-opacity', contextualRevealClassName)}>
 	                                <MoreVertical className="h-4 w-4"/>
 	                              </IconButton>
 	                            </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuItem onSelect={buildCopyHandler(doc.id, '已复制文档 ID')}>
-                                复制文档 ID
+                              <DropdownMenuItem onSelect={buildCopyHandler(doc.id, t('toasts.copyDocumentId'))}>
+                                {t('actions.copyDocumentId')}
                               </DropdownMenuItem>
-                              <DropdownMenuItem onSelect={buildCopyHandler(doc.filename, '已复制文件名')}>
-                                复制文件名
+                              <DropdownMenuItem onSelect={buildCopyHandler(doc.filename, t('toasts.copyFilename'))}>
+                                {t('actions.copyFilename')}
                               </DropdownMenuItem>
-                              {sourcePath ? (<DropdownMenuItem onSelect={buildCopyHandler(sourcePath, '已复制 Source Path')}>
-                                  复制 Source Path
+                              {sourcePath ? (<DropdownMenuItem onSelect={buildCopyHandler(sourcePath, t('toasts.copySourcePath'))}>
+                                  {t('actions.copySourcePath')}
                                 </DropdownMenuItem>) : null}
                               <DropdownMenuItem asChild>
                                 <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
                                   <Activity className="mr-2 h-4 w-4" />
-                                  健康卡片
+                                  {t('actions.healthCard')}
                                 </Link>
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={buildRequestSingleDeleteHandler(doc)}>
                                 <Trash2 className="mr-2 h-4 w-4"/>
-                                删除文档
+                                {t('actions.deleteDocument')}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -624,6 +637,7 @@ function DocumentCard({
   statusBarClassName,
   onRequestDelete,
   copyText,
+  t,
   selected,
   onToggleSelect,
 }: Readonly<{
@@ -632,6 +646,7 @@ function DocumentCard({
   statusBarClassName: string
   onRequestDelete: (doc: Document) => void
   copyText: (text: string, okMsg: string) => void | Promise<void>
+  t: TranslateFn
   selected: boolean
   onToggleSelect: () => void
 }>) {
@@ -661,7 +676,7 @@ function DocumentCard({
           className="h-4 w-4 rounded border-border/60 text-primary focus-ring"
           checked={selected}
           onChange={onToggleSelect}
-          aria-label={`选择文档 ${doc.filename}`}
+          aria-label={t('table.selectDocument', { filename: doc.filename })}
         />
       </div>
 
@@ -677,19 +692,19 @@ function DocumentCard({
             {parseLow ? (
               <div
                 className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                title={`解析质量偏低 (score=${parseScore?.toFixed?.(3) ?? '—'})`}
+                title={t("row.parseQualityLow", { score: parseScore?.toFixed?.(3) ?? '—' })}
               >
                 <AlertTriangle className="h-3.5 w-3.5" />
               </div>
             ) : null}
             {doc.disabled_at ? (
               <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-border/60 bg-muted/60 text-muted-foreground">
-                Disabled
+                {t('row.disabled')}
               </div>
             ) : null}
             {!doc.disabled_at && doc.archived_at ? (
               <div className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border border-border/60 bg-muted/60 text-muted-foreground">
-                Archived
+                {t('row.archived')}
               </div>
             ) : null}
             <StatusBadge status={statusBadge.status} label={statusBadge.label} dense />
@@ -704,28 +719,28 @@ function DocumentCard({
 
         <div className="space-y-2 mt-auto">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>大小</span>
+            <span>{t('row.size')}</span>
             <span className="font-mono">{formatFileSize(doc.file_size)}</span>
           </div>
 	          <div className="flex items-center justify-between text-xs text-muted-foreground">
-	            <span>分块</span>
+	            <span>{t('row.chunks')}</span>
 	            <span className="font-mono tabular-nums">{doc.chunk_count ?? '-'}</span>
 	          </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>时间</span>
+            <span>{t('row.time')}</span>
             <span>{formatDate(doc.created_at)}</span>
           </div>
         </div>
       </div>
 
       <div className={cn('px-5 py-3 border-t border-border/60 bg-muted/20 flex items-center justify-between transition-opacity', contextualRevealClassName)}>
-        <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[80px]">{parserLabel || 'Auto'}</span>
+        <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[80px]">{parserLabel || t('row.parserAuto')}</span>
         <div className="flex items-center gap-1">
           <DocumentDetailDialog
             document={doc}
             trigger={
               <IconButton
-                label="预览内容"
+                label={t('actions.previewContent')}
                 variant="ghost"
                 className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-muted"
                 onClick={(e) => e.stopPropagation()}
@@ -738,7 +753,7 @@ function DocumentCard({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <IconButton
-                label="更多操作"
+                label={t('actions.moreActions')}
                 variant="ghost"
                 className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted"
                 onClick={(e) => e.stopPropagation()}
@@ -747,25 +762,25 @@ function DocumentCard({
               </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, '已复制文档 ID'))}>
-                复制文档 ID
+              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.id, t('toasts.copyDocumentId')))}>
+                {t('actions.copyDocumentId')}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, '已复制文件名'))}>
-                复制文件名
+              <DropdownMenuItem onSelect={() => detachPromise(copyText(doc.filename, t('toasts.copyFilename')))}>
+                {t('actions.copyFilename')}
               </DropdownMenuItem>
               {String((doc.metadata as any)?.source_path || '').trim() ? (
                 <DropdownMenuItem
                   onSelect={() =>
-                    detachPromise(copyText(String((doc.metadata as any)?.source_path || ''), '已复制 Source Path'))
+                    detachPromise(copyText(String((doc.metadata as any)?.source_path || ''), t('toasts.copySourcePath')))
                   }
                 >
-                  复制 Source Path
+                  {t('actions.copySourcePath')}
                 </DropdownMenuItem>
               ) : null}
               <DropdownMenuItem asChild>
                 <Link href={`/knowledge/${doc.id}/health`} className="flex items-center">
                   <Activity className="mr-2 h-4 w-4" />
-                  健康卡片
+                  {t('actions.healthCard')}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -774,7 +789,7 @@ function DocumentCard({
                 onSelect={() => onRequestDelete(doc)}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
-                删除文档
+                {t('actions.deleteDocument')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

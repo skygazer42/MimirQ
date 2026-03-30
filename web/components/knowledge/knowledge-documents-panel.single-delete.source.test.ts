@@ -10,8 +10,7 @@ describe('KnowledgeDocumentsPanel single delete confirmation', () => {
     expect(src).toContain('singleDeleteDoc')
     expect(src).toContain('formatApiError')
     expect(src).toContain('setSingleDeleteError')
-    expect(src).toContain("toast.success('已删除文档')")
+    expect(src).toContain('toast.success(t("toasts.deleteSuccess"))')
     expect(src).toContain('Delete document failed:')
   })
 })
-

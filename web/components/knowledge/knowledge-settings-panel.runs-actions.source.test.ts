@@ -7,9 +7,9 @@ describe('KnowledgeSettingsPanel connector runs actions', () => {
   it('offers a copy-link action for operational deep links', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-settings-panel.tsx'), 'utf8')
 
-    expect(src).toContain('复制链接')
+    expect(src).toContain('t("connectorRuns.actions.copyLink")')
     expect(src).toContain('/knowledge?tab=settings&run=')
-    expect(src).toContain('自动刷新')
-    expect(src).toContain('清除定位')
+    expect(src).toContain('t("connectorRuns.autoRefresh.label")')
+    expect(src).toContain('t("connectorRuns.location.clear")')
   })
 })
