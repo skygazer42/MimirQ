@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useTranslations } from 'next-intl'
 
 import { parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
@@ -85,6 +86,8 @@ export function useParsingRunActions({
   upsertParsedFile,
   visibleQueueFiles,
 }: Readonly<UseParsingRunActionsOptions>) {
+  const t = useTranslations('ParsingWorkbench')
+
   const parseFile = useCallback(
     async (fileId: string, backendOverride?: string) => {
       const file = filesRef.current.find((item) => item.id === fileId) || null
@@ -262,7 +265,7 @@ export function useParsingRunActions({
         if (parseControllersRef.current.get(fileId) !== controller) return
         if (!fileIdSetRef.current.has(fileId)) return
 
-        const errorMessage = formatApiError(err, '文档解析失败')
+        const errorMessage = formatApiError(err, t('toasts.parseFailed'))
         const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
         const diagnostics: ParseFailureDiagnostics | undefined =
           detail && typeof detail === 'object' && !Array.isArray(detail)
@@ -308,6 +311,7 @@ export function useParsingRunActions({
       setFiles,
       setHoveredBlockId,
       setRightPanelMode,
+      t,
       updateParsedFile,
       upsertParsedFile,
     ]

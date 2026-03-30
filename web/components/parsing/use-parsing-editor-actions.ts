@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, type Dispatch, type SetStateAction } from 'react'
+import { useTranslations } from 'next-intl'
 
 import { toast } from 'sonner'
 
@@ -87,6 +88,7 @@ export function useParsingEditorActions({
   updateParsedFile,
 }: Readonly<UseParsingEditorActionsOptions>) {
   const router = useRouter()
+  const t = useTranslations('ParsingWorkbench')
 
   const copyMarkdown = useCallback(async () => {
     if (!activeMarkdown) return
@@ -139,9 +141,9 @@ export function useParsingEditorActions({
         error: undefined,
         parser: getParserLabel(saved.parser_backend || 'auto'),
       })
-      toast.success('已保存到服务器')
+      toast.success(t('toasts.saveSuccess'))
     } catch (err: unknown) {
-      toast.error(formatApiError(err, '保存失败'))
+      toast.error(formatApiError(err, t('toasts.saveFailed')))
     }
   }, [
     activeFile,
@@ -153,6 +155,7 @@ export function useParsingEditorActions({
     setHoveredBlockId,
     setIsEditing,
     setRightPanelMode,
+    t,
     updateParsedFile,
   ])
 

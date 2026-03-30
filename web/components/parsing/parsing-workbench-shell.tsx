@@ -191,7 +191,7 @@ export function ParsingWorkbenchShell({
   const activeLibraryFolderId = activeLibraryFile?.folderId || ROOT_FOLDER_ID
   const activeLibraryFolderPathLabel = folderPathById[activeLibraryFolderId] || t('rootFolder')
   const activeLibraryFolderName = (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
-  const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(activeLibraryFile.status) : null
+  const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(activeLibraryFile.status, t) : null
 
   const libraryFileListContent = (
     <ParsingLibraryBrowser
