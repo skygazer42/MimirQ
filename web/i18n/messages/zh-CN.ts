@@ -415,6 +415,29 @@ const zhCNMessages = {
     loadingSrMessage: 'Loading knowledge ingestion workspace',
     descriptionMarker: '实时追踪解析、切块、向量化与索引构建进度。',
   },
+  SimilarityDiagnosticsGraph: {
+    loadingMessage: '正在重建向量邻域...',
+    loadingSrMessage: 'Loading embedding diagnostics graph',
+    loadingHint: '基于当前相似度矩阵派生诊断，不额外请求后端坐标。',
+    noGraphData: '当前筛选结果没有足够的高相似连线，暂时无法生成 3D 投影预览。',
+    graphTooLargeTitle: '当前诊断图过大，已暂停 3D 渲染。',
+    graphTooLargeHint: '请缩小筛选范围或提高阈值后再试。',
+    graphTooLargeMetrics:
+      '当前 {nodeCount} 个节点 / {linkCount} 条连线，3D 预览上限为 {nodeLimit} 个节点和 {linkLimit} 条连线。',
+    previewLabel: '3D 投影预览',
+    previewHint: '颜色越亮代表越值得关注，橙色表示已标记待审的候选。',
+    nodeCardLabel: '当前节点',
+    nodeCardEmptyTitle: '点击节点查看摘要',
+    nodeCardSelectedDescription: '{axis} 轴 · 均值 {mean}% · 峰值 {peak}%',
+    nodeCardEmptyDescription: '选中节点后会显示它在当前局部邻域中的位置和强度。',
+    linkCardLabel: '当前连线',
+    linkCardSelectedTitle: '相似度 {score}% · 重叠度 {overlap}%',
+    linkCardSelectedDescription: '{source} -> {target}',
+    linkCardEmptyTitle: '点击连线查看匹配强度',
+    linkCardEmptyDescription: '优先检查红色或橙色连线，它们通常代表高分但支撑不足的候选。',
+    nodeTooltip: '[{axis}] {label}{outlierSuffix}\n均值 {mean}% / 峰值 {peak}%',
+    nodeTooltipOutlierSuffix: ' · 异常点',
+  },
 } as const
 
 export default zhCNMessages
