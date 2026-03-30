@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,12 @@ type DatasetFolderTreeViewProps = {
   onSelect: (path: string | null) => void
   className?: string
   expandAll?: boolean
+  labels?: {
+    collapse: string
+    expand: string
+    unnamed: string
+    allDirectories: string
+  }
 }
 
 export function DatasetFolderTreeView({
@@ -32,6 +39,12 @@ export function DatasetFolderTreeView({
   onSelect,
   className,
   expandAll = false,
+  labels = {
+    collapse: '折叠',
+    expand: '展开',
+    unnamed: '(未命名目录)',
+    allDirectories: '全部目录',
+  },
 }: Readonly<DatasetFolderTreeViewProps>) {
   const initialExpanded = useMemo(() => {
     const next = new Set<string>([''])
@@ -85,7 +98,7 @@ export function DatasetFolderTreeView({
             <button
               type="button"
               className="p-0.5 rounded hover:bg-muted/50 focus-ring"
-              aria-label={isExpanded ? '折叠' : '展开'}
+              aria-label={isExpanded ? labels.collapse : labels.expand}
               onClick={(e) => {
                 e.stopPropagation()
                 toggle(node.path)
@@ -104,7 +117,7 @@ export function DatasetFolderTreeView({
           >
             <span className="min-w-0 flex items-center gap-2">
               <Icon className="h-4 w-4 text-muted-foreground" />
-              <span className="truncate">{node.name || node.path || '(未命名目录)'}</span>
+              <span className="truncate">{node.name || node.path || labels.unnamed}</span>
             </span>
             <span className="tabular-nums text-xs text-muted-foreground">{node.documents}</span>
           </button>
@@ -131,7 +144,7 @@ export function DatasetFolderTreeView({
       >
         <span className="flex items-center gap-2 min-w-0">
           <FolderOpen className="h-4 w-4 text-muted-foreground" />
-          <span className="truncate">全部目录</span>
+          <span className="truncate">{labels.allDirectories}</span>
         </span>
         <span className="tabular-nums text-xs text-muted-foreground">{root.documents}</span>
       </button>
@@ -157,6 +170,7 @@ export function DatasetFolderTree({
   onSelect,
   className,
 }: Readonly<DatasetFolderTreeProps>) {
+  const t = useTranslations('DatasetFolderTree')
   const [tree, setTree] = useState<DocumentFolderTreeResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -171,28 +185,38 @@ export function DatasetFolderTree({
     } catch (e: any) {
       console.error('Failed to load dataset folder tree', e)
       setTree(null)
-      setError(formatApiError(e, '加载目录树失败'))
-      toast.error(formatApiError(e, '加载目录树失败'))
+      setError(formatApiError(e, t('loadFailed')))
+      toast.error(formatApiError(e, t('loadFailed')))
     } finally {
       setLoading(false)
     }
-  }, [datasetId, lifecycle, maxDepth])
+  }, [datasetId, lifecycle, maxDepth, t])
 
   useEffect(() => {
     detachPromise(load())
   }, [load])
 
+  const labels = useMemo(
+    () => ({
+      collapse: t('collapse'),
+      expand: t('expand'),
+      unnamed: t('unnamed'),
+      allDirectories: t('allDirectories'),
+    }),
+    [t]
+  )
+
   return (
     <div className={cn('space-y-3', className)}>
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-muted-foreground">目录</div>
+        <div className="text-xs font-semibold text-muted-foreground">{t('title')}</div>
         <Button
           variant="ghost"
           size="sm"
           className="h-7 px-2 text-muted-foreground"
           onClick={() => detachPromise(load())}
           disabled={loading}
-          aria-label="刷新目录树"
+          aria-label={t('refresh')}
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
@@ -202,17 +226,17 @@ export function DatasetFolderTree({
     if (loading && !tree) {
         return (<div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
-          加载中…
+          {t('loading')}
         </div>);
     }
     else if (error) {
             return (<div className="text-xs text-destructive">{error}</div>);
         }
         else if (tree) {
-                return (tree.total_with_source_path > 0 ? (<DatasetFolderTreeView root={tree.root} selectedPath={selectedPath} onSelect={onSelect}/>) : (<div className="text-xs text-muted-foreground">暂无可用目录（未上传带路径的文件）。</div>));
+                return (tree.total_with_source_path > 0 ? (<DatasetFolderTreeView root={tree.root} selectedPath={selectedPath} onSelect={onSelect} labels={labels}/>) : (<div className="text-xs text-muted-foreground">{t('emptyWithPath')}</div>));
             }
             else {
-                return (<div className="text-xs text-muted-foreground">暂无数据</div>);
+                return (<div className="text-xs text-muted-foreground">{t('empty')}</div>);
             }
 })()}
     </div>

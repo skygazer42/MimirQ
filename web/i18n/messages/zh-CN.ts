@@ -309,6 +309,18 @@ const zhCNMessages = {
       },
     },
   },
+  DatasetFolderTree: {
+    title: '目录',
+    refresh: '刷新目录树',
+    loading: '加载中…',
+    emptyWithPath: '暂无可用目录（未上传带路径的文件）。',
+    empty: '暂无数据',
+    loadFailed: '加载目录树失败',
+    collapse: '折叠',
+    expand: '展开',
+    unnamed: '(未命名目录)',
+    allDirectories: '全部目录',
+  },
 } as const
 
 export default zhCNMessages
