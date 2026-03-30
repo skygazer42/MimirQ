@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Activity, ArrowLeft, BarChart3, Download, FileSearch, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -21,6 +21,7 @@ import { datasetHealthToMarkdown } from '@/lib/dataset-health-export'
 import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
+import { useRouter } from '@/i18n/navigation'
 
 import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } from '@/types'
 

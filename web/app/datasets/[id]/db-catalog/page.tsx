@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ArrowLeft, Database, Play, RefreshCw, Settings2 } from 'lucide-react'
 
@@ -16,6 +16,7 @@ import { Panel } from '@/components/ui/panel'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi, datasetApi } from '@/lib/api'
 import { cn, detachPromise } from '@/lib/utils'

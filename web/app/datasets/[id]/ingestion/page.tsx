@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ArrowLeft, BarChart3, Download, FileUp, History, Loader2, Plus, RefreshCw, Save, Scissors, Settings2, Sparkles, Table2, Trash2 } from 'lucide-react'
 
@@ -24,6 +24,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES } from '@/lib/chunk-strategies'
 import { PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
 import { cn, detachPromise } from '@/lib/utils'
+import { useRouter } from '@/i18n/navigation'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import type {
   Dataset,

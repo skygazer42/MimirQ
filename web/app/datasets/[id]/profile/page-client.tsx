@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   Activity,
@@ -45,6 +45,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { datasetApi, documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
+import { useRouter } from '@/i18n/navigation'
 import { Breadcrumb, usePathBreadcrumbs } from '@/components/ui/breadcrumb'
 
 import type {

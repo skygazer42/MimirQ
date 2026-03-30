@@ -1,7 +1,7 @@
 'use client'
 
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { ArrowLeft, BarChart3, Download, FileUp, Layers, Loader2, RefreshCw, Save, Settings2, Table2 } from 'lucide-react'
 
@@ -18,6 +18,7 @@ import { datasetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { buildDatasetConfigGraph } from '@/lib/dataset-config-graph'
 import type { GraphNode } from '@/lib/graph-parser'
+import { useRouter } from '@/i18n/navigation'
 import { cn, detachPromise } from '@/lib/utils'
 
 import type { Dataset, DatasetConfigBundle, DatasetConfigExport, DatasetConfigImportRequest } from '@/types'
