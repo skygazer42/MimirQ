@@ -155,6 +155,22 @@ function formatDepStatus(status: unknown): { label: string; className: string } 
   return { label, className: 'text-destructive' }
 }
 
+function createInitialOpenSections(): Record<SectionId, boolean> {
+  return menuSections.reduce<Record<SectionId, boolean>>(
+    (sections, section) => {
+      sections[section.id] = DEFAULT_OPEN_SECTIONS.has(section.id)
+      return sections
+    },
+    {
+      core: false,
+      ingestion: false,
+      knowledge: false,
+      analysis: false,
+      system: false,
+    }
+  )
+}
+
 export function Navbar({
   isSidebarOpen: externalIsOpen,
   setSidebarOpen: externalSetOpen,
@@ -167,11 +183,7 @@ export function Navbar({
   const firstActionRef = useRef<HTMLButtonElement | null>(null)
   const prevIsSidebarOpenRef = useRef<boolean | null>(null)
   const [internalIsOpen, setInternalIsOpen] = useState(true)
-  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(() =>
-    Object.fromEntries(
-      menuSections.map((section) => [section.id, DEFAULT_OPEN_SECTIONS.has(section.id)] as const)
-    )
-  )
+  const [openSections, setOpenSections] = useState<Record<SectionId, boolean>>(createInitialOpenSections)
   const isSidebarOpen = externalIsOpen ?? internalIsOpen
   const setSidebarOpen = externalSetOpen ?? setInternalIsOpen
   const pathname = usePathname()
