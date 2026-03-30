@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils'
 import type { Document } from '@/types'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 
 export function TaskCenter() {

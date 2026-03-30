@@ -26,8 +26,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { PipelineRail, WorkbenchScaffold } from '@/components/workbench'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
+import { useRouter } from '@/i18n/navigation'
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { cn, formatFileSize, detachPromise } from '@/lib/utils'
 import { getDocContentFromCache } from '@/lib/doc-content-cache'
