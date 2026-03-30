@@ -96,7 +96,7 @@ export function KGDiagnosticsPage() {
 
   const [running, setRunning] = useState(false)
   const [runResp, setRunResp] = useState<KGSearchDiagnosticsResponse | null>(null)
-  const runRespJson = useMemo(() => prettyJson(runResp ?? { hint: '运行一次 KG diagnostics 以生成 summary/items' }), [runResp])
+  const runRespJson = useMemo(() => prettyJson(runResp ?? { hint: t("summary.runHint") }), [runResp, t])
 
   const [runsLoading, setRunsLoading] = useState(false)
   const [runs, setRuns] = useState<any[]>([])
@@ -451,30 +451,30 @@ export function KGDiagnosticsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Summary</CardTitle>
+              <CardTitle className="text-base">{t("summary.title")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {summary ? (
                 <div className="grid gap-2 md:grid-cols-2">
                   <div className="rounded-md border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">baseline_hit_rate</div>
+                    <div className="text-xs text-muted-foreground">{t("summary.baselineHitRate")}</div>
                     <div className="text-lg font-semibold tabular-nums">{formatMetricValue(summary.baseline_hit_rate)}</div>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">baseline_mrr</div>
+                    <div className="text-xs text-muted-foreground">{t("summary.baselineMrr")}</div>
                     <div className="text-lg font-semibold tabular-nums">{formatMetricValue(summary.baseline_mrr)}</div>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">baseline_recall</div>
+                    <div className="text-xs text-muted-foreground">{t("summary.baselineRecall")}</div>
                     <div className="text-lg font-semibold tabular-nums">{formatMetricValue(summary.baseline_recall)}</div>
                   </div>
                   <div className="rounded-md border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">hardcases_generated</div>
+                    <div className="text-xs text-muted-foreground">{t("summary.hardcasesGenerated")}</div>
                     <div className="text-lg font-semibold tabular-nums">{formatMetricValue(summary.hardcases_generated)}</div>
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-muted-foreground">尚未运行</div>
+                <div className="text-sm text-muted-foreground">{t("summary.empty")}</div>
               )}
               <Textarea value={runRespJson} readOnly rows={12} className="font-mono text-xs" />
             </CardContent>
@@ -487,13 +487,13 @@ export function KGDiagnosticsPage() {
               <CardTitle className="text-base">{t("qualityReport.title")}</CardTitle>
               <Button variant="outline" size="sm" className="gap-2" onClick={loadQualityReport} disabled={qualityLoading}>
                 <RefreshCcw className="h-4 w-4" aria-hidden="true" />
-                拉取
+                {t("qualityReport.pull")}
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="space-y-1">
-                  <Label>document_limit</Label>
+                  <Label>{t("qualityReport.documentLimit")}</Label>
                   <Input
                     type="number"
                     value={String(qualityDocLimit)}
@@ -503,11 +503,11 @@ export function KGDiagnosticsPage() {
                   />
                 </div>
                 <div className="space-y-1 md:col-span-2">
-                  <Label>pipeline_hash（可选）</Label>
+                  <Label>{t("qualityReport.pipelineHash")}</Label>
                   <Input
                     value={qualityPipelineHash}
                     onChange={(e) => setQualityPipelineHash(e.target.value)}
-                    placeholder="留空 = active pipeline"
+                    placeholder={t("qualityReport.pipelineHashPlaceholder")}
                   />
                 </div>
               </div>

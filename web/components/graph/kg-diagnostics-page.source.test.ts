@@ -57,4 +57,20 @@ describe('KG diagnostics quality report wiring', () => {
     expect(pageSrc).toContain('t("runConfig.autoExtractKg")')
     expect(pageSrc).toContain('t("runConfig.persistRun")')
   })
+
+  it('moves KG diagnostics summary and quality report controls into next-intl lookups', () => {
+    const pageSrc = fs.readFileSync(path.resolve(__dirname, 'kg-diagnostics-page.tsx'), 'utf8')
+
+    expect(pageSrc).toContain('t("summary.title")')
+    expect(pageSrc).toContain('t("summary.baselineHitRate")')
+    expect(pageSrc).toContain('t("summary.baselineMrr")')
+    expect(pageSrc).toContain('t("summary.baselineRecall")')
+    expect(pageSrc).toContain('t("summary.hardcasesGenerated")')
+    expect(pageSrc).toContain('t("summary.empty")')
+    expect(pageSrc).toContain('t("summary.runHint")')
+    expect(pageSrc).toContain('t("qualityReport.pull")')
+    expect(pageSrc).toContain('t("qualityReport.documentLimit")')
+    expect(pageSrc).toContain('t("qualityReport.pipelineHash")')
+    expect(pageSrc).toContain('t("qualityReport.pipelineHashPlaceholder")')
+  })
 })
