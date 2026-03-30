@@ -36,10 +36,20 @@ describe('message item source', () => {
     expect(src).toContain('prefetchDocumentView')
     expect(src).toContain('const handlePrefetch = useCallback')
     expect(src).toContain('const handleInlineCitationPrefetch = useCallback')
-    expect(src).toContain('onMouseEnter={handlePrefetch}')
-    expect(src).toContain('onFocus={handlePrefetch}')
-    expect(src).toContain('onMouseEnter={() => handleInlineCitationPrefetch(href)}')
-    expect(src).toContain('onFocus={() => handleInlineCitationPrefetch(href)}')
+    expect(src).toContain('const handlePreview = useCallback')
+    expect(src).toContain('onMouseEnter={handlePreview}')
+    expect(src).toContain('onFocus={handlePreview}')
+    expect(src).toContain('handleInlineCitationPrefetch(href)')
+  })
+
+  it('opens cited documents into the preview tab when hovering inline citations', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'message-item.tsx'), 'utf8')
+
+    expect(src).toContain('const handlePreviewCitation = useCallback')
+    expect(src).toContain("activeTab: 'preview'")
+    expect(src).toContain('onMouseEnter={() => handlePreviewCitation(href)}')
+    expect(src).toContain('onFocus={() => handlePreviewCitation(href)}')
+    expect(src).toContain('previewAnchor: getDocumentPreviewAnchorFromCitation(citation)')
   })
 
   it('uses reduced-motion-safe layout transitions for streaming assistant cards and step updates', () => {

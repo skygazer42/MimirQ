@@ -21,6 +21,45 @@ import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker
 import type { GraphLinkLike, GraphNodeLike } from '../graph-page-utils'
 
 const SEMANTIC_LIST_ITEM_LIMIT = 200
+const FRONTEND_TRACE_MIN_DURATION_MS = 12
+
+function getNowMs(): number {
+  if (typeof globalThis.performance?.now === 'function') {
+    return globalThis.performance.now()
+  }
+  return Date.now()
+}
+
+function getFrontendTracePage(): string {
+  if (typeof globalThis.window === 'undefined') return '/graph'
+  return globalThis.window.location?.pathname || '/graph'
+}
+
+function reportGraphCanvasTrace(payload: {
+  event: 'graph_cluster_compute' | 'graph_cluster_palette'
+  duration_ms: number
+  input_node_count: number
+  input_link_count: number
+  output_node_count: number
+  output_link_count: number
+}) {
+  if (payload.duration_ms < FRONTEND_TRACE_MIN_DURATION_MS) return
+
+  void import('@/lib/frontend-trace')
+    .then(({ reportFrontendTrace }) =>
+      reportFrontendTrace(
+        {
+          ...payload,
+          component: 'graph-canvas',
+          page: getFrontendTracePage(),
+        },
+        { keepalive: true }
+      )
+    )
+    .catch((error) => {
+      console.warn('Failed to report graph canvas trace', error)
+    })
+}
 
 const KnowledgeGraph3D = dynamic(
   () => import('@/components/graph/force-graph-3d').then((mod) => mod.KnowledgeGraph3D),
@@ -127,6 +166,8 @@ export function GraphCanvas({
   const clusteringWorkerRef = useRef<Worker | null>(null)
   const clusteringApiRef = useRef<Remote<GraphClusteringWorkerApi> | null>(null)
   const clusteringDisabledRef = useRef(false)
+  const lastClusterTraceKeyRef = useRef<string | null>(null)
+  const lastPaletteTraceKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (viewMode === '3d') {
@@ -148,11 +189,25 @@ export function GraphCanvas({
 
     const computeOnMainThread = async () => {
       try {
+        const startedAt = getNowMs()
         const { computeConnectedComponents } = await import('@/lib/graph-clustering')
         if (cancelled) return
         const res = computeConnectedComponents({ nodes, links })
         if (clusteringSeqRef.current === seq) {
           setClusterResult(res)
+        }
+        const durationMs = Math.max(0, getNowMs() - startedAt)
+        const traceKey = ['main', nodeCount, links.length, res.clusterCount, Math.round(durationMs)].join(':')
+        if (lastClusterTraceKeyRef.current !== traceKey) {
+          lastClusterTraceKeyRef.current = traceKey
+          reportGraphCanvasTrace({
+            event: 'graph_cluster_compute',
+            duration_ms: durationMs,
+            input_node_count: nodeCount,
+            input_link_count: links.length,
+            output_node_count: nodes.length,
+            output_link_count: links.length,
+          })
         }
       } catch (e) {
         console.warn('Failed to compute graph clusters; falling back to null', e)
@@ -171,6 +226,7 @@ export function GraphCanvas({
 
     detachPromise((async () => {
       try {
+        const startedAt = getNowMs()
         if (!clusteringWorkerRef.current || !clusteringApiRef.current) {
           const { wrap } = await import('comlink')
           if (cancelled) return
@@ -189,6 +245,19 @@ export function GraphCanvas({
         if (cancelled) return
         if (clusteringSeqRef.current !== seq) return
         setClusterResult(res)
+        const durationMs = Math.max(0, getNowMs() - startedAt)
+        const traceKey = ['worker', nodeCount, links.length, res.clusterCount, Math.round(durationMs)].join(':')
+        if (lastClusterTraceKeyRef.current !== traceKey) {
+          lastClusterTraceKeyRef.current = traceKey
+          reportGraphCanvasTrace({
+            event: 'graph_cluster_compute',
+            duration_ms: durationMs,
+            input_node_count: nodeCount,
+            input_link_count: links.length,
+            output_node_count: nodes.length,
+            output_link_count: links.length,
+          })
+        }
       } catch (e) {
         console.warn('Graph clustering worker failed; falling back to main thread', e)
         clusteringDisabledRef.current = true
@@ -210,6 +279,7 @@ export function GraphCanvas({
     }
 
     detachPromise((async () => {
+      const startedAt = getNowMs()
       const { applyClusterPalette } = await import('@/lib/graph-cluster-palette')
       if (cancelled) return
       const next = applyClusterPalette({
@@ -219,6 +289,25 @@ export function GraphCanvas({
       })
       if (!cancelled) {
         setEffectiveGraphRenderData(next)
+      }
+      const durationMs = Math.max(0, getNowMs() - startedAt)
+      const traceKey = [
+        paletteSeed,
+        graphRenderData.nodes.length,
+        graphRenderData.links.length,
+        clusterResult.clusterCount,
+        Math.round(durationMs),
+      ].join(':')
+      if (lastPaletteTraceKeyRef.current !== traceKey) {
+        lastPaletteTraceKeyRef.current = traceKey
+        reportGraphCanvasTrace({
+          event: 'graph_cluster_palette',
+          duration_ms: durationMs,
+          input_node_count: graphRenderData.nodes.length,
+          input_link_count: graphRenderData.links.length,
+          output_node_count: next.nodes.length,
+          output_link_count: next.links.length,
+        })
       }
     })())
 

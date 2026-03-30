@@ -47,6 +47,32 @@ describe('document view store persistence', () => {
     expect(useDocumentView.getState().activeTab).toBe('text')
   })
 
+  it('respects an explicit preview tab override when opening a cited document context', async () => {
+    const { useDocumentView } = await loadStore()
+
+    useDocumentView.getState().openDocument(
+      'doc-preview',
+      'chunk-3',
+      { start: 18, end: 44 },
+      {
+        activeTab: 'preview',
+        previewAnchor: { pageNumber: 2, searchText: 'retention period' },
+      }
+    )
+
+    expect(useDocumentView.getState().isOpen).toBe(true)
+    expect(useDocumentView.getState().documentId).toBe('doc-preview')
+    expect(useDocumentView.getState().highlightChunkId).toBe('chunk-3')
+    expect(useDocumentView.getState().highlightRange).toEqual({ start: 18, end: 44 })
+    expect(useDocumentView.getState().activeTab).toBe('preview')
+    expect(useDocumentView.getState().lastOpenedTarget).toMatchObject({
+      documentId: 'doc-preview',
+      chunkId: 'chunk-3',
+      activeTab: 'preview',
+      previewAnchor: { pageNumber: 2, searchText: 'retention period' },
+    })
+  })
+
   it('persists the viewer session and per-document layout across refresh hydration', async () => {
     const localStorage = createLocalStorage()
     let { useDocumentView } = await loadStore(localStorage)

@@ -37,7 +37,10 @@ interface DocumentViewState {
     documentId: string,
     chunkId?: string,
     range?: Partial<HighlightRange>,
-    options?: { previewAnchor?: Partial<DocumentPreviewAnchor> | null }
+    options?: {
+      previewAnchor?: Partial<DocumentPreviewAnchor> | null
+      activeTab?: DocumentViewTab
+    }
   ) => void
   closeDocument: () => void
   reopenLastDocument: () => void
@@ -184,8 +187,10 @@ export const useDocumentView = create<DocumentViewState>()(
 
           const highlightRange = sanitizeHighlightRange(range)
           const previewAnchor = sanitizeDocumentPreviewAnchor(options?.previewAnchor)
+          const preferredActiveTab = sanitizeDocumentViewTab(options?.activeTab)
           const savedLayout = state.documentLayouts[documentId]
-          const activeTab = chunkId || highlightRange ? 'text' : savedLayout?.activeTab || DEFAULT_ACTIVE_TAB
+          const activeTab =
+            preferredActiveTab || (chunkId || highlightRange ? 'text' : savedLayout?.activeTab || DEFAULT_ACTIVE_TAB)
           const lastOpenedTarget = buildResumeTarget(
             documentId,
             activeTab,
