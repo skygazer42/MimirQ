@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { BarChart3, Database, FileSearch, Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, ShieldCheck, Table2, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
+import { useRouter } from '@/i18n/navigation'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

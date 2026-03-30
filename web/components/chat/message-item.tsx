@@ -4,7 +4,6 @@
 'use client'
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { useRouter } from 'next/navigation'
 import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { BarChart3, Check, Copy, Database, Bot, Loader2, Star, TestTube2, User } from 'lucide-react'
@@ -12,6 +11,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { AuthImage } from '@/components/auth-image'
+import { useRouter } from '@/i18n/navigation'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import type { Citation, Message, MessageFeedback } from '@/types'
 import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'

@@ -3,9 +3,9 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 
+import { useRouter } from '@/i18n/navigation'
 import { kgApi } from '@/lib/api/graph'
 import { sanitizeFilename } from '@/lib/sanitize'
 

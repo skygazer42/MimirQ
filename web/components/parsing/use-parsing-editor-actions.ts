@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, type Dispatch, type SetStateAction } from 'react'
-import { useRouter } from 'next/navigation'
 
 import { toast } from 'sonner'
 
+import { useRouter } from '@/i18n/navigation'
 import { parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { getParserLabel } from '@/lib/parser-options'
