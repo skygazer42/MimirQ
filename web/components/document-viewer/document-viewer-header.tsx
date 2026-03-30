@@ -22,13 +22,13 @@ export function DocumentViewerHeader({
   onClose,
 }: Readonly<DocumentViewerHeaderProps>) {
   return (
-    <div className="flex items-center justify-between border-b border-border bg-muted/30 px-4 pb-3 pt-3 backdrop-blur-sm supports-[padding:env(safe-area-inset-top)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]">
+    <div className="flex items-center justify-between border-b border-sidebar-border/70 bg-sidebar/78 px-4 pb-3 pt-3 backdrop-blur-xl supports-[padding:env(safe-area-inset-top)]:pt-[calc(env(safe-area-inset-top)+0.75rem)]">
       <div className="flex items-center gap-3 overflow-hidden">
-        <div className="rounded-lg bg-primary/10 p-2">
+        <div className="rounded-xl border border-sidebar-border/60 bg-sidebar/80 p-2 shadow-sm backdrop-blur-xl">
           <FileText className="h-5 w-5 text-primary" />
         </div>
         <div className="flex min-w-0 flex-col">
-          <h3 className="max-w-[200px] truncate text-sm font-semibold" title={filename ?? undefined}>
+          <h3 className="max-w-[200px] truncate text-sm font-semibold leading-snug" title={filename ?? undefined}>
             {filename || "加载中..."}
           </h3>
           <span className="text-xs text-muted-foreground">{chunkCount} 个切片</span>

@@ -11,7 +11,7 @@ export function PipelineRail({
   compact?: boolean
 }>) {
   return (
-    <Panel variant="muted" padding="sm" className={cn('border-border/60', className)}>
+    <Panel variant="glass" padding="sm" className={cn('border-sidebar-border/70', className)}>
       {/* 入库流程: Parse -> Governance -> Chunk -> Chat */}
       <IngestionWorkflowStepper compact={compact} />
     </Panel>
