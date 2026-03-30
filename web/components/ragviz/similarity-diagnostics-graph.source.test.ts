@@ -13,4 +13,14 @@ describe('similarity diagnostics graph source', () => {
     expect(src).toContain('Loading embedding diagnostics graph')
     expect(src).not.toContain('animate-pulse')
   })
+
+  it('guards oversized diagnostics graphs instead of forcing every 3D render through the main flow', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'similarity-diagnostics-graph.tsx'), 'utf8')
+
+    expect(src).toContain('MAX_DIAGNOSTICS_GRAPH_NODES')
+    expect(src).toContain('MAX_DIAGNOSTICS_GRAPH_LINKS')
+    expect(src).toContain('const exceedsGraphComplexityBudget =')
+    expect(src).toContain('当前诊断图过大，已暂停 3D 渲染。')
+    expect(src).toContain('请缩小筛选范围或提高阈值后再试。')
+  })
 })

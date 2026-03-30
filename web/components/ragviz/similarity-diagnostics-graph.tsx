@@ -11,6 +11,9 @@ import { cn } from '@/lib/utils'
 
 import type { SimilarityDiagnosticLink, SimilarityDiagnosticNode } from './similarity-diagnostics'
 
+const MAX_DIAGNOSTICS_GRAPH_NODES = 180
+const MAX_DIAGNOSTICS_GRAPH_LINKS = 900
+
 const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), {
   ssr: false,
   loading: () => (
@@ -57,6 +60,8 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
   const selectedLink = links.find((link) => link.id === selectedLinkId) ?? null
+  const exceedsGraphComplexityBudget =
+    nodes.length > MAX_DIAGNOSTICS_GRAPH_NODES || links.length > MAX_DIAGNOSTICS_GRAPH_LINKS
 
   if (nodes.length === 0 || links.length === 0) {
     return (
@@ -69,7 +74,18 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
   return (
     <div className="space-y-3">
       <div ref={containerRef} className="relative h-[420px] overflow-hidden rounded-2xl border border-border/60 bg-card">
-        {width > 0 && height > 0 ? (
+        {exceedsGraphComplexityBudget ? (
+          <div className="flex h-full items-center justify-center px-6 text-center">
+            <div className="max-w-lg">
+              <div className="text-sm font-semibold text-foreground">当前诊断图过大，已暂停 3D 渲染。</div>
+              <p className="mt-2 text-sm text-muted-foreground">请缩小筛选范围或提高阈值后再试。</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                当前 {nodes.length} 个节点 / {links.length} 条连线，3D 预览上限为 {MAX_DIAGNOSTICS_GRAPH_NODES} 个节点和{' '}
+                {MAX_DIAGNOSTICS_GRAPH_LINKS} 条连线。
+              </p>
+            </div>
+          </div>
+        ) : width > 0 && height > 0 ? (
           <ForceGraph3D
             graphData={graphData}
             width={width}

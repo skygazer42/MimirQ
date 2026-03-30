@@ -1,10 +1,16 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { Search } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
-import { EvidenceWorkbench } from '@/components/ragviz/evidence-workbench'
+import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+
+const EvidenceWorkbench = dynamic(() => import('@/components/ragviz/evidence-workbench').then((mod) => mod.EvidenceWorkbench), {
+  ssr: false,
+  loading: () => <PageLoading message="正在加载 Evidence Workbench..." srMessage="Loading evidence workbench" />,
+})
 
 export default function KnowledgeEvidencePage() {
   return (
@@ -20,4 +26,3 @@ export default function KnowledgeEvidencePage() {
     </AppFrame>
   )
 }
-

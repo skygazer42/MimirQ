@@ -1,10 +1,16 @@
 'use client'
 
 import * as React from 'react'
+import dynamic from 'next/dynamic'
 import { Route } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { RagTracePanel } from '@/components/rag-trace/rag-trace-panel'
+import { PageLoading } from '@/components/ui/page-loading'
+
+const RagTracePanel = dynamic(() => import('@/components/rag-trace/rag-trace-panel').then((mod) => mod.RagTracePanel), {
+  ssr: false,
+  loading: () => <PageLoading message="正在加载 RAG Trace..." srMessage="Loading RAG trace panel" className="min-h-[50vh]" />,
+})
 
 type RagTraceDialogProps = {
   open: boolean
@@ -33,4 +39,3 @@ export function RagTraceDialog({ open, onOpenChange, conversationId, title }: Re
     </Dialog>
   )
 }
-
