@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Link, usePathname } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
@@ -10,23 +11,23 @@ import { cn } from '@/lib/utils'
 /*  Route segment → human-readable label                              */
 /* ------------------------------------------------------------------ */
 
-const ROUTE_LABELS: Record<string, string> = {
-  datasets: '数据集',
-  knowledge: '知识库',
-  settings: '设置',
-  graph: '知识图谱',
-  evaluations: '评测',
-  history: '历史记录',
-  prompts: '提示词',
-  profile: '概览',
-  ingestion: '数据导入',
-  precheck: '预检查',
-  workflow: '工作流',
-  kg: '知识图谱',
-  tables: '数据表',
-  health: '健康检查',
-  evidence: '溯源',
-  'db-catalog': '数据目录',
+const ROUTE_LABEL_KEYS: Record<string, string> = {
+  datasets: 'datasets',
+  knowledge: 'knowledge',
+  settings: 'settings',
+  graph: 'graph',
+  evaluations: 'evaluations',
+  history: 'history',
+  prompts: 'prompts',
+  profile: 'profile',
+  ingestion: 'ingestion',
+  precheck: 'precheck',
+  workflow: 'workflow',
+  kg: 'kg',
+  tables: 'tables',
+  health: 'health',
+  evidence: 'evidence',
+  'db-catalog': 'dbCatalog',
 }
 
 /* ------------------------------------------------------------------ */
@@ -48,10 +49,11 @@ type BreadcrumbProps = {
 /* ------------------------------------------------------------------ */
 
 export function Breadcrumb({ items, className }: Readonly<BreadcrumbProps>) {
+  const t = useTranslations('CommonUi')
   if (items.length === 0) return null
 
   return (
-    <nav aria-label="Breadcrumb" className={cn('flex items-center gap-1.5 text-sm', className)}>
+    <nav aria-label={t("breadcrumb.navLabel")} className={cn('flex items-center gap-1.5 text-sm', className)}>
       {items.map((item, i) => {
         const isLast = i === items.length - 1
         return (
@@ -79,8 +81,9 @@ export function Breadcrumb({ items, className }: Readonly<BreadcrumbProps>) {
 /* ------------------------------------------------------------------ */
 
 /** Resolve a segment string to a human-readable label. */
-function segmentLabel(segment: string): string {
-  return ROUTE_LABELS[segment] ?? segment
+function segmentLabel(segment: string, t: ReturnType<typeof useTranslations<'CommonUi'>>): string {
+  const routeKey = ROUTE_LABEL_KEYS[segment]
+  return routeKey ? t(`breadcrumb.routes.${routeKey}`) : segment
 }
 
 /** Whether a segment looks like a dynamic id (UUID or similar). */
@@ -96,6 +99,7 @@ function isDynamicSegment(segment: string): boolean {
  */
 export function usePathBreadcrumbs(): BreadcrumbItem[] {
   const pathname = usePathname()
+  const t = useTranslations('CommonUi')
 
   return useMemo(() => {
     const segments = pathname.split('/').filter(Boolean)
@@ -107,7 +111,7 @@ export function usePathBreadcrumbs(): BreadcrumbItem[] {
 
       if (isDynamicSegment(segment)) continue
 
-      items.push({ label: segmentLabel(segment), href })
+      items.push({ label: segmentLabel(segment, t), href })
     }
 
     // The last item represents the current page – drop its href.
@@ -116,5 +120,5 @@ export function usePathBreadcrumbs(): BreadcrumbItem[] {
     }
 
     return items
-  }, [pathname])
+  }, [pathname, t])
 }
