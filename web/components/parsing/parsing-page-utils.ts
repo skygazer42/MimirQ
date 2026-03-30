@@ -9,6 +9,8 @@ export type LibraryStatusBadge = {
   cls: string
 }
 
+type ParsingWorkbenchTranslationGetter = (key: string) => string
+
 export function countMarkdownHeadings(markdown: string) {
   const md = String(markdown || '').trim()
   if (!md) return 0
@@ -31,16 +33,19 @@ export function mapBackendStatusToLibraryStatus(status?: string): FileStatus {
   return 'pending'
 }
 
-export function getLibraryStatusBadge(status: FileStatus = 'pending'): LibraryStatusBadge {
+export function getLibraryStatusBadge(
+  status: FileStatus = 'pending',
+  t: ParsingWorkbenchTranslationGetter
+): LibraryStatusBadge {
   switch (status) {
     case 'parsed':
-      return { label: '已解析', cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' }
+      return { label: t('libraryStatus.parsed'), cls: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20' }
     case 'parsing':
-      return { label: '解析中', cls: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20' }
+      return { label: t('libraryStatus.parsing'), cls: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20' }
     case 'error':
-      return { label: '失败', cls: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20' }
+      return { label: t('libraryStatus.error'), cls: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20' }
     case 'pending':
     default:
-      return { label: '待解析', cls: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' }
+      return { label: t('libraryStatus.pending'), cls: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20' }
   }
 }

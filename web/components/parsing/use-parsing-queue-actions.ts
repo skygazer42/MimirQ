@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, type Dispatch, type DragEvent, type SetStateAction } from 'react'
+import { useTranslations } from 'next-intl'
 
 import { toast } from 'sonner'
 
@@ -41,6 +42,8 @@ export function useParsingQueueActions({
   setFiles,
   updateParsedFile,
 }: Readonly<UseParsingQueueActionsOptions>) {
+  const t = useTranslations('ParsingWorkbench')
+
   const removeFile = useCallback(
     (fileId: string) => {
       const queue = files.find((file) => file.id === fileId) || null
@@ -57,7 +60,7 @@ export function useParsingQueueActions({
           try {
             await parsingApi.delete(libraryId)
           } catch (err: unknown) {
-            toast.error(formatApiError(err, '删除失败'))
+            toast.error(formatApiError(err, t('toasts.deleteFailed')))
           }
         })()
 
@@ -77,6 +80,7 @@ export function useParsingQueueActions({
       setActiveFileId,
       setActiveLibraryFileId,
       setFiles,
+      t,
     ]
   )
 
@@ -117,8 +121,8 @@ export function useParsingQueueActions({
       const draggedFolderId = event.dataTransfer.getData('application/x-mimirq-folder')
       if (draggedFolderId) {
         const ok = moveFolder(draggedFolderId, targetId)
-        if (ok) toast.success('文件夹已移动')
-        else toast.error('移动失败：目标目录不合法（可能是自身/子目录/不存在）')
+        if (ok) toast.success(t('toasts.folderMoved'))
+        else toast.error(t('toasts.folderMoveInvalid'))
         setDragOverFolderId(null)
         return
       }
@@ -127,7 +131,7 @@ export function useParsingQueueActions({
       if (fileId) moveFileToFolder(fileId, targetId)
       setDragOverFolderId(null)
     },
-    [moveFileToFolder, moveFolder, setDragOverFolderId]
+    [moveFileToFolder, moveFolder, setDragOverFolderId, t]
   )
 
   const handleDeleteFolder = useCallback(

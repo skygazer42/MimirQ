@@ -1,6 +1,7 @@
 'use client'
 
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,8 @@ export function ParsingLeftPanel({
   children,
   className,
 }: Readonly<ParsingLeftPanelProps>) {
+  const t = useTranslations('ParsingWorkbench')
+
   return (
     <aside
       className={cn(
@@ -35,8 +38,8 @@ export function ParsingLeftPanel({
           collapsed && 'opacity-100 -right-8 translate-x-2'
         )}
         onClick={onToggleCollapsed}
-        title={collapsed ? '展开侧边栏' : '收起侧边栏'}
-        aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+        title={collapsed ? t('leftPanel.expandSidebar') : t('leftPanel.collapseSidebar')}
+        aria-label={collapsed ? t('leftPanel.expandSidebar') : t('leftPanel.collapseSidebar')}
       >
         {collapsed ? <PanelRightOpen className="w-3 h-3" /> : <PanelRightClose className="w-3 h-3" />}
       </Button>
@@ -47,4 +50,3 @@ export function ParsingLeftPanel({
     </aside>
   )
 }
-

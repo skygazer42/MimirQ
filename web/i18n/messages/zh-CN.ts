@@ -1056,6 +1056,16 @@ const zhCNMessages = {
     description: '上传文件并转换为 Markdown 格式，为数据治理做准备',
     queue: '队列',
     tools: '工具',
+    leftPanel: {
+      expandSidebar: '展开侧边栏',
+      collapseSidebar: '收起侧边栏',
+    },
+    libraryStatus: {
+      parsed: '已解析',
+      parsing: '解析中',
+      error: '失败',
+      pending: '待解析',
+    },
     mobileInspector: {
       view: '视图',
       layout: '版面',
@@ -1075,6 +1085,14 @@ const zhCNMessages = {
       parseAll: '全部解析',
       currentSession: '当前会话',
       library: '文档库',
+    },
+    toasts: {
+      deleteFailed: '删除失败',
+      folderMoved: '文件夹已移动',
+      folderMoveInvalid: '移动失败：目标目录不合法（可能是自身/子目录/不存在）',
+      saveSuccess: '已保存到服务器',
+      saveFailed: '保存失败',
+      parseFailed: '文档解析失败',
     },
     emptyTitle: '选择文件开始',
     emptyDescription: '从左侧上传或选择文件，系统将使用 AI 智能解析文档结构',
