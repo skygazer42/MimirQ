@@ -257,6 +257,63 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     }
   }, [isSeparatorStrategy, separatorCustom, separatorPreset])
 
+  const separatorPresetOptions = useMemo(() => {
+    return SEPARATOR_PRESET_OPTIONS.map((opt) => {
+      switch (opt.value) {
+        case 'paragraph':
+          return {
+            ...opt,
+            label: t('sidebar.separator.presets.paragraph.label'),
+            hint: t('sidebar.separator.presets.paragraph.hint'),
+          }
+        case 'line':
+          return {
+            ...opt,
+            label: t('sidebar.separator.presets.line.label'),
+            hint: t('sidebar.separator.presets.line.hint'),
+          }
+        case 'sentence_cn':
+          return {
+            ...opt,
+            label: t('sidebar.separator.presets.sentenceCn.label'),
+            hint: t('sidebar.separator.presets.sentenceCn.hint'),
+          }
+        case 'sentence_en':
+          return {
+            ...opt,
+            label: t('sidebar.separator.presets.sentenceEn.label'),
+            hint: t('sidebar.separator.presets.sentenceEn.hint'),
+          }
+        case 'markdown_hr':
+          return {
+            ...opt,
+            label: t('sidebar.separator.presets.markdownHr.label'),
+            hint: t('sidebar.separator.presets.markdownHr.hint'),
+          }
+        case 'markdown_h1':
+          return {
+            ...opt,
+            label: t('sidebar.separator.presets.markdownH1.label'),
+            hint: t('sidebar.separator.presets.markdownH1.hint'),
+          }
+        case 'markdown_h2':
+          return {
+            ...opt,
+            label: t('sidebar.separator.presets.markdownH2.label'),
+            hint: t('sidebar.separator.presets.markdownH2.hint'),
+          }
+        case 'custom':
+          return {
+            ...opt,
+            label: t('sidebar.separator.presets.custom.label'),
+            hint: t('sidebar.separator.presets.custom.hint'),
+          }
+        default:
+          return opt
+      }
+    })
+  }, [t])
+
   const parentChildEffective = useMemo(() => {
     if (!isParentChildStrategy) return null
     const sp = previewData?.params?.strategy_params
@@ -939,10 +996,10 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
           {isSeparatorStrategy ? (
             <div className="space-y-4 rounded-xl border border-border/60 bg-background p-3 shadow-sm">
-              <div className="text-[10px] text-muted-foreground uppercase  font-medium">分隔符策略参数</div>
+              <div className="text-[10px] text-muted-foreground uppercase  font-medium">{t('sidebar.separator.title')}</div>
 
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[10px] text-muted-foreground">同步到 Pipeline.chunk_strategy_params</div>
+                <div className="text-[10px] text-muted-foreground">{t('sidebar.separator.syncToPipeline')}</div>
                 <Button
                   type="button"
                   size="sm"
@@ -960,31 +1017,37 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     }
                     pipelineCtx.setEnabled(true)
                     pipelineCtx.updateOption('chunk_strategy_params', patch)
-                    toast.success('已写入 Pipeline.chunk_strategy_params（separator）')
+                    toast.success(t('sidebar.separator.writeSuccess'))
                   }}
                 >
-                  写入
+                  {t('sidebar.separator.write')}
                 </Button>
               </div>
               {pipelineCtx.options.chunk_strategy_params ? (
                 <div className="text-[10px] text-muted-foreground font-mono break-all">
-                  当前 pipeline: {JSON.stringify(pipelineCtx.options.chunk_strategy_params)}
+                  {t('sidebar.separator.currentPipeline', {
+                    value: JSON.stringify(pipelineCtx.options.chunk_strategy_params),
+                  })}
                 </div>
               ) : (
-                <div className="text-[10px] text-muted-foreground font-mono">当前 pipeline: (empty)</div>
+                <div className="text-[10px] text-muted-foreground font-mono">
+                  {t('sidebar.separator.currentPipeline', {
+                    value: t('sidebar.separator.currentPipelineEmpty'),
+                  })}
+                </div>
               )}
 
               <div className="space-y-2">
-                <div className="text-xs font-medium text-muted-foreground">分隔符预设</div>
+                <div className="text-xs font-medium text-muted-foreground">{t('sidebar.separator.presetLabel')}</div>
                 <Select
                   value={separatorPreset}
                   onValueChange={(value) => updateSeparatorSettings({ separatorPreset: value })}
                 >
                   <SelectTrigger className="h-9 bg-background">
-                    <SelectValue placeholder="选择分隔符预设" />
+                    <SelectValue placeholder={t('sidebar.separator.presetPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {SEPARATOR_PRESET_OPTIONS.map((opt) => (
+                    {separatorPresetOptions.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </SelectItem>
@@ -992,35 +1055,38 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   </SelectContent>
                 </Select>
                 <div className="text-[10px] text-muted-foreground">
-                  {SEPARATOR_PRESET_OPTIONS.find((o) => o.value === separatorPreset)?.hint || ''}
+                  {separatorPresetOptions.find((o) => o.value === separatorPreset)?.hint || ''}
                 </div>
                 {effectiveSeparator ? (
                   <div className="text-[10px] text-muted-foreground font-mono">
-                    有效分隔符: {JSON.stringify(effectiveSeparator).slice(1, -1) || '(empty)'} · len: {effectiveSeparator.length}
+                    {t('sidebar.separator.effectiveSeparator', {
+                      value: JSON.stringify(effectiveSeparator).slice(1, -1) || t('sidebar.separator.currentPipelineEmpty'),
+                      length: effectiveSeparator.length,
+                    })}
                   </div>
                 ) : null}
               </div>
 
               {separatorPreset === 'custom' ? (
                 <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">自定义分隔符</div>
+                  <div className="text-xs font-medium text-muted-foreground">{t('sidebar.separator.customLabel')}</div>
                   <Input
                     value={separatorCustom}
                     onChange={(e) => updateSeparatorSettings({ separatorCustom: e.target.value })}
                     className="h-9 text-[11px] font-mono bg-background"
-                    placeholder="例如：\\n\\n / --- / ##  / END_OF_SECTION"
-                    aria-label="自定义分隔符"
+                    placeholder={t('sidebar.separator.customPlaceholder')}
+                    aria-label={t('sidebar.separator.customAria')}
                   />
                   <div className="text-[10px] text-muted-foreground">
-                    支持转义：\\n \\r \\t \\uXXXX（会在发送到后端前解析）
+                    {t('sidebar.separator.customHelp')}
                   </div>
                 </div>
               ) : null}
 
               <div className="flex items-center justify-between gap-2 bg-card border border-border/60 rounded-xl px-3 py-2">
                 <div>
-                  <div className="text-xs font-medium text-foreground/80">保留分隔符</div>
-                  <div className="text-[10px] text-muted-foreground">将分隔符附在前一块末尾</div>
+                  <div className="text-xs font-medium text-foreground/80">{t('sidebar.separator.keepSeparator.title')}</div>
+                  <div className="text-[10px] text-muted-foreground">{t('sidebar.separator.keepSeparator.description')}</div>
                 </div>
                 <label className="inline-flex items-center gap-2 text-[10px] text-muted-foreground">
                   <input
@@ -1035,7 +1101,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-xs font-medium text-muted-foreground">最大块长度（可选）</div>
+                  <div className="text-xs font-medium text-muted-foreground">{t('sidebar.separator.maxChunkLength')}</div>
                   <Input
                     type="number"
                     inputMode="numeric"
@@ -1049,11 +1115,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       updateSeparatorSettings({ separatorMaxChunkSize: clampInt(n, 0, 20000) })
                     }}
                     className="h-7 w-24 text-[11px] font-mono bg-background"
-                    aria-label="最大块长度"
+                    aria-label={t('sidebar.separator.maxChunkLengthAria')}
                   />
                 </div>
                 <div className="text-[10px] text-muted-foreground leading-relaxed">
-                  0 表示自动：chunk_size × 3。注意：separator 策略不使用 overlap（重叠）。
+                  {t('sidebar.separator.maxChunkLengthHelp')}
                 </div>
               </div>
             </div>

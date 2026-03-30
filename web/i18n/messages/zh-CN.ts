@@ -656,6 +656,62 @@ const zhCNMessages = {
         },
         presetApplied: '已应用预设：{label}',
       },
+      separator: {
+        title: '分隔符策略参数',
+        syncToPipeline: '同步到 Pipeline.chunk_strategy_params',
+        write: '写入',
+        writeSuccess: '已写入 Pipeline.chunk_strategy_params（separator）',
+        currentPipeline: '当前 pipeline: {value}',
+        currentPipelineEmpty: '(empty)',
+        presetLabel: '分隔符预设',
+        presetPlaceholder: '选择分隔符预设',
+        presets: {
+          paragraph: {
+            label: '段落（\\\\n\\\\n）',
+            hint: '按空行分段（推荐）',
+          },
+          line: {
+            label: '按行（\\\\n）',
+            hint: '按换行切分',
+          },
+          sentenceCn: {
+            label: '中文句号（。）',
+            hint: '按中文句号切分',
+          },
+          sentenceEn: {
+            label: '英文句号（.）',
+            hint: '按英文句号切分',
+          },
+          markdownHr: {
+            label: 'Markdown 分隔线（---）',
+            hint: '适用于 slides/sections',
+          },
+          markdownH1: {
+            label: 'Markdown H1（# ）',
+            hint: '按一级标题切分',
+          },
+          markdownH2: {
+            label: 'Markdown H2（## ）',
+            hint: '按二级标题切分',
+          },
+          custom: {
+            label: '自定义',
+            hint: '输入自定义分隔符（支持转义）',
+          },
+        },
+        effectiveSeparator: '有效分隔符: {value} · len: {length}',
+        customLabel: '自定义分隔符',
+        customPlaceholder: '例如：\\n\\n / --- / ##  / END_OF_SECTION',
+        customAria: '自定义分隔符',
+        customHelp: '支持转义：\\n \\r \\t \\uXXXX（会在发送到后端前解析）',
+        keepSeparator: {
+          title: '保留分隔符',
+          description: '将分隔符附在前一块末尾',
+        },
+        maxChunkLength: '最大块长度（可选）',
+        maxChunkLengthAria: '最大块长度',
+        maxChunkLengthHelp: '0 表示自动：chunk_size × 3。注意：separator 策略不使用 overlap（重叠）。',
+      },
       ingestionPipeline: '入库管线',
       previewActions: {
         loading: '生成中...',
