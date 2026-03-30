@@ -1,6 +1,7 @@
 'use client'
 
 import { FileText, MessageSquare, Scissors, ShieldCheck } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Link, usePathname } from '@/i18n/navigation'
 import { cn } from '@/lib/utils'
@@ -14,40 +15,42 @@ type Step = {
   match: (pathname: string) => boolean
 }
 
-const STEPS: Step[] = [
-  {
-    key: 'parsing',
-    label: '解析',
-    href: '/parsing',
-    icon: FileText,
-    match: (p) => p === '/parsing' || p.startsWith('/parsing/'),
-  },
-  {
-    key: 'governance',
-    label: '治理',
-    href: '/data-governance',
-    icon: ShieldCheck,
-    match: (p) => p === '/data-governance' || p.startsWith('/data-governance/'),
-  },
-  {
-    key: 'chunk',
-    label: '切块',
-    href: '/chunk-preview',
-    icon: Scissors,
-    match: (p) => p === '/chunk-preview' || p.startsWith('/chunk-preview/'),
-  },
-  {
-    key: 'chat',
-    label: '对话',
-    href: '/',
-    icon: MessageSquare,
-    match: (p) => p === '/' || p.startsWith('/history'),
-  },
-]
+function getSteps(t: ReturnType<typeof useTranslations<'CommonUi'>>): Step[] {
+  return [
+    {
+      key: 'parsing',
+      label: t("ingestionWorkflow.parsing"),
+      href: '/parsing',
+      icon: FileText,
+      match: (p) => p === '/parsing' || p.startsWith('/parsing/'),
+    },
+    {
+      key: 'governance',
+      label: t("ingestionWorkflow.governance"),
+      href: '/data-governance',
+      icon: ShieldCheck,
+      match: (p) => p === '/data-governance' || p.startsWith('/data-governance/'),
+    },
+    {
+      key: 'chunk',
+      label: t("ingestionWorkflow.chunk"),
+      href: '/chunk-preview',
+      icon: Scissors,
+      match: (p) => p === '/chunk-preview' || p.startsWith('/chunk-preview/'),
+    },
+    {
+      key: 'chat',
+      label: t("ingestionWorkflow.chat"),
+      href: '/',
+      icon: MessageSquare,
+      match: (p) => p === '/' || p.startsWith('/history'),
+    },
+  ]
+}
 
-function getCurrentStepIndex(pathname: string) {
+function getCurrentStepIndex(pathname: string, steps: Step[]) {
   const p = pathname || '/'
-  const idx = STEPS.findIndex((s) => s.match(p))
+  const idx = steps.findIndex((s) => s.match(p))
   return idx >= 0 ? idx : 0
 }
 
@@ -58,12 +61,14 @@ export function IngestionWorkflowStepper({
   className?: string
   compact?: boolean
 }>) {
+  const t = useTranslations('CommonUi')
   const pathname = usePathname() || '/'
-  const currentIndex = getCurrentStepIndex(pathname)
+  const steps = getSteps(t)
+  const currentIndex = getCurrentStepIndex(pathname, steps)
 
   return (
-    <nav aria-label="入库流程" className={cn('flex items-center gap-2', className)}>
-      {STEPS.map((step, index) => {
+    <nav aria-label={t("ingestionWorkflow.navLabel")} className={cn('flex items-center gap-2', className)}>
+      {steps.map((step, index) => {
         const Icon = step.icon
         const isActive = index === currentIndex
         const isDone = index < currentIndex
@@ -103,7 +108,7 @@ export function IngestionWorkflowStepper({
 })())} />
               <span className="whitespace-nowrap">{step.label}</span>
             </Link>
-            {index < STEPS.length - 1 ? (
+            {index < steps.length - 1 ? (
               <span className="text-muted-foreground/40 text-xs select-none">→</span>
             ) : null}
           </div>
