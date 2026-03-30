@@ -1,5 +1,0 @@
-- [x] Keep the graph slice focused on the similarity diagnostics 3D preview shell.
-- [x] Move the loading shell, oversized-graph guard copy, and detail-card labels into `next-intl`.
-- [x] Update source-test coverage for the translation wiring.
-- [x] Run focused vitest and eslint checks.
-- [x] Commit and push `parallel-next-intl-msg-graph`.
