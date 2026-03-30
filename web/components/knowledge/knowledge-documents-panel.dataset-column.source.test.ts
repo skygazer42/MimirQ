@@ -9,7 +9,7 @@ describe('KnowledgeDocumentsPanel list columns', () => {
 
     expect(src).toContain('showDatasetColumn')
     expect(src).toContain('datasetLabelById')
-    expect(src).toContain('数据集')
+    expect(src).toContain('t("table.columns.dataset")')
     expect(src).toContain('source_path')
   })
 })

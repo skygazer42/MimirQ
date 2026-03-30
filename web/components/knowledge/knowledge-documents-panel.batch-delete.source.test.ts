@@ -8,8 +8,7 @@ describe('KnowledgeDocumentsPanel batch delete confirmation', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-documents-panel.tsx'), 'utf8')
 
     expect(src).toContain('<AlertDialog open={batchDeleteOpen}')
-    expect(src).toContain('确认删除')
+    expect(src).toContain('t("batchDelete.title")')
     expect(src).not.toContain('<Dialog open={batchDeleteOpen}')
   })
 })
-

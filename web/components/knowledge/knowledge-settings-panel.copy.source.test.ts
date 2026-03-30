@@ -7,8 +7,8 @@ describe('KnowledgeSettingsPanel copy', () => {
   it('uses the consolidated import entry point language', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-settings-panel.tsx'), 'utf8')
 
-    expect(src).toContain('导入/新增')
-    expect(src).not.toContain('URL 批量导入')
+    expect(src).toContain("useTranslations('KnowledgeSettingsPanel')")
+    expect(src).toContain('t("connectorRuns.empty.description")')
+    expect(src).toContain('t("connectorRuns.zeroState.description")')
   })
 })
-

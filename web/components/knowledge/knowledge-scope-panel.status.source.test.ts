@@ -10,11 +10,10 @@ describe('KnowledgeScopePanel status filter', () => {
 
     // Scope panel owns the status pills.
     expect(scopeSrc).toContain('aria-pressed={statusFilter === item.key}')
-    expect(scopeSrc).toContain('已就绪')
-    expect(scopeSrc).toContain('隔离')
+    expect(scopeSrc).toContain('useTranslations(\'KnowledgeScopePanel\')')
+    expect(scopeSrc).toContain('label: t(`status.${item.key}.label`)')
 
     // Main documents filters should no longer render the pills.
     expect(pageSrc).not.toContain('aria-pressed={statusFilter === item.key}')
   })
 })
-

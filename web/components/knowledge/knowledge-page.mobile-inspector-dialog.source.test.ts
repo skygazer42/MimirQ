@@ -8,9 +8,8 @@ describe('KnowledgePage mobile inspector dialog', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-page.tsx'), 'utf8')
 
     expect(src).toContain('WorkbenchPanelDialog')
-    expect(src).toContain('title="Inspector"')
+    expect(src).toContain("title={t('dialogs.inspector.title')}")
     expect(src).toContain('<KnowledgeInspector')
     expect(src).toContain('xl:hidden')
   })
 })
-

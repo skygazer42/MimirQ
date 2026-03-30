@@ -7,9 +7,8 @@ describe('KnowledgeSettingsPanel dataset purge', () => {
   it('exposes a guarded purge action (admin-only backend)', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-settings-panel.tsx'), 'utf8')
 
-    expect(src).toContain('清空数据集文档')
+    expect(src).toContain('t("dangerZone.trigger")')
     expect(src).toContain('datasetApi.purge')
     expect(src).toContain('dry_run')
   })
 })
-

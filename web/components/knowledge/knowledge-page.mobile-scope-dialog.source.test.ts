@@ -8,9 +8,8 @@ describe('KnowledgePage mobile scope dialog', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-page.tsx'), 'utf8')
 
     expect(src).toContain('WorkbenchPanelDialog')
-    expect(src).toContain('title="范围筛选"')
+    expect(src).toContain("title={t('dialogs.scope.title')}")
     expect(src).toContain('<KnowledgeScopePanel')
     expect(src).toContain('lg:hidden')
   })
 })
-

@@ -238,6 +238,7 @@ function DocumentLifecycleSaveButton({ disabled }: Readonly<{ disabled: boolean 
 export function DocumentDetailDialog({ document: initialDocument, trigger }: Readonly<DocumentDetailDialogProps>) {
   const commonT = useTranslations('Common')
   const documentsT = useTranslations('Documents')
+  const t = useTranslations('DocumentDetailDialog')
   const viewTabsId = useId()
   const chunksTabId = `${viewTabsId}-chunks-tab`
   const timelineTabId = `${viewTabsId}-timeline-tab`
@@ -389,10 +390,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     try {
       const updated = await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(nextTags))
       setDetail(updated)
-      toast.success('已更新标签')
+      toast.success(t("toasts.tagsUpdated"))
     } catch (err: any) {
       console.error('Update document tags failed:', err)
-      const msg = formatApiError(err, '保存标签失败')
+      const msg = formatApiError(err, t('errors.saveTagsFailed'))
       setTagsError(msg)
       setTagsDraft(nextTags)
       setTagsEditing(true)
@@ -737,17 +738,17 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const accessModeLabel = useMemo(() => {
     switch (effectiveAccessMode) {
       case 'inherit':
-        return '继承数据集'
+        return t("accessModes.inherit")
       case 'only_me':
-        return '仅我可见'
+        return t('accessModes.onlyMe')
       case 'partial_members':
-        return '指定成员/组'
+        return t('accessModes.partialMembers')
       case 'all_team_members':
-        return '团队成员'
+        return t('accessModes.allTeamMembers')
       default:
         return String(effectiveAccessMode)
     }
-  }, [effectiveAccessMode])
+  }, [effectiveAccessMode, t])
 
   const isSearching = chunkQuery.trim().length > 0
   const canLoadMoreChunks = chunks.length < chunksTotal
@@ -1533,7 +1534,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
               <div
                 className="inline-flex h-10 items-center rounded-md bg-muted p-1 text-muted-foreground"
                 role="tablist"
-                aria-label="文档详情视图切换"
+                aria-label={t("views.ariaLabel")}
               >
                 <button
                   type="button"
@@ -1549,7 +1550,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   onClick={() => setActiveView("chunks")}
                   onKeyDown={handleViewTabKeyDown}
                 >
-                  切片
+                  {t('views.chunks')}
                 </button>
                 <button
                   type="button"
@@ -1565,7 +1566,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   onClick={() => setActiveView("timeline")}
                   onKeyDown={handleViewTabKeyDown}
                 >
-                  时间线
+                  {t('views.timeline')}
                 </button>
               </div>
 
@@ -1576,24 +1577,24 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                   <Input
                     value={chunkQuery}
                     onChange={(e) => setChunkQuery(e.target.value)}
-                    placeholder="搜索切片内容..."
+                    placeholder={t("search.placeholder")}
                     className="h-10 pl-9"
                   />
                 </div>
               ) : (
-                <div className="flex-1 text-sm text-muted-foreground">文档处理时间线（可回溯）</div>
+                <div className="flex-1 text-sm text-muted-foreground">{t('timeline.description')}</div>
               )}
 
               {activeView === "chunks" && versions?.items?.length ? (
                 <Select value={viewPipelineHash} onValueChange={setViewPipelineHash}>
                   <SelectTrigger className="hidden h-10 w-[220px] sm:flex">
-                    <SelectValue placeholder="选择版本" />
+                    <SelectValue placeholder={t('versions.selectPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={ACTIVE_PIPELINE_VALUE}>当前激活版本</SelectItem>
+                    <SelectItem value={ACTIVE_PIPELINE_VALUE}>{t('versions.active')}</SelectItem>
                     {versions.items.map((v) => (
                       <SelectItem key={v.pipeline_hash} value={v.pipeline_hash}>
-                        {v.active ? '激活' : '历史'} {v.pipeline_hash.slice(0, 10)}… · {v.chunk_count} chunks
+                        {v.active ? t('versions.activeTag') : t('versions.historyTag')} {v.pipeline_hash.slice(0, 10)}… · {t('versions.chunkCount', { count: v.chunk_count })}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1609,7 +1610,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
               {activeView === "chunks" ? (
                 chunkQuery ? (
                   <IconButton
-                    label="清除搜索"
+                    label={t('search.clear')}
                     variant="ghost"
                     className="h-10 w-10 text-muted-foreground hover:text-foreground"
                     onClick={() => setChunkQuery("")}
@@ -1619,7 +1620,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 ) : null
               ) : (
                 <IconButton
-                  label="刷新时间线"
+                  label={t('timeline.refresh')}
                   variant="ghost"
                   className="h-10 w-10 text-muted-foreground hover:text-foreground"
                   onClick={() => detachPromise(loadTimeline())}

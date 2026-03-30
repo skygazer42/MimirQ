@@ -8,6 +8,6 @@ describe('KnowledgeDocumentsPanel document health wiring', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-documents-panel.tsx'), 'utf8')
 
     expect(src).toContain('/knowledge/${doc.id}/health')
-    expect(src).toContain('解析质量偏低')
+    expect(src).toContain('t("row.parseQualityLow", {')
   })
 })
