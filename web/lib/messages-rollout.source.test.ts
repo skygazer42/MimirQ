@@ -26,7 +26,7 @@ describe('messages catalog rollout source guards', () => {
   })
 
   it('keeps history page shell text sourced from the messages catalog', () => {
-    const historyPage = read('app/history/page.tsx')
+    const historyPage = read('app/history/page-client.tsx')
 
     expect(historyPage).toContain("import { messages as uiMessages } from '@/lib/messages'")
     expect(historyPage).toContain('uiMessages.history.loadingPage')

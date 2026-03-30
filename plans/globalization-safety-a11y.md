@@ -24,4 +24,4 @@
 ## 4. Next.js 16 架构优化
 
 ### 4.1 RSC 数据预取
-- [ ] **Server Actions 深度应用**: 将目前的 `api-client` 部分读操作迁移至 Server Components。
+- [x] **Server Actions 深度应用**: 将目前的 `api-client` 部分读操作迁移至 Server Components。
