@@ -19,4 +19,22 @@ describe('KG diagnostics quality report wiring', () => {
     expect(evaluationApiSrc).toContain('getKgQualityReport')
     expect(evaluationApiSrc).toContain("'/evaluations/kg/quality/report'")
   })
+
+  it('moves KG diagnostics page scaffold actions and toast copy into next-intl lookups', () => {
+    const pageSrc = fs.readFileSync(path.resolve(__dirname, 'kg-diagnostics-page.tsx'), 'utf8')
+
+    expect(pageSrc).toContain('t("page.title")')
+    expect(pageSrc).toContain('t("page.description")')
+    expect(pageSrc).toContain('t("page.actions.refreshRuns")')
+    expect(pageSrc).toContain('t("page.actions.run")')
+    expect(pageSrc).toContain('t("page.actions.exportRun")')
+    expect(pageSrc).toContain('t("toasts.datasetRequired")')
+    expect(pageSrc).toContain('t("toasts.runsLoadFailed")')
+    expect(pageSrc).toContain('t("toasts.runLoadFailed"')
+    expect(pageSrc).toContain('t("toasts.qualityReportLoaded")')
+    expect(pageSrc).toContain('t("toasts.qualityReportLoadFailed")')
+    expect(pageSrc).toContain('t("toasts.diagnosticsRan")')
+    expect(pageSrc).toContain('t("toasts.diagnosticsRunFailed")')
+    expect(pageSrc).toContain('t("toasts.runExported")')
+  })
 })
