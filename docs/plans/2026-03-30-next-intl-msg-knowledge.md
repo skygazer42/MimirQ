@@ -1,0 +1,5 @@
+- [x] Keep the knowledge slice focused on the workbench action entrypoint and ingestion route shell.
+- [x] Move the import CTA and ingestion loading copy into `next-intl`.
+- [x] Update source-test coverage for the translation wiring.
+- [x] Run focused vitest and eslint checks.
+- [x] Commit and push `parallel-next-intl-msg-knowledge`.
