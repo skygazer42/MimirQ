@@ -6,7 +6,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { ArrowLeft, Loader2, RefreshCw, Save, Trash2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn, formatDate, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { groupApi } from '@/lib/api'
+import { useRouter } from '@/i18n/navigation'
 import type { TenantGroupMemberOut, TenantGroupOut } from '@/types/backend'
 import {
   AlertDialog,

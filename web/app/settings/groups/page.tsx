@@ -6,7 +6,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { Plus, RefreshCw, Trash2, Users, UsersRound } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -19,6 +18,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { groupApi } from '@/lib/api'
+import { useRouter } from '@/i18n/navigation'
 import type { TenantGroupOut } from '@/types/backend'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
