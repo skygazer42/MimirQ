@@ -3,6 +3,7 @@
  */
 'use client'
 
+import type { Remote } from 'comlink'
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
@@ -11,6 +12,7 @@ import { toPrimitiveString } from '@/lib/primitive-text'
 import { Button } from '@/components/ui/button'
 import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
 import { detachPromise } from '@/lib/utils'
+import type { PdfPageRenderWorkerApi } from '@/workers/pdf-page-render.worker'
 
 
 type Box = BboxOverlayItem
@@ -48,6 +50,15 @@ function getPagePlaceholderHeight(pageAspectRatio: number | null): string {
   return `${Math.max(520, Math.round(DEFAULT_PAGE_CSS_WIDTH / pageAspectRatio))}px`
 }
 
+function canUseOffscreenCanvasRender(): boolean {
+  return (
+    typeof Worker !== 'undefined' &&
+    typeof OffscreenCanvas !== 'undefined' &&
+    typeof HTMLCanvasElement !== 'undefined' &&
+    typeof HTMLCanvasElement.prototype.transferControlToOffscreen === 'function'
+  )
+}
+
 export function PdfViewer({
   file,
   blocks = [],
@@ -72,9 +83,14 @@ export function PdfViewer({
   const [defaultPageAspectRatio, setDefaultPageAspectRatio] = useState<number | null>(null)
   const [pageAspectRatios, setPageAspectRatios] = useState<Map<number, number>>(new Map())
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
+  const [offscreenRenderEnabled, setOffscreenRenderEnabled] = useState(false)
   const renderedPagesRef = useRef<Set<number>>(new Set())
   const renderingPagesRef = useRef<Set<number>>(new Set())
   const renderTasksRef = useRef<Map<number, RenderTask>>(new Map())
+  const offscreenRenderWorkerRef = useRef<Worker | null>(null)
+  const offscreenRenderApiRef = useRef<Remote<PdfPageRenderWorkerApi> | null>(null)
+  const transferredPageCanvasRef = useRef<Set<number>>(new Set())
+  const offscreenRenderWorkerDisabledRef = useRef(false)
   const queuedPagesRef = useRef<Set<number>>(new Set())
   const renderQueueRef = useRef<number[]>([])
   const idleRenderHandleRef = useRef<IdleCallbackHandle | null>(null)
@@ -87,9 +103,25 @@ export function PdfViewer({
   const retryLoad = useCallback(() => {
     setReloadTick((prev) => prev + 1)
   }, [])
+
+  const terminateOffscreenRenderWorker = useCallback(() => {
+    const api = offscreenRenderApiRef.current
+    offscreenRenderApiRef.current = null
+    transferredPageCanvasRef.current.clear()
+    if (api) {
+      detachPromise(api.destroy().catch(() => {}))
+    }
+    offscreenRenderWorkerRef.current?.terminate()
+    offscreenRenderWorkerRef.current = null
+  }, [])
+
   const cancelRenderTasks = useCallback(() => {
     renderTasksRef.current.forEach((task) => task.cancel())
     renderTasksRef.current.clear()
+    const offscreenApi = offscreenRenderApiRef.current
+    if (offscreenApi) {
+      detachPromise(offscreenApi.cancelAllRenders().catch(() => {}))
+    }
   }, [])
 
   useEffect(() => {
@@ -192,6 +224,61 @@ export function PdfViewer({
     }
   }, [pdfDoc])
 
+  useEffect(() => {
+    let cancelled = false
+
+    terminateOffscreenRenderWorker()
+    setOffscreenRenderEnabled(false)
+
+    if (!file || !pdfDoc) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    if (offscreenRenderWorkerDisabledRef.current || !canUseOffscreenCanvasRender()) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    detachPromise((async () => {
+      try {
+        const { transfer, wrap } = await import('comlink')
+        if (cancelled) return
+
+        const worker = new Worker(new URL('../../workers/pdf-page-render.worker.ts', import.meta.url), {
+          type: 'module',
+        })
+        const api = wrap<PdfPageRenderWorkerApi>(worker)
+        offscreenRenderWorkerRef.current = worker
+        offscreenRenderApiRef.current = api
+
+        const data = new Uint8Array(await file.arrayBuffer())
+        await api.initializeDocument(transfer(data, [data.buffer]))
+
+        if (cancelled) {
+          await api.destroy().catch(() => {})
+          worker.terminate()
+          return
+        }
+
+        setOffscreenRenderEnabled(true)
+      } catch (error) {
+        console.warn('PDF offscreen render worker failed; falling back to main-thread raster', error)
+        offscreenRenderWorkerDisabledRef.current = true
+        terminateOffscreenRenderWorker()
+        setOffscreenRenderEnabled(false)
+      }
+    })())
+
+    return () => {
+      cancelled = true
+      terminateOffscreenRenderWorker()
+      setOffscreenRenderEnabled(false)
+    }
+  }, [file, pdfDoc, terminateOffscreenRenderWorker])
+
   const clearQueuedRenderFlush = useCallback(() => {
     const idleGlobal: IdleGlobal = globalThis
     const cancelIdleCallback = idleGlobal.cancelIdleCallback
@@ -206,6 +293,36 @@ export function PdfViewer({
     idleRenderHandleRef.current = null
     idleRenderTimeoutRef.current = null
   }, [])
+
+  const attachOffscreenPageCanvas = useCallback(
+    async (pageIndex: number) => {
+      if (!offscreenRenderEnabled) return false
+
+      const api = offscreenRenderApiRef.current
+      const canvas = canvasRefs.current.get(pageIndex)
+      if (!api || !canvas) return false
+
+      if (transferredPageCanvasRef.current.has(pageIndex)) {
+        return true
+      }
+
+      const { transfer } = await import('comlink')
+      const offscreenCanvas = canvas.transferControlToOffscreen()
+      await api.attachPageCanvas(
+        transfer(
+          {
+            pageIndex,
+            canvas: offscreenCanvas,
+          },
+          [offscreenCanvas]
+        )
+      )
+
+      transferredPageCanvasRef.current.add(pageIndex)
+      return true
+    },
+    [offscreenRenderEnabled]
+  )
 
   const rememberPageAspectRatio = useCallback((pageIndex: number, width: number, height: number) => {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
@@ -232,7 +349,10 @@ export function PdfViewer({
     renderQueueRef.current = renderQueueRef.current.filter((candidate) => candidate !== pageIndex)
 
     const canvas = canvasRefs.current.get(pageIndex)
-    if (canvas) {
+    const offscreenApi = offscreenRenderApiRef.current
+    if (transferredPageCanvasRef.current.has(pageIndex) && offscreenRenderEnabled && offscreenApi) {
+      detachPromise(offscreenApi.releasePage(pageIndex).catch(() => {}))
+    } else if (canvas) {
       canvas.width = 0
       canvas.height = 0
     }
@@ -246,7 +366,7 @@ export function PdfViewer({
       renderedPagesRef.current = next
       return next
     })
-  }, [])
+  }, [offscreenRenderEnabled])
 
   const scheduleQueuedRenderFlush = useCallback(() => {
     if (idleRenderHandleRef.current != null || idleRenderTimeoutRef.current != null) return
@@ -307,11 +427,38 @@ export function PdfViewer({
       const gen = renderGenRef.current
       renderingPagesRef.current.add(pageIndex)
       let activeRenderTask: RenderTask | null = null
+      let releasePageResources: (() => void) | null = null
       try {
         const page = await doc.getPage(pageIndex + 1)
+        releasePageResources = () => {
+          page.cleanup()
+          releasePageResources = null
+        }
         if (renderGenRef.current !== gen) return
         const viewport = page.getViewport({ scale })
         rememberPageAspectRatio(pageIndex, viewport.width, viewport.height)
+
+        const api = offscreenRenderEnabled ? offscreenRenderApiRef.current : null
+        if (api) {
+          releasePageResources?.()
+          const attached = await attachOffscreenPageCanvas(pageIndex)
+          if (!attached) {
+            throw new Error(`Unable to attach OffscreenCanvas for page ${pageIndex}`)
+          }
+
+          await api.renderPage({ pageIndex, scale })
+          if (renderGenRef.current !== gen) return
+
+          setRenderedPages((prev) => {
+            if (prev.has(pageIndex)) return prev
+            const next = new Set(prev)
+            next.add(pageIndex)
+            renderedPagesRef.current = next
+            return next
+          })
+          return
+        }
+
         const canvas = canvasRefs.current.get(pageIndex)
         if (!canvas) return
 
@@ -321,9 +468,8 @@ export function PdfViewer({
         activeRenderTask = renderTask
         renderTasksRef.current.set(pageIndex, renderTask)
         await renderTask.promise
+        releasePageResources?.()
         if (renderGenRef.current !== gen) return
-        page.cleanup()
-
         setRenderedPages((prev) => {
           if (prev.has(pageIndex)) return prev
           const next = new Set(prev)
@@ -337,10 +483,11 @@ export function PdfViewer({
         if (activeRenderTask && renderTasksRef.current.get(pageIndex) === activeRenderTask) {
           renderTasksRef.current.delete(pageIndex)
         }
+        releasePageResources?.()
         renderingPagesRef.current.delete(pageIndex)
       }
     },
-    [pdfDoc, pageCount, rememberPageAspectRatio, scale]
+    [attachOffscreenPageCanvas, offscreenRenderEnabled, pdfDoc, pageCount, rememberPageAspectRatio, scale]
   )
 
   const flushQueuedPageRenders = useCallback(async () => {

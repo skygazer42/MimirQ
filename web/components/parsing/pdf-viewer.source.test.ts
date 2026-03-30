@@ -45,6 +45,20 @@ describe('pdf viewer source', () => {
     expect(src).toContain('page.cleanup()')
   })
 
+  it('releases main-thread page resources after raster work completes even when worker rendering is available', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('let releasePageResources: (() => void) | null = null')
+
+    const renderTaskIndex = src.indexOf('const renderTask = page.render({ canvas, viewport })')
+    const renderPromiseIndex = src.indexOf('await renderTask.promise', renderTaskIndex)
+    const releaseIndex = src.indexOf('releasePageResources?.()', renderPromiseIndex)
+
+    expect(renderTaskIndex).toBeGreaterThan(-1)
+    expect(renderPromiseIndex).toBeGreaterThan(renderTaskIndex)
+    expect(releaseIndex).toBeGreaterThan(renderPromiseIndex)
+  })
+
   it('tracks rendered pages in a ref so viewport observers do not churn on every render', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 
@@ -52,7 +66,7 @@ describe('pdf viewer source', () => {
     expect(src).toContain('if (renderedPagesRef.current.has(pageIndex)) return')
     expect(src).toContain('renderedPagesRef.current = new Set()')
     expect(src).toContain('renderedPagesRef.current = next')
-    expect(src).toContain('[pdfDoc, pageCount, rememberPageAspectRatio, scale]')
+    expect(src).toContain('[attachOffscreenPageCanvas, offscreenRenderEnabled, pdfDoc, pageCount, rememberPageAspectRatio, scale]')
     expect(src).not.toContain('[pdfDoc, pageCount, renderedPages, scale]')
   })
 
@@ -78,5 +92,16 @@ describe('pdf viewer source', () => {
     expect(src).toContain("contentVisibility: 'auto'")
     expect(src).toContain('containIntrinsicSize')
     expect(src).toContain('releasePage(idx)')
+  })
+
+  it('can hand page raster work to a dedicated OffscreenCanvas render worker when the browser supports it', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain("new URL('../../workers/pdf-page-render.worker.ts', import.meta.url)")
+    expect(src).toContain('transferControlToOffscreen')
+    expect(src).toContain('setOffscreenRenderEnabled(true)')
+    expect(src).toContain('await api.attachPageCanvas(')
+    expect(src).toContain('await api.renderPage({')
+    expect(src).toContain('offscreenApi.releasePage(pageIndex)')
   })
 })

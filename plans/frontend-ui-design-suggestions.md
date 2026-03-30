@@ -10,6 +10,6 @@
 ## 3. 性能与极速感 (Perceived Performance)
 
 ### 3.1 渲染策略优化
-- [ ] **OffscreenCanvas 离线渲染**: 将重型 3D 计算和 PDF 预渲染移出主线程，确保用户在数据处理时滚动依然丝滑。
+- [x] **OffscreenCanvas 离线渲染**: 将重型 3D 计算和 PDF 预渲染移出主线程，确保用户在数据处理时滚动依然丝滑。
 
 ## 4. 自动化审计 (Automated Audit)
