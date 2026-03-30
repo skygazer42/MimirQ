@@ -5,7 +5,7 @@
  * 优化版：卡片视图、视觉增强、交互优化、深色模式适配
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { motion, useReducedMotion, type Transition } from 'framer-motion'
 import { Database, FileText, Settings, Loader2, CheckCircle, XCircle, AlertTriangle, RefreshCw, Layers, HardDrive, FileStack, Eye, LayoutGrid, List as ListIcon, MoreVertical, Zap, Filter } from 'lucide-react'
@@ -17,6 +17,7 @@ import { useDocuments } from '@/hooks/use-documents'
 import { formatFileSize, cn, detachPromise } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
+import { useRouter } from '@/i18n/navigation'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { toSourcePathPrefix } from '@/lib/document-folders'
 import type { ConnectorRunOut, Dataset, DocumentStats } from '@/types'

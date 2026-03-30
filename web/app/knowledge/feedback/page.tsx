@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
 import { Star, RefreshCw, Search, ArrowUpRight, ArrowRight, Copy, MessageSquare, Loader2, ThumbsUp, ThumbsDown, TestTube2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -12,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useRouter } from '@/i18n/navigation'
 import { feedbackApi } from '@/lib/api'
 import { cn, formatDate, detachPromise } from '@/lib/utils'
 import type { MessageFeedbackEnriched } from '@/types'
