@@ -731,7 +731,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                               </span>
                             ) : null}
                             {familyHit ? (
-                              <span className="font-mono bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 px-2 py-1 rounded-md">
+                              <span className="font-mono bg-warning/10 text-warning border border-warning/20 px-2 py-1 rounded-md">
                                 family_hit
                               </span>
                             ) : null}

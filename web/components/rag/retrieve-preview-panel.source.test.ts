@@ -48,4 +48,12 @@ describe('retrieve preview panel source', () => {
     expect(src).toContain('animate-in fade-in-0 slide-in-from-bottom-1 duration-300')
     expect(src).toContain('motion-reduce:animate-none')
   })
+
+  it('uses semantic warning tokens for family-hit emphasis instead of hard-coded amber classes', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'retrieve-preview-panel.tsx'), 'utf8')
+
+    expect(src).toContain('bg-warning/10 text-warning border border-warning/20')
+    expect(src).not.toContain('amber-500')
+    expect(src).not.toContain('text-amber-')
+  })
 })

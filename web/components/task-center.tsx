@@ -207,25 +207,25 @@ export function TaskCenter() {
                                 const containerClass = cn(
                                   "group flex items-start gap-3 p-3 rounded-xl transition-colors",
                                   isQuarantine
-                                    ? "border border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10"
+                                    ? "border border-warning/20 bg-warning/5 hover:bg-warning/10"
                                     : "border border-destructive/20 bg-destructive/5 hover:bg-destructive/10"
                                 )
                                 const iconClass = cn(
                                   "mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg",
-                                  isQuarantine ? "bg-amber-500/10 text-amber-600" : "bg-destructive/10 text-destructive"
+                                  isQuarantine ? "bg-warning/10 text-warning" : "bg-destructive/10 text-destructive"
                                 )
                                 const titleClass = cn(
                                   "text-sm font-medium truncate leading-snug",
-                                  isQuarantine ? "text-amber-700 dark:text-amber-300" : "text-destructive"
+                                  isQuarantine ? "text-warning" : "text-destructive"
                                 )
                                 const messageClass = cn(
                                   "mt-1 text-xs truncate",
-                                  isQuarantine ? "text-amber-700/80 dark:text-amber-300/80" : "text-destructive/80"
+                                  isQuarantine ? "text-warning/80" : "text-destructive/80"
                                 )
                                 const retryClass = cn(
                                   "mt-0.5 h-8 w-8 rounded-lg",
                                   isQuarantine
-                                    ? "text-amber-700/80 hover:text-amber-700 dark:text-amber-300/80 dark:hover:text-amber-300"
+                                    ? "text-warning/80 hover:text-warning"
                                     : "text-destructive/80 hover:text-destructive"
                                 )
 
