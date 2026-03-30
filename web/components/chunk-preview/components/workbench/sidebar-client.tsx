@@ -762,7 +762,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	            {ingestionPreview ? (
 	              <div className="rounded-xl border border-border/60 bg-background p-3 space-y-2">
 	                <div className="flex items-center justify-between gap-2">
-	                  <div className="text-[10px] text-muted-foreground">命中规则</div>
+	                  <div className="text-[10px] text-muted-foreground">{t('sidebar.ingestionPreview.result.title')}</div>
 	                  <div className="flex items-center gap-1">
 	                    <Button
 	                      type="button"
@@ -771,7 +771,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	                      className="h-7 px-2 text-[11px]"
 	                      onClick={() => setIngestionDetailsOpen(true)}
 	                    >
-	                      详情
+	                      {t('sidebar.ingestionPreview.result.details')}
 	                    </Button>
 	                    <Button
 	                      type="button"
@@ -780,37 +780,54 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 	                      className="h-7 px-2 text-[11px]"
 	                      onClick={() => setIngestionPreview(null)}
 	                    >
-	                      清除
+	                      {t('sidebar.ingestionPreview.result.clear')}
 	                    </Button>
 	                  </div>
 	                </div>
                 <div className="text-xs text-foreground/90 font-medium">
                   {ingestionPreview.rule.matched
-                    ? (ingestionPreview.rule.rule_name || ingestionPreview.rule.rule_id || '已命中规则')
-                    : '未命中策略规则（使用默认配置）'}
+                    ? t('sidebar.ingestionPreview.result.matchedRule', {
+                      name: ingestionPreview.rule.rule_name
+                        || ingestionPreview.rule.rule_id
+                        || t('sidebar.ingestionPreview.result.matchedRuleFallback'),
+                    })
+                    : t('sidebar.ingestionPreview.result.defaultRule')}
                 </div>
                 <div className="text-[10px] text-muted-foreground font-mono">
-                  parser: {ingestionPreview.rule.parser_backend} · strategy: {ingestionPreview.rule.chunk_strategy}
+                  {t('sidebar.ingestionPreview.result.parserStrategy', {
+                    parser: ingestionPreview.rule.parser_backend,
+                    strategy: ingestionPreview.rule.chunk_strategy,
+                  })}
                 </div>
                 {ingestionPreview.rule.governance_profile_ref ? (
                   <div className="text-[10px] text-muted-foreground">
-                    governance profile: <span className="font-mono">{ingestionPreview.rule.governance_profile_ref}</span>
+                    {t('sidebar.ingestionPreview.result.governanceProfile', {
+                      value: ingestionPreview.rule.governance_profile_ref,
+                    })}
                   </div>
                 ) : null}
 	                <div className="text-[10px] text-muted-foreground">
-	                  preprocess steps: <span className="font-mono">{ingestionPreview.rule.preprocess_steps.length}</span>
+	                  {t('sidebar.ingestionPreview.result.preprocessSteps', {
+                      count: ingestionPreview.rule.preprocess_steps.length,
+                    })}
 	                </div>
 	                <div className="text-[10px] text-muted-foreground">
-	                  preprocess:{' '}
+	                  {t('sidebar.ingestionPreview.result.preprocessLabel')}{' '}
 	                  <span className={cn(ingestionPreview.preprocess.changed ? 'text-warning' : 'text-muted-foreground')}>
-	                    {ingestionPreview.preprocess.changed ? 'changed' : 'no change'}
+	                    {ingestionPreview.preprocess.changed
+                        ? t('sidebar.ingestionPreview.result.preprocessChanged')
+                        : t('sidebar.ingestionPreview.result.preprocessUnchanged')}
 	                  </span>{' '}
 	                  ·{' '}
 	                  <span className="font-mono">
 	                    {formatFileSize(ingestionPreview.preprocess.size_before)} → {formatFileSize(ingestionPreview.preprocess.size_after)}
 	                  </span>
 	                  {ingestionPreview.preprocess.warnings?.length ? (
-	                    <span className="text-warning"> · warnings {ingestionPreview.preprocess.warnings.length}</span>
+	                    <span className="text-warning">
+                        {t('sidebar.ingestionPreview.result.preprocessWarnings', {
+                          count: ingestionPreview.preprocess.warnings.length,
+                        })}
+                      </span>
 	                  ) : null}
 	                </div>
                 <div className="flex items-center gap-2 pt-1">
@@ -821,10 +838,10 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     onClick={() => {
                       setParserBackend(ingestionPreview.rule.parser_backend)
                       updateSettings({ strategy: ingestionPreview.rule.chunk_strategy })
-                      toast.success('已应用推荐的解析器与切块策略')
+                      toast.success(t('sidebar.ingestionPreview.result.applyRecommendationSuccess'))
                     }}
                   >
-                    应用推荐
+                    {t('sidebar.ingestionPreview.result.applyRecommendation')}
                   </Button>
                   <Button
                     type="button"
@@ -833,7 +850,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     className="h-8 px-3 text-[11px]"
                     onClick={() => runPreview({ force: true })}
                   >
-                    立即预览
+                    {t('sidebar.ingestionPreview.result.previewNow')}
                   </Button>
                 </div>
 	              </div>
