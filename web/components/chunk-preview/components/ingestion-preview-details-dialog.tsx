@@ -8,6 +8,7 @@
 
 import { useMemo } from 'react'
 import { Download, FileText, Settings2 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { useRouter } from '@/i18n/navigation'
@@ -60,11 +61,12 @@ export function IngestionPreviewDetailsDialog({
   onApplyPipelinePatch?: (patch: DocumentPipelineOptions) => void
 }>) {
   const router = useRouter()
+  const t = useTranslations('ChunkPreview')
   const ruleTitle = useMemo(() => {
     if (!preview) return ''
-    if (!preview.rule?.matched) return '未命中策略规则（使用默认配置）'
-    return preview.rule?.rule_name || preview.rule?.rule_id || '已命中规则'
-  }, [preview])
+    if (!preview.rule?.matched) return t("ingestionPreview.rule.unmatched")
+    return preview.rule?.rule_name || preview.rule?.rule_id || t("ingestionPreview.rule.matched")
+  }, [preview, t])
 
   const preprocessSummary = useMemo(() => {
     if (!preview?.preprocess) return null
@@ -120,7 +122,7 @@ export function IngestionPreviewDetailsDialog({
           <DialogTitle className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
               <Settings2 className="w-5 h-5 text-primary" />
-              入库策略预览
+              {t("ingestionPreview.title")}
             </span>
             <Button
               type="button"
@@ -139,27 +141,36 @@ export function IngestionPreviewDetailsDialog({
                 onOpenChange(false)
               }}
               disabled={!preview}
-	            >
-	              去数据治理
-	            </Button>
-	          </DialogTitle>
-	          <DialogDescription className="space-y-1">
+            >
+              {t("ingestionPreview.actions.openGovernance")}
+            </Button>
+          </DialogTitle>
+          <DialogDescription className="space-y-1">
             <div className="text-xs text-foreground/90">
               {ruleTitle || '—'}
               {preview?.rule?.parser_backend ? (
-                <span className="text-muted-foreground"> · parser: {preview.rule.parser_backend}</span>
+                <span className="text-muted-foreground">
+                  {' '}
+                  · {t("ingestionPreview.meta.parserLabel")}: {preview.rule.parser_backend}
+                </span>
               ) : null}
               {preview?.rule?.chunk_strategy ? (
-                <span className="text-muted-foreground"> · strategy: {preview.rule.chunk_strategy}</span>
+                <span className="text-muted-foreground">
+                  {' '}
+                  · {t("ingestionPreview.meta.strategyLabel")}: {preview.rule.chunk_strategy}
+                </span>
               ) : null}
             </div>
             {preview?.rule?.governance_profile_ref ? (
               <div className="text-[11px] text-muted-foreground">
-                governance profile: <span className="font-mono">{preview.rule.governance_profile_ref}</span>
+                {t("ingestionPreview.meta.governanceProfileLabel")}:{' '}
+                <span className="font-mono">{preview.rule.governance_profile_ref}</span>
               </div>
             ) : null}
             <div className="text-[11px] text-muted-foreground">
-              该预览来自 <span className="font-mono">/pipeline/ingestion-preview</span>（不会入库）。
+              {t("ingestionPreview.meta.previewSourcePrefix")}{' '}
+              <span className="font-mono">/pipeline/ingestion-preview</span>
+              {t("ingestionPreview.meta.previewSourceSuffix")}
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -167,19 +178,21 @@ export function IngestionPreviewDetailsDialog({
         <Tabs defaultValue="preprocess" className="w-full">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="preprocess" disabled={!hasPreview}>
-              Preprocess
+              {t("ingestionPreview.tabs.preprocess")}
             </TabsTrigger>
             <TabsTrigger value="clean" disabled={!hasPreview}>
-              Governance
+              {t("ingestionPreview.tabs.governance")}
             </TabsTrigger>
             <TabsTrigger value="diff" disabled={!hasPreview}>
-              Diff
+              {t("ingestionPreview.tabs.diff")}
             </TabsTrigger>
             <TabsTrigger value="issues" disabled={!hasPreview}>
-              Issues{issues.length ? ` (${issues.length})` : ''}
+              {issues.length
+                ? t("ingestionPreview.tabs.issuesWithCount", { count: issues.length })
+                : t("ingestionPreview.tabs.issues")}
             </TabsTrigger>
             <TabsTrigger value="explain" disabled={!hasPreview}>
-              Explain
+              {t("ingestionPreview.tabs.explain")}
             </TabsTrigger>
           </TabsList>
 
@@ -188,7 +201,7 @@ export function IngestionPreviewDetailsDialog({
               <div className="space-y-3">
                 <div className="rounded-xl border border-border/60 bg-card p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium text-foreground">预处理（Preprocess）</div>
+                    <div className="text-sm font-medium text-foreground">{t("ingestionPreview.preprocess.title")}</div>
                     <span
                       className={cn(
                         'text-[11px] px-2 py-0.5 rounded-full border',
@@ -197,23 +210,29 @@ export function IngestionPreviewDetailsDialog({
                           : 'bg-success/10 text-success border-success/25'
                       )}
                     >
-                      {preprocessSummary.changed ? 'changed' : 'no change'}
+                      {preprocessSummary.changed
+                        ? t("ingestionPreview.preprocess.status.changed")
+                        : t("ingestionPreview.preprocess.status.noChange")}
                     </span>
                   </div>
                   <div className="mt-2 text-[11px] text-muted-foreground">
-                    size: <span className="font-mono">{formatFileSize(preprocessSummary.sizeBefore)}</span> →{' '}
+                    {t("ingestionPreview.preprocess.sizeLabel")}:{' '}
+                    <span className="font-mono">{formatFileSize(preprocessSummary.sizeBefore)}</span> →{' '}
                     <span className="font-mono">{formatFileSize(preprocessSummary.sizeAfter)}</span>
                   </div>
                   {preprocessSummary.warnings.length ? (
                     <div className="mt-2 text-[11px] text-warning">
-                      warnings: <span className="font-mono">{preprocessSummary.warnings.length}</span>
+                      {t("ingestionPreview.preprocess.warningsLabel")}:{' '}
+                      <span className="font-mono">{preprocessSummary.warnings.length}</span>
                     </div>
                   ) : null}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-xl border border-border/60 bg-card p-3">
-                    <div className="text-[11px] font-medium text-muted-foreground">步骤（Steps）</div>
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                      {t("ingestionPreview.preprocess.stepsTitle")}
+                    </div>
                     <ScrollArea className="h-[240px] mt-2 pr-2">
                       {preprocessSummary.steps.length ? (
                         <div className="space-y-1">
@@ -232,7 +251,9 @@ export function IngestionPreviewDetailsDialog({
                                         applied ? 'bg-success/10 text-success border-success/25' : 'bg-muted text-muted-foreground border-border/60'
                                       )}
                                     >
-                                      {applied ? 'applied' : 'skip'}
+                                      {applied
+                                        ? t("ingestionPreview.preprocess.stepStatus.applied")
+                                        : t("ingestionPreview.preprocess.stepStatus.skipped")}
                                     </span>
                                     <span
                                       className={cn(
@@ -240,7 +261,9 @@ export function IngestionPreviewDetailsDialog({
                                         changed ? 'bg-warning/10 text-warning border-warning/25' : 'bg-muted text-muted-foreground border-border/60'
                                       )}
                                     >
-                                      {changed ? 'changed' : 'same'}
+                                      {changed
+                                        ? t("ingestionPreview.preprocess.stepChange.changed")
+                                        : t("ingestionPreview.preprocess.stepChange.same")}
                                     </span>
                                   </div>
                                 </div>
@@ -252,13 +275,15 @@ export function IngestionPreviewDetailsDialog({
                           })}
                         </div>
                       ) : (
-                        <div className="text-[11px] text-muted-foreground">无 preprocess steps</div>
+                        <div className="text-[11px] text-muted-foreground">{t("ingestionPreview.preprocess.emptySteps")}</div>
                       )}
                     </ScrollArea>
                   </div>
 
                   <div className="rounded-xl border border-border/60 bg-card p-3">
-                    <div className="text-[11px] font-medium text-muted-foreground">Warnings</div>
+                    <div className="text-[11px] font-medium text-muted-foreground">
+                      {t("ingestionPreview.preprocess.warningsTitle")}
+                    </div>
                     <ScrollArea className="h-[240px] mt-2 pr-2">
                       {preprocessSummary.warnings.length ? (
                         <div className="space-y-1">
@@ -269,14 +294,16 @@ export function IngestionPreviewDetailsDialog({
                           ))}
                         </div>
                       ) : (
-                        <div className="text-[11px] text-muted-foreground">无 warnings</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {t("ingestionPreview.preprocess.emptyWarnings")}
+                        </div>
                       )}
                     </ScrollArea>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">暂无预览数据</div>
+              <div className="text-sm text-muted-foreground">{t("ingestionPreview.states.noPreviewData")}</div>
             )}
           </TabsContent>
 
