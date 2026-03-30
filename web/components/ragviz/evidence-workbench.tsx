@@ -215,7 +215,7 @@ export function EvidenceWorkbench() {
 
   return (
     <div className="space-y-4">
-      <Panel className="p-4">
+      <Panel variant="glass" className="p-4">
         <div className="flex flex-col gap-3">
           <div className="flex flex-col md:flex-row gap-3 md:items-end">
             <div className="flex-1 min-w-0">
@@ -313,7 +313,7 @@ export function EvidenceWorkbench() {
 
       {result ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <Panel className="p-4 lg:col-span-1">
+          <Panel variant="glass" className="p-4 lg:col-span-1">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Summary</div>
@@ -324,13 +324,13 @@ export function EvidenceWorkbench() {
                   'px-2 py-1 rounded-md text-xs font-mono border',
                   (() => {
     if (result.has_evidence) {
-        return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-300';
+        return 'bg-success/10 border-success/20 text-success';
     }
     else if (result.abstain_triggered) {
-            return 'bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-300';
+            return 'bg-warning/10 border-warning/20 text-warning';
         }
         else {
-            return 'bg-muted border-border text-muted-foreground';
+            return 'bg-sidebar/45 border-sidebar-border/70 text-muted-foreground';
         }
 })()
                 )}
@@ -365,12 +365,16 @@ export function EvidenceWorkbench() {
               </div>
               <div className="pt-2">
                 <div className="text-muted-foreground text-[11px]">query_for_retrieval</div>
-                <Input readOnly value={result.query_for_retrieval || ''} className="mt-1 font-mono text-[12px]" />
+                <Input
+                  readOnly
+                  value={result.query_for_retrieval || ''}
+                  className="mt-1 border-sidebar-border/70 bg-sidebar/40 font-mono text-[12px]"
+                />
               </div>
             </div>
           </Panel>
 
-          <Panel className="p-4 lg:col-span-2">
+          <Panel variant="glass" className="p-4 lg:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold">Citations</div>
@@ -389,8 +393,8 @@ export function EvidenceWorkbench() {
                     <div
                       key={`${String(c.document_id || '')}:${String(c.chunk_id || '')}:${String(c.page_number ?? '')}`}
                       className={cn(
-                        'rounded-lg border border-border/60 bg-background/70 px-3 py-2',
-                        'hover:border-primary/20 hover:bg-muted/20 transition-colors'
+                        'rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft backdrop-blur-sm',
+                        'hover:border-primary/25 hover:bg-sidebar/70 transition-colors'
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -408,7 +412,7 @@ export function EvidenceWorkbench() {
                           {safeImgUrl ? (
                             <AuthImageLink
                               src={safeImgUrl}
-                              className="shrink-0 relative h-10 w-14 rounded-md overflow-hidden border border-border/60 bg-muted/20"
+                              className="shrink-0 relative h-10 w-14 rounded-md overflow-hidden border border-sidebar-border/70 bg-sidebar/40 shadow-soft/70"
                               title="Open image"
                               onClick={(e) => e.stopPropagation()}
                             >

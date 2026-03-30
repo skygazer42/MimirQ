@@ -31,4 +31,12 @@ describe('rag trace panel source', () => {
     expect(src).toContain('分数漂移')
     expect(src).toContain('setDiffOtherRequestId(candidate.requestId)')
   })
+
+  it('keeps expert trace internals on sidebar-tinted surfaces instead of the older border-heavy cards', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'rag-trace-panel.tsx'), 'utf8')
+
+    expect(src).toContain('border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft')
+    expect(src).toContain('border-sidebar-border/60 bg-sidebar/45 px-3 py-3 text-xs text-muted-foreground')
+    expect(src).toContain('border-sidebar-border/70 bg-sidebar/55 px-3 py-2 text-left transition-colors')
+  })
 })
