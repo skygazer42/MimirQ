@@ -2,6 +2,7 @@
 
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
 import { getAccessToken, getTenantId } from '@/lib/auth-storage'
+import { buildMarkdownImageProxyUrl } from '@/lib/markdown-image-proxy'
 
 const DOCUMENT_DOWNLOAD_PATH_RE = /^\/api\/v1\/documents\/[^/]+\/download\/?$/
 
@@ -13,6 +14,7 @@ try {
 }
 
 const blobCache = new Map<string, string>()
+const proxiedRemoteUrlCache = new Map<string, string>()
 
 export function normalizeAssetUrl(rawUrl: string | null | undefined): string | null {
   const raw = String(rawUrl || '').trim()
@@ -27,7 +29,7 @@ export function needsAuthAssetProxy(rawUrl: string | null | undefined): boolean 
 
   try {
     const parsed = new URL(resolved, API_BASE_URL)
-    if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) return false
+    if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) return /^https?:$/i.test(parsed.protocol)
 
     const path = parsed.pathname || ''
     return (
@@ -40,10 +42,51 @@ export function needsAuthAssetProxy(rawUrl: string | null | undefined): boolean 
   }
 }
 
+async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string> {
+  const cached = proxiedRemoteUrlCache.get(rawUrl)
+  if (cached) return cached
+
+  try {
+    const response = await fetch('/api/markdown-image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        src: rawUrl,
+      }),
+    })
+
+    if (response.ok) {
+      const payload = await response.json() as { src?: unknown }
+      const nextUrl = typeof payload?.src === 'string' ? payload.src.trim() : ''
+      if (nextUrl) {
+        proxiedRemoteUrlCache.set(rawUrl, nextUrl)
+        return nextUrl
+      }
+    }
+  } catch {
+    // Fall through to the legacy query proxy below.
+  }
+
+  const fallbackUrl = buildMarkdownImageProxyUrl(rawUrl)
+  proxiedRemoteUrlCache.set(rawUrl, fallbackUrl)
+  return fallbackUrl
+}
+
 export async function fetchAuthAssetUrl(rawUrl: string | null | undefined): Promise<string | null> {
   const resolved = normalizeAssetUrl(rawUrl)
   if (!resolved) return null
   if (!needsAuthAssetProxy(resolved)) return resolved
+
+  try {
+    const parsed = new URL(resolved, API_BASE_URL)
+    if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) {
+      return await mintOpaqueRemoteImageUrl(resolved)
+    }
+  } catch {
+    return null
+  }
 
   const cached = blobCache.get(resolved)
   if (cached) return cached

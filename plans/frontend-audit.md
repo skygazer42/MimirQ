@@ -31,6 +31,6 @@
 - [x] **迁移至 React Query**: 优先从 `observability` 和 `parsing` 页面开始，移除手动管理的 `useEffect` 取数逻辑。
 
 ### 阶段 3: 性能增强 (Long Term)
-- [ ] **Canvas 资源池化**: 优化 `chunk-preview` 中的 Canvas 回收机制，防止 PDF 频繁渲染导致的内存泄漏。
+- [x] **Canvas 资源池化**: 为 `chunk-preview` / `PdfViewer` 增加显式的活跃画布池预算与淘汰策略，在释放远端页面之外继续裁剪已光栅化页面，降低长文档滚动时的 Canvas 内存压力。
 
 ## 3. UI/UX 体验建议 (UX Polish)

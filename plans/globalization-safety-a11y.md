@@ -11,7 +11,7 @@
 ## 2. 内容安全与 XSS 防护 (Security & Sanitization)
 
 ### 2.1 Markdown 渲染清洗
-- [ ] **图片代理加密**: RAG 检索到的外部链接图片，应通过后端或代理服务进行处理，防止泄露用户 IP 地址给第三方攻击者。
+- [x] **图片代理加密**: Markdown / RAG 外链图片现在先走同源 `POST` mint opaque token，再由 `/api/markdown-image?token=...` 代理拉取；浏览器不再暴露明文第三方图片 URL，且未配置 `MARKDOWN_IMAGE_PROXY_SECRET` 时保留 legacy query proxy 作为兼容回退。
 
 ## 3. 包容性设计 (Accessibility/a11y)
 
