@@ -106,6 +106,68 @@ export const PARSER_BACKEND_OPTIONS: ParserBackendOption[] = [
   },
 ]
 
+const ADDITIONAL_PARSER_BACKEND_REGISTRY_OPTIONS: ParserBackendOption[] = [
+  {
+    value: 'pandoc',
+    label: 'pandoc（Office/HTML）',
+    description: 'Pandoc · 通用文档格式转换，适合 Office / HTML 类内容',
+    icon: 'markitdown',
+  },
+  {
+    value: 'excel',
+    label: 'excel（.xls/.xlsx）',
+    description: 'ExcelParser · 面向电子表格文件的解析后端',
+    icon: 'markitdown',
+  },
+  {
+    value: 'docx',
+    label: 'docx（.docx）',
+    description: 'DOCXParser · 面向 Word 文档的解析后端',
+    icon: 'markitdown',
+  },
+  {
+    value: 'pptx',
+    label: 'pptx（.pptx）',
+    description: 'PPTXParser · 面向 PowerPoint 的解析后端',
+    icon: 'markitdown',
+  },
+  {
+    value: 'html',
+    label: 'html（.html/.htm）',
+    description: 'HTMLParser · 面向 HTML 内容的解析后端',
+    icon: 'markitdown',
+  },
+  {
+    value: 'csv',
+    label: 'csv（.csv）',
+    description: 'CsvParser · 面向 CSV 内容的解析后端',
+    icon: 'markitdown',
+  },
+  {
+    value: 'json',
+    label: 'json（.json）',
+    description: 'JsonParser · 面向 JSON / JSONL 内容的解析后端',
+    icon: 'markitdown',
+  },
+  {
+    value: 'text',
+    label: 'text（纯文本）',
+    description: 'TextParser · 面向纯文本内容的解析后端',
+    icon: 'basic',
+  },
+  {
+    value: 'markdown',
+    label: 'markdown（.md）',
+    description: 'MarkdownParser · 面向 Markdown 内容的解析后端',
+    icon: 'markitdown',
+  },
+]
+
+export const PARSER_BACKEND_REGISTRY_OPTIONS: ParserBackendOption[] = [
+  ...PARSER_BACKEND_OPTIONS,
+  ...ADDITIONAL_PARSER_BACKEND_REGISTRY_OPTIONS,
+]
+
 function normalizeParserValue(value?: string) {
   const raw = (value || '').toLowerCase().trim()
   const normalized = raw.replaceAll("_", '-')
@@ -136,22 +198,8 @@ export function getParserOption(value?: string) {
 
 export function getParserLabel(value?: string) {
   const normalized = normalizeParserValue(value)
-  const direct = PARSER_BACKEND_OPTIONS.find((option) => option.value === normalized)?.label
+  const direct = PARSER_BACKEND_REGISTRY_OPTIONS.find((option) => option.value === normalized)?.label
   if (direct) return direct
-
-  // Backends that may be returned by the server but are not selectable in the PDF-focused dropdown.
-  const extraLabels: Record<string, string> = {
-    pandoc: 'Pandoc',
-    excel: 'Excel',
-    docx: 'DOCX',
-    pptx: 'PPTX',
-    html: 'HTML',
-    csv: 'CSV',
-    json: 'JSON',
-    text: 'Text',
-    markdown: 'Markdown',
-  }
-  if (extraLabels[normalized]) return extraLabels[normalized]
 
   return (value || '').toString().trim() || 'Auto'
 }

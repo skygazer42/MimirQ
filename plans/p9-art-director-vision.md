@@ -11,11 +11,11 @@
 ## 2. P9 架构标准：零技术债演进
 
 ### 2.1 彻底重构巨型文件 (The "Big Split")
-- [ ] **Registry Pattern**: 为 Parser 和 Chunking 策略建立注册表模式，避免在 UI 代码中出现大量的 `switch-case` 逻辑。
+- [x] **Registry Pattern**: 为 Parser 和 Chunking 策略建立注册表模式，避免在 UI 代码中出现大量的 `switch-case` 逻辑。
 
 ### 2.2 React 19 & Next.js 16 极致利用
-- [ ] **Server Actions & Actions API**: 将所有的表单提交（如标签编辑、权限修改）迁移至 React Actions，利用 `useFormStatus` 处理 Loading 态，彻底告别手动的 `setIsLoading(true/false)`。
-- [ ] **Optimistic UI**: 针对点赞、收藏、标签修改，全面引入 `useOptimistic`，实现“零延迟”交互感。
+- [x] **Server Actions & Actions API**: 将所有的表单提交（如标签编辑、权限修改）迁移至 React Actions，利用 `useFormStatus` 处理 Loading 态，彻底告别手动的 `setIsLoading(true/false)`。
+- [x] **Optimistic UI**: 针对点赞、收藏、标签修改，全面引入 `useOptimistic`，实现“零延迟”交互感。
 
 ## 3. RAG 专家级体验 (Expert RAG UX)
 

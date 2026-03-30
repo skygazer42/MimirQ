@@ -21,6 +21,8 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { datasetApi, pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES } from '@/lib/chunk-strategies'
+import { PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
 import { cn, detachPromise } from '@/lib/utils'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import type {
@@ -48,27 +50,6 @@ const PREPROCESS_STEP_CATALOG: Array<{ id: string; label: string; desc: string }
   { id: 'html.strip_scripts_styles', label: 'HTML：移除 script/style', desc: '减少网页样板/脚本注入噪声' },
   { id: 'html.strip_comments', label: 'HTML：移除注释', desc: '减少抓取页面的注释噪声' },
   { id: 'html.strip_boilerplate_tags', label: 'HTML：移除导航/页眉页脚', desc: '移除 nav/header/footer/aside/noscript 等常见样板区块' },
-]
-
-const PARSER_BACKEND_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'auto', label: 'auto（自动路由）' },
-  { value: 'basic', label: 'basic（PDF 基础）' },
-  { value: 'mineru', label: 'mineru（PDF/图片增强）' },
-  { value: 'deepdoc', label: 'deepdoc（PDF OCR）' },
-  { value: 'deepseek_ocr', label: 'deepseek_ocr（PDF OCR）' },
-  { value: 'etl4llm', label: 'etl4llm（PDF/通用）' },
-  { value: 'markitdown', label: 'markitdown（Office/HTML/通用）' },
-  { value: 'pandoc', label: 'pandoc（Office/HTML）' },
-  { value: 'docling', label: 'docling（PDF/DOCX）' },
-  { value: 'magicpdf', label: 'magicpdf（PDF）' },
-  { value: 'excel', label: 'excel（.xls/.xlsx）' },
-  { value: 'docx', label: 'docx（.docx）' },
-  { value: 'pptx', label: 'pptx（.pptx）' },
-  { value: 'html', label: 'html（.html/.htm）' },
-  { value: 'csv', label: 'csv（.csv）' },
-  { value: 'json', label: 'json（.json）' },
-  { value: 'text', label: 'text（纯文本）' },
-  { value: 'markdown', label: 'markdown（.md）' },
 ]
 
 type IngestionPolicyTemplate = {
@@ -647,7 +628,7 @@ export default function DatasetIngestionPolicyPage() {
   const chunkStrategyOptions = useMemo(() => {
     const items = (capabilities?.chunk_strategies || []).map((s) => String(s.name || '').trim()).filter(Boolean)
     const uniq = Array.from(new Set(items))
-    return uniq.length ? uniq : ['langchain_recursive', 'integrated_naive', 'integrated_book', 'integrated_laws', 'integrated_email']
+    return uniq.length ? uniq : INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES
   }, [capabilities])
 
   const load = useCallback(async () => {
@@ -1216,7 +1197,7 @@ export default function DatasetIngestionPolicyPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={NONE}>不覆盖</SelectItem>
-                      {PARSER_BACKEND_OPTIONS.map((o) => (
+                      {PARSER_BACKEND_REGISTRY_OPTIONS.map((o) => (
                         <SelectItem key={o.value} value={o.value}>
                           {o.label}
                         </SelectItem>

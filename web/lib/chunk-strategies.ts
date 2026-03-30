@@ -661,3 +661,8 @@ export function getChunkStrategyLabel(value?: string) {
 export function getStrategiesByGroup(group: string) {
   return CHUNK_STRATEGY_OPTIONS.filter((option) => option.group === group)
 }
+
+export const INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES = [
+  'langchain_recursive',
+  ...getStrategiesByGroup('integrated').map((option) => option.value),
+]
