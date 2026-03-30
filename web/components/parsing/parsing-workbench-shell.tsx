@@ -2,6 +2,7 @@
 
 import type { RefObject } from 'react'
 import { FileText, FileStack, Settings2, Sparkles } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { AppFrame } from '@/components/app-frame'
 import { ParsingActiveFilePane } from '@/components/parsing/parsing-active-file-pane'
@@ -179,15 +180,16 @@ export function ParsingWorkbenchShell({
   visibleLibraryOnlyFiles,
   visibleQueueFiles,
 }: Readonly<ParsingWorkbenchShellProps>) {
+  const t = useTranslations('ParsingWorkbench')
   const pendingCount = visibleQueueFiles.filter((file) => file.status === 'pending').length
   const parsingCount = visibleQueueFiles.filter((file) => file.status === 'parsing').length
   const parsedCount = visibleQueueFiles.filter((file) => file.status === 'parsed').length
   const parseableCount = visibleQueueFiles.filter((file) => file.status === 'pending' || file.status === 'error').length
   const queueCountLabel = visibleQueueFiles.length === 0 ? '0' : `${parsedCount}/${visibleQueueFiles.length}`
 
-  const activeFolderPathLabel = folderPathById[activeFolderId || ROOT_FOLDER_ID] || '根目录'
+  const activeFolderPathLabel = folderPathById[activeFolderId || ROOT_FOLDER_ID] || t('rootFolder')
   const activeLibraryFolderId = activeLibraryFile?.folderId || ROOT_FOLDER_ID
-  const activeLibraryFolderPathLabel = folderPathById[activeLibraryFolderId] || '根目录'
+  const activeLibraryFolderPathLabel = folderPathById[activeLibraryFolderId] || t('rootFolder')
   const activeLibraryFolderName = (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
   const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(activeLibraryFile.status) : null
 
@@ -227,8 +229,8 @@ export function ParsingWorkbenchShell({
   return (
     <AppFrame>
       <WorkbenchScaffold
-        title="文档解析工作台"
-        description="上传文件并转换为 Markdown 格式，为数据治理做准备"
+        title={t('title')}
+        description={t('description')}
         icon={Sparkles}
         iconColor="text-primary"
         size="full"
@@ -244,7 +246,7 @@ export function ParsingWorkbenchShell({
               onClick={() => setQueueOpen(true)}
             >
               <FileStack className="w-4 h-4" />
-              队列
+              {t('queue')}
             </Button>
             <Button
               type="button"
@@ -254,7 +256,7 @@ export function ParsingWorkbenchShell({
               onClick={() => setInspectorOpen(true)}
             >
               <Settings2 className="w-4 h-4" />
-              工具
+              {t('tools')}
             </Button>
           </div>
         }
@@ -374,9 +376,9 @@ export function ParsingWorkbenchShell({
                     <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-2xl border border-border/60 bg-card shadow-soft">
                       <FileText className="h-10 w-10 text-muted-foreground dark:text-muted-foreground" />
                     </div>
-                    <h3 className="mb-2 text-lg font-medium text-foreground/80 dark:text-muted-foreground">选择文件开始</h3>
+                    <h3 className="mb-2 text-lg font-medium text-foreground/80 dark:text-muted-foreground">{t('emptyTitle')}</h3>
                     <p className="text-sm text-muted-foreground dark:text-muted-foreground">
-                      从左侧上传或选择文件，系统将使用 AI 智能解析文档结构
+                      {t('emptyDescription')}
                     </p>
                   </div>
                 </div>
@@ -386,7 +388,7 @@ export function ParsingWorkbenchShell({
         }
       />
 
-      <WorkbenchPanelDialog open={queueOpen} onOpenChange={setQueueOpen} title="队列">
+      <WorkbenchPanelDialog open={queueOpen} onOpenChange={setQueueOpen} title={t('queue')}>
         <ParsingMobileQueueContent
           queueCountLabel={queueCountLabel}
           parseableCount={parseableCount}
@@ -417,7 +419,7 @@ export function ParsingWorkbenchShell({
         />
       </WorkbenchPanelDialog>
 
-      <WorkbenchPanelDialog open={inspectorOpen} onOpenChange={setInspectorOpen} title="工具">
+      <WorkbenchPanelDialog open={inspectorOpen} onOpenChange={setInspectorOpen} title={t('tools')}>
         {activeFile && activeMarkdown ? (
           <ParsingMobileInspectorContent
             activeMarkdown={activeMarkdown}
@@ -436,7 +438,7 @@ export function ParsingWorkbenchShell({
           />
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-muted/10 p-4 no-scrollbar">
-            <div className="text-sm text-muted-foreground">选择文件后可在此查看定位块、目录和快捷操作。</div>
+            <div className="text-sm text-muted-foreground">{t('inspectorEmpty')}</div>
           </div>
         )}
       </WorkbenchPanelDialog>

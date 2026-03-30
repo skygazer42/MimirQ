@@ -1,6 +1,7 @@
 'use client'
 
 import { Copy, FolderOpen, MoreVertical, Paperclip, Play, X } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
@@ -52,6 +53,8 @@ export function ParsingLibraryPreviewPane({
   onRestoreSource,
   onRequestRebind,
 }: Readonly<ParsingLibraryPreviewPaneProps>) {
+  const t = useTranslations('ParsingWorkbench')
+  const commonT = useTranslations('Common')
   const parserValue = resolveParserBackendForFilename(
     file.filename,
     file.parserBackend || defaultParserBackend
@@ -60,14 +63,14 @@ export function ParsingLibraryPreviewPane({
     if (!file.status || file.status === 'parsed') return null
     if (sourceStatus === 'available') {
       return {
-        label: '继续解析',
-        title: '恢复并开始解析',
+        label: t('libraryPreview.continueParsing'),
+        title: t('libraryPreview.continueParsingTitle'),
         onClick: () => onRestoreSource(true),
       }
     }
     return {
-      label: '上传并解析',
-      title: '重新上传并开始解析',
+      label: t('libraryPreview.uploadAndParse'),
+      title: t('libraryPreview.uploadAndParseTitle'),
       onClick: () => onRequestRebind(true),
     }
   })()
@@ -111,7 +114,7 @@ export function ParsingLibraryPreviewPane({
               />
             ) : (
               <span className="text-xs text-muted-foreground">
-                解析方式：<span className="font-medium text-foreground/80 dark:text-muted-foreground">{file.parser || getParserLabel(parserValue)}</span>
+                {t('libraryPreview.parserLabel')}：<span className="font-medium text-foreground/80 dark:text-muted-foreground">{file.parser || getParserLabel(parserValue)}</span>
               </span>
             )}
 
@@ -121,10 +124,10 @@ export function ParsingLibraryPreviewPane({
                 size="sm"
                 className="h-8 gap-1.5 rounded-full px-3 text-[11px]"
                 onClick={() => onRestoreSource(false)}
-                title="从服务器下载源文件到队列（用于 PDF 预览或继续解析）"
+                title={t('libraryPreview.restoreSourceTitle')}
               >
                 <Paperclip className="h-3.5 w-3.5" />
-                恢复源文件
+                {t('libraryPreview.restoreSource')}
               </Button>
             ) : (
               <Button
@@ -132,10 +135,10 @@ export function ParsingLibraryPreviewPane({
                 size="sm"
                 className="h-8 gap-1.5 rounded-full px-3 text-[11px]"
                 onClick={() => onRequestRebind(false)}
-                title="重新上传源文件以替换服务器上的源文件"
+                title={t('libraryPreview.reuploadTitle')}
               >
                 <Paperclip className="h-3.5 w-3.5" />
-                重新上传
+                {t('libraryPreview.reupload')}
               </Button>
             )}
 
@@ -157,8 +160,8 @@ export function ParsingLibraryPreviewPane({
                   variant="outline"
                   size="icon"
                   className="h-8 w-8 rounded-full"
-                  aria-label="更多操作"
-                  title="更多"
+                  aria-label={t('libraryPreview.moreActions')}
+                  title={t('libraryPreview.more')}
                 >
                   <MoreVertical className="h-4 w-4" />
                 </Button>
@@ -169,19 +172,19 @@ export function ParsingLibraryPreviewPane({
                   onClick={async () => {
                     try {
                       await navigator.clipboard.writeText(file.filename)
-                      toast.success('已复制文件名')
+                      toast.success(t('libraryPreview.copiedFilename'))
                     } catch {
-                      toast.error('复制失败')
+                      toast.error(t('libraryPreview.copyFailed'))
                     }
                   }}
                 >
                   <Copy className="h-4 w-4 text-muted-foreground" />
-                  复制文件名
+                  {t('libraryPreview.copyFilename')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="cursor-pointer gap-2" onClick={onClose}>
                   <X className="h-4 w-4 text-muted-foreground" />
-                  关闭
+                  {commonT('close')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -200,8 +203,8 @@ export function ParsingLibraryPreviewPane({
               <div className="mx-auto mb-3 flex size-16 items-center justify-center rounded-2xl border border-border/60 bg-card shadow-soft">
                 <FolderOpen className="h-8 w-8 text-muted-foreground dark:text-muted-foreground" />
               </div>
-              <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">暂无可展示的解析内容</p>
-              <p className="mt-1 text-xs text-muted-foreground dark:text-muted-foreground">若该文件还未解析，或内容未缓存，请重新选择文件并解析。</p>
+              <p className="text-sm font-medium text-muted-foreground dark:text-muted-foreground">{t('libraryPreview.emptyTitle')}</p>
+              <p className="mt-1 text-xs text-muted-foreground dark:text-muted-foreground">{t('libraryPreview.emptyDescription')}</p>
             </div>
           </div>
         )}
