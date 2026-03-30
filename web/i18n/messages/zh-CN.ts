@@ -194,6 +194,14 @@ const zhCNMessages = {
       processing: '处理中',
     },
   },
+  KnowledgeWorkbenchActions: {
+    importOrCreate: '导入/新增',
+  },
+  KnowledgeIngestionPage: {
+    loadingMessage: '正在加载知识库入库流程...',
+    loadingSrMessage: 'Loading knowledge ingestion workspace',
+    descriptionMarker: '实时追踪解析、切块、向量化与索引构建进度。',
+  },
 } as const
 
 export default zhCNMessages

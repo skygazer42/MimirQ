@@ -8,8 +8,9 @@ describe('KnowledgeWorkbenchActions', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-workbench-actions.tsx'), 'utf8')
 
     expect(src).toContain('export function KnowledgeWorkbenchActions')
+    expect(src).toContain("useTranslations('KnowledgeWorkbenchActions')")
     expect(src).toContain('DropdownMenu')
-    expect(src).toContain('导入/新增')
+    expect(src).toContain("t('importOrCreate')")
     expect(src).toContain('onRunCreated={onConnectorRunCreated}')
   })
 })
