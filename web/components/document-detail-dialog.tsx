@@ -249,8 +249,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const commonT = useTranslations('Common')
   const documentsT = useTranslations('Documents')
   const t = useTranslations('DocumentDetailDialog')
-  const permissionAlertTitle = t('alerts.permissionFailedTitle') || t('alerts.permissionCheckFailedTitle')
-  const validationAlertTitle = t('alerts.inputInvalidTitle') || t('alerts.validationFailedTitle')
+  const permissionAlertTitle = t('alerts.permissionCheckFailedTitle')
+  const validationAlertTitle = t('alerts.validationFailedTitle')
   const viewTabsId = useId()
   const chunksTabId = `${viewTabsId}-chunks-tab`
   const timelineTabId = `${viewTabsId}-timeline-tab`
