@@ -506,6 +506,47 @@ const zhCNMessages = {
       descriptionPlaceholder: '适用场景、注意事项...',
       applyPipelineConfigFailed: '应用 Pipeline 配置失败',
     },
+    help: {
+      title: '切块指南',
+      description: '快速理解“怎么切、怎么调、怎么验”。',
+      workflow: {
+        title: '推荐工作流',
+        steps: {
+          parsing: '1) 解析（/parsing）：先确认 PDF/Office 的结构提取质量',
+          governance: '2) 治理（/data-governance）：清洗去噪、去页眉页脚、规范化文本',
+          preview: '3) 切块预览（/chunk-preview）：调策略/参数，检查数量分布与原文定位',
+          afterIngest: '4) 入库后：回到对话页做检索/引用验证（必要时配合评测）',
+        },
+      },
+      parameters: {
+        title: '参数建议（经验值）',
+        chunkSize: '文本模式常见 600-1500 chars；token 模式常见 256-1024 tokens（视模型上下文与检索预算）。',
+        chunkOverlap: '常见为 chunk_size 的 10-25%（过小易断语义；过大浪费向量与检索预算）。',
+        tip: '建议优先保证“结构正确”（标题/问答/条款不被拆散），再调长度分布与 overlap。',
+      },
+      strategies: {
+        title: '策略速查',
+        auto: '通用长文、说明文、制度。',
+        qa: 'FAQ/Q&A，目标是不拆散问答对。',
+        laws: '合同/条款类文本，尽量按条款结构切分。',
+        code: '代码/配置/变更，尽量沿语法/块边界切分。',
+        separator: '按段落/标题/--- 等结构边界切分（不使用 overlap）。',
+        token: '严格按 token 预算切块（仍建议做预览检查）。',
+      },
+      links: {
+        previewDocs: '查看详细文档：切块预览',
+        strategiesDocs: '查看详细文档：策略速查',
+      },
+      shortcuts: {
+        title: '快捷键',
+        forceRegenerate: '强制重新生成预览（忽略缓存）',
+        confirmIngest: '确认入库（提交 chunks）',
+        navigateList: '切片列表上一条/下一条（点击锁定后生效）',
+        focusSearch: '在列表区域快速聚焦搜索',
+        clearLock: '取消锁定',
+        jumpEdges: '跳转首/尾',
+      },
+    },
   },
   Reports: {
     loadingPage: '正在加载报告中心...',
