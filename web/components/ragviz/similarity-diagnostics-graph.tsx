@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
+import { useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
 
 import { PageLoading } from '@/components/ui/page-loading'
@@ -16,16 +17,7 @@ const MAX_DIAGNOSTICS_GRAPH_LINKS = 900
 
 const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), {
   ssr: false,
-  loading: () => (
-    <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-2xl border border-border/60 bg-background/70 px-6">
-      <PageLoading
-        message="正在重建向量邻域..."
-        srMessage="Loading embedding diagnostics graph"
-        className="min-h-0 flex-none"
-      />
-      <p className="mt-2 text-xs text-muted-foreground">基于当前相似度矩阵派生诊断，不额外请求后端坐标。</p>
-    </div>
-  ),
+  loading: () => <GraphLoadingShell />,
 })
 
 type SimilarityDiagnosticsGraphProps = Readonly<{
@@ -39,6 +31,7 @@ type GraphNode = SimilarityDiagnosticNode & {
 
 export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosticsGraphProps) {
   const { resolvedTheme } = useTheme()
+  const t = useTranslations('SimilarityDiagnosticsGraph')
   const containerRef = useRef<HTMLDivElement>(null)
   const { width, height } = useResizeObserver(containerRef)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -62,11 +55,30 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
   const selectedLink = links.find((link) => link.id === selectedLinkId) ?? null
   const exceedsGraphComplexityBudget =
     nodes.length > MAX_DIAGNOSTICS_GRAPH_NODES || links.length > MAX_DIAGNOSTICS_GRAPH_LINKS
+  const selectedNodeDescription = selectedNode
+    ? t('nodeCardSelectedDescription', {
+        axis: selectedNode.axis.toUpperCase(),
+        mean: (selectedNode.averageSimilarity * 100).toFixed(0),
+        peak: (selectedNode.peakSimilarity * 100).toFixed(0),
+      })
+    : t('nodeCardEmptyDescription')
+  const selectedLinkTitle = selectedLink
+    ? t('linkCardSelectedTitle', {
+        score: (selectedLink.similarity * 100).toFixed(0),
+        overlap: (selectedLink.lexicalOverlap * 100).toFixed(0),
+      })
+    : t('linkCardEmptyTitle')
+  const selectedLinkDescription = selectedLink
+    ? t('linkCardSelectedDescription', {
+        source: selectedLink.sourceLabel,
+        target: selectedLink.targetLabel,
+      })
+    : t('linkCardEmptyDescription')
 
   if (nodes.length === 0 || links.length === 0) {
     return (
       <div className="flex min-h-[360px] items-center justify-center rounded-2xl border border-dashed border-border/60 bg-background/70 px-6 text-center text-sm text-muted-foreground">
-        当前筛选结果没有足够的高相似连线，暂时无法生成 3D 投影预览。
+        {t('noGraphData')}
       </div>
     )
   }
@@ -77,11 +89,15 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
         {exceedsGraphComplexityBudget ? (
           <div className="flex h-full items-center justify-center px-6 text-center">
             <div className="max-w-lg">
-              <div className="text-sm font-semibold text-foreground">当前诊断图过大，已暂停 3D 渲染。</div>
-              <p className="mt-2 text-sm text-muted-foreground">请缩小筛选范围或提高阈值后再试。</p>
+              <div className="text-sm font-semibold text-foreground">{t('graphTooLargeTitle')}</div>
+              <p className="mt-2 text-sm text-muted-foreground">{t('graphTooLargeHint')}</p>
               <p className="mt-2 text-xs text-muted-foreground">
-                当前 {nodes.length} 个节点 / {links.length} 条连线，3D 预览上限为 {MAX_DIAGNOSTICS_GRAPH_NODES} 个节点和{' '}
-                {MAX_DIAGNOSTICS_GRAPH_LINKS} 条连线。
+                {t('graphTooLargeMetrics', {
+                  nodeCount: nodes.length,
+                  linkCount: links.length,
+                  nodeLimit: MAX_DIAGNOSTICS_GRAPH_NODES,
+                  linkLimit: MAX_DIAGNOSTICS_GRAPH_LINKS,
+                })}
               </p>
             </div>
           </div>
@@ -96,7 +112,13 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
             cooldownTicks={0}
             nodeLabel={(node) => {
               const current = node as SimilarityDiagnosticNode
-              return `[${current.axis.toUpperCase()}] ${current.label}${current.isOutlier ? ' · outlier' : ''}\nmean ${(current.averageSimilarity * 100).toFixed(0)}% / peak ${(current.peakSimilarity * 100).toFixed(0)}%`
+              return t('nodeTooltip', {
+                axis: current.axis.toUpperCase(),
+                label: current.label,
+                outlierSuffix: current.isOutlier ? t('nodeTooltipOutlierSuffix') : '',
+                mean: (current.averageSimilarity * 100).toFixed(0),
+                peak: (current.peakSimilarity * 100).toFixed(0),
+              })
             }}
             nodeColor={(node) => (node as SimilarityDiagnosticNode).color}
             nodeRelSize={5}
@@ -127,36 +149,35 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
         ) : null}
 
         <div className="pointer-events-none absolute left-3 top-3 rounded-xl border border-border/70 bg-background/85 px-3 py-2 shadow-sm backdrop-blur">
-          <div className="text-xs font-medium text-foreground">3D 投影预览</div>
-          <div className="mt-1 text-[11px] text-muted-foreground">颜色越亮代表越值得关注，橙色表示已标记待审的候选。</div>
+          <div className="text-xs font-medium text-foreground">{t('previewLabel')}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">{t('previewHint')}</div>
         </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
         <DiagnosticsDetailCard
-          label="当前节点"
-          title={selectedNode?.label ?? '点击节点查看摘要'}
-          description={
-            selectedNode
-              ? `${selectedNode.axis.toUpperCase()} 轴 · mean ${(selectedNode.averageSimilarity * 100).toFixed(0)}% · peak ${(selectedNode.peakSimilarity * 100).toFixed(0)}%`
-              : '选中节点后会显示它在当前局部邻域中的位置和强度。'
-          }
+          label={t('nodeCardLabel')}
+          title={selectedNode?.label ?? t('nodeCardEmptyTitle')}
+          description={selectedNodeDescription}
         />
         <DiagnosticsDetailCard
-          label="当前连线"
-          title={
-            selectedLink
-              ? `score ${(selectedLink.similarity * 100).toFixed(0)}% · overlap ${(selectedLink.lexicalOverlap * 100).toFixed(0)}%`
-              : '点击连线查看匹配强度'
-          }
-          description={
-            selectedLink
-              ? `${selectedLink.sourceLabel} → ${selectedLink.targetLabel}`
-              : '优先检查红色或橙色连线，它们通常代表高分但支撑不足的候选。'
-          }
+          label={t('linkCardLabel')}
+          title={selectedLinkTitle}
+          description={selectedLinkDescription}
           tone={selectedLink?.isOutlier ? 'warning' : 'default'}
         />
       </div>
+    </div>
+  )
+}
+
+function GraphLoadingShell() {
+  const t = useTranslations('SimilarityDiagnosticsGraph')
+
+  return (
+    <div className="flex h-full min-h-[360px] flex-col items-center justify-center rounded-2xl border border-border/60 bg-background/70 px-6">
+      <PageLoading message={t('loadingMessage')} srMessage={t('loadingSrMessage')} className="min-h-0 flex-none" />
+      <p className="mt-2 text-xs text-muted-foreground">{t('loadingHint')}</p>
     </div>
   )
 }
