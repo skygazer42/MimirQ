@@ -8,8 +8,10 @@ describe('navbar section collapse source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
 
     expect(src).toContain('DEFAULT_OPEN_SECTIONS')
-    expect(src).toContain("title: '核心'")
-    expect(src).toContain("title: '知识库管理'")
+    expect(src).toContain("titleKey: 'sections.core'")
+    expect(src).toContain("titleKey: 'sections.knowledge'")
+    expect(src).toContain("id: 'core'")
+    expect(src).toContain("id: 'knowledge'")
     expect(src).toContain('setOpenSections')
   })
 })
