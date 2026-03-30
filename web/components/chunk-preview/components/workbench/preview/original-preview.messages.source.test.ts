@@ -1,0 +1,45 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+describe('original preview messages source', () => {
+  it('routes original preview header, tabs, and empty states through next-intl', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'original-preview.tsx'), 'utf8')
+
+    expect(src).toContain("useTranslations('ChunkPreview')")
+    expect(src).toContain("t('originalPreview.tocLoading')")
+    expect(src).toContain("t('originalPreview.title')")
+    expect(src).toContain('originalPreview.charCount')
+    expect(src).toContain("t('originalPreview.source.server')")
+    expect(src).toContain("t('originalPreview.source.local')")
+    expect(src).toContain('originalPreview.badges.originalTooLargeTitle')
+    expect(src).toContain("t('originalPreview.badges.originalMissingTitle')")
+    expect(src).toContain("t('originalPreview.badges.originalTooLarge')")
+    expect(src).toContain("t('originalPreview.badges.originalMissing')")
+    expect(src).toContain("t('originalPreview.toggle.windowedTitle')")
+    expect(src).toContain("t('originalPreview.toggle.fullTitle')")
+    expect(src).toContain("t('originalPreview.toggle.windowed')")
+    expect(src).toContain("t('originalPreview.toggle.full')")
+    expect(src).toContain("t('originalPreview.tabs.raw')")
+    expect(src).toContain("t('originalPreview.tabs.rendered')")
+    expect(src).toContain("t('originalPreview.tabs.editor')")
+    expect(src).toContain("t('originalPreview.tabs.editorTitle')")
+    expect(src).toContain("t('originalPreview.tabs.pdfAvailableTitle')")
+    expect(src).toContain("t('originalPreview.tabs.pdfUnavailableTitle')")
+    expect(src).toContain("t('originalPreview.hints.renderedMode')")
+    expect(src).toContain("t('originalPreview.hints.editorMode')")
+    expect(src).toContain("t('originalPreview.empty.truncated')")
+    expect(src).toContain("t('originalPreview.empty.missing')")
+    expect(src).toContain('originalPreview.empty.truncatedDetail')
+    expect(src).toContain('originalPreview.empty.missingDetail')
+    expect(src).toContain("t('originalPreview.empty.fallbackHint')")
+    expect(src).toContain("t('originalPreview.empty.readLocalLoading')")
+    expect(src).toContain("t('originalPreview.empty.readLocal')")
+    expect(src).toContain("t('originalPreview.empty.unsupportedFile')")
+    expect(src).toContain("t('originalPreview.states.loading')")
+    expect(src).toContain("t('originalPreview.states.loadFailed')")
+    expect(src).toContain("t('originalPreview.states.waiting')")
+    expect(src).toContain("t('originalPreview.errors.readLocalFailed')")
+  })
+})

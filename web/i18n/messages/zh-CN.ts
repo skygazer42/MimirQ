@@ -649,6 +649,56 @@ const zhCNMessages = {
       },
     },
     originalPreview: {
+      tocLoading: '正在生成目录…',
+      title: '原文内容',
+      charCount: '{count} chars',
+      source: {
+        server: 'server',
+        local: 'local',
+      },
+      badges: {
+        originalTooLargeTitle: '原文超过 {limit} chars，后端已省略返回',
+        originalMissingTitle: '原文未返回',
+        originalTooLarge: '原文过大，已省略',
+        originalMissing: '原文未返回',
+      },
+      toggle: {
+        windowedTitle: '切换为窗口高亮（更省内存）',
+        fullTitle: '切换为全文高亮（可能更卡）',
+        windowed: '窗口',
+        full: '全文',
+      },
+      tabs: {
+        raw: '源码',
+        rendered: '预览',
+        editor: '编辑器',
+        editorTitle: 'Large-text viewer with stable highlight + overview markers',
+        pdfAvailableTitle: 'PDF 框选高亮（解析器位置标签）',
+        pdfUnavailableTitle: 'PDF 预览（需要解析器位置标签）',
+      },
+      hints: {
+        renderedMode: '提示：渲染模式下不支持高亮显示，请切换至源码/编辑器模式查看切片对应位置',
+        editorMode: '提示：右侧滚动条有 chunk 标记；点击原文可自动选中最细粒度的 chunk（child 优先）。',
+      },
+      empty: {
+        truncated: '原文已省略',
+        missing: '原文未返回',
+        truncatedDetail:
+          '原文超过 {limit} chars（当前 {total} chars），后端已省略返回以避免传输过大。',
+        missingDetail: '原文内容较大（{total} chars）时，后端可能会省略原文以避免传输过大。',
+        fallbackHint: '你仍可使用右侧切片列表进行检查与入库。',
+        readLocalLoading: '正在读取本地原文...',
+        readLocal: '从本地文件读取原文',
+        unsupportedFile: '当前文件格式不支持在浏览器侧读取原文。',
+      },
+      states: {
+        loading: '加载中...',
+        loadFailed: '加载失败',
+        waiting: '等待预览',
+      },
+      errors: {
+        readLocalFailed: '从本地文件读取失败',
+      },
       monaco: {
         loadingMessage: '正在加载文本预览...',
         loadingSrMessage: 'Loading text preview',
