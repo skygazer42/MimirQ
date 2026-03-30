@@ -4,15 +4,16 @@
 'use client'
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { useRouter } from 'next/navigation'
 import { memo, useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { BarChart3, Check, Copy, Database, Bot, Star, User } from 'lucide-react'
+import { BarChart3, Check, Copy, Database, Bot, Loader2, Star, TestTube2, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { AuthImage } from '@/components/auth-image'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
-import type { Citation, Message } from '@/types'
+import type { Citation, Message, MessageFeedback } from '@/types'
 import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { cn } from '@/lib/utils'
 import { globalEventBus } from '@/lib/event-bus'
@@ -25,7 +26,7 @@ import { EvidenceViewerDialog } from '@/components/evidence/evidence-viewer-dial
 import { CinematicTypewriter } from '@/components/ui/cinematic-typewriter'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { feedbackApi } from '@/lib/api'
+import { documentApi, feedbackApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
 
@@ -186,12 +187,15 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   message: Message
   isStreaming?: boolean
 }>) {
+  const router = useRouter()
   const isUser = message.role === 'user'
   const reduceMotion = useReducedMotion()
   const [copied, setCopied] = useState(false)
   const [diagOpen, setDiagOpen] = useState(false)
   const [rating, setRating] = useState<number | null>(null)
   const [ratingSending, setRatingSending] = useState(false)
+  const [feedbackRecord, setFeedbackRecord] = useState<MessageFeedback | null>(null)
+  const [expertAction, setExpertAction] = useState<'evidence' | 'regression' | null>(null)
   const copyTimerRef = useRef<number | null>(null)
   const prefetchedCitationTargetsRef = useRef<Set<string>>(new Set())
   const { openDocument } = useDocumentView()
@@ -248,6 +252,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   const confidenceMeta = getConfidenceMeta(confidenceScore)
   const claimEvidence = Array.isArray(metrics.claim_evidence) ? metrics.claim_evidence : null
   const claimEvidenceCount = claimEvidence?.length ?? 0
+  const messageDatasetId =
+    typeof metrics.dataset_id === 'string' && metrics.dataset_id.trim() ? metrics.dataset_id.trim() : null
   const followupQuestions = Array.isArray(metrics.followup_questions)
     ? metrics.followup_questions
         .map((item: unknown) => (typeof item === 'string' ? item.trim() : ''))
@@ -424,7 +430,8 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     setRating(nextRating)
     setRatingSending(true)
     try {
-      await feedbackApi.create({ message_id: message.id, rating: nextRating })
+      const created = await feedbackApi.create({ message_id: message.id, rating: nextRating })
+      setFeedbackRecord(created)
       toast.success('已提交反馈')
     } catch (err: any) {
       toast.error(formatApiError(err, '反馈提交失败'))
@@ -432,6 +439,55 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       setRatingSending(false)
     }
   }, [canRate, message.id, ratingSending])
+
+  const resolveFeedbackDatasetId = useCallback(async () => {
+    if (messageDatasetId) return messageDatasetId
+
+    const firstDocumentId = (message.citations || []).find((citation) => citation.document_id)?.document_id
+    if (!firstDocumentId) return null
+
+    const document = await documentApi.get(firstDocumentId, { includeChunks: false })
+    return typeof document.dataset_id === 'string' && document.dataset_id.trim() ? document.dataset_id.trim() : null
+  }, [message.citations, messageDatasetId])
+
+  const handleSendFeedbackToEvidence = useCallback(async () => {
+    const feedbackId = String(feedbackRecord?.id || '').trim()
+    if (!feedbackId) return
+    if (expertAction) return
+
+    setExpertAction('evidence')
+    try {
+      const datasetId = await resolveFeedbackDatasetId()
+      if (!datasetId) {
+        toast.error('未解析到数据集，暂时无法打开证据库')
+        return
+      }
+      router.push(`/datasets/${encodeURIComponent(datasetId)}/evidence?feedback_id=${encodeURIComponent(feedbackId)}`)
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '打开证据库失败'))
+    } finally {
+      setExpertAction(null)
+    }
+  }, [expertAction, feedbackRecord?.id, resolveFeedbackDatasetId, router])
+
+  const handleCreateRegressionCase = useCallback(async () => {
+    const feedbackId = String(feedbackRecord?.id || '').trim()
+    if (!feedbackId) return
+    if (expertAction) return
+
+    setExpertAction('regression')
+    try {
+      await feedbackApi.toRegressionCase(feedbackId, {
+        include_document_scope: true,
+        extra: { source: 'chat_feedback_action' },
+      })
+      toast.success('已创建回归用例')
+    } catch (error: unknown) {
+      toast.error(formatApiError(error, '转为回归用例失败'))
+    } finally {
+      setExpertAction(null)
+    }
+  }, [expertAction, feedbackRecord?.id])
 
 	  return (
       <>
@@ -961,11 +1017,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           </details>
         )}
 
-        {!isUser && canRate && (
-          <details className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/35 open:bg-background/45">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
+         {!isUser && canRate && (
+           <details className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-background/35 open:bg-background/45">
+             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+               <div>
+                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/80">
                   反馈评分
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
@@ -978,10 +1034,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
               <div className="text-xs text-muted-foreground">
                 评分越低，越适合后续进入回归或 evidence workbench 继续分析。
               </div>
-              <div className="flex items-center gap-1">
-                {[1, 2, 3, 4, 5].map((v) => {
-                  const active = rating != null && v <= rating
-                  return (
+               <div className="flex items-center gap-1">
+                 {[1, 2, 3, 4, 5].map((v) => {
+                   const active = rating != null && v <= rating
+                   return (
                     <button
                       key={v}
                       type="button"
@@ -1001,13 +1057,57 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                       />
                     </button>
                   )
-                })}
-                {ratingSending ? <span className="ml-2 text-xs text-muted-foreground">提交中…</span> : null}
-              </div>
-            </div>
-          </details>
-        )}
-      </motion.div>
+                 })}
+                 {ratingSending ? <span className="ml-2 text-xs text-muted-foreground">提交中…</span> : null}
+               </div>
+             </div>
+             {feedbackRecord?.id ? (
+               <div className="border-t border-border/50 px-4 py-3">
+                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                   <div className="space-y-1">
+                     <div className="text-[11px] font-medium text-foreground">已写入 expert loop</div>
+                     <div className="text-[11px] text-muted-foreground font-mono">
+                       feedback_id={feedbackRecord.id}
+                     </div>
+                   </div>
+                   <div className="flex flex-wrap items-center gap-2">
+                     <Button
+                       type="button"
+                       size="sm"
+                       variant="outline"
+                       onClick={() => void handleSendFeedbackToEvidence()}
+                       disabled={expertAction != null}
+                       className="h-8 rounded-full gap-2"
+                     >
+                       {expertAction === 'evidence' ? (
+                         <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                       ) : (
+                         <Database className="h-3.5 w-3.5" />
+                       )}
+                       送入证据库
+                     </Button>
+                     <Button
+                       type="button"
+                       size="sm"
+                       variant="outline"
+                       onClick={() => void handleCreateRegressionCase()}
+                       disabled={expertAction != null}
+                       className="h-8 rounded-full gap-2"
+                     >
+                       {expertAction === 'regression' ? (
+                         <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                       ) : (
+                         <TestTube2 className="h-3.5 w-3.5" />
+                       )}
+                       转为回归用例
+                     </Button>
+                   </div>
+                 </div>
+               </div>
+             ) : null}
+           </details>
+         )}
+       </motion.div>
 
       {isUser && (
         <div className="flex-shrink-0 w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shadow-md shadow-primary/20 mt-0.5">

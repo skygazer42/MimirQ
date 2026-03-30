@@ -80,6 +80,7 @@ export function EvidenceSuiteWorkbenchShell({
   newQuery,
   openCreateItem,
   openCreateSuite,
+  pendingFeedbackId,
   openWhyMissed,
   profile,
   qaFaqInputRef,
@@ -114,6 +115,7 @@ export function EvidenceSuiteWorkbenchShell({
   setNewExpected,
   setNewNotes,
   setNewQuery,
+  setPendingFeedbackId,
   setProfile,
   setSelectedItemId,
   setSelectedSuiteId,
@@ -153,6 +155,47 @@ export function EvidenceSuiteWorkbenchShell({
 }: Readonly<EvidenceSuiteWorkbenchState>) {
   return (
     <div className="space-y-4">
+      {pendingFeedbackId ? (
+        <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-foreground">导入待处理反馈</div>
+              <div className="text-xs text-muted-foreground text-pretty">
+                当前链接携带了一个待处理的 <span className="font-mono">feedback_id</span>。确认目标 suite 后，可直接导入为 draft EvidenceItem。
+              </div>
+              <div className="text-[11px] font-mono text-foreground/80">feedback_id={pendingFeedbackId}</div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="gap-2"
+                disabled={!selectedSuiteId || convertingFeedbackId === pendingFeedbackId}
+                onClick={() => {
+                  detachPromise(
+                    (async () => {
+                      const createdId = await handleConvertFeedbackToEvidence(pendingFeedbackId, undefined, {
+                        tags: ['expert-loop'],
+                        source: 'chat_feedback_action',
+                      })
+                      if (createdId) setPendingFeedbackId('')
+                    })()
+                  )
+                }}
+              >
+                {convertingFeedbackId === pendingFeedbackId ? (
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                ) : null}
+                导入待处理反馈
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setPendingFeedbackId('')}>
+                稍后处理
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <SuiteListPanel
           datasetLabel={datasetLoading ? '加载中…' : dataset?.name || datasetId || '-'}

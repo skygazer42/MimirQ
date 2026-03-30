@@ -38,7 +38,7 @@ import {
   type RetrievalProfile,
 } from './evidence-suite-workbench-utils'
 
-export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string) {
+export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: { initialFeedbackId?: string }) {
   const datasetId = asDatasetId(datasetIdRaw)
 
   const [dataset, setDataset] = useState<Dataset | null>(null)
@@ -88,6 +88,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string) {
   const [hardcaseTags, setHardcaseTags] = useState<string[]>(['hardcase'])
 
   const [convertingFeedbackId, setConvertingFeedbackId] = useState<string>('')
+  const [pendingFeedbackId, setPendingFeedbackId] = useState<string>(() => String(options?.initialFeedbackId || '').trim())
 
   const [createSuiteOpen, setCreateSuiteOpen] = useState(false)
   const [suiteName, setSuiteName] = useState('')
@@ -257,30 +258,43 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string) {
   }, [])
 
   const handleConvertFeedbackToEvidence = useCallback(
-    async (feedbackId: string, questionHash?: string) => {
+    async (
+      feedbackId: string,
+      questionHash?: string,
+      options?: { tags?: string[]; source?: string }
+    ) => {
       if (!selectedSuiteId) return
       const id = String(feedbackId || '').trim()
-      if (!id) return
+      if (!id) return null
       setConvertingFeedbackId(id)
       try {
         const created = await feedbackApi.toEvidenceItem(id, {
           suite_id: selectedSuiteId,
-          tags: hardcaseTags,
-          extra: { source: 'hardcase_discovery', question_hash: questionHash || undefined },
+          tags: options?.tags || hardcaseTags,
+          extra: {
+            source: options?.source || 'hardcase_discovery',
+            question_hash: questionHash || undefined,
+          },
         })
         const createdId = String(created?.id || '').trim()
         toast.success('已创建 draft EvidenceItem')
         await loadItems()
         await loadHardcases()
         if (createdId) setSelectedItemId(createdId)
+        return createdId || null
       } catch (error: unknown) {
         toast.error(formatApiError(error, '转为 EvidenceItem 失败'))
+        return null
       } finally {
         setConvertingFeedbackId('')
       }
     },
     [hardcaseTags, loadHardcases, loadItems, selectedSuiteId]
   )
+
+  useEffect(() => {
+    setPendingFeedbackId(String(options?.initialFeedbackId || '').trim())
+  }, [options?.initialFeedbackId])
 
   useEffect(() => {
     detachPromise(loadDataset())
@@ -873,6 +887,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string) {
     newQuery,
     openCreateItem,
     openCreateSuite,
+    pendingFeedbackId,
     openWhyMissed,
     profile,
     qaFaqInputRef,
@@ -907,6 +922,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string) {
     setNewExpected,
     setNewNotes,
     setNewQuery,
+    setPendingFeedbackId,
     setProfile,
     setSelectedItemId,
     setSelectedSuiteId,

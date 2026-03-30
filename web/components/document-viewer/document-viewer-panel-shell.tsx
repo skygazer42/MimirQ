@@ -18,11 +18,14 @@ export function DocumentViewerPanelShell({
   canInlinePreview,
   chunkDeleteSubmitting,
   chunkEditorContent,
+  chunkEditorEndChar,
   chunkEditorMode,
   chunkEditorOpen,
   chunkEditorPageNumber,
+  chunkEditorStartChar,
   chunkEditorSubmitting,
   chunkEditorTarget,
+  canRerunRetrieve,
   chunkMatchSummary,
   chunkQuery,
   chunkSearchPlaceholder,
@@ -79,7 +82,9 @@ export function DocumentViewerPanelShell({
   runRetrievePreview,
   serverMatchTruncated,
   setChunkEditorContent,
+  setChunkEditorEndChar,
   setChunkEditorPageNumber,
+  setChunkEditorStartChar,
   setChunkQuery,
   setHighlightChunk,
   setIsExpanded,
@@ -110,12 +115,17 @@ export function DocumentViewerPanelShell({
         target={chunkEditorTarget}
         content={chunkEditorContent}
         pageNumber={chunkEditorPageNumber}
+        startChar={chunkEditorStartChar}
+        endChar={chunkEditorEndChar}
         submitting={chunkEditorSubmitting}
         canEditChunks={canEditChunks}
+        canRerunRetrieve={canRerunRetrieve}
         onOpenChange={handleChunkEditorOpenChange}
         onContentChange={setChunkEditorContent}
         onPageNumberChange={setChunkEditorPageNumber}
-        onSubmit={() => detachPromise(submitChunkEditor())}
+        onStartCharChange={setChunkEditorStartChar}
+        onEndCharChange={setChunkEditorEndChar}
+        onSubmit={(mode) => detachPromise(submitChunkEditor(mode))}
       />
       <QAGenerationDialog
         open={qaDialogOpen}
