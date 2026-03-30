@@ -1,14 +1,24 @@
-/**
- * 数据质量检测组件
- * 检测项：字符统计、语言检测、编码识别、格式验证、问题识别
- */
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
-import { ScanLine, Play, CheckCircle, AlertTriangle, Info, FileText, Languages, Code, List, ChevronDown, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  AlertTriangle,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Code,
+  FileText,
+  Info,
+  Languages,
+  List,
+  Play,
+  ScanLine,
+} from 'lucide-react'
+import { useTranslations } from 'next-intl'
+
 import { pipelineApi } from '@/lib/api'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 interface QualityIssue {
   id: string
@@ -25,14 +35,19 @@ interface QualityCheckerProps {
   onComplete: (result: { score: number; issues: QualityIssue[] }) => void
 }
 
-// 质量检测项
-const CHECK_ITEMS = [
-  { id: 'chars', label: '字符统计', icon: FileText },
-  { id: 'encoding', label: '编码检测', icon: Code },
-  { id: 'language', label: '语言识别', icon: Languages },
-  { id: 'format', label: '格式验证', icon: List },
-  { id: 'issues', label: '问题识别', icon: AlertTriangle },
-]
+type CheckItemId = 'chars' | 'encoding' | 'language' | 'format' | 'issues'
+type Translate = (key: string, values?: Record<string, string | number>) => string
+
+const CHECK_ITEM_CONFIGS = [
+  { id: 'chars', icon: FileText },
+  { id: 'encoding', icon: Code },
+  { id: 'language', icon: Languages },
+  { id: 'format', icon: List },
+  { id: 'issues', icon: AlertTriangle },
+] as const satisfies ReadonlyArray<{
+  id: CheckItemId
+  icon: typeof FileText
+}>
 
 const UTF8_BOM_CODE_POINT = 0xFEFF
 
@@ -40,13 +55,13 @@ function getLeadingCodePoint(value: string): number | undefined {
   return value.codePointAt(0)
 }
 
-function getContentFormat(hasHtml: boolean, hasMarkdown: boolean): string {
-  if (hasHtml) return 'HTML'
-  if (hasMarkdown) return 'Markdown'
-  return '纯文本'
+function getContentFormat(hasHtml: boolean, hasMarkdown: boolean, t: Translate): string {
+  if (hasHtml) return t('format.types.html')
+  if (hasMarkdown) return t('format.types.markdown')
+  return t('format.types.plainText')
 }
 
-function collectLocalQualityIssues(content: string): QualityIssue[] {
+function collectLocalQualityIssues(content: string, t: Translate): QualityIssue[] {
   const detectedIssues: QualityIssue[] = []
 
   const emptyParagraphs = (content.match(/\n\n+/g) || []).length
@@ -54,16 +69,16 @@ function collectLocalQualityIssues(content: string): QualityIssue[] {
     detectedIssues.push({
       id: 'empty-paragraphs',
       type: 'warning',
-      message: `发现 ${emptyParagraphs} 处空段落，可能影响检索质量`,
+      message: t('localIssues.emptyParagraphs', { count: emptyParagraphs }),
     })
   }
 
-  const longParagraphs = content.split('\n\n').filter((p) => p.length > 1000)
+  const longParagraphs = content.split('\n\n').filter((paragraph) => paragraph.length > 1000)
   if (longParagraphs.length > 0) {
     detectedIssues.push({
       id: 'long-paragraphs',
       type: 'warning',
-      message: `发现 ${longParagraphs.length} 处过长段落 (>1000字符)，建议切块`,
+      message: t('localIssues.longParagraphs', { count: longParagraphs.length }),
     })
   }
 
@@ -72,17 +87,17 @@ function collectLocalQualityIssues(content: string): QualityIssue[] {
     detectedIssues.push({
       id: 'special-chars',
       type: 'error',
-      message: `发现 ${specialChars.length} 个控制字符，可能导致解析错误`,
+      message: t('localIssues.specialChars', { count: specialChars.length }),
     })
   }
 
-  const paragraphs = content.split('\n').filter((p) => p.trim().length > 20)
+  const paragraphs = content.split('\n').filter((paragraph) => paragraph.trim().length > 20)
   const duplicates: string[] = []
   const seen = new Set<string>()
   for (const paragraph of paragraphs) {
     const trimmed = paragraph.trim().substring(0, 50)
-    if (seen.has(trimmed)) {
-      if (!duplicates.includes(trimmed)) duplicates.push(trimmed)
+    if (seen.has(trimmed) && !duplicates.includes(trimmed)) {
+      duplicates.push(trimmed)
     }
     seen.add(trimmed)
   }
@@ -90,7 +105,7 @@ function collectLocalQualityIssues(content: string): QualityIssue[] {
     detectedIssues.push({
       id: 'duplicates',
       type: 'info',
-      message: `发现 ${duplicates.length} 处可能的重复内容`,
+      message: t('localIssues.duplicates', { count: duplicates.length }),
     })
   }
 
@@ -99,7 +114,7 @@ function collectLocalQualityIssues(content: string): QualityIssue[] {
     detectedIssues.push({
       id: 'urls',
       type: 'info',
-      message: `发现 ${urls.length} 个 URL 链接`,
+      message: t('localIssues.urls', { count: urls.length }),
     })
   }
 
@@ -112,38 +127,50 @@ function getBackendIssueType(severity: string | null | undefined): QualityIssue[
   return 'info'
 }
 
-async function getBackendQualityIssues(content: string, inputFormat: 'html' | 'markdown'): Promise<QualityIssue[]> {
+async function getBackendQualityIssues(
+  content: string,
+  inputFormat: 'html' | 'markdown',
+  t: Translate
+): Promise<QualityIssue[]> {
   try {
-    const res = await pipelineApi.governanceAnalyze({
+    const response = await pipelineApi.governanceAnalyze({
       markdown: content,
       input_format: inputFormat,
     })
 
-    const detectedIssues = (res.issues || []).slice(0, 10).map((issue) => {
-      const countSuffix = typeof issue.count === 'number' && issue.count > 0 ? `（${issue.count}）` : ''
+    const detectedIssues = (response.issues || []).slice(0, 10).map((issue) => {
+      const countSuffix =
+        typeof issue.count === 'number' && issue.count > 0
+          ? t('backendIssues.countSuffix', { count: issue.count })
+          : ''
+
       return {
         id: `backend:${issue.code}`,
         type: getBackendIssueType(issue.severity),
-        message: `后端检测：${issue.message}${countSuffix}`,
+        message: t('backendIssues.detected', { message: `${issue.message}${countSuffix}` }),
       } satisfies QualityIssue
     })
 
-    if (res.suggested_pipeline_patch && Object.keys(res.suggested_pipeline_patch).length > 0) {
+    if (response.suggested_pipeline_patch && Object.keys(response.suggested_pipeline_patch).length > 0) {
       detectedIssues.push({
         id: 'backend:suggested-patch',
         type: 'info',
-        message: `后端建议：可优化治理配置（${Object.keys(res.suggested_pipeline_patch).length} 项）`,
+        message: t('backendIssues.suggestedPatch', {
+          count: Object.keys(response.suggested_pipeline_patch).length,
+        }),
       })
     }
 
     return detectedIssues
   } catch (error) {
     console.error('Backend governance analyze failed', error)
-    return [{
-      id: 'backend:failed',
-      type: 'info',
-      message: '后端检测失败（可忽略）',
-    }]
+    return [
+      {
+        id: 'backend:failed',
+        type: 'info',
+        message: t('backendIssues.failed'),
+      },
+    ]
   }
 }
 
@@ -159,22 +186,36 @@ function calculateQualityScore(issues: QualityIssue[]): number {
   return Math.max(0, calculatedScore)
 }
 
-export function QualityChecker({ content, initialScore = 0, initialIssues = [], onComplete }: Readonly<QualityCheckerProps>) {
+export function QualityChecker({
+  content,
+  initialScore = 0,
+  initialIssues = [],
+  onComplete,
+}: Readonly<QualityCheckerProps>) {
+  const t = useTranslations('QualityChecker')
+  const checkItems = useMemo(
+    () =>
+      CHECK_ITEM_CONFIGS.map(({ id, icon }) => ({
+        id,
+        icon,
+        label: t(`checkItems.${id}.label`),
+      })),
+    [t]
+  )
   const [isScanning, setIsScanning] = useState(false)
   const [score, setScore] = useState(initialScore)
   const [issues, setIssues] = useState<QualityIssue[]>(initialIssues)
   const [backendScanEnabled, setBackendScanEnabled] = useState(false)
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(['chars']))
+  const [expandedItems, setExpandedItems] = useState<Set<CheckItemId>>(new Set(['chars']))
   const [scanProgress, setScanProgress] = useState(0)
 
-  // 文本统计
   const textStats = useMemo(() => {
     const text = content || ''
     const chars = text.length
     const charsNoSpaces = text.replaceAll(/\s/g, '').length
     const words = text.trim() ? text.trim().split(/\s+/).length : 0
     const lines = text.split('\n').length
-    const paragraphs = text.split(/\n\n+/).filter((p) => p.trim()).length
+    const paragraphs = text.split(/\n\n+/).filter((paragraph) => paragraph.trim()).length
     const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length
     const englishWords = (text.match(/[a-zA-Z]+/g) || []).length
     const numbers = (text.match(/\d+/g) || []).length
@@ -191,7 +232,6 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     }
   }, [content])
 
-  // 检测编码
   const hasBom = useMemo(() => getLeadingCodePoint(content) === UTF8_BOM_CODE_POINT, [content])
   const encoding = useMemo(() => {
     const hasHighByte = [...content].some((char) => (char.codePointAt(0) ?? 0) > 255)
@@ -200,17 +240,15 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     return 'ASCII'
   }, [content, hasBom])
 
-  // 检测语言
   const language = useMemo(() => {
     const chineseRatio = textStats.chineseChars / (textStats.chars || 1)
     const englishRatio = textStats.englishWords / (textStats.words || 1)
 
-    if (chineseRatio > 0.3) return '中文 (简体)'
-    if (englishRatio > 0.5) return 'English'
-    return '混合语言'
-  }, [textStats])
+    if (chineseRatio > 0.3) return t('language.simplifiedChinese')
+    if (englishRatio > 0.5) return t('language.english')
+    return t('language.mixed')
+  }, [t, textStats])
 
-  // 格式检测
   const formatInfo = useMemo(() => {
     const hasMarkdown = /^#{1,6}\s|^\*{1,2}.*?\*{1,2}|^\[.*?\]\(.*?\)/m.test(content)
     const hasHtml = /<[^>]+>/.test(content)
@@ -219,19 +257,17 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     const hasTables = (content.match(/\|.*\|/g) || []).length > 0
 
     return {
-      format: getContentFormat(hasHtml, hasMarkdown),
+      format: getContentFormat(hasHtml, hasMarkdown, t),
       hasHeaders,
       hasLists,
       hasTables,
     }
-  }, [content])
+  }, [content, t])
 
-  // 执行质量扫描
   const handleScan = useCallback(async () => {
     setIsScanning(true)
     setScanProgress(0)
 
-    // 模拟扫描进度
     const steps = [
       { progress: 20, delay: 300 },
       { progress: 40, delay: 300 },
@@ -245,14 +281,12 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
       setScanProgress(step.progress)
     }
 
-    const detectedIssues = collectLocalQualityIssues(content)
+    const detectedIssues = collectLocalQualityIssues(content, t)
 
-    // 6. 后端治理诊断（可选）
     if (backendScanEnabled) {
-      detectedIssues.push(...await getBackendQualityIssues(
-        content,
-        formatInfo.format === 'HTML' ? 'html' : 'markdown'
-      ))
+      detectedIssues.push(
+        ...(await getBackendQualityIssues(content, formatInfo.format === t('format.types.html') ? 'html' : 'markdown', t))
+      )
     }
 
     setIssues(detectedIssues)
@@ -260,17 +294,15 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     const calculatedScore = calculateQualityScore(detectedIssues)
     setScore(calculatedScore)
 
-    // 自动展开问题区域
     if (detectedIssues.length > 0) {
       setExpandedItems((prev) => new Set([...prev, 'issues']))
     }
 
     setIsScanning(false)
     onComplete({ score: calculatedScore, issues: detectedIssues })
-  }, [content, onComplete, backendScanEnabled, formatInfo.format])
+  }, [backendScanEnabled, content, formatInfo.format, onComplete, t])
 
-  // 切换展开
-  const toggleExpanded = useCallback((id: string) => {
+  const toggleExpanded = useCallback((id: CheckItemId) => {
     setExpandedItems((prev) => {
       const next = new Set(prev)
       if (next.has(id)) {
@@ -282,93 +314,100 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
     })
   }, [])
 
-  // 获取分数等级
   const scoreGrade = useMemo(() => {
-    if (score >= 90) return { label: '优秀', tone: 'success', badge: 'bg-success/10 text-success border border-success/20' }
-    if (score >= 75) return { label: '良好', tone: 'info', badge: 'bg-info/10 text-info border border-info/20' }
-    if (score >= 60) return { label: '及格', tone: 'warning', badge: 'bg-warning/10 text-warning border border-warning/20' }
-    return { label: '较差', tone: 'destructive', badge: 'bg-destructive/10 text-destructive border border-destructive/20' }
-  }, [score])
+    if (score >= 90) {
+      return { label: t('score.grades.excellent'), tone: 'success', badge: 'border border-success/20 bg-success/10 text-success' }
+    }
+    if (score >= 75) {
+      return { label: t('score.grades.good'), tone: 'info', badge: 'border border-info/20 bg-info/10 text-info' }
+    }
+    if (score >= 60) {
+      return { label: t('score.grades.pass'), tone: 'warning', badge: 'border border-warning/20 bg-warning/10 text-warning' }
+    }
+    return {
+      label: t('score.grades.poor'),
+      tone: 'destructive',
+      badge: 'border border-destructive/20 bg-destructive/10 text-destructive',
+    }
+  }, [score, t])
 
-  // 初始自动扫描
   useEffect(() => {
     if (content && initialScore === 0) {
-      handleScan()
+      void handleScan()
     }
-  }, [content, initialScore, handleScan])
+  }, [content, handleScan, initialScore])
 
   return (
-    <div className="p-6 space-y-6">
-      {/* 扫描按钮和分数展示 */}
+    <div className="space-y-6 p-6">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ScanLine className="w-5 h-5 text-info" />
-            <h3 className="font-bold text-foreground">质量检测</h3>
+            <ScanLine className="h-5 w-5 text-info" />
+            <h3 className="font-bold text-foreground">{t("header.title")}</h3>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant={backendScanEnabled ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setBackendScanEnabled((v) => !v)}
+              onClick={() => setBackendScanEnabled((value) => !value)}
             >
-              {backendScanEnabled ? '后端检测：开' : '后端检测：关'}
+              {backendScanEnabled ? t('actions.backendScanOn') : t('actions.backendScanOff')}
             </Button>
-            <Button
-              onClick={handleScan}
-              disabled={isScanning}
-              size="sm"
-              className="gap-2"
-            >
+            <Button onClick={handleScan} disabled={isScanning} size="sm" className="gap-2">
               {isScanning ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full motion-safe:animate-spin motion-reduce:animate-none" />
-                  扫描中 {scanProgress}%
+                  <div className="h-4 w-4 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground motion-safe:animate-spin motion-reduce:animate-none" />
+                  {t('actions.scanning', { progress: scanProgress })}
                 </>
               ) : (
                 <>
-                  <Play className="w-4 h-4" />
-                  重新扫描
+                  <Play className="h-4 w-4" />
+                  {t("actions.scan")}
                 </>
               )}
             </Button>
           </div>
         </div>
 
-        {/* 质量分数卡片 */}
         {score > 0 && (
-          <div className={cn(
-            "p-4 rounded-xl border-2",
-            scoreGrade.tone === 'success' && "bg-success/10 border-success/30",
-            scoreGrade.tone === 'info' && "bg-info/10 border-info/30",
-            scoreGrade.tone === 'warning' && "bg-warning/10 border-warning/30",
-            scoreGrade.tone === 'destructive' && "bg-destructive/10 border-destructive/30",
-          )}>
+          <div
+            className={cn(
+              'rounded-xl border-2 p-4',
+              scoreGrade.tone === 'success' && 'border-success/30 bg-success/10',
+              scoreGrade.tone === 'info' && 'border-info/30 bg-info/10',
+              scoreGrade.tone === 'warning' && 'border-warning/30 bg-warning/10',
+              scoreGrade.tone === 'destructive' && 'border-destructive/30 bg-destructive/10'
+            )}
+          >
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm text-muted-foreground mb-1">数据质量评分</div>
+                <div className="mb-1 text-sm text-muted-foreground">{t('score.title')}</div>
                 <div className="flex items-baseline gap-2">
                   <span className="text-4xl font-bold text-foreground">{score}</span>
-                  <span className="text-sm text-muted-foreground">/ 100</span>
-                  <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", scoreGrade.badge)}>
+                  <span className="text-sm text-muted-foreground">{t('score.outOf')}</span>
+                  <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium', scoreGrade.badge)}>
                     {scoreGrade.label}
                   </span>
                 </div>
               </div>
-              <div className={cn(
-                "w-16 h-16 rounded-full flex items-center justify-center border-4",
-                scoreGrade.tone === 'success' && "border-success/30 bg-success/10",
-                scoreGrade.tone === 'info' && "border-info/30 bg-info/10",
-                scoreGrade.tone === 'warning' && "border-warning/30 bg-warning/10",
-                scoreGrade.tone === 'destructive' && "border-destructive/30 bg-destructive/10",
-              )}>
-                <span className={cn(
-                  "text-2xl font-bold",
-                  scoreGrade.tone === 'success' && "text-success",
-                  scoreGrade.tone === 'info' && "text-info",
-                  scoreGrade.tone === 'warning' && "text-warning",
-                  scoreGrade.tone === 'destructive' && "text-destructive",
-                )}>
+              <div
+                className={cn(
+                  'flex h-16 w-16 items-center justify-center rounded-full border-4',
+                  scoreGrade.tone === 'success' && 'border-success/30 bg-success/10',
+                  scoreGrade.tone === 'info' && 'border-info/30 bg-info/10',
+                  scoreGrade.tone === 'warning' && 'border-warning/30 bg-warning/10',
+                  scoreGrade.tone === 'destructive' && 'border-destructive/30 bg-destructive/10'
+                )}
+              >
+                <span
+                  className={cn(
+                    'text-2xl font-bold',
+                    scoreGrade.tone === 'success' && 'text-success',
+                    scoreGrade.tone === 'info' && 'text-info',
+                    scoreGrade.tone === 'warning' && 'text-warning',
+                    scoreGrade.tone === 'destructive' && 'text-destructive'
+                  )}
+                >
                   {score}
                 </span>
               </div>
@@ -377,107 +416,116 @@ export function QualityChecker({ content, initialScore = 0, initialIssues = [], 
         )}
       </div>
 
-      {/* 检测项列表 */}
       <div className="space-y-2">
-        {CHECK_ITEMS.map((item) => {
+        {checkItems.map((item) => {
           const Icon = item.icon
           const isExpanded = expandedItems.has(item.id)
-          const issueCount = issues.filter((i) => i.type !== 'info').length
+          const issueCount = issues.filter((issue) => issue.type !== 'info').length
 
           return (
-            <div
-              key={item.id}
-              className="border border-border rounded-xl overflow-hidden"
-            >
+            <div key={item.id} className="overflow-hidden rounded-xl border border-border">
               <button
+                type="button"
                 onClick={() => toggleExpanded(item.id)}
-                className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors motion-reduce:transition-none"
+                className="flex w-full items-center justify-between p-3 transition-colors hover:bg-muted motion-reduce:transition-none"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-                    <Icon className="w-4 h-4 text-muted-foreground" />
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
+                    <Icon className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <span className="text-sm font-medium text-foreground/80">{item.label}</span>
                   {item.id === 'issues' && issueCount > 0 && (
-                    <span className="text-xs bg-destructive/10 text-destructive px-1.5 py-0.5 rounded-full">
+                    <span className="rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
                       {issueCount}
                     </span>
                   )}
                 </div>
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 )}
               </button>
 
               {isExpanded && (
-                <div className="p-4 pt-0 border-t border-border bg-muted/50">
+                <div className="border-t border-border bg-muted/50 p-4 pt-0">
                   {item.id === 'chars' && (
                     <div className="grid grid-cols-2 gap-3">
-                      <StatRow label="总字符数" value={textStats.chars.toLocaleString()} />
-                      <StatRow label="不含空格" value={textStats.charsNoSpaces.toLocaleString()} />
-                      <StatRow label="单词数" value={textStats.words.toLocaleString()} />
-                      <StatRow label="行数" value={textStats.lines.toLocaleString()} />
-                      <StatRow label="段落数" value={textStats.paragraphs.toLocaleString()} />
-                      <StatRow label="中文字符" value={textStats.chineseChars.toLocaleString()} />
-                      <StatRow label="英文单词" value={textStats.englishWords.toLocaleString()} />
-                      <StatRow label="数字数量" value={textStats.numbers.toLocaleString()} />
+                      <StatRow label={t('stats.totalCharacters')} value={textStats.chars.toLocaleString()} />
+                      <StatRow label={t('stats.charactersNoSpaces')} value={textStats.charsNoSpaces.toLocaleString()} />
+                      <StatRow label={t('stats.wordCount')} value={textStats.words.toLocaleString()} />
+                      <StatRow label={t('stats.lineCount')} value={textStats.lines.toLocaleString()} />
+                      <StatRow label={t('stats.paragraphCount')} value={textStats.paragraphs.toLocaleString()} />
+                      <StatRow label={t('stats.chineseCharacters')} value={textStats.chineseChars.toLocaleString()} />
+                      <StatRow label={t('stats.englishWords')} value={textStats.englishWords.toLocaleString()} />
+                      <StatRow label={t('stats.numberCount')} value={textStats.numbers.toLocaleString()} />
                     </div>
                   )}
 
                   {item.id === 'encoding' && (
                     <div className="space-y-2">
-                      <StatRow label="检测编码" value={encoding} />
-                      <StatRow label="字符范围" value="基本多文种平面" />
-                      <StatRow label="是否含BOM" value={hasBom ? '是' : '否'} />
+                      <StatRow label={t('encoding.detectedEncoding')} value={encoding} />
+                      <StatRow label={t('encoding.characterRange')} value={t('encoding.basicMultilingualPlane')} />
+                      <StatRow label={t('encoding.hasBom')} value={hasBom ? t('shared.yes') : t('shared.no')} />
                     </div>
                   )}
 
                   {item.id === 'language' && (
                     <div className="space-y-2">
-                      <StatRow label="主要语言" value={language} />
-                      <StatRow label="中文占比" value={`${((textStats.chineseChars / (textStats.chars || 1)) * 100).toFixed(1)}%`} />
-                      <StatRow label="英文占比" value={`${((textStats.englishWords / (textStats.words || 1)) * 100).toFixed(1)}%`} />
+                      <StatRow label={t('language.primaryLanguage')} value={language} />
+                      <StatRow
+                        label={t('language.chineseRatio')}
+                        value={`${((textStats.chineseChars / (textStats.chars || 1)) * 100).toFixed(1)}%`}
+                      />
+                      <StatRow
+                        label={t('language.englishRatio')}
+                        value={`${((textStats.englishWords / (textStats.words || 1)) * 100).toFixed(1)}%`}
+                      />
                     </div>
                   )}
 
                   {item.id === 'format' && (
                     <div className="space-y-2">
-                      <StatRow label="文档格式" value={formatInfo.format} />
-                      <StatRow label="标题数量" value={formatInfo.hasHeaders} />
-                      <StatRow label="列表数量" value={formatInfo.hasLists} />
-                      <StatRow label="包含表格" value={formatInfo.hasTables ? '是' : '否'} />
+                      <StatRow label={t('format.documentFormat')} value={formatInfo.format} />
+                      <StatRow label={t('format.headingCount')} value={formatInfo.hasHeaders} />
+                      <StatRow label={t('format.listCount')} value={formatInfo.hasLists} />
+                      <StatRow label={t('format.hasTables')} value={formatInfo.hasTables ? t('shared.yes') : t('shared.no')} />
                     </div>
                   )}
 
                   {item.id === 'issues' && (
                     <div className="space-y-2">
                       {issues.length === 0 ? (
-                        <div className="flex items-center gap-2 text-sm text-success py-2">
-                          <CheckCircle className="w-4 h-4" />
-                          未发现明显问题
+                        <div className="flex items-center gap-2 py-2 text-sm text-success">
+                          <CheckCircle className="h-4 w-4" />
+                          {t('issues.none')}
                         </div>
                       ) : (
                         issues.map((issue) => (
                           <div
                             key={issue.id}
                             className={cn(
-                              "flex items-start gap-2 p-3 rounded-lg",
-                              issue.type === 'error' && "bg-destructive/10 border border-destructive/20",
-                              issue.type === 'warning' && "bg-warning/10 border border-warning/20",
-                              issue.type === 'info' && "bg-info/10 border border-info/20",
+                              'flex items-start gap-2 rounded-lg p-3',
+                              issue.type === 'error' && 'border border-destructive/20 bg-destructive/10',
+                              issue.type === 'warning' && 'border border-warning/20 bg-warning/10',
+                              issue.type === 'info' && 'border border-info/20 bg-info/10'
                             )}
                           >
-                            {issue.type === 'error' && <AlertTriangle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />}
-                            {issue.type === 'warning' && <AlertTriangle className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />}
-                            {issue.type === 'info' && <Info className="w-4 h-4 text-info flex-shrink-0 mt-0.5" />}
-                            <span className={cn(
-                              "text-sm",
-                              issue.type === 'error' && "text-destructive",
-                              issue.type === 'warning' && "text-warning",
-                              issue.type === 'info' && "text-info",
-                            )}>
+                            {issue.type === 'error' && (
+                              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-destructive" />
+                            )}
+                            {issue.type === 'warning' && (
+                              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-warning" />
+                            )}
+                            {issue.type === 'info' && <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-info" />}
+                            <span
+                              className={cn(
+                                'text-sm',
+                                issue.type === 'error' && 'text-destructive',
+                                issue.type === 'warning' && 'text-warning',
+                                issue.type === 'info' && 'text-info'
+                              )}
+                            >
                               {issue.message}
                             </span>
                           </div>

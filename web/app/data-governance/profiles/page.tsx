@@ -1,6 +1,8 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { useTranslations } from 'next-intl'
+
 import { AppFrame } from '@/components/app-frame'
 import { PageLoading } from '@/components/ui/page-loading'
 
@@ -11,7 +13,7 @@ const GovernanceProfilesPage = dynamic(
     ),
   {
     ssr: false,
-    loading: () => <PageLoading message="正在加载治理 Profiles..." srMessage="Loading governance profiles page" />,
+    loading: () => <GovernanceProfilesRouteLoading />,
   }
 )
 
@@ -23,3 +25,8 @@ export default function GovernanceProfilesRoutePage() {
   )
 }
 
+function GovernanceProfilesRouteLoading() {
+  const t = useTranslations('GovernanceProfilesRoutePage')
+
+  return <PageLoading message={t('loading.message')} srMessage={t('loading.srMessage')} />
+}

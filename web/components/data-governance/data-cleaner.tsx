@@ -1,14 +1,21 @@
 'use client'
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
-import { Wrench, Sparkles, Undo, TextCursorInput, Loader2, Info, AlertTriangle } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, Info, Loader2, Sparkles, TextCursorInput, Undo, Wrench } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { pipelineApi, promptTemplateApi, PromptTemplate } from '@/lib/api'
+import { pipelineApi, promptTemplateApi, type PromptTemplate } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { coerceOneOf } from '@/lib/one-of'
-import type { CleanPreviewRequest, CleanPreviewResponse, DocumentPipelineOptions, LLMCleanPreviewRequest } from '@/types'
+import type {
+  CleanPreviewRequest,
+  CleanPreviewResponse,
+  DocumentPipelineOptions,
+  LLMCleanPreviewRequest,
+} from '@/types'
 import {
   Select,
   SelectContent,
@@ -31,7 +38,22 @@ interface DataCleanerProps {
   onClean: (cleaned: string) => void
 }
 
-export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<DataCleanerProps>) {
+function getSeverityBadgeClass(severity: string) {
+  if (severity === 'error') {
+    return 'bg-destructive/10 text-destructive'
+  }
+  if (severity === 'warning') {
+    return 'bg-warning/10 text-warning'
+  }
+  return 'bg-info/10 text-info'
+}
+
+export function DataCleaner({
+  content,
+  cleanedContent: _cleanedContent = '',
+  onClean,
+}: Readonly<DataCleanerProps>) {
+  const t = useTranslations('DataCleaner')
   const { options, updateOption, setEnabled } = usePipelineOptions()
   const [previewDiff, setPreviewDiff] = useState(false)
   const [isApplying, setIsApplying] = useState(false)
@@ -44,9 +66,9 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const impact = useMemo(() => computeCleanPreviewImpact(lastPreview), [lastPreview])
 
-  // Load prompt templates
   useEffect(() => {
     let cancelled = false
+
     const loadTemplates = async () => {
       try {
         const response = await promptTemplateApi.list({ is_active: true, limit: 50 })
@@ -57,25 +79,25 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
         setPromptTemplates([])
       }
     }
-    loadTemplates()
+
+    void loadTemplates()
     return () => {
       cancelled = true
     }
   }, [])
 
-  // 应用清洗
   const handleApply = useCallback(async () => {
     setIsApplying(true)
     setBackendError(null)
     setBackendInfo(null)
 
     try {
-      const opt = <T,>(v: T | null | undefined): T | undefined => (v === null || v === undefined ? undefined : v)
+      const opt = <T,>(value: T | null | undefined): T | undefined =>
+        value === null || value === undefined ? undefined : value
 
-      // 构造请求，直接使用 Context 中的 Pipeline Options
-      const req: CleanPreviewRequest = {
+      const request: CleanPreviewRequest = {
         markdown: content,
-        use_default_rules: true, // 默认开启基础规则
+        use_default_rules: true,
         rules: Array.isArray(options.governance_regex_rules) ? options.governance_regex_rules : [],
         include_diff: true,
         diff_max_lines: 2000,
@@ -83,8 +105,6 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
         html_xpath: inputFormat === 'html' ? (options.governance_html_xpath || undefined) : undefined,
         normalize_line_endings: true,
         trim_trailing_spaces: true,
-        
-        // 映射 Pipeline Options 到后端 CleanPreviewRequest
         remove_toc_lines: opt(options.governance_remove_toc_lines),
         remove_noise_lines: opt(options.governance_remove_noise_lines),
         remove_common_lines: opt(options.governance_remove_common_lines),
@@ -98,7 +118,9 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
         normalize_urls: opt(options.governance_normalize_urls),
         normalize_urls_strip_tracking: opt(options.governance_normalize_urls_strip_tracking),
         drop_duplicate_paragraphs: opt(options.governance_drop_duplicate_paragraphs),
-        drop_duplicate_paragraphs_min_occurrences: opt(options.governance_drop_duplicate_paragraphs_min_occurrences),
+        drop_duplicate_paragraphs_min_occurrences: opt(
+          options.governance_drop_duplicate_paragraphs_min_occurrences
+        ),
         drop_duplicate_paragraphs_min_chars: opt(options.governance_drop_duplicate_paragraphs_min_chars),
         drop_duplicate_paragraphs_max_chars: opt(options.governance_drop_duplicate_paragraphs_max_chars),
         trim_references: opt(options.governance_trim_references),
@@ -126,136 +148,163 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
         common_lines_min_occurrences: opt(options.governance_common_lines_min_docs),
       }
 
-      const res = await pipelineApi.cleanPreview(req)
-      setLastPreview(res)
+      const response = await pipelineApi.cleanPreview(request)
+      setLastPreview(response)
+
       const info: string[] = []
-      if (typeof res.input_lines === 'number' && typeof res.output_lines === 'number') {
-        const removed = typeof res.removed_lines === 'number' ? res.removed_lines : 0
-        const added = typeof res.added_lines === 'number' ? res.added_lines : 0
-        const changedLines = typeof res.changed_lines === 'number' ? res.changed_lines : 0
-        const inChars = typeof res.input_chars === 'number' ? res.input_chars : content.length
-        const outChars = typeof res.output_chars === 'number' ? res.output_chars : (res.markdown || '').length
-        info.push(`清洗统计：行 ${res.input_lines} → ${res.output_lines}（- ${removed} / + ${added} / ~ ${changedLines}），字符 ${inChars} → ${outChars}`)
+      if (typeof response.input_lines === 'number' && typeof response.output_lines === 'number') {
+        const removed = typeof response.removed_lines === 'number' ? response.removed_lines : 0
+        const added = typeof response.added_lines === 'number' ? response.added_lines : 0
+        const changedLines = typeof response.changed_lines === 'number' ? response.changed_lines : 0
+        const inputChars = typeof response.input_chars === 'number' ? response.input_chars : content.length
+        const outputChars =
+          typeof response.output_chars === 'number' ? response.output_chars : (response.markdown || '').length
+
+        info.push(
+          t('info.cleaningStats', {
+            inputLines: response.input_lines,
+            outputLines: response.output_lines,
+            removed,
+            added,
+            changedLines,
+            inputChars,
+            outputChars,
+          })
+        )
       }
 
-      if (typeof res.urls_changed === 'number' && res.urls_changed > 0) {
-        info.push(`URL 规范化：变更 ${res.urls_changed} 处`)
+      if (typeof response.urls_changed === 'number' && response.urls_changed > 0) {
+        info.push(t('info.urlsChanged', { count: response.urls_changed }))
       }
-      if (typeof res.paragraphs_dropped === 'number' && res.paragraphs_dropped > 0) {
-        info.push(`段落重复块去重：移除 ${res.paragraphs_dropped} 段`)
+      if (typeof response.paragraphs_dropped === 'number' && response.paragraphs_dropped > 0) {
+        info.push(t('info.paragraphsDropped', { count: response.paragraphs_dropped }))
       }
-      if (typeof res.references_removed_lines === 'number' && res.references_removed_lines > 0) {
-        info.push(`参考文献裁剪：移除 ${res.references_removed_lines} 行`)
-      }
-
-      if (res.title) info.push(`标题：${res.title}`)
-      if (Array.isArray(res.tags) && res.tags.length) info.push(`标签：${res.tags.slice(0, 12).join('，')}${res.tags.length > 12 ? '…' : ''}`)
-      if (res.language) {
-        const conf = typeof res.language_confidence === 'number' ? res.language_confidence : null
-        info.push(`语言：${res.language}${conf === null ? '' : `（${conf.toFixed(2)}）`}`)
-      }
-      if (Array.isArray(res.keywords) && res.keywords.length) {
-        info.push(`关键词：${res.keywords.slice(0, 12).join('，')}${res.keywords.length > 12 ? '…' : ''}`)
-      }
-      if (res.frontmatter && typeof res.frontmatter === 'object') {
-        const keys = Object.keys(res.frontmatter || {})
-        if (keys.length) info.push(`Frontmatter：${keys.slice(0, 8).join('，')}${keys.length > 8 ? '…' : ''}`)
+      if (typeof response.references_removed_lines === 'number' && response.references_removed_lines > 0) {
+        info.push(t('info.referencesRemoved', { count: response.references_removed_lines }))
       }
 
-      if (res.pii_hits && Object.keys(res.pii_hits).length > 0) {
-        const summary = Object.entries(res.pii_hits)
-          .map(([k, v]) => `${k}=${v}`)
+      if (response.title) info.push(t('info.title', { value: response.title }))
+      if (Array.isArray(response.tags) && response.tags.length) {
+        const value = `${response.tags.slice(0, 12).join('，')}${response.tags.length > 12 ? '...' : ''}`
+        info.push(t('info.tags', { value }))
+      }
+      if (response.language) {
+        const confidence =
+          typeof response.language_confidence === 'number'
+            ? t('info.languageWithConfidence', { value: response.language, confidence: response.language_confidence.toFixed(2) })
+            : response.language
+        info.push(t('info.language', { value: confidence }))
+      }
+      if (Array.isArray(response.keywords) && response.keywords.length) {
+        const value = `${response.keywords.slice(0, 12).join('，')}${response.keywords.length > 12 ? '...' : ''}`
+        info.push(t('info.keywords', { value }))
+      }
+      if (response.frontmatter && typeof response.frontmatter === 'object') {
+        const keys = Object.keys(response.frontmatter || {})
+        if (keys.length) {
+          const value = `${keys.slice(0, 8).join('，')}${keys.length > 8 ? '...' : ''}`
+          info.push(t('info.frontmatter', { value }))
+        }
+      }
+
+      if (response.pii_hits && Object.keys(response.pii_hits).length > 0) {
+        const summary = Object.entries(response.pii_hits)
+          .map(([key, value]) => `${key}=${value}`)
           .join('，')
-        info.push(`已匿名化隐私信息：${summary}`)
+        info.push(t('info.piiHits', { value: summary }))
       }
-      if (res.secrets_hits && Object.keys(res.secrets_hits).length > 0) {
-        const summary = Object.entries(res.secrets_hits)
-          .map(([k, v]) => `${k}=${v}`)
+      if (response.secrets_hits && Object.keys(response.secrets_hits).length > 0) {
+        const summary = Object.entries(response.secrets_hits)
+          .map(([key, value]) => `${key}=${value}`)
           .join('，')
-        info.push(`已脱敏密钥/Token：${summary}`)
+        info.push(t('info.secretsHits', { value: summary }))
       }
       setBackendInfo(info.length ? info.join('\n') : null)
 
-      if (res.dropped) {
-        setBackendError(`清洗后文档被过滤：${res.drop_reason || '质量过滤触发'}`)
-        onClean(res.markdown || '')
+      if (response.dropped) {
+        setBackendError(
+          t('errors.filtered', {
+            reason: response.drop_reason || t('errors.qualityFilterTriggered'),
+          })
+        )
+        onClean(response.markdown || '')
         return
       }
 
-      let next = res.markdown
+      let next = response.markdown
 
       if (llmEnabled) {
         try {
-          const llmReq: LLMCleanPreviewRequest = {
+          const llmRequest: LLMCleanPreviewRequest = {
             markdown: next,
             prompt_template_id: promptTemplateId || undefined,
           }
-          const llmRes = await pipelineApi.llmCleanPreview(llmReq)
-          next = llmRes.markdown
-          if (llmRes.warnings?.length) {
-            setBackendError(llmRes.warnings.join('；'))
+          const llmResponse = await pipelineApi.llmCleanPreview(llmRequest)
+          next = llmResponse.markdown
+          if (llmResponse.warnings?.length) {
+            setBackendError(llmResponse.warnings.join('；'))
           }
-        } catch (err: any) {
-          setBackendError(formatApiError(err, 'LLM 清洗失败，已保留规则清洗结果'))
+        } catch (error: any) {
+          setBackendError(formatApiError(error, t('errors.llmCleanFailedKeepPreview')))
         }
       }
 
       onClean(next)
-    } catch (err: any) {
-      setBackendError(formatApiError(err, '后端清洗失败'))
+    } catch (error: any) {
+      setBackendError(formatApiError(error, t('errors.backendCleanFailed')))
     } finally {
       setIsApplying(false)
     }
-  }, [content, options, onClean, llmEnabled, promptTemplateId, inputFormat])
+  }, [content, inputFormat, llmEnabled, onClean, options, promptTemplateId, t])
 
-  const applyPipelinePatch = useCallback((patch: Partial<DocumentPipelineOptions>) => {
-    setEnabled(true)
-    for (const key of Object.keys(patch) as Array<keyof DocumentPipelineOptions>) {
-      const value = patch[key]
-      if (value === undefined) continue
-      updateOption(key, value)
-    }
-  }, [setEnabled, updateOption])
+  const applyPipelinePatch = useCallback(
+    (patch: Partial<DocumentPipelineOptions>) => {
+      setEnabled(true)
+      for (const key of Object.keys(patch) as Array<keyof DocumentPipelineOptions>) {
+        const value = patch[key]
+        if (value === undefined) continue
+        updateOption(key, value)
+      }
+    },
+    [setEnabled, updateOption]
+  )
 
-  // 重置
   const handleReset = useCallback(() => {
     onClean(content)
-  }, [onClean, content])
+  }, [content, onClean])
 
   return (
-    <div className="p-6 space-y-6">
-      {/* 标题 */}
+    <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Wrench className="w-5 h-5 text-primary" />
-          <h3 className="font-bold text-foreground">智能清洗配置</h3>
+          <Wrench className="h-5 w-5 text-primary" />
+          <h3 className="font-bold text-foreground">{t("header.title")}</h3>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">输入格式</span>
+          <span className="text-xs text-muted-foreground">{t('inputFormat.label')}</span>
           <Select
             value={inputFormat}
             onValueChange={(value) => setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))}
           >
-            <SelectTrigger className="h-8 text-xs w-[120px]">
+            <SelectTrigger className="h-8 w-[120px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="markdown">Markdown</SelectItem>
-              <SelectItem value="html">HTML</SelectItem>
+              <SelectItem value="markdown">{t('inputFormat.options.markdown')}</SelectItem>
+              <SelectItem value="html">{t('inputFormat.options.html')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      {/* 嵌入 Pipeline Options Panel */}
-      <div className="border border-border/60 rounded-xl overflow-hidden">
-        <div className="bg-muted/30 px-4 py-2 border-b border-border/60 text-xs font-medium text-muted-foreground">
-          规则配置
+      <div className="overflow-hidden rounded-xl border border-border/60">
+        <div className="border-b border-border/60 bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground">
+          {t('rules.title')}
         </div>
-        <div className="p-4 bg-card">
+        <div className="bg-card p-4">
           <div className="space-y-4">
-            <div className="rounded-lg border border-border/60 p-3 bg-background/40">
-              <div className="text-xs font-medium text-muted-foreground mb-2">治理预设（Profiles/脚本）</div>
+            <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+              <div className="mb-2 text-xs font-medium text-muted-foreground">{t('rules.profilesTitle')}</div>
               <GovernanceProfileSelector compact={true} onApplyPatch={applyPipelinePatch} />
             </div>
             <PipelineOptionsPanel compact={false} />
@@ -267,7 +316,7 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
         <Alert variant="warning">
           <AlertTriangle className="h-4 w-4" />
           <div>
-            <AlertTitle>清洗提示</AlertTitle>
+            <AlertTitle>{t('alerts.warningTitle')}</AlertTitle>
             <AlertDescription className="text-foreground/80">{backendError}</AlertDescription>
           </div>
         </Alert>
@@ -276,69 +325,54 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
         <Alert variant="info">
           <Info className="h-4 w-4" />
           <div>
-            <AlertTitle>清洗信息</AlertTitle>
-            <AlertDescription className="text-foreground/80">{backendInfo}</AlertDescription>
+            <AlertTitle>{t('alerts.infoTitle')}</AlertTitle>
+            <AlertDescription className="whitespace-pre-line text-foreground/80">{backendInfo}</AlertDescription>
           </div>
         </Alert>
       )}
 
-      {/* 操作按钮 */}
-      <div className="flex items-center gap-2 pt-4 border-t border-border">
-        <Button
-          onClick={handleReset}
-          variant="outline"
-          size="sm"
-          className="flex-1 gap-1.5"
-        >
-          <Undo className="w-3.5 h-3.5" />
-          重置内容
+      <div className="flex items-center gap-2 border-t border-border pt-4">
+        <Button onClick={handleReset} variant="outline" size="sm" className="flex-1 gap-1.5">
+          <Undo className="h-3.5 w-3.5" />
+          {t('actions.reset')}
         </Button>
-        <Button
-          onClick={handleApply}
-          disabled={isApplying}
-          className="flex-1 gap-2"
-        >
+        <Button onClick={handleApply} disabled={isApplying} className="flex-1 gap-2">
           {isApplying ? (
-            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
           ) : (
-            <Sparkles className="w-4 h-4" />
+            <Sparkles className="h-4 w-4" />
           )}
-          {isApplying ? '清洗中...' : '执行智能清洗'}
+          {isApplying ? t('actions.applying') : t("actions.apply")}
         </Button>
       </div>
 
-      {/* LLM 清洗 */}
-      <div className="border border-border rounded-xl p-4 bg-card">
+      <div className="rounded-xl border border-border bg-card p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium text-foreground">LLM 深度清洗</span>
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium text-foreground">{t('llm.title')}</span>
           </div>
-          <Button
-            variant={llmEnabled ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setLlmEnabled((v) => !v)}
-          >
-            {llmEnabled ? '已启用' : '启用'}
+          <Button variant={llmEnabled ? 'default' : 'outline'} size="sm" onClick={() => setLlmEnabled((value) => !value)}>
+            {llmEnabled ? t('llm.enabled') : t('llm.enable')}
           </Button>
         </div>
 
         {llmEnabled && (
           <div className="mt-3 space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground w-16">提示词</span>
+              <span className="w-16 text-xs text-muted-foreground">{t('llm.promptTemplateLabel')}</span>
               <Select
                 value={promptTemplateId || SELECT_DEFAULT_VALUE}
-                onValueChange={(v) => setPromptTemplateId(v === SELECT_DEFAULT_VALUE ? '' : v)}
+                onValueChange={(value) => setPromptTemplateId(value === SELECT_DEFAULT_VALUE ? '' : value)}
               >
-                <SelectTrigger className="h-8 text-xs w-full">
-                  <SelectValue placeholder="选择清洗模板" />
+                <SelectTrigger className="h-8 w-full text-xs">
+                  <SelectValue placeholder={t('llm.promptTemplatePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={SELECT_DEFAULT_VALUE}>默认清洗模板（内置）</SelectItem>
-                  {promptTemplates.map((tpl) => (
-                    <SelectItem key={tpl.id} value={tpl.id}>
-                      {tpl.name}
+                  <SelectItem value={SELECT_DEFAULT_VALUE}>{t('llm.promptTemplateDefault')}</SelectItem>
+                  {promptTemplates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -348,132 +382,127 @@ export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<
         )}
       </div>
 
-      {/* 差异对比 (简化版) */}
-      <div className="border border-border rounded-xl overflow-hidden">
-          <button
-            onClick={() => setPreviewDiff(!previewDiff)}
-            className="w-full flex items-center justify-between p-3 hover:bg-muted transition-colors"
-          >
-            <span className="text-sm font-medium text-foreground/80">内容差异对比</span>
-            <TextCursorInput className="w-4 h-4 text-muted-foreground" />
-          </button>
-          {previewDiff && (
-            <div className="p-4 border-t border-border bg-muted max-h-80 overflow-y-auto overscroll-contain no-scrollbar space-y-3">
-              {impact ? (
-                <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-                  <div className="text-xs font-medium text-muted-foreground mb-2">Impact Summary</div>
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                    <div className="flex items-center justify-between gap-2">
-                      <span>chars</span>
-                      <span className="font-mono text-foreground/90">
-                        {impact.inputChars} → {impact.outputChars} ({impact.deltaChars >= 0 ? '+' : ''}
-                        {impact.deltaChars}
-                        {impact.deltaCharsPct == null ? '' : `, ${Math.round(impact.deltaCharsPct * 100)}%`})
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>lines</span>
-                      <span className="font-mono text-foreground/90">
-                        {impact.inputLines} → {impact.outputLines} ({impact.deltaLines >= 0 ? '+' : ''}
-                        {impact.deltaLines})
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>diff</span>
-                      <span className="font-mono text-foreground/90">
-                        +{impact.addedLines} / -{impact.removedLines} / ~{impact.changedLines}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>PII / Secrets</span>
-                      <span className="font-mono text-foreground/90">
-                        {impact.piiHitsTotal} / {impact.secretsHitsTotal}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>urls_changed</span>
-                      <span className="font-mono text-foreground/90">{impact.urlsChanged}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>paragraphs_dropped</span>
-                      <span className="font-mono text-foreground/90">{impact.paragraphsDropped}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>references_removed_lines</span>
-                      <span className="font-mono text-foreground/90">{impact.referencesRemovedLines}</span>
-                    </div>
+      <div className="overflow-hidden rounded-xl border border-border">
+        <button
+          type="button"
+          onClick={() => setPreviewDiff((value) => !value)}
+          className="flex w-full items-center justify-between p-3 transition-colors hover:bg-muted"
+        >
+          <span className="text-sm font-medium text-foreground/80">{t('diff.title')}</span>
+          <TextCursorInput className="h-4 w-4 text-muted-foreground" />
+        </button>
+        {previewDiff && (
+          <div className="max-h-80 space-y-3 overflow-y-auto border-t border-border bg-muted p-4 no-scrollbar overscroll-contain">
+            {impact ? (
+              <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+                <div className="mb-2 text-xs font-medium text-muted-foreground">{t('diff.impactTitle')}</div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{t('diff.impact.chars')}</span>
+                    <span className="font-mono text-foreground/90">
+                      {impact.inputChars}
+                      {' -> '}
+                      {impact.outputChars} ({impact.deltaChars >= 0 ? '+' : ''}
+                      {impact.deltaChars}
+                      {impact.deltaCharsPct == null ? '' : `, ${Math.round(impact.deltaCharsPct * 100)}%`})
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{t('diff.impact.lines')}</span>
+                    <span className="font-mono text-foreground/90">
+                      {impact.inputLines}
+                      {' -> '}
+                      {impact.outputLines} ({impact.deltaLines >= 0 ? '+' : ''}
+                      {impact.deltaLines})
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{t('diff.impact.diff')}</span>
+                    <span className="font-mono text-foreground/90">
+                      +{impact.addedLines} / -{impact.removedLines} / ~{impact.changedLines}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{t('diff.impact.piiSecrets')}</span>
+                    <span className="font-mono text-foreground/90">
+                      {impact.piiHitsTotal} / {impact.secretsHitsTotal}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{t('diff.impact.urlsChanged')}</span>
+                    <span className="font-mono text-foreground/90">{impact.urlsChanged}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{t('diff.impact.paragraphsDropped')}</span>
+                    <span className="font-mono text-foreground/90">{impact.paragraphsDropped}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{t('diff.impact.referencesRemovedLines')}</span>
+                    <span className="font-mono text-foreground/90">{impact.referencesRemovedLines}</span>
                   </div>
                 </div>
-              ) : null}
+              </div>
+            ) : null}
 
-              {lastPreview?.issues?.length ? (
-                <div className="rounded-lg border border-border/60 bg-background/40 p-3">
-                  <div className="text-xs font-medium text-muted-foreground mb-2">检测到的问题（Best-effort）</div>
-                  <div className="space-y-2">
-                    {lastPreview.issues.slice(0, 8).map((it) => (
-                      <div key={it.code} className="text-xs text-foreground/80">
-                        <span className={cn(
+            {lastPreview?.issues?.length ? (
+              <div className="rounded-lg border border-border/60 bg-background/40 p-3">
+                <div className="mb-2 text-xs font-medium text-muted-foreground">{t('diff.issuesTitle')}</div>
+                <div className="space-y-2">
+                  {lastPreview.issues.slice(0, 8).map((issue) => (
+                    <div key={issue.code} className="text-xs text-foreground/80">
+                      <span
+                        className={cn(
                           'mr-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium',
-                          (() => {
-    if (it.severity === 'error') {
-        return 'bg-destructive/10 text-destructive';
-    }
-    else if (it.severity === 'warning') {
-            return 'bg-warning/10 text-warning';
-        }
-        else {
-            return 'bg-info/10 text-info';
-        }
-})()
-                        )}>
-                          {it.severity.toUpperCase()}
-                        </span>
-                        {it.message}
-                        {typeof it.count === 'number' && it.count > 0 ? `（${it.count}）` : ''}
-                      </div>
-                    ))}
-                  </div>
+                          getSeverityBadgeClass(issue.severity)
+                        )}
+                      >
+                        {t(`severity.${issue.severity}`)}
+                      </span>
+                      {issue.message}
+                      {typeof issue.count === 'number' && issue.count > 0 ? `（${issue.count}）` : ''}
+                    </div>
+                  ))}
+                </div>
 
-                  {lastPreview.suggested_pipeline_patch && Object.keys(lastPreview.suggested_pipeline_patch).length > 0 && (
+                {lastPreview.suggested_pipeline_patch &&
+                  Object.keys(lastPreview.suggested_pipeline_patch).length > 0 && (
                     <div className="mt-3 flex items-center justify-between gap-2">
-                      <div className="text-[11px] text-muted-foreground">
-                        已生成治理建议，可一键应用到当前配置（会覆盖对应字段）。
-                      </div>
+                      <div className="text-[11px] text-muted-foreground">{t('diff.applySuggestionHint')}</div>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => applyPipelinePatch(lastPreview.suggested_pipeline_patch as any)}
                       >
-                        应用建议
+                        {t('diff.applySuggestion')}
                       </Button>
                     </div>
                   )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t('diff.noIssueHint')}</p>
+            )}
+
+            {Array.isArray(lastPreview?.rule_stats) && lastPreview.rule_stats.length ? (
+              <CleanPreviewRuleStatsPanel ruleStats={lastPreview.rule_stats} />
+            ) : null}
+
+            {typeof lastPreview?.diff_unified === 'string' && lastPreview.diff_unified.trim() ? (
+              <div className="overflow-hidden rounded-lg border border-border/60 bg-background/40">
+                <div className="flex items-center justify-between border-b border-border/60 px-3 py-2 text-xs font-medium text-muted-foreground">
+                  <span>{t('diff.unifiedDiff')}</span>
+                  {lastPreview.diff_truncated ? (
+                    <span className="text-[11px] text-muted-foreground">{t('diff.truncated')}</span>
+                  ) : null}
                 </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">暂无明显问题提示。</p>
-              )}
-
-              {Array.isArray(lastPreview?.rule_stats) && lastPreview.rule_stats.length ? (
-                <CleanPreviewRuleStatsPanel ruleStats={lastPreview.rule_stats} />
-              ) : null}
-
-              {typeof lastPreview?.diff_unified === 'string' && lastPreview.diff_unified.trim() ? (
-                <div className="rounded-lg border border-border/60 bg-background/40 overflow-hidden">
-                  <div className="px-3 py-2 border-b border-border/60 text-xs font-medium text-muted-foreground flex items-center justify-between">
-                    <span>Unified Diff</span>
-                    {lastPreview.diff_truncated ? (
-                      <span className="text-[11px] text-muted-foreground">已截断</span>
-                    ) : null}
-                  </div>
-                  <pre className="p-3 text-[11px] leading-relaxed font-mono whitespace-pre overflow-x-auto">
+                <pre className="overflow-x-auto whitespace-pre p-3 font-mono text-[11px] leading-relaxed">
 {lastPreview.diff_unified}
-                  </pre>
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">暂无差异可显示（或尚未执行清洗）。</p>
-              )}
-            </div>
-          )}
+                </pre>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">{t('diff.noDiffHint')}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
