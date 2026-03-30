@@ -18,4 +18,12 @@ describe('WorkbenchPane primitives', () => {
     // RouteScrollReset relies on this attribute.
     expect(src).toMatch(/data-page-scroll-container="true"/)
   })
+
+  it('uses sidebar-tinted pane chrome for workbench headers', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'workbench-pane.tsx'), 'utf8')
+
+    expect(src).toContain('bg-sidebar/72')
+    expect(src).toContain('border-sidebar-border/70')
+    expect(src).toContain('backdrop-blur-xl')
+  })
 })

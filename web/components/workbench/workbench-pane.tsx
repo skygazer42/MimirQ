@@ -21,7 +21,7 @@ export function WorkbenchPane({
       {header ? (
         <div
           className={cn(
-            'flex items-center justify-between gap-3 px-4 py-3 border-b border-border/60 bg-card/60',
+            'flex items-center justify-between gap-3 border-b border-sidebar-border/70 bg-sidebar/72 px-4 py-3 backdrop-blur-xl',
             headerClassName
           )}
         >

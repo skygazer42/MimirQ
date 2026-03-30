@@ -136,7 +136,7 @@ export function DocumentViewerPanelShell({
       />
       <div
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-border bg-background shadow-strong",
+          "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl shadow-strong",
           isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
         )}
       >
@@ -151,23 +151,23 @@ export function DocumentViewerPanelShell({
 
         <div className="flex flex-1 flex-col overflow-hidden">
           <Tabs value={activeTab} onValueChange={handleActiveTabChange} className="flex flex-1 flex-col">
-            <div className="border-b border-border bg-background px-4">
+            <div className="border-b border-sidebar-border/70 bg-sidebar/75 px-4 backdrop-blur-xl">
               <TabsList className="h-10 w-full justify-start gap-6 bg-transparent p-0">
                 <TabsTrigger
                   value="preview"
-                  className="h-10 rounded-none border-b-2 border-transparent px-2 font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                  className="h-10 rounded-none border-b-2 border-transparent px-2 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
                 >
                   原文
                 </TabsTrigger>
                 <TabsTrigger
                   value="text"
-                  className="h-10 rounded-none border-b-2 border-transparent px-2 font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                  className="h-10 rounded-none border-b-2 border-transparent px-2 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
                 >
                   文本定位
                 </TabsTrigger>
                 <TabsTrigger
                   value="chunks"
-                  className="h-10 rounded-none border-b-2 border-transparent px-2 font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                  className="h-10 rounded-none border-b-2 border-transparent px-2 text-[11px] font-semibold tracking-[0.14em] text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground"
                 >
                   智能切片
                 </TabsTrigger>

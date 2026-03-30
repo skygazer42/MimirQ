@@ -9,6 +9,6 @@ describe('PipelineRail', () => {
 
     expect(src).toContain('IngestionWorkflowStepper')
     expect(src).toContain('入库流程')
-    expect(src).toMatch(/border-border\/60/)
+    expect(src).toContain('variant="glass"')
   })
 })
