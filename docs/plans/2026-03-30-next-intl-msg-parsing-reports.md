@@ -1,0 +1,5 @@
+- [x] Inventory the parsing/reports shell copy owned by this slice and define a closed file set.
+- [x] Move the reports loading shell plus parsing workbench shell/sidebar/library preview copy into `next-intl`.
+- [x] Add source-test coverage for the translation wiring.
+- [x] Run focused vitest and eslint checks.
+- [x] Commit and push `parallel-next-intl-msg-parsing-reports`.
