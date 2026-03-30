@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bookmark, Download, Loader2, Save, Upload } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -63,6 +64,8 @@ function getErrorMessage(error: unknown, fallback: string) {
 export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>) {
   const pipelineCtx = usePipelineOptions()
   const importRef = useRef<HTMLInputElement>(null)
+  const t = useTranslations('ChunkPreview')
+  const commonT = useTranslations('Common')
 
   const {
     datasetId,
@@ -171,7 +174,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       pipelineCtx.setEnabled(true)
       const importResult = pipelineCtx.importJson(JSON.stringify(pipeline))
       if (!importResult.ok) {
-        toast.error(importResult.error || '应用 Pipeline 配置失败')
+        toast.error(importResult.error || t('chunkPresetPanel.applyPipelineConfigFailed'))
       }
     }
   }
@@ -190,11 +193,11 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
         setSelectedId('')
       }
     } catch (error: unknown) {
-      toast.error(formatApiError(error, '加载 presets 失败'))
+      toast.error(formatApiError(error, t('chunkPresetPanel.loadFailed')))
     } finally {
       setLoading(false)
     }
-  }, [datasetId, selectedId])
+  }, [datasetId, selectedId, t])
 
   useEffect(() => {
     detachPromise(refresh())
@@ -214,9 +217,9 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
         payload,
       })
       await refresh()
-      toast.success('已更新 preset')
+      toast.success(t('chunkPresetPanel.updated'))
     } catch (error: unknown) {
-      toast.error(formatApiError(error, '保存失败'))
+      toast.error(formatApiError(error, t('chunkPresetPanel.saveFailed')))
     } finally {
       setSaving(false)
     }
@@ -225,7 +228,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
   const onSaveAs = async () => {
     const name = (saveAsName || '').trim()
     if (!name) {
-      toast.error('请输入 preset 名称')
+      toast.error(t('chunkPresetPanel.nameRequired'))
       return
     }
 
@@ -240,9 +243,9 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       await refresh()
       setSelectedId(created.id)
       setSaveAsOpen(false)
-      toast.success('已创建 preset')
+      toast.success(t('chunkPresetPanel.created'))
     } catch (error: unknown) {
-      toast.error(formatApiError(error, '创建失败'))
+      toast.error(formatApiError(error, t('chunkPresetPanel.createFailed')))
     } finally {
       setSaving(false)
     }
@@ -253,7 +256,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Bookmark className="w-4 h-4 text-primary" />
-          <div className="text-xs font-semibold text-foreground">Chunk Presets</div>
+          <div className="text-xs font-semibold text-foreground">{t('chunkPresetPanel.title')}</div>
         </div>
         <Button
           type="button"
@@ -262,9 +265,9 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           className="h-7 px-2 text-[11px]"
           onClick={() => detachPromise(refresh())}
           disabled={loading || saving}
-          aria-label="刷新 presets"
+          aria-label={t('chunkPresetPanel.refreshAria')}
         >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" /> : '刷新'}
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" /> : t('chunkPresetPanel.refresh')}
         </Button>
       </div>
 
@@ -277,15 +280,15 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             const preset = items.find((p) => p.id === nextId)
             if (preset?.payload) {
               detachPromise(applyPayload(preset.payload))
-              toast.success(`已应用 preset：${preset.name}`)
+              toast.success(t('chunkPresetPanel.applied', { name: preset.name }))
             }
           }}
         >
           <SelectTrigger className="h-9 bg-background">
-            <SelectValue placeholder="选择 preset" />
+            <SelectValue placeholder={t('chunkPresetPanel.select')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__none__">（不使用 preset）</SelectItem>
+            <SelectItem value="__none__">{t('chunkPresetPanel.none')}</SelectItem>
             {items.map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}
@@ -303,7 +306,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             disabled={saving}
           >
             {saving ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin motion-reduce:animate-none" /> : <Save className="w-3.5 h-3.5 mr-2" />}
-            保存
+            {commonT('save')}
           </Button>
           <Button
             type="button"
@@ -311,13 +314,13 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             variant="outline"
             className="h-8 px-3 text-[11px]"
             onClick={() => {
-              setSaveAsName(selectedPreset?.name ? `${selectedPreset.name} Copy` : '')
+              setSaveAsName(selectedPreset?.name ? `${selectedPreset.name} ${t('chunkPresetPanel.copySuffix')}` : '')
               setSaveAsDescription(selectedPreset?.description || '')
               setSaveAsOpen(true)
             }}
             disabled={saving}
           >
-            另存为
+            {t('chunkPresetPanel.saveAs')}
           </Button>
           <Button
             type="button"
@@ -329,11 +332,11 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
               const payload = buildPayload()
               const filename = `${sanitizeFilename(selectedPreset?.name || 'chunk-preset')}.json`
               downloadTextFile(filename, JSON.stringify(payload, null, 2), 'application/json;charset=utf-8')
-              toast.success('已导出 JSON')
+              toast.success(t('chunkPresetPanel.exportedJson'))
             }}
           >
             <Download className="w-3.5 h-3.5 mr-2" />
-            导出
+            {t('chunkPresetPanel.export')}
           </Button>
           <input
             ref={importRef}
@@ -349,9 +352,9 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
                 .then(async (text) => {
                   const data: unknown = JSON.parse(text || '{}')
                   await applyPayload(data)
-                  toast.success('已导入 JSON 并应用')
+                  toast.success(t('chunkPresetPanel.importedJson'))
                 })
-                .catch((error: unknown) => toast.error(getErrorMessage(error, '导入失败')))
+                .catch((error: unknown) => toast.error(getErrorMessage(error, t('chunkPresetPanel.importFailed'))))
             }}
           />
           <Button
@@ -363,7 +366,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
             onClick={() => importRef.current?.click()}
           >
             <Upload className="w-3.5 h-3.5 mr-2" />
-            导入
+            {t('chunkPresetPanel.import')}
           </Button>
         </div>
       </div>
@@ -371,21 +374,21 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
       <Dialog open={saveAsOpen} onOpenChange={setSaveAsOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>保存为 Chunk Preset</DialogTitle>
-            <DialogDescription>保存当前预览参数，方便团队复用。</DialogDescription>
+            <DialogTitle>{t('chunkPresetPanel.dialogTitle')}</DialogTitle>
+            <DialogDescription>{t('chunkPresetPanel.dialogDescription')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <div className="text-xs font-medium text-muted-foreground">名称</div>
-              <Input value={saveAsName} onChange={(e) => setSaveAsName(e.target.value)} placeholder="例如：通用-长文档" />
+              <div className="text-xs font-medium text-muted-foreground">{t('chunkPresetPanel.name')}</div>
+              <Input value={saveAsName} onChange={(e) => setSaveAsName(e.target.value)} placeholder={t('chunkPresetPanel.namePlaceholder')} />
             </div>
             <div className="space-y-1">
-              <div className="text-xs font-medium text-muted-foreground">描述（可选）</div>
+              <div className="text-xs font-medium text-muted-foreground">{t('chunkPresetPanel.description')}</div>
               <Textarea
                 value={saveAsDescription}
                 onChange={(e) => setSaveAsDescription(e.target.value)}
-                placeholder="适用场景、注意事项..."
+                placeholder={t('chunkPresetPanel.descriptionPlaceholder')}
                 className="min-h-[80px]"
               />
             </div>
@@ -393,11 +396,11 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setSaveAsOpen(false)} disabled={saving}>
-              取消
+              {commonT('cancel')}
             </Button>
             <Button type="button" onClick={() => detachPromise(onSaveAs())} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin motion-reduce:animate-none" /> : null}
-              保存
+              {commonT('save')}
             </Button>
           </DialogFooter>
         </DialogContent>

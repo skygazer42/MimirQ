@@ -1,0 +1,25 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+import { describe, expect, it } from 'vitest'
+
+describe('chunk preview message wiring', () => {
+  it('moves owned chunk-preview copy behind next-intl lookups', () => {
+    const emptyStateSrc = fs.readFileSync(path.resolve(__dirname, 'empty-state.tsx'), 'utf8')
+    const chunkCardSrc = fs.readFileSync(path.resolve(__dirname, 'chunk-card.tsx'), 'utf8')
+    const presetPanelSrc = fs.readFileSync(path.resolve(__dirname, 'chunk-preset-panel.tsx'), 'utf8')
+    const workbenchSrc = fs.readFileSync(path.resolve(__dirname, 'workbench/index.tsx'), 'utf8')
+
+    expect(emptyStateSrc).toContain("useTranslations('ChunkPreview')")
+    expect(chunkCardSrc).toContain("useTranslations('ChunkPreview')")
+    expect(presetPanelSrc).toContain("useTranslations('ChunkPreview')")
+    expect(workbenchSrc).toContain("useTranslations('ChunkPreview')")
+
+    expect(emptyStateSrc).not.toContain('上传文档，预览切片质量')
+    expect(emptyStateSrc).not.toContain('切块指南')
+    expect(chunkCardSrc).not.toContain('复制切片内容')
+    expect(chunkCardSrc).not.toContain('复制切片 JSON')
+    expect(presetPanelSrc).not.toContain('保存为 Chunk Preset')
+    expect(workbenchSrc).not.toContain('title="参数面板"')
+  })
+})
