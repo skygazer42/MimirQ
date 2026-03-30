@@ -683,6 +683,11 @@ const zhCNMessages = {
         requestIdB: 'request_id B',
         requestIdBPlaceholder: '输入另一个 request_id',
         action: '比较',
+        summaryA: 'A',
+        summaryB: 'B',
+        changesMeta: 'changes: {changes} · truncated: {truncated}',
+        truncatedYes: 'yes',
+        truncatedNo: 'no',
       },
       evidenceDrift: {
         title: 'Evidence Drift',
@@ -694,6 +699,9 @@ const zhCNMessages = {
         addedTitle: '新增证据（B）',
         removedTitle: '丢失证据（A）',
         scoreShiftTitle: '分数漂移',
+        addedEmpty: '当前候选 trace 没有带来新的最终 citations。',
+        removedEmpty: '当前 trace 没有丢失任何最终 citations。',
+        missingLocalSummary: '当前 request_id B 不在已加载的 trace 列表里，所以只能显示 bundle diff，无法给出本地 evidence drift 摘要。',
       },
       fusionSimulator: {
         title: 'Fusion Simulator',
@@ -729,6 +737,7 @@ const zhCNMessages = {
         reopenRecentTitle: '重新打开当前 request 最近查看过的证据',
         empty: '当前 channel 没有可展示的 citations。切回',
         emptySuffix: '或其他 channel 继续排查。',
+        open: '打开',
       },
       header: {
         title: 'RAG Trace',

@@ -1711,7 +1711,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                             <TraceCitationDiffList
                               title={t("panel.evidenceDrift.addedTitle")}
-                              emptyLabel="当前候选 trace 没有带来新的最终 citations。"
+                              emptyLabel={t("panel.evidenceDrift.addedEmpty")}
                               items={localCitationDiff.added}
                               tone="added"
                               onPrefetchCitation={prefetchTraceCitationTarget}
@@ -1719,7 +1719,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             />
                             <TraceCitationDiffList
                               title={t("panel.evidenceDrift.removedTitle")}
-                              emptyLabel="当前 trace 没有丢失任何最终 citations。"
+                              emptyLabel={t("panel.evidenceDrift.removedEmpty")}
                               items={localCitationDiff.removed}
                               tone="removed"
                               onPrefetchCitation={prefetchTraceCitationTarget}
@@ -1735,7 +1735,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         </Panel>
                       ) : diffOtherRequestId.trim() ? (
                         <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-3 py-3 text-xs text-muted-foreground">
-                          当前 request_id B 不在已加载的 trace 列表里，所以只能显示 bundle diff，无法给出本地 evidence drift 摘要。
+                          {t("panel.evidenceDrift.missingLocalSummary")}
                         </div>
                       ) : null}
 
@@ -1743,7 +1743,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         <div className="space-y-3">
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="rounded-xl border border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
-                              <div className="text-[11px] text-muted-foreground">A</div>
+                              <div className="text-[11px] text-muted-foreground">{t("panel.compare.summaryA")}</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 mode={diffResult.summary_a?.retrieval_mode || '—'} · cfg=
                                 {diffResult.summary_a?.retrieval_config_hash ? shortHash(diffResult.summary_a.retrieval_config_hash) : '—'} · citations=
@@ -1751,7 +1751,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               </div>
                             </div>
                             <div className="rounded-xl border border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
-                              <div className="text-[11px] text-muted-foreground">B</div>
+                              <div className="text-[11px] text-muted-foreground">{t("panel.compare.summaryB")}</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 mode={diffResult.summary_b?.retrieval_mode || '—'} · cfg=
                                 {diffResult.summary_b?.retrieval_config_hash ? shortHash(diffResult.summary_b.retrieval_config_hash) : '—'} · citations=
@@ -1761,7 +1761,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           </div>
 
                           <div className="text-[11px] text-muted-foreground">
-                            changes: {diffResult.diff?.length ?? 0} · truncated: {diffResult.truncated ? 'yes' : 'no'}
+                            {t("panel.compare.changesMeta", {
+                              changes: diffResult.diff?.length ?? 0,
+                              truncated: diffResult.truncated ? t("panel.compare.truncatedYes") : t("panel.compare.truncatedNo"),
+                            })}
                           </div>
                           <div className="space-y-2">
                             {(diffResult.diff || []).map((it) => (
@@ -2385,7 +2388,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           }}
                         >
                           <ExternalLink className="h-4 w-4" />
-                          <span className="ml-1 hidden sm:inline">打开</span>
+                          <span className="ml-1 hidden sm:inline">{t("panel.topCitations.open")}</span>
                         </Button>
                       </div>
                     )
