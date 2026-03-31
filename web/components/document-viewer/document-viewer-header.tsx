@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, FileText, Maximize2, Minimize2, X } from "lucide-react"
+import { CornerUpLeft, Download, FileText, Maximize2, Minimize2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
@@ -9,6 +9,7 @@ type DocumentViewerHeaderProps = {
   chunkCount: number
   isExpanded: boolean
   downloadUrl: string | null
+  onJumpToSource?: (() => void) | null
   onToggleExpanded: () => void
   onClose: () => void
 }
@@ -18,6 +19,7 @@ export function DocumentViewerHeader({
   chunkCount,
   isExpanded,
   downloadUrl,
+  onJumpToSource,
   onToggleExpanded,
   onClose,
 }: Readonly<DocumentViewerHeaderProps>) {
@@ -36,6 +38,12 @@ export function DocumentViewerHeader({
       </div>
 
       <div className="flex items-center gap-1">
+        {onJumpToSource ? (
+          <Button variant="ghost" size="sm" className="gap-2 rounded-full px-3 text-xs" onClick={onJumpToSource}>
+            <CornerUpLeft className="h-4 w-4" />
+            回到对话引用
+          </Button>
+        ) : null}
         <Button variant="ghost" size="icon" asChild title="下载原文件" aria-label="下载原文件">
           <a href={downloadUrl || "#"} target="_blank" rel="noopener noreferrer">
             <Download className="h-4 w-4" />

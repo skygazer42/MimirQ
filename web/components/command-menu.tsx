@@ -65,7 +65,7 @@ type SlashCommand = {
   run: () => void
 }
 
-type KeyChordCommandId = "documents" | "chat" | "graph" | "slice" | "resume"
+type KeyChordCommandId = "documents" | "chat" | "graph" | "observability" | "slice" | "resume"
 
 type KeyChordCommand = {
   id: KeyChordCommandId
@@ -324,6 +324,7 @@ export function CommandMenu() {
         { id: "documents", key: "g d", run: () => router.push("/knowledge") },
         { id: "chat", key: "g c", run: () => router.push("/") },
         { id: "graph", key: "g g", run: () => router.push("/graph") },
+        { id: "observability", key: "g o", run: () => router.push("/observability") },
         { id: "slice", key: "f s", run: () => router.push("/chunk-preview") },
         { id: "resume", key: "g v", run: resumeLastDocumentContext },
       ] as const).map(({ id, key, run }) => ({

@@ -1814,7 +1814,7 @@ const zhCNMessages = {
   CommandMenu: {
     header: {
       title: 'Command Center',
-      hint: '输入 / 查看快捷动作 · 试试 ? / g d / g c / g g / f s / g v',
+      hint: '输入 / 查看快捷动作 · 试试 ? / g d / g c / g g / g o / f s / g v',
     },
     search: {
       placeholder: '输入命令或搜索...',
@@ -1872,6 +1872,10 @@ const zhCNMessages = {
       graph: {
         label: 'Go to Graph',
         description: '打开图谱工作台。',
+      },
+      observability: {
+        label: 'Go to Observability',
+        description: '打开可观测中心，继续排查指标、日志和链路异常。',
       },
       slice: {
         label: 'Find Slice',

@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils'
 import { globalEventBus } from '@/lib/event-bus'
 import { toAbsoluteBackendUrl } from '@/lib/env'
 import { prefetchDocumentView } from '@/lib/document-view-prefetch'
-import { useDocumentView } from '@/store/document-view'
+import { useDocumentView, type DocumentViewSourceContext } from '@/store/document-view'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
 import { EvidenceViewerDialog } from '@/components/evidence/evidence-viewer-dialog'
 
@@ -68,6 +68,24 @@ function parseInlineCitationHref(href?: string): { documentId?: string; chunkId?
     return { documentId, chunkId }
   } catch {
     return null
+  }
+}
+
+function buildChatCitationSourceContext(
+  messageId: string,
+  documentId: string | null | undefined,
+  chunkId?: string | null
+): DocumentViewSourceContext | null {
+  const normalizedMessageId = String(messageId || '').trim()
+  const normalizedDocumentId = String(documentId || '').trim()
+  if (!normalizedMessageId || !normalizedDocumentId) return null
+
+  const normalizedChunkId = String(chunkId || '').trim()
+  return {
+    kind: 'chat-citation',
+    messageId: normalizedMessageId,
+    documentId: normalizedDocumentId,
+    chunkId: normalizedChunkId || null,
   }
 }
 
@@ -308,8 +326,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     const start = typeof ev?.start_char === 'number' ? ev.start_char : null
     const end = typeof ev?.end_char === 'number' ? ev.end_char : null
     const range = start != null && end != null && end > start ? { start, end } : undefined
-    openDocument(docId, chunkId, range)
-  }, [openDocument])
+    openDocument(docId, chunkId, range, {
+      sourceContext: buildChatCitationSourceContext(message.id, docId, chunkId),
+    })
+  }, [message.id, openDocument])
 
   const handleFollowupPrefill = useCallback((question: string) => {
     const prompt = question.trim()
@@ -332,9 +352,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       documentId,
       citation?.chunk_id || target.chunkId,
       citation ? getCitationRange(citation) : undefined,
-      { previewAnchor: getDocumentPreviewAnchorFromCitation(citation) }
+      {
+        previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+        sourceContext: buildChatCitationSourceContext(message.id, documentId, citation?.chunk_id || target.chunkId),
+      }
     )
-  }, [citationByChunkId, citationByDocumentId, openDocument])
+  }, [citationByChunkId, citationByDocumentId, message.id, openDocument])
 
   const prefetchCitationTarget = useCallback((citation?: Citation | null, target?: { documentId?: string; chunkId?: string } | null) => {
     const documentId = citation?.document_id || target?.documentId
@@ -382,9 +405,10 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       {
         activeTab: 'preview',
         previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+        sourceContext: buildChatCitationSourceContext(message.id, documentId, citation?.chunk_id || target.chunkId),
       }
     )
-  }, [citationByChunkId, citationByDocumentId, handleInlineCitationPrefetch, openDocument])
+  }, [citationByChunkId, citationByDocumentId, handleInlineCitationPrefetch, message.id, openDocument])
 
   const handleOpenCitation = useCallback((citation: Citation) => {
     if (!citation.document_id) return
@@ -392,9 +416,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       citation.document_id,
       citation.chunk_id,
       getCitationRange(citation),
-      { previewAnchor: getDocumentPreviewAnchorFromCitation(citation) }
+      {
+        previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+        sourceContext: buildChatCitationSourceContext(message.id, citation.document_id, citation.chunk_id),
+      }
     )
-  }, [openDocument])
+  }, [message.id, openDocument])
 
   const markdownComponents = {
     ...markdownBaseComponents,
@@ -942,7 +969,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {citationRows.map((citation, idx) => {
                       const citationKey = `${citation.document_id}-${citation.chunk_id || citation.page_number || idx}`
-                      return <CitationCard key={citationKey} citation={citation} index={idx} />
+                      return <CitationCard key={citationKey} messageId={message.id} citation={citation} index={idx} />
                     })}
                   </div>
                 </div>
@@ -1142,7 +1169,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   )
 })
 
-const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ citation: Citation; index: number }>) {
+const CitationCard = memo(function CitationCard({
+  messageId,
+  citation,
+  index,
+}: Readonly<{ messageId: string; citation: Citation; index: number }>) {
   const { openDocument } = useDocumentView()
   const [hideImage, setHideImage] = useState(false)
   const [viewerOpen, setViewerOpen] = useState(false)
@@ -1166,6 +1197,7 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
   })()
 
   const canViewEvidence = Boolean((citation.has_image && imgUrl && !hideImage) || isTableEvidence)
+  const sourceContext = buildChatCitationSourceContext(messageId, citation.document_id, citation.chunk_id)
 
   const handleClick = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation()
@@ -1174,10 +1206,13 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
         citation.document_id,
         citation.chunk_id,
         getCitationRange(citation),
-        { previewAnchor: getDocumentPreviewAnchorFromCitation(citation) }
+        {
+          previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+          sourceContext,
+        }
       )
     }
-  }, [citation, openDocument])
+  }, [citation, openDocument, sourceContext])
 
   const handlePrefetch = useCallback(() => {
     if (prefetchedRef.current) return
@@ -1202,9 +1237,10 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
       {
         activeTab: 'preview',
         previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+        sourceContext,
       }
     )
-  }, [citation, handlePrefetch, openDocument])
+  }, [citation, handlePrefetch, openDocument, sourceContext])
 
   return (
     <>
@@ -1285,6 +1321,7 @@ const CitationCard = memo(function CitationCard({ citation, index }: Readonly<{ 
         open={viewerOpen}
         onOpenChange={setViewerOpen}
         citation={viewerOpen ? citation : null}
+        sourceContext={sourceContext}
       />
     </>
   )

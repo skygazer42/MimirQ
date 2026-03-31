@@ -56,6 +56,7 @@ export function DocumentViewerPanelShell({
   isLoading,
   isOpen,
   jumpToMatch,
+  jumpToSource,
   loadAllChunks,
   matchCursor,
   matchChunkIds,
@@ -81,6 +82,7 @@ export function DocumentViewerPanelShell({
   runQaGeneration,
   runRetrievePreview,
   serverMatchTruncated,
+  sourceContext,
   setChunkEditorContent,
   setChunkEditorEndChar,
   setChunkEditorPageNumber,
@@ -155,6 +157,7 @@ export function DocumentViewerPanelShell({
           chunkCount={doc?.chunk_count ?? chunks.length}
           isExpanded={isExpanded}
           downloadUrl={downloadUrl}
+          onJumpToSource={sourceContext?.kind === 'chat-citation' ? jumpToSource : null}
           onToggleExpanded={() => setIsExpanded(!isExpanded)}
           onClose={closeDocument}
         />
