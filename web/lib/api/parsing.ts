@@ -1,7 +1,8 @@
 import type { Document } from '@/types'
+import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
-import { apiClient } from '@/lib/api/core'
+import { apiClient, openapiRequest } from '@/lib/api/core'
 
 export interface ParsingContentResponse {
   document_id: string
@@ -35,6 +36,49 @@ export interface ParsingContentUpdateRequest {
   original_markdown_content?: string | null
 }
 
+const parsingContentStatsSchema = z
+  .object({
+    page_count: z.number().int().optional(),
+    table_count: z.number().int().optional(),
+    image_count: z.number().int().optional(),
+    block_count: z.number().int().optional(),
+  })
+  .passthrough()
+
+const parsingPdfQualitySchema = z
+  .object({
+    score: z.number(),
+    text_quality_score: z.number(),
+    format_consistency_score: z.number(),
+    table_quality_score: z.number(),
+    is_scanned: z.boolean(),
+    page_count: z.number().int(),
+  })
+  .nullable()
+  .optional()
+
+const parsingQualityGateSchema = z
+  .object({
+    grade: z.enum(['pass', 'warn', 'fail']),
+    reasons: z.array(z.string()),
+    evidence: z.record(z.string(), z.unknown()).optional(),
+  })
+  .nullable()
+  .optional()
+
+const parsingContentResponseSchema = z
+  .object({
+    document_id: z.string(),
+    parser_backend: z.string(),
+    markdown_content: z.string(),
+    original_markdown_content: z.string(),
+    stats: parsingContentStatsSchema.nullable().optional(),
+    parse_duration_sec: z.number().nullable().optional(),
+    pdf_quality: parsingPdfQualitySchema,
+    quality_gate: parsingQualityGateSchema,
+  })
+  .passthrough()
+
 export const parsingApi = {
   async listDocuments(params?: { skip?: number; limit?: number; status?: string }): Promise<{ total: number; items: Document[] }> {
     const { data } = await apiClient.get('/parsing/documents', { params })
@@ -57,22 +101,40 @@ export const parsingApi = {
     if (options?.parser_backend) params.parser_backend = options.parser_backend
     if (options?.image_caption_enabled) params.image_caption_enabled = true
 
-    const { data } = await apiClient.post(`/parsing/documents/${documentId}/parse`, null, {
-      timeout: API_LONG_TIMEOUT_MS,
+    const data = await openapiRequest({
+      path: '/api/v1/parsing/documents/{document_id}/parse',
+      method: 'post',
+      pathParams: { document_id: documentId },
+      query: Object.keys(params).length ? params : undefined,
       signal: options?.signal,
-      params: Object.keys(params).length ? params : undefined,
+      timeoutMs: API_LONG_TIMEOUT_MS,
+      responseSchema: parsingContentResponseSchema as any,
+      responseSchemaName: 'ParsingContentResponse',
     })
-    return data
+    return data as ParsingContentResponse
   },
 
   async getContent(documentId: string): Promise<ParsingContentResponse> {
-    const { data } = await apiClient.get(`/parsing/documents/${documentId}/content`)
-    return data
+    const data = await openapiRequest({
+      path: '/api/v1/parsing/documents/{document_id}/content',
+      method: 'get',
+      pathParams: { document_id: documentId },
+      responseSchema: parsingContentResponseSchema as any,
+      responseSchemaName: 'ParsingContentResponse',
+    })
+    return data as ParsingContentResponse
   },
 
   async updateContent(documentId: string, payload: ParsingContentUpdateRequest): Promise<ParsingContentResponse> {
-    const { data } = await apiClient.patch(`/parsing/documents/${documentId}/content`, payload)
-    return data
+    const data = await openapiRequest({
+      path: '/api/v1/parsing/documents/{document_id}/content',
+      method: 'patch',
+      pathParams: { document_id: documentId },
+      body: payload,
+      responseSchema: parsingContentResponseSchema as any,
+      responseSchemaName: 'ParsingContentResponse',
+    })
+    return data as ParsingContentResponse
   },
 
   async delete(documentId: string): Promise<void> {

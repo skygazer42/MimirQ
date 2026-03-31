@@ -9,9 +9,10 @@ import type {
   RetrievePreviewRequest,
   RetrievePreviewResponse,
 } from '@/types'
+import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
-import { apiClient } from '@/lib/api/core'
+import { apiClient, openapiRequest } from '@/lib/api/core'
 
 export interface ClipImageIndexRequest {
   dataset_id: string
@@ -94,6 +95,21 @@ export interface RagConfigTemplateNewVersion {
   ab_weight?: number
 }
 
+const evidenceRetrieveResponseSchema = z
+  .object({
+    query_for_retrieval: z.string(),
+    citations: z.array(z.record(z.string(), z.unknown())),
+    schema: z.string().default('mimirq.evidence.v1'),
+    metrics: z.record(z.string(), z.unknown()).optional(),
+    has_evidence: z.boolean().default(false),
+    abstain_triggered: z.boolean().default(false),
+    abstain_reason: z.string().nullable().optional(),
+    retrieval_trace: z.record(z.string(), z.unknown()).nullable().optional(),
+    evidence_capsule: z.record(z.string(), z.unknown()).nullable().optional(),
+    query_debug: z.record(z.string(), z.unknown()).nullable().optional(),
+  })
+  .passthrough()
+
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
     const { data } = await apiClient.post('/rag/retrieve-preview', params)
@@ -111,8 +127,14 @@ export const ragApi = {
   },
 
   async retrieveEvidence(params: EvidenceRetrieveRequest): Promise<EvidenceRetrieveResponse> {
-    const { data } = await apiClient.post('/rag/retrieve', params)
-    return data
+    const data = await openapiRequest({
+      path: '/api/v1/rag/retrieve',
+      method: 'post',
+      body: params,
+      responseSchema: evidenceRetrieveResponseSchema as any,
+      responseSchemaName: 'EvidenceRetrieveResponse',
+    })
+    return data as EvidenceRetrieveResponse
   },
 
   async promptPreview(params: PromptPreviewRequest): Promise<PromptPreviewResponse> {
