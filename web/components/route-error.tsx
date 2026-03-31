@@ -6,7 +6,8 @@ import { AlertTriangle } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { FullScreenFrame } from '@/components/full-screen-frame'
-import { captureApiError, extractRequestIdFromError } from '@/lib/api-errors'
+import { extractRequestIdFromError } from '@/lib/api-errors'
+import { captureApiError } from '@/lib/api-error-reporting'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 

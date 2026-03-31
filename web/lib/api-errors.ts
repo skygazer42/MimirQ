@@ -1,5 +1,3 @@
-import * as Sentry from '@sentry/nextjs'
-
 type ErrorResponseLike = {
   error?: unknown
   message?: unknown
@@ -100,11 +98,6 @@ export type ApiErrorInfo = {
   status?: number
 }
 
-type CaptureApiErrorOptions = {
-  level?: 'error' | 'warning' | 'info'
-  tags?: Record<string, string>
-}
-
 function extractHeaderRequestId(headers: any): string | undefined {
   if (!headers) return undefined
   const raw =
@@ -194,27 +187,6 @@ export function formatRequestId(requestId?: string): string | undefined {
 export function formatApiError(err: unknown, fallbackMessage: string): string {
   const info = toApiErrorInfo(err, fallbackMessage)
   return withRequestId(info.message, info.requestId)
-}
-
-export function captureApiError(err: unknown, fallbackMessage: string, options: CaptureApiErrorOptions = {}): ApiErrorInfo {
-  const info = toApiErrorInfo(err, fallbackMessage)
-  const requestId = info.requestId || extractRequestIdFromError(err)
-  const eventError = err instanceof Error ? err : new Error(withRequestId(info.message, requestId))
-
-  Sentry.withScope((scope) => {
-    scope.setLevel(options.level || 'error')
-    if (requestId) scope.setTag('request_id', requestId)
-    if (typeof info.status === 'number') scope.setTag('http_status', String(info.status))
-    for (const [key, value] of Object.entries(options.tags || {})) {
-      if (value) scope.setTag(key, value)
-    }
-    Sentry.captureException(eventError)
-  })
-
-  return {
-    ...info,
-    requestId,
-  }
 }
 
 export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorInfo {
