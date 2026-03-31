@@ -74,17 +74,6 @@ const menuSections: MenuSection[] = [
     ],
   },
   {
-    id: 'ingestion',
-    titleKey: 'sections.ingestion',
-    items: [
-      { icon: FileText, labelKey: 'items.parsing', href: '/parsing' },
-      { icon: ShieldCheck, labelKey: 'items.dataGovernance', href: '/data-governance' },
-      { icon: Braces, labelKey: 'items.governanceProfiles', href: '/data-governance/profiles' },
-      { icon: Hash, labelKey: 'items.commonLines', href: '/data-governance/common-lines' },
-      { icon: Scissors, labelKey: 'items.chunkPreview', href: '/chunk-preview' },
-    ],
-  },
-  {
     id: 'knowledge',
     titleKey: 'sections.knowledge',
     items: [
@@ -93,6 +82,17 @@ const menuSections: MenuSection[] = [
       { icon: Activity, labelKey: 'items.ingestion', href: '/knowledge/ingestion' },
       { icon: AlertTriangle, labelKey: 'items.quarantine', href: '/knowledge/quarantine' },
       { icon: Star, labelKey: 'items.feedback', href: '/knowledge/feedback' },
+    ],
+  },
+  {
+    id: 'ingestion',
+    titleKey: 'sections.ingestion',
+    items: [
+      { icon: FileText, labelKey: 'items.parsing', href: '/parsing' },
+      { icon: ShieldCheck, labelKey: 'items.dataGovernance', href: '/data-governance' },
+      { icon: Braces, labelKey: 'items.governanceProfiles', href: '/data-governance/profiles' },
+      { icon: Hash, labelKey: 'items.commonLines', href: '/data-governance/common-lines' },
+      { icon: Scissors, labelKey: 'items.chunkPreview', href: '/chunk-preview' },
     ],
   },
   {

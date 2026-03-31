@@ -99,7 +99,11 @@ async function waitForNewDocument(
     })
     .not.toBe('')
 
-  return uploaded as LiveDocument
+  if (!uploaded) {
+    throw new Error(`Uploaded document was not found after polling: ${filename}`)
+  }
+
+  return uploaded
 }
 
 async function waitForDocumentCompleted(
@@ -140,7 +144,11 @@ async function waitForDocumentCompleted(
     })
     .toBe('completed')
 
-  return current as LiveDocument
+  if (!current) {
+    throw new Error(`Document ${documentId} was not available after polling`)
+  }
+
+  return current
 }
 
 async function waitForConversationId(page: Page): Promise<string> {

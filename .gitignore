@@ -68,6 +68,7 @@ runs/perf/
 .worktrees/
 .beads/.migration-hint-ts
 web/coverage/
+web/test-results/
 web/.next/
 web/.next_build/
 web/public/monaco/
