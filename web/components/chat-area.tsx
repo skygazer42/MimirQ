@@ -33,6 +33,7 @@ import { globalEventBus } from '@/lib/event-bus'
 import { Magnetic } from '@/components/ui/magnetic'
 import { useRouter } from '@/i18n/navigation'
 import { coerceOneOf } from '@/lib/one-of'
+import { useDocumentView } from '@/store/document-view'
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 const DEFAULT_VISIBLE_MESSAGES = 80
@@ -61,6 +62,7 @@ export function ChatArea({
 }> = {}) {
   const router = useRouter()
   const t = useTranslations('Chat')
+  const activeDocumentId = useDocumentView((state) => state.documentId)
   const summaryMemoryId = 'chat-enable-summary-memory'
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
@@ -111,6 +113,10 @@ export function ChatArea({
     documents: number | null
     loading: boolean
   }>({ datasets: null, documents: null, loading: true })
+  const activeDocumentIds = useMemo(
+    () => (activeDocumentId ? [activeDocumentId] : undefined),
+    [activeDocumentId]
+  )
 
   const focusMessageById = useCallback((messageId: string) => {
     const container = scrollContainerRef.current
@@ -352,6 +358,7 @@ export function ChatArea({
     resetConversation,
   } = useChat({
     conversationId: initialConversationId,
+    documentIds: activeDocumentIds,
     promptTemplateId: promptTemplateId || undefined,
     ragConfig: ragConfigDirty || hasSystemRagDefaults ? ragConfig : undefined,
     structuredOutput,

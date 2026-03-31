@@ -324,8 +324,13 @@ def build_chat_model_from_config(
         "timeout": cfg.get("timeout", settings.LLM_TIMEOUT),
         "max_retries": cfg.get("max_retries", settings.LLM_MAX_RETRIES),
         "http_client": http_client,
-        "http_async_client": http_async_client,
     }
+    # DashScope's OpenAI-compatible chat endpoint is stable with LangChain's default
+    # async transport, but fails with the shared pooled AsyncClient used elsewhere.
+    # Keep the shared sync client for non-async paths and let ChatOpenAI manage its
+    # own async client lifecycle for ainvoke/astream requests.
+    if http_async_client is not None and settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT:
+        common_kwargs["http_async_client"] = http_async_client
     primary = PromptCacheChatOpenAI(model=model_name, **common_kwargs)
 
     if not bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)):

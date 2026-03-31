@@ -157,7 +157,7 @@ export function useParsingViewState({
     enabled: isLibraryLoaded,
     queryFn: async () => {
       try {
-        const { items } = await parsingApi.listDocuments({ skip: 0, limit: 500 })
+        const { items } = await parsingApi.listDocuments({ skip: 0, limit: 200 })
         const current = useParsedFiles.getState().files || []
         return items.map((doc) => mapParsingDocumentToLibraryFile(doc, current, mapBackendStatusToLibraryStatus))
       } catch (err) {

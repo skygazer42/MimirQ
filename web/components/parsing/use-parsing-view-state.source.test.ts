@@ -15,4 +15,11 @@ describe('parsing view state source', () => {
     expect(src).toContain('enabled: Boolean(activeLibraryFileId')
     expect(src).toContain('enabled: isLibraryLoaded')
   })
+
+  it('keeps parsing library sync requests within the backend listDocuments limit', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'use-parsing-view-state.ts'), 'utf8')
+
+    expect(src).toContain('parsingApi.listDocuments({ skip: 0, limit: 200 })')
+    expect(src).not.toContain('parsingApi.listDocuments({ skip: 0, limit: 500 })')
+  })
 })

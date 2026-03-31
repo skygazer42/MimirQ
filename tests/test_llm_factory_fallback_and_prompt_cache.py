@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -216,6 +218,62 @@ def test_prompt_cache_annotation_only_for_anthropic_when_enabled(monkeypatch: py
     assert first_content[0]["cache_control"]["type"] == "ephemeral"
     assert isinstance(second_content, list)
     assert second_content[0]["cache_control"]["type"] == "ephemeral"
+
+
+def test_openai_chat_client_skips_pooled_async_client_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.llm import factory as factory_mod
+
+    captured: dict[str, object] = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(factory_mod, "ChatOpenAI", _FakeChatOpenAI, raising=True)
+    monkeypatch.setattr(settings, "LLM_USE_POOLED_ASYNC_HTTP_CLIENT", False, raising=False)
+
+    sync_client = httpx.Client()
+    async_client = httpx.AsyncClient()
+    try:
+        _ = factory_mod.OpenAIChatClient(
+            model_config={"model": "demo-model", "api_key": "k", "base_url": "https://example.com/v1"},
+            http_client=sync_client,
+            http_async_client=async_client,
+        )
+    finally:
+        sync_client.close()
+        asyncio.run(async_client.aclose())
+
+    assert captured["http_client"] is sync_client
+    assert "http_async_client" not in captured
+
+
+def test_openai_chat_client_can_opt_into_pooled_async_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.llm import factory as factory_mod
+
+    captured: dict[str, object] = {}
+
+    class _FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(factory_mod, "ChatOpenAI", _FakeChatOpenAI, raising=True)
+    monkeypatch.setattr(settings, "LLM_USE_POOLED_ASYNC_HTTP_CLIENT", True, raising=False)
+
+    sync_client = httpx.Client()
+    async_client = httpx.AsyncClient()
+    try:
+        _ = factory_mod.OpenAIChatClient(
+            model_config={"model": "demo-model", "api_key": "k", "base_url": "https://example.com/v1"},
+            http_client=sync_client,
+            http_async_client=async_client,
+        )
+    finally:
+        sync_client.close()
+        asyncio.run(async_client.aclose())
+
+    assert captured["http_client"] is sync_client
+    assert captured["http_async_client"] is async_client
 
 
 def test_prompt_cache_is_skipped_for_non_anthropic_or_disabled(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -162,6 +162,64 @@ def test_prompt_cache_chat_openai_injects_cache_control_for_anthropic_payload(
     assert messages[1]["content"][0]["cache_control"]["type"] == "ephemeral"
 
 
+def test_build_chat_model_from_config_skips_pooled_async_client_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+    from app.rag.llm import langchain_chat as lc_mod
+
+    captured: list[dict[str, Any]] = []
+
+    class _FakePromptCacheChatOpenAI:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            _ = args
+            captured.append(dict(kwargs))
+
+    monkeypatch.setattr(lc_mod, "PromptCacheChatOpenAI", _FakePromptCacheChatOpenAI, raising=True)
+    monkeypatch.setattr(settings, "LLM_FALLBACK_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "LLM_USE_POOLED_ASYNC_HTTP_CLIENT", False, raising=False)
+
+    model = lc_mod.build_chat_model_from_config(
+        model_config={"model": "demo-model", "api_key": "k", "base_url": "https://example.com/v1"},
+        http_client="sync-client",
+        http_async_client="async-client",
+        streaming=True,
+    )
+
+    assert isinstance(model, _FakePromptCacheChatOpenAI)
+    assert captured[0]["http_client"] == "sync-client"
+    assert "http_async_client" not in captured[0]
+
+
+def test_build_chat_model_from_config_can_opt_into_pooled_async_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import settings
+    from app.rag.llm import langchain_chat as lc_mod
+
+    captured: list[dict[str, Any]] = []
+
+    class _FakePromptCacheChatOpenAI:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            _ = args
+            captured.append(dict(kwargs))
+
+    monkeypatch.setattr(lc_mod, "PromptCacheChatOpenAI", _FakePromptCacheChatOpenAI, raising=True)
+    monkeypatch.setattr(settings, "LLM_FALLBACK_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "LLM_USE_POOLED_ASYNC_HTTP_CLIENT", True, raising=False)
+
+    model = lc_mod.build_chat_model_from_config(
+        model_config={"model": "demo-model", "api_key": "k", "base_url": "https://example.com/v1"},
+        http_client="sync-client",
+        http_async_client="async-client",
+        streaming=True,
+    )
+
+    assert isinstance(model, _FakePromptCacheChatOpenAI)
+    assert captured[0]["http_client"] == "sync-client"
+    assert captured[0]["http_async_client"] == "async-client"
+
+
 @pytest.mark.asyncio
 async def test_fallback_chat_openai_streams_from_backup_on_retryable_startup_failure() -> None:
     from app.rag.llm.langchain_chat import FallbackChatOpenAI

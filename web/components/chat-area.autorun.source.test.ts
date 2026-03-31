@@ -11,4 +11,11 @@ describe('chat area autorun source', () => {
     expect(src).toContain('autoSendPromptRef')
     expect(src).toContain('sendMessage(p)')
   })
+
+  it('scopes chat requests to the currently opened document when the viewer is active', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
+
+    expect(src).toContain("useDocumentView((state) => state.documentId)")
+    expect(src).toContain('documentIds: activeDocumentIds')
+  })
 })
