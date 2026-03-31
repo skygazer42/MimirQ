@@ -20,6 +20,12 @@ const badgeVariants = cva(
           "border-transparent bg-warning text-warning-foreground hover:bg-warning/90",
         info:
           "border-transparent bg-info text-info-foreground hover:bg-info/90",
+        accent:
+          "border-transparent bg-accent text-accent-foreground hover:bg-accent/90",
+        teal:
+          "border-transparent bg-teal text-teal-foreground hover:bg-teal/90",
+        indigo:
+          "border-transparent bg-indigo text-indigo-foreground hover:bg-indigo/90",
         soft:
           "bg-muted/60 text-foreground border-border/60 hover:bg-muted/80",
         outline: "bg-transparent text-foreground",

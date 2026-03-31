@@ -45,6 +45,19 @@ const METRIC_OPTIONS = [
     { key: 'context_precision', label: 'Context Precision（无参考）' },
 ]
 
+type MetricColor = 'green' | 'teal' | 'orange' | 'blue' | 'rose' | 'indigo' | 'cyan'
+
+function metricColor(key: string): MetricColor {
+  const k = key.toLowerCase()
+  if (k.includes('faithfulness') || k.includes('faithful')) return 'green'
+  if (k.includes('precision')) return 'teal'
+  if (k.includes('recall')) return 'orange'
+  if (k.includes('relevancy') || k.includes('relevance')) return 'blue'
+  if (k.includes('harmfulness') || k.includes('harm')) return 'rose'
+  if (k.includes('answer_correctness') || k.includes('correctness')) return 'indigo'
+  return 'cyan'
+}
+
 export default function EvaluationsPage() {
   return (
     <AppFrame>
@@ -230,7 +243,7 @@ function EvaluationsPageContent() {
         title="RAGAS 评测"
         description="基于对话记录与引用上下文，评估 RAG 链路质量"
         icon={BarChart3}
-        iconColor="text-sky-600 dark:text-sky-400"
+        iconColor="text-info"
         size="7xl"
         actions={
           activeTab === 'conversation' ? (
@@ -272,7 +285,7 @@ function EvaluationsPageContent() {
               onClick={() => setActiveTab('conversation')}
               className={cn(
                 'gap-2 rounded-lg',
-                isActiveTab('conversation') && 'bg-background/70 text-sky-600 dark:text-sky-400'
+                isActiveTab('conversation') && 'bg-background/70 text-info'
               )}
             >
               <MessageSquare className="w-4 h-4" />
@@ -285,7 +298,7 @@ function EvaluationsPageContent() {
               onClick={() => setActiveTab('regression')}
               className={cn(
                 'gap-2 rounded-lg',
-                isActiveTab('regression') && 'bg-background/70 text-sky-600 dark:text-sky-400'
+                isActiveTab('regression') && 'bg-background/70 text-info'
               )}
             >
               <TestTube2 className="w-4 h-4" />
@@ -298,7 +311,7 @@ function EvaluationsPageContent() {
               onClick={() => setActiveTab('queryset_health')}
               className={cn(
                 'gap-2 rounded-lg',
-                isActiveTab('queryset_health') && 'bg-background/70 text-sky-600 dark:text-sky-400'
+                isActiveTab('queryset_health') && 'bg-background/70 text-info'
               )}
             >
               <BarChart3 className="w-4 h-4" />
@@ -481,7 +494,7 @@ function EvaluationsPageContent() {
                           icon={BarChart3}
                           label={m.key}
                           value={m.value.toFixed(3)}
-                          color="sky"
+                          color={metricColor(m.key)}
                         />
                       ))}
                     </StatsGrid>

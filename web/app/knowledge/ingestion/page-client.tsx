@@ -385,9 +385,9 @@ export default function IngestionMonitorPage() {
                             <XAxis dataKey="time" fontSize={10} tickMargin={8} />
                             <YAxis fontSize={10} tickMargin={8} />
                             <Tooltip />
-                            <Bar dataKey="completed" stackId="a" fill="#10b981" />
-                            <Bar dataKey="failed" stackId="a" fill="#ef4444" />
-                            <Bar dataKey="quarantined" stackId="a" fill="#f59e0b" />
+                            <Bar dataKey="completed" stackId="a" fill="hsl(var(--chart-2))" />
+                            <Bar dataKey="failed" stackId="a" fill="hsl(var(--chart-6))" />
+                            <Bar dataKey="quarantined" stackId="a" fill="hsl(var(--chart-4))" />
                           </BarChart>
                         </ResponsiveContainer>
                       </div>

@@ -580,7 +580,7 @@ export function ParsingActiveFilePane({
               ) : (
                 <div className="flex h-full min-h-[520px] flex-col lg:flex-row">
                   {isPdf ? (
-                    <div className="w-full border-b border-border/70 bg-muted/70 dark:border-border/60 dark:bg-background/40 lg:w-1/2 lg:border-b-0 lg:border-r">
+                    <div className="flex-1 min-h-0 h-full w-full border-b border-border/70 bg-muted/70 dark:border-border/60 dark:bg-background/40 lg:w-1/2 lg:border-b-0 lg:border-r relative">
                       <PdfViewer
                         file={activeFile.file}
                         blocks={activeBlocksWithPositions}
@@ -623,16 +623,16 @@ export function ParsingActiveFilePane({
                           })}
                       </ParsingRightPanel>
                     ) : (
-                      <ParsingRightPanel className="h-full no-scrollbar p-6">
+                      <ParsingRightPanel className="h-full no-scrollbar p-6 parsing-md-scroll">
                         {previewMode === 'rendered' ? (
                           <div className="flex gap-8">
                             <div className="prose prose-slate min-w-0 max-w-none flex-1 prose-headings:text-foreground prose-p:text-foreground/80 prose-a:text-sky-700 prose-code:rounded prose-code:bg-sky-500/10 prose-code:px-1 prose-code:py-0.5 prose-code:text-sky-700 prose-pre:bg-slate-900 prose-table:border-collapse prose-td:border prose-td:border-sky-200 prose-td:p-2 prose-th:border prose-th:border-sky-200 prose-th:bg-sky-500/10 prose-th:p-2 dark:prose-invert dark:prose-headings:text-foreground dark:prose-p:text-muted-foreground dark:prose-a:text-sky-300 dark:prose-code:bg-muted dark:prose-code:text-sky-300 dark:prose-th:border-sky-500/30 dark:prose-th:bg-sky-500/20 dark:prose-td:border-sky-500/30">
                               <MarkdownRenderer markdown={activeMarkdown} autoScrollToHash />
                             </div>
                             {tocEnabled ? (
-                              <aside className="hidden w-64 shrink-0 xl:block">
-                                <div className="sticky top-6 max-h-[calc(100vh-220px)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/70 bg-muted/40 p-3 dark:border-border/60 dark:bg-background/40">
-                                  <MarkdownToc markdown={activeMarkdown} />
+                              <aside className="hidden w-64 shrink-0 xl:block self-start sticky top-0">
+                                <div className="max-h-[calc(100%-2rem)] overflow-y-auto overscroll-contain no-scrollbar rounded-xl border border-border/70 bg-muted/40 p-3 dark:border-border/60 dark:bg-background/40">
+                                  <MarkdownToc markdown={activeMarkdown} scrollContainerSelector=".parsing-md-scroll" />
                                 </div>
                               </aside>
                             ) : null}

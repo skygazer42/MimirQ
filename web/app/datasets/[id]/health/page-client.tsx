@@ -200,7 +200,7 @@ export default function DatasetHealthPage() {
         title={`健康概览${dataset?.name ? ` · ${dataset.name}` : ''}`}
         badge="Dataset Health"
         icon={Activity}
-        iconColor="text-primary"
+        iconColor="text-rose"
         description={<span className="text-sm text-muted-foreground">汇总数据画像 + 入库状态，并给出下一步建议。</span>}
         actions={
           <div className="flex items-center gap-2">

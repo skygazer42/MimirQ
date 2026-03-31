@@ -592,7 +592,7 @@ export default function DatasetKGWorkbenchPage() {
 	        title={dataset?.name ? `KG Workbench · ${dataset.name}` : 'KG Workbench'}
 	        badge="Dataset KG"
 	        icon={Network}
-	        iconColor="text-primary"
+	        iconColor="text-indigo"
 	        description={headerDescription}
         actions={
           <div className="flex items-center gap-2">

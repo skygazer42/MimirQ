@@ -238,7 +238,7 @@ export default function DatasetWorkflowPage() {
         title={pageTitle}
         badge="Dataset Workflow"
         icon={Layers}
-        iconColor="text-primary"
+        iconColor="text-teal"
         description={
           <span className="text-sm text-muted-foreground">
             Editable workflow view of <span className="font-mono">DatasetConfigBundle</span> with export/import and layout persistence.

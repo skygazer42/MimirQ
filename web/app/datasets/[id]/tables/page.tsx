@@ -184,7 +184,7 @@ export default function DatasetTablesPage() {
         title="表格 / TAG"
         badge="Tables"
         icon={Table2}
-        iconColor="text-primary"
+        iconColor="text-teal"
         description={
           <span className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-primary/50 animate-pulse motion-reduce:animate-none" />

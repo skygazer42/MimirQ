@@ -30,7 +30,7 @@ function classifyFeedback(rating: number): FeedbackType | 'neutral' {
 
 export default function FeedbackTriagePage() {
   const router = useRouter()
-  const ratingFilter: RatingFilter = 'all'
+  const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all')
   const [filterType, setFilterType] = useState<FeedbackTypeFilter>('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [detail, setDetail] = useState<MessageFeedbackEnriched | null>(null)
@@ -142,7 +142,7 @@ export default function FeedbackTriagePage() {
               { label: '总反馈量', value: stats.total, icon: MessageSquare, color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-500/10', border: 'hover:border-indigo-200 dark:hover:border-indigo-800' },
               { label: '点赞 (Like)', value: stats.upvotes, icon: ThumbsUp, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'hover:border-emerald-200 dark:hover:border-emerald-800' },
               { label: '点踩 (Dislike)', value: stats.downvotes, icon: ThumbsDown, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'hover:border-rose-200 dark:hover:border-rose-800' },
-              { label: '平均响应', value: '~1.2s', icon: Loader2, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'hover:border-sky-200 dark:hover:border-sky-800' },
+              { label: '中立反馈', value: stats.total - stats.upvotes - stats.downvotes, icon: MessageSquare, color: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-500/10', border: 'hover:border-sky-200 dark:hover:border-sky-800' },
 	            ].map((stat) => (
 	              <div
 	                key={stat.label}
@@ -188,6 +188,22 @@ export default function FeedbackTriagePage() {
                 <SelectItem value="all">全部</SelectItem>
                 <SelectItem value="thumbs_up">点赞</SelectItem>
                 <SelectItem value="thumbs_down">点踩</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="w-px h-6 bg-border hidden md:block mx-2" />
+
+            <Select value={ratingFilter} onValueChange={(v) => setRatingFilter(v as RatingFilter)}>
+              <SelectTrigger className="w-full md:w-32 bg-transparent border-0 h-10 text-muted-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors">
+                <SelectValue placeholder="星级" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">全部星级</SelectItem>
+                <SelectItem value="5">5 星</SelectItem>
+                <SelectItem value="4">4 星</SelectItem>
+                <SelectItem value="3">3 星</SelectItem>
+                <SelectItem value="2">2 星</SelectItem>
+                <SelectItem value="1">1 星</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -305,15 +321,16 @@ export default function FeedbackTriagePage() {
                   variant="outline"
                   className="mt-5"
                   onClick={() => {
-                    if (searchTerm.trim().length > 0 || filterType !== 'all') {
+                    if (searchTerm.trim().length > 0 || filterType !== 'all' || ratingFilter !== 'all') {
                       setSearchTerm('')
                       setFilterType('all')
+                      setRatingFilter('all')
                       return
                     }
                     detachPromise(refetch())
                   }}
                 >
-                  {searchTerm.trim().length > 0 || filterType !== 'all'
+                  {searchTerm.trim().length > 0 || filterType !== 'all' || ratingFilter !== 'all'
                     ? '清除筛选'
                     : '刷新'}
                 </Button>

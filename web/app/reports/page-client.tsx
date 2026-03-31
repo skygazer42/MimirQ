@@ -415,7 +415,7 @@ export default function ReportsCenterPage() {
         title="报告中心"
         description="一键导出数据集「质量报告 + 合规报告」，支持按 pipeline_hash 过滤并生成可分享的 HTML。"
         icon={FileText}
-        iconColor="text-primary"
+        iconColor="text-info"
       >
         <div className="space-y-6">
           <Panel padding="lg" className="space-y-4">

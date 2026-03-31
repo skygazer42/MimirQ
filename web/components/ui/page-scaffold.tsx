@@ -20,6 +20,7 @@ type PageScaffoldProps = {
   children: React.ReactNode
   size?: ComponentProps<typeof PageContainer>["size"]
   showHeader?: boolean
+  compact?: boolean
   headerClassName?: string
   topClassName?: string
   toolbarClassName?: string
@@ -40,6 +41,7 @@ export function PageScaffold({
   children,
   size = "6xl",
   showHeader = true,
+  compact = true,
   headerClassName,
   topClassName,
   toolbarClassName,
@@ -50,7 +52,12 @@ export function PageScaffold({
   return (
     <>
       {showHeader ? (
-        <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
+        <div className={cn(
+          "flex-shrink-0 relative z-10",
+          compact
+            ? "px-4 md:px-6 pt-3 md:pt-4 pb-2 md:pb-3"
+            : "px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6"
+        )}>
           <PageContainer size={size}>
             <PageHeader
               title={title}
@@ -58,6 +65,7 @@ export function PageScaffold({
               icon={icon}
               iconColor={iconColor}
               badge={badge}
+              compact={compact}
               className={cn("p-0", headerClassName)}
             >
               {actions}
@@ -67,14 +75,21 @@ export function PageScaffold({
       ) : null}
 
       {top ? (
-        <div className={cn("px-6 md:px-8 pb-6 flex-shrink-0 relative z-10", topClassName)}>
+        <div className={cn(
+          "flex-shrink-0 relative z-10",
+          compact ? "px-4 md:px-6 pb-3" : "px-6 md:px-8 pb-6",
+          topClassName
+        )}>
           <PageContainer size={size}>{top}</PageContainer>
         </div>
       ) : null}
 
       {toolbar ? (
         <PageHeaderBar className={cn("z-20", toolbarBarClassName)}>
-          <div className={cn("px-6 md:px-8 py-3 md:py-4", toolbarClassName)}>
+          <div className={cn(
+            compact ? "px-4 md:px-6 py-2 md:py-3" : "px-6 md:px-8 py-3 md:py-4",
+            toolbarClassName
+          )}>
             <PageContainer size={size}>
               <PageToolbar>{toolbar}</PageToolbar>
             </PageContainer>
@@ -82,7 +97,7 @@ export function PageScaffold({
         </PageHeaderBar>
       ) : null}
 
-      <PageBody className={bodyClassName}>
+      <PageBody className={bodyClassName} compact={compact}>
         <PageContainer size={size} className={bodyContainerClassName}>
           {children}
         </PageContainer>

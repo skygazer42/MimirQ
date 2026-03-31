@@ -35,7 +35,7 @@ export default function LogosPreviewPage() {
         title="品牌 Logo 预览"
         badge="LOGOS"
         icon={Grid3X3}
-        iconColor="text-primary"
+        iconColor="text-accent"
         description="查看所有模型提供商的图标展示与适配效果"
       >
 

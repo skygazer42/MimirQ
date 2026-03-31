@@ -561,7 +561,7 @@ export function ChatArea({
         aria-live="polite"
         aria-busy={isLoading}
       >
-        <div className="max-w-4xl mx-auto flex flex-col min-h-full py-10">
+        <div className="max-w-3xl mx-auto flex flex-col min-h-full py-10">
           {messages.length === 0 && !isLoading && (
             <div className="flex-1 flex items-center justify-center">
               <WelcomeScreen
@@ -894,7 +894,7 @@ export function ChatArea({
               onKeyUp={handleKeyUp}
 	              placeholder={t('composerPlaceholder')}
 	              autoFocus
-	              className="w-full px-6 py-5 pr-20 resize-none outline-none rounded-[2rem] max-h-48 bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground/90 font-medium"
+	              className="w-full px-6 pt-4 pb-14 pr-20 resize-none outline-none rounded-[2rem] max-h-[200px] bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground font-medium"
 	              rows={1}
 	            />
 

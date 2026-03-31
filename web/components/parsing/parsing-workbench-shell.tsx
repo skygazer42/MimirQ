@@ -232,7 +232,7 @@ export function ParsingWorkbenchShell({
         title={t('title')}
         description={t('description')}
         icon={Sparkles}
-        iconColor="text-primary"
+        iconColor="text-orange"
         size="full"
         bodyClassName="px-0 pb-0"
         pipelineRail={<PipelineRail />}
