@@ -179,6 +179,17 @@ export function KnowledgeDocumentsPanel({
   const [singleDeleteWorking, setSingleDeleteWorking] = useState(false)
   const [singleDeleteError, setSingleDeleteError] = useState<string | null>(null)
 
+  const docsGridColsClassName =
+    docGridColumns >= 5
+      ? 'grid-cols-5'
+      : docGridColumns === 4
+        ? 'grid-cols-4'
+        : docGridColumns === 3
+          ? 'grid-cols-3'
+          : docGridColumns === 2
+            ? 'grid-cols-2'
+            : 'grid-cols-1'
+
   const showDatasetColumn = !selectedDatasetId
   const tableColumnCount = showDatasetColumn ? 9 : 8
 
@@ -269,7 +280,7 @@ export function KnowledgeDocumentsPanel({
   const renderGridDocCard = (doc: Document) => {
     const badge = getStatusBadge(doc.status, t)
     return (
-      <div key={doc.id}>
+      <div key={doc.id} className="h-full">
         <DocumentCard
           doc={doc}
           statusBadge={badge}
@@ -477,18 +488,18 @@ export function KnowledgeDocumentsPanel({
                                             const startIndex = virtualRow.index * cols;
                                             const rowDocs = filteredDocuments.slice(startIndex, startIndex + cols);
                                             const isLastRow = virtualRow.index === docGridRowCount - 1;
-	                                            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={docsGridVirtualizer.measureElement} style={{
-	                                                    position: 'absolute',
-	                                                    top: 0,
-	                                                    left: 0,
-	                                                    width: '100%',
-	                                                    transform: `translateY(${virtualRow.start}px)`,
-	                                                }} className={isLastRow ? undefined : 'pb-5'}>
-	                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
-	                      {rowDocs.map(renderGridDocCard)}
-	                    </div>
-	                  </div>);
-	                                        })}
+		                                            return (<div key={virtualRow.key} data-index={virtualRow.index} ref={docsGridVirtualizer.measureElement} style={{
+		                                                    position: 'absolute',
+		                                                    top: 0,
+		                                                    left: 0,
+		                                                    width: '100%',
+		                                                    transform: `translateY(${virtualRow.start}px)`,
+		                                                }} className={isLastRow ? undefined : 'pb-5'}>
+		                    <div className={cn('grid items-stretch gap-5', docsGridColsClassName)}>
+		                      {rowDocs.map(renderGridDocCard)}
+		                    </div>
+		                  </div>);
+		                                        })}
             </div>);
                                 }
                                 else {
@@ -661,7 +672,7 @@ function DocumentCard({
   return (
     <Panel
       padding="none"
-      className="group relative rounded-2xl overflow-hidden hover:shadow-strong/20 hover:border-primary/30 transition-colors transition-shadow duration-200 motion-reduce:transition-none"
+      className="group relative h-full rounded-2xl overflow-hidden hover:shadow-strong/20 hover:border-primary/30 transition-colors transition-shadow duration-200 motion-reduce:transition-none"
     >
       <div className={cn('h-1.5 w-full', statusBarClassName)} />
 
@@ -715,7 +726,7 @@ function DocumentCard({
           {doc.filename}
         </h3>
 
-        {userTags.length ? <DocumentTags tags={userTags} max={3} dense className="mb-3" /> : null}
+        {userTags.length ? <DocumentTags tags={userTags} max={3} dense className="mb-3 flex-nowrap overflow-hidden" /> : null}
 
         <div className="space-y-2 mt-auto">
           <div className="flex items-center justify-between text-xs text-muted-foreground">

@@ -39,6 +39,7 @@ export default async function RootLayout({
   const locale = await getLocale()
   const messages = await getMessages()
   const requestHeaders = await headers()
+  const cspNonce = requestHeaders.get('x-nonce') || undefined
   const { lang: documentLang, dir: documentDir } = resolveRequestDocumentSettings(
     requestHeaders,
     locale || process.env.NEXT_PUBLIC_APP_LANG?.trim() || undefined
@@ -54,6 +55,7 @@ export default async function RootLayout({
             defaultTheme="system"
             enableSystem
             disableTransitionOnChange
+            nonce={cspNonce}
           >
             <QueryProvider>
               <ServiceWorkerRegistrar />

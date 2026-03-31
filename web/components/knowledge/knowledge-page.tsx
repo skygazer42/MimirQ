@@ -44,15 +44,15 @@ type DocLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
 type DocSortKey = 'created_at' | 'filename' | 'file_size'
 type DocSortDir = 'asc' | 'desc'
 
-function docGridColumnsForViewportWidth(width: number): number {
-  // Keep in sync with the Tailwind grid classes used in the documents grid:
-  // `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5`.
-  const w = Number(width) || 0
-  if (w >= 1536) return 5
-  if (w >= 1280) return 4
-  if (w >= 1024) return 3
-  if (w >= 640) return 2
-  return 1
+function docGridColumnsForPaneWidth(width: number): number {
+  // Container-width based: the workbench has optional left/right side panes.
+  // Using viewport breakpoints here makes grid cards collapse into narrow columns
+  // when both panes are open (large viewport, small center pane).
+  const paneWidth = Number(width) || 0
+  const minCardWidthPx = 264
+  const gapPx = 20 // `gap-5` = 1.25rem ~= 20px
+  const cols = Math.floor((paneWidth + gapPx) / (minCardWidthPx + gapPx))
+  return Math.max(1, Math.min(5, cols || 1))
 }
 
 export default function KnowledgePage() {
@@ -270,17 +270,24 @@ export default function KnowledgePage() {
   // The backend already applies q/status/dataset filters; keep UI list consistent with server results.
   const filteredDocuments = useMemo(() => documents, [documents])
 
-  const [docGridColumns, setDocGridColumns] = useState(() => {
-    if (globalThis.window === undefined) return 1
-    return docGridColumnsForViewportWidth(globalThis.window.innerWidth)
-  })
+  const [docGridColumns, setDocGridColumns] = useState(1)
 
   useEffect(() => {
-    const onResize = () => setDocGridColumns(docGridColumnsForViewportWidth(globalThis.window.innerWidth))
-    onResize()
-    globalThis.window.addEventListener('resize', onResize)
-    return () => globalThis.window.removeEventListener('resize', onResize)
-  }, [])
+    const el = mainPaneScrollEl
+    if (!el) return
+
+    const update = () => setDocGridColumns(docGridColumnsForPaneWidth(el.clientWidth))
+    update()
+
+    if (typeof ResizeObserver === 'undefined') {
+      globalThis.window.addEventListener('resize', update)
+      return () => globalThis.window.removeEventListener('resize', update)
+    }
+
+    const ro = new ResizeObserver(() => update())
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [mainPaneScrollEl])
 
   const docGridRowCount = useMemo(() => {
     const cols = Math.max(1, docGridColumns)
