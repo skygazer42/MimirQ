@@ -15,10 +15,14 @@ COPY app ./app
 COPY components ./components
 COPY contexts ./contexts
 COPY hooks ./hooks
+COPY i18n ./i18n
 COPY lib ./lib
 COPY public ./public
+COPY instrumentation-client.ts ./instrumentation-client.ts
+COPY proxy.ts ./proxy.ts
 COPY scripts ./scripts
-COPY services ./services
+COPY sentry.edge.config.ts ./sentry.edge.config.ts
+COPY sentry.server.config.ts ./sentry.server.config.ts
 COPY store ./store
 COPY types ./types
 COPY workers ./workers
