@@ -27,9 +27,11 @@ export function buildCspHeaderValue({
       .join(' '),
     [
       "style-src 'self'",
-      `'nonce-${nonce}'`,
-      // The app still uses React inline style attributes in many panels and virtualized views.
-      // Keep style-src permissive until those attributes are retired.
+      // NOTE:
+      // - Inline `style=""` attributes cannot carry a nonce, so including a nonce here
+      //   would cause browsers to ignore `'unsafe-inline'` and block those attributes.
+      // - The app still relies on React inline styles in virtualized views and a few
+      //   dynamic UI controls; keep `'unsafe-inline'` enabled until that is retired.
       "'unsafe-inline'",
     ]
       .filter(Boolean)
