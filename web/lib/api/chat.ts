@@ -9,6 +9,7 @@ import type {
   Message,
   RagTraceListResponse,
 } from '@/types'
+import { z } from 'zod'
 
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { buildFetchError } from '@/lib/fetch-errors'
@@ -16,7 +17,35 @@ import { API_LONG_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { withPreferredLanguageHeader } from '@/lib/preferred-language'
 import { generateRequestId } from '@/lib/request-id'
 import { readSseDataStrings } from '@/lib/sse-reader'
-import { apiClient } from '@/lib/api/core'
+import { apiClient, openapiRequest } from '@/lib/api/core'
+
+const chatCitationSchema = z
+  .object({
+    document_id: z.string(),
+    document_name: z.string(),
+    chunk_content: z.string(),
+    relevance_score: z.number(),
+  })
+  .passthrough()
+
+const chatResponseSchema = z
+  .object({
+    conversation_id: z.string(),
+    assistant_message_id: z.string(),
+    request_id: z.string(),
+    content: z.string(),
+    citations: z.array(chatCitationSchema).default([]),
+    total_tokens: z.number().int().default(0),
+    total_chars: z.number().int().default(0),
+    metrics: z.record(z.string(), z.unknown()).default({}),
+    structured: z.boolean().default(false),
+    retrieval_mode: z.string().nullable().optional(),
+    vector_backend: z.string().nullable().optional(),
+    confidence_score: z.number().nullable().optional(),
+    followup_questions: z.array(z.string()).optional(),
+    structured_data: z.unknown().optional(),
+  })
+  .passthrough()
 
 export const chatApi = {
   async createConversation(params?: {
@@ -105,8 +134,16 @@ export const chatApi = {
   },
 
   async chat(request: ChatRequest, options: { signal?: AbortSignal } = {}): Promise<ChatResponse> {
-    const { data } = await apiClient.post('/chat', request, { timeout: API_LONG_TIMEOUT_MS, signal: options.signal })
-    return data
+    const data = await openapiRequest({
+      path: '/api/v1/chat',
+      method: 'post',
+      body: request as any,
+      signal: options.signal,
+      timeoutMs: API_LONG_TIMEOUT_MS,
+      responseSchema: chatResponseSchema as any,
+      responseSchemaName: 'ChatResponse',
+    })
+    return data as ChatResponse
   },
 
   async listCheckpoints(

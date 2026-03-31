@@ -44,6 +44,7 @@ import type {
   DocumentVersionList,
   ManualChunk,
 } from '@/types'
+import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { appendPipelineOptionsToFormData } from '@/lib/form-data'
@@ -59,6 +60,19 @@ import {
 function resolveChunkPreviewStrategy(chunkStrategy?: string): string {
   return chunkStrategy || 'langchain_recursive'
 }
+
+const documentParsedContentResponseSchema: z.ZodType<DocumentParsedContentResponse> = z
+  .object({
+    document_id: z.string(),
+    available: z.boolean(),
+    markdown_content: z.string(),
+    original_markdown_content: z.string(),
+    persisted_meta: z.record(z.string(), z.unknown()).optional(),
+    markdown_truncated: z.boolean(),
+    original_markdown_truncated: z.boolean(),
+    max_chars: z.number().int(),
+  })
+  .passthrough()
 
 export const documentApi = {
   async upload(
@@ -262,6 +276,8 @@ export const documentApi = {
       method: 'get',
       pathParams: { document_id: documentId },
       query: params,
+      responseSchema: documentParsedContentResponseSchema,
+      responseSchemaName: 'DocumentParsedContentResponse',
     })
   },
 
