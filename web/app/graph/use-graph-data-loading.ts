@@ -1,7 +1,9 @@
 'use client'
 
+import type { Remote } from 'comlink'
+
 import type { ChangeEvent, Dispatch, RefObject, SetStateAction } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { toast } from 'sonner'
 
@@ -14,6 +16,7 @@ import type {
   KGStatsResponse,
   RagTrace,
 } from '@/types'
+import type { GraphParserWorkerApi } from '@/workers/graph-parser.worker'
 
 import {
   buildGraphFromTrace,
@@ -97,6 +100,9 @@ export function useGraphDataLoading({
   resetExplainMode,
 }: UseGraphDataLoadingParams): UseGraphDataLoadingResult {
   const [scopeAutoLoaded, setScopeAutoLoaded] = useState(false)
+  const graphParserWorkerRef = useRef<Worker | null>(null)
+  const graphParserApiRef = useRef<Remote<GraphParserWorkerApi> | null>(null)
+  const graphParserWorkerDisabledRef = useRef(false)
 
   const resetGraphSurface = useCallback(() => {
     setKgNodeDetail(null)
@@ -192,6 +198,40 @@ export function useGraphDataLoading({
     void loadInitialData('live')
   }, [loadInitialData, scope, scopeAutoLoaded, scopedDocumentIds])
 
+  useEffect(() => {
+    return () => {
+      graphParserWorkerRef.current?.terminate()
+      graphParserWorkerRef.current = null
+      graphParserApiRef.current = null
+    }
+  }, [])
+
+  const parseGraphFileContent = useCallback(async (content: string): Promise<GraphData> => {
+    if (graphParserWorkerDisabledRef.current || typeof Worker === 'undefined') {
+      return parseGraphML(content)
+    }
+
+    try {
+      if (!graphParserWorkerRef.current || !graphParserApiRef.current) {
+        const { wrap } = await import('comlink')
+        graphParserWorkerRef.current = new Worker(
+          new URL('../../workers/graph-parser.worker.ts', import.meta.url),
+          { type: 'module' }
+        )
+        graphParserApiRef.current = wrap<GraphParserWorkerApi>(graphParserWorkerRef.current)
+      }
+
+      return await graphParserApiRef.current.parseGraphML(content)
+    } catch (error) {
+      console.warn('Graph parser worker failed; falling back to main-thread parse', error)
+      graphParserWorkerDisabledRef.current = true
+      graphParserWorkerRef.current?.terminate()
+      graphParserWorkerRef.current = null
+      graphParserApiRef.current = null
+      return parseGraphML(content)
+    }
+  }, [])
+
   const handleFileUpload = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
@@ -201,10 +241,10 @@ export function useGraphDataLoading({
       setFileName(file.name)
 
       const reader = new FileReader()
-      reader.onload = (loadEvent) => {
+      reader.onload = async (loadEvent) => {
         try {
           const content = loadEvent.target?.result as string
-          const parsedData = parseGraphML(content)
+          const parsedData = await parseGraphFileContent(content)
           setGraphData(parsedData)
           setDataSource('file')
           setTraceReplay(null)
@@ -221,7 +261,16 @@ export function useGraphDataLoading({
       reader.readAsText(file)
       event.target.value = ''
     },
-    [resetGraphSurface, setDataSource, setFileName, setGraphData, setIsLoading, setKgStats, setTraceReplay]
+    [
+      parseGraphFileContent,
+      resetGraphSurface,
+      setDataSource,
+      setFileName,
+      setGraphData,
+      setIsLoading,
+      setKgStats,
+      setTraceReplay,
+    ]
   )
 
   const triggerFileUpload = useCallback(() => {
