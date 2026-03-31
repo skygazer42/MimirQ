@@ -70,6 +70,7 @@ runs/perf/
 web/coverage/
 web/.next/
 web/.next_build/
+web/public/monaco/
 web/openapi.json
 web/types/openapi.ts
 *.sqlite

@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3'
+const CACHE_VERSION = 'v4'
 const STATIC_CACHE = `mimirq-static-${CACHE_VERSION}`
 const APP_SHELL_CACHE = `mimirq-app-shell-${CACHE_VERSION}`
 const APP_SHELL_URLS = [
@@ -42,6 +42,7 @@ function isSupportedStaticPath(url) {
   return (
     url.pathname.startsWith('/_next/static/') ||
     url.pathname.startsWith('/lottie/') ||
+    url.pathname.startsWith('/monaco/') ||
     url.pathname.startsWith('/fonts/') ||
     url.pathname.startsWith('/pdfjs-dist/') ||
     url.pathname.endsWith('.svg') ||

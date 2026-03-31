@@ -6,11 +6,12 @@ describe('service worker source', () => {
   it('uses a conservative, versioned caching strategy for offline shell reliability', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'sw.js'), 'utf8')
 
-    expect(src).toContain("const CACHE_VERSION = 'v3'")
+    expect(src).toContain("const CACHE_VERSION = 'v4'")
     expect(src).toContain("'/knowledge'")
     expect(src).toContain("'/knowledge/similarity'")
     expect(src).toContain("'/graph'")
     expect(src).toContain("url.pathname.startsWith('/lottie/')")
+    expect(src).toContain("url.pathname.startsWith('/monaco/')")
     expect(src).toContain("url.pathname.startsWith('/pdfjs-dist/')")
     expect(src).toContain("url.pathname.startsWith('/fonts/')")
     expect(src).toContain("url.pathname.endsWith('.svg')")

@@ -3,6 +3,7 @@
  */
 'use client'
 
+import loader from '@monaco-editor/loader'
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslations } from 'next-intl'
@@ -10,6 +11,12 @@ import { useTheme } from 'next-themes'
 import { PageLoading } from '@/components/ui/page-loading'
 import { getChunkMetadata, getChunkRole } from '@/components/chunk-preview/utils/metadata'
 import type { ChunkPreviewItem } from '@/types'
+
+loader.config({
+  paths: {
+    vs: '/monaco/vs',
+  },
+})
 
 function OriginalPreviewMonacoLoading() {
   const t = useTranslations('ChunkPreview')

@@ -13,4 +13,12 @@ describe('original preview monaco source', () => {
     expect(src).toContain('PageLoading')
     expect(src).toContain('dynamic(() => import(\'@monaco-editor/react\')')
   })
+
+  it('pins Monaco runtime assets to the local offline-safe project path', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'original-preview-monaco.tsx'), 'utf8')
+
+    expect(src).toContain("import loader from '@monaco-editor/loader'")
+    expect(src).toContain('loader.config({')
+    expect(src).toContain("vs: '/monaco/vs'")
+  })
 })
