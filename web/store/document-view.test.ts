@@ -136,4 +136,41 @@ describe('document view store persistence', () => {
     expect(useDocumentView.getState().previewAnchor).toEqual({ pageNumber: 6, searchText: 'policy clause' })
     expect(useDocumentView.getState().activeTab).toBe('chunks')
   })
+
+  it('persists chat citation source context so the viewer can jump back to the originating message', async () => {
+    const { useDocumentView } = await loadStore()
+
+    useDocumentView.getState().openDocument(
+      'doc-chat',
+      'chunk-chat',
+      { start: 21, end: 63 },
+      {
+        activeTab: 'preview',
+        previewAnchor: { pageNumber: 3, searchText: 'retention window' },
+        sourceContext: {
+          kind: 'chat-citation',
+          messageId: 'msg-42',
+          documentId: 'doc-chat',
+          chunkId: 'chunk-chat',
+        },
+      }
+    )
+    useDocumentView.getState().closeDocument()
+    useDocumentView.getState().reopenLastDocument()
+
+    expect(useDocumentView.getState().sourceContext).toEqual({
+      kind: 'chat-citation',
+      messageId: 'msg-42',
+      documentId: 'doc-chat',
+      chunkId: 'chunk-chat',
+    })
+    expect(useDocumentView.getState().lastOpenedTarget).toMatchObject({
+      sourceContext: {
+        kind: 'chat-citation',
+        messageId: 'msg-42',
+        documentId: 'doc-chat',
+        chunkId: 'chunk-chat',
+      },
+    })
+  })
 })

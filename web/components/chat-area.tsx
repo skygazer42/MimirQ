@@ -39,6 +39,13 @@ const DEFAULT_VISIBLE_MESSAGES = 80
 const LOAD_MORE_STEP = 40
 const METADATA_FILTER_MODE_VALUES = ['all', 'exclude_qa', 'qa_only', 'custom'] as const
 
+function escapeAttributeSelector(value: string): string {
+  if (typeof globalThis.CSS?.escape === 'function') {
+    return globalThis.CSS.escape(value)
+  }
+  return String(value).replace(/["\\\]]/g, '\\$&')
+}
+
 export function ChatArea({
   initialConversationId,
   initialPrompt,
@@ -89,8 +96,10 @@ export function ChatArea({
   const prevInitialConversationIdRef = useRef<string | undefined>(initialConversationId)
   const autoScrollRef = useRef(true)
   const [isNearBottom, setIsNearBottom] = useState(true)
+  const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
   const scrollRafRef = useRef<number | null>(null)
   const scrollEventRafRef = useRef<number | null>(null)
+  const focusMessageTimerRef = useRef<number | null>(null)
   const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
   const autoSendPromptRef = useRef(false)
   // Slash Menu State
@@ -102,6 +111,28 @@ export function ChatArea({
     documents: number | null
     loading: boolean
   }>({ datasets: null, documents: null, loading: true })
+
+  const focusMessageById = useCallback((messageId: string) => {
+    const container = scrollContainerRef.current
+    if (!container) return false
+
+    const node = container.querySelector<HTMLElement>(
+      `[data-chat-message-id="${escapeAttributeSelector(messageId)}"]`
+    )
+    if (!node) return false
+
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    node.focus({ preventScroll: true })
+    setFocusedMessageId(messageId)
+    if (focusMessageTimerRef.current != null) {
+      globalThis.window.clearTimeout(focusMessageTimerRef.current)
+    }
+    focusMessageTimerRef.current = globalThis.window.setTimeout(() => {
+      setFocusedMessageId((current) => (current === messageId ? null : current))
+      focusMessageTimerRef.current = null
+    }, 1800)
+    return true
+  }, [])
 
   // Initialize chat retrieval defaults from system settings (avoid hard-coded 5/0.7 overriding backend config).
   useEffect(() => {
@@ -300,6 +331,14 @@ export function ChatArea({
     return () => unsubscribe()
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (focusMessageTimerRef.current != null) {
+        globalThis.window.clearTimeout(focusMessageTimerRef.current)
+      }
+    }
+  }, [])
+
   const {
     messages,
     isLoading,
@@ -325,6 +364,26 @@ export function ChatArea({
       toast.error(error || t('requestFailed'))
     },
   })
+
+  useEffect(() => {
+    const unsubscribe = globalEventBus.on('chat:focus-message', ({ messageId }) => {
+      const id = String(messageId || '').trim()
+      if (!id) return
+
+      if (messages.some((message) => message.id === id)) {
+        setVisibleCount((current) => Math.max(current, messages.length))
+      }
+
+      globalThis.window.requestAnimationFrame(() => {
+        if (focusMessageById(id)) return
+        globalThis.window.setTimeout(() => {
+          focusMessageById(id)
+        }, 80)
+      })
+    })
+
+    return () => unsubscribe()
+  }, [focusMessageById, messages])
 
   // Sync URL conversation -> local state
   useEffect(() => {
@@ -524,7 +583,12 @@ export function ChatArea({
             {visibleMessages.map((message) => (
               <div
                 key={message.id}
-                className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200 motion-safe:ease-out"
+                data-chat-message-id={message.id}
+                tabIndex={-1}
+                className={cn(
+                  'rounded-3xl outline-none transition-shadow duration-300 motion-reduce:transition-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200 motion-safe:ease-out',
+                  focusedMessageId === message.id && 'ring-2 ring-primary/35 ring-offset-2 ring-offset-background shadow-lg shadow-primary/10'
+                )}
               >
                 <ChatMessageItem message={message} />
               </div>

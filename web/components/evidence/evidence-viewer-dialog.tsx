@@ -10,6 +10,7 @@ import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anc
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
 import { resolveSafeCitationImageUrl } from '@/lib/citation-images'
+import type { DocumentViewSourceContext } from '@/store/document-view'
 import { useDocumentView } from '@/store/document-view'
 
 import { Badge } from '@/components/ui/badge'
@@ -71,10 +72,12 @@ export function EvidenceViewerDialog({
   open,
   onOpenChange,
   citation,
+  sourceContext,
 }: Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   citation: Citation | null
+  sourceContext?: DocumentViewSourceContext | null
 }>) {
   const { openDocument } = useDocumentView()
 
@@ -121,8 +124,9 @@ export function EvidenceViewerDialog({
     const range = start != null && end != null && end > start ? { start, end } : undefined
     openDocument(citation.document_id, citation.chunk_id, range, {
       previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
+      sourceContext,
     })
-  }, [citation, openDocument])
+  }, [citation, openDocument, sourceContext])
 
   const onCopyJson = React.useCallback(async () => {
     if (!citation) return

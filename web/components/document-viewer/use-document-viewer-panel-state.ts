@@ -12,6 +12,7 @@ import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
 import { sanitizeDocumentPreviewAnchor } from "@/lib/document-preview-anchor"
 import { getPrefetchedChunk, getPrefetchedDocument } from "@/lib/document-view-prefetch"
 import { API_V1_BASE_URL } from "@/lib/env"
+import { globalEventBus } from "@/lib/event-bus"
 import { detachPromise } from "@/lib/utils"
 import { useDocumentView } from "@/store/document-view"
 import type {
@@ -42,6 +43,7 @@ export function useDocumentViewerPanelState() {
     highlightChunkId,
     highlightRange,
     previewAnchor,
+    sourceContext,
     closeDocument,
     activeTab,
     documentLayouts,
@@ -1005,6 +1007,16 @@ export function useDocumentViewerPanelState() {
     [setActiveTab]
   )
 
+  const jumpToSource = React.useCallback(() => {
+    if (sourceContext?.kind !== 'chat-citation') return
+
+    globalEventBus.emit('chat:focus-message', {
+      messageId: sourceContext.messageId,
+      documentId: sourceContext.documentId,
+      chunkId: sourceContext.chunkId ?? null,
+    })
+  }, [sourceContext])
+
   return {
     activeTab,
     canEditChunks,
@@ -1049,6 +1061,7 @@ export function useDocumentViewerPanelState() {
     isLoading,
     isOpen,
     jumpToMatch,
+    jumpToSource,
     loadAllChunks,
     matchCursor,
     matchChunkIds,
@@ -1074,6 +1087,7 @@ export function useDocumentViewerPanelState() {
     runQaGeneration,
     runRetrievePreview,
     serverMatchTruncated,
+    sourceContext,
     setChunkEditorContent,
     setChunkEditorEndChar,
     setChunkEditorPageNumber,

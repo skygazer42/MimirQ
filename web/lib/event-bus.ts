@@ -1,5 +1,6 @@
 type AppEventMap = {
   'chat:send': string
+  'chat:focus-message': { messageId: string; documentId?: string | null; chunkId?: string | null }
   'command-menu:set-open': { open: boolean }
   'command-menu:toggle': undefined
 }
