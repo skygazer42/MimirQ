@@ -17,6 +17,8 @@ module.exports = [
       'dist/**',
       'coverage/**',
       'node_modules/**',
+      // Static/bundled assets (not source code).
+      'public/**',
       // Generated OpenAPI artifacts (large; linting adds noise and slows CI/dev).
       'openapi.json',
       'types/openapi.ts',

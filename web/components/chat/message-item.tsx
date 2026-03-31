@@ -911,15 +911,16 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         )}
 
         <div
-	          className={cn(
-	            'prose max-w-none break-words leading-relaxed dark:prose-invert',
-	            isUser ? 'prose-invert' : 'prose-neutral',
-	            'prose-p:my-2 prose-p:leading-7',
-	            'prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3',
-	            'prose-code:bg-secondary/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm font-mono text-primary prose-code:before:content-none prose-code:after:content-none',
-	            isUser && 'prose-code:bg-primary-foreground/10 prose-code:text-primary-foreground'
-	          )}
-	        >
+          className={cn(
+            'prose max-w-none break-words leading-relaxed',
+            // User bubble uses a bright primary surface; keep text dark for contrast (no prose-invert).
+            isUser ? 'prose-neutral' : 'prose-neutral dark:prose-invert',
+            'prose-p:my-2 prose-p:leading-7',
+            'prose-pre:bg-secondary/50 prose-pre:border prose-pre:border-border/50 prose-pre:text-foreground prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-3',
+            'prose-code:bg-secondary/50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-sm font-mono text-primary prose-code:before:content-none prose-code:after:content-none',
+            isUser && 'prose-code:bg-primary-foreground/10 prose-code:text-primary-foreground'
+          )}
+        >
           {renderedContent}
         </div>
 

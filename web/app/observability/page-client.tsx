@@ -2,6 +2,7 @@
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
@@ -279,12 +280,12 @@ export default function ObservabilityPage() {
                 <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin motion-reduce:animate-none')} />
                 刷新
               </Button>
-              <a
+              <Link
                 href="/settings"
                 className="inline-flex h-9 items-center justify-center rounded-xl border border-input bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 去设置开启/配置
-              </a>
+              </Link>
             </div>
           }
         >

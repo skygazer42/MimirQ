@@ -158,7 +158,7 @@ function MarkdownRendererContent({
       return (
         <Tag
           id={id}
-          className={cn('group scroll-mt-24', props.className)}
+          className={cn('group scroll-mt-32', props.className)}
           {...props}
         >
           {children}

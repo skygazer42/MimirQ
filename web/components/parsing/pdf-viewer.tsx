@@ -43,6 +43,7 @@ const MAX_CONCURRENT_RENDERS = 1
 const RENDER_ROOT_MARGIN = '800px 0px 800px 0px'
 const RETAIN_ROOT_MARGIN = '2400px 0px 2400px 0px'
 const IDLE_RENDER_TIMEOUT_MS = 400
+const OFFSCREEN_PAGE_RENDER_TIMEOUT_MS = 12_000
 const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '1100px'
 const DEFAULT_PAGE_CSS_WIDTH = 896
 
@@ -104,6 +105,7 @@ export function PdfViewer({
   const flushQueuedPageRendersRef = useRef<() => Promise<void>>(async () => {})
   const renderGenRef = useRef(0)
   const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, pageNumber) => pageNumber + 1), [pageCount])
+  const renderModeKey = `${reloadTick}-${offscreenRenderEnabled ? 'offscreen' : 'main'}`
 
   const retryLoad = useCallback(() => {
     setReloadTick((prev) => prev + 1)
@@ -119,6 +121,18 @@ export function PdfViewer({
     offscreenRenderWorkerRef.current?.terminate()
     offscreenRenderWorkerRef.current = null
   }, [])
+
+  const disableOffscreenRenderAndReload = useCallback(
+    (reason: unknown) => {
+      if (offscreenRenderWorkerDisabledRef.current) return
+      offscreenRenderWorkerDisabledRef.current = true
+      console.warn('PDF offscreen page render failed; falling back to main-thread raster', reason)
+      terminateOffscreenRenderWorker()
+      setOffscreenRenderEnabled(false)
+      setReloadTick((prev) => prev + 1)
+    },
+    [terminateOffscreenRenderWorker]
+  )
 
   const cancelRenderTasks = useCallback(() => {
     renderTasksRef.current.forEach((task) => task.cancel())
@@ -464,6 +478,7 @@ export function PdfViewer({
       renderingPagesRef.current.add(pageIndex)
       let activeRenderTask: RenderTask | null = null
       let releasePageResources: (() => void) | null = null
+      let usedOffscreenWorker = false
       try {
         const page = await doc.getPage(pageIndex + 1)
         releasePageResources = () => {
@@ -476,13 +491,26 @@ export function PdfViewer({
 
         const api = offscreenRenderEnabled ? offscreenRenderApiRef.current : null
         if (api) {
+          usedOffscreenWorker = true
           releasePageResources?.()
           const attached = await attachOffscreenPageCanvas(pageIndex)
           if (!attached) {
             throw new Error(`Unable to attach OffscreenCanvas for page ${pageIndex}`)
           }
 
-          await api.renderPage({ pageIndex, scale })
+          let timeoutId: ReturnType<typeof setTimeout> | null = null
+          try {
+            await Promise.race([
+              api.renderPage({ pageIndex, scale }),
+              new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                  reject(new Error(`Offscreen render timed out for page ${pageIndex + 1}`))
+                }, OFFSCREEN_PAGE_RENDER_TIMEOUT_MS)
+              }),
+            ])
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId)
+          }
           if (renderGenRef.current !== gen) return
 
           if (markPageRendered(pageIndex)) {
@@ -505,7 +533,13 @@ export function PdfViewer({
         if (markPageRendered(pageIndex)) {
           trimRenderedPagePool(pageIndex)
         }
-      } catch {
+      } catch (error) {
+        // OffscreenCanvas transfer is one-way; if the worker can't render a page, fall back to main-thread
+        // by disabling offscreen mode and forcing a reload to remount canvas nodes.
+        if (usedOffscreenWorker) {
+          disableOffscreenRenderAndReload(error)
+          return
+        }
         // Best-effort: leave it as not rendered; user can scroll away/back to retry.
       } finally {
         if (activeRenderTask && renderTasksRef.current.get(pageIndex) === activeRenderTask) {
@@ -517,6 +551,7 @@ export function PdfViewer({
     },
     [
       attachOffscreenPageCanvas,
+      disableOffscreenRenderAndReload,
       markPageRendered,
       offscreenRenderEnabled,
       pdfDoc,
@@ -755,7 +790,7 @@ export function PdfViewer({
 
           return (
             <div
-              key={`page-${pageNumber}`}
+              key={`page-${pageNumber}-${renderModeKey}`}
               ref={(el) => {
                 if (el) {
                   pageRefs.current.set(index, el)

@@ -652,9 +652,9 @@ export function ParsingActiveFilePane({
         </div>
 
         {activeFile.status === 'parsed' && activeMarkdown ? (
-          <div className="border-t border-border/60 bg-card/70 px-6 py-4 dark:bg-background/40">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground dark:text-muted-foreground">
+          <div className="border-t border-border/60 bg-card/70 px-6 py-3 dark:bg-background/40">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs text-muted-foreground dark:text-muted-foreground">
                 {isEditing ? '编辑完成后点击"保存修改"，然后提交到数据治理' : '确认解析内容无误后，提交到数据治理工作台'}
               </div>
               <div className="flex items-center gap-3">
