@@ -74,17 +74,22 @@ class OpenAIChatClient(BaseLLMClient):
             http_client = httpx.Client(trust_env=trust_env, timeout=timeout)
         if http_async_client is None:
             http_async_client = httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
-        self._client = ChatOpenAI(
-            model=model_name,
-            api_key=api_key,
-            base_url=base_url,
-            temperature=temperature,
-            streaming=False,
-            timeout=timeout,
-            max_retries=max_retries,
-            http_client=http_client,
-            http_async_client=http_async_client,
-        )
+        client_kwargs: dict[str, Any] = {
+            "model": model_name,
+            "api_key": api_key,
+            "base_url": base_url,
+            "temperature": temperature,
+            "streaming": False,
+            "timeout": timeout,
+            "max_retries": max_retries,
+            "http_client": http_client,
+        }
+        # See app.rag.llm.langchain_chat.build_chat_model_from_config: some
+        # OpenAI-compatible providers fail when LangChain reuses the shared pooled
+        # AsyncClient for chat completions. Default to LangChain-managed async clients.
+        if settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT:
+            client_kwargs["http_async_client"] = http_async_client
+        self._client = ChatOpenAI(**client_kwargs)
 
     def _should_cache_message(self, msg: LLMMessage) -> bool:
         _content, applied = annotate_prompt_cache_content(

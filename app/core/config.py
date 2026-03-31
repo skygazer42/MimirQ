@@ -246,6 +246,10 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.7
     LLM_TIMEOUT: int = 60
     LLM_MAX_RETRIES: int = 3
+    # Some OpenAI-compatible providers fail when LangChain reuses the shared pooled
+    # async client for chat requests. Keep this OFF by default and opt in only when
+    # the target provider has been verified with the shared async transport.
+    LLM_USE_POOLED_ASYNC_HTTP_CLIENT: bool = False
     # Optional provider fallback chain; default OFF.
     # Accepts JSON list/dict or comma-separated model names.
     LLM_FALLBACK_ENABLED: bool = False

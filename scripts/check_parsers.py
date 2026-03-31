@@ -1,3 +1,11 @@
+import sys
+import time
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 _MISSING_CLI = "missing cli"
 
 
@@ -27,6 +35,7 @@ def _configured_cli_status(enabled: bool, cli_path: str | None) -> str:
 
 def main() -> int:
     from app.core.config import settings
+    from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
     from app.parsing.utils.cli import resolve_cli_command
 
     rows: list[tuple[str, str, str]] = []
@@ -114,8 +123,23 @@ def main() -> int:
     ok, msg = _check_import("docling")
     rows.append(("docling", "on" if getattr(settings, "DOCLING_ENABLED", False) else "off", "installed" if ok else msg))
 
-    mineru_configured = bool(settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL))
-    rows.append(("mineru", "on" if settings.MINERU_ENABLED else "off", "configured" if mineru_configured else "missing api_token or local_server_url"))
+    mineru_enabled = bool(getattr(settings, "MINERU_ENABLED", False))
+    mineru_local = bool((getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip())
+    mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
+    mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
+    mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
+    mineru_configured = bool(mineru_enabled and (mineru_local or (mineru_token and not mineru_token_expired)))
+    if not mineru_enabled:
+        mineru_status = "disabled"
+    elif mineru_local:
+        mineru_status = "configured (local)"
+    elif not mineru_token:
+        mineru_status = "missing api_token or local_server_url"
+    elif mineru_token_expired and mineru_exp is not None:
+        mineru_status = f"api_token expired at {format_unix_ts_utc(int(mineru_exp))}"
+    else:
+        mineru_status = "configured"
+    rows.append(("mineru", "on" if mineru_enabled else "off", mineru_status))
 
     if bool(getattr(settings, "RAPIDOCR_ENABLED", False)):
         ok, msg = _check_import("rapidocr_onnxruntime")

@@ -22,6 +22,7 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "e2e:list": "playwright test --list",
+    "e2e:live": "node scripts/run-live-playwright.mjs",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
