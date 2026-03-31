@@ -12,6 +12,9 @@ importers:
 
   .:
     dependencies:
+      '@monaco-editor/loader':
+        specifier: ^1.7.0
+        version: 1.7.0
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -96,6 +99,9 @@ importers:
       minisearch:
         specifier: ^7.2.0
         version: 7.2.0
+      monaco-editor:
+        specifier: ^0.55.1
+        version: 0.55.1
       next:
         specifier: ^16.2.1
         version: 16.2.1(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.58.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
