@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 鏁版嵁娌荤悊宸ヤ綔鍙扮粍浠?
  * 鍔熻兘锛氳川閲忔娴嬨€佹櫤鑳芥竻娲椼€佹暟鎹爣娉ㄣ€佸垎绫诲綊妗?
  */
@@ -749,7 +749,8 @@ export function DataGovernancePanel() {
         title={headerTitle}
         badge={t('header.emptyBadge')}
         icon={ShieldCheck}
-        iconColor="text-primary"
+        iconColor="text-success"
+        compactHeader
         description={
           <span className="flex items-center gap-2">
             <span className="h-1.5 w-1.5 rounded-full bg-primary/20" aria-hidden="true" />
@@ -970,6 +971,7 @@ export function DataGovernancePanel() {
       badge={t('header.mainBadge')}
       icon={ShieldCheck}
       iconColor="text-sky-400"
+      compactHeader
       description={
         <span className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-sky-500/10 dark:bg-sky-500/20" aria-hidden="true" />

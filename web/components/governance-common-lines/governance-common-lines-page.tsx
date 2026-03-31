@@ -190,7 +190,7 @@ export function GovernanceCommonLinesPage() {
       title="Common Lines 学习"
       badge="Governance"
       icon={Hash}
-      iconColor="text-primary"
+      iconColor="text-success"
       description="跨文档发现候选样板行（页眉/页脚/导航/免责声明），并一键写入自定义治理 Profile（regex_rules）。"
       size="7xl"
       actions={

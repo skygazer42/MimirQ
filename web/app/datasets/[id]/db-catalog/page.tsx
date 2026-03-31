@@ -315,7 +315,7 @@ export default function DatasetDbCatalogPage() {
         title="数据库目录 / Catalog"
         badge="DB Catalog"
         icon={Database}
-        iconColor="text-primary"
+        iconColor="text-teal"
         description={
           dataset ? (
             <span className="font-mono text-xs">

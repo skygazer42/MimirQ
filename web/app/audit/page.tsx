@@ -10,6 +10,7 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { AuditLogItem, AuditLogListResponse } from '@/types'
@@ -171,31 +172,26 @@ export default function AuditLogsPage() {
             </div>
 
             <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Input
-                placeholder="action (e.g. chat.ask)"
-                value={filters.action}
-                onChange={(e) => setFilters((p) => ({ ...p, action: e.target.value }))}
-              />
-              <Input
-                placeholder="actor_id"
-                value={filters.actor_id}
-                onChange={(e) => setFilters((p) => ({ ...p, actor_id: e.target.value }))}
-              />
-              <Input
-                placeholder="request_id"
-                value={filters.request_id}
-                onChange={(e) => setFilters((p) => ({ ...p, request_id: e.target.value }))}
-              />
-              <Input
-                placeholder="resource_type"
-                value={filters.resource_type}
-                onChange={(e) => setFilters((p) => ({ ...p, resource_type: e.target.value }))}
-              />
-              <Input
-                placeholder="resource_id"
-                value={filters.resource_id}
-                onChange={(e) => setFilters((p) => ({ ...p, resource_id: e.target.value }))}
-              />
+              <div className="space-y-1">
+                <Label htmlFor="audit-action" className="text-xs text-muted-foreground">Action</Label>
+                <Input id="audit-action" placeholder="e.g. chat.ask" value={filters.action} onChange={(e) => setFilters((p) => ({ ...p, action: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="audit-actor" className="text-xs text-muted-foreground">Actor ID</Label>
+                <Input id="audit-actor" placeholder="actor_id" value={filters.actor_id} onChange={(e) => setFilters((p) => ({ ...p, actor_id: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="audit-request" className="text-xs text-muted-foreground">Request ID</Label>
+                <Input id="audit-request" placeholder="request_id" value={filters.request_id} onChange={(e) => setFilters((p) => ({ ...p, request_id: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="audit-resource-type" className="text-xs text-muted-foreground">Resource Type</Label>
+                <Input id="audit-resource-type" placeholder="resource_type" value={filters.resource_type} onChange={(e) => setFilters((p) => ({ ...p, resource_type: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="audit-resource-id" className="text-xs text-muted-foreground">Resource ID</Label>
+                <Input id="audit-resource-id" placeholder="resource_id" value={filters.resource_id} onChange={(e) => setFilters((p) => ({ ...p, resource_id: e.target.value }))} />
+              </div>
               <div className="flex items-center gap-2">
                 <Input
                   type="datetime-local"

@@ -26,6 +26,7 @@ type WorkbenchScaffoldProps = {
   children?: React.ReactNode
 
   size?: ComponentProps<typeof PageContainer>['size']
+  compactHeader?: boolean
 
   className?: string
   headerClassName?: string
@@ -48,6 +49,7 @@ export function WorkbenchScaffold({
   mainPanel,
   children,
   size = '6xl',
+  compactHeader = true,
   className,
   headerClassName,
   toolbarClassName,
@@ -62,7 +64,12 @@ export function WorkbenchScaffold({
 
   return (
     <div className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
-      <div className="px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6 flex-shrink-0 relative z-10">
+      <div className={cn(
+        'flex-shrink-0 relative z-10',
+        compactHeader
+          ? 'px-4 md:px-6 pt-3 md:pt-4 pb-2 md:pb-3'
+          : 'px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6'
+      )}>
         <PageContainer size={size}>
           <PageHeader
             title={title}
@@ -70,25 +77,33 @@ export function WorkbenchScaffold({
             icon={icon}
             iconColor={iconColor}
             badge={badge}
+            compact={compactHeader}
             className={cn('p-0', headerClassName)}
           >
             {actions}
           </PageHeader>
 
-          {top ? <div className="mt-4">{top}</div> : null}
-          {pipelineRail ? <div className="mt-4">{pipelineRail}</div> : null}
+          {top ? <div className={compactHeader ? 'mt-2' : 'mt-4'}>{top}</div> : null}
+          {pipelineRail ? <div className={compactHeader ? 'mt-2' : 'mt-4'}>{pipelineRail}</div> : null}
         </PageContainer>
       </div>
 
       {toolbar ? (
         <PageHeaderBar className="z-20">
-          <div className={cn('px-6 md:px-8 py-3 md:py-4', toolbarClassName)}>
+          <div className={cn(
+            compactHeader ? 'px-4 md:px-6 py-2 md:py-3' : 'px-6 md:px-8 py-3 md:py-4',
+            toolbarClassName
+          )}>
             <PageContainer size={size}>{toolbar}</PageContainer>
           </div>
         </PageHeaderBar>
       ) : null}
 
-      <div className={cn('flex-1 min-h-0 overflow-hidden px-6 md:px-8 pb-8', bodyClassName)}>
+      <div className={cn(
+        'flex-1 min-h-0 overflow-hidden pb-6',
+        compactHeader ? 'px-4 md:px-6' : 'px-6 md:px-8',
+        bodyClassName
+      )}>
         <PageContainer size={size} className="h-full">
           <div className="flex h-full min-h-0 gap-4">
             {leftPanel ? (

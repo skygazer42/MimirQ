@@ -476,7 +476,10 @@ export function KGDiagnosticsPage() {
               ) : (
                 <div className="text-sm text-muted-foreground">{t("summary.empty")}</div>
               )}
-              <Textarea value={runRespJson} readOnly rows={12} className="font-mono text-xs" />
+              <details>
+                <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+                <Textarea value={runRespJson} readOnly rows={12} className="mt-2 font-mono text-xs" />
+              </details>
             </CardContent>
           </Card>
         </div>
@@ -511,7 +514,10 @@ export function KGDiagnosticsPage() {
                   />
                 </div>
               </div>
-              <Textarea value={qualityJson} readOnly rows={10} className="font-mono text-xs" />
+              <details>
+                <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+                <Textarea value={qualityJson} readOnly rows={10} className="mt-2 font-mono text-xs" />
+              </details>
             </CardContent>
           </Card>
         </div>
@@ -622,7 +628,10 @@ export function KGDiagnosticsPage() {
                   <GitCompare className="h-4 w-4" aria-hidden="true" />
                   {t("compare.diffJson")}
                 </div>
-                <Textarea value={diffJson} readOnly rows={14} className="font-mono text-xs" />
+                <details>
+                  <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+                  <Textarea value={diffJson} readOnly rows={14} className="mt-2 font-mono text-xs" />
+                </details>
               </div>
 
               {diff?.changed_cases?.length ? (

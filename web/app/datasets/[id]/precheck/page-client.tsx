@@ -50,7 +50,16 @@ import type {
   IngestionPolicyImportResponse,
 } from '@/types'
 
-const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
+const PIE_COLORS = [
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-6))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-7))',
+  'hsl(var(--chart-5))',
+  'hsl(var(--chart-8))',
+]
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -548,7 +557,7 @@ export default function DatasetPrecheckPage() {
         title="预检扫描（未入库）"
         badge="Precheck"
         icon={FileSearch}
-        iconColor="text-primary"
+        iconColor="text-info"
         description={
           <span className="text-sm text-muted-foreground">
             数据集：<span className="text-foreground font-medium">{dataset?.name || datasetId}</span> · 扫描本地文件夹，生成结构/质量画像（格式、扫描件、长度、PII/Secrets 等）
@@ -877,7 +886,7 @@ export default function DatasetPrecheckPage() {
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis allowDecimals={false} fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -912,7 +921,7 @@ export default function DatasetPrecheckPage() {
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis allowDecimals={false} fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#a78bfa" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="value" fill="hsl(var(--chart-3))" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -930,7 +939,7 @@ export default function DatasetPrecheckPage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -951,7 +960,7 @@ export default function DatasetPrecheckPage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#fb7185" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

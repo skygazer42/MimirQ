@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { toast } from 'sonner'
-import { BarChart3, Database, FileSearch, Layers, Loader2, Pencil, Plus, RefreshCw, Settings2, ShieldCheck, Table2, Trash2 } from 'lucide-react'
+import {
+  BarChart3, Database, FileSearch, FolderOpen, Layers, Loader2,
+  MoreHorizontal, Pencil, Plus, RefreshCw, Search, Settings2, ShieldCheck,
+  Table2, Trash2, Users,
+} from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { useRouter } from '@/i18n/navigation'
@@ -12,17 +16,16 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
+  DialogTitle, DialogTrigger,
+} from '@/components/ui/dialog'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
@@ -49,23 +52,14 @@ type DatasetFormState = {
   pipelineOptions: DocumentPipelineOptions
 }
 
-function permissionLabel(p: PermissionEnum) {
-  if (p === 'only_me') return '仅自己'
-  if (p === 'partial_members') return '部分成员'
-  return '全员'
-}
-
-function permissionBadgeVariant(p: PermissionEnum): 'secondary' | 'outline' | 'soft' {
-  if (p === 'only_me') return 'secondary'
-  if (p === 'partial_members') return 'outline'
-  return 'soft'
+const PERMISSION_CONFIG: Record<PermissionEnum, { label: string; variant: 'soft' | 'secondary' | 'outline'; color: string }> = {
+  all_team_members: { label: '全员', variant: 'soft', color: 'text-success' },
+  only_me: { label: '仅自己', variant: 'secondary', color: 'text-warning' },
+  partial_members: { label: '部分成员', variant: 'outline', color: 'text-info' },
 }
 
 function parseMembers(text: string): string[] {
-  return (text || '')
-    .split(/[\n,]/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
+  return (text || '').split(/[\n,]/g).map((s) => s.trim()).filter(Boolean)
 }
 
 function mergePipelineOptions(
@@ -91,30 +85,24 @@ export default function DatasetsPage() {
   const [total, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<Dataset | null>(null)
 
   const [form, setForm] = useState<DatasetFormState>({
-    name: '',
-    description: '',
-    permission: 'all_team_members',
-    partialMembersText: '',
-    partialGroupIds: [],
-    pipelineEnabled: false,
-    pipelineOptions: { ...defaultPipelineOptions },
+    name: '', description: '', permission: 'all_team_members',
+    partialMembersText: '', partialGroupIds: [],
+    pipelineEnabled: false, pipelineOptions: { ...defaultPipelineOptions },
   })
 
   const resetForm = () => {
     setForm({
-      name: '',
-      description: '',
-      permission: 'all_team_members',
-      partialMembersText: '',
-      partialGroupIds: [],
-      pipelineEnabled: false,
-      pipelineOptions: { ...defaultPipelineOptions },
+      name: '', description: '', permission: 'all_team_members',
+      partialMembersText: '', partialGroupIds: [],
+      pipelineEnabled: false, pipelineOptions: { ...defaultPipelineOptions },
     })
   }
 
@@ -122,8 +110,7 @@ export default function DatasetsPage() {
     setIsLoading(true)
     try {
       const res = await datasetApi.list({
-        skip: 0,
-        limit: 200,
+        skip: 0, limit: 200,
         category_id: selectedCategoryId || undefined,
         include_descendants: true,
       })
@@ -137,9 +124,16 @@ export default function DatasetsPage() {
     }
   }, [selectedCategoryId])
 
-  useEffect(() => {
-    detachPromise(load())
-  }, [load])
+  useEffect(() => { detachPromise(load()) }, [load])
+
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return items
+    return items.filter((ds) =>
+      (ds.name || '').toLowerCase().includes(q) ||
+      (ds.description || '').toLowerCase().includes(q)
+    )
+  }, [items, searchQuery])
 
   const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name])
 
@@ -153,16 +147,12 @@ export default function DatasetsPage() {
       payload.partial_member_list = parseMembers(form.partialMembersText)
       payload.partial_group_list = (form.partialGroupIds || []).map(String)
     } else {
-      // Fail-closed: when switching away from partial, explicitly clear allowlists.
       payload.partial_member_list = null
       payload.partial_group_list = null
     }
     if (mode === 'create') {
-      if (form.pipelineEnabled) {
-        payload.pipeline = form.pipelineOptions
-      }
+      if (form.pipelineEnabled) payload.pipeline = form.pipelineOptions
     } else {
-      // For update: send an empty object to explicitly clear dataset pipeline when disabled.
       payload.pipeline = form.pipelineEnabled ? form.pipelineOptions : {}
     }
     return payload
@@ -177,7 +167,6 @@ export default function DatasetsPage() {
       resetForm()
       await load()
     } catch (e: any) {
-      console.error('Failed to create dataset', e)
       toast.error(formatApiError(e, '创建失败'))
     }
   }
@@ -186,8 +175,7 @@ export default function DatasetsPage() {
     setEditing(ds)
     const mergedPipeline = mergePipelineOptions(defaultPipelineOptions, ds.pipeline)
     setForm({
-      name: ds.name || '',
-      description: ds.description || '',
+      name: ds.name || '', description: ds.description || '',
       permission: ds.permission || 'all_team_members',
       partialMembersText: (ds.partial_member_list || []).join('\n'),
       partialGroupIds: (ds.partial_group_list || []).map(String),
@@ -198,8 +186,7 @@ export default function DatasetsPage() {
   }
 
   const handleUpdate = async () => {
-    if (!editing?.id) return
-    if (!canSubmit) return
+    if (!editing?.id || !canSubmit) return
     try {
       await datasetApi.update(editing.id, buildPayload('update'))
       toast.success('已更新数据集')
@@ -208,288 +195,251 @@ export default function DatasetsPage() {
       resetForm()
       await load()
     } catch (e: any) {
-      console.error('Failed to update dataset', e)
       toast.error(formatApiError(e, '更新失败'))
     }
   }
 
-  const handleDelete = async (ds: Dataset) => {
-    if (!ds?.id) return
+  const handleDelete = async () => {
+    if (!deleteTarget?.id) return
     try {
-      await datasetApi.delete(ds.id)
+      await datasetApi.delete(deleteTarget.id)
       toast.success('已删除数据集')
-      setItems((prev) => prev.filter((x) => x.id !== ds.id))
+      setItems((prev) => prev.filter((x) => x.id !== deleteTarget.id))
       setTotal((prev) => Math.max(0, prev - 1))
     } catch (e: any) {
-      console.error('Failed to delete dataset', e)
       toast.error(formatApiError(e, '删除失败'))
+    } finally {
+      setDeleteTarget(null)
     }
   }
+
+  const perm = (ds: Dataset) => PERMISSION_CONFIG[ds.permission] || PERMISSION_CONFIG.all_team_members
 
   return (
     <AppFrame>
       <PageScaffold
         title="数据集"
-        badge="Archive"
         icon={Layers}
         iconColor="text-primary"
-        description={
-          <span className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary/50" />
-            <span>管理知识库集合与访问权限</span>
-            <span className="ml-4 text-xs font-mono text-primary/70 uppercase ">
-              Total Archives: <span className="text-primary font-bold">{total}</span>
-            </span>
-          </span>
-        }
+        compact
+        description="管理知识库集合与访问权限"
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Button
-              variant="outline"
-              className="gap-2 rounded-lg bg-card/80 font-mono text-xs uppercase "
-              onClick={() => load()}
-              disabled={isLoading}
-	            >
-	              <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin motion-reduce:animate-none')} />
-	              Sync
-	            </Button>
-
-            <Dialog
-              open={createOpen}
-              onOpenChange={(open) => {
-                setCreateOpen(open)
-                if (open) resetForm()
-              }}
+              variant="ghost" size="sm"
+              onClick={() => load()} disabled={isLoading}
             >
+              <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
+            </Button>
+            <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
               <DialogTrigger asChild>
-                <Button className="gap-2 rounded-lg shadow-sm border border-primary/20">
+                <Button size="sm" className="gap-1.5">
                   <Plus className="w-4 h-4" />
                   新建数据集
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-xl sm:rounded-2xl">
                 <DialogHeader>
-                  <DialogTitle className="text-xl font-bold text-foreground">新建数据集</DialogTitle>
-                  <DialogDescription className="text-muted-foreground">为文档分组并设置访问权限</DialogDescription>
+                  <DialogTitle>新建数据集</DialogTitle>
+                  <DialogDescription>为文档分组并设置访问权限</DialogDescription>
                 </DialogHeader>
-
                 <DatasetForm form={form} setForm={setForm} />
-
                 <DialogFooter className="mt-4">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setCreateOpen(false)}
-                  >
-                    取消
-                  </Button>
-                  <Button onClick={handleCreate} disabled={!canSubmit}>
-                    确认创建
-                  </Button>
+                  <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
+                  <Button onClick={handleCreate} disabled={!canSubmit}>确认创建</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
           </div>
         }
       >
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-          <Panel variant="muted" padding="lg" className="rounded-3xl h-fit">
-            <DatasetCategoryTree selectedId={selectedCategoryId} onSelect={(id) => setSelectedCategoryId(id)} />
-          </Panel>
+        {/* Search + stats bar */}
+        <div className="flex items-center gap-3 mb-5">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索数据集..."
+              className="pl-9 h-9"
+            />
+          </div>
+          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <FolderOpen className="w-3.5 h-3.5" />
+              <span className="font-medium tabular-nums">{total}</span> 个数据集
+            </span>
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-primary" />}
+          </div>
+        </div>
 
-          <div className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm min-h-[500px] flex flex-col">
-            <div className="px-6 py-4 border-b border-border/60 flex items-center justify-between bg-muted/20">
-              <div className="text-xs font-bold text-muted-foreground uppercase ">Dataset Registry</div>
-	              {isLoading && (
-	                <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-	                  <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
-	                  LOADING_ARCHIVES...
-	                </div>
-	              )}
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5">
+          {/* Category sidebar */}
+          <div className="hidden lg:block">
+            <Panel variant="muted" padding="md" className="rounded-xl sticky top-0">
+              <DatasetCategoryTree selectedId={selectedCategoryId} onSelect={(id) => setSelectedCategoryId(id)} />
+            </Panel>
+          </div>
 
-            {items.length === 0 && !isLoading ? (
-              <div className="flex-1 p-6">
-                <EmptyState
-                  icon={Layers}
-                  title="暂无数据集"
-                  description="点击“新建数据集”开始构建知识库。"
-                  className="min-h-[420px]"
-                >
-                  <Button
-                    className="gap-2 rounded-lg"
-                    onClick={() => {
-                      resetForm()
-                      setCreateOpen(true)
-                    }}
-                  >
-                    <Plus className="w-4 h-4" />
-                    新建数据集
-                  </Button>
-                </EmptyState>
+          {/* Dataset list */}
+          {filteredItems.length === 0 && !isLoading ? (
+            <EmptyState
+              icon={Layers}
+              title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
+              description={searchQuery ? '尝试更换关键词' : '点击"新建数据集"开始构建知识库'}
+            >
+              {!searchQuery && (
+                <Button className="gap-1.5" onClick={() => { resetForm(); setCreateOpen(true) }}>
+                  <Plus className="w-4 h-4" /> 新建数据集
+                </Button>
+              )}
+            </EmptyState>
+          ) : (
+            <div className="rounded-xl border border-border overflow-hidden bg-card">
+              {/* Table header */}
+              <div className="grid grid-cols-[1fr_100px_80px_100px_40px] gap-3 px-4 py-2.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wider border-b border-border/60 bg-muted/30">
+                <div>名称</div>
+                <div>权限</div>
+                <div>管线</div>
+                <div className="hidden sm:block">ID</div>
+                <div />
               </div>
-            ) : (
-              <div className="divide-y divide-border/60">
-                {items.map((ds) => (
-                  <div key={ds.id} className="group px-6 py-5 flex items-start justify-between gap-6 hover:bg-muted/20 transition-colors">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-3 mb-1.5">
-                        <div className="font-bold text-lg text-foreground group-hover:text-primary transition-colors truncate ">{ds.name}</div>
-                        <Badge variant={permissionBadgeVariant(ds.permission)} className="text-[10px] uppercase  font-mono">
-                          {permissionLabel(ds.permission)}
-                        </Badge>
+
+              {/* Table rows */}
+              <div className="divide-y divide-border/40">
+                {filteredItems.map((ds) => (
+                  <div
+                    key={ds.id}
+                    className="group grid grid-cols-[1fr_100px_80px_100px_40px] gap-3 items-center px-4 py-3 cursor-pointer transition-colors hover:bg-muted/30"
+                    onClick={() => router.push(`/datasets/${ds.id}/precheck`)}
+                  >
+                    {/* Name + description */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Layers className={cn("w-4 h-4 flex-shrink-0", ds.pipeline ? 'text-primary' : 'text-muted-foreground/50')} />
+                        <span className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
+                          {ds.name}
+                        </span>
                       </div>
                       {ds.description && (
-                        <div className="text-sm text-muted-foreground group-hover:text-foreground/80 line-clamp-2 leading-relaxed">
-                          {ds.description}
-                        </div>
+                        <p className="mt-0.5 ml-6 text-xs text-muted-foreground truncate">{ds.description}</p>
                       )}
-
-                      <div className="mt-3 flex items-center gap-4 text-xs font-mono text-muted-foreground">
-                        {ds.permission === 'partial_members' && (ds.partial_member_list || []).length > 0 && (
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-1 h-1 rounded-full bg-primary/50" />
-                            MEMBERS: {(ds.partial_member_list || []).length}
-                          </span>
-                        )}
-                        {ds.permission === 'partial_members' && (ds.partial_group_list || []).length > 0 && (
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-1 h-1 rounded-full bg-primary/50" />
-                            GROUPS: {(ds.partial_group_list || []).length}
-                          </span>
-                        )}
-                        <span>ID: {ds.id.slice(0, 8)}</span>
-                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-shrink-0 opacity-0 group-hover:opacity-100 translate-x-4 group-hover:translate-x-0 transition-opacity transition-transform duration-200 motion-reduce:transition-none">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => router.push(`/datasets/${ds.id}/precheck`)}
-                      >
-                        <FileSearch className="w-3.5 h-3.5" />
-                        预检扫描
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => router.push(`/datasets/${ds.id}/profile`)}
-                      >
-                        <BarChart3 className="w-3.5 h-3.5" />
-                        数据画像
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => router.push(`/datasets/${ds.id}/ingestion`)}
-                      >
-                        <Settings2 className="w-3.5 h-3.5" />
-                        入库策略
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => router.push(`/datasets/${ds.id}/workflow`)}
-                      >
-                        <Layers className="w-3.5 h-3.5" />
-                        Workflow
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => router.push(`/datasets/${ds.id}/tables`)}
-                      >
-                        <Table2 className="w-3.5 h-3.5" />
-                        表格 / TAG
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => router.push(`/datasets/${ds.id}/evidence`)}
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        证据库
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => router.push(`/datasets/${ds.id}/db-catalog`)}
-                      >
-                        <Database className="w-3.5 h-3.5" />
-                        数据库目录
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2"
-                        onClick={() => openEdit(ds)}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        编辑
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="sm" className="gap-2">
-                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-                            删除
+                    {/* Permission */}
+                    <div>
+                      <Badge variant={perm(ds).variant} className="text-[10px] px-1.5 py-0">
+                        {perm(ds).label}
+                      </Badge>
+                    </div>
+
+                    {/* Pipeline status */}
+                    <div className="text-xs text-muted-foreground">
+                      {ds.pipeline ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="size-1.5 rounded-full bg-success" />
+                          启用
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground/40">--</span>
+                      )}
+                    </div>
+
+                    {/* ID */}
+                    <div className="hidden sm:block text-xs font-mono text-muted-foreground/60 tabular-nums truncate">
+                      {ds.id.slice(0, 8)}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex justify-end">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label="操作菜单"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
                           </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>删除数据集？</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              你将删除 <span className="font-mono">{ds.name}</span>。此操作不可撤销。
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(ds)}>删除</AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/precheck`)}>
+                            <FileSearch className="w-3.5 h-3.5 mr-2" /> 预检扫描
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/profile`)}>
+                            <BarChart3 className="w-3.5 h-3.5 mr-2" /> 数据画像
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/ingestion`)}>
+                            <Settings2 className="w-3.5 h-3.5 mr-2" /> 入库策略
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/workflow`)}>
+                            <Layers className="w-3.5 h-3.5 mr-2" /> Workflow
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/tables`)}>
+                            <Table2 className="w-3.5 h-3.5 mr-2" /> 表格 / TAG
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/evidence`)}>
+                            <ShieldCheck className="w-3.5 h-3.5 mr-2" /> 证据库
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/db-catalog`)}>
+                            <Database className="w-3.5 h-3.5 mr-2" /> 数据库目录
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => openEdit(ds)}>
+                            <Pencil className="w-3.5 h-3.5 mr-2" /> 编辑
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setDeleteTarget(ds)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 mr-2" /> 删除
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </PageScaffold>
 
-        <Dialog open={editOpen} onOpenChange={(open) => {
-          setEditOpen(open)
-          if (!open) {
-            setEditing(null)
-            resetForm()
-          }
-        }}>
-          <DialogContent className="max-w-xl sm:rounded-2xl">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-bold text-foreground">编辑数据集</DialogTitle>
-              <DialogDescription className="text-muted-foreground">更新名称、描述与访问权限</DialogDescription>
-            </DialogHeader>
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除数据集？</AlertDialogTitle>
+            <AlertDialogDescription>
+              你将删除 <span className="font-medium">{deleteTarget?.name}</span>。此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-            <DatasetForm form={form} setForm={setForm} />
-            {editing?.id ? <DatasetCategoryMultiSelect datasetId={editing.id} /> : null}
-
-            <DialogFooter className="mt-4">
-              <Button
-                variant="ghost"
-                onClick={() => setEditOpen(false)}
-              >
-                取消
-              </Button>
-              <Button onClick={handleUpdate} disabled={!canSubmit || !editing}>保存变更</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+      {/* Edit dialog */}
+      <Dialog open={editOpen} onOpenChange={(open) => {
+        setEditOpen(open)
+        if (!open) { setEditing(null); resetForm() }
+      }}>
+        <DialogContent className="max-w-xl sm:rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>编辑数据集</DialogTitle>
+            <DialogDescription>更新名称、描述与访问权限</DialogDescription>
+          </DialogHeader>
+          <DatasetForm form={form} setForm={setForm} />
+          {editing?.id ? <DatasetCategoryMultiSelect datasetId={editing.id} /> : null}
+          <DialogFooter className="mt-4">
+            <Button variant="ghost" onClick={() => setEditOpen(false)}>取消</Button>
+            <Button onClick={handleUpdate} disabled={!canSubmit || !editing}>保存变更</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppFrame>
   )
 }
@@ -551,14 +501,13 @@ function DatasetForm({
               组 allowlist 与成员 allowlist 同时生效（满足任一即可访问）。
             </div>
           </div>
-
           <div className="grid gap-2">
             <Label htmlFor="ds-members">允许成员（account_id，一行一个或逗号分隔）</Label>
             <Textarea
               id="ds-members"
               value={form.partialMembersText}
               onChange={(e) => setForm({ ...form, partialMembersText: e.target.value })}
-              placeholder="user_1\nuser_2"
+              placeholder="user_1&#10;user_2"
               className="font-mono text-sm"
             />
           </div>
@@ -573,16 +522,16 @@ function DatasetForm({
             className="mt-1"
           />
           <div className="min-w-0">
-            <div className="text-sm font-bold text-foreground">数据集默认管线</div>
-            <div className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              启用后，该数据集下的文档默认使用此治理/索引配置；上传文档时的“文档级配置”仍可覆盖。
+            <div className="text-sm font-medium text-foreground">数据集默认管线</div>
+            <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              启用后，该数据集下的文档默认使用此治理/索引配置
             </div>
           </div>
         </div>
         {form.pipelineEnabled && (
           <div className="p-4 bg-card/60">
             <div className="mb-4">
-              <div className="text-xs font-medium text-muted-foreground mb-2">治理预设（Profiles/脚本）</div>
+              <div className="text-xs font-medium text-muted-foreground mb-2">治理预设</div>
               <GovernanceProfileSelector
                 compact={true}
                 onApplyPatch={(patch) => {
@@ -598,16 +547,11 @@ function DatasetForm({
               hideEnabledToggle={true}
               enabled={true}
               value={form.pipelineOptions}
-              onEnabledChange={() => {
-                // dataset panel is always "enabled" when visible; ignore
-              }}
+              onEnabledChange={() => {}}
               onOptionChange={(key, value) => {
                 setForm((prev) => ({
                   ...prev,
-                  pipelineOptions: {
-                    ...prev.pipelineOptions,
-                    [key]: value,
-                  },
+                  pipelineOptions: { ...prev.pipelineOptions, [key]: value },
                 }))
               }}
             />

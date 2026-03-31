@@ -19,6 +19,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/openapi_check.py`
 - `api_smoke.py`: smoke test OpenAPI endpoints against a running backend (usually docker)
   - Example: `python scripts/api_smoke.py --help`
+  - Live parser example: `python scripts/api_smoke.py --skip-llm-test --skip-mineru --live-parser-backends deepseek_ocr --live-parser-fixture runs/deepseek_ocr_smoke.pdf`
 - `clean.py`: remove local caches/artifacts (used by `make clean`)
   - Example: `python scripts/clean.py`
 

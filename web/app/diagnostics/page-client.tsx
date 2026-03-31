@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { StatusBadge } from '@/components/ui/status-badge'
@@ -493,6 +494,7 @@ export default function DiagnosticsPage() {
   }, [refreshStorageAndCache])
 
   return (
+    <AppFrame>
     <PageScaffold
       title="诊断"
       description="前后端联调信息（后端健康 / 依赖就绪 / 后端元数据 / 前端 API 配置）"
@@ -540,7 +542,10 @@ export default function DiagnosticsPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            <pre className="text-xs whitespace-pre-wrap break-words">{envJson}</pre>
+            <details>
+              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+              <pre className="mt-2 text-xs whitespace-pre-wrap break-words">{envJson}</pre>
+            </details>
           </CardContent>
         </Card>
 
@@ -571,7 +576,10 @@ export default function DiagnosticsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <pre className="text-xs whitespace-pre-wrap break-words">{metaJson}</pre>
+            <details>
+              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+              <pre className="mt-2 text-xs whitespace-pre-wrap break-words">{metaJson}</pre>
+            </details>
           </CardContent>
         </Card>
 
@@ -637,7 +645,10 @@ export default function DiagnosticsPage() {
                 <span className="text-xs text-muted-foreground tabular-nums">{health.data.latencyMs}ms</span>
               ) : null}
             </div>
-            <pre className="text-xs whitespace-pre-wrap break-words">{healthJson}</pre>
+            <details>
+              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+              <pre className="mt-2 text-xs whitespace-pre-wrap break-words">{healthJson}</pre>
+            </details>
           </CardContent>
         </Card>
 
@@ -668,7 +679,10 @@ export default function DiagnosticsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <pre className="text-xs whitespace-pre-wrap break-words">{readyJson}</pre>
+            <details>
+              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+              <pre className="mt-2 text-xs whitespace-pre-wrap break-words">{readyJson}</pre>
+            </details>
           </CardContent>
         </Card>
 
@@ -961,9 +975,12 @@ export default function DiagnosticsPage() {
                     <span className="sr-only">复制 Prompt Preview Metrics JSON</span>
                   </Button>
                 </div>
-                <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
-                  {probeMetricsJson}
-                </pre>
+                <details>
+                  <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+                  <pre className="mt-2 text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
+                    {probeMetricsJson}
+                  </pre>
+                </details>
               </div>
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
@@ -1140,9 +1157,12 @@ export default function DiagnosticsPage() {
 	                  <span className="sr-only">复制 Embedding Drift Snapshot JSON</span>
 	                </Button>
 	              </div>
-	              <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
-	                {driftJson}
-	              </pre>
+	              <details>
+	                <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+	                <pre className="mt-2 text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
+	                  {driftJson}
+	                </pre>
+	              </details>
 		            </div>
 		          </CardContent>
 		        </Card>
@@ -1292,9 +1312,12 @@ export default function DiagnosticsPage() {
 		                  <span className="sr-only">复制 Perf Suite JSON</span>
 		                </Button>
 		              </div>
-		              <pre className="text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
-		                {perfSuiteJson}
-		              </pre>
+		              <details>
+		                <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+		                <pre className="mt-2 text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto rounded-md border border-border/60 p-3">
+		                  {perfSuiteJson}
+		                </pre>
+		              </details>
 		            </div>
 		          </CardContent>
 		        </Card>
@@ -1369,9 +1392,12 @@ export default function DiagnosticsPage() {
 	              />
 	            </StatsGrid>
 	
-	            <pre className="text-xs whitespace-pre-wrap break-words max-h-[240px] overflow-auto rounded-md border border-border/60 p-3">
-	              {perfJson}
-	            </pre>
+	            <details>
+	              <summary className="text-xs font-medium text-muted-foreground cursor-pointer select-none hover:text-foreground transition-colors">展开 JSON</summary>
+	              <pre className="mt-2 text-xs whitespace-pre-wrap break-words max-h-[240px] overflow-auto rounded-md border border-border/60 p-3">
+	                {perfJson}
+	              </pre>
+	            </details>
 	          </CardContent>
 	        </Card>
 
@@ -1593,5 +1619,6 @@ export default function DiagnosticsPage() {
 	        </Card>
 	      </div>
 	    </PageScaffold>
+    </AppFrame>
 	  )
 	}

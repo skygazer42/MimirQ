@@ -1,5 +1,6 @@
 import argparse
 import json
+import mimetypes
 import os
 import re
 import time
@@ -18,6 +19,7 @@ API_DATASET_BY_ID = '/api/v1/datasets/{dataset_id}'
 API_DATASET_INGESTION_POLICY = '/api/v1/datasets/{dataset_id}/ingestion-policy'
 API_DOCUMENT_BY_ID = '/api/v1/documents/{document_id}'
 API_DOCUMENTS_MANUAL = '/api/v1/documents/manual'
+API_DOCUMENTS_PREVIEW = '/api/v1/documents/preview'
 API_DOCUMENT_CHUNK_BY_ID = '/api/v1/documents/{document_id}/chunks/{chunk_id}'
 API_BATCH_UPLOAD_APPLY_URLS = '/api/v1/documents/batch-upload/apply-urls'
 API_BATCH_UPLOAD_STATUS = '/api/v1/documents/batch-upload/status/{batch_id}'
@@ -266,6 +268,74 @@ def parse_json(resp: httpx.Response | None) -> dict[str, Any]:
         return {}
 
 
+def parse_csv_items(value: str | None) -> list[str]:
+    seen: set[str] = set()
+    items: list[str] = []
+    for raw in (value or "").split(","):
+        item = raw.strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        items.append(item)
+    return items
+
+
+def resolve_repo_path(repo_root: Path, value: str | None) -> Path | None:
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    if path.is_absolute():
+        return path
+    return repo_root / path
+
+
+def run_live_parser_preview_smokes(
+    runner: SmokeRunner,
+    fixture_path: Path,
+    parser_backends: Iterable[str],
+    timeout: float,
+) -> None:
+    backends = parse_csv_items(",".join(str(item) for item in parser_backends))
+    if not backends:
+        return
+    if not fixture_path.exists():
+        raise FileNotFoundError(f"live parser fixture not found: {fixture_path}")
+
+    media_type = mimetypes.guess_type(fixture_path.name)[0] or "application/octet-stream"
+    for backend in backends:
+        with fixture_path.open("rb") as fh:
+            resp = runner.call(
+                "POST",
+                API_DOCUMENTS_PREVIEW,
+                API_DOCUMENTS_PREVIEW,
+                expected=[200],
+                timeout=timeout,
+                files={"file": (fixture_path.name, fh, media_type)},
+                data={"parser_backend": backend},
+            )
+        if not runner.results:
+            continue
+        result = runner.results[-1]
+        if resp is None or not result.ok:
+            if not result.note:
+                result.note = f"live parser preview failed for parser_backend={backend}"
+            continue
+        payload = parse_json(resp)
+        body_backend = str(payload.get("parser_backend") or "").strip()
+        segments = payload.get("segments")
+        if body_backend != backend:
+            result.ok = False
+            result.note = (
+                f"live parser preview returned parser_backend={body_backend or '<missing>'} "
+                f"for requested parser_backend={backend}"
+            )
+            continue
+        if not isinstance(segments, list) or not segments:
+            result.ok = False
+            result.note = f"live parser preview returned empty segments for parser_backend={backend}"
+
+
 _PATH_PARAM_RE = re.compile(r"{([^}]+)}")
 
 
@@ -346,19 +416,41 @@ def create_zip_with_image(tmp_dir: Path) -> Path:
     return zip_path
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Smoke-test MimirQ API endpoints.")
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--tenant-id", default=None)
     parser.add_argument("--auth-mode", default=None)
     parser.add_argument("--openapi", default=None, help="Optional OpenAPI JSON file path.")
     parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--live-parser-backends",
+        default="",
+        help="Optional comma-separated parser backends for real PDF preview smoke (for example: deepseek_ocr,mineru).",
+    )
+    parser.add_argument(
+        "--live-parser-fixture",
+        default="",
+        help="Repo-relative or absolute fixture path used by --live-parser-backends.",
+    )
+    parser.add_argument(
+        "--live-parser-timeout",
+        type=float,
+        default=180.0,
+        help="Timeout for each --live-parser-backends preview request in seconds.",
+    )
     parser.add_argument("--skip-llm-test", action="store_true")
     parser.add_argument("--skip-mineru", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     repo_root = Path(__file__).resolve().parents[1]
     dotenv = load_dotenv(repo_root / ".env")
+    live_parser_backends = parse_csv_items(args.live_parser_backends)
+    live_parser_fixture = resolve_repo_path(repo_root, args.live_parser_fixture)
+    if live_parser_backends and live_parser_fixture is None:
+        parser.error("--live-parser-fixture is required when --live-parser-backends is set")
+    if live_parser_backends and live_parser_fixture is not None and not live_parser_fixture.exists():
+        parser.error(f"--live-parser-fixture not found: {live_parser_fixture}")
 
     base_url = args.base_url or env_or(dotenv, "NEXT_PUBLIC_API_URL", "http://localhost:8000")
     tenant_id = args.tenant_id or env_or(dotenv, "NEXT_PUBLIC_TENANT_ID", "00000000-0000-0000-0000-000000000000")
@@ -589,12 +681,19 @@ def main() -> int:
         # Preview endpoints.
         runner.call(
             "POST",
-            "/api/v1/documents/preview",
-            "/api/v1/documents/preview",
+            API_DOCUMENTS_PREVIEW,
+            API_DOCUMENTS_PREVIEW,
             expected=[200],
             timeout=120.0,
             files={"file": ("preview.txt", b"preview", MEDIA_TYPE_TEXT_PLAIN)},
         )
+        if live_parser_backends and live_parser_fixture is not None:
+            run_live_parser_preview_smokes(
+                runner=runner,
+                fixture_path=live_parser_fixture,
+                parser_backends=live_parser_backends,
+                timeout=args.live_parser_timeout,
+            )
         runner.call(
             "POST",
             "/api/v1/documents/chunk-preview",

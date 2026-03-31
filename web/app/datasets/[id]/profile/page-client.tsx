@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import {
@@ -59,7 +59,16 @@ import type {
   DatasetProfileSummary,
 } from '@/types'
 
-const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
+const PIE_COLORS = [
+  'hsl(var(--chart-1))',
+  'hsl(var(--chart-2))',
+  'hsl(var(--chart-4))',
+  'hsl(var(--chart-6))',
+  'hsl(var(--chart-3))',
+  'hsl(var(--chart-7))',
+  'hsl(var(--chart-5))',
+  'hsl(var(--chart-8))',
+]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -84,6 +93,70 @@ function downloadBlob(blob: Blob, filename: string) {
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+const PROFILE_SECTIONS = [
+  { id: 'prof-overview', label: '概览' },
+  { id: 'prof-distribution', label: '分布图表' },
+  { id: 'prof-findings', label: '问题清单' },
+  { id: 'prof-scan', label: '深度扫描' },
+  { id: 'prof-history', label: '扫描历史' },
+] as const
+
+function ProfileAnchorNav() {
+  const [activeId, setActiveId] = useState<string>(PROFILE_SECTIONS[0].id)
+
+  useEffect(() => {
+    const visibleMap = new Map<string, number>()
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          visibleMap.set(entry.target.id, entry.intersectionRatio)
+        }
+        let best: string = PROFILE_SECTIONS[0].id
+        let bestRatio = -1
+        for (const sec of PROFILE_SECTIONS) {
+          const ratio = visibleMap.get(sec.id) ?? 0
+          if (ratio > bestRatio) {
+            bestRatio = ratio
+            best = sec.id
+          }
+        }
+        if (bestRatio > 0) setActiveId(best)
+      },
+      {
+        root: document.querySelector('[data-page-scroll-container]'),
+        threshold: [0, 0.1, 0.25, 0.5],
+      },
+    )
+
+    for (const sec of PROFILE_SECTIONS) {
+      const el = document.getElementById(sec.id)
+      if (el) observer.observe(el)
+    }
+
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div className="flex items-center gap-1 mb-5 overflow-x-auto no-scrollbar">
+      {PROFILE_SECTIONS.map((sec) => (
+        <button
+          key={sec.id}
+          type="button"
+          onClick={() => document.getElementById(sec.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className={cn(
+            'shrink-0 text-xs px-3 py-1.5 rounded-full transition-colors whitespace-nowrap',
+            activeId === sec.id
+              ? 'bg-primary/10 text-primary font-semibold'
+              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+          )}
+        >
+          {sec.label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function findingBadgeVariant(sev: string): 'secondary' | 'outline' | 'soft' | 'destructive' {
@@ -621,7 +694,7 @@ export default function DatasetProfilePage() {
         title={`数据画像${dataset?.name ? ` · ${dataset.name}` : ''}`}
         badge="Dataset Profile"
         icon={BarChart3}
-        iconColor="text-primary"
+        iconColor="text-info"
         top={<Breadcrumb items={breadcrumbs} />}
         description={
           <span className="text-sm text-muted-foreground">
@@ -682,7 +755,9 @@ export default function DatasetProfilePage() {
           </div>
         }
       >
+        <ProfileAnchorNav />
         <div className="space-y-6">
+          <div id="prof-overview">
           <Panel className="p-5">
             <StatsGrid>
               <StatCard icon={FileSearch} label="文档总数" value={summary?.total_documents ?? (isLoading ? '…' : 0)} color="cyan" />
@@ -712,8 +787,9 @@ export default function DatasetProfilePage() {
 })()} color="orange" />
             </StatsGrid>
           </Panel>
+          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div id="prof-distribution" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Panel className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">格式分布</div>
@@ -753,7 +829,7 @@ export default function DatasetProfilePage() {
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis allowDecimals={false} fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#38bdf8" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -770,7 +846,7 @@ export default function DatasetProfilePage() {
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis allowDecimals={false} fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -805,7 +881,7 @@ export default function DatasetProfilePage() {
                     <XAxis dataKey="name" fontSize={12} />
                     <YAxis allowDecimals={false} fontSize={12} />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#a78bfa" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="value" fill="hsl(var(--chart-3))" radius={[6, 6, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -823,7 +899,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#14b8a6" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-7))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -844,7 +920,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -865,7 +941,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -886,7 +962,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#fb7185" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -965,7 +1041,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#38bdf8" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -987,7 +1063,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#38bdf8" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1077,7 +1153,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} interval={0} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#94a3b8" radius={[6, 6, 0, 0]}>
+                      <Bar dataKey="value" fill="hsl(var(--chart-5))" radius={[6, 6, 0, 0]}>
                         {directoryChartData.map((entry) => (
                           <Cell
                             key={String(entry.key ?? entry.name ?? 'directory')}
@@ -1107,7 +1183,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} interval={0} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#22c55e" radius={[6, 6, 0, 0]}>
+                      <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]}>
                         {qualityBucketChartData.map((entry) => (
                           <Cell
                             key={String(entry.key ?? entry.name ?? 'quality')}
@@ -1136,7 +1212,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1157,7 +1233,7 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="#fb7185" radius={[6, 6, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1167,6 +1243,7 @@ export default function DatasetProfilePage() {
             </Panel>
           </div>
 
+          <div id="prof-findings">
           <Panel className="p-5">
             <div className="flex items-center justify-between gap-4 mb-4">
               <div className="font-semibold">问题清单（可操作）</div>
@@ -1199,7 +1276,9 @@ export default function DatasetProfilePage() {
               ))}
             </div>
           </Panel>
+          </div>
 
+          <div id="prof-scan">
           <Panel className="p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1287,7 +1366,9 @@ export default function DatasetProfilePage() {
               </div>
             </div>
           </Panel>
+          </div>
 
+          <div id="prof-history">
           <Panel className="p-5">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
@@ -1431,6 +1512,7 @@ export default function DatasetProfilePage() {
               </div>
             </div>
           </Panel>
+          </div>
         </div>
 
         <Dialog open={findingOpen} onOpenChange={(open) => {

@@ -33,6 +33,29 @@ def _configured_cli_status(enabled: bool, cli_path: str | None) -> str:
     return "disabled"
 
 
+def _mineru_status(
+    *,
+    enabled: bool,
+    local_server_url: str | None,
+    api_token: str | None,
+    token_expired: bool,
+    token_expiry_text: str | None,
+    import_ok: bool,
+    import_message: str,
+) -> str:
+    if not enabled:
+        return "disabled"
+    if local_server_url:
+        return "configured (local)" if import_ok else f"import failed: {import_message}"
+    if not api_token:
+        return "missing api_token or local_server_url"
+    if token_expired and token_expiry_text:
+        return f"api_token expired at {token_expiry_text}"
+    if not import_ok:
+        return f"import failed: {import_message}"
+    return "configured"
+
+
 def main() -> int:
     from app.core.config import settings
     from app.core.jwt_inspect import format_unix_ts_utc, try_get_jwt_exp
@@ -128,17 +151,16 @@ def main() -> int:
     mineru_token = (getattr(settings, "MINERU_API_TOKEN", "") or "").strip()
     mineru_exp = try_get_jwt_exp(mineru_token) if mineru_token else None
     mineru_token_expired = bool(mineru_exp is not None and int(mineru_exp) <= int(time.time()))
-    mineru_configured = bool(mineru_enabled and (mineru_local or (mineru_token and not mineru_token_expired)))
-    if not mineru_enabled:
-        mineru_status = "disabled"
-    elif mineru_local:
-        mineru_status = "configured (local)"
-    elif not mineru_token:
-        mineru_status = "missing api_token or local_server_url"
-    elif mineru_token_expired and mineru_exp is not None:
-        mineru_status = f"api_token expired at {format_unix_ts_utc(int(mineru_exp))}"
-    else:
-        mineru_status = "configured"
+    mineru_import_ok, mineru_import_msg = _check_import("app.parsing.parsers.mineru_parser")
+    mineru_status = _mineru_status(
+        enabled=mineru_enabled,
+        local_server_url=(getattr(settings, "MINERU_LOCAL_SERVER_URL", "") or "").strip(),
+        api_token=mineru_token,
+        token_expired=mineru_token_expired,
+        token_expiry_text=format_unix_ts_utc(int(mineru_exp)) if mineru_exp is not None else None,
+        import_ok=mineru_import_ok,
+        import_message=mineru_import_msg,
+    )
     rows.append(("mineru", "on" if mineru_enabled else "off", mineru_status))
 
     if bool(getattr(settings, "RAPIDOCR_ENABLED", False)):

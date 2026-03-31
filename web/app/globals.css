@@ -34,27 +34,46 @@
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    /* Accent - For hovers */
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent - Violet (a warm counterpoint to the cool cyan primary) */
+    --accent: 262 83% 58%;
+    --accent-foreground: 0 0% 100%;
 
 	    /* Destructive - Refined Red */
 	    --destructive: 0 84.2% 60.2%;
 	    --destructive-foreground: 222.2 84% 4.9%;
 
-	    /* Semantic - Status colors (success/warning/info) */
+	    /* Semantic - Status colors */
 	    --success: 142 76% 36%;
 	    --success-foreground: 222.2 84% 4.9%;
     --warning: 38 92% 50%;
     --warning-foreground: 222.2 84% 4.9%;
-	    --info: 210 90% 50%;
-	    --info-foreground: 222.2 84% 4.9%;
+	    --info: 217 91% 60%;
+	    --info-foreground: 0 0% 100%;
+
+    /* Extended palette tokens for richer stat cards and badges */
+    --teal: 172 66% 40%;
+    --teal-foreground: 0 0% 100%;
+    --orange: 24 95% 53%;
+    --orange-foreground: 0 0% 100%;
+    --rose: 347 77% 50%;
+    --rose-foreground: 0 0% 100%;
+    --indigo: 239 84% 67%;
+    --indigo-foreground: 0 0% 100%;
+
+    /* Chart palette (8 visually distinct hues for Recharts/data viz) */
+    --chart-1: 190 90% 50%;
+    --chart-2: 142 76% 36%;
+    --chart-3: 262 83% 58%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 217 91% 60%;
+    --chart-6: 347 77% 50%;
+    --chart-7: 172 66% 40%;
+    --chart-8: 24 95% 53%;
 
     /* Borders & Inputs - Subtle Cool Gray */
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 190 90% 50%;
-    /* Match primary for consistent focus rings */
 
     /* Radius - Consistent Curves */
     --radius: 0.75rem;
@@ -96,21 +115,41 @@
     --muted: 217 33% 17%;
     --muted-foreground: 215 20% 65%;
 
-    /* Accent - Lighter interaction layer */
-    --accent: 217 33% 20%;
-    --accent-foreground: 210 40% 98%;
+    /* Accent - Violet (brighter in dark mode) */
+    --accent: 262 83% 68%;
+    --accent-foreground: 222.2 47.4% 11.2%;
 
     /* Destructive */
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
 
-    /* Semantic - Status colors (success/warning/info) */
+    /* Semantic - Status colors */
     --success: 142 70% 45%;
     --success-foreground: 222.2 47.4% 11.2%;
     --warning: 38 92% 55%;
     --warning-foreground: 222.2 47.4% 11.2%;
-    --info: 210 90% 60%;
+    --info: 217 91% 68%;
     --info-foreground: 222.2 47.4% 11.2%;
+
+    /* Extended palette tokens */
+    --teal: 172 66% 50%;
+    --teal-foreground: 222.2 47.4% 11.2%;
+    --orange: 24 95% 60%;
+    --orange-foreground: 222.2 47.4% 11.2%;
+    --rose: 347 77% 60%;
+    --rose-foreground: 222.2 47.4% 11.2%;
+    --indigo: 239 84% 74%;
+    --indigo-foreground: 222.2 47.4% 11.2%;
+
+    /* Chart palette (dark mode - brighter for contrast) */
+    --chart-1: 190 90% 60%;
+    --chart-2: 142 70% 45%;
+    --chart-3: 262 83% 68%;
+    --chart-4: 38 92% 55%;
+    --chart-5: 217 91% 68%;
+    --chart-6: 347 77% 60%;
+    --chart-7: 172 66% 50%;
+    --chart-8: 24 95% 60%;
 
     /* Borders & Inputs */
     --border: 217 33% 20%;
@@ -171,6 +210,16 @@
 
   .glass-card {
     @apply bg-card/60 dark:bg-card/40 backdrop-blur-md border border-border/50 shadow-sm transition-shadow duration-200 hover:border-primary/20 hover:shadow-md;
+  }
+
+  /* On touch devices (no hover), make group-hover actions always visible */
+  @media (hover: none) {
+    .group .group-hover\:opacity-100 {
+      opacity: 1 !important;
+    }
+    .group .group-hover\:translate-x-0 {
+      translate: 0 !important;
+    }
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
