@@ -20,6 +20,7 @@ import type { PdfPageRenderWorkerApi } from '@/workers/pdf-page-render.worker'
 
 
 type Box = BboxOverlayItem
+type PdfJsModule = typeof import('pdfjs-dist/build/pdf.mjs')
 
 interface PdfViewerProps {
   file?: File | null
@@ -46,6 +47,31 @@ const IDLE_RENDER_TIMEOUT_MS = 400
 const OFFSCREEN_PAGE_RENDER_TIMEOUT_MS = 12_000
 const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '1100px'
 const DEFAULT_PAGE_CSS_WIDTH = 896
+const PDFJS_MODULE_URL = '/pdfjs/build/pdf.mjs'
+const PDFJS_WORKER_URL = '/pdfjs/build/pdf.worker.mjs'
+const PDFJS_CMAPS_URL = '/pdfjs/cmaps/'
+const PDFJS_STANDARD_FONTS_URL = '/pdfjs/standard_fonts/'
+const PDFJS_WASM_URL = '/pdfjs/wasm/'
+const PDFJS_ICCS_URL = '/pdfjs/iccs/'
+
+let pdfJsModulePromise: Promise<PdfJsModule> | null = null
+
+async function loadPdfJsModule(): Promise<PdfJsModule> {
+  try {
+    if (!pdfJsModulePromise) {
+      // Bypass Next's dev-time webpack wrapping for pdf.js. The wrapped chunk crashes
+      // on Mozilla's ESM bundle with "Object.defineProperty called on non-object".
+      pdfJsModulePromise = import(/* webpackIgnore: true */ PDFJS_MODULE_URL) as Promise<PdfJsModule>
+    }
+
+    const pdfjsLib = await pdfJsModulePromise
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL
+    return pdfjsLib
+  } catch (error) {
+    pdfJsModulePromise = null
+    throw error
+  }
+}
 
 function getPagePlaceholderHeight(pageAspectRatio: number | null): string {
   if (!pageAspectRatio || !Number.isFinite(pageAspectRatio) || pageAspectRatio <= 0) {
@@ -165,12 +191,16 @@ export function PdfViewer({
       setLoadError(null)
       try {
         const data = new Uint8Array(await file.arrayBuffer())
-        const pdfjsLib = await import('pdfjs-dist/webpack.mjs')
+        const pdfjsLib = await loadPdfJsModule()
         const offscreenCanvasSupported = Boolean(pdfjsLib.FeatureTest.isOffscreenCanvasSupported)
         const doc = await pdfjsLib.getDocument({
           data,
           isOffscreenCanvasSupported: offscreenCanvasSupported,
           enableHWA: offscreenCanvasSupported,
+          cMapUrl: PDFJS_CMAPS_URL,
+          standardFontDataUrl: PDFJS_STANDARD_FONTS_URL,
+          wasmUrl: PDFJS_WASM_URL,
+          iccUrl: PDFJS_ICCS_URL,
         }).promise
         if (cancelled) return
         setPdfDoc(doc)

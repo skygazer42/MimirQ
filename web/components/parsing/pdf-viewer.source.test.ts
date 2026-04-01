@@ -14,6 +14,16 @@ describe('pdf viewer source', () => {
     expect(src).not.toContain('const doc = await pdfjsLib.getDocument({ data }).promise')
   })
 
+  it('loads pdf.js from public runtime assets instead of bundling pdfjs-dist into the Next.js client build', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain("'/pdfjs/build/pdf.mjs'")
+    expect(src).toContain("'/pdfjs/build/pdf.worker.mjs'")
+    expect(src).toContain('webpackIgnore: true')
+    expect(src).toContain('GlobalWorkerOptions.workerSrc')
+    expect(src).not.toContain("import('pdfjs-dist/webpack.mjs')")
+  })
+
   it('accepts optional precomputed page box groups instead of always recomputing them from blocks', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 
@@ -117,7 +127,7 @@ describe('pdf viewer source', () => {
     expect(src).toContain('transferControlToOffscreen')
     expect(src).toContain('setOffscreenRenderEnabled(true)')
     expect(src).toContain('await api.attachPageCanvas(')
-    expect(src).toContain('await api.renderPage({')
+    expect(src).toContain('api.renderPage({ pageIndex, scale })')
     expect(src).toContain('offscreenApi.releasePage(pageIndex)')
   })
 })

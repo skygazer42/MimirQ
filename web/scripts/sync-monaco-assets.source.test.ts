@@ -22,4 +22,14 @@ describe('monaco asset sync wiring', () => {
     expect(src).toContain("path.join(monacoRoot, 'min', 'vs')")
     expect(src).toContain('fs.cp(')
   })
+
+  it('also copies pdf.js runtime assets into a project-controlled public path for native browser loading', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'sync-monaco-assets.mjs'), 'utf8')
+
+    expect(src).toContain("require.resolve('pdfjs-dist/package.json')")
+    expect(src).toContain("path.join(WEB_ROOT, 'public', 'pdfjs')")
+    expect(src).toContain("['build', 'cmaps', 'standard_fonts', 'wasm', 'iccs']")
+    expect(src).toContain('path.join(pdfjsRoot, assetDir)')
+    expect(src).toContain('path.join(PDFJS_OUT_DIR, assetDir)')
+  })
 })

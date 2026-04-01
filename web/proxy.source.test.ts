@@ -17,7 +17,7 @@ describe('proxy source', () => {
   it('skips API routes, static assets, and prefetch requests', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'proxy.ts'), 'utf8')
 
-    expect(src).toContain("source: '/((?!api|_next/static|_next/image|favicon.ico).*)'")
+    expect(src).toContain("source: '/((?!api|_next|.*\\\\..*).*)'")
     expect(src).toContain("key: 'next-router-prefetch'")
     expect(src).toContain("key: 'purpose', value: 'prefetch'")
   })
