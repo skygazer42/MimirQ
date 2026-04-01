@@ -46,6 +46,7 @@ const RETAIN_ROOT_MARGIN = '2400px 0px 2400px 0px'
 const IDLE_RENDER_TIMEOUT_MS = 400
 const OFFSCREEN_PAGE_RENDER_TIMEOUT_MS = 12_000
 const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '520px'
+const INITIAL_PDF_PAGE_PRERENDER_COUNT = 3
 // Next dev still wraps the dedicated render worker in eval-based chunks, which can leave
 // page rasterization stuck indefinitely. Keep rendering on the main thread for now.
 const ENABLE_PDF_OFFSCREEN_RENDER = false
@@ -230,6 +231,10 @@ export function PdfViewer({
       cancelled = true
     }
   }, [cancelRenderTasks, file, reloadTick])
+
+  useEffect(() => {
+    containerRef.current?.scrollTo({ top: 0 })
+  }, [file, reloadTick])
 
   useEffect(() => {
     // Important: measure the actual content width (max-w-4xl) instead of the scroll container width,
@@ -693,8 +698,12 @@ export function PdfViewer({
       if (el) observer.observe(el)
     }
 
-    // Kickstart: render first page ASAP.
-    queuePageRender(0)
+    // Kickstart: render the first few pages ASAP so the initial preview is visible even
+    // before the observer has fully settled after layout.
+    for (let pageIndex = 0; pageIndex < Math.min(totalPages, INITIAL_PDF_PAGE_PRERENDER_COUNT); pageIndex += 1) {
+      queuePageRender(pageIndex)
+    }
+    detachPromise(flushQueuedPageRendersRef.current())
 
     return () => {
       cancelled = true
