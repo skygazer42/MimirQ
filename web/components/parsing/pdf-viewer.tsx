@@ -502,7 +502,9 @@ export function PdfViewer({
         clearPageRenderRetry(pageIndex)
         return
       }
-      if (renderingPagesRef.current.has(pageIndex) || queuedPagesRef.current.has(pageIndex)) return
+      // Important: schedule retries even if the page is currently marked as "rendering".
+      // renderPage() calls us from its catch branch before clearing renderingPagesRef.
+      if (queuedPagesRef.current.has(pageIndex)) return
       if (pageRenderRetryTimeoutsRef.current.has(pageIndex)) return
 
       const attempts = pageRenderRetryCountsRef.current.get(pageIndex) || 0
