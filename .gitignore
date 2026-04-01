@@ -72,6 +72,7 @@ web/test-results/
 web/.next/
 web/.next_build/
 web/public/monaco/
+web/public/pdfjs/
 web/openapi.json
 web/types/openapi.ts
 *.sqlite
