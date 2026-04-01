@@ -10,6 +10,7 @@ const withNextIntl = createNextIntlPlugin('./i18n/request.ts')
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  allowedDevOrigins: ['127.0.0.1', 'localhost'],
   distDir:
     process.env.NEXT_DIST_DIR ||
     (process.env.NODE_ENV === 'production' ? '.next_build' : '.next'),

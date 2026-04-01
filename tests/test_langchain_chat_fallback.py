@@ -162,25 +162,38 @@ def test_prompt_cache_chat_openai_injects_cache_control_for_anthropic_payload(
     assert messages[1]["content"][0]["cache_control"]["type"] == "ephemeral"
 
 
-def test_build_chat_model_from_config_skips_pooled_async_client_by_default(
+def test_build_chat_model_from_config_builds_dedicated_async_client_by_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.core.config import settings
     from app.rag.llm import langchain_chat as lc_mod
 
     captured: list[dict[str, Any]] = []
+    created_async_clients: list[object] = []
 
     class _FakePromptCacheChatOpenAI:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             _ = args
             captured.append(dict(kwargs))
 
+    class _FakeAsyncClient:
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = dict(kwargs)
+            created_async_clients.append(self)
+
     monkeypatch.setattr(lc_mod, "PromptCacheChatOpenAI", _FakePromptCacheChatOpenAI, raising=True)
+    monkeypatch.setattr(lc_mod.httpx, "AsyncClient", _FakeAsyncClient, raising=True)
+    monkeypatch.setattr(lc_mod, "httpx_trust_env", lambda *, logger=None: False, raising=True)
     monkeypatch.setattr(settings, "LLM_FALLBACK_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "LLM_USE_POOLED_ASYNC_HTTP_CLIENT", False, raising=False)
 
     model = lc_mod.build_chat_model_from_config(
-        model_config={"model": "demo-model", "api_key": "k", "base_url": "https://example.com/v1"},
+        model_config={
+            "model": "demo-model",
+            "api_key": "k",
+            "base_url": "https://example.com/v1",
+            "timeout": 12,
+        },
         http_client="sync-client",
         http_async_client="async-client",
         streaming=True,
@@ -188,7 +201,8 @@ def test_build_chat_model_from_config_skips_pooled_async_client_by_default(
 
     assert isinstance(model, _FakePromptCacheChatOpenAI)
     assert captured[0]["http_client"] == "sync-client"
-    assert "http_async_client" not in captured[0]
+    assert captured[0]["http_async_client"] is created_async_clients[0]
+    assert created_async_clients[0].kwargs == {"trust_env": False, "timeout": 12}
 
 
 def test_build_chat_model_from_config_can_opt_into_pooled_async_client(

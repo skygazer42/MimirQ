@@ -90,6 +90,7 @@ from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pi
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.report_html import render_dataset_profile_html
 from app.services.retention_policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
+from app.services.tenant_group_service import TenantGroupService
 from app.tasks.queue import enqueue_dataset_profile_scan
 from app.types.pipeline import PipelineOptions
 
@@ -614,8 +615,40 @@ def list_datasets(
     db: Annotated[Session, Depends(get_db)]
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
-    # list all datasets in tenant
+
+    group_ids = list(
+        TenantGroupService.resolve_account_group_ids(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+        )
+    )
+
+    readable_filters = [
+        Dataset.owner_id == account_id,
+        Dataset.permission == DatasetPermissionEnum.ALL_TEAM_MEMBERS,
+        db.query(DatasetPermission.id)
+        .filter(
+            DatasetPermission.tenant_id == tenant_id,
+            DatasetPermission.dataset_id == Dataset.id,
+            DatasetPermission.account_id == account_id,
+        )
+        .exists(),
+    ]
+    if group_ids:
+        readable_filters.append(
+            db.query(DatasetGroupPermission.id)
+            .filter(
+                DatasetGroupPermission.tenant_id == tenant_id,
+                DatasetGroupPermission.dataset_id == Dataset.id,
+                DatasetGroupPermission.group_id.in_(group_ids),
+            )
+            .exists()
+        )
+
+    # List only datasets readable by the current account.
     query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
+    query = query.filter(or_(*readable_filters))
     # Optional category filter (best-effort; default includes subtree).
     if category_id is not None:
         try:

@@ -572,6 +572,26 @@ def _retrieve_structured_memory_records(
     return out
 
 
+def _touch_conversation_after_turn(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    conversation_id: UUID | None,
+) -> None:
+    if conversation_id is None:
+        return
+    db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.tenant_id == tenant_id,
+    ).update(
+        {
+            Conversation.message_count: func.coalesce(Conversation.message_count, 0) + 1,
+            Conversation.updated_at: datetime.now(UTC).replace(tzinfo=None),
+        },
+        synchronize_session=False,
+    )
+
+
 @router.post("", response_model=ChatResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def chat(
     http_request: Request,
@@ -1333,8 +1353,7 @@ async def chat(
             ),
         )
 
-        conversation.message_count += 1
-        conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
+        _touch_conversation_after_turn(db=db, tenant_id=tenant_id, conversation_id=conversation_id)
         db.commit()
 
     except Exception as exc:  # noqa: BLE001
@@ -1937,8 +1956,7 @@ async def stream_chat(
                 ),
             )
 
-            conversation.message_count += 1
-            conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
+            _touch_conversation_after_turn(db=db, tenant_id=tenant_id, conversation_id=conversation_id)
             db.commit()
 
             if (
@@ -2261,8 +2279,7 @@ async def stream_chat(
                     ),
                 )
 
-                conversation.message_count += 1
-                conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
+                _touch_conversation_after_turn(db=db, tenant_id=tenant_id, conversation_id=conversation_id)
                 db.commit()
 
                 if (
@@ -2623,9 +2640,8 @@ async def stream_chat(
                 ),
             )
 
-            # Update conversation metadata.
-            conversation.message_count += 1
-            conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
+            # Update conversation metadata without relying on the pre-stream ORM instance.
+            _touch_conversation_after_turn(db=db, tenant_id=tenant_id, conversation_id=conversation_id)
             db.commit()
 
             if (

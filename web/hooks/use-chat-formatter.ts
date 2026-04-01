@@ -9,6 +9,7 @@ export type ChatRagConfig = Partial<Omit<NonNullable<ChatRequest['rag_config']>,
 export type UseChatOptions = {
   conversationId?: string
   documentIds?: string[]
+  datasetId?: string
   promptTemplateId?: string
   ragConfig?: ChatRagConfig
   structuredOutput?: boolean
@@ -26,6 +27,7 @@ type BuildChatRequestOptions = {
   message: string
   history: ChatHistoryEntry[]
   documentIds?: string[]
+  datasetId?: string
   promptTemplateId?: string
   structuredOutput?: boolean
   structuredPreset?: string
@@ -152,6 +154,7 @@ export function buildChatRequest({
   message,
   history,
   documentIds,
+  datasetId,
   promptTemplateId,
   structuredOutput,
   structuredPreset,
@@ -174,6 +177,7 @@ export function buildChatRequest({
     message,
     history,
     document_ids: documentIds,
+    dataset_id: documentIds?.length ? undefined : datasetId || undefined,
     prompt_template_id: promptTemplateId,
     stream: !useGraph,
     structured_output: Boolean(structuredOutput),
