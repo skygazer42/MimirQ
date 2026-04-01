@@ -98,9 +98,21 @@ describe('pdf viewer source', () => {
     expect(src).toContain('queuedPagesRef.current.add(pageIndex)')
     expect(src).toContain('flushQueuedPageRendersRef')
     expect(src).toContain('detachPromise(flushQueuedPageRendersRef.current())')
+    expect(src).toContain('const INITIAL_PDF_PAGE_PRERENDER_COUNT = 3')
+    expect(src).toContain('for (let pageIndex = 0; pageIndex < Math.min(totalPages, INITIAL_PDF_PAGE_PRERENDER_COUNT); pageIndex += 1)')
     expect(src).toContain('}, [pageCount, pdfDoc, queuePageRender, scale])')
     expect(src).not.toContain('detachPromise(renderPage(idx))')
     expect(src).not.toContain('detachPromise(renderPage(0))')
+
+    const prerenderLoopIndex = src.indexOf(
+      'for (let pageIndex = 0; pageIndex < Math.min(totalPages, INITIAL_PDF_PAGE_PRERENDER_COUNT); pageIndex += 1)'
+    )
+    const immediateFlushIndex = src.indexOf('detachPromise(flushQueuedPageRendersRef.current())', prerenderLoopIndex)
+    const effectReturnIndex = src.indexOf('return () => {', prerenderLoopIndex)
+
+    expect(prerenderLoopIndex).toBeGreaterThan(-1)
+    expect(immediateFlushIndex).toBeGreaterThan(prerenderLoopIndex)
+    expect(effectReturnIndex).toBeGreaterThan(immediateFlushIndex)
   })
 
   it('distinguishes actively rendering pages from offscreen pages that are merely waiting to lazy-load', () => {
@@ -128,6 +140,13 @@ describe('pdf viewer source', () => {
 
     expect(src).toContain('if (!renderedPagesRef.current.has(idx)) continue')
     expect(src).toContain('releasePage(idx)')
+  })
+
+  it('resets the PDF scroll container to the first page when the active file changes', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('containerRef.current?.scrollTo({ top: 0 })')
+    expect(src).toContain('}, [file, reloadTick])')
   })
 
   it('bounds retained rasterized pages behind an explicit canvas pool budget', () => {
