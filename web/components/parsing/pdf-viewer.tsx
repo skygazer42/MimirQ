@@ -55,7 +55,7 @@ const PAGE_RENDER_RETRY_DELAY_MS = 150
 // page rasterization stuck indefinitely. Keep rendering on the main thread for now.
 const ENABLE_PDF_OFFSCREEN_RENDER = false
 const PDFJS_MODULE_URL = '/pdfjs/build/pdf.mjs'
-const PDFJS_WORKER_URL = '/pdfjs/build/pdf.worker.mjs'
+const PDFJS_WORKER_URL = '/pdfjs-compat/pdf.worker.mjs'
 const PDFJS_CMAPS_URL = '/pdfjs/cmaps/'
 const PDFJS_STANDARD_FONTS_URL = '/pdfjs/standard_fonts/'
 const PDFJS_WASM_URL = '/pdfjs/wasm/'
@@ -63,9 +63,57 @@ const PDFJS_ICCS_URL = '/pdfjs/iccs/'
 
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null
 
+function installPdfJsCompatPolyfills() {
+  const promiseCtor = Promise as typeof Promise & {
+    withResolvers?: () => {
+      promise: Promise<unknown>
+      resolve: (value: unknown) => void
+      reject: (reason?: unknown) => void
+    }
+  }
+
+  if (typeof promiseCtor.withResolvers !== 'function') {
+    Object.defineProperty(promiseCtor, 'withResolvers', {
+      configurable: true,
+      writable: true,
+      value() {
+        let resolve: (value: unknown) => void = () => {}
+        let reject: (reason?: unknown) => void = () => {}
+        const promise = new Promise((innerResolve, innerReject) => {
+          resolve = innerResolve
+          reject = innerReject
+        })
+
+        return { promise, resolve, reject }
+      },
+    })
+  }
+
+  const mapPrototype = Map.prototype as typeof Map.prototype & {
+    getOrInsertComputed?: (key: unknown, compute: (key: unknown) => unknown) => unknown
+  }
+
+  if (typeof mapPrototype.getOrInsertComputed !== 'function') {
+    Object.defineProperty(mapPrototype, 'getOrInsertComputed', {
+      configurable: true,
+      writable: true,
+      value(key: unknown, compute: (key: unknown) => unknown) {
+        if (this.has(key)) {
+          return this.get(key)
+        }
+
+        const value = compute(key)
+        this.set(key, value)
+        return value
+      },
+    })
+  }
+}
+
 async function loadPdfJsModule(): Promise<PdfJsModule> {
   try {
     if (!pdfJsModulePromise) {
+      installPdfJsCompatPolyfills()
       // Bypass Next's dev-time webpack wrapping for pdf.js. The wrapped chunk crashes
       // on Mozilla's ESM bundle with "Object.defineProperty called on non-object".
       pdfJsModulePromise = import(/* webpackIgnore: true */ PDFJS_MODULE_URL) as Promise<PdfJsModule>
@@ -115,10 +163,12 @@ export function PdfViewer({
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())
   const [failedPages, setFailedPages] = useState<Set<number>>(new Set())
+  const [pageRenderErrors, setPageRenderErrors] = useState<Map<number, string>>(new Map())
   const [offscreenRenderEnabled, setOffscreenRenderEnabled] = useState(false)
   const renderedPagesRef = useRef<Set<number>>(new Set())
   const renderingPagesRef = useRef<Set<number>>(new Set())
   const renderTasksRef = useRef<Map<number, RenderTask>>(new Map())
+  const pageRenderErrorsRef = useRef<Map<number, string>>(new Map())
   const offscreenRenderWorkerRef = useRef<Worker | null>(null)
   const offscreenRenderApiRef = useRef<Remote<PdfPageRenderWorkerApi> | null>(null)
   const transferredPageCanvasRef = useRef<Set<number>>(new Set())
@@ -191,6 +241,8 @@ export function PdfViewer({
         setRenderedPages(new Set())
         setLoadingPages(new Set())
         setFailedPages(new Set())
+        pageRenderErrorsRef.current = new Map()
+        setPageRenderErrors(new Map())
         setLoadError(null)
         return
       }
@@ -220,6 +272,8 @@ export function PdfViewer({
         setRenderedPages(new Set())
         setLoadingPages(new Set())
         setFailedPages(new Set())
+        pageRenderErrorsRef.current = new Map()
+        setPageRenderErrors(new Map())
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : toPrimitiveString(err)
@@ -233,6 +287,8 @@ export function PdfViewer({
           setRenderedPages(new Set())
           setLoadingPages(new Set())
           setFailedPages(new Set())
+          pageRenderErrorsRef.current = new Map()
+          setPageRenderErrors(new Map())
         }
       } finally {
         if (!cancelled) setIsLoading(false)
@@ -422,6 +478,41 @@ export function PdfViewer({
     pageRenderRetryCountsRef.current.clear()
   }, [])
 
+  const setPageRenderError = useCallback((pageIndex: number, error: unknown) => {
+    const message = error instanceof Error ? error.message : toPrimitiveString(error)
+    const nextMessage = message || `Page ${pageIndex + 1} render failed`
+
+    setPageRenderErrors((prev) => {
+      if (prev.get(pageIndex) === nextMessage) return prev
+
+      const next = new Map(prev)
+      next.set(pageIndex, nextMessage)
+      pageRenderErrorsRef.current = next
+      return next
+    })
+
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`PDF page ${pageIndex + 1} render failed`, error)
+    }
+  }, [])
+
+  const clearPageRenderError = useCallback((pageIndex?: number) => {
+    if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
+      setPageRenderErrors((prev) => {
+        if (!prev.has(pageIndex)) return prev
+
+        const next = new Map(prev)
+        next.delete(pageIndex)
+        pageRenderErrorsRef.current = next
+        return next
+      })
+      return
+    }
+
+    pageRenderErrorsRef.current = new Map()
+    setPageRenderErrors(new Map())
+  }, [])
+
   const markPageFailed = useCallback((pageIndex: number) => {
     setFailedPages((prev) => {
       if (prev.has(pageIndex)) return prev
@@ -452,12 +543,13 @@ export function PdfViewer({
 
     clearPageRenderRetry(pageIndex)
     clearPageFailure(pageIndex)
+    clearPageRenderError(pageIndex)
     const next = new Set(renderedPagesRef.current)
     next.add(pageIndex)
     renderedPagesRef.current = next
     setRenderedPages(next)
     return true
-  }, [clearPageFailure, clearPageRenderRetry])
+  }, [clearPageFailure, clearPageRenderError, clearPageRenderRetry])
 
   const unmarkPageRendered = useCallback((pageIndex: number) => {
     if (!renderedPagesRef.current.has(pageIndex)) return false
@@ -519,12 +611,13 @@ export function PdfViewer({
       if (queuedPagesRef.current.has(pageIndex)) return
 
       clearPageFailure(pageIndex)
+      clearPageRenderError(pageIndex)
       queuedPagesRef.current.add(pageIndex)
       markPageLoading(pageIndex)
       renderQueueRef.current.push(pageIndex)
       scheduleQueuedRenderFlush()
     },
-    [clearPageFailure, markPageLoading, pageCount, scheduleQueuedRenderFlush]
+    [clearPageFailure, clearPageRenderError, markPageLoading, pageCount, scheduleQueuedRenderFlush]
   )
 
   const schedulePageRenderRetry = useCallback(
@@ -622,6 +715,7 @@ export function PdfViewer({
     clearQueuedRenderFlush()
     cancelRenderTasks()
     clearPageRenderRetry()
+    clearPageRenderError()
     activeRenderCountRef.current = 0
     queuedPagesRef.current.clear()
     retainedPageIndicesRef.current.clear()
@@ -631,18 +725,19 @@ export function PdfViewer({
     setRenderedPages(new Set())
     setLoadingPages(new Set())
     setFailedPages(new Set())
-  }, [cancelRenderTasks, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc, scale])
+  }, [cancelRenderTasks, clearPageRenderError, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc, scale])
 
   useEffect(() => {
     const doc = pdfDoc
-    return () => {
-      clearQueuedRenderFlush()
-      cancelRenderTasks()
-      clearPageRenderRetry()
-      if (!doc) return
-      detachPromise(doc.cleanup())
-    }
-  }, [cancelRenderTasks, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc])
+      return () => {
+        clearQueuedRenderFlush()
+        cancelRenderTasks()
+        clearPageRenderRetry()
+        clearPageRenderError()
+        if (!doc) return
+        detachPromise(doc.cleanup())
+      }
+  }, [cancelRenderTasks, clearPageRenderError, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc])
 
   const renderPage = useCallback(
     async (pageIndex: number) => {
@@ -703,26 +798,44 @@ export function PdfViewer({
         const canvas = canvasRefs.current.get(pageIndex)
         if (!canvas) {
           if (renderGenRef.current !== gen) return
+          setPageRenderError(pageIndex, `Canvas not mounted for page ${pageIndex + 1}`)
           schedulePageRenderRetry(pageIndex)
           return
         }
 
         canvas.width = Math.ceil(viewport.width)
         canvas.height = Math.ceil(viewport.height)
-        const renderTask = page.render({ canvas, viewport })
+        const canvasContext = canvas.getContext('2d', { alpha: false })
+        if (!canvasContext) {
+          if (renderGenRef.current !== gen) return
+          setPageRenderError(pageIndex, `Unable to acquire 2D canvas context for page ${pageIndex + 1}`)
+          schedulePageRenderRetry(pageIndex)
+          return
+        }
+
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height)
+        const renderTask = page.render({ canvas: null, canvasContext, viewport, background: '#ffffff' })
         activeRenderTask = renderTask
         renderTasksRef.current.set(pageIndex, renderTask)
 
-        let renderTimeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
-          try {
-            renderTask.cancel()
-          } catch {
-            // ignore
-          }
-        }, MAIN_THREAD_PAGE_RENDER_TIMEOUT_MS)
+        let renderTimeoutId: ReturnType<typeof setTimeout> | null = null
 
         try {
-          await renderTask.promise
+          await Promise.race([
+            (async () => {
+              await renderTask.promise
+            })(),
+            new Promise<never>((_, reject) => {
+              renderTimeoutId = setTimeout(() => {
+                try {
+                  renderTask.cancel()
+                } catch {
+                  // ignore
+                }
+                reject(new Error(`Main-thread render timed out for page ${pageIndex + 1}`))
+              }, MAIN_THREAD_PAGE_RENDER_TIMEOUT_MS)
+            }),
+          ])
         } finally {
           if (renderTimeoutId) clearTimeout(renderTimeoutId)
           renderTimeoutId = null
@@ -737,10 +850,12 @@ export function PdfViewer({
         // OffscreenCanvas transfer is one-way; if the worker can't render a page, fall back to main-thread
         // by disabling offscreen mode and forcing a reload to remount canvas nodes.
         if (usedOffscreenWorker) {
+          setPageRenderError(pageIndex, error)
           disableOffscreenRenderAndReload(error)
           return
         }
         if (renderGenRef.current !== gen) return
+        setPageRenderError(pageIndex, error)
         schedulePageRenderRetry(pageIndex)
       } finally {
         if (activeRenderTask && renderTasksRef.current.get(pageIndex) === activeRenderTask) {
@@ -761,6 +876,7 @@ export function PdfViewer({
       pdfDoc,
       pageCount,
       rememberPageAspectRatio,
+      setPageRenderError,
       schedulePageRenderRetry,
       scale,
       trimRenderedPagePool,
@@ -964,6 +1080,32 @@ export function PdfViewer({
       globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
     el?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' })
   }, [activeBlockIds, resolvedBlockIdToPageIndex])
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    if (globalThis.window === undefined) return
+
+    const win = globalThis.window as typeof globalThis.window & {
+      __mimirqPdfViewerDebug?: Record<string, unknown>
+    }
+
+    win.__mimirqPdfViewerDebug = {
+      activeRenderCount: activeRenderCountRef.current,
+      failedPages: Array.from(failedPages),
+      loadingPages: Array.from(loadingPages),
+      pageCount,
+      pageErrors: Object.fromEntries(pageRenderErrorsRef.current.entries()),
+      queuedPages: Array.from(queuedPagesRef.current),
+      renderedPages: Array.from(renderedPagesRef.current),
+      renderingPages: Array.from(renderingPagesRef.current),
+      retryCounts: Object.fromEntries(pageRenderRetryCountsRef.current.entries()),
+      scale,
+    }
+
+    return () => {
+      delete win.__mimirqPdfViewerDebug
+    }
+  }, [failedPages, loadingPages, pageCount, pageRenderErrors, renderedPages, scale])
 
   if (!file) {
     return (
