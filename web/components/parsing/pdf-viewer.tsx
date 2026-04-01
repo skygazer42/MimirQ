@@ -47,6 +47,8 @@ const IDLE_RENDER_TIMEOUT_MS = 400
 const OFFSCREEN_PAGE_RENDER_TIMEOUT_MS = 12_000
 const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '520px'
 const INITIAL_PDF_PAGE_PRERENDER_COUNT = 3
+const MAX_PAGE_RENDER_RETRIES = 3
+const PAGE_RENDER_RETRY_DELAY_MS = 150
 // Next dev still wraps the dedicated render worker in eval-based chunks, which can leave
 // page rasterization stuck indefinitely. Keep rendering on the main thread for now.
 const ENABLE_PDF_OFFSCREEN_RENDER = false
@@ -123,6 +125,8 @@ export function PdfViewer({
   const renderQueueRef = useRef<number[]>([])
   const idleRenderHandleRef = useRef<IdleCallbackHandle | null>(null)
   const idleRenderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pageRenderRetryCountsRef = useRef<Map<number, number>>(new Map())
+  const pageRenderRetryTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
   const activeRenderCountRef = useRef(0)
   const flushQueuedPageRendersRef = useRef<() => Promise<void>>(async () => {})
   const renderGenRef = useRef(0)
@@ -170,6 +174,9 @@ export function PdfViewer({
 
     async function loadPdf() {
       cancelRenderTasks()
+      pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
+      pageRenderRetryTimeoutsRef.current.clear()
+      pageRenderRetryCountsRef.current.clear()
 
       if (!file) {
         setPdfDoc(null)
@@ -395,15 +402,30 @@ export function PdfViewer({
     })
   }, [])
 
+  const clearPageRenderRetry = useCallback((pageIndex?: number) => {
+    if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
+      const timeoutId = pageRenderRetryTimeoutsRef.current.get(pageIndex)
+      if (timeoutId) clearTimeout(timeoutId)
+      pageRenderRetryTimeoutsRef.current.delete(pageIndex)
+      pageRenderRetryCountsRef.current.delete(pageIndex)
+      return
+    }
+
+    pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
+    pageRenderRetryTimeoutsRef.current.clear()
+    pageRenderRetryCountsRef.current.clear()
+  }, [])
+
   const markPageRendered = useCallback((pageIndex: number) => {
     if (renderedPagesRef.current.has(pageIndex)) return false
 
+    clearPageRenderRetry(pageIndex)
     const next = new Set(renderedPagesRef.current)
     next.add(pageIndex)
     renderedPagesRef.current = next
     setRenderedPages(next)
     return true
-  }, [])
+  }, [clearPageRenderRetry])
 
   const unmarkPageRendered = useCallback((pageIndex: number) => {
     if (!renderedPagesRef.current.has(pageIndex)) return false
@@ -435,42 +457,6 @@ export function PdfViewer({
     })
   }, [])
 
-  const releasePage = useCallback((pageIndex: number) => {
-    const activeRenderTask = renderTasksRef.current.get(pageIndex)
-    activeRenderTask?.cancel()
-    renderTasksRef.current.delete(pageIndex)
-    renderingPagesRef.current.delete(pageIndex)
-    queuedPagesRef.current.delete(pageIndex)
-    renderQueueRef.current = renderQueueRef.current.filter((candidate) => candidate !== pageIndex)
-    unmarkPageLoading(pageIndex)
-
-    const canvas = canvasRefs.current.get(pageIndex)
-    const offscreenApi = offscreenRenderApiRef.current
-    if (transferredPageCanvasRef.current.has(pageIndex) && offscreenRenderEnabled && offscreenApi) {
-      detachPromise(offscreenApi.releasePage(pageIndex).catch(() => {}))
-    } else if (canvas) {
-      canvas.width = 0
-      canvas.height = 0
-    }
-
-    unmarkPageRendered(pageIndex)
-  }, [offscreenRenderEnabled, unmarkPageLoading, unmarkPageRendered])
-
-  const trimRenderedPagePool = useCallback((pageIndex: number) => {
-    const stalePageIndices = selectPdfPagesToReleaseForPool({
-      renderedPages: renderedPagesRef.current,
-      keepPage: pageIndex,
-      maxRetainedPages: MAX_RETAINED_PAGE_CANVASES,
-      retainedPages: retainedPageIndicesRef.current,
-      queuedPages: queuedPagesRef.current,
-      renderingPages: renderingPagesRef.current,
-    })
-
-    for (const stalePageIndex of stalePageIndices) {
-      releasePage(stalePageIndex)
-    }
-  }, [releasePage])
-
   const scheduleQueuedRenderFlush = useCallback(() => {
     if (idleRenderHandleRef.current != null || idleRenderTimeoutRef.current != null) return
 
@@ -493,11 +479,102 @@ export function PdfViewer({
     idleRenderTimeoutRef.current = setTimeout(flush, 0)
   }, [])
 
+  const queuePageRender = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex < 0 || pageIndex >= pageCount) return
+      if (renderedPagesRef.current.has(pageIndex)) return
+      if (renderingPagesRef.current.has(pageIndex)) return
+      if (queuedPagesRef.current.has(pageIndex)) return
+
+      queuedPagesRef.current.add(pageIndex)
+      markPageLoading(pageIndex)
+      renderQueueRef.current.push(pageIndex)
+      scheduleQueuedRenderFlush()
+    },
+    [markPageLoading, pageCount, scheduleQueuedRenderFlush]
+  )
+
+  const schedulePageRenderRetry = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex < 0 || pageIndex >= pageCount) return
+      if (renderedPagesRef.current.has(pageIndex)) {
+        clearPageRenderRetry(pageIndex)
+        return
+      }
+      if (renderingPagesRef.current.has(pageIndex) || queuedPagesRef.current.has(pageIndex)) return
+      if (pageRenderRetryTimeoutsRef.current.has(pageIndex)) return
+
+      const attempts = pageRenderRetryCountsRef.current.get(pageIndex) || 0
+      if (attempts >= MAX_PAGE_RENDER_RETRIES) return
+
+      pageRenderRetryCountsRef.current.set(pageIndex, attempts + 1)
+      markPageLoading(pageIndex)
+
+      const timeoutId = setTimeout(() => {
+        if (pageRenderRetryTimeoutsRef.current.get(pageIndex) === timeoutId) {
+          pageRenderRetryTimeoutsRef.current.delete(pageIndex)
+        }
+        if (renderedPagesRef.current.has(pageIndex)) {
+          clearPageRenderRetry(pageIndex)
+          unmarkPageLoading(pageIndex)
+          return
+        }
+        if (renderingPagesRef.current.has(pageIndex) || queuedPagesRef.current.has(pageIndex)) {
+          return
+        }
+
+        queuePageRender(pageIndex)
+        detachPromise(flushQueuedPageRendersRef.current())
+      }, PAGE_RENDER_RETRY_DELAY_MS)
+
+      pageRenderRetryTimeoutsRef.current.set(pageIndex, timeoutId)
+    },
+    [clearPageRenderRetry, markPageLoading, pageCount, queuePageRender, unmarkPageLoading]
+  )
+
+  const releasePage = useCallback((pageIndex: number) => {
+    const activeRenderTask = renderTasksRef.current.get(pageIndex)
+    activeRenderTask?.cancel()
+    renderTasksRef.current.delete(pageIndex)
+    renderingPagesRef.current.delete(pageIndex)
+    queuedPagesRef.current.delete(pageIndex)
+    renderQueueRef.current = renderQueueRef.current.filter((candidate) => candidate !== pageIndex)
+    clearPageRenderRetry(pageIndex)
+    unmarkPageLoading(pageIndex)
+
+    const canvas = canvasRefs.current.get(pageIndex)
+    const offscreenApi = offscreenRenderApiRef.current
+    if (transferredPageCanvasRef.current.has(pageIndex) && offscreenRenderEnabled && offscreenApi) {
+      detachPromise(offscreenApi.releasePage(pageIndex).catch(() => {}))
+    } else if (canvas) {
+      canvas.width = 0
+      canvas.height = 0
+    }
+
+    unmarkPageRendered(pageIndex)
+  }, [clearPageRenderRetry, offscreenRenderEnabled, unmarkPageLoading, unmarkPageRendered])
+
+  const trimRenderedPagePool = useCallback((pageIndex: number) => {
+    const stalePageIndices = selectPdfPagesToReleaseForPool({
+      renderedPages: renderedPagesRef.current,
+      keepPage: pageIndex,
+      maxRetainedPages: MAX_RETAINED_PAGE_CANVASES,
+      retainedPages: retainedPageIndicesRef.current,
+      queuedPages: queuedPagesRef.current,
+      renderingPages: renderingPagesRef.current,
+    })
+
+    for (const stalePageIndex of stalePageIndices) {
+      releasePage(stalePageIndex)
+    }
+  }, [releasePage])
+
   // Invalidate any in-flight renders when doc/scale changes.
   useEffect(() => {
     renderGenRef.current += 1
     clearQueuedRenderFlush()
     cancelRenderTasks()
+    clearPageRenderRetry()
     activeRenderCountRef.current = 0
     queuedPagesRef.current.clear()
     retainedPageIndicesRef.current.clear()
@@ -506,17 +583,18 @@ export function PdfViewer({
     renderingPagesRef.current.clear()
     setRenderedPages(new Set())
     setLoadingPages(new Set())
-  }, [cancelRenderTasks, clearQueuedRenderFlush, pdfDoc, scale])
+  }, [cancelRenderTasks, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc, scale])
 
   useEffect(() => {
     const doc = pdfDoc
     return () => {
       clearQueuedRenderFlush()
       cancelRenderTasks()
+      clearPageRenderRetry()
       if (!doc) return
       detachPromise(doc.cleanup())
     }
-  }, [cancelRenderTasks, clearQueuedRenderFlush, pdfDoc])
+  }, [cancelRenderTasks, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc])
 
   const renderPage = useCallback(
     async (pageIndex: number) => {
@@ -575,7 +653,11 @@ export function PdfViewer({
         }
 
         const canvas = canvasRefs.current.get(pageIndex)
-        if (!canvas) return
+        if (!canvas) {
+          if (renderGenRef.current !== gen) return
+          schedulePageRenderRetry(pageIndex)
+          return
+        }
 
         canvas.width = Math.ceil(viewport.width)
         canvas.height = Math.ceil(viewport.height)
@@ -595,7 +677,8 @@ export function PdfViewer({
           disableOffscreenRenderAndReload(error)
           return
         }
-        // Best-effort: leave it as not rendered; user can scroll away/back to retry.
+        if (renderGenRef.current !== gen) return
+        schedulePageRenderRetry(pageIndex)
       } finally {
         if (activeRenderTask && renderTasksRef.current.get(pageIndex) === activeRenderTask) {
           renderTasksRef.current.delete(pageIndex)
@@ -613,6 +696,7 @@ export function PdfViewer({
       pdfDoc,
       pageCount,
       rememberPageAspectRatio,
+      schedulePageRenderRetry,
       scale,
       trimRenderedPagePool,
       unmarkPageLoading,
@@ -647,21 +731,6 @@ export function PdfViewer({
   }, [renderPage, scheduleQueuedRenderFlush, unmarkPageLoading])
 
   flushQueuedPageRendersRef.current = flushQueuedPageRenders
-
-  const queuePageRender = useCallback(
-    (pageIndex: number) => {
-      if (pageIndex < 0 || pageIndex >= pageCount) return
-      if (renderedPagesRef.current.has(pageIndex)) return
-      if (renderingPagesRef.current.has(pageIndex)) return
-      if (queuedPagesRef.current.has(pageIndex)) return
-
-      queuedPagesRef.current.add(pageIndex)
-      markPageLoading(pageIndex)
-      renderQueueRef.current.push(pageIndex)
-      scheduleQueuedRenderFlush()
-    },
-    [markPageLoading, pageCount, scheduleQueuedRenderFlush]
-  )
 
   // Re-observe after scale changes so the first visible pages are re-queued when an
   // initial render was invalidated by the post-layout scale measurement.
