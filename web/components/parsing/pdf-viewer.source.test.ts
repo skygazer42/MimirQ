@@ -167,6 +167,7 @@ describe('pdf viewer source', () => {
   it('retries initial page renders when the canvas is not ready or a first-pass raster attempt fails', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 
+    expect(src).toContain('const MAIN_THREAD_PAGE_RENDER_TIMEOUT_MS = 12_000')
     expect(src).toContain('const MAX_PAGE_RENDER_RETRIES = 3')
     expect(src).toContain('const PAGE_RENDER_RETRY_DELAY_MS = 150')
     expect(src).toContain('const pageRenderRetryCountsRef = useRef<Map<number, number>>(new Map())')
@@ -176,6 +177,7 @@ describe('pdf viewer source', () => {
     expect(src).toContain('schedulePageRenderRetry(pageIndex)')
     expect(src).toContain('queuePageRender(pageIndex)')
     expect(src).toContain('detachPromise(flushQueuedPageRendersRef.current())')
+    expect(src).toContain('renderTask.cancel()')
     expect(src).toContain('pageRenderRetryCountsRef.current.delete(pageIndex)')
     expect(src).toContain('pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))')
   })
