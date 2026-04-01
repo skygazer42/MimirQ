@@ -46,6 +46,8 @@ describe('ParsingPage workbench scaffold', () => {
     expect(shellSrc).toContain("activeLibraryFile.status === 'parsed'")
     expect(shellSrc).toContain("filename.toLowerCase().endsWith('.pdf')")
     expect(shellSrc).toContain('if (activeFile || !activeLibraryFile) return')
+    expect(shellSrc).toContain('const bumpPdfPreviewResetToken = () => setPdfPreviewResetToken((prev) => prev + 1)')
+    expect(shellSrc).toContain('bumpPdfPreviewResetToken()')
   })
 
   it('moves page-local state and lifecycle wiring into the dedicated hook', () => {
@@ -59,6 +61,7 @@ describe('ParsingPage workbench scaffold', () => {
 
     expect(hookSrc).toContain('export function useParsingPageState(')
     expect(hookSrc).toContain("const [queueOpen, setQueueOpen] = useState(false)")
+    expect(hookSrc).toContain("const [pdfPreviewResetToken, setPdfPreviewResetToken] = useState(0)")
     expect(hookSrc).toContain('const cancelParse = useCallback(')
     expect(hookSrc).toContain("globalThis.window.localStorage.getItem('mimirq_parsing_image_caption_enabled')")
   })

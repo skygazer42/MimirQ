@@ -141,6 +141,7 @@ type ParsingActiveFilePaneProps = {
   onCopyMarkdown: () => void
   onDownloadMarkdown: () => void
   onParseFile: (fileId: string, backend?: string) => void
+  pdfPreviewResetToken: number
   onSetQueueFileParserBackend: (params: { fileId: string; filename: string; backend: string }) => void
   onSubmitToGovernance: () => void
   onEditedContentChange: (value: string) => void
@@ -173,6 +174,7 @@ export function ParsingActiveFilePane({
   onCopyMarkdown,
   onDownloadMarkdown,
   onParseFile,
+  pdfPreviewResetToken,
   onSetQueueFileParserBackend,
   onSubmitToGovernance,
   onEditedContentChange,
@@ -180,6 +182,7 @@ export function ParsingActiveFilePane({
   onHoveredBlockIdChange,
 }: Readonly<ParsingActiveFilePaneProps>) {
   const [compareOpen, setCompareOpen] = useState(false)
+  const pdfViewerKey = `${activeFile.id}:${activeFile.activeRunId || activeRun?.id || 'default'}:${pdfPreviewResetToken}`
   const qualityGrade = getQualityGateGrade(activeQualityGate)
   const qualityReasons = getQualityGateReasons(activeQualityGate)
   const qualityEvidenceSummary = buildQualityEvidenceSummary(activeQualityGate, activePdfQuality)
@@ -582,6 +585,7 @@ export function ParsingActiveFilePane({
                   {isPdf ? (
                     <div className="flex-1 min-h-0 h-full w-full border-b border-border/70 bg-muted/70 dark:border-border/60 dark:bg-background/40 lg:w-1/2 lg:border-b-0 lg:border-r relative">
                       <PdfViewer
+                        key={pdfViewerKey}
                         file={activeFile.file}
                         blocks={activeBlocksWithPositions}
                         activeBlockIds={activeBlockId ? [activeBlockId] : []}

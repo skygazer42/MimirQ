@@ -207,6 +207,7 @@ export default function ParsingPage() {
       parseAllPending={runActions.parseAllPending}
       parseFile={runActions.parseFile}
       parserBackend={pageState.parserBackend}
+      pdfPreviewResetToken={pageState.pdfPreviewResetToken}
       previewMode={pageState.previewMode}
       queueOpen={pageState.queueOpen}
       rebindInputRef={pageState.rebindInputRef}
@@ -226,6 +227,7 @@ export default function ParsingPage() {
       setInspectorOpen={pageState.setInspectorOpen}
       setIsSidebarCollapsed={pageState.setIsSidebarCollapsed}
       setParserBackend={pageState.setParserBackend}
+      setPdfPreviewResetToken={pageState.setPdfPreviewResetToken}
       setPreviewMode={pageState.setPreviewMode}
       setQueueFileParserBackend={pageState.setQueueFileParserBackend}
       setQueueOpen={pageState.setQueueOpen}
