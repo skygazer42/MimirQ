@@ -241,6 +241,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
         onEditedContentChange: vi.fn(),
         onHoveredBlockIdChange: vi.fn(),
         onParseFile: vi.fn(),
+        pdfPreviewResetToken: 0,
         onPreviewModeChange: vi.fn(),
         onRightPanelModeChange: vi.fn(),
         onSaveEdit: vi.fn(),

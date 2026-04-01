@@ -38,6 +38,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
   const [activeLibraryFileId, setActiveLibraryFileId] = useState<string | null>(null)
   const [activeLibrarySourceStatus, setActiveLibrarySourceStatus] = useState<ParsingLibrarySourceStatus>('unknown')
   const [previewMode, setPreviewMode] = useState<'raw' | 'rendered'>('rendered')
+  const [pdfPreviewResetToken, setPdfPreviewResetToken] = useState(0)
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState('')
   const [rightPanelMode, setRightPanelMode] = useState<'blocks' | 'markdown'>('blocks')
@@ -142,6 +143,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     parseControllersRef,
     parseProgressIntervalsRef,
     parserBackend,
+    pdfPreviewResetToken,
     previewMode,
     queueOpen,
     rebindInputRef,
@@ -163,6 +165,7 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
     setIsQueueRehydrating,
     setIsSidebarCollapsed,
     setParserBackend,
+    setPdfPreviewResetToken,
     setPreviewMode,
     setQueueFileParserBackend,
     setQueueOpen,

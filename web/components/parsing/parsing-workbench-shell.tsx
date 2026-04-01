@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, type RefObject } from 'react'
+import { useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import { FileText, FileStack, Settings2, Sparkles } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -74,6 +74,7 @@ type ParsingWorkbenchShellProps = {
   parseAllPending: () => Promise<void>
   parseFile: (fileId: string, backend?: string) => void
   parserBackend: string
+  pdfPreviewResetToken: number
   previewMode: 'raw' | 'rendered'
   queueOpen: boolean
   rebindInputRef: RefObject<HTMLInputElement | null>
@@ -93,6 +94,7 @@ type ParsingWorkbenchShellProps = {
   setInspectorOpen: (open: boolean) => void
   setIsSidebarCollapsed: (collapsed: boolean) => void
   setParserBackend: (backend: string) => void
+  setPdfPreviewResetToken: Dispatch<SetStateAction<number>>
   setPreviewMode: (mode: 'raw' | 'rendered') => void
   setQueueOpen: (open: boolean) => void
   setQueueFileParserBackend: (params: { fileId: string; filename: string; backend: string }) => void
@@ -152,6 +154,7 @@ export function ParsingWorkbenchShell({
   parseAllPending,
   parseFile,
   parserBackend,
+  pdfPreviewResetToken,
   previewMode,
   queueOpen,
   rebindInputRef,
@@ -171,6 +174,7 @@ export function ParsingWorkbenchShell({
   setInspectorOpen,
   setIsSidebarCollapsed,
   setParserBackend,
+  setPdfPreviewResetToken,
   setPreviewMode,
   setQueueOpen,
   setQueueFileParserBackend,
@@ -181,6 +185,7 @@ export function ParsingWorkbenchShell({
   visibleQueueFiles,
 }: Readonly<ParsingWorkbenchShellProps>) {
   const t = useTranslations('ParsingWorkbench')
+  const bumpPdfPreviewResetToken = () => setPdfPreviewResetToken((prev) => prev + 1)
   const pendingCount = visibleQueueFiles.filter((file) => file.status === 'pending').length
   const parsingCount = visibleQueueFiles.filter((file) => file.status === 'parsing').length
   const parsedCount = visibleQueueFiles.filter((file) => file.status === 'parsed').length
@@ -227,10 +232,12 @@ export function ParsingWorkbenchShell({
       onFolderDrop={handleFolderDrop}
       onQueueFileDragStart={handleFileDragStart}
       onSelectQueueFile={(fileId) => {
+        bumpPdfPreviewResetToken()
         setActiveLibraryFileId(null)
         setActiveFileId(fileId)
       }}
       onSelectLibraryFile={(fileId) => {
+        bumpPdfPreviewResetToken()
         setActiveFileId(null)
         setActiveLibraryFileId(fileId)
       }}
@@ -308,11 +315,13 @@ export function ParsingWorkbenchShell({
               onFolderTreeSelectFile={(fileId) => {
                 const queueMatch = files.find((file) => file.libraryId === fileId)
                 if (queueMatch) {
+                  bumpPdfPreviewResetToken()
                   setActiveLibraryFileId(null)
                   setActiveFileId(queueMatch.id)
                   return
                 }
 
+                bumpPdfPreviewResetToken()
                 setActiveFileId(null)
                 setActiveLibraryFileId(fileId)
               }}
@@ -375,6 +384,7 @@ export function ParsingWorkbenchShell({
                       onCopyMarkdown={() => detachPromise(copyMarkdown())}
                       onDownloadMarkdown={downloadMarkdown}
                       onParseFile={parseFile}
+                      pdfPreviewResetToken={pdfPreviewResetToken}
                       onSetQueueFileParserBackend={setQueueFileParserBackend}
                       onSubmitToGovernance={handleSubmitToGovernance}
                       onEditedContentChange={setEditedContent}
@@ -415,11 +425,13 @@ export function ParsingWorkbenchShell({
           onRequestUploadToFolder={requestUploadToFolder}
           onRequestUploadFolder={requestUploadFolder}
           onSelectQueueFile={(fileId) => {
+            bumpPdfPreviewResetToken()
             setActiveLibraryFileId(null)
             setActiveFileId(fileId)
             setQueueOpen(false)
           }}
           onSelectLibraryFile={(fileId) => {
+            bumpPdfPreviewResetToken()
             setActiveFileId(null)
             setActiveLibraryFileId(fileId)
             setQueueOpen(false)
