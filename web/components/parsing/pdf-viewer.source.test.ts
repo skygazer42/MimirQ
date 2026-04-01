@@ -103,6 +103,14 @@ describe('pdf viewer source', () => {
     expect(src).not.toContain('detachPromise(renderPage(0))')
   })
 
+  it('distinguishes actively rendering pages from offscreen pages that are merely waiting to lazy-load', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())')
+    expect(src).toContain('const isPageLoading = loadingPages.has(index)')
+    expect(src).toContain("isPageLoading ? '渲染中...' : '滚动后加载...'")
+  })
+
   it('releases far-off pages while preserving intrinsic page size hints for long PDFs', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 

@@ -117,6 +117,7 @@ export function PdfViewer({
   const [defaultPageAspectRatio, setDefaultPageAspectRatio] = useState<number | null>(null)
   const [pageAspectRatios, setPageAspectRatios] = useState<Map<number, number>>(new Map())
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
+  const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())
   const [offscreenRenderEnabled, setOffscreenRenderEnabled] = useState(false)
   const renderedPagesRef = useRef<Set<number>>(new Set())
   const renderingPagesRef = useRef<Set<number>>(new Set())
@@ -186,6 +187,7 @@ export function PdfViewer({
         retainedPageIndicesRef.current.clear()
         renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
+        setLoadingPages(new Set())
         setLoadError(null)
         return
       }
@@ -213,6 +215,7 @@ export function PdfViewer({
         retainedPageIndicesRef.current.clear()
         renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
+        setLoadingPages(new Set())
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : toPrimitiveString(err)
@@ -224,6 +227,7 @@ export function PdfViewer({
           retainedPageIndicesRef.current.clear()
           renderedPagesRef.current = new Set()
           setRenderedPages(new Set())
+          setLoadingPages(new Set())
         }
       } finally {
         if (!cancelled) setIsLoading(false)
@@ -415,6 +419,26 @@ export function PdfViewer({
     return true
   }, [])
 
+  const markPageLoading = useCallback((pageIndex: number) => {
+    setLoadingPages((prev) => {
+      if (prev.has(pageIndex)) return prev
+
+      const next = new Set(prev)
+      next.add(pageIndex)
+      return next
+    })
+  }, [])
+
+  const unmarkPageLoading = useCallback((pageIndex: number) => {
+    setLoadingPages((prev) => {
+      if (!prev.has(pageIndex)) return prev
+
+      const next = new Set(prev)
+      next.delete(pageIndex)
+      return next
+    })
+  }, [])
+
   const releasePage = useCallback((pageIndex: number) => {
     const activeRenderTask = renderTasksRef.current.get(pageIndex)
     activeRenderTask?.cancel()
@@ -422,6 +446,7 @@ export function PdfViewer({
     renderingPagesRef.current.delete(pageIndex)
     queuedPagesRef.current.delete(pageIndex)
     renderQueueRef.current = renderQueueRef.current.filter((candidate) => candidate !== pageIndex)
+    unmarkPageLoading(pageIndex)
 
     const canvas = canvasRefs.current.get(pageIndex)
     const offscreenApi = offscreenRenderApiRef.current
@@ -433,7 +458,7 @@ export function PdfViewer({
     }
 
     unmarkPageRendered(pageIndex)
-  }, [offscreenRenderEnabled, unmarkPageRendered])
+  }, [offscreenRenderEnabled, unmarkPageLoading, unmarkPageRendered])
 
   const trimRenderedPagePool = useCallback((pageIndex: number) => {
     const stalePageIndices = selectPdfPagesToReleaseForPool({
@@ -484,6 +509,7 @@ export function PdfViewer({
     renderedPagesRef.current = new Set()
     renderingPagesRef.current.clear()
     setRenderedPages(new Set())
+    setLoadingPages(new Set())
   }, [cancelRenderTasks, clearQueuedRenderFlush, pdfDoc, scale])
 
   useEffect(() => {
@@ -580,6 +606,7 @@ export function PdfViewer({
         }
         releasePageResources?.()
         renderingPagesRef.current.delete(pageIndex)
+        unmarkPageLoading(pageIndex)
       }
     },
     [
@@ -592,6 +619,7 @@ export function PdfViewer({
       rememberPageAspectRatio,
       scale,
       trimRenderedPagePool,
+      unmarkPageLoading,
     ]
   )
 
@@ -601,8 +629,14 @@ export function PdfViewer({
       if (typeof pageIndex !== 'number' || !Number.isFinite(pageIndex)) continue
 
       queuedPagesRef.current.delete(pageIndex)
-      if (renderedPagesRef.current.has(pageIndex)) continue
-      if (renderingPagesRef.current.has(pageIndex)) continue
+      if (renderedPagesRef.current.has(pageIndex)) {
+        unmarkPageLoading(pageIndex)
+        continue
+      }
+      if (renderingPagesRef.current.has(pageIndex)) {
+        unmarkPageLoading(pageIndex)
+        continue
+      }
 
       activeRenderCountRef.current += 1
       detachPromise(
@@ -614,7 +648,7 @@ export function PdfViewer({
         })
       )
     }
-  }, [renderPage, scheduleQueuedRenderFlush])
+  }, [renderPage, scheduleQueuedRenderFlush, unmarkPageLoading])
 
   flushQueuedPageRendersRef.current = flushQueuedPageRenders
 
@@ -626,10 +660,11 @@ export function PdfViewer({
       if (queuedPagesRef.current.has(pageIndex)) return
 
       queuedPagesRef.current.add(pageIndex)
+      markPageLoading(pageIndex)
       renderQueueRef.current.push(pageIndex)
       scheduleQueuedRenderFlush()
     },
-    [pageCount, scheduleQueuedRenderFlush]
+    [markPageLoading, pageCount, scheduleQueuedRenderFlush]
   )
 
   // Re-observe after scale changes so the first visible pages are re-queued when an
@@ -820,6 +855,7 @@ export function PdfViewer({
           const index = pageNumber - 1
           const pageBoxes = resolvedBoxesByPage.get(index) || []
           const isRendered = renderedPages.has(index)
+          const isPageLoading = loadingPages.has(index)
           const pageAspectRatio = pageAspectRatios.get(index) ?? defaultPageAspectRatio
           const containIntrinsicSize = getPagePlaceholderHeight(pageAspectRatio)
 
@@ -854,8 +890,10 @@ export function PdfViewer({
               />
               {isRendered ? null : (
                 <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/60 text-xs text-muted-foreground">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                  渲染中...
+                  {isPageLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  ) : null}
+                  {isPageLoading ? '渲染中...' : '滚动后加载...'}
                 </div>
               )}
               <BboxOverlay
