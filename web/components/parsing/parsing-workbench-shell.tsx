@@ -1,6 +1,6 @@
 'use client'
 
-import type { RefObject } from 'react'
+import { useEffect, type RefObject } from 'react'
 import { FileText, FileStack, Settings2, Sparkles } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -192,6 +192,19 @@ export function ParsingWorkbenchShell({
   const activeLibraryFolderPathLabel = folderPathById[activeLibraryFolderId] || t('rootFolder')
   const activeLibraryFolderName = (activeLibraryFolderPathLabel.split('/').pop() || '').trim() || activeLibraryFolderPathLabel
   const activeLibraryStatusBadge = activeLibraryFile?.status ? getLibraryStatusBadge(activeLibraryFile.status, t) : null
+  const filename = String(activeLibraryFile?.filename || '')
+  const shouldAutoRestoreLibraryPdf =
+    !activeFile &&
+    activeLibraryFile &&
+    activeLibraryFile.status === 'parsed' &&
+    filename.toLowerCase().endsWith('.pdf')
+
+  useEffect(() => {
+    if (activeFile || !activeLibraryFile) return
+    if (!shouldAutoRestoreLibraryPdf) return
+
+    detachPromise(restoreLibraryFileFromCache(activeLibraryFile.id, false))
+  }, [activeFile, activeLibraryFile, restoreLibraryFileFromCache, shouldAutoRestoreLibraryPdf])
 
   const libraryFileListContent = (
     <ParsingLibraryBrowser

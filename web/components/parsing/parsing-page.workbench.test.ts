@@ -39,6 +39,15 @@ describe('ParsingPage workbench scaffold', () => {
     expect(shellSrc).toContain('ParsingMobileInspectorContent')
   })
 
+  it('auto-restores parsed PDF source files when selecting a library-only entry so the preview pane shows the document immediately', () => {
+    const shellSrc = fs.readFileSync(path.resolve(__dirname, 'parsing-workbench-shell.tsx'), 'utf8')
+
+    expect(shellSrc).toContain('restoreLibraryFileFromCache(activeLibraryFile.id, false)')
+    expect(shellSrc).toContain("activeLibraryFile.status === 'parsed'")
+    expect(shellSrc).toContain("filename.toLowerCase().endsWith('.pdf')")
+    expect(shellSrc).toContain('if (activeFile || !activeLibraryFile) return')
+  })
+
   it('moves page-local state and lifecycle wiring into the dedicated hook', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-page.tsx'), 'utf8')
     const hookSrc = fs.readFileSync(path.resolve(__dirname, 'use-parsing-page-state.ts'), 'utf8')
