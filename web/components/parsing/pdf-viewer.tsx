@@ -44,6 +44,7 @@ const MAX_CONCURRENT_RENDERS = 1
 const RENDER_ROOT_MARGIN = '800px 0px 800px 0px'
 const RETAIN_ROOT_MARGIN = '2400px 0px 2400px 0px'
 const IDLE_RENDER_TIMEOUT_MS = 400
+const MAIN_THREAD_PAGE_RENDER_TIMEOUT_MS = 12_000
 const OFFSCREEN_PAGE_RENDER_TIMEOUT_MS = 12_000
 const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '520px'
 const INITIAL_PDF_PAGE_PRERENDER_COUNT = 3
@@ -664,7 +665,22 @@ export function PdfViewer({
         const renderTask = page.render({ canvas, viewport })
         activeRenderTask = renderTask
         renderTasksRef.current.set(pageIndex, renderTask)
-        await renderTask.promise
+
+        let renderTimeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+          try {
+            renderTask.cancel()
+          } catch {
+            // ignore
+          }
+        }, MAIN_THREAD_PAGE_RENDER_TIMEOUT_MS)
+
+        try {
+          await renderTask.promise
+        } finally {
+          if (renderTimeoutId) clearTimeout(renderTimeoutId)
+          renderTimeoutId = null
+        }
+
         releasePageResources?.()
         if (renderGenRef.current !== gen) return
         if (markPageRendered(pageIndex)) {
@@ -685,7 +701,9 @@ export function PdfViewer({
         }
         releasePageResources?.()
         renderingPagesRef.current.delete(pageIndex)
-        unmarkPageLoading(pageIndex)
+        if (!pageRenderRetryTimeoutsRef.current.has(pageIndex)) {
+          unmarkPageLoading(pageIndex)
+        }
       }
     },
     [
