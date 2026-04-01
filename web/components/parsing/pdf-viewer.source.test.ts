@@ -18,10 +18,24 @@ describe('pdf viewer source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 
     expect(src).toContain("'/pdfjs/build/pdf.mjs'")
-    expect(src).toContain("'/pdfjs/build/pdf.worker.mjs'")
+    expect(src).toContain("'/pdfjs-compat/pdf.worker.mjs'")
     expect(src).toContain('webpackIgnore: true')
     expect(src).toContain('GlobalWorkerOptions.workerSrc')
     expect(src).not.toContain("import('pdfjs-dist/webpack.mjs')")
+  })
+
+  it('installs runtime polyfills before loading the pdf.js ESM bundle and worker', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+    const workerSrc = fs.readFileSync(path.resolve(__dirname, '../../public/pdfjs-compat/pdf.worker.mjs'), 'utf8')
+
+    expect(src).toContain('function installPdfJsCompatPolyfills()')
+    expect(src).toContain("typeof promiseCtor.withResolvers !== 'function'")
+    expect(src).toContain("typeof mapPrototype.getOrInsertComputed !== 'function'")
+    expect(src).toContain('installPdfJsCompatPolyfills()')
+    expect(workerSrc).toContain('function installPdfJsCompatPolyfills()')
+    expect(workerSrc).toContain("typeof Promise.withResolvers !== 'function'")
+    expect(workerSrc).toContain("typeof Map.prototype.getOrInsertComputed !== 'function'")
+    expect(workerSrc).toContain("await import('../pdfjs/build/pdf.worker.mjs')")
   })
 
   it('disables OffscreenCanvas worker page rasterization and keeps rendering on the main thread', () => {
@@ -57,7 +71,8 @@ describe('pdf viewer source', () => {
     expect(src).toContain('const renderTasksRef = useRef<Map<number, RenderTask>>(new Map())')
     expect(src).toContain('renderTasksRef.current.forEach((task) => task.cancel())')
     expect(src).toContain('renderTasksRef.current.clear()')
-    expect(src).toContain('const renderTask = page.render({ canvas, viewport })')
+    expect(src).toContain("const canvasContext = canvas.getContext('2d', { alpha: false })")
+    expect(src).toContain("const renderTask = page.render({ canvas: null, canvasContext, viewport, background: '#ffffff' })")
     expect(src).toContain('renderTasksRef.current.set(pageIndex, renderTask)')
     expect(src).toContain('await renderTask.promise')
     expect(src).toContain('page.cleanup()')
@@ -68,7 +83,7 @@ describe('pdf viewer source', () => {
 
     expect(src).toContain('let releasePageResources: (() => void) | null = null')
 
-    const renderTaskIndex = src.indexOf('const renderTask = page.render({ canvas, viewport })')
+    const renderTaskIndex = src.indexOf("const renderTask = page.render({ canvas: null, canvasContext, viewport, background: '#ffffff' })")
     const renderPromiseIndex = src.indexOf('await renderTask.promise', renderTaskIndex)
     const releaseIndex = src.indexOf('releasePageResources?.()', renderPromiseIndex)
 
@@ -174,9 +189,13 @@ describe('pdf viewer source', () => {
     expect(src).toContain('const pageRenderRetryTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())')
     expect(src).toContain('const schedulePageRenderRetry = useCallback(')
     expect(src).toContain('if (!canvas) {')
+    expect(src).toContain("if (!canvasContext) {")
     expect(src).toContain('schedulePageRenderRetry(pageIndex)')
     expect(src).toContain('queuePageRender(pageIndex)')
     expect(src).toContain('detachPromise(flushQueuedPageRendersRef.current())')
+    expect(src).toContain('await Promise.race([')
+    expect(src).toContain('await renderTask.promise')
+    expect(src).toContain('reject(new Error(`Main-thread render timed out for page ${pageIndex + 1}`))')
     expect(src).toContain('renderTask.cancel()')
     expect(src).toContain('pageRenderRetryCountsRef.current.delete(pageIndex)')
     expect(src).toContain('pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))')
@@ -195,6 +214,19 @@ describe('pdf viewer source', () => {
     expect(src).toContain('const isPageFailed = failedPages.has(index)')
     expect(src).toContain("'渲染失败，点击重试'")
     expect(src).not.toContain("{isPageLoading ? '渲染中...' : '滚动后加载...'}")
+  })
+
+  it('publishes a development-only PDF viewer debug snapshot so stuck page state can be inspected from the browser console', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain("process.env.NODE_ENV !== 'development'")
+    expect(src).toContain('__mimirqPdfViewerDebug')
+    expect(src).toContain('activeRenderCount: activeRenderCountRef.current')
+    expect(src).toContain('pageErrors: Object.fromEntries(pageRenderErrorsRef.current.entries())')
+    expect(src).toContain('queuedPages: Array.from(queuedPagesRef.current)')
+    expect(src).toContain('renderingPages: Array.from(renderingPagesRef.current)')
+    expect(src).toContain('retryCounts: Object.fromEntries(pageRenderRetryCountsRef.current.entries())')
+    expect(src).toContain('delete win.__mimirqPdfViewerDebug')
   })
 
 })
