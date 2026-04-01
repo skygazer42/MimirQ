@@ -47,6 +47,9 @@ const IDLE_RENDER_TIMEOUT_MS = 400
 const OFFSCREEN_PAGE_RENDER_TIMEOUT_MS = 12_000
 const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '1100px'
 const DEFAULT_PAGE_CSS_WIDTH = 896
+// Next dev still wraps the dedicated render worker in eval-based chunks, which can leave
+// page rasterization stuck indefinitely. Keep rendering on the main thread for now.
+const ENABLE_PDF_OFFSCREEN_RENDER = false
 const PDFJS_MODULE_URL = '/pdfjs/build/pdf.mjs'
 const PDFJS_WORKER_URL = '/pdfjs/build/pdf.worker.mjs'
 const PDFJS_CMAPS_URL = '/pdfjs/cmaps/'
@@ -82,7 +85,7 @@ function getPagePlaceholderHeight(pageAspectRatio: number | null): string {
 }
 
 function canUseOffscreenCanvasRender(): boolean {
-  return (
+  return ENABLE_PDF_OFFSCREEN_RENDER && (
     typeof Worker !== 'undefined' &&
     typeof OffscreenCanvas !== 'undefined' &&
     typeof HTMLCanvasElement !== 'undefined' &&
@@ -315,7 +318,7 @@ export function PdfViewer({
           return
         }
 
-        setOffscreenRenderEnabled(true)
+        setOffscreenRenderEnabled(ENABLE_PDF_OFFSCREEN_RENDER)
       } catch (error) {
         console.warn('PDF offscreen render worker failed; falling back to main-thread raster', error)
         offscreenRenderWorkerDisabledRef.current = true
@@ -629,6 +632,8 @@ export function PdfViewer({
     [pageCount, scheduleQueuedRenderFlush]
   )
 
+  // Re-observe after scale changes so the first visible pages are re-queued when an
+  // initial render was invalidated by the post-layout scale measurement.
   // Render pages on-demand as they enter the viewport.
   useEffect(() => {
     const container = containerRef.current
@@ -669,7 +674,7 @@ export function PdfViewer({
       cancelled = true
       observer.disconnect()
     }
-  }, [pageCount, pdfDoc, queuePageRender])
+  }, [pageCount, pdfDoc, queuePageRender, scale])
 
   useEffect(() => {
     const container = containerRef.current

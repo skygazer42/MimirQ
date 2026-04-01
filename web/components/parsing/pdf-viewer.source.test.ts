@@ -24,6 +24,14 @@ describe('pdf viewer source', () => {
     expect(src).not.toContain("import('pdfjs-dist/webpack.mjs')")
   })
 
+  it('disables OffscreenCanvas worker page rasterization and keeps rendering on the main thread', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('const ENABLE_PDF_OFFSCREEN_RENDER = false')
+    expect(src).toContain('return ENABLE_PDF_OFFSCREEN_RENDER && (')
+    expect(src).not.toContain('setOffscreenRenderEnabled(true)')
+  })
+
   it('accepts optional precomputed page box groups instead of always recomputing them from blocks', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 
@@ -90,6 +98,7 @@ describe('pdf viewer source', () => {
     expect(src).toContain('queuedPagesRef.current.add(pageIndex)')
     expect(src).toContain('flushQueuedPageRendersRef')
     expect(src).toContain('detachPromise(flushQueuedPageRendersRef.current())')
+    expect(src).toContain('}, [pageCount, pdfDoc, queuePageRender, scale])')
     expect(src).not.toContain('detachPromise(renderPage(idx))')
     expect(src).not.toContain('detachPromise(renderPage(0))')
   })
@@ -120,14 +129,4 @@ describe('pdf viewer source', () => {
     expect(src).toContain('trimRenderedPagePool(pageIndex)')
   })
 
-  it('can hand page raster work to a dedicated OffscreenCanvas render worker when the browser supports it', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
-
-    expect(src).toContain("new URL('../../workers/pdf-page-render.worker.ts', import.meta.url)")
-    expect(src).toContain('transferControlToOffscreen')
-    expect(src).toContain('setOffscreenRenderEnabled(true)')
-    expect(src).toContain('await api.attachPageCanvas(')
-    expect(src).toContain('api.renderPage({ pageIndex, scale })')
-    expect(src).toContain('offscreenApi.releasePage(pageIndex)')
-  })
 })
