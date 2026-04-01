@@ -48,6 +48,7 @@ const MAIN_THREAD_PAGE_RENDER_TIMEOUT_MS = 12_000
 const OFFSCREEN_PAGE_RENDER_TIMEOUT_MS = 12_000
 const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '520px'
 const INITIAL_PDF_PAGE_PRERENDER_COUNT = 3
+const FIRST_PAGE_RENDER_WATCHDOG_INTERVAL_MS = 1_500
 const MAX_PAGE_RENDER_RETRIES = 3
 const PAGE_RENDER_RETRY_DELAY_MS = 150
 // Next dev still wraps the dedicated render worker in eval-based chunks, which can leave
@@ -113,6 +114,7 @@ export function PdfViewer({
   const [pageAspectRatios, setPageAspectRatios] = useState<Map<number, number>>(new Map())
   const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
   const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())
+  const [failedPages, setFailedPages] = useState<Set<number>>(new Set())
   const [offscreenRenderEnabled, setOffscreenRenderEnabled] = useState(false)
   const renderedPagesRef = useRef<Set<number>>(new Set())
   const renderingPagesRef = useRef<Set<number>>(new Set())
@@ -188,6 +190,7 @@ export function PdfViewer({
         renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
         setLoadingPages(new Set())
+        setFailedPages(new Set())
         setLoadError(null)
         return
       }
@@ -216,6 +219,7 @@ export function PdfViewer({
         renderedPagesRef.current = new Set()
         setRenderedPages(new Set())
         setLoadingPages(new Set())
+        setFailedPages(new Set())
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : toPrimitiveString(err)
@@ -228,6 +232,7 @@ export function PdfViewer({
           renderedPagesRef.current = new Set()
           setRenderedPages(new Set())
           setLoadingPages(new Set())
+          setFailedPages(new Set())
         }
       } finally {
         if (!cancelled) setIsLoading(false)
@@ -417,16 +422,42 @@ export function PdfViewer({
     pageRenderRetryCountsRef.current.clear()
   }, [])
 
+  const markPageFailed = useCallback((pageIndex: number) => {
+    setFailedPages((prev) => {
+      if (prev.has(pageIndex)) return prev
+
+      const next = new Set(prev)
+      next.add(pageIndex)
+      return next
+    })
+  }, [])
+
+  const clearPageFailure = useCallback((pageIndex?: number) => {
+    if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
+      setFailedPages((prev) => {
+        if (!prev.has(pageIndex)) return prev
+
+        const next = new Set(prev)
+        next.delete(pageIndex)
+        return next
+      })
+      return
+    }
+
+    setFailedPages(new Set())
+  }, [])
+
   const markPageRendered = useCallback((pageIndex: number) => {
     if (renderedPagesRef.current.has(pageIndex)) return false
 
     clearPageRenderRetry(pageIndex)
+    clearPageFailure(pageIndex)
     const next = new Set(renderedPagesRef.current)
     next.add(pageIndex)
     renderedPagesRef.current = next
     setRenderedPages(next)
     return true
-  }, [clearPageRenderRetry])
+  }, [clearPageFailure, clearPageRenderRetry])
 
   const unmarkPageRendered = useCallback((pageIndex: number) => {
     if (!renderedPagesRef.current.has(pageIndex)) return false
@@ -487,12 +518,13 @@ export function PdfViewer({
       if (renderingPagesRef.current.has(pageIndex)) return
       if (queuedPagesRef.current.has(pageIndex)) return
 
+      clearPageFailure(pageIndex)
       queuedPagesRef.current.add(pageIndex)
       markPageLoading(pageIndex)
       renderQueueRef.current.push(pageIndex)
       scheduleQueuedRenderFlush()
     },
-    [markPageLoading, pageCount, scheduleQueuedRenderFlush]
+    [clearPageFailure, markPageLoading, pageCount, scheduleQueuedRenderFlush]
   )
 
   const schedulePageRenderRetry = useCallback(
@@ -508,7 +540,10 @@ export function PdfViewer({
       if (pageRenderRetryTimeoutsRef.current.has(pageIndex)) return
 
       const attempts = pageRenderRetryCountsRef.current.get(pageIndex) || 0
-      if (attempts >= MAX_PAGE_RENDER_RETRIES) return
+      if (attempts >= MAX_PAGE_RENDER_RETRIES) {
+        markPageFailed(pageIndex)
+        return
+      }
 
       pageRenderRetryCountsRef.current.set(pageIndex, attempts + 1)
       markPageLoading(pageIndex)
@@ -532,7 +567,7 @@ export function PdfViewer({
 
       pageRenderRetryTimeoutsRef.current.set(pageIndex, timeoutId)
     },
-    [clearPageRenderRetry, markPageLoading, pageCount, queuePageRender, unmarkPageLoading]
+    [clearPageRenderRetry, markPageFailed, markPageLoading, pageCount, queuePageRender, unmarkPageLoading]
   )
 
   const releasePage = useCallback((pageIndex: number) => {
@@ -556,6 +591,15 @@ export function PdfViewer({
 
     unmarkPageRendered(pageIndex)
   }, [clearPageRenderRetry, offscreenRenderEnabled, unmarkPageLoading, unmarkPageRendered])
+
+  const retryPageRender = useCallback((pageIndex: number) => {
+    if (pageIndex < 0 || pageIndex >= pageCount) return
+
+    releasePage(pageIndex)
+    clearPageFailure(pageIndex)
+    queuePageRender(pageIndex)
+    detachPromise(flushQueuedPageRendersRef.current())
+  }, [clearPageFailure, pageCount, queuePageRender, releasePage])
 
   const trimRenderedPagePool = useCallback((pageIndex: number) => {
     const stalePageIndices = selectPdfPagesToReleaseForPool({
@@ -586,6 +630,7 @@ export function PdfViewer({
     renderingPagesRef.current.clear()
     setRenderedPages(new Set())
     setLoadingPages(new Set())
+    setFailedPages(new Set())
   }, [cancelRenderTasks, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc, scale])
 
   useEffect(() => {
@@ -801,6 +846,25 @@ export function PdfViewer({
   }, [pageCount, pdfDoc, queuePageRender, scale])
 
   useEffect(() => {
+    const doc = pdfDoc
+    const totalPages = pageCount
+    if (!doc || !totalPages) return
+
+    const intervalId = setInterval(() => {
+      for (let pageIndex = 0; pageIndex < Math.min(totalPages, INITIAL_PDF_PAGE_PRERENDER_COUNT); pageIndex += 1) {
+        if (renderedPagesRef.current.has(pageIndex)) continue
+        if (renderingPagesRef.current.has(pageIndex)) continue
+        if (queuedPagesRef.current.has(pageIndex)) continue
+        retryPageRender(pageIndex)
+      }
+    }, FIRST_PAGE_RENDER_WATCHDOG_INTERVAL_MS)
+
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [pageCount, pdfDoc, retryPageRender, scale])
+
+  useEffect(() => {
     const container = containerRef.current
     const doc = pdfDoc
     const totalPages = pageCount
@@ -946,6 +1010,9 @@ export function PdfViewer({
           const pageBoxes = resolvedBoxesByPage.get(index) || []
           const isRendered = renderedPages.has(index)
           const isPageLoading = loadingPages.has(index)
+          const isPageFailed = failedPages.has(index)
+          const failedPlaceholderLabel = '渲染失败，点击重试'
+          const pagePlaceholderLabel = isPageLoading ? '渲染中...' : '滚动后加载...'
           const pageAspectRatio = pageAspectRatios.get(index) ?? defaultPageAspectRatio
           const pageStyle = pageAspectRatio
             ? { aspectRatio: String(pageAspectRatio) }
@@ -976,12 +1043,21 @@ export function PdfViewer({
                 className="block h-auto w-full rounded-xl"
                 style={pageAspectRatio ? { aspectRatio: String(pageAspectRatio) } : undefined}
               />
-              {isRendered ? null : (
+              {isRendered ? null : isPageFailed ? (
+                <button
+                  type="button"
+                  className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/70 text-xs font-medium text-foreground transition hover:bg-background/80"
+                  onClick={() => retryPageRender(index)}
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  {failedPlaceholderLabel}
+                </button>
+              ) : (
                 <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/60 text-xs text-muted-foreground">
                   {isPageLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
                   ) : null}
-                  {isPageLoading ? '渲染中...' : '滚动后加载...'}
+                  {pagePlaceholderLabel}
                 </div>
               )}
               <BboxOverlay

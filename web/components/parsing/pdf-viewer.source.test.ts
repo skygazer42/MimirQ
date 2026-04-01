@@ -182,4 +182,19 @@ describe('pdf viewer source', () => {
     expect(src).toContain('pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))')
   })
 
+  it('keeps probing stalled first-page renders and surfaces an explicit retry action instead of leaving the placeholder stuck forever', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('const FIRST_PAGE_RENDER_WATCHDOG_INTERVAL_MS = 1_500')
+    expect(src).toContain('const [failedPages, setFailedPages] = useState<Set<number>>(new Set())')
+    expect(src).toContain('const markPageFailed = useCallback(')
+    expect(src).toContain('const clearPageFailure = useCallback(')
+    expect(src).toContain('const retryPageRender = useCallback(')
+    expect(src).toContain('setInterval(() => {')
+    expect(src).toContain('retryPageRender(pageIndex)')
+    expect(src).toContain('const isPageFailed = failedPages.has(index)')
+    expect(src).toContain("'渲染失败，点击重试'")
+    expect(src).not.toContain("{isPageLoading ? '渲染中...' : '滚动后加载...'}")
+  })
+
 })
