@@ -45,8 +45,7 @@ const RENDER_ROOT_MARGIN = '800px 0px 800px 0px'
 const RETAIN_ROOT_MARGIN = '2400px 0px 2400px 0px'
 const IDLE_RENDER_TIMEOUT_MS = 400
 const OFFSCREEN_PAGE_RENDER_TIMEOUT_MS = 12_000
-const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '1100px'
-const DEFAULT_PAGE_CSS_WIDTH = 896
+const DEFAULT_PAGE_PLACEHOLDER_HEIGHT = '520px'
 // Next dev still wraps the dedicated render worker in eval-based chunks, which can leave
 // page rasterization stuck indefinitely. Keep rendering on the main thread for now.
 const ENABLE_PDF_OFFSCREEN_RENDER = false
@@ -74,14 +73,6 @@ async function loadPdfJsModule(): Promise<PdfJsModule> {
     pdfJsModulePromise = null
     throw error
   }
-}
-
-function getPagePlaceholderHeight(pageAspectRatio: number | null): string {
-  if (!pageAspectRatio || !Number.isFinite(pageAspectRatio) || pageAspectRatio <= 0) {
-    return DEFAULT_PAGE_PLACEHOLDER_HEIGHT
-  }
-
-  return `${Math.max(520, Math.round(DEFAULT_PAGE_CSS_WIDTH / pageAspectRatio))}px`
 }
 
 function canUseOffscreenCanvasRender(): boolean {
@@ -730,6 +721,7 @@ export function PdfViewer({
             continue
           }
           retainedPageIndicesRef.current.delete(idx)
+          if (!renderedPagesRef.current.has(idx)) continue
           releasePage(idx)
         }
       },
@@ -857,7 +849,9 @@ export function PdfViewer({
           const isRendered = renderedPages.has(index)
           const isPageLoading = loadingPages.has(index)
           const pageAspectRatio = pageAspectRatios.get(index) ?? defaultPageAspectRatio
-          const containIntrinsicSize = getPagePlaceholderHeight(pageAspectRatio)
+          const pageStyle = pageAspectRatio
+            ? { aspectRatio: String(pageAspectRatio) }
+            : { minHeight: DEFAULT_PAGE_PLACEHOLDER_HEIGHT }
 
           return (
             <div
@@ -871,11 +865,7 @@ export function PdfViewer({
               }}
               data-page-index={index}
               className="relative rounded-xl bg-card shadow-sm ring-1 ring-border/60"
-              style={{
-                contentVisibility: 'auto',
-                containIntrinsicSize,
-                minHeight: containIntrinsicSize,
-              }}
+              style={pageStyle}
             >
               <canvas
                 ref={(el) => {

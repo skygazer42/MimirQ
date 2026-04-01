@@ -111,14 +111,22 @@ describe('pdf viewer source', () => {
     expect(src).toContain("isPageLoading ? '渲染中...' : '滚动后加载...'")
   })
 
-  it('releases far-off pages while preserving intrinsic page size hints for long PDFs', () => {
+  it('uses responsive page placeholders instead of fixed-width intrinsic-size hints that can hide the first visible PDF page', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 
-    expect(src).toContain('const releasePage = useCallback(')
-    expect(src).toContain('canvas.width = 0')
-    expect(src).toContain('canvas.height = 0')
-    expect(src).toContain("contentVisibility: 'auto'")
-    expect(src).toContain('containIntrinsicSize')
+    expect(src).toContain('const pageStyle = pageAspectRatio')
+    expect(src).toContain("minHeight: DEFAULT_PAGE_PLACEHOLDER_HEIGHT")
+    expect(src).toContain("aspectRatio: String(pageAspectRatio)")
+    expect(src).not.toContain('const DEFAULT_PAGE_CSS_WIDTH = 896')
+    expect(src).not.toContain('getPagePlaceholderHeight(')
+    expect(src).not.toContain("contentVisibility: 'auto'")
+    expect(src).not.toContain('containIntrinsicSize')
+  })
+
+  it('does not let the retention observer cancel pages that have not rendered yet', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('if (!renderedPagesRef.current.has(idx)) continue')
     expect(src).toContain('releasePage(idx)')
   })
 
