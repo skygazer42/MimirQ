@@ -12,6 +12,7 @@ import { useChatStream } from './use-chat-stream'
 export function useChat({
   conversationId: initialConversationId,
   documentIds,
+  datasetId,
   promptTemplateId,
   ragConfig,
   structuredOutput,
@@ -32,6 +33,7 @@ export function useChat({
     messagesRef: session.messagesRef,
     setMessages: session.setMessages,
     documentIds,
+    datasetId,
     promptTemplateId,
     ragConfig,
     structuredOutput,

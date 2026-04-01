@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import contextvars
+import logging
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
+import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
@@ -12,12 +14,15 @@ from pydantic import ConfigDict, Field, PrivateAttr
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
+from app.rag.core.http import httpx_trust_env
 from app.rag.llm.factory import _resolve_fallback_specs
 from app.rag.llm.fallback import AllProvidersFailedError, is_retryable_provider_error
 from app.rag.llm.prompt_cache import (
     annotate_openai_messages_for_prompt_cache,
     detect_anthropic_compatible,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _model_name_of(model: Any) -> str | None:
@@ -306,6 +311,14 @@ class FallbackChatOpenAI(BaseChatModel):
         self._raise_all_failed(last_exc)
 
 
+def _build_chat_async_client(timeout: Any, pooled_async_client: Any) -> Any:
+    if pooled_async_client is not None and settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT:
+        return pooled_async_client
+    # Build a dedicated async transport so LangChain/OpenAI does not inherit
+    # unsupported SOCKS proxy env vars from the host shell in dev.
+    return httpx.AsyncClient(trust_env=httpx_trust_env(logger=logger), timeout=timeout)
+
+
 def build_chat_model_from_config(
     *,
     model_config: dict[str, Any] | None,
@@ -316,21 +329,17 @@ def build_chat_model_from_config(
     cfg = dict(model_config or {})
     model_name = str(cfg.get("model") or settings.LLM_MODEL or "").strip()
     base_url = normalize_openai_compatible_base_url(cfg.get("base_url") or settings.LLM_API_BASE)
+    timeout = cfg.get("timeout", settings.LLM_TIMEOUT)
     common_kwargs = {
         "api_key": cfg.get("api_key") or settings.LLM_API_KEY,
         "base_url": base_url,
         "temperature": cfg.get("temperature", settings.LLM_TEMPERATURE),
         "streaming": bool(streaming),
-        "timeout": cfg.get("timeout", settings.LLM_TIMEOUT),
+        "timeout": timeout,
         "max_retries": cfg.get("max_retries", settings.LLM_MAX_RETRIES),
         "http_client": http_client,
+        "http_async_client": _build_chat_async_client(timeout=timeout, pooled_async_client=http_async_client),
     }
-    # DashScope's OpenAI-compatible chat endpoint is stable with LangChain's default
-    # async transport, but fails with the shared pooled AsyncClient used elsewhere.
-    # Keep the shared sync client for non-async paths and let ChatOpenAI manage its
-    # own async client lifecycle for ainvoke/astream requests.
-    if http_async_client is not None and settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT:
-        common_kwargs["http_async_client"] = http_async_client
     primary = PromptCacheChatOpenAI(model=model_name, **common_kwargs)
 
     if not bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)):

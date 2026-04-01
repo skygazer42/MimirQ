@@ -162,6 +162,7 @@ export interface ChatRequest {
   message: string
   history?: ChatHistoryMessage[]
   document_ids?: string[]
+  dataset_id?: string | null
   stream: boolean
   structured_output?: boolean
   structured_preset?: LooseString<'faq' | 'summary' | 'action_items' | 'custom'> | null

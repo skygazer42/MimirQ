@@ -28,6 +28,10 @@ describe('message item source', () => {
     expect(src).toContain('followup_questions')
     expect(src).toContain('继续追问')
     expect(src).toContain('反馈评分')
+    expect(src).toContain('text-primary-foreground [&>*]:text-inherit')
+    expect(src).toContain('prose prose-neutral dark:prose-invert')
+    expect(src).toContain('prose-code:font-mono')
+    expect(src).toContain('prose-code:text-primary')
   })
 
   it('prefetches document evidence on citation hover before opening the viewer', () => {

@@ -31,6 +31,7 @@ type UseChatStreamOptions = {
   messagesRef: MutableRef<Message[]>
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   documentIds?: string[]
+  datasetId?: string
   promptTemplateId?: string
   ragConfig?: ChatRagConfig
   structuredOutput?: boolean
@@ -56,6 +57,7 @@ export function useChatStream({
   messagesRef,
   setMessages,
   documentIds,
+  datasetId,
   promptTemplateId,
   ragConfig,
   structuredOutput,
@@ -171,6 +173,7 @@ export function useChatStream({
           message,
           history: getHistory(messagesRef.current),
           documentIds,
+          datasetId,
           promptTemplateId,
           structuredOutput,
           structuredPreset,
@@ -337,6 +340,7 @@ export function useChatStream({
       appendStep,
       clearRaf,
       conversationId,
+      datasetId,
       documentIds,
       enableLongTermMemory,
       enableSummaryMemory,

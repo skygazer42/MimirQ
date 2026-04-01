@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl'
 import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Bot, Mic, ArrowDown, type LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useChat } from '@/hooks/use-chat'
+import type { Dataset } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { cn, detachPromise } from '@/lib/utils'
@@ -67,6 +68,9 @@ export function ChatArea({
   const [inputValue, setInputValue] = useState(() => (initialPrompt || '').trim())
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([])
+  const [datasets, setDatasets] = useState<Dataset[]>([])
+  const [datasetsLoading, setDatasetsLoading] = useState(true)
+  const [selectedDatasetId, setSelectedDatasetId] = useState('')
   const [showRagSettings, setShowRagSettings] = useState(Boolean(initialOpenRagSettings))
   const [hasSystemRagDefaults, setHasSystemRagDefaults] = useState(false)
   const [ragConfigDirty, setRagConfigDirty] = useState(false)
@@ -177,10 +181,20 @@ export function ChatArea({
     const loadWelcomeStats = async () => {
       try {
         const [datasetsRes, documentsRes] = await Promise.all([
-          datasetApi.list({ limit: 1 }),
+          datasetApi.list({ limit: 200 }),
           documentApi.list({ limit: 1, status: 'completed' }),
         ])
         if (cancelled) return
+        const nextDatasets = Array.isArray(datasetsRes.items) ? datasetsRes.items : []
+        setDatasets(nextDatasets)
+        setSelectedDatasetId((current) => {
+          const trimmed = String(current || '').trim()
+          if (trimmed && nextDatasets.some((dataset) => dataset.id === trimmed)) {
+            return trimmed
+          }
+          return String(nextDatasets[0]?.id || '')
+        })
+        setDatasetsLoading(false)
         setWelcomeStats({
           datasets: Number(datasetsRes.total || 0),
           documents: Number(documentsRes.total || 0),
@@ -188,6 +202,9 @@ export function ChatArea({
         })
       } catch {
         if (cancelled) return
+        setDatasets([])
+        setSelectedDatasetId('')
+        setDatasetsLoading(false)
         setWelcomeStats({ datasets: null, documents: null, loading: false })
       }
     }
@@ -197,6 +214,11 @@ export function ChatArea({
       cancelled = true
     }
   }, [])
+
+  const selectedDataset = useMemo(
+    () => datasets.find((dataset) => dataset.id === selectedDatasetId),
+    [datasets, selectedDatasetId]
+  )
 
   const applyMetadataFilterPreset = useCallback(
     (mode: 'all' | 'exclude_qa' | 'qa_only' | 'custom') => {
@@ -359,6 +381,7 @@ export function ChatArea({
   } = useChat({
     conversationId: initialConversationId,
     documentIds: activeDocumentIds,
+    datasetId: activeDocumentIds?.length ? undefined : selectedDatasetId || undefined,
     promptTemplateId: promptTemplateId || undefined,
     ragConfig: ragConfigDirty || hasSystemRagDefaults ? ragConfig : undefined,
     structuredOutput,
@@ -516,6 +539,9 @@ export function ChatArea({
     () => promptTemplates.find((template) => template.id === promptTemplateId),
     [promptTemplates, promptTemplateId]
   )
+  const hasDocumentScope = Boolean(activeDocumentIds?.length)
+  const hasChatScope = hasDocumentScope || Boolean(selectedDatasetId)
+  const datasetScopeReady = hasDocumentScope || !datasetsLoading
 
   const hiddenCount = Math.max(0, messages.length - visibleCount)
   const visibleMessages = useMemo(
@@ -523,26 +549,36 @@ export function ChatArea({
     [messages, visibleCount]
   )
 
+  const submitMessage = useCallback((nextMessage: string) => {
+    if (!nextMessage.trim() || isLoading) return false
+    if (!hasChatScope) {
+      toast.error(datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))
+      return false
+    }
+    sendMessage(nextMessage)
+    return true
+  }, [datasetsLoading, hasChatScope, isLoading, sendMessage, t])
+
   const handleSend = useCallback(() => {
-    if (!inputValue.trim() || isLoading) return
-    sendMessage(inputValue)
+    if (!submitMessage(inputValue)) return
     setInputValue('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
-  }, [inputValue, isLoading, sendMessage])
+  }, [inputValue, submitMessage])
 
   useEffect(() => {
     const p = (initialPrompt || '').trim()
     if (!initialAutoSendPrompt || !p) return
     if (autoSendPromptRef.current) return
     if (isLoading || messages.length > 0) return
+    if (!datasetScopeReady || !hasChatScope) return
 
+    if (!submitMessage(p)) return
     autoSendPromptRef.current = true
-    sendMessage(p)
     setInputValue('')
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [initialAutoSendPrompt, initialPrompt, isLoading, messages.length, sendMessage])
+  }, [datasetScopeReady, hasChatScope, initialAutoSendPrompt, initialPrompt, isLoading, messages.length, submitMessage])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -685,6 +721,53 @@ export function ChatArea({
                   </PopoverContent>
                 </Popover>
               )}
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 gap-2 rounded-full border border-border/60 bg-card px-3 text-foreground shadow-sm hover:bg-secondary/80"
+                  >
+                    <Database className="w-3.5 h-3.5 text-primary" />
+                    <span className="max-w-[180px] truncate text-xs">
+                      {hasDocumentScope
+                        ? t('currentDocumentScope')
+                        : selectedDataset?.name || (datasetsLoading ? t('datasetScopeLoading') : t('selectDataset'))}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-2" align="start">
+                  <div className="px-2 pb-2">
+                    <div className="text-xs font-medium text-muted-foreground">{t('selectDataset')}</div>
+                    <div className="mt-1 text-[11px] text-muted-foreground/80">{t('datasetScopeHint')}</div>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
+                    {datasetsLoading ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">{t('datasetScopeLoading')}</div>
+                    ) : datasets.length === 0 ? (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">{t('datasetScopeEmpty')}</div>
+                    ) : (
+                      datasets.map((dataset) => (
+                        <button
+                          type="button"
+                          key={dataset.id}
+                          className={cn(
+                            'flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-secondary',
+                            selectedDatasetId === dataset.id && 'bg-secondary/50 font-medium text-primary'
+                          )}
+                          onClick={() => setSelectedDatasetId(dataset.id)}
+                        >
+                          <span className="truncate">{dataset.name}</span>
+                          {dataset.description ? (
+                            <span className="truncate text-[10px] text-muted-foreground/70">{dataset.description}</span>
+                          ) : null}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
 
               <Popover open={showRagSettings} onOpenChange={setShowRagSettings}>
                 <PopoverTrigger asChild>
@@ -929,16 +1012,16 @@ export function ChatArea({
 	                  <Button
 	                    size="icon"
 	                    onClick={handleSend}
-	                    disabled={!inputValue.trim()}
+	                    disabled={!inputValue.trim() || !hasChatScope}
 	                    className={cn(
                       "rounded-full size-9 shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none",
-                      inputValue.trim()
+                      inputValue.trim() && hasChatScope
                         ? "bg-primary text-primary-foreground hover:bg-primary/90 motion-safe:hover:scale-105 hover:shadow-md"
                         : "bg-secondary text-muted-foreground cursor-not-allowed"
-	                    )}
-	                    title={t('send')}
-	                    aria-label={t('send')}
-	                  >
+                    )}
+                    title={hasChatScope ? t('send') : (datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))}
+                    aria-label={t('send')}
+                  >
 	                    <Send className="h-4 w-4" />
 	                  </Button>
                 </Magnetic>
@@ -967,8 +1050,9 @@ export function ChatArea({
         isOpen={voiceModeOpen}
         onClose={() => setVoiceModeOpen(false)}
         onSend={(text) => {
-          setVoiceModeOpen(false)
-          sendMessage(text)
+          if (submitMessage(text)) {
+            setVoiceModeOpen(false)
+          }
         }}
       />
 
