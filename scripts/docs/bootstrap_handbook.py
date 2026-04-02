@@ -423,22 +423,223 @@ def phase2_integration_stubs() -> None:
         )
 
 
-def volume_pattern_pages() -> None:
-    """Short pattern stubs to reach handbook-scale page count (expand per-domain later)."""
-    category("integration/patterns/_category_.json", "集成模式速查（扩展位）", 60)
-    for n in range(1, 41):
-        slug = f"p{n:02d}"
-        md(
-            f"integration/patterns/{slug}.md",
-            f"集成模式 #{n}",
-            tmpl_block(
-                scope="集成",
-                perspective="模式",
-                extra=f"占位页 **#{n}**：可替换为具体错误码对照、环境变量矩阵或第三方 IdP 对接笔记。",
-            ),
-            f"模式 {n}",
-            n,
-        )
+def integration_patterns_real() -> None:
+    """Named integration reference pages (replaces former p01–p40 placeholders)."""
+    category("integration/patterns/_category_.json", "集成模式速查", 50)
+
+    def page(slug: str, title: str, sidebar: str, pos: int, extra: str) -> None:
+        body = tmpl_block(scope="集成", perspective="联调模式", extra=extra)
+        md(f"integration/patterns/{slug}.md", title, body, sidebar, pos)
+
+    page(
+        "errors-4xx-5xx",
+        "HTTP 4xx/5xx 与错误体",
+        "错误码与响应体",
+        1,
+        """
+## 阅读顺序
+
+1. 看 **HTTP 状态码** 与响应 JSON 中的业务 `code` / `detail`（以 OpenAPI `ErrorResponse` 或实际返回为准）。
+2. 对照 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md) 中的 Network / 后端日志路径。
+
+## 常见映射（经验）
+
+| 症状 | 优先怀疑 |
+|------|----------|
+| 401 | 未带或过期 `Authorization: Bearer`；时钟漂移 |
+| 403 | 租户/数据集 ACL；功能开关 |
+| 404 | 路径或资源 ID 错误；租户下不可见 |
+| 409 | 并发更新、唯一约束、非法状态迁移 |
+| 422 | Pydantic 校验失败；检查请求体字段名与类型 |
+| 429 / 503 | 限流或依赖不可用；退避重试 |
+
+## 前端
+
+未知业务码时参考仓库内 **extract-errors** 技能，避免静默吞错。
+""".strip(),
+    )
+    page(
+        "auth-modes",
+        "认证方式：JWT 与 Header 调试",
+        "认证",
+        2,
+        """
+## JWT（推荐）
+
+- 登录/注册见 OpenAPI **auth** 分组；后续请求头：`Authorization: Bearer <access_token>`。
+- Token 过期：刷新策略以前端实现与 OpenAPI 为准。
+
+## Header 调试模式（仅开发）
+
+- 部分部署允许 `X-User-ID` / `X-Tenant-ID` 等（见后端中间件与 [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)）。
+- **禁止**在生产客户端伪造租户头；生产务必走正式认证。
+
+## 联调检查清单
+
+- [ ] `Content-Type: application/json`（JSON 接口）
+- [ ] Bearer 前缀与空格
+- [ ] 与 Redoc 示例字段名一致（蛇形/驼峰以前端生成类型为准）
+""".strip(),
+    )
+    page(
+        "tenant-headers",
+        "租户与可见性边界",
+        "租户 / 可见性",
+        3,
+        """
+## 原则
+
+- 多租户下，资源列表与单资源 GET 均受 **租户 + ACL** 约束；404 有时表示「不可见」而非不存在。
+
+## 联调
+
+- 用同一 Token 分别请求列表与详情，确认 `dataset_id` / `document_id` 属于当前租户。
+- 管理端与普通用户可见集合可能不同；对照 OpenAPI 上 **依赖与 scope 说明**。
+
+## 文档
+
+- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)
+""".strip(),
+    )
+    page(
+        "pagination",
+        "列表分页与查询参数",
+        "分页",
+        4,
+        """
+## 常见约定
+
+- 多数列表支持 `skip`、`limit`（或 `offset`/`page`，以 OpenAPI 为准）。
+- 默认值与上限以 Redoc 中参数说明为准；超出上限可能 422。
+
+## 前端
+
+- 表格翻页时避免在路由中丢失 `limit`；大页 deep link 注意 URL 长度。
+
+## 集成测试
+
+- 断言总数与当前页条数；空列表与最后一页边界。
+""".strip(),
+    )
+    page(
+        "multipart-upload",
+        "上传：multipart 与预签名",
+        "上传",
+        5,
+        """
+## multipart
+
+- 文档上传常用 `multipart/form-data`；字段名须与 OpenAPI **documents** 一致（如 `file`）。
+- 体积限制受反向代理与后端配置双重约束。
+
+## 预签名 / 批量
+
+- 若使用 `upload-url`、`batch-upload` 等路径，按 OpenAPI 顺序：申请 URL → 直传对象存储 → 回调/确认（见具体 operation）。
+
+## 排障
+
+- 415 / 400：MIME 与字段名；参见 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)。
+""".strip(),
+    )
+    page(
+        "sse-streaming",
+        "SSE 与流式对话",
+        "SSE / 流式",
+        6,
+        """
+## 约定
+
+- 流式对话多为 **SSE**（`text/event-stream`）；浏览器用 `EventSource` 或 fetch 流式读取。
+- 代理层需 **禁用缓冲**（如 nginx `proxy_buffering off`），否则客户端迟迟收不到分片。
+
+## 客户端
+
+- 实现 **AbortController** 或等价取消，避免页面切换后仍占用连接。
+- 断线重连：记录 last event id（若服务端支持）或幂等地新建会话（产品策略为准）。
+
+## 相关
+
+- 仓库 `docs/API.md` 拆分文中「SSE」章节；OpenAPI **chat** 分组。
+""".strip(),
+    )
+    page(
+        "idempotency-retries",
+        "重试、幂等与重复提交",
+        "重试 / 幂等",
+        7,
+        """
+## 重试
+
+- **仅对幂等或带幂等键的请求重试**：GET、PUT 覆盖、显式 `Idempotency-Key`（若 API 支持）。
+- POST 创建类默认 **非幂等**；盲目重试可能导致重复资源。
+
+## 退避
+
+- 429/503 使用指数退避 + 抖动；设置最大重试次数。
+
+## 与 UI
+
+- 提交按钮 loading 防双击；失败后可安全重试的场景在集成文档中写明。
+""".strip(),
+    )
+    page(
+        "env-matrix",
+        "环境变量索引（导读）",
+        "环境变量导读",
+        8,
+        """
+## 后端
+
+- 完整清单以部署文档与 `.env.example` 为准：[docker_compose](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)、仓库根 `.env.example`。
+
+## 前端
+
+- `NEXT_PUBLIC_*` 在 [web/lib/env](https://github.com/skygazer42/MimirQ/tree/main/web/lib) 及相关构建说明中消费；修改后需重新构建。
+
+## 联调
+
+- 同一浏览器会话中，前端 base URL 与后端实际 origin 必须一致，避免 CORS 与错误端口。
+""".strip(),
+    )
+    page(
+        "openapi-contract-check",
+        "OpenAPI 与前端调用对照",
+        "契约对照",
+        9,
+        """
+## SSOT
+
+- **路径与模型** 以 `web/openapi.json` / Redoc 为准；前端 `web/lib/api/*.ts` 应对齐生成的类型与 path。
+
+## 日常检查
+
+- 改后端路由后执行 `make openapi-export` 与前端 `gen:api-types`（以 Makefile / package.json 脚本为准）。
+- 自动化对照见 [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)。
+
+## 手册内矩阵
+
+- [FE/BE 对照矩阵（自动生成）](../generated/fe-be-matrix.mdx)
+""".strip(),
+    )
+    page(
+        "observability-requests",
+        "请求关联：日志与排障",
+        "可观测性",
+        10,
+        """
+## 后端
+
+- 关注结构化日志中的 `request_id` / 租户 / 用户字段（以后端实现为准）。
+
+## 前端
+
+- 在开发环境对失败请求记录 **path + status + 响应体摘要**（注意脱敏）。
+
+## 运维
+
+- 健康检查：`GET /api/v1/health`、`GET /api/v1/health/ready`（见 OpenAPI **health**）；与 K8s 探针配置对齐。
+""".strip(),
+    )
 
 
 def main() -> None:
@@ -452,8 +653,12 @@ def main() -> None:
     phase2_backend_stubs()
     phase2_frontend_stubs()
     phase2_integration_stubs()
-    volume_pattern_pages()
+    integration_patterns_real()
     print("Wrote handbook under", DOCS)
+
+
+# NOTE: 手册正文以 Git 中 docs-site/docs 为 SSOT；本脚本用于脚手架/重置。
+# 重新运行 main() 会覆盖由本文件生成的页面；核心域深度内容请在提交后优先直接编辑 Markdown。
 
 
 if __name__ == "__main__":

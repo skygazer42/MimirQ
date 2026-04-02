@@ -8,6 +8,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 
 - `bootstrap_handbook.py`：生成 `docs-site/docs/` 下中文样板结构（覆盖式；日常以 Git 中内容为准）。
 - `generate_fe_be_matrix.py`：从 `web/openapi.json`、`web/lib/api`、`web/app` 生成 `docs-site/docs/integration/generated/fe-be-matrix.mdx`（`make handbook-build` / `make api-docs-build` 会调用）。
+- `make handbook-matrix-check`：再生成矩阵后与 Git 比较，未提交更新则失败（CI：`api-docs` 经 `handbook-build`、PR：`.github/workflows/handbook-matrix.yml`）。
 - `split_api_md.py`：将 `docs/api/source/legacy-api-narrative.md`（若不存在则回退 `docs/API.md`）按一级标题切到 `docs/api/reference/`，并写 `_index.md`（忽略代码围栏内的 `#` 行）。
 - `sync-handbook-i18n.mjs`：`docs-site` 构建前把默认语言文档镜像到 `i18n/en/.../current`，并叠加热门页的英文覆盖（`docs-site/i18n/en-overrides/`）。
 - `check_doc_links.mjs`：检查手册源文件中的**相对**链接是否指向存在的路径（`docs-site` 的 `npm run check:links`）。

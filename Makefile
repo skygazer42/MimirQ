@@ -276,9 +276,15 @@ openapi-check:
 
 # Static API docs for GitHub Pages: Redoc + full openapi.json (see docs/api/README.md)
 API_DOCS_SITE := docs/api/site
-.PHONY: handbook-build
-handbook-build:
+HANDBOOK_MATRIX := docs-site/docs/integration/generated/fe-be-matrix.mdx
+
+.PHONY: handbook-matrix-check handbook-build
+# Fail if OpenAPI / web routes changed but generated matrix was not committed.
+handbook-matrix-check:
 	@$(PY) scripts/docs/generate_fe_be_matrix.py
+	@git diff --exit-code -- $(HANDBOOK_MATRIX) || (echo "[handbook] $(HANDBOOK_MATRIX) is out of date. Run: python scripts/docs/generate_fe_be_matrix.py && git add $(HANDBOOK_MATRIX)" && exit 1)
+
+handbook-build: handbook-matrix-check
 	cd docs-site && npm ci && npm run build
 	@mkdir -p $(API_DOCS_SITE)/handbook
 	@rm -rf $(API_DOCS_SITE)/handbook/*

@@ -28,8 +28,9 @@ cd docs-site && npm run build
 
 ## 脚本
 
-- 生成样板 Markdown：`python ../scripts/docs/bootstrap_handbook.py`（覆盖式，慎用）
+- 生成样板 Markdown：`python ../scripts/docs/bootstrap_handbook.py`（覆盖式，慎用；**手册正文以 Git 为准**）
 - 生成 FE/BE 矩阵：`python ../scripts/docs/generate_fe_be_matrix.py`
+- 矩阵与仓库一致：`make handbook-matrix-check`（再生成后 `git diff` 必须为干净）
 - 相对链接检查：`npm run check:links`
 
 ## 国际化
