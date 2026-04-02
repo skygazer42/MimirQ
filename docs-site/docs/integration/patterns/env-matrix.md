@@ -9,6 +9,22 @@ sidebar_position: 8
 
 本页属于 **集成** 域的 **联调模式** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
 
+## 何时查阅
+
+新环境首配、CORS、**错端口**、或「本地能连预发不能」时；对应 [首配任务](../tasks/task-new-tenant-setup.md)。
+
+## 业务影响与验收要点
+
+- 每个环境有 **一页纸**：Base URL、是否 TLS、`NEXT_PUBLIC_API` 等。  
+- 变更 env 后 **构建与发布流程** 写清，避免「改了没生效」。
+
+## 典型失败与对策
+
+| 症状 | 业务影响 | 优先动作 |
+| --- | --- | --- |
+| CORS 红 | 前端全挂 | 对齐 origin；勿误判后端 |
+| 指错 API 域名 | 写到隔壁环境 | 用健康检查与数据指纹校验 |
+
 ## 后端
 
 - 完整清单以部署文档与 `.env.example` 为准：[docker_compose](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)、仓库根 `.env.example`。

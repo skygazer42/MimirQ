@@ -11,6 +11,8 @@ sidebar_position: 1
 
 Auth、Groups、RBAC、SCIM、Usage、Audit。 详细子页将随版本迭代补充。
 
+若从 **端到端任务** 进入，可先读 [任务与域对照](./task-map.md) 再回到本页查 **auth / tenants** 等标签下的 operation。
+
 ## 相关链接
 
 - [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
