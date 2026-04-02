@@ -18,6 +18,7 @@ function copy(locale: string) {
     integration: en ? 'Integration' : '集成（Integration）',
     ops: en ? 'Ops' : '运维（Ops）',
     redoc: en ? 'Full OpenAPI (Redoc)' : '全量 OpenAPI（Redoc）',
+    tasksByRole: en ? 'Tasks by role' : '按任务上手',
     searchHint: en
       ? 'Use the top search bar to find operations (e.g. ingestion, datasets).'
       : '使用顶部搜索查找操作名（如 ingestion、datasets）。',
@@ -56,6 +57,11 @@ function HomepageHeader() {
           </Link>
         </div>
         <div className="margin-top--md">
+          <Link
+            className="button button--primary button--lg margin-right--md"
+            to="/docs/integration/tasks/task-catalog">
+            {t.tasksByRole}
+          </Link>
           <a
             className="button button--link button--lg"
             href="https://skygazer42.github.io/MimirQ/">

@@ -9,6 +9,23 @@ sidebar_position: 1
 
 本页属于 **集成** 域的 **联调模式** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
 
+## 何时查阅
+
+接口返回非 2xx、客服只截到状态码、或需区分 **鉴权 / ACL / 校验 / 限流** 时；与 [首配任务](../tasks/task-new-tenant-setup.md)、[解析止损](../tasks/task-parse-failure-triage.md) 中的止损表对照阅读。
+
+## 业务影响与验收要点
+
+- 集成侧能 **归类** 错误，避免把 ACL 404 当成「服务崩溃」。  
+- 前端对高频错有 **可理解反馈**（可结合仓库 extract-errors 技能），并带 `request_id`（若响应体提供）便于后端对齐日志。
+
+## 典型失败与对策
+
+| 症状 | 业务体感 | 优先动作 |
+| --- | --- | --- |
+| 全站 502/503 | 产品不可用 | 查网关与依赖；[可观测性](./observability-requests.md) |
+| 单接口 422 | 表单或脚本字段不对 | 对照 Redoc 必填与类型 |
+| 列表有、详情 404 | 「系统坏了」误判 | [租户与可见性](./tenant-headers.md) |
+
 ## 阅读顺序
 
 1. 看 **HTTP 状态码** 与响应 JSON 中的业务 `code` / `detail`（以 OpenAPI `ErrorResponse` 或实际返回为准）。
