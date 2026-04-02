@@ -1,11 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 import {
-  BarChart3, Database, FileSearch, FolderOpen, Layers, Loader2,
-  MoreHorizontal, Pencil, Plus, RefreshCw, Search, Settings2, ShieldCheck,
-  Table2, Trash2, Users,
+  BarChart3, ChevronRight, Database, FileSearch, FolderOpen, Layers, Loader2,
+  Pencil, Plus, RefreshCw, Search, Settings2, ShieldCheck,
+  Table2, Trash2, Users, type LucideIcon,
 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
@@ -23,9 +23,6 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader,
   DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
@@ -86,6 +83,7 @@ export default function DatasetsPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Dataset | null>(null)
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -135,7 +133,22 @@ export default function DatasetsPage() {
     )
   }, [items, searchQuery])
 
+  useEffect(() => {
+    if (filteredItems.length === 0) {
+      if (selectedDatasetId !== null) setSelectedDatasetId(null)
+      return
+    }
+
+    if (!selectedDatasetId || !filteredItems.some((item) => item.id === selectedDatasetId)) {
+      setSelectedDatasetId(filteredItems[0]?.id ?? null)
+    }
+  }, [filteredItems, selectedDatasetId])
+
   const canSubmit = useMemo(() => form.name.trim().length > 0, [form.name])
+  const selectedDataset = useMemo(
+    () => filteredItems.find((item) => item.id === selectedDatasetId) ?? filteredItems[0] ?? null,
+    [filteredItems, selectedDatasetId]
+  )
 
   const buildPayload = (mode: 'create' | 'update') => {
     const payload: any = {
@@ -221,6 +234,7 @@ export default function DatasetsPage() {
         title="数据集"
         icon={Layers}
         iconColor="text-primary"
+        size="full"
         compact
         description={<span>管理知识库集合与访问权限</span>}
         actions={
@@ -253,156 +267,320 @@ export default function DatasetsPage() {
           </div>
         }
       >
-        {/* Search + stats bar */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索数据集..."
-              className="pl-9 h-9"
-            />
-          </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <FolderOpen className="w-3.5 h-3.5" />
-              <span className="font-medium tabular-nums">{total}</span> 个数据集
-            </span>
-            {isLoading && <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-primary" />}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-5">
-          {/* Category sidebar */}
-          <div className="hidden lg:block">
-            <Panel variant="muted" padding="md" className="rounded-xl sticky top-0">
-              <DatasetCategoryTree selectedId={selectedCategoryId} onSelect={(id) => setSelectedCategoryId(id)} />
-            </Panel>
-          </div>
-
-          {/* Dataset list */}
-          {filteredItems.length === 0 && !isLoading ? (
-            <EmptyState
-              icon={Layers}
-              title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
-              description={searchQuery ? '尝试更换关键词' : '点击"新建数据集"开始构建知识库'}
-            >
-              {!searchQuery && (
-                <Button className="gap-1.5" onClick={() => { resetForm(); setCreateOpen(true) }}>
-                  <Plus className="w-4 h-4" /> 新建数据集
-                </Button>
-              )}
-            </EmptyState>
-          ) : (
-            <div className="rounded-xl border border-border overflow-hidden bg-card">
-              {/* Table header */}
-              <div className="grid grid-cols-[1fr_100px_80px_100px_40px] gap-3 px-4 py-2.5 text-[11px] font-medium text-muted-foreground uppercase border-b border-border/60 bg-muted/30">
-                <div>名称</div>
-                <div>权限</div>
-                <div>管线</div>
-                <div className="hidden sm:block">ID</div>
-                <div />
+        <div className="flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/90 shadow-soft">
+          <div className="border-b border-border/60 bg-background/70 px-4 py-4 backdrop-blur supports-[backdrop-filter]:bg-background/55 md:px-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground shadow-sm">
+                  <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                  <span>数据集目录</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5" />
+                    <span className="font-medium tabular-nums text-foreground">{total}</span>
+                    <span>个数据集</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <FolderOpen className="h-3.5 w-3.5" />
+                    <span className="text-foreground">{selectedCategoryId ? '已筛选分类' : '全部分类'}</span>
+                  </span>
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none text-primary" /> : null}
+                </div>
               </div>
 
-              {/* Table rows */}
-              <div className="divide-y divide-border/40">
-                {filteredItems.map((ds) => (
-                  <div
-                    key={ds.id}
-                    className="group grid grid-cols-[1fr_100px_80px_100px_40px] gap-3 items-center px-4 py-3 cursor-pointer transition-colors hover:bg-muted/30"
-                    onClick={() => router.push(`/datasets/${ds.id}/precheck`)}
-                  >
-                    {/* Name + description */}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Layers className={cn("w-4 h-4 flex-shrink-0", ds.pipeline ? 'text-primary' : 'text-muted-foreground/50')} />
-                        <span className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                          {ds.name}
-                        </span>
-                      </div>
-                      {ds.description && (
-                        <p className="mt-0.5 ml-6 text-xs text-muted-foreground truncate">{ds.description}</p>
-                      )}
-                    </div>
-
-                    {/* Permission */}
-                    <div>
-                      <Badge variant={perm(ds).variant} className="text-[10px] px-1.5 py-0">
-                        {perm(ds).label}
-                      </Badge>
-                    </div>
-
-                    {/* Pipeline status */}
-                    <div className="text-xs text-muted-foreground">
-                      {ds.pipeline ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span className="size-1.5 rounded-full bg-success" />
-                          启用
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/40">--</span>
-                      )}
-                    </div>
-
-                    {/* ID */}
-                    <div className="hidden sm:block text-xs font-mono text-muted-foreground/60 tabular-nums truncate">
-                      {ds.id.slice(0, 8)}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex justify-end">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost" size="icon"
-                            className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label="操作菜单"
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-44" onClick={(e) => e.stopPropagation()}>
-                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/precheck`)}>
-                            <FileSearch className="w-3.5 h-3.5 mr-2" /> 预检扫描
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/profile`)}>
-                            <BarChart3 className="w-3.5 h-3.5 mr-2" /> 数据画像
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/ingestion`)}>
-                            <Settings2 className="w-3.5 h-3.5 mr-2" /> 入库策略
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/workflow`)}>
-                            <Layers className="w-3.5 h-3.5 mr-2" /> Workflow
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/tables`)}>
-                            <Table2 className="w-3.5 h-3.5 mr-2" /> 表格 / TAG
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/evidence`)}>
-                            <ShieldCheck className="w-3.5 h-3.5 mr-2" /> 证据库
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/datasets/${ds.id}/db-catalog`)}>
-                            <Database className="w-3.5 h-3.5 mr-2" /> 数据库目录
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => openEdit(ds)}>
-                            <Pencil className="w-3.5 h-3.5 mr-2" /> 编辑
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => setDeleteTarget(ds)}
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-2" /> 删除
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex w-full flex-col gap-3 md:flex-row xl:w-auto">
+                <div className="relative min-w-0 flex-1 xl:w-[360px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="搜索数据集..."
+                    className="h-10 rounded-full border-border/60 bg-card pl-9 shadow-sm"
+                  />
+                </div>
+                <div className="inline-flex items-center gap-2 self-start rounded-full border border-border/60 bg-card px-3 py-2 text-xs text-muted-foreground shadow-sm">
+                  <span className="font-medium text-foreground tabular-nums">{filteredItems.length}</span>
+                  <span>条结果</span>
+                </div>
               </div>
             </div>
-          )}
+          </div>
+
+          <div className="grid flex-1 grid-cols-1 lg:grid-cols-[196px_minmax(0,1fr)]">
+            <aside className="border-b border-border/60 bg-muted/15 px-2.5 py-3 lg:border-b-0 lg:border-r lg:px-3">
+              <DatasetCategoryTree
+                className="sticky top-0"
+                selectedId={selectedCategoryId}
+                onSelect={(id) => setSelectedCategoryId(id)}
+              />
+            </aside>
+
+            <section className="min-w-0 bg-card/45">
+              {filteredItems.length === 0 && !isLoading ? (
+                <div className="flex min-h-full px-4 py-8 md:px-5">
+                  <EmptyState
+                    icon={Layers}
+                    title={searchQuery ? '未找到匹配的数据集' : '暂无数据集'}
+                    description={searchQuery ? '尝试更换关键词' : '点击“新建数据集”开始构建知识库'}
+                    className="min-h-[360px] flex-1 rounded-[1.5rem] border border-dashed border-border/60 bg-background/50 shadow-none"
+                  >
+                    {!searchQuery && (
+                      <Button className="gap-1.5" onClick={() => { resetForm(); setCreateOpen(true) }}>
+                        <Plus className="w-4 h-4" /> 新建数据集
+                      </Button>
+                    )}
+                  </EmptyState>
+                </div>
+              ) : (
+                <div className="grid min-h-full grid-cols-1 xl:grid-cols-[minmax(0,1.15fr)_320px]">
+                  <div className="min-w-0 xl:border-r xl:border-border/60">
+                    <div className="flex items-end justify-between gap-4 border-b border-border/60 bg-muted/20 px-4 py-4 md:px-5">
+                      <div className="space-y-1">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Datasets
+                        </div>
+                        <div className="text-sm font-semibold text-foreground">
+                          {selectedCategoryId ? '当前分类目录' : '全部数据集'}
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        选择一个数据集以查看快捷入口与访问配置
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 px-4 py-4 md:px-5">
+                      {filteredItems.map((ds) => {
+                        const isActive = selectedDataset?.id === ds.id
+                        const memberCount = ds.partial_member_list?.length ?? 0
+                        const groupCount = ds.partial_group_list?.length ?? 0
+
+                        return (
+                          <button
+                            key={ds.id}
+                            type="button"
+                            className={cn(
+                              'focus-ring group w-full rounded-[1.5rem] border p-4 text-left transition-all duration-200 motion-reduce:transition-none',
+                              isActive
+                                ? 'border-primary/20 bg-primary/[0.06] shadow-md'
+                                : 'border-border/60 bg-background/85 shadow-sm hover:border-primary/20 hover:bg-card hover:shadow-md'
+                            )}
+                            onClick={() => setSelectedDatasetId(ds.id)}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={cn(
+                                  'flex size-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm',
+                                  isActive ? 'border-primary/20 bg-card text-primary' : 'border-border/60 bg-card text-muted-foreground/60'
+                                )}
+                              >
+                                <Layers className={cn('h-5 w-5', ds.pipeline ? 'text-primary' : 'text-muted-foreground/60')} />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="truncate text-base font-semibold text-foreground">
+                                    {ds.name}
+                                  </span>
+                                  <Badge variant={perm(ds).variant} className="px-1.5 py-0 text-[10px]">
+                                    {perm(ds).label}
+                                  </Badge>
+                                  <DatasetMetaPill icon={Settings2}>
+                                    {ds.pipeline ? '已配置管线' : '未配置管线'}
+                                  </DatasetMetaPill>
+                                </div>
+
+                                <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">
+                                  {ds.description || '暂无描述。可在右侧检视器进入预检、画像和入库策略配置。'}
+                                </p>
+
+                                <div className="mt-4 flex flex-wrap items-center gap-2">
+                                  <DatasetMetaPill icon={Database}>ID {ds.id.slice(0, 8)}</DatasetMetaPill>
+                                  <DatasetMetaPill icon={FolderOpen}>
+                                    {selectedCategoryId ? '当前分类筛选' : '全部分类视图'}
+                                  </DatasetMetaPill>
+                                  {groupCount > 0 ? <DatasetMetaPill icon={Users}>组 {groupCount}</DatasetMetaPill> : null}
+                                  {memberCount > 0 ? <DatasetMetaPill icon={ShieldCheck}>成员 {memberCount}</DatasetMetaPill> : null}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 flex items-center justify-between gap-3 border-t border-border/60 pt-3 text-xs">
+                              <div className="text-muted-foreground">
+                                {isActive ? '当前查看中' : '点击展开右侧检视器'}
+                              </div>
+                              <span className={cn(
+                                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium',
+                                isActive ? 'bg-primary/10 text-primary' : 'bg-muted/60 text-muted-foreground group-hover:text-foreground'
+                              )}>
+                                {isActive ? '已选中' : '查看详情'}
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <aside className="border-t border-border/60 bg-muted/15 xl:border-t-0">
+                    <div className="sticky top-0 space-y-4 p-4 md:p-5">
+                      {selectedDataset ? (
+                        <>
+                          <div className="rounded-[1.5rem] border border-border/60 bg-background/85 p-4 shadow-sm">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground">
+                              <Layers className="h-3.5 w-3.5 text-primary" />
+                              <span>数据集检视器</span>
+                            </div>
+
+                            <div className="mt-4 flex items-start gap-3">
+                              <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-card text-primary shadow-sm">
+                                <Layers className="h-5 w-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <h3 className="text-lg font-semibold leading-6 text-foreground">
+                                  {selectedDataset.name}
+                                </h3>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <Badge variant={perm(selectedDataset).variant} className="px-1.5 py-0 text-[10px]">
+                                    {perm(selectedDataset).label}
+                                  </Badge>
+                                </div>
+                                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                  {selectedDataset.description || '暂无描述。这个数据集已经可以继续做预检、画像和入库策略配置。'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap items-center gap-2">
+                              <DatasetMetaPill icon={Database}>ID {selectedDataset.id.slice(0, 8)}</DatasetMetaPill>
+                              <DatasetMetaPill icon={FolderOpen}>
+                                {selectedCategoryId ? '当前分类筛选' : '全部分类视图'}
+                              </DatasetMetaPill>
+                              <DatasetMetaPill icon={Settings2}>
+                                {selectedDataset.pipeline ? '默认管线已启用' : '默认管线未启用'}
+                              </DatasetMetaPill>
+                            </div>
+                          </div>
+
+                          <div className="rounded-[1.5rem] border border-border/60 bg-background/80 p-4 shadow-sm">
+                            <div className="mb-3">
+                              <div className="text-sm font-semibold text-foreground">快捷入口</div>
+                              <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                                保持常用动作固定在检视器里，列表区只负责筛选和切换。
+                              </div>
+                            </div>
+                            <div className="grid gap-2">
+                              <DatasetShortcutButton
+                                icon={FileSearch}
+                                title="预检扫描"
+                                description="检查文档质量、重复与结构风险"
+                                onClick={() => router.push(`/datasets/${selectedDataset.id}/precheck`)}
+                                emphasis
+                              />
+                              <DatasetShortcutButton
+                                icon={BarChart3}
+                                title="数据画像"
+                                description="查看数据规模、分布和结构特征"
+                                onClick={() => router.push(`/datasets/${selectedDataset.id}/profile`)}
+                              />
+                              <DatasetShortcutButton
+                                icon={Settings2}
+                                title="入库策略"
+                                description="调整解析、索引和治理管线"
+                                onClick={() => router.push(`/datasets/${selectedDataset.id}/ingestion`)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="rounded-[1.5rem] border border-border/60 bg-background/80 p-4 shadow-sm">
+                            <div className="mb-3">
+                              <div className="text-sm font-semibold text-foreground">访问与配置</div>
+                              <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                                用更接近 collection console 的方式，直接在侧栏读出关键配置。
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <DatasetInspectorRow label="数据集 ID" value={selectedDataset.id.slice(0, 8)} mono />
+                              <DatasetInspectorRow label="当前范围" value={selectedCategoryId ? '当前分类筛选' : '全部分类视图'} />
+                              <DatasetInspectorRow label="访问权限" value={perm(selectedDataset).label} />
+                              <DatasetInspectorRow label="成员 allowlist" value={`${selectedDataset.partial_member_list?.length ?? 0} 人`} />
+                              <DatasetInspectorRow label="组 allowlist" value={`${selectedDataset.partial_group_list?.length ?? 0} 组`} />
+                              <DatasetInspectorRow label="默认管线" value={selectedDataset.pipeline ? '已启用' : '未启用'} />
+                            </div>
+                          </div>
+
+                          <div className="rounded-[1.5rem] border border-border/60 bg-background/80 p-4 shadow-sm">
+                            <div className="mb-3">
+                              <div className="text-sm font-semibold text-foreground">扩展能力</div>
+                              <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                                将次级能力收进右侧，而不是继续把列表卡片做得越来越重。
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2">
+                              <DatasetShortcutButton
+                                icon={Layers}
+                                title="Workflow"
+                                description="查看当前数据集的流程编排"
+                                onClick={() => router.push(`/datasets/${selectedDataset.id}/workflow`)}
+                              />
+                              <DatasetShortcutButton
+                                icon={Table2}
+                                title="表格 / TAG"
+                                description="管理结构化资产与标签挂载"
+                                onClick={() => router.push(`/datasets/${selectedDataset.id}/tables`)}
+                              />
+                              <DatasetShortcutButton
+                                icon={ShieldCheck}
+                                title="证据库"
+                                description="查看可追溯证据与审计视图"
+                                onClick={() => router.push(`/datasets/${selectedDataset.id}/evidence`)}
+                              />
+                              <DatasetShortcutButton
+                                icon={Database}
+                                title="数据库目录"
+                                description="浏览数据库侧映射和目录结构"
+                                onClick={() => router.push(`/datasets/${selectedDataset.id}/db-catalog`)}
+                              />
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap gap-2 border-t border-border/60 pt-4">
+                              <Button
+                                variant="outline"
+                                className="h-10 flex-1 min-w-[8rem]"
+                                onClick={() => openEdit(selectedDataset)}
+                              >
+                                <Pencil className="mr-1.5 h-4 w-4" />
+                                编辑数据集
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="h-10 flex-1 min-w-[8rem] border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                                onClick={() => setDeleteTarget(selectedDataset)}
+                              >
+                                <Trash2 className="mr-1.5 h-4 w-4" />
+                                删除
+                              </Button>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex min-h-[360px] items-center justify-center rounded-[1.5rem] border border-dashed border-border/60 bg-background/55 p-6 text-center">
+                          <div className="space-y-2">
+                            <div className="text-sm font-semibold text-foreground">数据集检视器</div>
+                            <div className="text-sm text-muted-foreground">
+                              选择一个数据集后，这里会展示快捷入口、访问权限和扩展能力。
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </aside>
+                </div>
+              )}
+            </section>
+          </div>
         </div>
       </PageScaffold>
 
@@ -441,6 +619,77 @@ export default function DatasetsPage() {
         </DialogContent>
       </Dialog>
     </AppFrame>
+  )
+}
+
+function DatasetMetaPill({
+  icon: Icon,
+  children,
+}: Readonly<{
+  icon: LucideIcon
+  children: ReactNode
+}>) {
+  return (
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm">
+      <Icon className="h-3.5 w-3.5 text-primary" />
+      <span>{children}</span>
+    </div>
+  )
+}
+
+function DatasetShortcutButton({
+  icon: Icon,
+  title,
+  description,
+  onClick,
+  emphasis = false,
+}: Readonly<{
+  icon: LucideIcon
+  title: string
+  description: string
+  onClick: () => void
+  emphasis?: boolean
+}>) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'focus-ring flex w-full items-center gap-3 rounded-[1.15rem] border px-3.5 py-3 text-left transition-colors duration-200 motion-reduce:transition-none',
+        emphasis
+          ? 'border-primary/20 bg-primary/[0.08] hover:bg-primary/[0.12]'
+          : 'border-border/60 bg-card hover:bg-muted/45'
+      )}
+      onClick={onClick}
+    >
+      <span className={cn(
+        'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border shadow-sm',
+        emphasis ? 'border-primary/15 bg-card text-primary' : 'border-border/60 bg-background/85 text-muted-foreground'
+      )}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-foreground">{title}</span>
+        <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">{description}</span>
+      </span>
+      <ChevronRight className={cn('h-4 w-4 shrink-0', emphasis ? 'text-primary' : 'text-muted-foreground')} />
+    </button>
+  )
+}
+
+function DatasetInspectorRow({
+  label,
+  value,
+  mono = false,
+}: Readonly<{
+  label: string
+  value: string
+  mono?: boolean
+}>) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card px-3 py-2.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className={cn('text-sm font-medium text-foreground', mono && 'font-mono tabular-nums')}>{value}</span>
+    </div>
   )
 }
 
