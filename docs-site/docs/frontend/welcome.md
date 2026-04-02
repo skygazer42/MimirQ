@@ -11,6 +11,11 @@ sidebar_position: 1
 
 Next.js 路由、`web/lib/api/*` 调用与 UI 状态从此侧栏进入。
 
+## 如何读本侧栏
+
+- 先 **用户路径与入口**（路由表），再 **web/lib/api 模块**（函数与能力分组），排障页对照浏览器 Network 与 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)。
+- 类型与 path 应与 OpenAPI 生成类型一致；后端变更后请同步 `openapi-export` 与前端类型生成。
+
 ## 相关链接
 
 - [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)

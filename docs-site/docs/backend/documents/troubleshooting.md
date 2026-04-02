@@ -5,13 +5,22 @@ sidebar_position: 6
 
 # 文档 — 排障
 
-## 概述
+## 症状 → 优先排查
 
-本页属于 **文档与入库** 域的 **后端** 视角。权威契约以 OpenAPI（Redoc）为准；前端路由以 `web/app/**/page.tsx` 为准。
+| 症状 | 排查 |
+| --- | --- |
+| 上传立即 400/415 | `multipart` 字段名、MIME、文件大小；反向代理 `client_max_body_size` |
+| 长期 `processing` | 解析器后端、任务队列、对象存储可用性；看文档 `timeline` 或后端日志 |
+| `parsed-content` 空或 404 | 流水线是否完成、权限、是否已清理 |
+| 分块列表与检索不一致 | `chunks/reembed`、索引延迟；核对 `pipeline` / 版本激活接口 |
+| 批量接口部分失败 | 响应体中的逐项错误；避免对非幂等 POST 无界重试 |
 
-卡住：解析器/队列/对象存储；参见部署与 observability 文档。
+## 工具
+
+- `GET .../status`、`GET .../timeline`、`GET .../health`（见 OpenAPI）。
+- [FE_BE_DEBUG.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
 
 ## 相关链接
 
 - [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- [API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)

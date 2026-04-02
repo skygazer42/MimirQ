@@ -1,0 +1,38 @@
+name: Handbook FE/BE matrix freshness
+
+# When API or web client/routes change, ensure fe-be-matrix.mdx is regenerated and committed.
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "web/lib/api/**"
+      - "web/app/**"
+      - "scripts/docs/generate_fe_be_matrix.py"
+      - "Makefile"
+
+permissions:
+  contents: read
+
+jobs:
+  matrix-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies (OpenAPI export)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+
+      - name: Export OpenAPI and verify matrix is up to date
+        run: |
+          make openapi-export
+          python scripts/docs/generate_fe_be_matrix.py
+          git diff --exit-code docs-site/docs/integration/generated/fe-be-matrix.mdx
