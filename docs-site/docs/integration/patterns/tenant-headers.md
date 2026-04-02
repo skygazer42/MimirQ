@@ -11,7 +11,7 @@ sidebar_position: 3
 
 ## 何时查阅
 
-列表与详情结果「对不上」、或同一 ID 在不同账号下表现不同时；对应 [数据集上线](../tasks/task-dataset-go-live.md)、[文档入库](../tasks/task-ingest-documents.md) 中的 ACL 验收。
+列表与详情结果「对不上」、或同一 ID 在不同账号下表现不同时；对应 [新租户首日上线](../tasks/go-live-tenant.md) 中的数据集与文档上传、ACL 验收。
 
 ## 业务影响与验收要点
 
