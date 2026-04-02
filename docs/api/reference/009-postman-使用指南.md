@@ -1,5 +1,7 @@
 # Postman 使用指南
 
+> **联调视角**：建议按手册 [首日上线](https://skygazer42.github.io/MimirQ/handbook/docs/integration/tasks/go-live-tenant) 顺序准备环境变量与 token（亦可从 [集成总览](https://skygazer42.github.io/MimirQ/handbook/docs/integration/welcome) 进入）。
+
 ## 导入配置
 
 ### 1. 创建环境变量
