@@ -100,7 +100,7 @@ export function WorkbenchScaffold({
       ) : null}
 
       <div className={cn(
-        'flex-1 min-h-0 overflow-hidden pb-6',
+        'flex-1 min-h-0 overflow-hidden pb-8',
         compactHeader ? 'px-4 md:px-6' : 'px-6 md:px-8',
         bodyClassName
       )}>

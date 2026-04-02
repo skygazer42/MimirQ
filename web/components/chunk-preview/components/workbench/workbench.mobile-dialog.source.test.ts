@@ -11,8 +11,7 @@ describe('Chunk preview workbench mobile settings', () => {
     expect(indexSrc).toContain('WorkbenchPanelDialog')
     expect(indexSrc).toContain('open={showSettingsPanel}')
 
-    expect(topBarSrc).toContain('aria-label="打开参数面板"')
+    expect(topBarSrc).toContain("aria-label={t('topBar.actions.openSettingsPanel')}")
     expect(topBarSrc).toContain('onClick={toggleSettingsPanel}')
   })
 })
-

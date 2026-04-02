@@ -22,8 +22,8 @@ describe('parsing sonar source guards', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-library-preview-pane.tsx'), 'utf8')
 
     expect(src).toContain('const pendingParseAction = (() => {')
-    expect(src).toContain("label: '继续解析'")
-    expect(src).toContain("label: '上传并解析'")
+    expect(src).toContain("label: t('libraryPreview.continueParsing')")
+    expect(src).toContain("label: t('libraryPreview.uploadAndParse')")
     expect(src).toContain('onClick={pendingParseAction.onClick}')
     expect(src).toContain('title={pendingParseAction.title}')
     expect(src).toContain('{pendingParseAction.label}')

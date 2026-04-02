@@ -222,7 +222,7 @@ export default function DatasetsPage() {
         icon={Layers}
         iconColor="text-primary"
         compact
-        description="管理知识库集合与访问权限"
+        description={<span>管理知识库集合与访问权限</span>}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -297,7 +297,7 @@ export default function DatasetsPage() {
           ) : (
             <div className="rounded-xl border border-border overflow-hidden bg-card">
               {/* Table header */}
-              <div className="grid grid-cols-[1fr_100px_80px_100px_40px] gap-3 px-4 py-2.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wider border-b border-border/60 bg-muted/30">
+              <div className="grid grid-cols-[1fr_100px_80px_100px_40px] gap-3 px-4 py-2.5 text-[11px] font-medium text-muted-foreground uppercase border-b border-border/60 bg-muted/30">
                 <div>名称</div>
                 <div>权限</div>
                 <div>管线</div>

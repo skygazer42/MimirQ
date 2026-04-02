@@ -48,7 +48,7 @@
     --warning: 38 92% 50%;
     --warning-foreground: 222.2 84% 4.9%;
 	    --info: 217 91% 60%;
-	    --info-foreground: 0 0% 100%;
+	    --info-foreground: 222.2 47.4% 11.2%;
 
     /* Extended palette tokens for richer stat cards and badges */
     --teal: 172 66% 40%;

@@ -24,6 +24,10 @@ function loadOpenApiSpec() {
       timeout: OPENAPI_EXPORT_TIMEOUT_MS,
     })
     if (result.status !== 0) {
+      const fallbackPath = path.resolve(__dirname, '..', 'openapi.json')
+      if (fs.existsSync(fallbackPath)) {
+        return JSON.parse(fs.readFileSync(fallbackPath, 'utf8'))
+      }
       throw new Error(result.stderr || result.stdout || 'failed to export openapi spec')
     }
   }
