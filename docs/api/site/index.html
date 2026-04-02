@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MimirQ API Reference</title>
+    <meta
+      name="description"
+      content="MimirQ REST API — full OpenAPI specification (GitHub Pages)."
+    />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      .mq-docs-bar {
+        font-family: system-ui, sans-serif;
+        font-size: 14px;
+        padding: 8px 12px;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-bottom: 1px solid #334155;
+      }
+      .mq-docs-bar a {
+        color: #38bdf8;
+        margin-right: 16px;
+        text-decoration: none;
+      }
+      .mq-docs-bar a:hover {
+        text-decoration: underline;
+      }
+    </style>
+    <script src="https://unpkg.com/redoc@2.4.0/bundles/redoc.standalone.js"></script>
+  </head>
+  <body>
+    <nav class="mq-docs-bar" aria-label="Documentation">
+      <a href="./handbook/">全栈手册（Docusaurus）</a>
+      <a href="https://github.com/skygazer42/MimirQ/tree/main/docs">仓库 Markdown</a>
+    </nav>
+    <redoc spec-url="./openapi.json"></redoc>
+  </body>
+</html>

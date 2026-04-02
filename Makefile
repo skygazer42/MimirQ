@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend web test perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -81,6 +81,8 @@ help:
 	@echo "  make openapi-types  - generate web/types/openapi.ts"
 	@echo "  make openapi-validate - verify OpenAPI artifacts are present/clean"
 	@echo "  make openapi-check  - ensure OpenAPI artifacts up-to-date (regenerates)"
+	@echo "  make api-docs-build - export OpenAPI + build docs/api/site for GitHub Pages (Redoc + openapi.json + handbook/)"
+	@echo "  make handbook-build - regenerate FE/BE matrix + Docusaurus build into docs/api/site/handbook/"
 	@echo "  make diagnostics - run key ops diagnostics (api-ping/api-check/openapi-validate/compose-diagnostics/doctor)"
 	@echo "  make db-upgrade - run Alembic migrations"
 	@echo "  make db-revision - create Alembic revision (m=msg)"
@@ -271,6 +273,24 @@ openapi-validate:
 openapi-check:
 	@$(MAKE) openapi-types
 	@$(MAKE) openapi-validate
+
+# Static API docs for GitHub Pages: Redoc + full openapi.json (see docs/api/README.md)
+API_DOCS_SITE := docs/api/site
+.PHONY: handbook-build
+handbook-build:
+	@$(PY) scripts/docs/generate_fe_be_matrix.py
+	cd docs-site && npm ci && npm run build
+	@mkdir -p $(API_DOCS_SITE)/handbook
+	@rm -rf $(API_DOCS_SITE)/handbook/*
+	@cp -a docs-site/build/. $(API_DOCS_SITE)/handbook/
+	@echo "[handbook] $(API_DOCS_SITE)/handbook/ (Docusaurus)"
+
+api-docs-build: openapi-export
+	@$(PY) scripts/openapi_paths_sanity.py
+	@mkdir -p $(API_DOCS_SITE)
+	@cp -f web/openapi.json $(API_DOCS_SITE)/openapi.json
+	@$(MAKE) handbook-build
+	@echo "[api-docs] $(API_DOCS_SITE)/index.html + openapi.json + handbook/ (run: cd $(API_DOCS_SITE) && python3 -m http.server 8765)"
 
 diagnostics:
 	@$(MAKE) api-ping

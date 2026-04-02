@@ -11,7 +11,7 @@
 
 ## 仓库内拆分文档
 
-长篇叙述的正文保存在 **`docs/api/source/legacy-api-narrative.md`**（与历史 `docs/API.md` 等价），并由脚本切分为 **`docs/api/reference/`** 下的多篇 Markdown；入口见 **[分片索引](./api/reference/_index.md)**。
+原 `docs/API.md` 全文已切分为 **`docs/api/reference/`** 下的多篇 Markdown，并生成 **[分片索引](./api/reference/_index.md)**。按主题浏览请从索引中的表格进入对应文件。
 
 ## 集成与排障
 
@@ -21,13 +21,11 @@
 
 ## 维护说明
 
-更新长篇叙述时，优先编辑 **`docs/api/source/legacy-api-narrative.md`**，然后运行：
+更新长篇 API 叙述时，可编辑 `docs/api/reference/` 下分片，或改回单文件流程后重新运行：
 
 ```bash
 python scripts/docs/split_api_md.py
 ```
-
-也可直接改 `docs/api/reference/` 下单篇（与 legacy 再同步时需人工对齐）。
 
 手册站与对照矩阵：
 
