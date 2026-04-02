@@ -1,5 +1,7 @@
 # 评估系统 (RAGAS)
 
+> **联调视角**：评估与回归可与「可对用户问答」验收对齐；见手册 [可对用户问答](https://skygazer42.github.io/MimirQ/handbook/docs/integration/tasks/knowledge-base-qa)（[集成总览](https://skygazer42.github.io/MimirQ/handbook/docs/integration/welcome)）。
+
 ## 什么是 RAGAS？
 
 RAGAS 是 RAG 系统的评估框架，用于衡量回答质量：
